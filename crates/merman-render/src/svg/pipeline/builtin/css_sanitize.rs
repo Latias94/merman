@@ -15,6 +15,90 @@ use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 const CSS_NESTING_HARD_LIMIT: u8 = 64;
 
+/// usvg omits some CSS length units, but every admitted literal zero has the same used size.
+/// Presentation attributes reject declaration-only priority and trailing semicolons.
+pub(super) fn normalize_zero_font_size_value(
+    value: &str,
+    presentation_attribute: bool,
+) -> Option<String> {
+    if !crate::mermaid_style::css_font_size_is_zero(value) {
+        return None;
+    }
+    let declaration = format!("font-size:{value}");
+    let parsed = crate::mermaid_style::parse_style_declaration(&declaration)?;
+    if presentation_attribute && parsed.value() != value.trim() {
+        return None;
+    }
+    let canonical = if parsed.important() {
+        "0px!important"
+    } else {
+        "0px"
+    };
+    (value != canonical).then(|| canonical.to_owned())
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum NativeFontSizeDeclaration {
+    Other,
+    Known(bool),
+    Barrier,
+}
+
+pub(super) fn native_font_size_declaration(
+    property: &str,
+    value: &str,
+) -> NativeFontSizeDeclaration {
+    use NativeFontSizeDeclaration::{Barrier, Known, Other};
+    if property.eq_ignore_ascii_case("font") || property.eq_ignore_ascii_case("all") {
+        return Barrier;
+    }
+    if !property.eq_ignore_ascii_case("font-size") {
+        return Other;
+    }
+    match crate::mermaid_style::css_font_size_value_override(value) {
+        Some(value)
+            if value.ownership() == crate::mermaid_style::CssFontSizeOwnership::Unverified =>
+        {
+            Barrier
+        }
+        Some(value) => Known(value.important()),
+        None => Other,
+    }
+}
+
+/// usvg keeps the first repeated inline property. Retain the actual CSS font-size winner
+/// before handing it a normalized zero; declarations for other properties stay in order.
+pub(super) fn join_with_native_font_size_winner(
+    declarations: Vec<(String, NativeFontSizeDeclaration)>,
+    separator: &str,
+) -> String {
+    let barrier = declarations
+        .iter()
+        .any(|(_, declaration)| matches!(declaration, NativeFontSizeDeclaration::Barrier));
+    let winner = declarations.iter().enumerate().fold(
+        None::<(usize, bool)>,
+        |winner, (index, (_, priority))| match priority {
+            NativeFontSizeDeclaration::Known(important)
+                if winner.is_none_or(|(_, previous)| *important || !previous) =>
+            {
+                Some((index, *important))
+            }
+            _ => winner,
+        },
+    );
+    declarations
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, (text, priority))| {
+            (barrier
+                || !matches!(priority, NativeFontSizeDeclaration::Known(_))
+                || winner.is_some_and(|(winner, _)| winner == index))
+            .then_some(text)
+        })
+        .collect::<Vec<_>>()
+        .join(separator)
+}
+
 #[derive(Debug, Clone, Copy, Default)]
 pub struct SanitizeCssPostprocessor;
 
@@ -540,14 +624,17 @@ fn rewrite_declaration_list(
     depth: CssNestingDepth,
     control: &mut CssParseControl<'_>,
 ) -> std::result::Result<String, ParseError<CssViolation>> {
-    let mut output = String::new();
+    let mut output = Vec::new();
 
     loop {
         control.step()?;
         let declaration_start = input.position();
         if input.is_exhausted() {
-            output.push_str(input.slice_from(declaration_start));
-            return Ok(output);
+            output.push((
+                input.slice_from(declaration_start).to_owned(),
+                NativeFontSizeDeclaration::Other,
+            ));
+            return Ok(join_with_native_font_size_winner(output, ""));
         }
 
         let declaration = input.parse_until_after(cssparser::Delimiter::Semicolon, |declaration| {
@@ -573,11 +660,22 @@ fn rewrite_declaration_list(
                 return Ok(None);
             }
 
-            let value = rewrite_component_values(declaration, mode, depth, control)?;
+            let mut value = rewrite_component_values(declaration, mode, depth, control)?;
             if value.trim().is_empty() {
                 return Err(ParseError::custom(CssViolation::EmptyDeclaration));
             }
-            Ok(Some((prefix, value)))
+            if mode == CssProcessingMode::Sanitize
+                && property.eq_ignore_ascii_case("font-size")
+                && let Some(normalized) = normalize_zero_font_size_value(&value, false)
+            {
+                value = normalized;
+            }
+            let priority = if mode == CssProcessingMode::Sanitize {
+                native_font_size_declaration(&property, &value)
+            } else {
+                NativeFontSizeDeclaration::Other
+            };
+            Ok(Some((prefix, value, priority)))
         });
         let declaration_end = input.position();
         let had_semicolon = input
@@ -586,12 +684,12 @@ fn rewrite_declaration_list(
             .ends_with(';');
 
         match declaration {
-            Ok(Some((prefix, value))) => {
-                output.push_str(&prefix);
-                output.push_str(&value);
+            Ok(Some((mut prefix, value, priority))) => {
+                prefix.push_str(&value);
                 if had_semicolon {
-                    output.push(';');
+                    prefix.push(';');
                 }
+                output.push((prefix, priority));
             }
             Ok(None) => {}
             Err(error) if is_cancelled_parse_error(&error) => return Err(error),
@@ -951,6 +1049,87 @@ fn format_parse_error(error: ParseError<CssViolation>) -> String {
 mod tests {
     use super::super::util::escape_xml_text_with_checkpoints;
     use super::*;
+
+    #[test]
+    fn zero_font_sizes_use_native_units_without_claiming_other_sizes() {
+        for value in ["0rem", "0cap", "0pt", "0ex", "0%", "0", r"0c\61p"] {
+            assert_eq!(
+                sanitize_css(&format!("text{{font-size:{value};}}")),
+                "text{font-size:0px;}"
+            );
+        }
+        assert_eq!(
+            sanitize_css("text{FONT-SIZE:0rem !IMPORTANT;}"),
+            "text{FONT-SIZE:0px!important;}"
+        );
+        for value in [
+            "1rem",
+            "-1rem",
+            "0futureunit",
+            "0 rem",
+            "var(--size)",
+            "calc(0px)",
+            "1e-10000rem",
+            "-5e-324%",
+        ] {
+            assert_eq!(
+                normalize_zero_font_size_value(value, false),
+                None,
+                "{value}"
+            );
+        }
+        assert_eq!(
+            normalize_zero_font_size_value("0rem !important", true),
+            None
+        );
+        assert_eq!(normalize_zero_font_size_value("0rem;", true), None);
+        assert_eq!(
+            normalize_zero_font_size_value("0rem", true).as_deref(),
+            Some("0px")
+        );
+    }
+
+    #[test]
+    fn native_font_size_keeps_the_last_valid_winner_at_each_priority() {
+        for (input, expected) in [
+            (
+                "font-size:0cap!important;font-size:24px!important;",
+                "font-size:24px!important;",
+            ),
+            (
+                "font-size:0cap!important;font-size:24px;",
+                "font-size:0px!important;",
+            ),
+            ("font-size:24px;font-size:0rem;", "font-size:0px;"),
+            ("font-size:0rem;font-size:24px;", "font-size:24px;"),
+            (
+                "font-size:24px;font-size:0 px;",
+                "font-size:24px;font-size:0 px;",
+            ),
+            (
+                "fill:red;font-size:0cap;stroke:blue;font-size:24px;",
+                "fill:red;stroke:blue;font-size:24px;",
+            ),
+        ] {
+            assert_eq!(
+                sanitize_css(&format!("text{{{input}}}")),
+                format!("text{{{expected}}}")
+            );
+        }
+    }
+
+    #[test]
+    fn unverified_values_and_font_resets_block_native_longhand_deduplication() {
+        for declarations in [
+            "font-size:0px!important;font-size:bogus(1)!important;",
+            "font-size:0px!important;font-size:var(--size)!important;",
+            "font-size:24px!important;font:0px Cousine!important;font-size:24px!important;",
+            "font-size:24px!important;all:initial!important;font-size:24px!important;",
+        ] {
+            let input = format!("text{{{declarations}}}");
+            assert_eq!(sanitize_css(&input), input);
+        }
+    }
 
     fn nested_function(depth: usize, leaf: &str) -> String {
         format!("{}{}{}", "f(".repeat(depth), leaf, ")".repeat(depth))

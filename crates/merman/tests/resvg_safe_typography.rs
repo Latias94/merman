@@ -143,6 +143,101 @@ fn native_export_fonts() -> merman::svg::export::NativeFontContext {
         .unwrap()
 }
 
+#[test]
+fn native_zero_fonts_cover_stylesheets_inline_styles_and_presentation_attributes() {
+    let mut options = usvg::Options::default();
+    options.fontdb_mut().load_font_data(
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf").to_vec(),
+    );
+    options.font_family = "Cousine".to_owned();
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    for (css, attributes, hidden) in [
+        ("text{font-size:0cap!important}", "", true),
+        ("", "style='font-size:0rem!important;font-size:24px'", true),
+        ("", "font-size='0rem'", true),
+        ("", "font-size='0r&#101;m'", true),
+        ("", "font-size='0rem !important'", false),
+        ("", "font-size='0rem;'", false),
+        ("", "font-size='0r&amp;#101;m'", false),
+        (
+            "",
+            "style='font-size:0cap!important;font-size:24px!important'",
+            false,
+        ),
+        (
+            "",
+            "style='font-size:0px!important;font-size:bogus(1)!important'",
+            true,
+        ),
+        (
+            "text{font-size:0px!important;font-size:bogus(1)!important}",
+            "",
+            true,
+        ),
+        (
+            "",
+            "style='font-size:24px!important;font:0px Cousine!important;font-size:24px!important'",
+            false,
+        ),
+        (
+            "text{font-size:24px!important;font:0px Cousine!important;font-size:24px!important}",
+            "",
+            false,
+        ),
+    ] {
+        let source = format!(
+            "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='40'><style>{css}</style><text x='10' y='25' font-family='Cousine' {attributes}>Label</text></svg>"
+        );
+        let svg = SvgPipeline::resvg_safe()
+            .process_to_string(&source, &session)
+            .unwrap();
+        let tree = usvg::Tree::from_str(&svg, &options).unwrap();
+        assert_eq!(
+            tree.root().children().is_empty(),
+            hidden,
+            "{css}/{attributes}: {svg}"
+        );
+    }
+}
+
+#[test]
+#[cfg(all(
+    feature = "diagram-git-graph",
+    feature = "png",
+    feature = "native-fonts"
+))]
+fn gitgraph_zero_font_units_produce_identical_native_pixels() {
+    let renderer = Renderer::new();
+    let fonts = native_export_fonts();
+    let mut expected = None;
+    for size in ["0px", "0pt", "0em", "0rem", "0ex", "0cap"] {
+        let source = format!(
+            "---\nconfig:\n  gitGraph: {{showBranches: false}}\n  themeVariables: {{fontFamily: Cousine, commitLabelFontSize: '{size}'}}\n---\ngitGraph\ncommit id: \"X\"\n"
+        );
+        let RenderOutput::Png(Some(output)) = renderer
+            .render(RenderRequest::png(
+                &source,
+                OperationControl::new(),
+                merman::PngRequest {
+                    svg: SvgRequest::default(),
+                    options: merman::svg::export::RasterOptions::default()
+                        .with_font_context(fonts.clone()),
+                },
+            ))
+            .unwrap()
+        else {
+            panic!("GitGraph must produce PNG")
+        };
+        if let Some(expected) = &expected {
+            assert_eq!(output.bytes(), expected, "zero size {size}");
+        } else {
+            expected = Some(output.bytes().to_vec());
+        }
+    }
+}
+
 fn usvg_fallback_text_span(svg: &str, label: &str) -> usvg::TextSpan {
     fn find_span(group: &usvg::Group, label: &str) -> Option<usvg::TextSpan> {
         for node in group.children() {

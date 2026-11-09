@@ -4,7 +4,10 @@ use cssparser::{Delimiter, Parser};
 use std::borrow::Cow;
 use std::convert::Infallible;
 
-use super::css_sanitize::sanitize_css_value_with_checkpoints;
+use super::css_sanitize::{
+    join_with_native_font_size_winner, native_font_size_declaration,
+    normalize_zero_font_size_value, sanitize_css_value_with_checkpoints,
+};
 use super::quadrant_resvg_fallback::is_mermaid_missing_amount_hsl;
 use super::util::{
     SvgTagScanner, checkpoint_loop, escape_xml_attr, find_with_checkpoints, next_svg_quoted_attr,
@@ -202,6 +205,15 @@ fn sanitized_attr_replacement<E>(
 
     if let Some(value) = normalize_px_attribute(name, value) {
         return Ok(AttrReplacement::Replace(format!(r#" {name}="{value}""#)));
+    }
+
+    if name.eq_ignore_ascii_case("font-size") {
+        let decoded = merman_model::text::decode_html_entities_to_unicode(value);
+        if let Some(normalized) = normalize_zero_font_size_value(&decoded, true) {
+            return Ok(AttrReplacement::Replace(format!(
+                r#" {name}="{normalized}""#
+            )));
+        }
     }
 
     if local_name(name).eq_ignore_ascii_case("style") {
@@ -607,7 +619,7 @@ fn sanitize_style_attribute<E>(
         .enumerate()
     {
         checkpoint_loop(index, checkpoint)?;
-        let Some(normalized_value) = sanitize_css_value_with_checkpoints(&value, checkpoint)?
+        let Some(mut normalized_value) = sanitize_css_value_with_checkpoints(&value, checkpoint)?
         else {
             continue;
         };
@@ -620,11 +632,20 @@ fn sanitize_style_attribute<E>(
             continue;
         }
 
-        out.push(format!("{property}:{normalized_value}"));
+        if property.eq_ignore_ascii_case("font-size")
+            && let Some(normalized) = normalize_zero_font_size_value(&normalized_value, false)
+        {
+            normalized_value = normalized;
+        }
+
+        let priority = native_font_size_declaration(&property, &normalized_value);
+        out.push((format!("{property}:{normalized_value}"), priority));
     }
 
     checkpoint()?;
-    Ok(escape_xml_attr(&out.join(";")))
+    Ok(escape_xml_attr(&join_with_native_font_size_winner(
+        out, ";",
+    )))
 }
 
 fn parse_css_declarations<E>(
@@ -786,6 +807,22 @@ fn is_numeric_token_boundary(ch: Option<char>) -> bool {
 #[cfg(test)]
 mod tests {
     use super::{parsed_attribute_violates_resvg_contract, sanitize_element_attributes};
+
+    #[test]
+    fn zero_font_size_attributes_and_inline_priority_keep_their_own_syntax() {
+        let output = sanitize_element_attributes(
+            r#"<svg><text font-size="0r&#101;m" style="font-size:0cap !important">Hidden</text><text font-size="0rem !important">Visible</text><text font-size="0rem;">Visible</text></svg>"#,
+        );
+        let document = crate::xml_dom::Document::parse(&output).unwrap();
+        let nodes = document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+            .collect::<Vec<_>>();
+        assert_eq!(nodes[0].attribute("font-size"), Some("0px"));
+        assert_eq!(nodes[0].attribute("style"), Some("font-size:0px!important"));
+        assert_eq!(nodes[1].attribute("font-size"), Some("0rem !important"));
+        assert_eq!(nodes[2].attribute("font-size"), Some("0rem;"));
+    }
 
     #[test]
     fn sanitize_style_attribute_drops_invalid_bare_declarations() {

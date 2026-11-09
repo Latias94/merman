@@ -8,6 +8,7 @@ use super::builtin::{
     id_suffix::apply_lower_id_suffix_selectors,
     prepared_math::project_prepared_math_with_checkpoints,
     quadrant_resvg_fallback::resolve_quadrant_resvg_fallbacks_with_checkpoints,
+    timeline_marker::resolve_timeline_marker_references,
 };
 use super::context::{SvgPostprocessExecution, SvgPostprocessMetadata};
 use super::final_validation::SvgStructureMetrics;
@@ -45,6 +46,7 @@ pub enum SvgPipelinePreset {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BuiltinSvgStage {
+    ResolveTimelineMarkerReferences,
     PreparedMathProjection,
     StaticStepProjection,
     ForeignObjectFallback,
@@ -67,6 +69,11 @@ impl BuiltinSvgStage {
     ) -> Result<(Cow<'a, str>, bool)> {
         let mut checkpoint = || execution.checkpoint();
         match self {
+            Self::ResolveTimelineMarkerReferences => {
+                let output = resolve_timeline_marker_references(svg, metadata, execution)?;
+                let changed = matches!(output, Cow::Owned(_));
+                Ok((output, changed))
+            }
             Self::StaticStepProjection => {
                 let output = super::step_animation::project_static(svg, execution)?;
                 let changed = matches!(output, Cow::Owned(_));
@@ -114,6 +121,17 @@ impl BuiltinSvgStage {
                     .map(|svg| (svg, true))
             }
         }
+    }
+}
+
+// Timeline's upstream marker mismatch must be resolved while renderer-issued IDs are intact.
+// Host postprocessors, including ID rebasing, run after these stages.
+pub(crate) fn builtin_stages_before_postprocessors(
+    preset: SvgPipelinePreset,
+) -> &'static [BuiltinSvgStage] {
+    match preset {
+        SvgPipelinePreset::Parity | SvgPipelinePreset::Readable => &[],
+        SvgPipelinePreset::ResvgSafe => &[BuiltinSvgStage::ResolveTimelineMarkerReferences],
     }
 }
 
@@ -177,6 +195,18 @@ mod tests {
 
     #[test]
     fn builtin_stage_order_is_explicit_for_presets() {
+        assert_eq!(
+            builtin_stages_before_postprocessors(SvgPipelinePreset::Parity),
+            &[]
+        );
+        assert_eq!(
+            builtin_stages_before_postprocessors(SvgPipelinePreset::Readable),
+            &[]
+        );
+        assert_eq!(
+            builtin_stages_before_postprocessors(SvgPipelinePreset::ResvgSafe),
+            &[BuiltinSvgStage::ResolveTimelineMarkerReferences]
+        );
         assert_eq!(builtin_stages_for_preset(SvgPipelinePreset::Parity), &[]);
         assert_eq!(
             builtin_stages_for_preset(SvgPipelinePreset::Readable),
