@@ -1,5 +1,8 @@
 use super::*;
-use crate::diagrams::scan::{LineCursor, leading_whitespace_len, starts_with_case_insensitive};
+use crate::diagrams::scan::{
+    LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
+    starts_with_case_insensitive,
+};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
@@ -30,28 +33,18 @@ pub(crate) fn gantt_syntax_construction_count() -> usize {
 }
 
 fn strip_inline_comment(line: &str) -> &str {
-    // Mermaid gantt does not treat `%%` as an inline comment delimiter for statements like `title`
-    // or task lines (see `fixtures/gantt/task_inline_percent_comment.mmd`). It does, however,
-    // accept full-line `%% ...` comments (and directive lines `%%{...}%%`).
     let t = line.trim_start();
     if t.starts_with("%%{") {
         return line;
     }
-    if t.starts_with("%%") {
+    let prefixed_percent = t
+        .chars()
+        .next()
+        .is_some_and(|ch| ch != '}' && ch.len_utf16() == 1 && t[ch.len_utf8()..].starts_with('%'));
+    if t.starts_with('%') || prefixed_percent {
         return "";
     }
     line
-}
-
-fn split_statement_suffix(s: &str) -> &str {
-    let mut end = s.len();
-    for (i, c) in s.char_indices() {
-        if c == '#' || c == ';' {
-            end = i;
-            break;
-        }
-    }
-    &s[..end]
 }
 
 fn parse_key_colon_value_spanned<'a>(
@@ -400,7 +393,7 @@ fn parse_gantt_keyword_arg_spanned<'a>(
     let rest_start = keyword.len() + ws_len;
     let rest = &after[ws_len..];
     let text = if terminates_at_statement_suffix {
-        split_statement_suffix(rest)
+        split_statement_suffix_hash_or_semi(rest)
     } else {
         rest
     };
@@ -1792,21 +1785,29 @@ fn parse_gantt_statement(
     // Mermaid passes `taskTxt` through to the DB without trimming. This preserves any trailing
     // whitespace before the `:` delimiter (e.g. `Task1 :id,...` yields `Task1 `).
     let task_txt = &task_stmt[..colon];
-    let task_data = split_statement_suffix(&task_stmt[colon + 1..]);
-    if task_txt.is_empty() || task_data.trim().is_empty() {
-        return Ok(Ok(()));
-    }
+    let task_data = split_statement_suffix_hash_or_semi(&task_stmt[colon + 1..]);
     let leading = stripped.len().saturating_sub(task_stmt.len());
+    let task_start = line_start + leading;
+    let task_end = task_start + colon + 1 + task_data.len();
+    if task_end < line_start + stripped.len() {
+        cursor.resume_same_line_at(task_end);
+    }
+    if task_txt.is_empty() || task_data.is_empty() {
+        return Ok(Err(Error::diagram_parse_exact(
+            "gantt".to_string(),
+            "invalid task statement: expected task text and data".to_string(),
+            SourceSpan::new(task_start, task_end),
+        )));
+    }
     #[cfg(feature = "editor-facts")]
-    let statement_span =
-        SourceSpan::new(line_start + leading, line_start + leading + task_stmt.len());
-    let fields = split_gantt_fields(task_data, line_start + leading + colon + 1);
+    let statement_span = SourceSpan::new(task_start, task_end);
+    let fields = split_gantt_fields(task_data, task_start + colon + 1);
     #[cfg(feature = "editor-facts")]
     if let Some(facts) = facts.as_mut() {
         let editor_fields = fields
             .iter()
             .copied()
-            .filter_map(SpannedText::trim)
+            .map(|field| field.trim().unwrap_or(field))
             .collect::<Vec<_>>();
         collect_gantt_task_field_symbols(&editor_fields, statement_span, facts);
     }

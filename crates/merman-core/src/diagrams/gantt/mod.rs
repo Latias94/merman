@@ -133,6 +133,9 @@ fn fix_task_dates(
     mut end_time: OffsetDateTime,
     date_format: &str,
 ) -> Result<(OffsetDateTime, Option<OffsetDateTime>)> {
+    if start_time > end_time {
+        return Ok((end_time, None));
+    }
     validate_excludes_leave_a_working_weekday(db)?;
 
     let mut invalid = false;
@@ -294,6 +297,44 @@ mod semantic_tests {
                     .is_none()
             );
             assert_eq!(gantt_syntax_construction_count(), 1);
+        });
+    }
+
+    #[test]
+    fn gantt_canonical_empty_exclusion_scan_accepts_milestones_and_subday_tasks() {
+        let context = merman_model::runtime::RuntimePolicy::deterministic()
+            .with_local_time_zone(crate::time::LocalTimeZone::utc())
+            .begin_operation()
+            .unwrap();
+        crate::runtime::with_operation_context(&context, || {
+            for line_ending in ["\n", "\r\n"] {
+                let source = concat!(
+                    "gantt\n",
+                    "dateFormat YYYY-MM-DD\n",
+                    "excludes weekends,monday,tuesday,wednesday,thursday,friday\n",
+                    "M:milestone,m,2026-01-01,0d\n",
+                    "H:h,2026-01-01,1h\n",
+                )
+                .replace('\n', line_ending);
+                let model = parse_gantt_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &OperationControl::new(),
+                )
+                .unwrap()
+                .model
+                .unwrap();
+                assert_eq!(model.tasks.len(), 2);
+                assert!(model.tasks[0].milestone);
+                for (task, duration) in model.tasks.iter().zip([0, 3_600_000]) {
+                    assert!(task.processed);
+                    assert_eq!(task.start_ms, 1_767_225_600_000);
+                    assert_eq!(task.end_ms - task.start_ms, duration);
+                    assert_eq!(task.render_end_ms, None);
+                }
+            }
         });
     }
 

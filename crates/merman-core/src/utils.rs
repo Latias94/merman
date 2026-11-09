@@ -1,6 +1,60 @@
-//! Source comment cleanup.
+//! Shared Mermaid source and scalar normalization.
 
-pub(crate) use merman_markup::url::{format_url, sanitize_url};
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-class",
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane"
+))]
+pub(crate) use merman_markup::url::format_url;
+#[cfg(feature = "diagram-gantt")]
+pub(crate) use merman_markup::url::sanitize_url;
+
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-journey"
+))]
+pub(crate) fn parse_js_number(input: &str) -> Option<f64> {
+    let input = input.trim_matches(merman_model::text::is_ecmascript_whitespace);
+    if input.is_empty() {
+        return Some(0.0);
+    }
+    let unsigned = input.strip_prefix(['+', '-']).unwrap_or(input);
+    if (unsigned.eq_ignore_ascii_case("inf") || unsigned.eq_ignore_ascii_case("infinity"))
+        && !matches!(input, "Infinity" | "+Infinity" | "-Infinity")
+    {
+        return None;
+    }
+    for (prefixes, radix) in [(["0x", "0X"], 16_u32), (["0o", "0O"], 8), (["0b", "0B"], 2)] {
+        let Some(digits) = prefixes
+            .iter()
+            .find_map(|prefix| input.strip_prefix(prefix))
+        else {
+            continue;
+        };
+        if digits.is_empty() || !digits.chars().all(|digit| digit.is_digit(radix)) {
+            return None;
+        }
+        let digits = digits.trim_start_matches('0');
+        if digits.is_empty() {
+            return Some(0.0);
+        }
+        let bits_per_digit = radix.ilog2() as usize;
+        let leading_len = digits.len().min(64 / bits_per_digit);
+        let leading = u64::from_str_radix(&digits[..leading_len], radix).ok()?;
+        let trailing = &digits[leading_len..];
+        let sticky_bit = u64::from(trailing.bytes().any(|digit| digit != b'0'));
+        let significand = leading | sticky_bit;
+        let shift = trailing.len().saturating_mul(bits_per_digit);
+        return Some(if shift >= 1024 {
+            f64::INFINITY
+        } else {
+            (significand as f64) * 2_f64.powi(shift as i32)
+        });
+    }
+    input.parse().ok()
+}
 
 pub(crate) fn cleanup_mermaid_comments(input: &str) -> std::borrow::Cow<'_, str> {
     if !input.contains("%%") {

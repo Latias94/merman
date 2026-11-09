@@ -11,6 +11,7 @@ use crate::MermaidConfig;
 use crate::diagrams::langium_common::{LangiumCommonFacts, LangiumCommonField};
 use crate::diagrams::scan::is_ecmascript_whitespace;
 use crate::sanitize::sanitize_text;
+#[cfg(feature = "presentation")]
 use serde_json::{Map, Value};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -89,6 +90,7 @@ fn collapse_newline_whitespace(s: &str) -> String {
     out
 }
 
+#[cfg(feature = "presentation")]
 fn sanitize_string_field<F>(obj: &mut Map<String, Value>, key: &'static str, transform: F)
 where
     F: FnOnce(&str) -> String,
@@ -102,7 +104,8 @@ where
     *s = transform(s);
 }
 
-pub fn apply_common_db_sanitization(model: &mut Value, config: &MermaidConfig) {
+#[cfg(feature = "presentation")]
+pub(crate) fn apply_common_db_sanitization(model: &mut Value, config: &MermaidConfig) {
     let Value::Object(obj) = model else {
         return;
     };

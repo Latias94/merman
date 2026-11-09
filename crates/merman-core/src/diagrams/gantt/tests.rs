@@ -150,6 +150,272 @@ fn gantt_task_finalization_observes_cancellation_inside_large_task_sets() {
 }
 
 #[test]
+fn gantt_task_suffix_replay_preserves_model_and_editor_offsets() {
+    with_test_local_time_zone(crate::time::LocalTimeZone::utc(), || {
+        for line_ending in ["\n", "\r\n"] {
+            let source = concat!(
+                "gantt\n",
+                "dateFormat YYYY-MM-DD\n",
+                "  Alpha界:a,2026-01-01,1d;Beta界:b,after a,1d#Gamma界:c,after b,1d\n",
+                "D:d,after c,1d\n",
+            )
+            .replace('\n', line_ending);
+            let model = parse_gantt_model_for_render(&source, &meta()).unwrap();
+            let expected = [
+                ("a", "Alpha界", 1, ":a,2026-01-01,1d"),
+                ("b", ";Beta界", 2, ":b,after a,1d"),
+                ("c", "#Gamma界", 3, ":c,after b,1d"),
+                ("d", "D", 4, ":d,after c,1d"),
+            ];
+            assert_eq!(model.tasks.len(), expected.len());
+            for (task, (id, label, day, data)) in model.tasks.iter().zip(expected) {
+                assert_eq!(task.id, id);
+                assert_eq!(task.task, label);
+                assert_eq!(task.raw.data, data);
+                assert_eq!(task.start_ms, utc_ms(2026, 1, day, 0, 0, 0));
+                assert_eq!(task.end_ms, utc_ms(2026, 1, day + 1, 0, 0, 0));
+            }
+
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = MermaidEngine::new()
+                    .parse_editor_semantic_facts_with_type_sync("gantt", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                assert!(facts.diagnostics.is_empty());
+                for (task, (id, label, _, data)) in model.tasks.iter().zip(expected) {
+                    let statement = format!("{label}{data}");
+                    let start = source.find(&statement).unwrap();
+                    let span = SourceSpan::new(start, start + statement.len());
+                    let id_start = start + label.len() + 1;
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == id
+                            && symbol.role == EditorSemanticRole::Entity
+                            && symbol.span == span
+                            && symbol.selection == SourceSpan::new(id_start, id_start + id.len())
+                    }));
+                    if let Some(previous_id) = &task.prev_task_id {
+                        let keyword_start =
+                            statement.find(&format!("after {previous_id}")).unwrap();
+                        let reference_start = start + keyword_start + "after ".len();
+                        let selection =
+                            SourceSpan::new(reference_start, reference_start + previous_id.len());
+                        assert!(facts.symbols.iter().any(|symbol| {
+                            symbol.name == *previous_id
+                                && symbol.role == EditorSemanticRole::Reference
+                                && symbol.span == span
+                                && symbol.selection == selection
+                        }));
+                        assert!(facts.expected_syntax.iter().any(|expected| {
+                            expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                                && expected.span == selection
+                        }));
+                    }
+                }
+            }
+        }
+    });
+}
+
+#[test]
+fn gantt_task_suffix_replay_rejects_invalid_remainders() {
+    for line_ending in ["\n", "\r\n"] {
+        for suffix in [";trailing text", "#trailing text"] {
+            let source = format!(
+                "gantt{line_ending}dateFormat YYYY-MM-DD{line_ending}A:a,2026-01-01,1d{suffix}{line_ending}B:b,after a,1d{line_ending}"
+            );
+            let start = source.find(suffix).unwrap();
+            let span = SourceSpan::new(start, start + suffix.len());
+            let Error::DiagramParse { diagnostic, .. } = MermaidEngine::new()
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .expect_err("an unconsumed task-text token must fail strict parsing")
+            else {
+                panic!("expected a Gantt parse error");
+            };
+            assert!(diagnostic.message().contains("unrecognized statement"));
+            assert_eq!(diagnostic.span(), Some(span));
+            assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
+
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = MermaidEngine::new()
+                    .parse_editor_semantic_facts_with_type_sync("gantt", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(facts.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.message.contains("unrecognized statement")
+                        && diagnostic.span == Some(span)
+                }));
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == "b" && symbol.role == EditorSemanticRole::Entity
+                }));
+            }
+        }
+    }
+}
+
+#[test]
+fn gantt_task_suffix_replay_preserves_comment_priority_and_literal_percents() {
+    for newline in ["\n", "\r\n"] {
+        for suffix in [
+            ";%% comment",
+            ";%% note:b,after a,1d",
+            "#% note:b,after a,1d",
+            ";% note:b,after a,1d",
+        ] {
+            let source = format!(
+                "gantt{newline}dateFormat YYYY-MM-DD{newline}A:a,2026-01-01,1d{suffix}{newline}C:c,after a,1d{newline}"
+            );
+            let model = parse_gantt_model_for_render(&source, &meta()).unwrap();
+            assert_eq!(
+                model
+                    .tasks
+                    .iter()
+                    .map(|task| task.id.as_str())
+                    .collect::<Vec<_>>(),
+                ["a", "c"],
+                "{suffix}"
+            );
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = MermaidEngine::new()
+                    .parse_editor_semantic_facts_with_type_sync("gantt", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                assert!(!facts.symbols.iter().any(|symbol| symbol.name == "b"));
+            }
+        }
+        let source = format!(
+            "gantt{newline}dateFormat YYYY-MM-DD{newline}A:a,2026-01-01,1d;B %% literal:b,after a,1d{newline}"
+        );
+        let model = parse_gantt_model_for_render(&source, &meta()).unwrap();
+        assert_eq!(model.tasks.len(), 2);
+        assert_eq!(model.tasks[1].task, ";B %% literal");
+        assert_eq!(model.tasks[1].id, "b");
+    }
+}
+
+#[test]
+fn gantt_empty_task_fields_preserve_model_arity_and_editor_symbols() {
+    with_test_local_time_zone(crate::time::LocalTimeZone::utc(), || {
+        for line_ending in ["\n", "\r\n"] {
+            for end_data in ["", " \t "] {
+                let source = format!(
+                    concat!(
+                        "gantt\n",
+                        "dateFormat YYYY-MM-DD\n",
+                        "Base:base,2026-01-01,1d\n",
+                        "A: active, done, a, after base,{end_data}\n",
+                        "Implicit: after a,{end_data}\n",
+                        "Unnamed: ,after a,1h\n",
+                        "Blank: \t \n",
+                        "B:b,after task2,1d\n",
+                    ),
+                    end_data = end_data,
+                )
+                .replace('\n', line_ending);
+                let model = parse_gantt_model_for_render(&source, &meta()).unwrap();
+                let ids = model
+                    .tasks
+                    .iter()
+                    .map(|task| task.id.as_str())
+                    .collect::<Vec<_>>();
+                assert_eq!(ids, ["base", "a", "task1", "", "task2", "b"]);
+                assert!(model.tasks[1].active);
+                assert!(model.tasks[1].done);
+                for index in [1, 2, 4] {
+                    let task = &model.tasks[index];
+                    assert_eq!(task.start_ms, task.end_ms);
+                    assert_eq!(task.raw.end_time.data, "");
+                    assert_eq!(task.end_constraint, GanttTaskEndConstraint::Unspecified);
+                }
+                let second_day = utc_ms(2026, 1, 2, 0, 0, 0);
+                assert_eq!(model.tasks[1].start_ms, second_day);
+                assert_eq!(model.tasks[2].start_ms, second_day);
+                assert_eq!(model.tasks[3].start_ms, second_day);
+                assert_eq!(model.tasks[3].end_ms, second_day + 3_600_000);
+                assert_eq!(model.tasks[4].start_ms, model.tasks[3].end_ms);
+                assert_eq!(model.tasks[4].prev_task_id.as_deref(), Some(""));
+                assert_eq!(model.tasks[5].start_ms, model.tasks[4].end_ms);
+                assert_eq!(model.tasks[5].end_ms, utc_ms(2026, 1, 3, 1, 0, 0));
+
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = MermaidEngine::new()
+                        .parse_editor_semantic_facts_with_type_sync("gantt", &source)
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                    assert!(facts.diagnostics.is_empty());
+                    let definitions = facts
+                        .symbols
+                        .iter()
+                        .filter(|symbol| symbol.role == EditorSemanticRole::Entity)
+                        .map(|symbol| symbol.name.as_str())
+                        .collect::<Vec<_>>();
+                    assert_eq!(definitions, ["base", "a", "b"]);
+                    let id_start = source.find("a, after base").unwrap();
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "a"
+                            && symbol.role == EditorSemanticRole::Entity
+                            && symbol.selection == SourceSpan::new(id_start, id_start + 1)
+                    }));
+                    let references = facts
+                        .symbols
+                        .iter()
+                        .filter(|symbol| symbol.role == EditorSemanticRole::Reference)
+                        .map(|symbol| symbol.name.as_str())
+                        .collect::<Vec<_>>();
+                    assert_eq!(references, ["base", "a", "a", "task2"]);
+                    assert!(facts.symbols.iter().all(|symbol| !symbol.name.is_empty()));
+                }
+            }
+        }
+    });
+}
+
+#[test]
+fn gantt_empty_task_text_data_and_start_are_rejected() {
+    for line_ending in ["\n", "\r\n"] {
+        for task in ["A:", ":a,2026-01-01,1d", "Missing:missing, ,until base"] {
+            let source = format!(
+                "gantt{line_ending}dateFormat YYYY-MM-DD{line_ending}Base:base,2026-01-01,1d{line_ending}{task}{line_ending}"
+            );
+            assert!(parse_gantt_model_for_render(&source, &meta()).is_err());
+
+            #[cfg(feature = "editor-facts")]
+            {
+                let facts = MermaidEngine::new()
+                    .parse_editor_semantic_facts_with_type_sync("gantt", &source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(!facts.diagnostics.is_empty());
+                if task.starts_with("Missing:") {
+                    let id_start = source.find("missing,").unwrap();
+                    let selection = SourceSpan::new(id_start, id_start + "missing".len());
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "missing"
+                            && symbol.role == EditorSemanticRole::Entity
+                            && symbol.selection == selection
+                    }));
+                    assert!(facts.symbols.iter().any(|symbol| {
+                        symbol.name == "base" && symbol.role == EditorSemanticRole::Reference
+                    }));
+                } else {
+                    assert!(!facts.symbols.iter().any(|symbol| {
+                        symbol.name == "a" && symbol.role == EditorSemanticRole::Entity
+                    }));
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn gantt_model_projection_observes_cancellation_inside_large_task_sets() {
     let mut db = large_gantt_db(512);
     db.finalize_tasks_controlled(&OperationControl::new())
@@ -1559,22 +1825,20 @@ test1: id1,2019-02-07,2d
 #[test]
 fn gantt_rejects_excludes_that_cover_every_weekday() {
     let engine = MermaidEngine::new();
-    let err = block_on(engine.parse_diagram(
-        r#"
-gantt
-dateFormat YYYY-MM-DD
-excludes weekends,monday,tuesday,wednesday,thursday,friday
-section A
-task :a, 2025-01-01, 1d
-"#,
-        ParseOptions::default(),
-    ))
-    .unwrap_err();
-
-    assert!(
-        err.to_string().contains("excludes every weekday"),
-        "unexpected error: {err}"
-    );
+    for line_ending in ["\n", "\r\n"] {
+        for duration in ["1d", "24h"] {
+            let source = format!(
+                "gantt{line_ending}dateFormat YYYY-MM-DD{line_ending}excludes weekends,monday,tuesday,wednesday,thursday,friday{line_ending}Task:a,2026-01-01,{duration}{line_ending}"
+            );
+            let err = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap_err();
+            assert!(
+                err.to_string().contains("excludes every weekday"),
+                "unexpected error: {err}"
+            );
+        }
+    }
 }
 
 #[test]

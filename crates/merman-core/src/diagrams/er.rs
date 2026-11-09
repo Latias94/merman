@@ -26,7 +26,7 @@ use serde_json::Value;
 use serde_json::json;
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 #[cfg(test)]
 thread_local! {
@@ -206,7 +206,6 @@ struct ErDb {
     acc_descr: Option<String>,
     subgraphs: Vec<ErSubgraph>,
     subgraph_lookup: IndexMap<String, usize>,
-    subgraph_counter: usize,
     completed_members: HashSet<String>,
     #[cfg(test)]
     membership_candidates: usize,
@@ -356,7 +355,7 @@ impl ErDb {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let trimmed = member.trim();
+            let trimmed = member.trim_matches(is_ecmascript_whitespace);
             if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
                 continue;
             }
@@ -366,12 +365,7 @@ impl ErDb {
             }
         }
 
-        let id = if raw_id.trim().is_empty() {
-            format!("subGraph{}", self.subgraph_counter)
-        } else {
-            raw_id.trim().to_string()
-        };
-        self.subgraph_counter = self.subgraph_counter.saturating_add(1);
+        let id = raw_id.trim_matches(is_ecmascript_whitespace).to_string();
         let subgraph = ErSubgraph {
             classes: Vec::new(),
             css_styles: Vec::new(),
@@ -382,7 +376,7 @@ impl ErDb {
                 _ => "markdown".to_string(),
             },
             nodes: retained,
-            title: title.trim().to_string(),
+            title: title.trim_matches(is_ecmascript_whitespace).to_string(),
         };
         let index = self.subgraphs.len();
         self.subgraphs.push(subgraph);
@@ -852,6 +846,7 @@ struct ErEditorFactCollector {
     directive_start: Option<usize>,
     style_payload_pending: bool,
     style_payload_anchor_end: Option<usize>,
+    subgraph_id_pending: bool,
     in_attribute_block: bool,
     in_alias: bool,
     in_relationship_role: bool,
@@ -913,6 +908,7 @@ impl ErEditorFactCollector {
 struct ErTokenSymbol {
     name: String,
     span: SourceSpan,
+    selection: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -967,6 +963,28 @@ impl ErEditorFactCollector {
             self.push_deferred_styled_entity(facts, occurrence);
         }
 
+        if self.subgraph_id_pending
+            && let Tok::Name(name) | Tok::Str(name) = token
+        {
+            self.subgraph_id_pending = false;
+            self.push_pending_entity(facts, ErEntityOccurrence::Definition);
+            let id = name.trim_matches(is_ecmascript_whitespace);
+            let span = SourceSpan::new(start, end);
+            if !id.is_empty()
+                && let Some(selection) = source_value_span(code, span, id)
+            {
+                self.known_entities.insert(id.to_string());
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    id.to_string(),
+                    Some("er subgraph".to_string()),
+                    EditorSemanticKind::Struct,
+                    span,
+                    selection,
+                ));
+            }
+            return;
+        }
+
         match token {
             Tok::ErDiagram => self.reset_line_state(),
             Tok::Newline => {
@@ -993,6 +1011,7 @@ impl ErEditorFactCollector {
             Tok::SubgraphKw => {
                 facts.push_directive_prefix("subgraph");
                 self.directive_start = Some(start);
+                self.subgraph_id_pending = true;
             }
             Tok::EndKw => {
                 self.directive_start = None;
@@ -1039,7 +1058,8 @@ impl ErEditorFactCollector {
                 };
                 let symbol = ErTokenSymbol {
                     name: name.clone(),
-                    span,
+                    span: SourceSpan::new(start, end),
+                    selection: span,
                 };
                 if let Some(entity) = self.pending_entity.replace(symbol) {
                     let occurrence = if self.relationship_started {
@@ -1203,6 +1223,7 @@ impl ErEditorFactCollector {
         self.directive_start = None;
         self.style_payload_pending = false;
         self.style_payload_anchor_end = None;
+        self.subgraph_id_pending = false;
         self.in_alias = false;
         self.in_relationship_role = false;
         self.relationship_started = false;
@@ -1360,7 +1381,7 @@ impl ErEditorFactCollector {
                     detail,
                     EditorSemanticKind::Struct,
                     symbol.span,
-                    symbol.span,
+                    symbol.selection,
                 )
             } else {
                 EditorSemanticSymbol::new(
@@ -1368,7 +1389,7 @@ impl ErEditorFactCollector {
                     detail,
                     EditorSemanticKind::Struct,
                     symbol.span,
-                    symbol.span,
+                    symbol.selection,
                 )
             };
         facts.push_symbol(entity);
@@ -1543,7 +1564,6 @@ enum Mode {
 struct Lexer<'input> {
     input: &'input str,
     pos: usize,
-    pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
     direction_scan_end: usize,
 }
@@ -1556,24 +1576,9 @@ impl<'input> Lexer<'input> {
         Self {
             input,
             pos: 0,
-            pending: VecDeque::new(),
             mode: Mode::Default,
             direction_scan_end: 0,
         }
-    }
-
-    fn emit_token(
-        &mut self,
-        token: (usize, Tok, usize),
-    ) -> std::result::Result<(usize, Tok, usize), LexError> {
-        Ok(token)
-    }
-
-    fn emit_result(
-        &mut self,
-        result: std::result::Result<(usize, Tok, usize), LexError>,
-    ) -> std::result::Result<(usize, Tok, usize), LexError> {
-        result
     }
 
     fn peek(&self) -> Option<u8> {
@@ -1984,12 +1989,12 @@ impl<'input> Lexer<'input> {
         let Some(first) = after_one.chars().next() else {
             return false;
         };
-        if !first.is_whitespace() {
+        if !is_ecmascript_whitespace(first) {
             return false;
         }
 
         after_one
-            .trim_start_matches(char::is_whitespace)
+            .trim_start_matches(is_ecmascript_whitespace)
             .chars()
             .next()
             .is_some_and(|next| {
@@ -2145,7 +2150,7 @@ impl<'input> Lexer<'input> {
         let start_word = self.pos;
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
-            if is_ecmascript_whitespace(ch) || matches!(ch, '"' | '}' | '?') {
+            if is_ecmascript_whitespace(ch) || matches!(ch, '"' | '`' | '}' | '?') {
                 break;
             }
             end = self.pos + rel + ch.len_utf8();
@@ -2213,6 +2218,26 @@ impl<'input> Lexer<'input> {
             return Some(Ok((start, Tok::Str(s), self.pos)));
         }
 
+        let rest = &self.input[self.pos..];
+        let mut number_len = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if number_len > 0 {
+            if rest.as_bytes().get(number_len) == Some(&b'.') {
+                let fractional_len = rest[number_len + 1..]
+                    .bytes()
+                    .take_while(u8::is_ascii_digit)
+                    .count();
+                if fractional_len > 0 {
+                    number_len += 1 + fractional_len;
+                }
+            }
+            self.pos += number_len;
+            return Some(Ok((
+                start,
+                Tok::Name(rest[..number_len].to_string()),
+                self.pos,
+            )));
+        }
+
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
             let ok =
@@ -2235,10 +2260,6 @@ impl Iterator for Lexer<'_> {
     type Item = std::result::Result<(usize, Tok, usize), LexError>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(tok) = self.pending.pop_front() {
-            return Some(self.emit_token(tok));
-        }
-
         loop {
             // INITIAL accessibility rules precede directions, which in turn
             // precede whitespace. Exclusive attribute/style modes bypass them.
@@ -2250,13 +2271,13 @@ impl Iterator for Lexer<'_> {
                     | Mode::NeedClassSecondIdList
             ) {
                 if let Some(tok) = self.lex_acc_title() {
-                    return Some(self.emit_result(tok));
+                    return Some(tok);
                 }
                 if let Some(tok) = self.lex_acc_descr() {
-                    return Some(self.emit_result(tok));
+                    return Some(tok);
                 }
                 if let Some(tok) = self.lex_direction() {
-                    return Some(self.emit_token(tok));
+                    return Some(Ok(tok));
                 }
             }
             let before_whitespace = self.pos;
@@ -2284,41 +2305,41 @@ impl Iterator for Lexer<'_> {
             }
 
             if let Some(tok) = self.lex_block_token() {
-                return Some(self.emit_result(tok));
+                return Some(tok);
             }
 
             if let Some(tok) = self.lex_rest_of_line() {
-                return Some(self.emit_result(tok));
+                return Some(tok);
             }
 
             if let Some(tok) = self.lex_newline() {
-                return Some(self.emit_token(tok));
+                return Some(Ok(tok));
             }
 
             if self.mode == Mode::NeedIdListThenLineRest {
                 // Mermaid's exclusive style mode treats keyword-spelled IDs as text.
                 if let Some(tok) = self.lex_id_list() {
-                    return Some(self.emit_token(tok));
+                    return Some(Ok(tok));
                 }
             } else {
                 if let Some(tok) = self.lex_keyword() {
-                    return Some(self.emit_token(tok));
+                    return Some(Ok(tok));
                 }
                 if let Some(tok) = self.lex_id_list() {
-                    return Some(self.emit_token(tok));
+                    return Some(Ok(tok));
                 }
             }
 
             if let Some(tok) = self.lex_punct() {
-                return Some(self.emit_token(tok));
+                return Some(Ok(tok));
             }
 
             if let Some(tok) = self.lex_rel_tokens() {
-                return Some(self.emit_token(tok));
+                return Some(Ok(tok));
             }
 
             if let Some(tok) = self.lex_name_or_str() {
-                return Some(self.emit_result(tok));
+                return Some(tok);
             }
 
             let start = self.pos;
@@ -2366,6 +2387,26 @@ mod tests {
         assert!(
             matches!(&tokens.last().unwrap().1, Tok::Direction(direction) if direction.value == "BT")
         );
+    }
+
+    #[test]
+    fn er_numeric_cardinality_lookahead_uses_ecmascript_whitespace() {
+        for (source, cardinality) in [
+            ("1\u{00a0}B", true),
+            ("1\u{feff}B", true),
+            ("1\u{0085}B", false),
+        ] {
+            let (start, token, end) = Lexer::new(source).next().unwrap().unwrap();
+            assert_eq!((start, end), (0, 1));
+            if cardinality {
+                assert!(matches!(token, Tok::OnlyOne), "{source:?}");
+            } else {
+                assert!(
+                    matches!(token, Tok::Name(name) if name == "1"),
+                    "{source:?}"
+                );
+            }
+        }
     }
 
     #[test]
@@ -2510,6 +2551,7 @@ mod tests {
         let symbol = || ErTokenSymbol {
             name: "CUSTOMER".to_string(),
             span,
+            selection: span,
         };
         let mut collector = ErEditorFactCollector::default();
         let mut facts = EditorSemanticFacts::new();

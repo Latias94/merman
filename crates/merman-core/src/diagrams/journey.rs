@@ -1,8 +1,6 @@
-#[cfg(feature = "presentation")]
-use crate::SourcePresentationMetadata;
 use crate::diagrams::scan::{
-    LineCursor, leading_whitespace_len, split_statement_suffix_hash_or_semi,
-    starts_with_case_insensitive,
+    LineCursor, is_ecmascript_whitespace, leading_whitespace_len,
+    split_statement_suffix_hash_or_semi, starts_with_case_insensitive,
 };
 use crate::family::CombinedSemanticFailure;
 #[cfg(feature = "editor-facts")]
@@ -10,7 +8,9 @@ use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, family::EditorFactsDemand,
 };
-use crate::{Error, OperationControl, OperationControlResult, Result, SourceSpan};
+use crate::{Error, OperationControl, OperationControlResult, SourceSpan};
+#[cfg(feature = "presentation")]
+use crate::{Result, SourcePresentationMetadata};
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -64,38 +64,28 @@ impl JourneyDb {
         self.sections.push(txt.to_string());
     }
 
-    fn add_task(&mut self, descr: &str, task_data: &str) -> Result<()> {
+    fn add_task(&mut self, descr: &str, task_data: &str) {
         let rest = task_data.strip_prefix(':').unwrap_or(task_data);
-        let pieces: Vec<&str> = rest.split(':').collect();
+        let mut fields = rest.split(':');
 
-        let score_str = pieces.first().copied().unwrap_or("");
+        let score_str = fields.next().unwrap_or("");
         // Mermaid upstream uses JS `Number(...)` for parsing task scores. This means:
         // - whitespace-only => 0
         // - invalid strings => NaN (and Mermaid happily renders an SVG containing `NaN`)
         //
         // JSON snapshots cannot represent NaN, so we model it as `score=0` + `scoreIsNaN=true`,
         // and let the SVG renderer re-emit `NaN` for the relevant face/mouth coordinates.
-        let score_trim = score_str.trim();
-        let (score, score_is_nan) = if score_trim.is_empty() {
-            (0.0, false)
-        } else {
-            match score_trim.parse::<f64>() {
-                Ok(v) if v.is_finite() => (v, false),
-                _ => (0.0, true),
-            }
+        let (score, score_is_nan) = match crate::utils::parse_js_number(score_str) {
+            Some(value) if value.is_finite() => (value, false),
+            _ => (0.0, true),
         };
 
-        let people = if pieces.len() == 1 {
-            Vec::new()
-        } else {
-            pieces
-                .get(1)
-                .copied()
-                .unwrap_or("")
+        let people = fields.next().map_or_else(Vec::new, |people| {
+            people
                 .split(',')
-                .map(|s| s.trim().to_string())
+                .map(|s| s.trim_matches(is_ecmascript_whitespace).to_string())
                 .collect()
-        };
+        });
 
         self.tasks.push(JourneyTask {
             score,
@@ -106,7 +96,6 @@ impl JourneyDb {
             task_type: self.current_section.clone(),
             task: descr.to_string(),
         });
-        Ok(())
     }
 
     fn actors_sorted(&self) -> Vec<String> {
@@ -578,15 +567,27 @@ fn parse_journey_semantic_source(
             db.acc_descr = v.text;
             continue;
         }
-        if let Some(v) = parse_keyword_arg_one_ws(stripped, "section") {
-            let v = v.split(':').next().unwrap_or("").to_string();
+        if let Some(v) = parse_keyword_arg_one_ws(stripped, "section")
+            && !v.is_empty()
+            && !v.starts_with(':')
+        {
+            if let Some(colon) = stripped.find(':') {
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_exact(
+                        diagram_type.to_string(),
+                        "unexpected journey task data after section",
+                        SourceSpan::new(line_start + colon, line_start + stripped.len()),
+                    )
+                });
+                continue;
+            }
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
                 .as_mut()
                 .filter(|_| editor_demand.captures_rich())
                 && let Some(value) = spanned_keyword_value(line, line_start, "section")
             {
-                let section_text = value.text.split(':').next().unwrap_or("").trim();
+                let section_text = value.text.trim_matches(is_ecmascript_whitespace);
                 if !section_text.is_empty() {
                     let section_start = value.start + value.text.find(section_text).unwrap_or(0);
                     facts.push_symbol(EditorSemanticSymbol::outline(
@@ -665,11 +666,11 @@ fn parse_journey_semantic_source(
             .filter(|_| editor_demand.captures_rich())
         {
             let rest_source = &stripped[colon + ':'.len_utf8()..];
-            let rest = rest_source.trim_start();
+            let rest = rest_source.trim_start_matches(is_ecmascript_whitespace);
             let rest_start =
                 line_start + colon + ':'.len_utf8() + rest_source.len().saturating_sub(rest.len());
             let score_end = rest.find(':').unwrap_or(rest.len());
-            let score_text = rest[..score_end].trim();
+            let score_text = rest[..score_end].trim_matches(is_ecmascript_whitespace);
             if !score_text.is_empty() {
                 let score_start = rest_start + rest[..score_end].find(score_text).unwrap_or(0);
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -686,8 +687,11 @@ fn parse_journey_semantic_source(
             }
 
             if score_end < rest.len() {
-                let people_source = &rest[score_end + ':'.len_utf8()..];
-                let people = people_source.trim();
+                let people_source = rest[score_end + ':'.len_utf8()..]
+                    .split(':')
+                    .next()
+                    .unwrap_or("");
+                let people = people_source.trim_matches(is_ecmascript_whitespace);
                 if !people.is_empty() {
                     let people_start = rest_start
                         + score_end
@@ -708,9 +712,7 @@ fn parse_journey_semantic_source(
             }
         }
 
-        if let Err(error) = db.add_task(task_name_source, task_data) {
-            first_error.get_or_insert(error);
-        }
+        db.add_task(task_name_source, task_data);
     }
 
     if let Some(error) = first_error {
@@ -863,6 +865,30 @@ mod tests {
             ("2.75", 2.75, false),
             ("3", 3.0, false),
             ("4", 4.0, false),
+            ("0x4", 4.0, false),
+            ("0B11", 3.0, false),
+            ("0o5", 5.0, false),
+            ("0x000000000000000000000000000000004", 4.0, false),
+            (
+                "0o2000000000000000000001",
+                18_446_744_073_709_551_616.0,
+                false,
+            ),
+            (
+                "0b10000000000000000000000000000000000000000000000000000101",
+                36_028_797_018_963_976.0,
+                false,
+            ),
+            ("\u{feff}3.5\u{feff}", 3.5, false),
+            ("\u{0085}3.5\u{0085}", 0.0, true),
+            ("0x", 0.0, true),
+            ("0b2", 0.0, true),
+            ("0o8", 0.0, true),
+            ("+0x4", 0.0, true),
+            ("-0x4", 0.0, true),
+            ("0x10000000000000800", 18_446_744_073_709_551_616.0, false),
+            ("0x10000000000000801", 18_446_744_073_709_555_712.0, false),
+            ("0x10000000000001800", 18_446_744_073_709_559_808.0, false),
             (" ", 0.0, false),
             ("bad", 0.0, true),
             ("NaN", 0.0, true),
@@ -870,8 +896,7 @@ mod tests {
             ("-Infinity", 0.0, true),
             ("1e999", 0.0, true),
         ] {
-            db.add_task("Pay", &format!(":{literal}: Customer"))
-                .unwrap();
+            db.add_task("Pay", &format!(":{literal}: Customer"));
             let task = db.tasks.last().unwrap();
             assert_eq!(task.score, expected, "{literal}");
             assert_eq!(task.score_is_nan, expected_nan, "{literal}");
@@ -882,14 +907,28 @@ mod tests {
     #[test]
     fn journey_actor_deduplication_uses_ecmascript_utf16_sort_order() {
         let mut unicode = JourneyDb::default();
-        unicode.add_task("Pay", ":4: 😀, \u{e000}, 😀").unwrap();
+        unicode.add_task("Pay", ":4: 😀, \u{e000}, 😀");
         assert_eq!(unicode.actors_sorted(), ["😀", "\u{e000}"]);
         assert_eq!(unicode.tasks[0].people, ["😀", "\u{e000}", "😀"]);
 
         let mut ascii = JourneyDb::default();
-        ascii.add_task("Pay", ":4: A, Z").unwrap();
+        ascii.add_task("Pay", ":4: A, Z");
         assert_eq!(ascii.actors_sorted(), ["A", "Z"]);
         assert_eq!(ascii.tasks[0].people, ["A", "Z"]);
+    }
+
+    #[test]
+    fn journey_actor_trimming_uses_ecmascript_whitespace() {
+        let mut db = JourneyDb::default();
+        db.add_task(
+            "Pay",
+            ":4: \u{feff}Alice\u{feff}, \u{0085}Bob\u{0085}, Alice",
+        );
+        assert_eq!(
+            db.tasks[0].people,
+            ["Alice", "\u{0085}Bob\u{0085}", "Alice"]
+        );
+        assert_eq!(db.actors_sorted(), ["Alice", "\u{0085}Bob\u{0085}"]);
     }
 
     #[cfg(feature = "editor-facts")]
@@ -911,6 +950,94 @@ mod tests {
             &source[people.selection.start..people.selection.end],
             "\u{e000}, 😀"
         );
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_editor_payloads_follow_consumed_score_and_people_fields() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                "journey{ending}Pay: \u{feff}0x4\u{feff}: \u{feff}Alice\u{feff}: ignored{ending}"
+            );
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                crate::SemanticParser::new().capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("expected Journey snapshot");
+            };
+            let (_, outcome, editor_facts) = snapshot.into_parts();
+            let crate::SemanticParseOutcome::Parsed(
+                merman_model::semantic::SemanticDiagramModel::Journey(model),
+            ) = outcome
+            else {
+                panic!("expected canonical Journey model");
+            };
+            assert_eq!(model.tasks[0].score, 4.0);
+            assert!(!model.tasks[0].score_is_nan);
+            assert_eq!(model.tasks[0].people, ["Alice"]);
+            let crate::ParsedEditorFacts::Available(facts) = editor_facts else {
+                panic!("expected Journey editor facts");
+            };
+            assert!(facts.diagnostics.is_empty());
+            for (detail, expected) in [("journey score", "0x4"), ("journey people", "Alice")] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.detail.as_deref() == Some(detail))
+                    .unwrap();
+                assert_eq!(symbol.name, expected);
+                assert_eq!(
+                    &source[symbol.selection.start..symbol.selection.end],
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn journey_section_tokens_reject_trailing_task_data_and_keep_task_name_controls() {
+        let parser = crate::SemanticParser::new();
+        for source in [
+            "journey\nsection Checkout: 5: Actor\n",
+            "journey\nsection \n",
+        ] {
+            assert!(parser.parse_diagram_sync(source).is_err(), "{source:?}");
+            #[cfg(feature = "editor-facts")]
+            {
+                let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                    parser.capture_diagram_snapshot_sync(source)
+                else {
+                    panic!("expected recovered Journey snapshot");
+                };
+                let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("expected Journey editor facts");
+                };
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                assert!(!facts.diagnostics.is_empty());
+            }
+        }
+        for (source, sections, task_name, score) in [
+            ("journey\nsection : 4: Actor\n", vec![], "section ", 4.0),
+            ("journey\nsection  \nPay: 3: Actor\n", vec![" "], "Pay", 3.0),
+            (
+                "journey\nPay: \u{feff}0x4\u{feff}: \u{feff}Actor\u{feff}\n",
+                vec![],
+                "Pay",
+                4.0,
+            ),
+        ] {
+            let parsed = parser.parse_diagram_sync(source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model else {
+                panic!("expected Journey model");
+            };
+            assert_eq!(model.sections, sections);
+            assert_eq!(model.tasks[0].task, task_name);
+            assert_eq!(model.tasks[0].score, score);
+            assert!(!model.tasks[0].score_is_nan);
+            assert_eq!(model.tasks[0].people, ["Actor"]);
+        }
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]
@@ -1548,12 +1675,11 @@ R task: 5:\n",
             ..JourneyDb::default()
         };
         db.add_section("Journey to the shops");
-        db.add_task("Get car keys", ":5:Dad").unwrap();
-        db.add_task("Go to car", ":3:Dad, Mum, Child#1, Child#2")
-            .unwrap();
-        db.add_task("Drive to supermarket", ":4:Dad").unwrap();
+        db.add_task("Get car keys", ":5:Dad");
+        db.add_task("Go to car", ":3:Dad, Mum, Child#1, Child#2");
+        db.add_task("Drive to supermarket", ":4:Dad");
         db.add_section("Do shopping");
-        db.add_task("Go shopping", ":5:Mum").unwrap();
+        db.add_task("Go shopping", ":5:Mum");
 
         let actors = db.actors_sorted();
         assert_eq!(

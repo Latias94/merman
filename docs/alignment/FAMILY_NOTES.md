@@ -89,6 +89,17 @@ corresponding namespace, link, and output-specific color contracts.
 
 ## ER
 
+Numeric tokens take precedence over unquoted entity text: `12abc` declares `12` before `abc`,
+including when the latter owns an alias or relationship. Quote the name to retain a single
+numeric-leading identity. Attribute backticks delimit a word even without surrounding whitespace.
+Subgraph IDs use ECMAScript trimming in both the semantic DB and editor facts; selections retain
+the canonical ID's original source range. Ordinary quoted entity names retain their padding.
+Rename quotes a replacement when adjacent parser-owned entities would otherwise join into one
+token, preserving the other entity and relationship endpoints. Numeric-leading replacements also
+remain one entity. Existing quoted tokens keep their delimiters; style and class target lists keep
+their parser-owned unquoted syntax. Editor token spans retain the authored delimiters separately
+from the selected name.
+
 Relationship statements create both endpoint entities before resolving completed subgraph IDs.
 The same-name entity remains in the semantic DB, preserving later entity IDs, aliases and source
 styles; the render projection filters it when the subgraph owns that ID. Style targets and
@@ -181,6 +192,9 @@ Accessibility directives are recognized at the authoritative lexer's plain curso
 inside quoted, Markdown or other label payloads remains label content and cannot replace the
 diagram's accessible name. Asset width and height updates follow the selected DB's truthiness
 before numeric conversion: numeric zero preserves an earlier size, while string `"0"` is explicit.
+Quoted numeric dimensions accept the selected `Number(...)` string forms, including hexadecimal,
+binary and octal values, and use ECMAScript whitespace. The shared scalar parser also owns Journey
+scores; each family retains its separate authored-value and invalid-score policy.
 
 Label, shape and visual-property metadata also retain the selected DB's authored-value truthiness:
 empty strings, false and numeric zero do not replace earlier values. Default icon/image labels
@@ -211,6 +225,14 @@ substitution. Root-paint residuals remain independently signed by the browser or
 [viewport policy](PARITY_POLICY.md#root-viewport-transition).
 
 ## Gantt
+
+Task-data tokens stop before a semicolon without discarding the remaining physical-line input.
+For `A:a,2026-01-01,1d;B:b,after a,1d`, the second task's label is `;B`, and its ID and dependency
+retain their authored offsets. Empty comma fields retain their positions when classifying explicit
+task IDs for editor navigation. Exclusion validation rejects an all-weekdays mask only when a
+nonempty day scan needs a working day; zero-duration milestones and shorter empty scans remain valid.
+Replayed input retains the selected comment-rule priority at its cursor; literal percent markers
+inside an already-started task label or task-data token remain payload.
 
 The date parser implements evidenced Day.js-style tokens and JavaScript date fallback forms;
 arbitrary locale formats and every `Date.parse()` dialect are not a compatibility promise.
@@ -252,6 +274,10 @@ backslash-n and HTML-break splitting and trimming, without changing authored bra
 commit IDs or tags. Ordinary leftward BT fork edges retain the source-owned endpoint side and arc sweep.
 Quoted GitGraph fields use the selected Langium escape conversion before model construction;
 editor selections continue to address the authored escape sequences.
+Quotes can separate commands or commit types from their next operand without whitespace.
+Repeated scalar options keep only their winning binding occurrence in editor facts; repeated tags
+remain cumulative. Merge validation follows the selected DB's head-ownership order, including its
+distinct self-merge diagnostics.
 
 Owners: [parser](../../crates/merman-core/src/diagrams/git_graph.rs),
 [color binding](../../crates/merman-render/src/gitgraph/css_binding.rs), and
@@ -270,6 +296,10 @@ Venn optimization/intersection source, rather than ad hoc circle placement.
 Fractional scores are canonical values and determine face position and expression. Invalid scores
 use the existing explicit invalid-score state, including during canonical serialization of direct
 non-finite model values. `journey.textPlacement` selects `fo`, `old`, or SVG `tspan` paths.
+Scores accept the selected `Number(...)` string forms, including nondecimal integer prefixes.
+Score and actor trimming use ECMAScript whitespace. The first people field owns editor payloads;
+later colon segments do not become actor names. Section tokens cannot silently discard following
+task data; `section : 4` remains a task named `section ` rather than a section declaration.
 Legend and inherited label typography are separate from the configured task font used by tspan
 labels; theme evidence follows the visible selected path.
 

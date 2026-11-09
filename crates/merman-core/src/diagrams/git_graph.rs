@@ -90,7 +90,6 @@ struct MergeDb {
 #[derive(Debug, Clone)]
 struct CherryPickDb {
     id: String,
-    target_id: String,
     parent: String,
     tags: Option<Vec<String>>,
 }
@@ -408,6 +407,26 @@ impl GitGraphDb {
         let current_branch = self.curr_branch.clone();
         let other_branch = merge_db.branch.clone();
 
+        let current_commit = self
+            .branches
+            .get(&current_branch)
+            .and_then(|id| id.as_ref())
+            .and_then(|id| self.commits.get(id));
+        let other_commit = self
+            .branches
+            .get(&other_branch)
+            .and_then(|id| id.as_ref())
+            .and_then(|id| self.commits.get(id));
+
+        if let (Some(current_commit), Some(_)) = (current_commit, other_commit)
+            && current_commit.branch == other_branch
+        {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!("Cannot merge branch '{}' into itself.", other_branch),
+            ));
+        }
+
         if current_branch == other_branch {
             return Err(Error::diagram_parse_fallback(
                 "gitGraph".to_string(),
@@ -415,20 +434,7 @@ impl GitGraphDb {
             ));
         }
 
-        let Some(current_head_id) = self
-            .branches
-            .get(&current_branch)
-            .and_then(|id| id.as_ref())
-        else {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                format!(
-                    "Incorrect usage of \"merge\". Current branch ({})has no commits",
-                    current_branch
-                ),
-            ));
-        };
-        let Some(current_commit) = self.commits.get(current_head_id).cloned() else {
+        let Some(current_commit) = current_commit else {
             return Err(Error::diagram_parse_fallback(
                 "gitGraph".to_string(),
                 format!(
@@ -448,8 +454,7 @@ impl GitGraphDb {
             ));
         }
 
-        let Some(other_head_id) = self.branches.get(&other_branch).and_then(|id| id.as_ref())
-        else {
+        let Some(other_commit) = other_commit else {
             return Err(Error::diagram_parse_fallback(
                 "gitGraph".to_string(),
                 format!(
@@ -458,22 +463,6 @@ impl GitGraphDb {
                 ),
             ));
         };
-        let Some(other_commit) = self.commits.get(other_head_id).cloned() else {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                format!(
-                    "Incorrect usage of \"merge\". Branch to be merged ({}) has no commits",
-                    other_branch
-                ),
-            ));
-        };
-
-        if current_commit.branch == other_branch {
-            return Err(Error::diagram_parse_fallback(
-                "gitGraph".to_string(),
-                format!("Cannot merge branch '{}' into itself.", other_branch),
-            ));
-        }
 
         if current_commit.id == other_commit.id {
             return Err(Error::diagram_parse_fallback(
@@ -494,7 +483,7 @@ impl GitGraphDb {
             ));
         }
 
-        let verified_branch = other_head_id.clone();
+        let parents = vec![current_commit.id.clone(), other_commit.id.clone()];
         let merge_commit_id = match merge_db.id.clone() {
             Some(id) => id,
             None => {
@@ -511,7 +500,7 @@ impl GitGraphDb {
             commit_type: COMMIT_TYPE_MERGE,
             // Mermaid's merge DB preserves tags verbatim; the SVG writer escapes their text.
             tags: merge_db.tags,
-            parents: vec![current_commit.id, verified_branch],
+            parents,
             branch: current_branch.clone(),
             custom_type: merge_db.commit_type,
             custom_id: Some(custom_id_flag),
@@ -527,7 +516,6 @@ impl GitGraphDb {
 
     fn cherry_pick(&mut self, mut cp: CherryPickDb, config: &MermaidConfig) -> Result<()> {
         cp.id = sanitize_text(&cp.id, config);
-        cp.target_id = sanitize_text(&cp.target_id, config);
         cp.parent = sanitize_text(&cp.parent, config);
 
         if cp.id.is_empty() {
@@ -553,72 +541,70 @@ impl GitGraphDb {
             return Err(Error::diagram_parse_fallback("gitGraph".to_string(), "Incorrect usage of cherry-pick: If the source commit is a merge commit, an immediate parent commit must be specified.".to_string()));
         }
 
-        if cp.target_id.is_empty() || !self.commits.contains_key(&cp.target_id) {
-            if source_commit.branch == self.curr_branch {
-                return Err(Error::diagram_parse_fallback(
-                    "gitGraph".to_string(),
-                    "Incorrect usage of \"cherryPick\". Source commit is already on current branch"
-                        .to_string(),
-                ));
-            }
-
-            let current_commit_id = self
-                .branches
-                .get(&self.curr_branch)
-                .cloned()
-                .unwrap_or(None);
-            if current_commit_id.is_none() {
-                return Err(Error::diagram_parse_fallback(
-                    "gitGraph".to_string(),
-                    format!(
-                        "Incorrect usage of \"cherry-pick\". Current branch ({})has no commits",
-                        self.curr_branch
-                    ),
-                ));
-            }
-
-            let tags = match cp.tags {
-                Some(t) => t
-                    .into_iter()
-                    .map(|v| sanitize_text(&v, config))
-                    .filter(|tag| !tag.is_empty())
-                    .collect::<Vec<_>>(),
-                None => {
-                    let mut tag = format!("cherry-pick:{}", source_commit.id);
-                    if source_commit.commit_type == COMMIT_TYPE_MERGE {
-                        tag.push_str(&format!("|parent:{}", cp.parent));
-                    }
-                    vec![tag]
-                }
-            };
-
-            let seq = self.seq;
-            let new_id = format!("{seq}-{}", self.next_id());
-            let parents = self
-                .head
-                .as_ref()
-                .map(|h| vec![h.clone(), source_commit.id.clone()])
-                .unwrap_or_default();
-            let commit = Commit {
-                id: new_id.clone(),
-                message: format!(
-                    "cherry-picked {} into {}",
-                    source_commit.message, self.curr_branch
-                ),
-                seq: self.seq,
-                commit_type: COMMIT_TYPE_CHERRY_PICK,
-                tags,
-                parents,
-                branch: self.curr_branch.clone(),
-                custom_type: None,
-                custom_id: None,
-            };
-            self.seq += 1;
-
-            self.head = Some(commit.id.clone());
-            self.commits.insert(commit.id.clone(), commit);
-            self.branches.insert(self.curr_branch.clone(), Some(new_id));
+        if source_commit.branch == self.curr_branch {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                "Incorrect usage of \"cherryPick\". Source commit is already on current branch"
+                    .to_string(),
+            ));
         }
+
+        let current_commit_id = self
+            .branches
+            .get(&self.curr_branch)
+            .cloned()
+            .unwrap_or(None);
+        if current_commit_id.is_none() {
+            return Err(Error::diagram_parse_fallback(
+                "gitGraph".to_string(),
+                format!(
+                    "Incorrect usage of \"cherry-pick\". Current branch ({})has no commits",
+                    self.curr_branch
+                ),
+            ));
+        }
+
+        let tags = match cp.tags {
+            Some(t) => t
+                .into_iter()
+                .map(|v| sanitize_text(&v, config))
+                .filter(|tag| !tag.is_empty())
+                .collect::<Vec<_>>(),
+            None => {
+                let mut tag = format!("cherry-pick:{}", source_commit.id);
+                if source_commit.commit_type == COMMIT_TYPE_MERGE {
+                    tag.push_str(&format!("|parent:{}", cp.parent));
+                }
+                vec![tag]
+            }
+        };
+
+        let seq = self.seq;
+        let new_id = format!("{seq}-{}", self.next_id());
+        let parents = self
+            .head
+            .as_ref()
+            .map(|h| vec![h.clone(), source_commit.id.clone()])
+            .unwrap_or_default();
+        let commit = Commit {
+            id: new_id.clone(),
+            message: format!(
+                "cherry-picked {} into {}",
+                source_commit.message, self.curr_branch
+            ),
+            seq: self.seq,
+            commit_type: COMMIT_TYPE_CHERRY_PICK,
+            tags,
+            parents,
+            branch: self.curr_branch.clone(),
+            custom_type: None,
+            custom_id: None,
+        };
+        self.seq += 1;
+
+        self.head = Some(commit.id.clone());
+        self.commits.insert(commit.id.clone(), commit);
+        self.branches.insert(self.curr_branch.clone(), Some(new_id));
 
         Ok(())
     }
@@ -769,7 +755,7 @@ impl<'a> LineParser<'a> {
         &self.input[self.pos..]
     }
 
-    fn parse_word_until_ws_or_colon_spanned(
+    fn parse_command_spanned(
         &mut self,
         control: &crate::OperationControl,
     ) -> crate::OperationControlResult<Option<SpannedValue>> {
@@ -777,7 +763,7 @@ impl<'a> LineParser<'a> {
         let start = self.pos;
         let mut next_checkpoint = self.pos.saturating_add(4096);
         while let Some(c) = self.peek_char() {
-            if is_gitgraph_whitespace(c) || c == ':' {
+            if is_gitgraph_whitespace(c) || matches!(c, ':' | '"' | '\'') {
                 break;
             }
             self.bump();
@@ -885,7 +871,7 @@ impl<'a> LineParser<'a> {
         let mut next_checkpoint = self.pos.saturating_add(4096);
         while self
             .peek_char()
-            .is_some_and(|ch| !is_gitgraph_whitespace(ch))
+            .is_some_and(|ch| !is_gitgraph_whitespace(ch) && !matches!(ch, '"' | '\''))
         {
             self.bump();
             if self.pos >= next_checkpoint {
@@ -1057,6 +1043,27 @@ fn push_gitgraph_editor_fact(
     });
 }
 
+#[cfg(feature = "editor-facts")]
+fn push_gitgraph_scalar_editor_fact(
+    facts: &mut Option<Vec<GitGraphEditorFact>>,
+    last_binding: &mut Option<usize>,
+    value: &SpannedValue,
+    detail: &'static str,
+    role: GitGraphEditorFactRole,
+) {
+    let Some(command_facts) = facts.as_mut() else {
+        return;
+    };
+    if let Some(previous) = last_binding
+        .take()
+        .and_then(|index| command_facts.get_mut(index))
+    {
+        previous.role = GitGraphEditorFactRole::Payload;
+    }
+    *last_binding = Some(command_facts.len());
+    push_gitgraph_editor_fact(facts, value, detail, EditorSemanticKind::Object, role);
+}
+
 fn command_parse_result<T>(
     result: Result<T>,
     #[cfg(feature = "editor-facts")] editor_facts: &Option<Vec<GitGraphEditorFact>>,
@@ -1109,11 +1116,21 @@ fn parse_git_graph_command(
         line_start + trimmed_start + trimmed.len(),
     );
     let mut parser = LineParser::new(trimmed).with_base(line_start + trimmed_start);
-    let Some(command) = parser.parse_word_until_ws_or_colon_spanned(control)? else {
-        return Ok(None);
-    };
     #[cfg(feature = "editor-facts")]
     let mut editor_facts = (editor_demand == EditorFactsDemand::Capture).then(Vec::new);
+    let Some(command) = parser.parse_command_spanned(control)? else {
+        return Err(GitGraphCommandParseError {
+            error: Box::new(Error::diagram_parse_exact(
+                "gitGraph".to_string(),
+                "expected gitGraph command".to_string(),
+                statement_span,
+            )),
+            #[cfg(feature = "editor-facts")]
+            editor_facts,
+            recovery_span: statement_span,
+        }
+        .into());
+    };
 
     let operation = match command.text.as_str() {
         "commit" => {
@@ -1124,6 +1141,8 @@ fn parse_git_graph_command(
                 commit_type: COMMIT_TYPE_NORMAL,
                 tags: Vec::new(),
             };
+            #[cfg(feature = "editor-facts")]
+            let mut id_fact = None;
             loop {
                 control.checkpoint()?;
                 parser.skip_ws(control)?;
@@ -1156,11 +1175,11 @@ fn parse_git_graph_command(
                         statement_span,
                     )?;
                     #[cfg(feature = "editor-facts")]
-                    push_gitgraph_editor_fact(
+                    push_gitgraph_scalar_editor_fact(
                         &mut editor_facts,
+                        &mut id_fact,
                         &value,
                         "gitGraph commit id",
-                        EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Entity,
                     );
                     commit.id = value.text;
@@ -1340,6 +1359,8 @@ fn parse_git_graph_command(
                 commit_type: None,
                 tags: Vec::new(),
             };
+            #[cfg(feature = "editor-facts")]
+            let mut id_fact = None;
             loop {
                 control.checkpoint()?;
                 parser.skip_ws(control)?;
@@ -1354,11 +1375,11 @@ fn parse_git_graph_command(
                         statement_span,
                     )?;
                     #[cfg(feature = "editor-facts")]
-                    push_gitgraph_editor_fact(
+                    push_gitgraph_scalar_editor_fact(
                         &mut editor_facts,
+                        &mut id_fact,
                         &value,
                         "gitGraph merge id",
-                        EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Entity,
                     );
                     merge.id = Some(value.text);
@@ -1419,10 +1440,13 @@ fn parse_git_graph_command(
         "cherry-pick" => {
             let mut cherry_pick = CherryPickDb {
                 id: String::new(),
-                target_id: String::new(),
                 parent: String::new(),
                 tags: None,
             };
+            #[cfg(feature = "editor-facts")]
+            let mut id_fact = None;
+            #[cfg(feature = "editor-facts")]
+            let mut parent_fact = None;
             loop {
                 control.checkpoint()?;
                 parser.skip_ws(control)?;
@@ -1437,11 +1461,11 @@ fn parse_git_graph_command(
                         statement_span,
                     )?;
                     #[cfg(feature = "editor-facts")]
-                    push_gitgraph_editor_fact(
+                    push_gitgraph_scalar_editor_fact(
                         &mut editor_facts,
+                        &mut id_fact,
                         &value,
                         "gitGraph cherry-pick id",
-                        EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Reference,
                     );
                     cherry_pick.id = value.text;
@@ -1455,11 +1479,11 @@ fn parse_git_graph_command(
                         statement_span,
                     )?;
                     #[cfg(feature = "editor-facts")]
-                    push_gitgraph_editor_fact(
+                    push_gitgraph_scalar_editor_fact(
                         &mut editor_facts,
+                        &mut parent_fact,
                         &value,
                         "gitGraph cherry-pick parent",
-                        EditorSemanticKind::Object,
                         GitGraphEditorFactRole::Reference,
                     );
                     cherry_pick.parent = value.text;
@@ -3144,6 +3168,431 @@ mod semantic_tests {
                 #[allow(unreachable_patterns)]
                 _ => panic!("expected GitGraph semantics"),
             })
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn capture(source: &str) -> SemanticConstruction<GitGraphDiagramModel> {
+        let metadata = SemanticMetadata {
+            diagram_type: "gitGraph".to_string(),
+            config: MermaidConfig::empty_object(),
+            semantic_config: MermaidConfig::from_value(json!({ "gitGraph": { "seed": 1 } })),
+            title: None,
+        };
+        parse_git_graph_semantic_model_controlled(
+            source,
+            &metadata,
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+    }
+
+    fn assert_gitgraph_diagnostic(source: &str, span_text: &str, message: &str) {
+        let error = canonical(source).unwrap_err();
+        let Error::DiagramParse { diagnostic, .. } = &error else {
+            panic!("expected GitGraph parse diagnostic for {source:?}");
+        };
+        let start = source.rfind(span_text).unwrap();
+        let span = SourceSpan::new(start, start + span_text.len());
+        assert_eq!(diagnostic.message(), message, "{source:?}");
+        assert_eq!(diagnostic.span(), Some(span), "{source:?}");
+        #[cfg(feature = "compat-json")]
+        {
+            let full = crate::MermaidEngine::new()
+                .parse_diagram_sync(source, crate::ParseOptions::strict())
+                .unwrap_err();
+            assert_eq!(error.to_string(), full.to_string());
+        }
+        #[cfg(feature = "editor-facts")]
+        {
+            let captured = capture(source);
+            assert!(captured.model.is_err());
+            let facts = captured.editor_facts.unwrap();
+            assert_eq!(
+                facts.completeness,
+                crate::EditorSemanticCompleteness::Recovered
+            );
+            let diagnostic = facts
+                .diagnostics
+                .iter()
+                .find(|diagnostic| {
+                    diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                })
+                .unwrap();
+            assert_eq!(diagnostic.message, message);
+            assert_eq!(diagnostic.span, Some(span));
+        }
+    }
+
+    #[test]
+    fn gitgraph_quote_boundaries_preserve_models_and_editor_spans() {
+        for newline in ["\n", "\r\n"] {
+            for statement in ["commit\"hello\"", "commit type:NORMAL\"hello\""] {
+                let source = format!("gitGraph{newline}{statement}{newline}");
+                let model = canonical(&source).unwrap();
+                assert_eq!(model.commits.len(), 1);
+                assert_eq!(model.commits[0].message, "hello");
+                assert_eq!(model.commits[0].commit_type, COMMIT_TYPE_NORMAL);
+            }
+            for quote in ['\'', '"'] {
+                let source = concat!(
+                    "gitGraph\n",
+                    "commit\"root message\" id:\"R\"\n",
+                    "branch\"topic\" order:2\n",
+                    "commit type:HIGHLIGHT\"topic message\" id:\"F\"\n",
+                    "checkout\"main\"\n",
+                    "merge\"topic\" id:\"M\" type:REVERSE tag:\"first\" tag:\"last\"\n",
+                    "switch\"topic\"\n",
+                )
+                .replace('"', &quote.to_string())
+                .replace('\n', newline);
+                let model = canonical(&source).unwrap();
+                assert_eq!(model.current_branch, "topic");
+                assert_eq!(model.commits.len(), 3);
+                assert_eq!(model.commits[0].message, "root message");
+                assert_eq!(model.commits[1].message, "topic message");
+                assert_eq!(model.commits[1].commit_type, COMMIT_TYPE_HIGHLIGHT);
+                assert_eq!(model.commits[2].parents, ["R", "F"]);
+                assert_eq!(model.commits[2].commit_type, COMMIT_TYPE_MERGE);
+                assert_eq!(model.commits[2].custom_type, Some(COMMIT_TYPE_REVERSE));
+                assert_eq!(model.commits[2].tags, ["first", "last"]);
+                #[cfg(feature = "editor-facts")]
+                {
+                    let captured = capture(&source);
+                    assert!(captured.model.is_ok());
+                    let facts = captured.editor_facts.unwrap();
+                    assert!(facts.diagnostics.is_empty());
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Complete
+                    );
+                    let topic_roles = facts
+                        .symbols
+                        .iter()
+                        .filter(|symbol| symbol.name == "topic")
+                        .map(|symbol| symbol.role)
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        topic_roles,
+                        [
+                            crate::EditorSemanticRole::Entity,
+                            crate::EditorSemanticRole::Reference,
+                            crate::EditorSemanticRole::Reference,
+                        ]
+                    );
+                    for symbol in &facts.symbols {
+                        assert_eq!(
+                            &source[symbol.selection.start..symbol.selection.end],
+                            symbol.name
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gitgraph_repeated_scalars_keep_winning_bindings_and_cumulative_tags() {
+        for newline in ["\n", "\r\n"] {
+            let source = concat!(
+                "gitGraph\n",
+                "commit msg:\"old message\" id:\"stale-root\" tag:\"root-a\" id:\"R\" ",
+                "msg:\"root message\" type:REVERSE type:NORMAL tag:\"root-b\"\n",
+                "branch release\ncheckout main\nbranch feature\ncommit id:\"F\"\n",
+                "checkout main\n",
+                "merge feature id:\"stale-merge\" tag:\"merge-a\" id:\"M\" ",
+                "type:REVERSE type:HIGHLIGHT tag:\"merge-b\"\n",
+                "checkout release\n",
+                "cherry-pick id:\"stale-source\" tag:\"pick-a\" parent:\"stale-parent\" ",
+                "id:\"M\" parent:\"R\" tag:\"\" tag:\"pick-b\"\n",
+            )
+            .replace('\n', newline);
+            let model = canonical(&source).unwrap();
+            assert_eq!(model.commits.len(), 4);
+            assert_eq!(model.commits[0].id, "R");
+            assert_eq!(model.commits[0].message, "root message");
+            assert_eq!(model.commits[0].commit_type, COMMIT_TYPE_NORMAL);
+            assert_eq!(model.commits[0].tags, ["root-a", "root-b"]);
+            assert_eq!(model.commits[2].id, "M");
+            assert_eq!(model.commits[2].custom_type, Some(COMMIT_TYPE_HIGHLIGHT));
+            assert_eq!(model.commits[2].tags, ["merge-a", "merge-b"]);
+            assert_eq!(model.commits[3].parents, ["R", "M"]);
+            assert_eq!(model.commits[3].commit_type, COMMIT_TYPE_CHERRY_PICK);
+            assert_eq!(model.commits[3].tags, ["pick-a", "pick-b"]);
+            #[cfg(feature = "editor-facts")]
+            {
+                use crate::EditorSemanticRole::{Entity, Payload, Reference};
+
+                let captured = capture(&source);
+                assert!(captured.model.is_ok());
+                let facts = captured.editor_facts.unwrap();
+                assert!(facts.diagnostics.is_empty());
+                let bindings = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.role.contributes_references())
+                    .map(|symbol| (symbol.name.as_str(), symbol.role))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    bindings,
+                    [
+                        ("R", Entity),
+                        ("release", Entity),
+                        ("main", Reference),
+                        ("feature", Entity),
+                        ("F", Entity),
+                        ("main", Reference),
+                        ("feature", Reference),
+                        ("M", Entity),
+                        ("release", Reference),
+                        ("M", Reference),
+                        ("R", Reference),
+                    ]
+                );
+                for name in ["stale-root", "stale-merge", "stale-source", "stale-parent"] {
+                    let symbols = facts
+                        .symbols
+                        .iter()
+                        .filter(|symbol| symbol.name == name)
+                        .collect::<Vec<_>>();
+                    assert_eq!(symbols.len(), 1);
+                    assert_eq!(symbols[0].role, Payload);
+                    assert_eq!(symbols[0].rename_policy, EditorRenamePolicy::None);
+                    assert!(!symbols[0].role.contributes_completion());
+                    assert!(!symbols[0].role.contributes_outline());
+                }
+                for symbol in &facts.symbols {
+                    assert_eq!(
+                        &source[symbol.selection.start..symbol.selection.end],
+                        symbol.name
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn gitgraph_scalar_binding_spans_handle_equal_empty_and_recovered_winners() {
+        for newline in ["\n", "\r\n"] {
+            for (winner, trailing) in [("same", ""), ("", ""), ("same", " invalid")] {
+                let statement = format!("commit id:\"same\" id:\"{winner}\"{trailing}");
+                let source =
+                    format!("gitGraph{newline}{statement}{newline}commit id:\"later\"{newline}");
+                let captured = capture(&source);
+                assert_eq!(captured.model.is_ok(), trailing.is_empty());
+                let facts = captured.editor_facts.unwrap();
+                let ids = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.detail.as_deref() == Some("gitGraph commit id"))
+                    .collect::<Vec<_>>();
+                assert_eq!(ids[0].role, crate::EditorSemanticRole::Payload);
+                assert_eq!(ids[0].rename_policy, EditorRenamePolicy::None);
+                let bindings = ids
+                    .iter()
+                    .filter(|symbol| symbol.role == crate::EditorSemanticRole::Entity)
+                    .collect::<Vec<_>>();
+                if winner.is_empty() {
+                    let model = captured.model.unwrap();
+                    assert!(model.commits[0].id.starts_with("0-"));
+                    assert_eq!(bindings.len(), 1);
+                } else {
+                    assert_eq!(bindings.len(), 2);
+                    let start = source.rfind("id:\"same\"").unwrap() + "id:\"".len();
+                    assert_eq!(
+                        bindings[0].selection,
+                        SourceSpan::new(start, start + winner.len())
+                    );
+                    assert_eq!(
+                        bindings[0].rename_policy,
+                        EditorRenamePolicy::GitGraphReference
+                    );
+                }
+                assert_eq!(bindings.last().unwrap().name, "later");
+                assert_eq!(facts.diagnostics.is_empty(), trailing.is_empty());
+                if !trailing.is_empty() {
+                    assert_gitgraph_diagnostic(
+                        &source,
+                        &statement,
+                        "unexpected commit argument: invalid",
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn gitgraph_quote_boundaries_reject_keyword_prefixes_and_missing_commands() {
+        let cases = [
+            (
+                "commit02\"hello\"",
+                "commit02",
+                "Unknown statement: commit02",
+            ),
+            (
+                "branch02\"topic\"",
+                "branch02",
+                "Unknown statement: branch02",
+            ),
+            (
+                "checkout02\"main\"",
+                "checkout02",
+                "Unknown statement: checkout02",
+            ),
+            (
+                "switch02\"main\"",
+                "switch02",
+                "Unknown statement: switch02",
+            ),
+            ("merge02\"topic\"", "merge02", "Unknown statement: merge02"),
+            (
+                "commit type:NORMALsuffix\"hello\"",
+                "commit type:NORMALsuffix\"hello\"",
+                "Unknown commit type: NORMALsuffix",
+            ),
+            (
+                "commit type:\"NORMAL\"",
+                "commit type:\"NORMAL\"",
+                "expected commit type",
+            ),
+            ("\"hello\"", "\"hello\"", "expected gitGraph command"),
+            (
+                "merge\"topic\" type:NORMAL\"hello\"",
+                "merge\"topic\" type:NORMAL\"hello\"",
+                "unexpected merge argument: \"hello\"",
+            ),
+            (
+                "branch\"topic\" order:1\"extra\"",
+                "branch\"topic\" order:1\"extra\"",
+                "unexpected branch argument: \"extra\"",
+            ),
+        ];
+        for newline in ["\n", "\r\n"] {
+            for (statement, span_text, message) in cases {
+                let source = format!("gitGraph{newline}  {statement} %% hidden{newline}");
+                assert_gitgraph_diagnostic(&source, span_text, message);
+            }
+        }
+    }
+
+    #[test]
+    fn gitgraph_merge_errors_follow_source_validation_order() {
+        let cases = [
+            (
+                "commit id:\"R\"\n  merge main\n",
+                "merge main",
+                "Cannot merge branch 'main' into itself.",
+            ),
+            (
+                "commit id:\"R\"\nbranch topic\ncommit id:\"F\"\n  merge topic\n",
+                "merge topic",
+                "Cannot merge branch 'topic' into itself.",
+            ),
+            (
+                "commit id:\"R\"\nbranch topic\n  merge topic\n",
+                "merge topic",
+                "Incorrect usage of \"merge\". Cannot merge a branch to itself",
+            ),
+            (
+                "  merge main\n",
+                "merge main",
+                "Incorrect usage of \"merge\". Cannot merge a branch to itself",
+            ),
+            (
+                "commit id:\"R\"\nbranch topic\ncheckout main\n  merge topic\n",
+                "merge topic",
+                "Incorrect usage of \"merge\". Both branches have same head",
+            ),
+            (
+                "branch empty\ncheckout main\ncommit id:\"R\"\n  merge empty\n",
+                "merge empty",
+                "Incorrect usage of \"merge\". Branch to be merged (empty) has no commits",
+            ),
+            (
+                "  merge missing\n",
+                "merge missing",
+                "Incorrect usage of \"merge\". Current branch (main)has no commits",
+            ),
+            (
+                "commit id:\"R\"\n  merge missing\n",
+                "merge missing",
+                "Incorrect usage of \"merge\". Branch to be merged (missing) does not exist",
+            ),
+        ];
+        for newline in ["\n", "\r\n"] {
+            for (body, statement, message) in cases {
+                let source = format!("gitGraph\n{body}").replace('\n', newline);
+                assert_gitgraph_diagnostic(&source, statement, message);
+            }
+        }
+    }
+
+    #[test]
+    fn gitgraph_cherry_pick_preserves_tags_parents_and_errors() {
+        let prefix = concat!(
+            "gitGraph\ncommit id:\"R\"\nbranch release\ncheckout main\n",
+            "branch feature\ncommit id:\"F\" msg:\"feature message\"\n",
+            "checkout main\nmerge feature id:\"M\"\ncheckout release\n",
+        );
+        for newline in ["\n", "\r\n"] {
+            let picks = concat!(
+                "cherry-pick id:\"F\"\n",
+                "cherry-pick id:\"M\" parent:\"R\"\n",
+                "cherry-pick id:\"M\" parent:\"F\" tag:\"\"\n",
+                "cherry-pick id:\"M\" parent:\"R\" tag:\"first\" tag:\"last\"\n",
+            );
+            let source = format!("{prefix}{picks}").replace('\n', newline);
+            let model = canonical(&source).unwrap();
+            assert_eq!(model.commits.len(), 7);
+            for (index, source_id) in [(3, "F"), (4, "M"), (5, "M"), (6, "M")] {
+                let commit = &model.commits[index];
+                let head = &model.commits[if index == 3 { 0 } else { index - 1 }];
+                assert_eq!(commit.parents, [head.id.as_str(), source_id]);
+                assert_eq!(commit.seq, index as i64);
+                assert_eq!(commit.branch, "release");
+                assert_eq!(commit.commit_type, COMMIT_TYPE_CHERRY_PICK);
+            }
+            assert_eq!(
+                model.commits[3].message,
+                "cherry-picked feature message into release"
+            );
+            assert_eq!(model.commits[3].tags, ["cherry-pick:F"]);
+            assert_eq!(model.commits[4].tags, ["cherry-pick:M|parent:R"]);
+            assert!(model.commits[5].tags.is_empty());
+            assert_eq!(model.commits[6].tags, ["first", "last"]);
+
+            let cases = [
+                (
+                    "gitGraph\ncherry-pick id:\"missing\" parent:\"wrong\"\n".to_string(),
+                    "cherry-pick id:\"missing\" parent:\"wrong\"",
+                    "Incorrect usage of \"cherryPick\". Source commit id should exist and provided",
+                ),
+                (
+                    "gitGraph\ncommit id:\"R\"\ncherry-pick id:\"R\"\n".to_string(),
+                    "cherry-pick id:\"R\"",
+                    "Incorrect usage of \"cherryPick\". Source commit is already on current branch",
+                ),
+                (
+                    "gitGraph\nbranch feature\ncommit id:\"F\"\ncheckout main\ncherry-pick id:\"F\"\n".to_string(),
+                    "cherry-pick id:\"F\"",
+                    "Incorrect usage of \"cherry-pick\". Current branch (main)has no commits",
+                ),
+                (
+                    format!("{prefix}cherry-pick id:\"M\"\n"),
+                    "cherry-pick id:\"M\"",
+                    "Incorrect usage of cherry-pick: If the source commit is a merge commit, an immediate parent commit must be specified.",
+                ),
+                (
+                    format!("{prefix}cherry-pick id:\"M\" parent:\"wrong\"\n"),
+                    "cherry-pick id:\"M\" parent:\"wrong\"",
+                    "Invalid operation: The specified parent commit is not an immediate parent of the cherry-picked commit.",
+                ),
+            ];
+            for (source, statement, message) in cases {
+                assert_gitgraph_diagnostic(&source.replace('\n', newline), statement, message);
+            }
+        }
     }
 
     fn reset_construction_counts() {

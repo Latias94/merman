@@ -19,6 +19,317 @@ fn outline_items(index: &FenceTextIndex) -> impl Iterator<Item = &EditorSemantic
 }
 
 #[test]
+#[cfg(feature = "diagram-gantt")]
+fn gantt_empty_end_fields_keep_dependency_navigation_and_rename() {
+    use merman_editor_core::{Position, Range, goto_definition, references, rename};
+
+    let source = "gantt\r\ndateFormat YYYY-MM-DD\r\nA:a,2026-01-01,  \r\nB:b,after a,1d\r\n";
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/gantt-empty-end.mmd",
+            1,
+            source,
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    assert_eq!(
+        snapshot.fences()[0].text_index().source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    let ranges = [source.find("a,").unwrap(), source.rfind("a,").unwrap()].map(|offset| {
+        let position = snapshot.source_map().utf16_position(offset).unwrap();
+        Range::new(
+            Position::new(position.line, position.character),
+            Position::new(position.line, position.character + 1),
+        )
+    });
+    assert_eq!(
+        goto_definition(&snapshot, ranges[1].start).unwrap().range,
+        ranges[0]
+    );
+    assert_eq!(
+        references(&snapshot, ranges[1].start, true)
+            .unwrap()
+            .iter()
+            .map(|location| location.range)
+            .collect::<Vec<_>>(),
+        ranges
+    );
+    let edit = rename(&snapshot, ranges[1].start, "renamed")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        edit.changes[snapshot.uri()]
+            .iter()
+            .map(|change| change.range)
+            .collect::<Vec<_>>(),
+        ranges
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-git-graph")]
+fn gitgraph_overwritten_ids_do_not_participate_in_navigation_or_rename() {
+    use merman_editor_core::{
+        Position, Range, goto_definition, prepare_rename, references, rename,
+    };
+
+    let source = concat!(
+        "gitGraph\r\ncommit id:\"stale\" id:\"live\"\r\n",
+        "branch topic\r\ncommit id:\"child\"\r\ncheckout main\r\n",
+        "cherry-pick id:\"stale\" id:\"child\"\r\n",
+    );
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/gitgraph-winning-ids.mmd",
+            1,
+            source,
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    let index = snapshot.fences()[0].text_index();
+    assert_eq!(index.source(), FenceTextIndexSource::ParserComplete);
+    assert!(!index.node_ids().any(|name| name == "stale"));
+    for (offset, _) in source.match_indices("stale") {
+        let position = snapshot.source_map().utf16_position(offset).unwrap();
+        let position = Position::new(position.line, position.character);
+        assert!(goto_definition(&snapshot, position).is_none());
+        assert!(prepare_rename(&snapshot, position).is_none());
+    }
+    let ranges = source
+        .match_indices("child")
+        .map(|(offset, _)| {
+            let position = snapshot.source_map().utf16_position(offset).unwrap();
+            Range::new(
+                Position::new(position.line, position.character),
+                Position::new(position.line, position.character + 5),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(
+        goto_definition(&snapshot, ranges[1].start).unwrap().range,
+        ranges[0]
+    );
+    assert_eq!(
+        references(&snapshot, ranges[1].start, true)
+            .unwrap()
+            .iter()
+            .map(|location| location.range)
+            .collect::<Vec<_>>(),
+        ranges
+    );
+    let edit = rename(&snapshot, ranges[1].start, "renamed")
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        edit.changes[snapshot.uri()]
+            .iter()
+            .map(|change| change.range)
+            .collect::<Vec<_>>(),
+        ranges
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-er")]
+fn er_trimmed_subgraph_identity_resolves_style_navigation() {
+    use merman_editor_core::{Position, Range, goto_definition, references};
+
+    let source = "erDiagram\r\nsubgraph \" \u{feff}G\u{feff} \"\r\nend\r\nstyle G fill:red\r\n";
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/er-trimmed-subgraph.mmd",
+            1,
+            source,
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    assert_eq!(
+        snapshot.fences()[0].text_index().source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    let ranges = source
+        .match_indices('G')
+        .map(|(offset, _)| {
+            let position = snapshot.source_map().utf16_position(offset).unwrap();
+            Range::new(
+                Position::new(position.line, position.character),
+                Position::new(position.line, position.character + 1),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(ranges.len(), 2);
+    assert_eq!(
+        goto_definition(&snapshot, ranges[1].start).unwrap().range,
+        ranges[0]
+    );
+    assert_eq!(
+        references(&snapshot, ranges[1].start, true)
+            .unwrap()
+            .iter()
+            .map(|location| location.range)
+            .collect::<Vec<_>>(),
+        ranges
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-er")]
+fn er_rename_preserves_adjacent_numeric_entity_boundaries() {
+    use merman_core::SemanticParser;
+    use merman_editor_core::{Position, rename};
+    use merman_model::semantic::SemanticDiagramModel;
+
+    for (pair, old_name, new_name, first, endpoint) in [
+        ("12abc", "12", "X", "X", "abc"),
+        ("12abc", "12", "1", "1", "abc"),
+        ("12abc", "abc", "3", "12", "3"),
+        ("1abc", "abc", "3", "1", "3"),
+        ("12.3abc", "12.3", "X", "X", "abc"),
+        ("12\"abc\"", "12", "X", "X", "abc"),
+        ("\"12abc\"", "12abc", "X", "X", "X"),
+        ("A", "A", "12abc", "12abc", "12abc"),
+        ("\"A\"", "A", "12abc", "12abc", "12abc"),
+        ("\"12\"abc", "abc", "3", "12", "3"),
+    ] {
+        for markdown in [false, true] {
+            let diagram = format!("erDiagram\r\n{pair} ||--|| B : rel\r\n");
+            let source = if markdown {
+                format!("# Example\r\n\r\n```mermaid\r\n{diagram}```\r\n")
+            } else {
+                diagram.clone()
+            };
+            let snapshot = SnapshotHarness::new()
+                .analyze(
+                    "file:///tmp/er-rename-boundaries.mmd",
+                    1,
+                    source.as_str(),
+                    if markdown {
+                        DocumentKind::Markdown
+                    } else {
+                        DocumentKind::Diagram
+                    },
+                )
+                .unwrap();
+            let offset = source.find(old_name).unwrap();
+            let position = snapshot.source_map().utf16_position(offset).unwrap();
+            let edits = rename(
+                &snapshot,
+                Position::new(position.line, position.character),
+                new_name,
+            )
+            .unwrap()
+            .unwrap();
+            let mut changed = source.clone();
+            for edit in edits.changes[snapshot.uri()].iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            let changed_diagram = if markdown {
+                changed
+                    .split("```mermaid\r\n")
+                    .nth(1)
+                    .unwrap()
+                    .split("```")
+                    .next()
+                    .unwrap()
+            } else {
+                &changed
+            };
+            let parsed = SemanticParser::new()
+                .parse_diagram_sync(changed_diagram)
+                .unwrap();
+            let SemanticDiagramModel::Er(model) = parsed.model else {
+                panic!("expected ER model");
+            };
+            let expected = if first == endpoint {
+                vec![first, "B"]
+            } else {
+                vec![first, endpoint, "B"]
+            };
+            assert_eq!(
+                model
+                    .entities
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                expected,
+                "{changed_diagram}"
+            );
+            assert_eq!(model.relationships[0].entity_a, model.entities[endpoint].id);
+            assert_eq!(model.relationships[0].entity_b, model.entities["B"].id);
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-er")]
+fn er_numeric_rename_keeps_quoted_names_and_style_lists_in_their_parser_contexts() {
+    use merman_core::SemanticParser;
+    use merman_editor_core::{Position, rename};
+    use merman_model::semantic::SemanticDiagramModel;
+
+    for header in [
+        "A",
+        "\"A\"",
+        "subgraph \" \u{feff}A\u{feff} \"\r\nInner\r\nend\r\nA",
+    ] {
+        let source = format!(
+            "erDiagram\r\n{header} ||--|| B : rel\r\nstyle A fill:red\r\nclass A accent\r\nclassDef accent stroke:blue\r\n"
+        );
+        let snapshot = SnapshotHarness::new()
+            .analyze(
+                "file:///tmp/er-numeric-style-rename.mmd",
+                1,
+                source.as_str(),
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        let offset = source.find('A').unwrap();
+        let position = snapshot.source_map().utf16_position(offset).unwrap();
+        let edits = rename(
+            &snapshot,
+            Position::new(position.line, position.character),
+            "12abc",
+        )
+        .unwrap()
+        .unwrap();
+        let mut changed = source.clone();
+        for edit in edits.changes[snapshot.uri()].iter().rev() {
+            let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+            let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+            changed.replace_range(start..end, &edit.new_text);
+        }
+        assert!(changed.contains("style 12abc fill:red"));
+        assert!(changed.contains("class 12abc accent"));
+        let parsed = SemanticParser::new().parse_diagram_sync(&changed).unwrap();
+        let SemanticDiagramModel::Er(model) = parsed.model else {
+            panic!("expected ER model");
+        };
+        if header.starts_with("subgraph") {
+            assert_eq!(model.subgraphs[0].id, "12abc");
+            assert_eq!(model.subgraphs[0].css_styles, ["fill:red"]);
+            assert_eq!(model.subgraphs[0].classes, ["accent"]);
+            assert_eq!(model.relationships[0].entity_a, "12abc");
+        } else {
+            assert_eq!(
+                model
+                    .entities
+                    .keys()
+                    .map(String::as_str)
+                    .collect::<Vec<_>>(),
+                ["12abc", "B"]
+            );
+            assert_eq!(model.entities["12abc"].css_styles, ["fill:red"]);
+            assert_eq!(model.entities["12abc"].css_classes, "default accent");
+            assert_eq!(model.relationships[0].entity_a, model.entities["12abc"].id);
+        }
+    }
+}
+
+#[test]
 #[cfg(feature = "diagram-class")]
 fn class_numeric_collisions_keep_parser_identity_and_rename_groups_distinct() {
     let source = concat!(

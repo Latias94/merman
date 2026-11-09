@@ -31,15 +31,8 @@ fn asset_dimension(v: &Value) -> Option<f64> {
     match v {
         Value::Number(value) => value.as_f64().filter(|value| *value != 0.0),
         Value::Bool(true) => Some(1.0),
-        Value::String(value) if value.is_empty() => None,
-        Value::String(value)
-            if value
-                .trim_matches(super::is_ecmascript_trim_char)
-                .is_empty() =>
-        {
-            Some(0.0)
-        }
-        _ => crate::inline_config::value_to_f64(v),
+        Value::String(value) if !value.is_empty() => crate::utils::parse_js_number(value),
+        _ => None,
     }
 }
 
