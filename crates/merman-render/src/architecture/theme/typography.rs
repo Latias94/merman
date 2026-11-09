@@ -6,6 +6,7 @@ use crate::diagram_theme::{
     ThemeCapability, ThemeTypographyProperty,
 };
 use crate::family::{FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan};
+use crate::mermaid_style::{css_font_size_value_override, parse_style_declaration};
 use crate::text::VisibleTextStyleFacts;
 
 /// Resolves Architecture's inherited SVG typography without taking ownership of Cytoscape text.
@@ -19,6 +20,7 @@ pub(crate) struct ArchitectureTypographyThemePlan {
     css_binding: super::super::ArchitectureCssBinding,
     inherited_font_stack: InheritedFontStackPlan,
     font_size_px: f64,
+    font_size_known: bool,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
 }
@@ -26,6 +28,7 @@ pub(crate) struct ArchitectureTypographyThemePlan {
 /// Visibility observed by successful SVG text and icon-text writers.
 #[derive(Debug, Default)]
 pub(crate) struct ArchitectureTypographyEmission {
+    inherited_font_size_px: Option<f64>,
     visible: bool,
     inherited_font_stack: bool,
     inherited_font_size: bool,
@@ -34,10 +37,17 @@ pub(crate) struct ArchitectureTypographyEmission {
 }
 
 impl ArchitectureTypographyEmission {
+    pub(crate) const fn inherited_font_size_px(&self) -> Option<f64> {
+        self.inherited_font_size_px
+    }
+
     pub(crate) fn record_svg_text(&mut self, visible: bool) {
         self.visible |= visible;
         self.inherited_font_stack |= visible;
         self.inherited_font_size |= visible;
+        let unknown_visibility = visible && self.inherited_font_size_px.is_none();
+        self.unverified_font_stack |= unknown_visibility;
+        self.unverified_font_size |= unknown_visibility;
     }
 
     pub(crate) fn record_icon_text(&mut self, facts: &VisibleTextStyleFacts) {
@@ -73,19 +83,38 @@ impl ArchitectureTypographyThemePlan {
         // Mermaid-compatible fallback and must not shadow an active typed base size.
         let configured_size =
             configured_theme_font_size_css_or_root_number_px(effective_config.as_value());
-        let config_owns_font_size = typed_font_size_requested
-            && configured_size.is_some_and(|(_, path)| {
-                path == "themeVariables.fontSize"
-                    && effective_config.config_path_overrides_typed_default(path)
+        let configured_css = effective_config
+            .get_str("themeVariables.fontSize")
+            .filter(|raw| {
+                // The root is an ordinary CSS declaration, unlike C4's element CSSOM value.
+                parse_style_declaration(&format!("font-size:{raw}")).is_some_and(|declaration| {
+                    css_font_size_value_override(declaration.source_value()).is_some()
+                })
             });
+        let config_owns_font_size = typed_font_size_requested
+            && (configured_css.is_some()
+                || configured_size.is_some_and(|(_, path)| path == "themeVariables.fontSize"))
+            && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
+        let font_size_known = typed_font_size_active
+            || configured_css.is_none()
+            || configured_size.is_some_and(|(_, path)| path == "themeVariables.fontSize");
         let font_size_px = match (theme, typed_font_size_active) {
             (Some(theme), true) => f64::from(theme.typography().font_size_px()),
+            _ if !font_size_known => 16.0,
             _ => configured_size.map_or(16.0, |(size, _)| size),
         };
         let font_size_px = crate::number_format::canonicalize_number(font_size_px);
-        let font_size_css: Box<str> =
-            format!("{}px", crate::number_format::canonical_number(font_size_px)).into_boxed_str();
+        let font_size_css: Box<str> = if font_size_known {
+            format!("{}px", crate::number_format::canonical_number(font_size_px)).into_boxed_str()
+        } else {
+            // Root-relative sizes and host expressions retain their CSS owner. The numeric
+            // fallback is layout-only and cannot establish visible typography or text paint.
+            configured_css
+                .expect("unknown root size retains its CSS")
+                .trim()
+                .into()
+        };
 
         let css_binding = super::super::ArchitectureCssBinding::resolve(
             effective_config.as_value(),
@@ -96,6 +125,7 @@ impl ArchitectureTypographyThemePlan {
             css_binding,
             inherited_font_stack,
             font_size_px,
+            font_size_known,
             typed_font_size_requested,
             typed_font_size_active,
         }
@@ -113,13 +143,20 @@ impl ArchitectureTypographyThemePlan {
         self.font_size_px
     }
 
+    pub(crate) const fn font_size_is_known(&self) -> bool {
+        self.font_size_known
+    }
+
     pub(crate) fn typography_requested(&self) -> bool {
         self.inherited_font_stack.typography_requested() || self.typed_font_size_requested
     }
 
     pub(crate) fn begin_emission(&self) -> Option<ArchitectureTypographyEmission> {
         self.typography_requested()
-            .then(ArchitectureTypographyEmission::default)
+            .then(|| ArchitectureTypographyEmission {
+                inherited_font_size_px: self.font_size_known.then_some(self.font_size_px),
+                ..ArchitectureTypographyEmission::default()
+            })
     }
 
     pub(crate) fn finish_evidence(

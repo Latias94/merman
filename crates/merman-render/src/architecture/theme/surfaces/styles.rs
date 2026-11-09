@@ -501,14 +501,38 @@ impl ArchitectureSurfaceRenderState {
         }
     }
 
-    pub(super) fn apply_to_evidence(&self, evidence: &mut FamilyThemeOutcomes) {
+    pub(super) fn apply_to_evidence(
+        &self,
+        evidence: &mut FamilyThemeOutcomes,
+        font_size_known: bool,
+    ) {
         for (key, outcome) in &self.mechanism_outcomes {
             match outcome {
                 ArchitectureMechanismOutcome::AppliedCandidate(capabilities)
                     if self.emitted_rules.contains(key) =>
                 {
-                    evidence
-                        .mark_applied_with_capabilities(key.clone(), capabilities.iter().copied());
+                    if !font_size_known
+                        && matches!(
+                            key,
+                            FamilyThemeMechanismKey::Rule {
+                                target: ThemeTarget::Text
+                                    | ThemeTarget::NodeLabel
+                                    | ThemeTarget::ClusterLabel
+                                    | ThemeTarget::EdgeLabel,
+                                ..
+                            }
+                        )
+                    {
+                        evidence.mark_residual(
+                            key.clone(),
+                            FamilyThemeResidualReason::UnsupportedTypography,
+                        );
+                    } else {
+                        evidence.mark_applied_with_capabilities(
+                            key.clone(),
+                            capabilities.iter().copied(),
+                        );
+                    }
                 }
                 ArchitectureMechanismOutcome::AppliedCandidate(_) => {}
                 ArchitectureMechanismOutcome::NotApplicable => {

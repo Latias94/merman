@@ -271,7 +271,11 @@ impl ArchitectureGroupThemePlan {
         }
         self.edge_stroke
             .finish_evidence(&mut evidence, edge_style_emitted);
-        self.surfaces.finish_evidence(&mut evidence, surfaces);
+        self.surfaces.finish_evidence(
+            &mut evidence,
+            surfaces,
+            self.typography.font_size_is_known(),
+        );
         evidence
     }
 }
