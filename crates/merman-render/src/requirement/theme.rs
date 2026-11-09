@@ -95,7 +95,6 @@ impl RequirementPaintThemePlan {
                 None,
                 None,
                 None,
-                None,
             );
             return Self {
                 node_visuals: BTreeMap::new(),
@@ -147,11 +146,7 @@ impl RequirementPaintThemePlan {
             )
             .is_some_and(|(_, path)| effective_config.config_path_overrides_typed_default(path));
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        // Requirement retains its 1px minimum for inherited base typography. Prepare the
-        // effective f32 value once so layout, CSS spelling, and evidence share that minimum.
-        let typed_font_size =
-            typed_font_size_active.then(|| theme.typography().font_size_px().max(1.0));
-        let typed_font_size_px = typed_font_size.map(f64::from);
+        let typed_font_size = typed_font_size_active.then(|| theme.typography().font_size_px());
         let typed_font_size_css = typed_font_size.map(|size| format!("{size}px"));
 
         let mut evidence = FamilyThemeOutcomes::default();
@@ -168,13 +163,13 @@ impl RequirementPaintThemePlan {
                 .typed_font_stack_active()
                 .then_some(inherited_font_stack.font_family_css()),
             typed_font_size_css.as_deref(),
-            typed_font_size_px,
             relation_paint.as_ref().and_then(|plan| plan.typed_color()),
         );
         let font_size_css = css.common.font_size_css().into();
+        let title_visible = title_present && css.layout.font_size != 0.0;
         let mut title_fill = None;
         let mut title_fill_winner = None;
-        if title_present && !title_fill_owned {
+        if title_visible && !title_fill_owned {
             let style = theme.style_with_work_meter(
                 ThemeTarget::Title,
                 ThemeVariant::Default,
@@ -316,7 +311,7 @@ impl RequirementPaintThemePlan {
                 UnsupportedTerminalDomain::direct(
                     ThemeTarget::Title,
                     TerminalVariantDomain::uniform(
-                        usize::from(title_present),
+                        usize::from(title_visible),
                         ThemeVariant::Default,
                     ),
                 )
@@ -698,6 +693,7 @@ pub(crate) struct RequirementPaintThemeReceipt {
     checkpointed_nodes: Vec<bool>,
     expected_title_count: usize,
     emitted_title_count: usize,
+    visible_title: bool,
     title_matches: bool,
     attributes_match: bool,
     paint_ledger: DirectPaintTerminalLedger,
@@ -709,10 +705,9 @@ pub(crate) struct RequirementPaintThemeReceipt {
     typography_font_family_verified: bool,
     typography_font_size_recorded: bool,
     typography_font_size_verified: bool,
-    visible_node_count: usize,
-    inherited_node_font_family: bool,
-    inherited_node_font_size: bool,
-    inherited_edge_typography: bool,
+    visible_label_text: bool,
+    inherited_font_family: bool,
+    inherited_font_size: bool,
     unverified_source_font_family: bool,
     unverified_source_font_size: bool,
 }
@@ -731,6 +726,7 @@ impl RequirementPaintThemeReceipt {
             expectations,
             expected_title_count: usize::from(title_present),
             emitted_title_count: 0,
+            visible_title: false,
             title_matches: true,
             attributes_match: true,
             paint_ledger: DirectPaintTerminalLedger::default(),
@@ -742,10 +738,9 @@ impl RequirementPaintThemeReceipt {
             typography_font_family_verified: false,
             typography_font_size_recorded: false,
             typography_font_size_verified: false,
-            visible_node_count: 0,
-            inherited_node_font_family: false,
-            inherited_node_font_size: false,
-            inherited_edge_typography: false,
+            visible_label_text: false,
+            inherited_font_family: false,
+            inherited_font_size: false,
             unverified_source_font_family: false,
             unverified_source_font_size: false,
         }
@@ -781,16 +776,46 @@ impl RequirementPaintThemeReceipt {
         self.typography_font_size_verified = emitted_font_size == self.expected_font_size.as_ref();
     }
 
-    pub(crate) fn record_title_text(&mut self, emitted_class: &str, text: &str) {
+    pub(crate) fn record_title_text(&mut self, emitted_class: &str, text: &str, visible: bool) {
         if text.trim().is_empty() {
             return;
         }
         self.emitted_title_count = self.emitted_title_count.saturating_add(1);
+        self.visible_title |= visible;
         self.title_matches &= emitted_class == "requirementDiagramTitleText";
     }
 
-    pub(crate) fn record_edge_text(&mut self, text: &str) {
-        self.inherited_edge_typography |= !text.trim().is_empty();
+    pub(crate) fn record_label_typography(
+        &mut self,
+        facts: &crate::text::VisibleTextStyleFacts,
+        source: &RequirementNodeTypography,
+        emitted_label_styles: &str,
+    ) {
+        if facts.parse_valid() && !facts.has_visible_runs() {
+            return;
+        }
+        self.visible_label_text = true;
+        if !self.font_family_requested && !self.font_size_requested {
+            return;
+        }
+        let verified = facts.parse_valid()
+            && facts.font_visibility_verified()
+            && source.matches_emitted_style(emitted_label_styles);
+        if facts.inherited_font_family_run_count() != 0 {
+            self.inherited_font_family |=
+                source.font_family_ownership() == CssFontFamilyOwnership::Inherited;
+            self.unverified_source_font_family |=
+                source.font_family_ownership() == CssFontFamilyOwnership::Unverified;
+        }
+        self.unverified_source_font_family |=
+            !verified || facts.unknown_font_family_run_count() != 0;
+        if facts.inherited_font_size_run_count() != 0 {
+            self.inherited_font_size |=
+                source.font_size_ownership() == CssFontSizeOwnership::Inherited;
+            self.unverified_source_font_size |=
+                source.font_size_ownership() == CssFontSizeOwnership::Unverified;
+        }
+        self.unverified_source_font_size |= !verified;
     }
 
     #[allow(
@@ -800,9 +825,6 @@ impl RequirementPaintThemeReceipt {
     pub(crate) fn record_checkpointed_node(
         &mut self,
         node_index: usize,
-        has_visible_text: bool,
-        source_typography: &RequirementNodeTypography,
-        emitted_label_styles: &str,
         source_owns_fill: bool,
         emitted_fill: Option<(usize, &str)>,
         terminal_fill: &str,
@@ -822,22 +844,6 @@ impl RequirementPaintThemeReceipt {
             return;
         }
         *checkpointed = true;
-        let has_visible_text = has_visible_text && !source_typography.has_zero_font_size();
-        if has_visible_text {
-            self.visible_node_count = self.visible_node_count.saturating_add(1);
-        }
-        if has_visible_text && (self.font_family_requested || self.font_size_requested) {
-            let matches_emission = source_typography.matches_emitted_style(emitted_label_styles);
-            self.inherited_node_font_family |=
-                source_typography.font_family_ownership() == CssFontFamilyOwnership::Inherited;
-            self.inherited_node_font_size |=
-                source_typography.font_size_ownership() == CssFontSizeOwnership::Inherited;
-            self.unverified_source_font_family |= !matches_emission
-                || source_typography.font_family_ownership() == CssFontFamilyOwnership::Unverified;
-            self.unverified_source_font_size |= !matches_emission
-                || source_typography.font_size_ownership() == CssFontSizeOwnership::Unverified;
-        }
-
         let Some(expectation) = self.expectations.get(node_index) else {
             self.attributes_match = false;
             return;
@@ -904,21 +910,15 @@ impl RequirementPaintThemeReceipt {
     }
 
     fn has_visible_text(&self) -> bool {
-        self.visible_node_count != 0
-            || self.emitted_title_count != 0
-            || self.inherited_edge_typography
+        self.visible_label_text || self.visible_title
     }
 
     fn has_inherited_font_family_terminal(&self) -> bool {
-        self.inherited_node_font_family
-            || self.inherited_edge_typography
-            || self.emitted_title_count != 0
+        self.inherited_font_family || self.visible_title
     }
 
     fn has_inherited_font_size_terminal(&self) -> bool {
-        self.inherited_node_font_size
-            || self.inherited_edge_typography
-            || self.emitted_title_count != 0
+        self.inherited_font_size || self.visible_title
     }
 
     fn has_effective_rule(&self, rule_index: usize) -> bool {
@@ -1095,10 +1095,26 @@ mod tests {
 
     #[test]
     fn visible_edge_text_remains_applicable_without_visible_node_text() {
-        let mut receipt = stroke_receipt();
-        receipt.record_edge_text(" ");
+        let mut receipt = RequirementPaintThemeReceipt::with_typography(
+            Vec::new().into(),
+            false,
+            true,
+            true,
+            "",
+            "16px",
+        );
+        let source = RequirementNodeTypography::default();
+        receipt.record_label_typography(
+            &crate::text::VisibleTextStyleFacts::plain_text(" "),
+            &source,
+            "",
+        );
         assert!(!receipt.has_visible_text());
-        receipt.record_edge_text("satisfies");
+        receipt.record_label_typography(
+            &crate::text::VisibleTextStyleFacts::plain_text("satisfies"),
+            &source,
+            "",
+        );
         assert!(receipt.has_visible_text());
         assert!(receipt.has_inherited_font_family_terminal());
         assert!(receipt.has_inherited_font_size_terminal());
@@ -1109,9 +1125,6 @@ mod tests {
         let mut receipt = stroke_receipt();
         receipt.record_checkpointed_node(
             0,
-            true,
-            &RequirementNodeTypography::default(),
-            "",
             false,
             None,
             "#ececff",
@@ -1169,9 +1182,6 @@ mod tests {
         receipt.record_checkpointed_node(
             0,
             false,
-            &RequirementNodeTypography::default(),
-            "",
-            false,
             None,
             "#ececff",
             false,
@@ -1207,9 +1217,6 @@ mod tests {
             let mut receipt = stroke_receipt();
             receipt.record_checkpointed_node(
                 0,
-                true,
-                &RequirementNodeTypography::default(),
-                "",
                 false,
                 None,
                 "#ececff",
@@ -1236,9 +1243,6 @@ mod tests {
         )];
         receipt.record_checkpointed_node(
             0,
-            true,
-            &RequirementNodeTypography::default(),
-            "",
             false,
             None,
             "#ececff",

@@ -433,7 +433,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 &mut out,
                 r#"<text id="{id}" font-size="{fs}" x="{x}" y="{y}""#,
                 id = escape_attr(&gantt_dom_id(diagram_id, &t.label.id)),
-                fs = fmt(t.label.font_size),
+                fs = escape_attr(task_theme.css_binding().task_font_size.css()),
                 x = fmt(t.label.x),
                 y = fmt(t.label.y),
             );
@@ -483,7 +483,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 dy = fmt(st.dy_em),
                 x = fmt(st.x),
                 y = fmt(st.y),
-                fs = fmt(layout.section_font_size),
+                fs = escape_attr(task_theme.css_binding().section_font_size.css()),
                 cls = escape_attr(&st.class),
             );
             out.checkpoint()?;
@@ -509,7 +509,7 @@ pub(crate) fn render_gantt_diagram_svg_model(
             out.checkpoint()?;
             if let Some(receipt) = task_theme_receipt.as_mut() {
                 for line in &st.lines {
-                    receipt.record_section_title_text(line);
+                    receipt.record_section_title_text(line, &st.class);
                 }
             }
         }

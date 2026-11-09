@@ -15,7 +15,7 @@ use merman_model::families::gantt::{GanttDiagramRenderModel, GanttRenderTask};
 mod task_bar;
 mod theme;
 use task_bar::GanttTaskBarState;
-pub(crate) use theme::{GanttTaskTheme, GanttTaskThemeReceipt};
+pub(crate) use theme::{GanttTaskTheme, GanttTaskThemeReceipt, unsupported_native_font_size};
 
 // Mermaid falls back to 1200 only when the parent element exposes no `offsetWidth`.
 const DEFAULT_CONTAINER_WIDTH: f64 = 1200.0;
@@ -1157,8 +1157,11 @@ pub(crate) fn layout_gantt_diagram_typed(
     let right_padding = cfg_f64(gantt_cfg, &["rightPadding"]).unwrap_or(75.0);
     let grid_line_start_padding = cfg_f64(gantt_cfg, &["gridLineStartPadding"]).unwrap_or(35.0);
     let title_top_margin = cfg_f64(gantt_cfg, &["titleTopMargin"]).unwrap_or(25.0);
-    let font_size = task_theme.css_binding().task_font_size;
-    let section_font_size = task_theme.css_binding().section_font_size;
+    let font_size = task_theme.css_binding().task_font_size.measurement_px();
+    let section_font_size = task_theme.css_binding().section_font_size.measurement_px();
+    // Mermaid's baseline arithmetic uses the numeric option even when an invalid
+    // negative font-size attribute inherits a different used size for its glyphs.
+    let baseline_font_size = cfg_f64(gantt_cfg, &["fontSize"]).unwrap_or(11.0);
     let number_section_styles = cfg_i64(gantt_cfg, &["numberSectionStyles"]).unwrap_or(4);
 
     let cfg_display_mode = gantt_cfg
@@ -1476,7 +1479,7 @@ pub(crate) fn layout_gantt_diagram_typed(
         let label_y = if t.vert {
             grid_line_start_padding + row_task_count as f64 * gap + 60.0
         } else {
-            t.order as f64 * gap + bar_height / 2.0 + (font_size / 2.0 - 2.0) + top_padding
+            t.order as f64 * gap + bar_height / 2.0 + (baseline_font_size / 2.0 - 2.0) + top_padding
         };
 
         let base_classes = if t.classes.is_empty() {

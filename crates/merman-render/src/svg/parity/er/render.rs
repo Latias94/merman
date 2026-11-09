@@ -156,24 +156,8 @@ fn write_er_style_with_font_family(
     Ok(())
 }
 
-fn er_subgraph_label_fragment(subgraph: &crate::er::ErSubgraph) -> String {
-    if subgraph.label_type == "string" || subgraph.label_type == "text" {
-        escape_xml(&subgraph.title)
-    } else {
-        crate::text::mermaid_markdown_to_xhtml_label_fragment(&subgraph.title, true)
-    }
-}
-
-fn write_er_svg_box_label(out: &mut impl SvgOutput, label: &crate::er::ErBoxLabel, style: &str) {
-    if let Some(markup) = label.svg_markup() {
-        out.push_str(markup);
-    } else {
-        crate::svg::parity::label::write_svg_text_markdown_from_create_text_source_with_style(
-            out,
-            label.svg_text_source(),
-            Some(style),
-        );
-    }
+fn write_er_svg_box_label(out: &mut impl SvgOutput, label: &crate::er::ErBoxLabel) {
+    out.push_str(label.svg_markup());
 }
 
 impl crate::er::ErBoxLabel {
@@ -337,7 +321,12 @@ fn render_er_subgraph_cluster(
         fmt(height),
     );
     if context.use_html_labels {
-        let title_fragment = er_subgraph_label_fragment(subgraph);
+        let prepared = context
+            .theme
+            .html_subgraph_label(&subgraph.id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("ER prepared HTML title is missing subgraph {}", subgraph.id),
+            })?;
         let _ = write!(
             out,
             r#"<g class="cluster-label" transform="translate({}, {})"><foreignObject x="{}" y="{}" width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="display: table-cell; white-space: nowrap; line-height: 1.5; text-align: center;"><span class="nodeLabel" {}>{}</span></div></foreignObject></g>"#,
@@ -348,8 +337,11 @@ fn render_er_subgraph_cluster(
             fmt(title_width),
             fmt(title_height),
             text_style_attr,
-            title_fragment,
+            prepared.fragment(),
         );
+        if context.record_text {
+            receipt.record_html_subgraph_label(&subgraph.id);
+        }
     } else {
         let _ = write!(
             out,
@@ -376,8 +368,10 @@ fn render_er_subgraph_cluster(
             );
         }
         if context.record_text {
-            receipt
-                .record_subgraph_label(&subgraph.id, &crate::er::subgraph_svg_text_facts(subgraph));
+            receipt.record_subgraph_label(
+                &subgraph.id,
+                &crate::er::subgraph_svg_text_facts(subgraph, context.label_style.font_size),
+            );
         }
         out.push_str("</g>");
     }
@@ -1481,7 +1475,6 @@ pub(crate) fn render_er_diagram_svg_model(
         let visual = &source_style.visual;
         let source_label_style =
             source_style.label_style(matches!(entity_wrap_mode, crate::text::WrapMode::HtmlLike));
-        let svg_text_style = source_style.label_style_css(false);
         let label_div_style_prefix = format!(
             "{}{}",
             visual.label_div_color_prefix, visual.label_div_typography_prefix,
@@ -1596,7 +1589,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(-lw / 2.0),
                 );
                 write_er_svg_label_background(&mut out);
-                write_er_svg_box_label(&mut out, &measure.label, &svg_text_style);
+                write_er_svg_box_label(&mut out, &measure.label);
                 out.push_str("</g></g>");
             }
             out.push_str("</g>");
@@ -1844,7 +1837,7 @@ pub(crate) fn render_er_diagram_svg_model(
                 fmt(name_y),
                 entity_name_style_attr,
             );
-            write_er_svg_box_label(&mut out, &measure.label, &svg_text_style);
+            write_er_svg_box_label(&mut out, &measure.label);
             out.push_str("</g>");
         }
         out.checkpoint()?;
@@ -1935,7 +1928,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     type_style_attr,
                 );
-                write_er_svg_box_label(&mut out, &row.type_label, &svg_text_style);
+                write_er_svg_box_label(&mut out, &row.type_label);
                 out.push_str("</g>");
             }
 
@@ -1965,7 +1958,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     name_style_attr,
                 );
-                write_er_svg_box_label(&mut out, &row.name_label, &svg_text_style);
+                write_er_svg_box_label(&mut out, &row.name_label);
                 out.push_str("</g>");
             }
 
@@ -1995,7 +1988,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     keys_style_attr,
                 );
-                write_er_svg_box_label(&mut out, &row.key_label, &svg_text_style);
+                write_er_svg_box_label(&mut out, &row.key_label);
                 out.push_str("</g>");
             }
 
@@ -2025,7 +2018,7 @@ pub(crate) fn render_er_diagram_svg_model(
                     fmt(cell_y),
                     comment_style_attr,
                 );
-                write_er_svg_box_label(&mut out, &row.comment_label, &svg_text_style);
+                write_er_svg_box_label(&mut out, &row.comment_label);
                 out.push_str("</g>");
             }
 
@@ -2277,7 +2270,7 @@ mod tests {
                 settings.entity_measurement,
             );
             let mut actual = String::new();
-            super::write_er_svg_box_label(&mut actual, &measured.label, "");
+            super::write_er_svg_box_label(&mut actual, &measured.label);
             let mut previous = String::new();
             crate::svg::parity::label::write_svg_text_markdown_from_create_text_source(
                 &mut previous,

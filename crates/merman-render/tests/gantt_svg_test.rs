@@ -23,8 +23,8 @@ use merman_render::resources::{
 };
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 use merman_render::text::{TextMeasurer, TextMetrics, TextStyle};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 
 fn layout_gantt_from_text(text: &str) -> GanttDiagramLayout {
     layout_gantt_from_text_at_container_width(text, LayoutOptions::default().container_width)
@@ -1793,6 +1793,374 @@ fn gantt_zero_size_tasks_preserve_fixed_size_font_consumers() {
         assert_eq!(evidence.applied_count(), applied, "{role}");
         assert_eq!(evidence.not_applicable_count(), 1 - applied, "{role}");
         assert_eq!(evidence.theme_residual_count(), 0, "{role}");
+    }
+}
+
+#[test]
+fn gantt_section_font_attributes_preserve_css_and_used_size_visibility() {
+    let theme = gantt_title_fill_theme(CanvasPaint::solid("#123456").unwrap(), None);
+    for (root, raw, visible) in [
+        (24, "0em", false),
+        (24, "24px", true),
+        (24, "24pt", true),
+        (24, "2em", true),
+        (0, "2em", false),
+        (0, "50%", false),
+        (0, "inherit", false),
+        (0, "11px", true),
+        (0, ".5px", true),
+        (24, "-1px", true),
+        (0, "-1px", false),
+    ] {
+        let config = serde_json::json!({
+            "themeVariables": {"fontSize": format!("{root}px")},
+            "gantt": {"fontSize": 0, "sectionFontSize": raw, "tickInterval": "1month"}
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection Work\nShip: a, 2024-01-02, 1d\n"
+        );
+        let (parsed, options, session) = prepare_gantt_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&parsed, &options, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let section = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some("sectionTitle sectionTitle0"))
+            .unwrap();
+        assert_eq!(
+            section.attribute("font-size"),
+            Some(raw),
+            "root={root}, {raw}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(visible),
+            "root={root}, {raw}"
+        );
+        assert_eq!(evidence.not_applicable_count(), usize::from(!visible));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+struct GanttUsedFontSizeMeasurer {
+    sizes: Arc<Mutex<Vec<f64>>>,
+}
+
+impl TextMeasurer for GanttUsedFontSizeMeasurer {
+    fn measure(&self, _text: &str, _style: &TextStyle) -> TextMetrics {
+        panic!("Gantt labels must use the raw SVG bbox measurement")
+    }
+
+    fn measure_svg_raw_text_bbox_width_px(&self, _text: &str, style: &TextStyle) -> f64 {
+        self.sizes.lock().unwrap().push(style.font_size);
+        style.font_size
+    }
+}
+
+#[test]
+fn gantt_task_font_attributes_share_used_sizes_with_measurement_and_receipts() {
+    let theme = gantt_task_rule_theme(ThemeRule::new(
+        ThemeTarget::TaskLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+    ));
+    for (root, value, raw, used) in [
+        (24, serde_json::json!(-1), "-1", 24.0),
+        (0, serde_json::json!(-1), "-1", 0.0),
+        (24, serde_json::json!("-1"), "-1", 24.0),
+        (0, serde_json::json!("-1"), "-1", 0.0),
+        (24, serde_json::json!(0), "0", 0.0),
+        (0, serde_json::json!("13"), "13", 13.0),
+        (24, serde_json::json!("-1em"), "11", 11.0),
+        (0, serde_json::json!("-1em"), "11", 11.0),
+        (24, serde_json::json!("0em"), "11", 11.0),
+        (0, serde_json::json!(".5px"), "11", 11.0),
+        (0, serde_json::json!("24pt"), "11", 11.0),
+        (24, serde_json::json!("2em"), "11", 11.0),
+        (0, serde_json::json!("2em"), "11", 11.0),
+        (24, serde_json::json!("50%"), "11", 11.0),
+        (24, serde_json::json!("1rem"), "11", 11.0),
+    ] {
+        let config = serde_json::json!({
+            "themeVariables": {"fontSize": format!("{root}px")},
+            "gantt": {"fontSize": value, "sectionFontSize": 0, "tickInterval": "1month"}
+        });
+        let source = format!(
+            "---\nconfig: {config}\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nShip: a, 2024-01-02, 1d\n"
+        );
+        let sizes = Arc::new(Mutex::new(Vec::new()));
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.gantt-used-font-size").unwrap(),
+                "v1",
+            )
+            .unwrap(),
+            Arc::new(GanttUsedFontSizeMeasurer {
+                sizes: Arc::clone(&sizes),
+            }),
+        );
+        let environment = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+        let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::default())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let rendered = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            environment.begin_session_with_theme(&theme).unwrap(),
+        )
+        .unwrap()
+        .render_svg(
+            &SvgRenderOptions {
+                diagram_id: Some("gantt-used".to_owned()),
+                ..SvgRenderOptions::default()
+            },
+            &SvgDebugOptions::default(),
+        )
+        .unwrap();
+        assert_eq!(*sizes.lock().unwrap(), vec![used], "root={root}, {raw}");
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("gantt-used-a-text"))
+            .unwrap();
+        assert_eq!(label.attribute("font-size"), Some(raw));
+        let expected_y = match raw {
+            "-1" => "57.5",
+            "0" => "58",
+            "13" => "64.5",
+            "11" => "63.5",
+            _ => unreachable!(),
+        };
+        assert_eq!(label.attribute("y"), Some(expected_y));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(used > 0.0),
+            "root={root}, {raw}"
+        );
+        assert_eq!(evidence.not_applicable_count(), usize::from(used == 0.0));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_unknown_section_sizes_cannot_certify_title_fill_or_font_stack() {
+    for theme in [
+        gantt_title_fill_theme(CanvasPaint::solid("#123456").unwrap(), None),
+        gantt_font_stack_theme(FontStack::single("monospace").unwrap()),
+    ] {
+        for raw in ["1rem", "calc(0px)", "1ex"] {
+            for heading in ["", "title Release\n"] {
+                let config = serde_json::json!({
+                    "themeVariables": {"fontSize": "0px"},
+                    "gantt": {"fontSize": 0, "sectionFontSize": raw, "tickInterval": "1month"}
+                });
+                let source = format!(
+                    "---\nconfig: {config}\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n{heading}section Work\nShip: a, 2024-01-02, 1d\n"
+                );
+                let (parsed, options, _) = prepare_gantt_family_with_theme(&source, &theme);
+                for portability in [
+                    ThemePortabilityRequirement::BestEffort,
+                    ThemePortabilityRequirement::RequirePortable,
+                ] {
+                    let session = RenderEnvironment::deterministic()
+                        .with_theme_portability_requirement(portability)
+                        .begin_session_with_theme(&theme)
+                        .unwrap();
+                    let result = family::prepare(&parsed, &options, session)
+                        .unwrap()
+                        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+                    if portability == ThemePortabilityRequirement::RequirePortable {
+                        assert_eq!(
+                            result.err().unwrap().unverified_family_theme(),
+                            Some((merman_render::DiagramFamilyId::GANTT, 1)),
+                            "{raw}, heading={heading}"
+                        );
+                        continue;
+                    }
+                    let rendered = result.unwrap();
+                    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                    let section = document
+                        .descendants()
+                        .find(|node| node.attribute("class") == Some("sectionTitle sectionTitle0"))
+                        .unwrap();
+                    assert_eq!(section.attribute("font-size"), Some(raw));
+                    let evidence = merman_render::__private::family_evidence(
+                        rendered.into_completion().report(),
+                    );
+                    assert_eq!(evidence.required_count(), 1);
+                    assert_eq!(evidence.accounted_count(), 1);
+                    assert_eq!(evidence.applied_count(), 0, "{raw}, heading={heading}");
+                    assert_eq!(evidence.not_applicable_count(), 0);
+                    assert_eq!(evidence.theme_residual_count(), 1);
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn gantt_unused_unknown_section_sizes_preserve_empty_and_fixed_size_domains() {
+    for (theme, is_font_stack) in [
+        (
+            gantt_title_fill_theme(CanvasPaint::solid("#123456").unwrap(), None),
+            false,
+        ),
+        (
+            gantt_font_stack_theme(FontStack::single("monospace").unwrap()),
+            true,
+        ),
+    ] {
+        for (section, tasks, applied) in [
+            ("Unused", "", 0),
+            ("<br><BR />", "Ship: a, 2024-01-02, 1d\n", 0),
+            ("Work", "Marker: vert, v, 2024-01-02, 0d\n", 1),
+        ] {
+            let source = format!(
+                "---\nconfig:\n  gantt:\n    fontSize: 0\n    sectionFontSize: 1rem\n    tickInterval: 1month\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\nsection {section}\n{tasks}"
+            );
+            let (parsed, options, _) = prepare_gantt_family_with_theme(&source, &theme);
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let expected_applied = if is_font_stack { applied } else { 0 };
+            assert_eq!(evidence.applied_count(), expected_applied, "{section}");
+            assert_eq!(evidence.not_applicable_count(), 1 - expected_applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn gantt_title_fill_requires_a_matching_section_title_class() {
+    let theme = gantt_title_fill_theme(CanvasPaint::solid("#123456").unwrap(), None);
+    for (styles, heading, class, applied) in [
+        (0, "", "sectionTitle sectionTitleNaN", false),
+        (0, "title Release\n", "sectionTitle sectionTitleNaN", true),
+        (4, "", "sectionTitle sectionTitle0", true),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  gantt:\n    numberSectionStyles: {styles}\n---\ngantt\n{heading}dateFormat YYYY-MM-DD\ntodayMarker off\nsection Work\nShip: a, 2024-01-02, 1d\n"
+        );
+        let (parsed, options, session) = prepare_gantt_family_with_theme(&source, &theme);
+        let rendered = family::prepare(&parsed, &options, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let section = document
+            .descendants()
+            .find(|node| node.attribute("class") == Some(class))
+            .unwrap();
+        assert_eq!(section.attribute("style"), None);
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        assert!(css.contains(".sectionTitle0{fill:#123456;}"));
+        assert!(!css.contains(".sectionTitleNaN{fill:#123456;}"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(applied));
+        assert_eq!(evidence.not_applicable_count(), usize::from(!applied));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn gantt_text_typography_waits_for_its_visible_task_or_axis_consumers() {
+    let task = "Ship: a, 2024-01-02, 1d\n";
+    let marker = "Marker: vert, v, 2024-01-02, 0d\n";
+    for (case, task_size, section_size, interval, heading, tasks, visible) in [
+        ("empty", 0, 0, "1month", "", "", false),
+        ("hidden", 0, 0, "1month", "", task, false),
+        ("title-only", 0, 0, "1month", "title Release\n", task, false),
+        (
+            "section-only",
+            0,
+            11,
+            "1month",
+            "section Work\n",
+            task,
+            false,
+        ),
+        ("axis-only", 0, 0, "1day", "", task, true),
+        ("task-only", 11, 0, "1month", "", task, true),
+        ("vertical", 0, 0, "1month", "", marker, true),
+    ] {
+        for clear in [false, true] {
+            let mut patch = ThemeStylePatch::default();
+            patch.typography.font_size_px = if clear {
+                Specified::Clear
+            } else {
+                Specified::Value(31.0)
+            };
+            let theme = gantt_task_rule_theme(ThemeRule::new(ThemeTarget::Text, patch));
+            let config = serde_json::json!({
+                "themeVariables": {"fontSize": "0px"},
+                "gantt": {"fontSize": task_size, "sectionFontSize": section_size, "tickInterval": interval}
+            });
+            let source = format!(
+                "---\nconfig: {config}\n---\ngantt\ndateFormat YYYY-MM-DD\ntodayMarker off\n{heading}{tasks}"
+            );
+            let (parsed, options, _) = prepare_gantt_family_with_theme(&source, &theme);
+            for portability in [
+                ThemePortabilityRequirement::BestEffort,
+                ThemePortabilityRequirement::RequirePortable,
+            ] {
+                let session = RenderEnvironment::deterministic()
+                    .with_theme_portability_requirement(portability)
+                    .begin_session_with_theme(&theme)
+                    .unwrap();
+                let result = family::prepare(&parsed, &options, session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+                if visible && portability == ThemePortabilityRequirement::RequirePortable {
+                    assert_eq!(
+                        result.err().unwrap().unverified_family_theme(),
+                        Some((merman_render::DiagramFamilyId::GANTT, 1)),
+                        "{case}, clear={clear}"
+                    );
+                    continue;
+                }
+                let rendered = result.unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let has_ticks = document
+                    .descendants()
+                    .any(|node| node.attribute("class") == Some("tick"));
+                assert_eq!(has_ticks, case == "axis-only", "{case}");
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1, "{case}");
+                assert_eq!(evidence.accounted_count(), 1, "{case}");
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(visible),
+                    "{case}"
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!visible),
+                    "{case}"
+                );
+            }
+        }
     }
 }
 

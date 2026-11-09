@@ -63,6 +63,7 @@ pub(crate) use css_font::{
     ParsedCssFontStack, parse_css_font_stack, resolve_css_font_weight, xhtml_font_default,
 };
 pub(crate) use visible_style::VisibleTextStyleFacts;
+pub(crate) use visible_style::visible_text_font_size_after_style;
 
 pub(crate) use svg_metrics::{
     svg_text_vertical_extents_px, svg_title_bbox_vertical_extents_px,

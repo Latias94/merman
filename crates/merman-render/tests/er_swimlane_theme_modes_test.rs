@@ -87,3 +87,224 @@ fn er_swimlane_source_fonts_follow_each_groups_actual_html_mode() {
         }
     }
 }
+
+fn render_subgraph_typography(
+    source: &str,
+    spec: DiagramThemeSpec,
+    requirement: ThemePortabilityRequirement,
+) -> Result<(String, [usize; 3]), merman_render::Error> {
+    let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(requirement)
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)?
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+    let svg = rendered.svg().to_owned();
+    let completion = rendered.into_completion();
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    Ok((
+        svg,
+        [
+            evidence.applied_count(),
+            evidence.not_applicable_count(),
+            evidence.theme_residual_count(),
+        ],
+    ))
+}
+
+#[test]
+fn er_html_subgraph_titles_consume_fonts_when_entity_text_is_zero_sized() {
+    for (nested, restored) in [(false, false), (false, true), (true, true)] {
+        let title = if restored {
+            "<span style='font-size:20px'>Visible lane</span>"
+        } else {
+            "Visible lane"
+        };
+        let lane = format!("subgraph Lane[\"{title}\"]\nA\nend\n");
+        let groups = if nested {
+            format!("subgraph Outer[Hidden outer]\n{lane}end\n")
+        } else {
+            lane
+        };
+        let source = format!(
+            "---\nconfig: {}\n---\nerDiagram\n{groups}style A font-size:0px\n",
+            json!({"layout": "swimlane", "htmlLabels": nested,
+                "flowchart": {"htmlLabels": !nested},
+                "themeVariables": {"fontSize": if restored { "0px" } else { "16px" }}}),
+        );
+        let spec = DiagramThemeSpec::new().with_typography(
+            TypographySpec::default().with_family_style(
+                DiagramFamilyId::ER,
+                ThemeTextStyle::default()
+                    .with_font_stack(FontStack::single("TypedFace").unwrap())
+                    .with_font_weight(600)
+                    .unwrap(),
+            ),
+        );
+        let (svg, evidence) = render_subgraph_typography(
+            &source,
+            spec.clone(),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert_eq!(evidence, [1, 0, 1], "nested={nested}, restored={restored}");
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let lane = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-Lane"))
+            .unwrap();
+        assert!(
+            lane.descendants()
+                .any(|node| node.has_tag_name("foreignObject"))
+        );
+        assert!(
+            lane.descendants()
+                .any(|node| node.text() == Some("Visible lane"))
+        );
+        assert!(svg.contains("font-family:TypedFace;"));
+        let error =
+            render_subgraph_typography(&source, spec, ThemePortabilityRequirement::RequirePortable)
+                .unwrap_err();
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::ER, 1))
+        );
+    }
+}
+
+#[test]
+fn er_html_subgraph_source_fonts_only_own_potentially_visible_title_runs() {
+    for (root, flowchart, styled_group) in [(false, true, "Outer"), (true, false, "Inner")] {
+        for (size, title, visible) in [
+            ("0px", "Hidden title", false),
+            (
+                "0px",
+                "<span style='font-size:20px'>Restored title</span>",
+                true,
+            ),
+            ("var(--host-size)", "Possible title", true),
+        ] {
+            let source = format!(
+                "---\nconfig: {}\n---\nerDiagram\nsubgraph Outer[\"{}\"]\nsubgraph Inner[\"{}\"]\nA\nend\nend\nstyle {styled_group} font-size:{size},font-family:Other\n",
+                json!({"layout": "swimlane", "htmlLabels": root,
+                    "flowchart": {"htmlLabels": flowchart}}),
+                if styled_group == "Outer" {
+                    title
+                } else {
+                    "Outer title"
+                },
+                if styled_group == "Inner" {
+                    title
+                } else {
+                    "Inner title"
+                },
+            );
+            let spec = DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    DiagramFamilyId::ER,
+                    ThemeTextStyle::default()
+                        .with_font_stack(FontStack::single("TypedFace").unwrap())
+                        .with_font_size_px(24.0)
+                        .unwrap(),
+                ),
+            );
+            let (svg, evidence) = render_subgraph_typography(
+                &source,
+                spec.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert_eq!(
+                evidence,
+                if visible { [0, 0, 2] } else { [2, 0, 0] },
+                "{styled_group}: {size}, {title}"
+            );
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let dom_id = format!("merman-{styled_group}");
+            let group = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(dom_id.as_str()))
+                .unwrap();
+            assert!(group.descendants().any(|node| {
+                node.has_tag_name("span")
+                    && node.attribute("class") == Some("nodeLabel")
+                    && node.attribute("style").is_some_and(|style| {
+                        style.contains("font-family:Other !important")
+                            && style.contains(&format!("font-size:{size} !important"))
+                    })
+            }));
+            let portable = render_subgraph_typography(
+                &source,
+                spec,
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            if visible {
+                assert_eq!(
+                    portable.unwrap_err().unverified_family_theme(),
+                    Some((DiagramFamilyId::ER, 2))
+                );
+            } else {
+                assert_eq!(portable.unwrap().1, [2, 0, 0]);
+            }
+        }
+    }
+}
+
+#[test]
+fn er_html_subgraph_preparation_charges_its_retained_projection() {
+    use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
+    for config in [
+        json!({"layout": "dagre", "htmlLabels": true}),
+        json!({"layout": "swimlane", "htmlLabels": false,
+            "flowchart": {"htmlLabels": true}}),
+    ] {
+        let render = |title: &str, policy: RenderResourcePolicy| {
+            let source = format!(
+                "---\nconfig: {config}\n---\nerDiagram\nsubgraph Lane[\"{title}\"]\nA\nend\n"
+            );
+            let parsed = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let session = RenderEnvironment::deterministic()
+                .with_resource_policy(policy)
+                .begin_session()
+                .unwrap();
+            let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)?
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())?;
+            Ok::<_, merman_render::Error>(
+                rendered
+                    .into_completion()
+                    .report()
+                    .session_report()
+                    .prepared_text_retained_bytes_peak(),
+            )
+        };
+        let short_bytes =
+            render("short", RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();
+        let title = "&".repeat(2048);
+        let long_bytes =
+            render(&title, RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();
+        assert!(long_bytes > short_bytes + title.len(), "{config}");
+        let error = render(
+            &title,
+            RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxPreparedTextRetainedBytes, short_bytes)
+                .unwrap(),
+        )
+        .unwrap_err();
+        let merman_render::Error::ResourceLimitExceeded(error) = error else {
+            panic!("expected retained HTML-title byte rejection");
+        };
+        assert_eq!(error.limit, "max_prepared_text_retained_bytes");
+        assert_eq!(error.max, short_bytes);
+        assert!(error.actual > short_bytes);
+    }
+}

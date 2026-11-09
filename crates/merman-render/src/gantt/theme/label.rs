@@ -16,7 +16,8 @@ pub(super) struct GanttTaskLabelPlan {
     outside: Option<DirectStaticPaint>,
     state: Option<GanttTaskBarState>,
     source_owned: GanttTaskLabelSourceOwners,
-    winners: Vec<(usize, ResolvedStyleProperty)>,
+    inside_winners: Vec<(usize, ResolvedStyleProperty)>,
+    outside_winners: Vec<(usize, ResolvedStyleProperty)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -72,11 +73,14 @@ impl GanttTaskLabelPlan {
             &[ThemeTarget::Text],
             DirectStaticSelectorDomain::Default,
         );
-        let winners = inside_style
-            .winner_rule_properties()
-            .chain(outside_style.winner_rule_properties())
-            .map(|(property, origin)| (origin.rule_index(), property))
-            .collect();
+        let winners = |style: &crate::diagram_theme::ResolvedThemeStyle| {
+            style
+                .winner_rule_properties()
+                .map(|(property, origin)| (origin.rule_index(), property))
+                .collect()
+        };
+        let inside_winners = winners(&inside_style);
+        let outside_winners = winners(&outside_style);
         let owns = |path| config.config_paint_overrides_typed_default(path);
         let source_owned = GanttTaskLabelSourceOwners {
             ordinary: owns("themeVariables.taskTextColor"),
@@ -90,17 +94,38 @@ impl GanttTaskLabelPlan {
             outside,
             state: Some(state),
             source_owned,
-            winners,
+            inside_winners,
+            outside_winners,
         })
     }
 
     pub(super) fn winners(&self) -> impl Iterator<Item = (usize, ResolvedStyleProperty)> + '_ {
-        self.winners.iter().copied()
+        self.inside_winners
+            .iter()
+            .chain(&self.outside_winners)
+            .copied()
     }
 
     pub(super) fn typography_winner_rules(&self) -> impl Iterator<Item = usize> + '_ {
         self.winners().filter_map(|(rule_index, property)| {
             matches!(property, ResolvedStyleProperty::Typography(_)).then_some(rule_index)
+        })
+    }
+
+    pub(super) fn terminal_typography_winner_rules(
+        &self,
+        class: &str,
+    ) -> impl Iterator<Item = usize> + '_ {
+        let outside = class
+            .split_ascii_whitespace()
+            .any(|token| matches!(token, "taskTextOutsideLeft" | "taskTextOutsideRight"));
+        let winners = if outside {
+            &self.outside_winners
+        } else {
+            &self.inside_winners
+        };
+        winners.iter().filter_map(|(rule_index, property)| {
+            matches!(property, ResolvedStyleProperty::Typography(_)).then_some(*rule_index)
         })
     }
 
@@ -139,6 +164,54 @@ impl GanttTaskLabelPlan {
             self.outside.as_ref()
         } else {
             self.inside.as_ref()
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{
+        DiagramThemeCompiler, DiagramThemeSpec, Specified, ThemeRule, ThemeRuleSet, ThemeStylePatch,
+    };
+
+    #[test]
+    fn typography_receipts_follow_the_final_inside_or_outside_label_role() {
+        let mut generic = ThemeStylePatch::default();
+        generic.typography.font_size_px = Specified::Value(31.0);
+        let mut task = ThemeStylePatch::default();
+        task.typography.font_size_px = Specified::Value(40.0);
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(ThemeTarget::Text, generic))
+                        .with_rule(ThemeRule::new(ThemeTarget::TaskLabel, task)),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::GANTT);
+        let plan = GanttTaskLabelPlan::resolve(
+            &theme,
+            &PresentationConfig::empty_object(),
+            GanttTaskBarState::Default,
+            1,
+            &OperationWorkMeter::new(
+                crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
+            ),
+        )
+        .unwrap();
+        for (class, expected) in [
+            ("taskText taskText0", 1),
+            ("taskTextOutsideLeft taskTextOutside0", 0),
+            ("taskTextOutsideRight taskTextOutside0", 0),
+        ] {
+            assert_eq!(
+                plan.terminal_typography_winner_rules(class)
+                    .collect::<Vec<_>>(),
+                vec![expected],
+                "{class}"
+            );
         }
     }
 }

@@ -224,6 +224,14 @@ pub fn unsupported_native_text_style(
 ) -> OperationControlResult<Option<String>> {
     let control = control.for_phase(OperationPhase::Semantic);
     control.checkpoint()?;
+    #[cfg(feature = "diagram-gantt")]
+    if let RenderSemanticModel::Gantt(model) = parsed.model() {
+        return crate::gantt::unsupported_native_font_size(
+            model,
+            &parsed.metadata().effective_config,
+            &control,
+        );
+    }
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     if let RenderSemanticModel::Flowchart(model) = parsed.model() {
         let default_context = Default::default();

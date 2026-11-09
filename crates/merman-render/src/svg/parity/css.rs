@@ -550,6 +550,7 @@ impl PreparedCommonCss {
         feature = "diagram-journey",
         feature = "diagram-kanban",
         feature = "diagram-c4",
+        feature = "diagram-gantt",
         feature = "diagram-pie",
         feature = "diagram-requirement"
     ))]
@@ -588,7 +589,7 @@ impl PreparedCommonCss {
         );
         let font_size_css =
             crate::config::config_theme_font_size_css_or_root_number_px_opt(effective_config)
-                .map(|font_size| format!("{}px", fmt(font_size.max(1.0))))
+                .map(|font_size| format!("{}px", fmt(font_size)))
                 .unwrap_or_else(|| "16px".to_string());
 
         let mut values =
