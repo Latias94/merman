@@ -1,7 +1,8 @@
 use std::cell::RefCell;
 
 use crate::__private::{
-    NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits, NativeSvgShadowStage,
+    NativeSvgFilterApplication, NativeSvgFilterOutput, NativeSvgFilterReceipt,
+    NativeSvgFilterUnits, NativeSvgShadowStage,
 };
 
 use crate::diagram_theme::{SvgFilterRegion, SvgShadowEffect};
@@ -25,6 +26,36 @@ impl SvgShadowEvidenceRecorder {
         effect: &SvgShadowEffect,
         scoped_filter_id: &str,
         region: SvgFilterRegion,
+    ) {
+        self.record_output_application(
+            effect,
+            scoped_filter_id,
+            region,
+            NativeSvgFilterOutput::SourceAndShadow,
+        );
+    }
+
+    /// Records shadow-only depth; the family paints SourceGraphic separately.
+    pub(crate) fn record_depth_application(
+        &self,
+        effect: &SvgShadowEffect,
+        scoped_filter_id: &str,
+        region: SvgFilterRegion,
+    ) {
+        self.record_output_application(
+            effect,
+            scoped_filter_id,
+            region,
+            NativeSvgFilterOutput::ShadowOnly,
+        );
+    }
+
+    fn record_output_application(
+        &self,
+        effect: &SvgShadowEffect,
+        scoped_filter_id: &str,
+        region: SvgFilterRegion,
+        output: NativeSvgFilterOutput,
     ) {
         let stages = effect
             .stages()
@@ -55,6 +86,7 @@ impl SvgShadowEvidenceRecorder {
                 1,
             )
             .and_then(|application| application.with_composition(effect.composition()))
+            .map(|application| application.with_output(output))
         });
         let Some(application) = application else {
             self.state.borrow_mut().invalid = true;
@@ -125,6 +157,22 @@ mod tests {
         assert_eq!(receipt.drop_shadow_count(), 2);
         assert_eq!(receipt.reference_count(), 2);
         assert!(recorder.finish().is_none());
+    }
+
+    #[test]
+    fn depth_and_combined_applications_have_distinct_receipts() {
+        let effect = effect(0.0);
+        let region = SvgFilterRegion::try_bounded(-0.02, -0.05, 1.14, 1.4).unwrap();
+        let combined = SvgShadowEvidenceRecorder::default();
+        combined.record_application(&effect, "diagram-state-theme-effect-hard-shadow", region);
+        let depth = SvgShadowEvidenceRecorder::default();
+        depth.record_depth_application(&effect, "diagram-state-theme-effect-hard-shadow", region);
+        let combined = combined.finish().unwrap();
+        let depth = depth.finish().unwrap();
+        assert_ne!(combined, depth);
+        assert_eq!(combined.filter_count(), depth.filter_count());
+        assert_eq!(combined.drop_shadow_count(), depth.drop_shadow_count());
+        assert_eq!(combined.reference_count(), depth.reference_count());
     }
 
     #[test]

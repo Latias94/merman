@@ -162,6 +162,8 @@ fn render_state_diagram_svg_with_plan(
         edges: &model.edges,
         include_edges: options.debug.include_edges,
         include_nodes: options.debug.include_nodes,
+        has_node_shadows: options.debug.include_nodes
+            && style_plan.expected_native_filter_application_count() != 0,
         measurer,
         label_sidecar,
         effect_evidence,
@@ -739,6 +741,8 @@ fn render_state_root(
     out.push_str("</g>");
     drop(_g_clusters);
 
+    render_state_node_shadows(out, ctx, root, (origin_x, origin_y), effect_outsets)?;
+
     // edge paths
     let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
     out.push_str(if ctx.uses_elk_adapter_dom {
@@ -839,16 +843,7 @@ fn render_state_root(
             if state_leaf_context(ctx, id) != root {
                 continue;
             }
-            render_state_node_svg(
-                out,
-                ctx,
-                id,
-                origin_x,
-                origin_y,
-                timing,
-                details,
-                effect_outsets,
-            )?;
+            render_state_node_svg(out, ctx, id, origin_x, origin_y, timing, details)?;
             out.checkpoint()?;
         }
         if let Some(s) = leaf_start {
@@ -1283,7 +1278,11 @@ fn render_state_cluster(
             r#"<g>{}</g><g class="cluster-label" transform="translate({}, {})">{}</g>{}</g>"#,
             outer_shape,
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
-            fmt(y - 2.0),
+            fmt(if measured_title.is_some() {
+                y + 1.0
+            } else {
+                y - 2.0
+            }),
             title_dom,
             inner_shape
         );

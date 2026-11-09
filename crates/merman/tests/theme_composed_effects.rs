@@ -193,14 +193,7 @@ fn independent_red_and_blue_shadows_reach_svg_png_and_localized_pdf() {
                     .filter(|node| node.has_tag_name("feMergeNode"))
                     .map(|node| node.attribute("in").unwrap())
                     .collect();
-                assert_eq!(
-                    inputs,
-                    [
-                        "merman-shadow-0-shadow",
-                        "merman-shadow-1-shadow",
-                        "SourceGraphic"
-                    ]
-                );
+                assert_eq!(inputs, ["merman-shadow-0-shadow", "merman-shadow-1-shadow"]);
                 assert_eq!(
                     filter
                         .children()
@@ -369,7 +362,7 @@ fn assert_composed_shadows(source: &str, target: ThemeTarget, applications: u32)
 }
 
 #[test]
-fn shadow_writer_elides_only_srgb_identity_translations() {
+fn depth_writer_elides_identity_translations_in_both_color_spaces() {
     for offsets in [
         [[0.0, -0.0], [-0.0, 0.0]],
         [[0.0, 6.0], [0.0, 0.0]],
@@ -392,11 +385,7 @@ fn shadow_writer_elides_only_srgb_identity_translations() {
                 xml.descendants()
                     .filter(|node| node.has_tag_name("feOffset"))
                     .count(),
-                if color_space == EffectColorSpace::Srgb {
-                    translated * 2
-                } else {
-                    0
-                }
+                translated * 2
             );
             let png = document
                 .export_png(&Default::default(), OperationControl::new())
@@ -409,11 +398,7 @@ fn shadow_writer_elides_only_srgb_identity_translations() {
             assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
             assert_eq!(
                 png.export_report().conversion().filter_primitives,
-                if color_space == EffectColorSpace::Srgb {
-                    (8 + translated) * 2
-                } else {
-                    4
-                }
+                (8 + translated) * 2
             );
             for admission in [png.admission(), pdf.admission()] {
                 assert!(

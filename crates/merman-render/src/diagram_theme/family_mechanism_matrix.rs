@@ -939,6 +939,33 @@ pub(super) fn classify_rule_facet(
             return FamilyThemeDisposition::TypedAdapter;
         }
     }
+    // Sankey resolves and seals both node paints per terminal occurrence.
+    if family == DiagramFamilyId::SANKEY
+        && target == ThemeTarget::Node
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            } | FamilyThemeSelectorShape::Ordinal {
+                variant: None | Some(ThemeVariant::Default),
+                ..
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+                    | FamilyThemePaintKind::Clear
+            ) | FamilyThemeRuleFacet::Stroke(
+                FamilyThemePaintKind::Solid
+                    | FamilyThemePaintKind::Transparent
+                    | FamilyThemePaintKind::Clear
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
     if static_default {
         let scalar_fill =
             solid_fill || facet == FamilyThemeRuleFacet::Fill(FamilyThemePaintKind::Clear);
@@ -947,9 +974,6 @@ pub(super) fn classify_rule_facet(
         if (family == DiagramFamilyId::RADAR
             && ((target == ThemeTarget::Legend && scalar_fill)
                 || (target == ThemeTarget::ChartSeries && (scalar_fill || scalar_stroke))))
-            || (family == DiagramFamilyId::SANKEY
-                && target == ThemeTarget::Node
-                && (scalar_fill || scalar_stroke))
             || (family == DiagramFamilyId::TREEMAP
                 && ((target == ThemeTarget::Node && (solid_fill || solid_stroke))
                     || (target == ThemeTarget::NodeLabel && solid_fill)))

@@ -306,8 +306,8 @@ pub mod __private {
         unsupported_native_html_style, unsupported_native_text_style,
     };
     pub use crate::native_filter_receipt::{
-        NativeSvgFilterApplication, NativeSvgFilterReceipt, NativeSvgFilterUnits,
-        NativeSvgShadowStage,
+        NativeSvgFilterApplication, NativeSvgFilterOutput, NativeSvgFilterReceipt,
+        NativeSvgFilterUnits, NativeSvgShadowStage,
     };
     pub const MAX_NATIVE_SHADOW_STAGES: usize =
         crate::diagram_theme::MAX_EFFECT_PRIMITIVES_PER_GRAPH_HARD_CAP;

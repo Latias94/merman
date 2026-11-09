@@ -2387,6 +2387,7 @@ fn push_structural_node_class_declarations(
             {
                 SourceStyleChannel::Shape
             }
+            "filter" if compatibility.is_classic() => SourceStyleChannel::Shape,
             // HTML .node span matches the label itself. Native class styles target
             // shapes, so their font properties do not directly style a tspan.
             "font-family" | "font-size" | "font-weight" | "font-style" if html_labels => {
@@ -2482,21 +2483,6 @@ fn prepare_node(
     let shape_use = ordinal.zip(semantic_shape.as_ref()).map(|(_, style)| {
         theme_evidence.consume_shape_style(style, geometry_support, StateThemeSurface::Node)
     });
-    let effect = shape_use.and_then(|use_id| {
-        let theme = resolved_theme?;
-        let style = semantic_shape.as_ref()?;
-        let resolved = theme.resolve_effect(target, style.effect_resolution());
-        let surface_supported =
-            target == ThemeTarget::State && node.shape == "rect" && compatibility.is_classic();
-        theme_evidence.consume_effect(
-            use_id,
-            target,
-            style.effect_resolution(),
-            resolved,
-            surface_supported,
-            effects,
-        )
-    });
     let label_font_size_geometry = ordinal.is_some()
         && compatibility.html_labels()
         && (matches!(node.shape.as_str(), "rect" | "note" | "rectWithTitle")
@@ -2583,6 +2569,8 @@ fn prepare_node(
         theme_evidence
             .shadow_source_property(special_state_inner_use, ResolvedStyleProperty::StrokeWidth);
     }
+    let classic_state_body =
+        target == ThemeTarget::State && node.shape == "rect" && compatibility.is_classic();
     let mut shape_declarations = Vec::new();
     let mut label_declarations = Vec::new();
     // Ordinary leaves gain .node in the writer, independently of model class assignments.
@@ -2827,15 +2815,21 @@ fn prepare_node(
             ));
             continue;
         }
-        let accepted = apply_source_shape_property(
-            declaration,
-            &mut fill_override,
-            &mut stroke_override,
-            &mut stroke_width_override,
-            &mut radius_override,
-            &mut padding_override,
-            residuals,
-        );
+        let accepted = if classic_state_body && declaration.property() == "filter" {
+            // The prepared CSS value owns the same rect as the typed effect. URL values have
+            // already been rejected by the source-style parser and never reach this decision.
+            true
+        } else {
+            apply_source_shape_property(
+                declaration,
+                &mut fill_override,
+                &mut stroke_override,
+                &mut stroke_width_override,
+                &mut radius_override,
+                &mut padding_override,
+                residuals,
+            )
+        };
         if accepted {
             if let Some(kind) = source_style_theme_property(declaration.property())
                 && shadowed_shape_properties.insert(kind)
@@ -2862,6 +2856,39 @@ fn prepare_node(
             continue;
         }
     }
+
+    let effect = shape_use.and_then(|use_id| {
+        let theme = resolved_theme?;
+        let style = semantic_shape.as_ref()?;
+        // Native class rules target descendant rects through both scene ancestors. HTML
+        // rules target their direct child groups instead; filter is not inherited by the rect.
+        let ancestor_filter_owns_body = classic_state_body
+            && !compatibility.html_labels()
+            && ["root", "nodes"].iter().any(|class_id| {
+                classes.get(*class_id).is_some_and(|class| {
+                    class
+                        .styles
+                        .iter()
+                        .any(|(_, declaration)| declaration.property() == "filter")
+                })
+            });
+        if source_shape_emission.contains_key("filter") || ancestor_filter_owns_body {
+            // Resolve ownership before admitting a depth carrier that source class CSS could
+            // otherwise unfilter into a second visible body.
+            theme_evidence.suppress_effect_binding(target);
+            theme_evidence.shadow_source_property(Some(use_id), ResolvedStyleProperty::Effect);
+            return None;
+        }
+        let resolved = theme.resolve_effect(target, style.effect_resolution());
+        theme_evidence.consume_effect(
+            use_id,
+            target,
+            style.effect_resolution(),
+            resolved,
+            classic_state_body,
+            effects,
+        )
+    });
 
     let semantic_text_style = resolve_semantic_text_style(base_text_style, semantic_label.as_ref());
     if target == ThemeTarget::Composite
@@ -6112,6 +6139,155 @@ mod tests {
         assert!(evidence.not_applicable_mechanisms().contains(&binding_key));
         assert!(evidence.residuals().is_empty());
         assert!(evidence.applied_capabilities().is_empty());
+    }
+
+    #[test]
+    fn source_filters_supersede_effect_rules_and_bindings_per_node() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(hard_shadow_graph("shadow", 0.0))
+                            .unwrap()
+                            .with_binding(EffectBinding::new(ThemeTarget::State, "shadow").unwrap())
+                            .unwrap(),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::State,
+                                ThemeStylePatch::default().with_effect("shadow").unwrap(),
+                            )
+                            .with_ordinal(OrdinalSelector::exact(1).unwrap()),
+                        ),
+                    ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+        let binding_key = FamilyThemeMechanismKey::EffectBinding {
+            target: ThemeTarget::State,
+            effect_id: "shadow".to_string(),
+        };
+        for html_labels in [false, true] {
+            for origin in ["structural", "assigned", "inline", "root", "nodes"] {
+                let mut model = StateDiagramRenderModel::default();
+                let mut overridden = semantic_node("Overridden", "rect");
+                if origin == "inline" {
+                    overridden.css_styles.push("filter:none".to_string());
+                } else {
+                    let class_id = match origin {
+                        "structural" => "node",
+                        "root" | "nodes" => origin,
+                        _ => "filtered",
+                    };
+                    model.style_classes.insert(
+                        class_id.to_string(),
+                        StateStyleClass {
+                            id: class_id.to_string(),
+                            styles: vec!["filter:none".to_string()],
+                            text_styles: Vec::new(),
+                        },
+                    );
+                    if origin == "assigned" {
+                        overridden.css_classes = class_id.to_string();
+                    }
+                }
+                model.nodes.push(overridden);
+                model.nodes.push(semantic_node("Untouched", "rect"));
+                let (plan, evidence) = resolve_theme_plan_with_evidence(
+                    &model,
+                    &json!({ "look": "classic", "htmlLabels": html_labels }),
+                    &resolved,
+                    None,
+                );
+
+                let ancestor = matches!(origin, "root" | "nodes");
+                let overridden_has_effect = ancestor && html_labels;
+                assert_eq!(
+                    plan.node("Overridden").unwrap().effect().is_some(),
+                    overridden_has_effect,
+                );
+                assert_eq!(
+                    evidence.applied().contains(&rule_key),
+                    overridden_has_effect
+                );
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().contains(&rule_key),
+                    !overridden_has_effect,
+                );
+                let untouched_has_effect = if ancestor {
+                    html_labels
+                } else {
+                    origin != "structural"
+                };
+                assert_eq!(
+                    plan.node("Untouched").unwrap().effect().is_some(),
+                    untouched_has_effect,
+                );
+                assert_eq!(
+                    evidence.applied().contains(&binding_key),
+                    untouched_has_effect
+                );
+                assert_eq!(
+                    evidence.not_applicable_mechanisms().contains(&binding_key),
+                    !untouched_has_effect,
+                );
+                assert!(evidence.residuals().is_empty());
+                assert!(plan.residuals().is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn source_filter_preserves_other_properties_of_the_effect_rule() {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_effects(
+                        DiagramEffectSet::default()
+                            .with_graph(hard_shadow_graph("shadow", 0.0))
+                            .unwrap(),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            ThemeTarget::State,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#ef4444").unwrap())
+                                .with_effect("shadow")
+                                .unwrap(),
+                        )),
+                    ),
+            )
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::STATE);
+        let mut node = semantic_node("Ready", "rect");
+        node.css_styles.push("filter:none".to_string());
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(node);
+        let (plan, evidence) = resolve_theme_plan_with_evidence(
+            &model,
+            &json!({ "look": "classic" }),
+            &resolved,
+            None,
+        );
+
+        let node = plan.node("Ready").unwrap();
+        assert!(node.effect().is_none());
+        assert_eq!(node.fill_override(), Some("#ef4444"));
+        assert!(evidence.applied().contains(&FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        }));
+        assert_eq!(
+            evidence.applied_capabilities(),
+            BTreeSet::from([ThemeCapability::SolidPaint]),
+        );
+        assert!(evidence.residuals().is_empty());
     }
 
     #[test]

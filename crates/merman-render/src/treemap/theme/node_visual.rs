@@ -441,39 +441,10 @@ impl TreemapTypographyThemePlan {
                 leaf.css_compiled_styles.as_deref().unwrap_or_default(),
                 work,
             )?;
-            let (baseline, uses_text_color) = self.css.readable_leaf_label_fill(
-                &fill,
-                &source.node_styles,
-                labels.get(&leaf.name),
-            );
-            // Inline scale colors override the label/value stylesheet. Only the selected
-            // scale entry, or the readable transparent-cell fallback, owns this terminal.
-            let label_config_owns_fill = theme.is_some()
-                && if uses_text_color {
-                    config.get_str("themeVariables.textColor").is_some()
-                        && config.config_paint_overrides_typed_default("themeVariables.textColor")
-                } else {
-                    label_palette_source_owned(
-                        config,
-                        labels.domain.get(&leaf.name).copied().unwrap_or(0),
-                    )
-                };
-            let label_fill = self
-                .label_text_fill_css()
-                .filter(|_| !label_config_owns_fill)
-                .map_or_else(|| baseline.clone(), str::to_owned);
-            let value_fill = self
-                .value_text_fill_css()
-                .filter(|_| !label_config_owns_fill)
-                .map_or(baseline, str::to_owned);
             let mut visual = TreemapNodeVisual {
                 stroke: fill.clone(),
                 fill,
                 rect_style: source.node_styles,
-                fitted_label_fill: crate::svg::cssom_color_value(&label_fill),
-                fitted_value_fill: crate::svg::cssom_color_value(&value_fill),
-                label_fill,
-                value_fill,
                 label_styles_suffix: replace_first(&source.label_styles, "color:", "fill:"),
                 label_styles_without_font_size_suffix: replace_first(
                     &source.label_styles_without_font_size,
@@ -482,7 +453,6 @@ impl TreemapTypographyThemePlan {
                 ),
                 text_fill_ownership: source.text_fill_ownership,
                 text_fill_without_font_size_ownership: source.text_fill_without_font_size_ownership,
-                label_config_owns_fill,
                 ..Default::default()
             };
             node_ordinal += 1;
@@ -511,6 +481,33 @@ impl TreemapTypographyThemePlan {
                     node_ordinal,
                     fill_owner == TreemapTextFillOwnership::SourceOwned,
                 ));
+            }
+            let (baseline, uses_text_color) = self.css.readable_leaf_label_fill(
+                &visual.fill,
+                &visual.rect_style,
+                labels.get(&leaf.name),
+            );
+            visual.label_config_owns_fill = theme.is_some()
+                && if uses_text_color {
+                    config.get_str("themeVariables.textColor").is_some()
+                        && config.config_paint_overrides_typed_default("themeVariables.textColor")
+                } else {
+                    label_palette_source_owned(
+                        config,
+                        labels.domain.get(&leaf.name).copied().unwrap_or(0),
+                    )
+                };
+            visual.label_fill = self
+                .label_text_fill_css()
+                .filter(|_| !visual.label_config_owns_fill)
+                .map_or_else(|| baseline.clone(), str::to_owned);
+            visual.value_fill = self
+                .value_text_fill_css()
+                .filter(|_| !visual.label_config_owns_fill)
+                .map_or(baseline, str::to_owned);
+            visual.fitted_label_fill = crate::svg::cssom_color_value(&visual.label_fill);
+            visual.fitted_value_fill = crate::svg::cssom_color_value(&visual.value_fill);
+            if let Some(theme) = theme {
                 self.lower_node_label(theme, &mut visual, work)?;
             }
             retained = retained

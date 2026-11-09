@@ -142,7 +142,10 @@ impl<'a> NodeWrapperClasses<'a> {
     }
 }
 
-fn write_class_attr(out: &mut impl crate::svg::parity::SvgOutput, classes: NodeWrapperClasses<'_>) {
+pub(super) fn write_class_attr(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    classes: NodeWrapperClasses<'_>,
+) {
     classes.write(out);
 }
 

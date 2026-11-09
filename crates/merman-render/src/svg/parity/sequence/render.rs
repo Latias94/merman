@@ -293,6 +293,13 @@ pub(in crate::svg::parity) fn render_sequence_diagram_svg_model_with_config(
         )?;
         out.checkpoint()?;
 
+        super::actors::render_sequence_actor_depths(
+            &mut out,
+            &actor_ctx,
+            settings.mirror_actors,
+            options,
+        )?;
+
         if settings.mirror_actors {
             render_sequence_bottom_actors(&mut out, &actor_ctx)?;
             out.checkpoint()?;

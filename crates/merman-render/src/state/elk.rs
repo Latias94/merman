@@ -310,7 +310,7 @@ pub(super) fn layout(
                 title: source.label_text.clone().unwrap_or_default(),
                 title_label: LayoutLabel {
                     x: node.x,
-                    y: node.y - node.height / 2.0 + label.height / 2.0,
+                    y: node.y - node.height / 2.0 + 1.0 + label.height / 2.0,
                     width: label.width,
                     height: label.height,
                 },

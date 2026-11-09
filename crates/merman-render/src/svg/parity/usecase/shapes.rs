@@ -72,13 +72,66 @@ pub(super) struct UsecaseNodeRenderContext<'a> {
     pub(super) style: &'a str,
     pub(super) typed_style: Option<&'a UsecaseThemeStyle>,
     pub(super) receipt: &'a UsecaseThemeReceipt,
-    pub(super) shadow: Option<&'a theme::UsecaseBodyShadow<'a>>,
-    pub(super) effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,
     pub(super) css_binding: &'a crate::usecase::UsecaseCssBinding,
     pub(super) config: &'a merman_model::presentation::PresentationConfig,
     pub(super) measurer: &'a dyn TextMeasurer,
     pub(super) diagram_id: SvgDiagramId<'a>,
     pub(super) options: &'a SvgExecution<'a>,
+}
+
+/// The same body silhouette supplies the depth pass and the single foreground surface.
+pub(super) fn write_usecase_body(
+    out: &mut String,
+    node: &LayoutNode,
+    plan: &UsecaseNodePlan,
+    source: Option<&UsecaseNode>,
+    style: &str,
+) {
+    if plan.ellipse {
+        let business = source.is_some_and(|node| node.business);
+        let _ = write!(
+            out,
+            r#"<ellipse class="basic label-container{}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
+            if business {
+                " usecase-business-ellipse"
+            } else {
+                ""
+            },
+            fmt(node.width / 2.0),
+            fmt(node.height / 2.0),
+            escape_attr(style)
+        );
+        if business {
+            let (rx, ry) = (node.width / 2.0, node.height / 2.0);
+            let label_width = plan.label.metrics.width.max(
+                plan.stereotype
+                    .as_ref()
+                    .map_or(0.0, |label| label.metrics.width),
+            );
+            let (x1, x2) = (label_width / 2.0 + 2.0, rx - 2.0);
+            let y1 = ry * (1.0 - (x1 / rx).powi(2)).max(0.0).sqrt();
+            let y2 = -ry * (1.0 - (x2 / rx).powi(2)).max(0.0).sqrt();
+            let _ = write!(
+                out,
+                r#"<path class="usecase-business-marker" d="M {} {} L {} {}" fill="none" style="{}"/>"#,
+                fmt(x1),
+                fmt(y1),
+                fmt(x2),
+                fmt(y2),
+                escape_attr(style)
+            );
+        }
+    } else {
+        rect(
+            out,
+            "basic label-container",
+            -node.width / 2.0,
+            -node.height / 2.0,
+            node.width,
+            node.height,
+            style,
+        );
+    }
 }
 
 pub(super) fn write_node(
@@ -326,43 +379,8 @@ pub(super) fn write_node(
         }
         out.push_str("</g>");
     } else {
-        if let Some(shadow) = context.shadow {
-            theme::write_body_shadow_open(out, shadow);
-        }
         if plan.ellipse {
-            let business = context.source.is_some_and(|node| node.business);
-            let _ = write!(
-                out,
-                r#"<ellipse class="basic label-container{}" cx="0" cy="0" rx="{}" ry="{}" style="{}"/>"#,
-                if business {
-                    " usecase-business-ellipse"
-                } else {
-                    ""
-                },
-                fmt(node.width / 2.0),
-                fmt(node.height / 2.0),
-                escape_attr(context.style)
-            );
-            if business {
-                let (rx, ry) = (node.width / 2.0, node.height / 2.0);
-                let label_width = plan.label.metrics.width.max(
-                    plan.stereotype
-                        .as_ref()
-                        .map_or(0.0, |label| label.metrics.width),
-                );
-                let (x1, x2) = (label_width / 2.0 + 2.0, rx - 2.0);
-                let y1 = ry * (1.0 - (x1 / rx).powi(2)).max(0.0).sqrt();
-                let y2 = -ry * (1.0 - (x2 / rx).powi(2)).max(0.0).sqrt();
-                let _ = write!(
-                    out,
-                    r#"<path class="usecase-business-marker" d="M {} {} L {} {}" fill="none" style="{}"/>"#,
-                    fmt(x1),
-                    fmt(y1),
-                    fmt(x2),
-                    fmt(y2),
-                    escape_attr(context.style)
-                );
-            }
+            write_usecase_body(out, node, plan, context.source, context.style);
         } else if context.note {
             // note.ts uses a RoughJS rectangle even for classic/neo. At zero
             // roughness its fill and outline still remain separate SVG paths.
@@ -410,23 +428,7 @@ pub(super) fn write_node(
                 escape_attr(&stroke_style)
             );
         } else {
-            rect(
-                out,
-                "basic label-container",
-                -node.width / 2.0,
-                -node.height / 2.0,
-                node.width,
-                node.height,
-                context.style,
-            );
-        }
-        if let Some(shadow) = context.shadow {
-            out.push_str("</g>");
-            context.options.checkpoint_emit()?;
-            theme::record_body_shadow(shadow, context.effect_evidence);
-            if let Some(style) = context.typed_style {
-                style.record_shadow_emitted(context.receipt);
-            }
+            write_usecase_body(out, node, plan, context.source, context.style);
         }
         let stereo_height = plan
             .stereotype

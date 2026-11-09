@@ -328,6 +328,13 @@ fn record_cluster_shape_emission(
     Ok(())
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(in crate::svg::parity::flowchart) enum FlowchartClusterPass {
+    Complete,
+    Background,
+    Label,
+}
+
 pub(in crate::svg::parity) fn render_flowchart_cluster(
     out: &mut impl crate::svg::parity::SvgOutput,
     ctx: &FlowchartRenderCtx<'_>,
@@ -335,9 +342,30 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
     origin_x: f64,
     origin_y: f64,
 ) -> crate::Result<()> {
+    render_flowchart_cluster_pass(
+        out,
+        ctx,
+        cluster,
+        origin_x,
+        origin_y,
+        FlowchartClusterPass::Complete,
+    )
+}
+
+pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
+    out: &mut impl crate::svg::parity::SvgOutput,
+    ctx: &FlowchartRenderCtx<'_>,
+    cluster: &LayoutCluster,
+    origin_x: f64,
+    origin_y: f64,
+    pass: FlowchartClusterPass,
+) -> crate::Result<()> {
     if let Some(lane) = ctx.swimlane_lanes_by_id.get(cluster.id.as_str())
         && super::super::swimlane::is_lane_or_pool_cluster(ctx, cluster.id.as_str())
     {
+        if pass == FlowchartClusterPass::Label {
+            return Ok(());
+        }
         super::super::swimlane::render_swimlane_cluster(
             out, ctx, cluster, lane, origin_x, origin_y,
         )?;
@@ -453,15 +481,12 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         .unwrap_or_default();
     let data_look = ctx.compatibility.look.as_str();
 
-    // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
-    if !ctx.edge_html_labels {
+    if pass == FlowchartClusterPass::Background {
         let _ = write!(
             out,
-            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
-            escape_xml_display(&class_attr),
-            cluster_dom_id,
-            escape_xml_display(&cluster.id),
-            escape_xml_display(data_look),
+            r#"<g class="{}" data-merman-theme-depth="container" data-look="{}"{color_attr}>"#,
+            escape_attr(&class_attr),
+            escape_attr(data_look),
         );
         let shape_source_receipt =
             write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
@@ -475,6 +500,34 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
             stroke_precedence,
             stroke_width_precedence,
         )?;
+        out.push_str("</g>");
+        return out.checkpoint();
+    }
+
+    // Mermaid renders subgraph titles using the same `flowchart.htmlLabels` toggle as edge labels.
+    if !ctx.edge_html_labels {
+        let _ = write!(
+            out,
+            r#"<g class="{}" id="{}" data-id="{}" data-et="cluster" data-look="{}"{color_attr}>"#,
+            escape_xml_display(&class_attr),
+            cluster_dom_id,
+            escape_xml_display(&cluster.id),
+            escape_xml_display(data_look),
+        );
+        if pass == FlowchartClusterPass::Complete {
+            let shape_source_receipt =
+                write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
+            record_cluster_shape_emission(
+                ctx,
+                cluster_theme,
+                compiled_styles,
+                cluster.id.as_str(),
+                shape_source_receipt,
+                fill_precedence,
+                stroke_precedence,
+                stroke_width_precedence,
+            )?;
+        }
         let _ = write!(
             out,
             r#"<g class="cluster-label" transform="translate({},{})"><g><rect class="background" style="stroke: none"/>"#,
@@ -593,18 +646,20 @@ pub(in crate::svg::parity) fn render_flowchart_cluster(
         escape_xml_display(&cluster.id),
         escape_xml_display(data_look),
     );
-    let shape_source_receipt =
-        write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
-    record_cluster_shape_emission(
-        ctx,
-        cluster_theme,
-        compiled_styles,
-        cluster.id.as_str(),
-        shape_source_receipt,
-        fill_precedence,
-        stroke_precedence,
-        stroke_width_precedence,
-    )?;
+    if pass == FlowchartClusterPass::Complete {
+        let shape_source_receipt =
+            write_flowchart_cluster_shape(out, ctx, terminal, left, top, rect_w, rect_h);
+        record_cluster_shape_emission(
+            ctx,
+            cluster_theme,
+            compiled_styles,
+            cluster.id.as_str(),
+            shape_source_receipt,
+            fill_precedence,
+            stroke_precedence,
+            stroke_width_precedence,
+        )?;
+    }
     let _ = write!(
         out,
         r#"<g class="cluster-label" transform="translate({},{})"><foreignObject width="{}" height="{}"{}><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject></g></g>"#,

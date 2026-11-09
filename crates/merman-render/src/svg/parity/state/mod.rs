@@ -1,8 +1,9 @@
-use super::shadow::write_theme_shadow_application;
+use super::shadow::write_theme_shadow_depth_application;
 use super::*;
 use rustc_hash::FxHashMap;
 mod context;
 mod edge;
+mod effect;
 mod node;
 mod rough_cache;
 pub(in crate::svg::parity) mod roughjs;
@@ -22,6 +23,7 @@ use roughjs::{
 
 use context::*;
 use edge::*;
+use effect::*;
 use node::*;
 use rough_cache::*;
 use style::*;
@@ -67,6 +69,7 @@ struct StateRenderCtx<'a> {
     edges: &'a [StateSvgEdge],
     include_edges: bool,
     include_nodes: bool,
+    has_node_shadows: bool,
     measurer: &'a dyn TextMeasurer,
     label_sidecar: &'a crate::state::StateLabelSidecar,
     effect_evidence: &'a crate::diagram_theme::SvgShadowEvidenceRecorder,

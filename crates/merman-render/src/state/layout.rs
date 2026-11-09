@@ -145,7 +145,6 @@ struct StateDagreInput {
     dir_by_dagre_id: HashMap<String, Option<String>>,
     wrap_mode: WrapMode,
     wrapping_width: f64,
-    html_labels: bool,
 }
 
 fn get_extras_string(
@@ -1646,7 +1645,6 @@ fn build_state_diagram_dagre_input(
         .layout_settings(&model.direction, style_plan.compatibility());
     let graph_label = settings.graph.clone();
     let diagram_dir = graph_label.rankdir;
-    let html_labels = settings.html_labels;
     let wrap_mode = settings.wrap_mode;
     let wrapping_width = settings.wrapping_width;
 
@@ -1916,7 +1914,6 @@ fn build_state_diagram_dagre_input(
         dir_by_dagre_id,
         wrap_mode,
         wrapping_width,
-        html_labels,
     })
 }
 
@@ -1939,7 +1936,6 @@ fn layout_state_diagram_inner(
         dir_by_dagre_id,
         wrap_mode,
         wrapping_width,
-        html_labels,
     } = build_state_diagram_dagre_input(
         model,
         effective_config,
@@ -2114,10 +2110,10 @@ fn layout_state_diagram_inner(
         let rect = Rect::from_center(pos.x, pos.y, pos.width.max(min_cluster_width), pos.height);
         let (cx, cy) = rect.center();
 
-        let title_top_adjust = if html_labels { 0.0 } else { 3.0 };
         let title_label = LayoutLabel {
             x: cx,
-            y: rect.min_y() + 1.0 - title_top_adjust + th / 2.0,
+            // Layout labels describe normalized boxes, independent of the SVG text recipe.
+            y: rect.min_y() + 1.0 + th / 2.0,
             width: tw,
             height: th,
         };

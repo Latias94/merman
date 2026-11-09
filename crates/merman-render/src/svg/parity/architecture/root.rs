@@ -69,7 +69,7 @@ pub(super) fn begin_architecture_document(
     out.push_str("<style>");
     super::super::output::XmlTextOutput::new(out).push_str(css);
     out.push_str("</style>");
-    out.push_str("<g/><g class=\"architecture-edges\">");
+    out.push_str("<g/>");
     out.checkpoint()?;
     Ok(document)
 }
