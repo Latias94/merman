@@ -1290,7 +1290,10 @@ fn implicit_monospace_requires_complete_nonzero_uniform_latin_metrics() {
             let metric_count = usize::from(face.tables().hhea.number_of_metrics);
             let offset = metrics.offset as usize;
             if invalid == "zero-advances" {
-                for metric in bytes[offset..offset + metric_count * 4].chunks_exact_mut(4) {
+                for metric in bytes[offset..offset + metric_count * 4]
+                    .as_chunks_mut::<4>()
+                    .0
+                {
                     metric[..2].fill(0);
                 }
             } else {
