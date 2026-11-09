@@ -60,7 +60,8 @@ const { svg, metadata } = renderSvgResult(source, {
 The installed runtime's catalog is authoritative. Preview colors are illustrative recipe
 colors; they are not a rendering or an output qualification. Hosts should show unknown
 application notes using their readable message and offer configuration only as an explicit
-user action.
+user action. Preset IDs are exact catalog identifiers in Rust, render selections and exports;
+leading or trailing whitespace is rejected.
 
 ## Choose an appearance
 
@@ -144,6 +145,12 @@ Theme sizes use pixels. Inherited Mermaid theme font sizes also accept absolute 
 including `pt`, `pc`, `in`, `cm`, `mm` and `q`, using 96 CSS pixels per inch. For example,
 `themeVariables.fontSize: "24pt"` supplies 32px to layout and retains its configuration priority
 over a typed base size. Family-specific numeric settings keep their own configuration rules.
+Pie title, percentage and legend sizes and Tree View label sizes also resolve absolute CSS
+lengths for measurement. Equivalent `24pt` and `32px` values reserve the same text geometry.
+Tree View resolves parent-relative sizes against an explicit SVG root context; values that
+still need the receiving document or host CSS remain unverified. Ishikawa keeps Mermaid's
+root-size spacing separate from final text size: its text bounds and label boxes use the
+displayed font, while bone spacing and multiline steps retain the root configuration.
 
 Raw HTML labels can also contain relative CSS sizes: `em` follows the
 parent font, while `rem` depends on the receiving document's root font. Class and Requirement
@@ -161,6 +168,8 @@ Native HTML measurement and export share the same font-size keyword values with 
 `medium`. A zero-sized inline run contributes no glyph width or ink; its parent line box and
 visible siblings can still occupy space. A receiving browser's default font preferences can
 change keyword sizes, so explicit lengths are preferable for reproducible exports.
+Known zero-sized chart labels remain in the SVG but do not count as visible consumers of
+theme fonts or text paint.
 
 Use representative Latin, CJK and symbol labels when the content needs them. A font's presence
 does not imply glyph coverage, and a successful theme status does not certify either one. The
