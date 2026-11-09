@@ -991,7 +991,8 @@ pub(crate) fn render_treemap_diagram_svg(
         let available_h = h - 2.0 * label_padding;
 
         let leaf_label_initial_style = typography_theme.leaf_text_style(i, base_label_font_size);
-        let mut label_font_size = leaf_label_initial_style.style().font_size.trunc();
+        let mut final_label_text_style = leaf_label_initial_style.clone();
+        let mut label_font_size = leaf_label_initial_style.fitting_font_size();
         let value_scale_factor = 0.6;
 
         let mut label_hidden = false;
@@ -1001,58 +1002,68 @@ pub(crate) fn render_treemap_diagram_svg(
             label_hidden = true;
         } else {
             let mut style = leaf_label_initial_style.style().clone();
-            (label_font_size, label_measurement_matches) = fit_treemap_label_width(
-                label_font_size,
-                available_w,
-                min_label_font_size,
-                &leaf.name,
-                &mut style,
-                &leaf_label_initial_style,
-                &computed_length_measurer,
-                options.work_meter(),
-            )?;
+            if let Some(size) = label_font_size {
+                let (size, measurement_matches) = fit_treemap_label_width(
+                    size,
+                    available_w,
+                    min_label_font_size,
+                    &leaf.name,
+                    &mut style,
+                    &leaf_label_initial_style,
+                    &computed_length_measurer,
+                    options.work_meter(),
+                )?;
+                label_measurement_matches = measurement_matches;
+                let size = fit_treemap_label_height(
+                    size,
+                    available_h,
+                    min_label_font_size,
+                    base_value_font_size,
+                    min_value_font_size,
+                    spacing_between_label_and_value,
+                    options.work_meter(),
+                )?;
+                label_font_size = Some(size);
+                style.font_size = size;
+                final_label_text_style = leaf_label_initial_style.with_font_size_px(size);
+                label_font_size_mutated =
+                    leaf_label_initial_style.font_size_assignment_changes(size);
+            } else {
+                // D3 reads the inline CSSOM keyword, so parseInt produces NaN. The width
+                // condition still measures the used style, but neither decrement loop runs.
+                label_measurement_matches &= leaf_label_initial_style.matches_measurement(&style);
+                measure_treemap_computed_length(
+                    &computed_length_measurer,
+                    &leaf.name,
+                    &style,
+                    options.work_meter(),
+                )?;
+            }
 
-            label_font_size = fit_treemap_label_height(
-                label_font_size,
-                available_h,
-                min_label_font_size,
-                base_value_font_size,
-                min_value_font_size,
-                spacing_between_label_and_value,
-                options.work_meter(),
-            )?;
-
-            style.font_size = label_font_size;
             if is_complex_treemap {
-                if label_font_size < min_label_font_size || available_h < min_label_font_size {
+                if label_font_size.is_some_and(|size| size < min_label_font_size)
+                    || available_h < min_label_font_size
+                {
                     label_hidden = true;
                 }
             } else {
-                label_measurement_matches &= leaf_label_initial_style
-                    .with_font_size_px(label_font_size)
-                    .matches_measurement(&style);
+                label_measurement_matches &= final_label_text_style.matches_measurement(&style);
                 if measure_treemap_computed_length(
                     &computed_length_measurer,
                     &leaf.name,
                     &style,
                     options.work_meter(),
                 )? > available_w
-                    || label_font_size < min_label_font_size
-                    || available_h < label_font_size
+                    || label_font_size
+                        .is_some_and(|size| size < min_label_font_size || available_h < size)
                 {
                     label_hidden = true;
                 }
             }
-            // Mermaid always calls `selection.style("font-size", ...)` after the fitting pass.
-            // That mutation replaces the authored `font-size !important` declaration.
-            label_font_size_mutated = true;
+            // The final setProperty rejects NaNpx. An unchanged generated size also leaves
+            // the original style attribute intact, including ignored invalid declarations.
         }
 
-        let final_label_text_style = if label_font_size_mutated {
-            leaf_label_initial_style.with_font_size_px(label_font_size)
-        } else {
-            leaf_label_initial_style.clone()
-        };
         let label_style = if !label_font_size_mutated {
             let mut style = format!(
                 "text-anchor: middle; dominant-baseline: middle; font-size: {font_size}px;fill:{fill};{suffix}",
@@ -1061,6 +1072,9 @@ pub(crate) fn render_treemap_diagram_svg(
                 suffix = label_styles_suffix
             );
             if label_hidden {
+                if !style.trim_end().ends_with(';') {
+                    style.push(';');
+                }
                 style.push_str(" display: none;");
             }
             style
@@ -1068,7 +1082,7 @@ pub(crate) fn render_treemap_diagram_svg(
             let fill = visual.fitted_label_fill.as_str();
             let mut s = format!(
                 "text-anchor: middle; dominant-baseline: middle; font-size: {fs}px; fill: {fill};",
-                fs = fmt(label_font_size),
+                fs = fmt(final_label_text_style.style().font_size),
                 fill = escape_attr(fill),
             );
             if label_hidden {
@@ -1118,22 +1132,34 @@ pub(crate) fn render_treemap_diagram_svg(
             let leaf_value_initial_style =
                 typography_theme.leaf_text_style(i, base_value_font_size);
             let mut final_value_text_style = leaf_value_initial_style.clone();
-            let mut value_font_size = base_value_font_size;
-            let mut value_y = h / 2.0; // placeholder (overwritten when label is visible)
+            let mut value_font_size_mutated = false;
+            let mut value_y = Some(h / 2.0); // Source placeholder when the label is hidden.
             let mut value_hidden = true;
 
             if !label_hidden {
-                let actual_value_font_size = (label_font_size * value_scale_factor)
-                    .round()
-                    .min(base_value_font_size)
-                    .max(min_value_font_size);
-                value_font_size = actual_value_font_size;
-                final_value_text_style =
-                    leaf_value_initial_style.with_font_size_px(value_font_size);
+                // Unlike the fitting loops, this pass uses parseFloat on the final inline
+                // CSSOM value. A retained keyword rejects NaNpx and keeps the value style.
+                let final_label_font_size = final_label_text_style.inline_font_size_number();
+                let actual_value_font_size = final_label_font_size.map(|size| {
+                    (size * value_scale_factor)
+                        .round()
+                        .min(base_value_font_size)
+                        .max(min_value_font_size)
+                });
+                if let Some(size) = actual_value_font_size {
+                    value_font_size_mutated =
+                        leaf_value_initial_style.font_size_assignment_changes(size);
+                    final_value_text_style = leaf_value_initial_style.with_font_size_px(size);
+                } else {
+                    // Upstream writes y=NaN here. Preserve the source spelling, omit the
+                    // invalid coordinate, and keep this terminal outside portable evidence.
+                    final_value_text_style.mark_fitting_unverified();
+                }
 
                 let label_center_y = h / 2.0;
-                value_y =
-                    label_center_y + (label_font_size / 2.0) + spacing_between_label_and_value;
+                value_y = final_label_font_size
+                    .map(|size| label_center_y + size / 2.0 + spacing_between_label_and_value)
+                    .filter(|y| y.is_finite());
 
                 let cell_bottom_padding = 4.0;
                 let max_value_bottom_y = h - cell_bottom_padding;
@@ -1145,20 +1171,19 @@ pub(crate) fn render_treemap_diagram_svg(
                     final_value_text_style.style(),
                     options.work_meter(),
                 )?;
-                if value_w_px <= available_w_for_value
-                    && value_y + value_font_size <= max_value_bottom_y
-                    && value_font_size >= min_value_font_size
-                {
-                    value_hidden = false;
-                }
+                value_hidden = value_w_px > available_w_for_value
+                    || actual_value_font_size.is_some_and(|size| {
+                        value_y.is_some_and(|y| y + size > max_value_bottom_y)
+                            || size < min_value_font_size
+                    });
             }
 
             let value_fill = visual.value_fill.as_str();
-            let mut value_style = if !label_hidden {
+            let mut value_style = if value_font_size_mutated {
                 let fill = visual.fitted_value_fill.as_str();
                 format!(
                     "text-anchor: middle; dominant-baseline: hanging; font-size: {fs}px; fill: {fill};",
-                    fs = fmt(value_font_size),
+                    fs = fmt(final_value_text_style.style().font_size),
                     fill = escape_attr(fill)
                 )
             } else {
@@ -1170,27 +1195,33 @@ pub(crate) fn render_treemap_diagram_svg(
                 )
             };
             if value_hidden {
+                if !value_style.trim_end().ends_with(';') {
+                    value_style.push(';');
+                }
                 value_style.push_str(" display: none;");
             }
-            if !label_hidden && !label_styles_without_font_size_suffix.is_empty() {
+            if value_font_size_mutated && !label_styles_without_font_size_suffix.is_empty() {
                 value_style.push_str(label_styles_without_font_size_suffix);
             }
 
+            let value_y_attribute = value_y
+                .map(|y| format!(r#" y="{}""#, fmt(y)))
+                .unwrap_or_default();
             if value_text.is_empty() {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#{id})"/>"#,
+                    r#"<text class="treemapValue" x="{x}"{y_attribute} style="{style}" clip-path="url(#{id})"/>"#,
                     x = fmt(w / 2.0),
-                    y = fmt(value_y),
+                    y_attribute = value_y_attribute,
                     style = escape_attr(&value_style),
                     id = leaf_clip_id.as_str(),
                 );
             } else {
                 let _ = write!(
                     &mut out,
-                    r#"<text class="treemapValue" x="{x}" y="{y}" style="{style}" clip-path="url(#{id})">{text}</text>"#,
+                    r#"<text class="treemapValue" x="{x}"{y_attribute} style="{style}" clip-path="url(#{id})">{text}</text>"#,
                     x = fmt(w / 2.0),
-                    y = fmt(value_y),
+                    y_attribute = value_y_attribute,
                     style = escape_attr(&value_style),
                     id = leaf_clip_id.as_str(),
                     text = escape_xml(&value_text)
@@ -1201,17 +1232,17 @@ pub(crate) fn render_treemap_diagram_svg(
                 receipt.record_text(
                     crate::treemap::TreemapTextRole::LeafValue,
                     !value_hidden && !value_text.is_empty(),
-                    if label_hidden {
-                        text_fill_ownership
-                    } else {
+                    if value_font_size_mutated {
                         text_fill_without_font_size_ownership
+                    } else {
+                        text_fill_ownership
                     },
                     &final_value_text_style,
                     true,
-                    if label_hidden {
-                        &visual.value_fill
-                    } else {
+                    if value_font_size_mutated {
                         &visual.fitted_value_fill
+                    } else {
+                        &visual.value_fill
                     },
                 );
             }

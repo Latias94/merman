@@ -18,7 +18,10 @@ use crate::family::{
 use crate::model::TreemapDiagramLayout;
 use crate::resources::{OperationWorkMeter, PreparedTextRetainedReservation};
 
+mod font_size;
 mod node_visual;
+
+use font_size::TreemapInlineFontSize;
 
 #[derive(Debug, Clone, Default)]
 enum TreemapSourceTextOverride<T> {
@@ -34,6 +37,7 @@ struct TreemapSourceTextStyle {
     visual: node_visual::TreemapNodeVisual,
     font_family: TreemapSourceTextOverride<Box<str>>,
     font_size_px: TreemapSourceTextOverride<f64>,
+    inline_font_size: TreemapInlineFontSize,
     font_weight: TreemapSourceTextOverride<Box<str>>,
     font_style: TreemapSourceTextOverride<Box<str>>,
     has_unverified_typography: bool,
@@ -103,6 +107,7 @@ impl TreemapSourceTextStyle {
                 font_style,
             },
             font_family_ownership: ownership,
+            inline_font_size: self.inline_font_size,
             verified,
         }
     }
@@ -128,6 +133,7 @@ impl TreemapSourceTextStyle {
 pub(crate) struct TreemapResolvedTextStyle {
     style: crate::text::TextStyle,
     font_family_ownership: crate::mermaid_style::CssFontFamilyOwnership,
+    inline_font_size: TreemapInlineFontSize,
     verified: bool,
 }
 
@@ -149,7 +155,28 @@ impl TreemapResolvedTextStyle {
     pub(crate) fn with_font_size_px(&self, font_size_px: f64) -> Self {
         let mut resolved = self.clone();
         resolved.style.font_size = font_size_px;
+        resolved.inline_font_size = TreemapInlineFontSize::Generated;
         resolved
+    }
+
+    pub(crate) fn fitting_font_size(&self) -> Option<f64> {
+        self.inline_font_size.integer(self.style.font_size)
+    }
+
+    pub(crate) fn inline_font_size_number(&self) -> Option<f64> {
+        self.inline_font_size.number(self.style.font_size)
+    }
+
+    pub(crate) fn font_size_assignment_changes(&self, size: f64) -> bool {
+        size.is_finite()
+            && size >= 0.0
+            && self
+                .inline_font_size
+                .changes_for_px(self.style.font_size, size)
+    }
+
+    pub(crate) fn mark_fitting_unverified(&mut self) {
+        self.verified = false;
     }
 
     pub(crate) fn matches_measurement(&self, actual: &crate::text::TextStyle) -> bool {
@@ -421,6 +448,7 @@ impl TreemapTypographyThemePlan {
                     font_style: generated_font_style.map(str::to_owned),
                 },
                 font_family_ownership: crate::mermaid_style::CssFontFamilyOwnership::Unverified,
+                inline_font_size: TreemapInlineFontSize::Unverified,
                 verified: false,
             })
     }
@@ -449,6 +477,7 @@ impl TreemapTypographyThemePlan {
                     font_style: None,
                 },
                 font_family_ownership: crate::mermaid_style::CssFontFamilyOwnership::Unverified,
+                inline_font_size: TreemapInlineFontSize::Unverified,
                 verified: false,
             })
     }
@@ -938,7 +967,10 @@ fn resolve_treemap_source_text_style(
                         .unwrap_or_else(|| raw.trim());
                     match property {
                         "font-family" => style.font_family = TreemapSourceTextOverride::Unverified,
-                        "font-size" => style.font_size_px = TreemapSourceTextOverride::Unverified,
+                        "font-size" => {
+                            style.font_size_px = TreemapSourceTextOverride::Unverified;
+                            style.inline_font_size = TreemapInlineFontSize::Unverified;
+                        }
                         "font-weight" => style.font_weight = TreemapSourceTextOverride::Unverified,
                         "font-style" => style.font_style = TreemapSourceTextOverride::Unverified,
                         "text-transform" => text_transform_unverified = true,
@@ -970,14 +1002,18 @@ fn resolve_treemap_source_text_style(
                         };
                     }
                     "font-size" => {
-                        if crate::mermaid_style::css_font_size_value_override(
-                            declaration.source_value(),
-                        )
-                        .is_none()
+                        if !declaration
+                            .svg_number_or_px()
+                            .is_some_and(|size| size.is_finite() && size >= 0.0)
+                            && crate::mermaid_style::css_font_size_value_override(
+                                declaration.source_value(),
+                            )
+                            .is_none()
                         {
                             // Mermaid already folded this exact property to its final value.
                             // Invalid CSS leaves the generated inline size in effect.
                             style.font_size_px = TreemapSourceTextOverride::Generated;
+                            style.inline_font_size = TreemapInlineFontSize::Generated;
                             return Ok(true);
                         }
                         style.font_size_px = if declaration.important() {
@@ -998,6 +1034,14 @@ fn resolve_treemap_source_text_style(
                             }
                         } else {
                             TreemapSourceTextOverride::Unverified
+                        };
+                        style.inline_font_size = if matches!(
+                            style.font_size_px,
+                            TreemapSourceTextOverride::Unverified
+                        ) {
+                            TreemapInlineFontSize::Unverified
+                        } else {
+                            TreemapInlineFontSize::authored(&declaration)
                         };
                     }
                     property @ ("font-weight" | "font-style") => {
