@@ -12,8 +12,10 @@ mod config;
 mod edge_paint;
 mod marker_paint;
 mod node_binding;
+mod typography;
 pub(crate) use edge_paint::BlockEdgePaintPlan;
 pub(crate) use marker_paint::BlockMarkerPaintPlan;
+pub(crate) use typography::BlockTextParticipation;
 mod source;
 mod theme;
 
@@ -60,8 +62,27 @@ fn decode_block_label_html(raw: &str) -> String {
 /// Operation-owned HTML terminals shared by Block measurement and SVG emission.
 #[derive(Debug, Default)]
 pub(crate) struct BlockPreparedLabels {
-    nodes: HashMap<String, BlockPreparedHtmlLabel>,
-    edges: Vec<BlockPreparedHtmlLabel>,
+    nodes: HashMap<String, BlockPreparedLabel>,
+    edges: Vec<BlockPreparedLabel>,
+}
+
+#[derive(Debug)]
+pub(crate) struct BlockPreparedLabel {
+    html: Option<BlockPreparedHtmlLabel>,
+    pub(crate) typography: typography::BlockLabelTypography,
+}
+
+impl BlockPreparedLabel {
+    pub(crate) fn xhtml(&self) -> Option<&str> {
+        self.html.as_ref().map(|html| html.xhtml.as_str())
+    }
+
+    fn measurement_xhtml(&self) -> Option<&str> {
+        self.typography
+            .measurement_xhtml
+            .as_deref()
+            .or_else(|| self.xhtml())
+    }
 }
 
 #[derive(Debug)]
@@ -75,13 +96,11 @@ impl BlockPreparedLabels {
         model: &merman_model::families::block::BlockDiagramRenderModel,
         sources: &HashMap<&str, source::BlockNodeSource<'_>>,
         html_labels: bool,
+        text_style: &TextStyle,
         config: &PresentationConfig,
         work_meter: &Arc<OperationWorkMeter>,
     ) -> Result<Self> {
         work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
-        if !html_labels {
-            return Ok(Self::default());
-        }
         // Resolve the absent security-level default once for the whole family operation.
         let config = crate::graph_label::flowchart_label_sanitize_config(config);
         let mut prepared = Self::default();
@@ -95,26 +114,59 @@ impl BlockPreparedLabels {
             let text = sources
                 .get(node.id.as_str())
                 .map_or(node.label.as_str(), |source| source.label);
-            let label = BlockPreparedHtmlLabel::prepare(text, node.id.len(), &config, work_meter)?;
-            prepared.nodes.insert(node.id.clone(), label);
+            let html = html_labels
+                .then(|| BlockPreparedHtmlLabel::prepare(text, node.id.len(), &config, work_meter))
+                .transpose()?;
+            let source = sources.get(node.id.as_str());
+            let typography = typography::BlockLabelTypography::resolve(
+                source.map_or(node.styles.as_slice(), |source| source.styles),
+                Some(source.map_or(node.classes.as_slice(), |source| source.classes)),
+                &model.class_defs,
+                text_style,
+                html.as_ref().map(|html| html.xhtml.as_str()),
+                text,
+                node.id.len(),
+                work_meter,
+            )?;
+            prepared
+                .nodes
+                .insert(node.id.clone(), BlockPreparedLabel { html, typography });
         }
         for edge in &model.edges {
-            prepared.edges.push(BlockPreparedHtmlLabel::prepare(
+            let label = if html_labels {
+                Some(BlockPreparedHtmlLabel::prepare(
+                    &edge.label,
+                    0,
+                    &config,
+                    work_meter,
+                )?)
+            } else {
+                None
+            };
+            let typography = typography::BlockLabelTypography::resolve(
+                &[],
+                None,
+                &model.class_defs,
+                text_style,
+                label.as_ref().map(|label| label.xhtml.as_str()),
                 &edge.label,
                 0,
-                &config,
                 work_meter,
-            )?);
+            )?;
+            prepared.edges.push(BlockPreparedLabel {
+                html: label,
+                typography,
+            });
         }
         Ok(prepared)
     }
 
-    pub(crate) fn node_xhtml(&self, node_id: &str) -> Option<&str> {
-        self.nodes.get(node_id).map(|label| label.xhtml.as_str())
+    pub(crate) fn node_label(&self, node_id: &str) -> &BlockPreparedLabel {
+        self.nodes.get(node_id).expect("prepared Block node label")
     }
 
-    pub(crate) fn edge_xhtml(&self, edge_index: usize) -> Option<&str> {
-        self.edges.get(edge_index).map(|label| label.xhtml.as_str())
+    pub(crate) fn edge_label(&self, edge_index: usize) -> &BlockPreparedLabel {
+        &self.edges[edge_index]
     }
 }
 
@@ -666,8 +718,8 @@ fn to_sized_block_shallow(
     shape_settings: BlockShapeSettings,
     measurer: &dyn TextMeasurer,
     text_style: &TextStyle,
+    prepared_label: &BlockPreparedLabel,
     html_labels: bool,
-    prepared_xhtml: Option<&str>,
 ) -> SizedBlock {
     let columns = node.columns.unwrap_or(-1);
     let width_in_columns = node.width_in_columns.unwrap_or(1).max(1);
@@ -678,7 +730,6 @@ fn to_sized_block_shallow(
     // HTML measurement and emission share the sanitized XHTML projection, including breaks,
     // inline formatting, and entities. Keep the existing SVG text path separate.
     let label_decoded = decode_block_label_html(&node.label);
-    let label_text_style = node_binding::source_text_style(&node.styles, text_style, html_labels);
     let label_effectively_empty = block_label_is_effectively_empty(&label_decoded);
     let (label_width, label_height) = if label_effectively_empty {
         (0.0, 0.0)
@@ -686,10 +737,10 @@ fn to_sized_block_shallow(
         block_html_label_metrics_px(
             &label_decoded,
             measurer,
-            &label_text_style,
+            &prepared_label.typography.style,
             text_style.font_size,
             html_labels,
-            prepared_xhtml,
+            prepared_label.measurement_xhtml(),
         )
     };
     let shape_label_height = label_height;
@@ -1102,6 +1153,7 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
         model,
         &shape_sources,
         html_labels,
+        &text_style,
         effective_config,
         work_meter,
     )?;
@@ -1116,8 +1168,8 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
                 shape_settings,
                 measurer,
                 &text_style,
+                prepared_labels.node_label(&block.id),
                 html_labels,
-                prepared_labels.node_xhtml(&block.id),
             )
         })
         .collect::<Vec<_>>();
@@ -1183,13 +1235,14 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
             None
         } else {
             let edge_label = decode_block_label_html(&e.label);
+            let prepared_label = prepared_labels.edge_label(edge_index);
             let (label_width, label_height) = block_html_label_metrics_px(
                 &edge_label,
                 measurer,
-                &text_style,
+                &prepared_label.typography.style,
                 text_style.font_size,
                 html_labels,
-                prepared_labels.edge_xhtml(edge_index),
+                prepared_label.measurement_xhtml(),
             );
             let background_padding = if html_labels {
                 0.0
@@ -1398,12 +1451,16 @@ mod tests {
             model,
             &super::resolve_block_node_sources(model),
             true,
+            &default_style(16.0),
             &parsed.metadata().effective_config,
             &meter,
         )
         .expect("prepare node and edge HTML");
-        assert_eq!(prepared.node_xhtml("A"), prepared.edge_xhtml(0));
-        assert!(prepared.node_xhtml("A").unwrap().contains("Alpha"));
+        assert_eq!(
+            prepared.node_label("A").xhtml(),
+            prepared.edge_label(0).xhtml()
+        );
+        assert!(prepared.node_label("A").xhtml().unwrap().contains("Alpha"));
         assert!(meter.prepared_text_retained_bytes() > 0);
         drop(prepared);
         assert_eq!(meter.prepared_text_retained_bytes(), 0);

@@ -442,7 +442,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         .map(|geometry| (geometry.id.as_str(), geometry))
         .collect();
     let layout_edges_by_id = BlockLayoutEdgeIndex::new(&layout.edges);
-    let mut typography_visible = typography_theme.observes_visible_labels().then_some(false);
+    let mut typography_participation = typography_theme
+        .observes_visible_labels()
+        .then(crate::block::BlockTextParticipation::default);
     let mut label_paint_receipt = node_label_paint_theme.begin_outcomes();
 
     fn marker_id(diagram_id: SvgDiagramId<'_>, marker: &str) -> String {
@@ -946,10 +948,11 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         }
         out.checkpoint()?;
         let label = decode_block_label_html(node.label);
+        let prepared_label = prepared_labels.node_label(&n.id);
         let label_effectively_empty =
             node.label.is_empty() || block_label_is_effectively_empty(&label);
-        if let Some(visible) = typography_visible.as_mut() {
-            *visible |= !label.trim().is_empty();
+        if let Some(participation) = typography_participation.as_mut() {
+            participation.merge(prepared_label.typography.participation);
         }
         let (label_tx, label_ty, label_w, label_h) = if label_effectively_empty {
             (0.0, 0.0, 0.0, 0.0)
@@ -984,12 +987,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
             } else {
                 format!(r#" style="{}""#, escape_attr(node_text_style))
             };
-            let label_markup =
-                prepared_labels
-                    .node_xhtml(&n.id)
-                    .ok_or_else(|| Error::InvalidModel {
-                        message: format!("missing prepared Block HTML label for node `{}`", n.id),
-                    })?;
+            let label_markup = prepared_label.xhtml().ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Block HTML label for node `{}`", n.id),
+            })?;
             let label_markup = match typed_label_color {
                 Some(color) if label_markup.starts_with("<p>") => {
                     emitted_label_color = Some(color);
@@ -1124,8 +1124,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
         let Some(lbl) = le.label.as_ref().filter(|_| !e.label.trim().is_empty()) else {
             continue;
         };
-        if let Some(visible) = typography_visible.as_mut() {
-            *visible |= !e.label.trim().is_empty();
+        let prepared_label = prepared_labels.edge_label(edge_index);
+        if let Some(participation) = typography_participation.as_mut() {
+            participation.merge(prepared_label.typography.participation);
         }
         union_block_bounds(
             &mut content_bounds,
@@ -1148,11 +1149,9 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 fmt(-lbl.height / 2.0),
                 fmt(lbl.width),
                 fmt(lbl.height),
-                prepared_labels
-                    .edge_xhtml(edge_index)
-                    .ok_or_else(|| Error::InvalidModel {
-                        message: format!("missing prepared Block HTML label for edge `{}`", e.id),
-                    })?
+                prepared_label.xhtml().ok_or_else(|| Error::InvalidModel {
+                    message: format!("missing prepared Block HTML label for edge `{}`", e.id),
+                })?
             );
         } else {
             let label_text = crate::graph_label::flowchart_label_plain_text_for_layout(
@@ -1167,7 +1166,7 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
                 .text_measurer()
                 .measure_svg_create_text_bbox_y_offset_px(
                     &label_text,
-                    typography_theme.text_style(),
+                    &prepared_label.typography.style,
                 );
             let padding = crate::block::SVG_EDGE_LABEL_BACKGROUND_PADDING;
             let text_width = (lbl.width - 2.0 * padding).max(0.0);
@@ -1260,8 +1259,8 @@ pub(crate) fn render_block_diagram_svg_model_with_theme(
     )?;
     let rooted = root_document.complete(out.finish()?)?;
     node_label_paint_theme.record_outcomes(label_paint_receipt);
-    if let Some(visible) = typography_visible {
-        typography_theme.record_visible_labels(visible);
+    if let Some(participation) = typography_participation {
+        typography_theme.record_text_participation(participation);
     }
     Ok(rooted)
 }

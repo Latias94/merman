@@ -1774,10 +1774,13 @@ fn block_ignored_base_sizes_do_not_own_typed_typography() {
         serde_json::Value::Null,
         serde_json::json!({}),
         serde_json::json!([]),
+        serde_json::json!(-2),
+        serde_json::json!("-2"),
+        serde_json::json!("-2px"),
         serde_json::json!(23),
         serde_json::json!("23px"),
     ] {
-        let expected = if value.is_number() || value.as_str() == Some("23px") {
+        let expected = if value.as_f64() == Some(23.0) || value.as_str() == Some("23px") {
             23
         } else {
             29
@@ -5282,79 +5285,95 @@ fn block_html_source_font_longhands_measure_the_emitted_terminal() {
 
     for (size, expected_width, expected_height) in [
         ("48px", 108.0, 72.0),
+        ("36pt", 108.0, 72.0),
         // The same declaration reaches g.label, the XHTML div, and span.nodeLabel.
         ("150%", 120.0, 81.0),
         ("1.5em", 120.0, 81.0),
     ] {
-        let source = format!(
-            "block\n A[\"Alpha\"]\n style A font-size:{size},font-family:monospace,font-style:italic\n"
-        );
-        let engine = MermaidEngine::new().with_site_config(
-            merman_core::presentation::SourcePresentationConfig::from_value(
-                serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "16px"}}),
-            ),
-        );
-        let parsed = engine
-            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
-            .unwrap()
-            .unwrap()
-            .into_presentation();
-        let identity = TextMeasurementProfileIdentity::new(
-            MeasurementProfileId::new("test.block-source-terminal-font").unwrap(),
-            "1",
-        )
-        .unwrap();
-        let session = RenderEnvironment::deterministic()
-            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
-                identity,
-                Arc::new(FontHost),
-                TextMeasurementPhase::ALL,
-            ))
-            .begin_session()
+        for assigned_class in [false, true] {
+            let declarations = format!("font-size:{size},font-family:monospace,font-style:italic");
+            let source = if assigned_class {
+                format!("block\n A[\"Alpha\"]\n classDef face {declarations}\n class A face\n")
+            } else {
+                format!("block\n A[\"Alpha\"]\n style A {declarations}\n")
+            };
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "16px"}}),
+                ),
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.block-source-terminal-font").unwrap(),
+                "1",
+            )
             .unwrap();
-        let artifact =
-            family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
-        let rendered = artifact
-            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
-            .unwrap();
-        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        let node = document
-            .descendants()
-            .find(|node| node.attribute("id") == Some("merman-A"))
-            .unwrap();
-        let terminal = node
-            .descendants()
-            .find(|node| node.has_tag_name("p"))
-            .unwrap();
-        assert_eq!(terminal.text(), Some("Alpha"));
-        let styled_ancestors: Vec<_> = terminal
-            .ancestors()
-            .filter(|node| {
-                node.attribute("style")
-                    .is_some_and(|style| style.contains("font-size:"))
-            })
-            .collect();
-        assert_eq!(styled_ancestors.len(), 3, "preserve the pinned style sinks");
-        for ancestor in styled_ancestors {
-            let style = ancestor.attribute("style").unwrap();
-            assert!(style.contains(&format!("font-size:{size};")), "{style}");
-            assert!(style.contains("font-family:monospace;"), "{style}");
-            assert!(style.contains("font-style:italic;"), "{style}");
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    identity,
+                    Arc::new(FontHost),
+                    TextMeasurementPhase::ALL,
+                ))
+                .begin_session()
+                .unwrap();
+            let artifact =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some("merman-A"))
+                .unwrap();
+            let terminal = node
+                .descendants()
+                .find(|node| node.has_tag_name("p"))
+                .unwrap();
+            assert_eq!(terminal.text(), Some("Alpha"));
+            let styled_ancestors: Vec<_> = terminal
+                .ancestors()
+                .filter(|node| {
+                    node.attribute("style")
+                        .is_some_and(|style| style.contains("font-size:"))
+                })
+                .collect();
+            assert_eq!(styled_ancestors.len(), 3, "preserve the pinned style sinks");
+            for ancestor in styled_ancestors {
+                let style = ancestor.attribute("style").unwrap();
+                let priority = " !important";
+                assert!(
+                    style.contains(&format!("font-size:{size}{priority};")),
+                    "{style}"
+                );
+                assert!(
+                    style.contains(&format!("font-family:monospace{priority};")),
+                    "{style}"
+                );
+                assert!(
+                    style.contains(&format!("font-style:italic{priority};")),
+                    "{style}"
+                );
+            }
+            let foreign_object = terminal
+                .ancestors()
+                .find(|node| node.has_tag_name("foreignObject"))
+                .unwrap();
+            assert_eq!(
+                numeric_attribute(foreign_object, "width"),
+                expected_width,
+                "{size}"
+            );
+            assert_eq!(
+                numeric_attribute(foreign_object, "height"),
+                expected_height,
+                "{size}"
+            );
         }
-        let foreign_object = terminal
-            .ancestors()
-            .find(|node| node.has_tag_name("foreignObject"))
-            .unwrap();
-        assert_eq!(
-            numeric_attribute(foreign_object, "width"),
-            expected_width,
-            "{size}"
-        );
-        assert_eq!(
-            numeric_attribute(foreign_object, "height"),
-            expected_height,
-            "{size}"
-        );
     }
 }
 
@@ -5466,5 +5485,743 @@ fn block_source_font_weight_priority_reaches_labels_and_measurement() {
                 "html={html}, {later}: {measured:?}"
             );
         }
+    }
+}
+
+#[test]
+fn block_class_fonts_follow_assignment_order_and_terminal_inline_priority() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::{TextMetrics, TextStyle};
+    use std::sync::{Arc, Mutex};
+
+    struct FontHost(Arc<Mutex<Vec<TextStyle>>>);
+    impl HostTextMeasurer for FontHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::Wrapped || request.text != "Alpha" {
+                return Ok(None);
+            }
+            self.0.lock().unwrap().push(request.style.clone());
+            Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                width: request.style.font_size * 2.0,
+                height: request.style.font_size * 1.5,
+                line_count: 1,
+            })))
+        }
+    }
+
+    for (declarations, expected_size, expected_family) in [
+        (
+            "classDef default font-size:36pt,font-family:monospace\n",
+            48.0,
+            "monospace",
+        ),
+        (
+            "classDef default font-size:150%,font-family:monospace\n",
+            36.0,
+            "monospace",
+        ),
+        // Class assignment order wins the compiled inline label, independent of definition order.
+        (
+            "classDef first font-size:24px,font-family:serif\nclassDef second font-size:48px,font-family:monospace\nclass A second\nclass A first\n",
+            24.0,
+            "serif",
+        ),
+        (
+            "classDef first font-size:24px,font-family:serif\nclassDef second font-size:48px,font-family:monospace\nclass A first\nclass A second\n",
+            48.0,
+            "monospace",
+        ),
+        (
+            "classDef face font-size:48px,font-family:monospace\nclass A face\nstyle A font-size:30px,font-family:serif\n",
+            30.0,
+            "serif",
+        ),
+        (
+            "classDef face font-size:48px,font-family:monospace\nclass A face\nstyle A font-size:30px !important,font-family:serif !important\n",
+            30.0,
+            "serif",
+        ),
+        // Direct styles are compiled to inline important fonts even without an assigned class.
+        (
+            "classDef default font-size:48px,font-family:monospace\nstyle A font-size:30px,font-family:serif\n",
+            30.0,
+            "serif",
+        ),
+        (
+            "classDef default font-size:48px,font-family:monospace\nstyle A font-size:30px !important,font-family:serif !important\n",
+            30.0,
+            "serif",
+        ),
+        (
+            "classDef default font-size:48px\nclassDef plain stroke:red\nclass A plain\nstyle A font-size:30px,font-family:serif\n",
+            30.0,
+            "serif",
+        ),
+    ] {
+        let source = format!("block\nA[\"Alpha\"]\n{declarations}");
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"htmlLabels": true, "themeVariables": {"fontSize": "16px"}}),
+            ),
+        );
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.block-class-font-order").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                Arc::new(FontHost(calls.clone())),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session()
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-A"))
+            .unwrap();
+        let viewport = node
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            numeric_attribute(viewport, "width"),
+            expected_size * 2.0,
+            "{declarations}"
+        );
+        assert_eq!(
+            numeric_attribute(viewport, "height"),
+            expected_size * 1.5,
+            "{declarations}"
+        );
+        let calls = calls.lock().unwrap();
+        assert!(!calls.is_empty(), "{declarations}");
+        assert!(
+            calls.iter().all(|style| style.font_size == expected_size
+                && style.font_family.as_deref() == Some(expected_family)),
+            "{declarations}: {calls:?}"
+        );
+        if declarations.contains("class A face") {
+            let span = node
+                .descendants()
+                .find(|node| node.attribute("class") == Some("nodeLabel"))
+                .unwrap();
+            assert!(
+                span.attribute("style")
+                    .unwrap()
+                    .contains("font-size:30px !important;")
+            );
+        }
+    }
+}
+
+#[test]
+fn block_html_wrapper_class_fonts_reach_multiline_and_descendant_measurement() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use std::sync::{Arc, Mutex};
+
+    struct FontHost(Arc<Mutex<Vec<(String, f64)>>>);
+    impl HostTextMeasurer for FontHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if !matches!(request.text, "Alpha" | "Beta") {
+                return Ok(None);
+            }
+            let length = match request.operation {
+                TextMeasurementOperation::CanvasMeasureTextWidth => request.style.font_size * 2.0,
+                TextMeasurementOperation::HtmlLineHeight => request.style.font_size * 1.5,
+                _ => return Ok(None),
+            };
+            self.0
+                .lock()
+                .unwrap()
+                .push((request.text.to_owned(), request.style.font_size));
+            Ok(Some(HostTextMeasurement::Length(length)))
+        }
+    }
+
+    for (label, expected_size, expected_height) in [
+        ("Alpha<br/>Beta", 48.0, 144.0),
+        ("<span style='font-size:24px'>Alpha</span>", 48.0, 72.0),
+        (
+            "<span style='font-size:24px !important'>Alpha</span>",
+            24.0,
+            72.0,
+        ),
+    ] {
+        let source = format!("block\nA[\"{label}\"]\nclassDef nodeLabel font-size:48px\n");
+        let parsed = MermaidEngine::new()
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels":true,"themeVariables":{"fontSize":"16px"}}),
+                ),
+            )
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let calls = Arc::new(Mutex::new(Vec::new()));
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.block-wrapper-class-terminal").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                identity,
+                Arc::new(FontHost(calls.clone())),
+                TextMeasurementPhase::ALL,
+            ))
+            .begin_session()
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let node = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("merman-A"))
+            .unwrap();
+        let viewport = node
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        assert_eq!(
+            numeric_attribute(viewport, "width"),
+            expected_size * 2.0,
+            "{label}"
+        );
+        assert_eq!(
+            numeric_attribute(viewport, "height"),
+            expected_height,
+            "{label}"
+        );
+        let paragraph = node
+            .descendants()
+            .find(|node| node.has_tag_name("p"))
+            .unwrap();
+        assert!(
+            paragraph.attribute("style").is_none(),
+            "measurement projection must not rewrite the emitted DOM"
+        );
+        assert!(
+            rendered
+                .svg()
+                .contains(".nodeLabel>*{font-size:48px!important;}")
+        );
+        assert!(
+            rendered
+                .svg()
+                .contains(".nodeLabel span{font-size:48px!important;}")
+        );
+        let calls = calls.lock().unwrap();
+        assert!(
+            calls.iter().any(|(text, _)| text == "Alpha"),
+            "{label}: {calls:?}"
+        );
+        if label.contains("Beta") {
+            assert!(calls.iter().any(|(text, _)| text == "Beta"), "{calls:?}");
+        }
+        assert!(
+            calls.iter().all(|(_, size)| *size == expected_size),
+            "{label}: {calls:?}"
+        );
+    }
+}
+
+#[test]
+fn block_unknown_wrapper_descendant_font_remains_unverified_over_inline_absolute_size() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::BLOCK,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Block Face").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    let source = "block\nA[\"<span style='font-size:24px'>Visible</span>\"]\nclassDef nodeLabel font-size:var(--host-size)\n";
+    let parsed = common::install_parse_compatibility(
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(
+                serde_json::json!({"htmlLabels":true,"themeVariables":{"fontSize":"0px"}}),
+            ),
+        ),
+    )
+    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    .unwrap()
+    .unwrap()
+    .into_presentation();
+    let rendered = render_block_presentation_with_theme(
+        &parsed,
+        &theme,
+        ThemePortabilityRequirement::BestEffort,
+    );
+    assert!(
+        rendered
+            .svg()
+            .contains(".nodeLabel span{font-size:var(--host-size)!important;}")
+    );
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.has_tag_name("span")
+            && node
+                .attribute("style")
+                .is_some_and(|style| style.contains("font-size:24px"))
+    }));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(
+        evidence.not_applicable_count(),
+        0,
+        "a zero measurement fallback cannot prove hidden text"
+    );
+    assert_eq!(evidence.theme_residual_count(), 2);
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+        .begin_session_with_theme(&theme)
+        .unwrap();
+    let result = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+        .unwrap()
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+    assert!(
+        matches!(
+            result,
+            Err(merman_render::Error::UnverifiedFamilyTheme {
+                family_id: DiagramFamilyId::BLOCK,
+                residual_count: 2,
+            })
+        ),
+        "unknown important descendant CSS must retain the Block portability residual"
+    );
+}
+
+#[test]
+fn block_zero_fonts_retire_text_evidence_without_removing_shells_or_backgrounds() {
+    let typography =
+        ThemeTextStyle::default().with_font_stack(FontStack::single("Block Face").unwrap());
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(DiagramFamilyId::BLOCK, typography),
+                )
+                .with_styles(
+                    [
+                        ThemeTarget::Node,
+                        ThemeTarget::NodeLabel,
+                        ThemeTarget::ClusterLabel,
+                        ThemeTarget::EdgeLabelBackground,
+                    ]
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), |rules, target| {
+                        rules.with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#b316cd").unwrap()),
+                        ))
+                    }),
+                ),
+        )
+        .unwrap();
+    for html in [false, true] {
+        for from_source in [false, true] {
+            let config =
+                serde_json::json!({"htmlLabels": html, "themeVariables": {"fontSize": "0px"}});
+            let body = "block\ncolumns 2\nblock:group:2\nA[\"Alpha\"] B[\"Beta\"]\nend\nA -- \"relates\" --> B\n";
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config)
+            };
+            let rendered = render_block_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            assert!(css.contains("font-size:0px;"), "{css}");
+            assert!(
+                css.contains(".edgeLabel{background-color:#b316cd;"),
+                "{css}"
+            );
+            for id in ["block-theme-group", "block-theme-A", "block-theme-B"] {
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap();
+                let shell = node
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                assert!(numeric_attribute(shell, "width") > 0.0);
+                assert!(numeric_attribute(shell, "height") > 0.0);
+                assert!(shell.attribute("style").unwrap().contains("fill:#b316cd;"));
+            }
+            if !html {
+                assert!(document.descendants().any(|node| node.has_tag_name("rect")
+                    && node.attribute("class") == Some("background")
+                    && numeric_attribute(node, "width") > 0.0));
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.required_count(),
+                5,
+                "html={html}, source={from_source}"
+            );
+            assert_eq!(
+                evidence.applied_count(),
+                2,
+                "shell and background still consume paint"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                3,
+                "zero text cannot consume fonts or fill"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn block_subpixel_config_and_typed_sizes_reach_css_and_layout() {
+    use merman_render::environment::{
+        HostMeasurementResult, HostTextMeasurement, HostTextMeasurementRequest, HostTextMeasurer,
+        MeasurementProfileId, TextMeasurementOperation, TextMeasurementPhase,
+        TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    };
+    use merman_render::text::TextMetrics;
+    use std::sync::{Arc, Mutex};
+
+    struct FontHost(Arc<Mutex<Vec<(String, f64)>>>);
+    impl HostTextMeasurer for FontHost {
+        fn measure(&self, request: HostTextMeasurementRequest<'_>) -> HostMeasurementResult {
+            if request.operation != TextMeasurementOperation::Wrapped
+                || !matches!(request.text, "Alpha" | "Beta" | "relates")
+            {
+                return Ok(None);
+            }
+            self.0
+                .lock()
+                .unwrap()
+                .push((request.text.to_owned(), request.style.font_size));
+            Ok(Some(HostTextMeasurement::Metrics(TextMetrics {
+                width: request.style.font_size * 2.0,
+                height: request.style.font_size * 1.5,
+                line_count: 1,
+            })))
+        }
+    }
+
+    for html in [false, true] {
+        for (config_size, typed_size, expected) in
+            [(None, 0.5, 0.5), (Some("0.5pt"), 22.0, 2.0 / 3.0)]
+        {
+            let theme = block_typography_theme("Block Face", typed_size);
+            let mut config = serde_json::json!({"htmlLabels":html});
+            if let Some(size) = config_size {
+                config["themeVariables"] = serde_json::json!({"fontSize":size});
+            }
+            let parsed = common::install_parse_compatibility(
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+            )
+            .parse_diagram_for_render_model_sync(
+                "block\nA[\"Alpha\"] B[\"Beta\"]\nA -- \"relates\" --> B\n",
+                ParseOptions::strict(),
+            )
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let identity = TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.block-subpixel-terminal").unwrap(),
+                "1",
+            )
+            .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                    identity,
+                    Arc::new(FontHost(calls.clone())),
+                    TextMeasurementPhase::ALL,
+                ))
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let artifact =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session).unwrap();
+            let rendered = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let alpha = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some("merman-A"))
+                .expect("Alpha is emitted from the prepared layout");
+            let label = alpha
+                .children()
+                .find(|node| node.attribute("class") == Some("label"))
+                .expect("Alpha label wrapper");
+            // Public layout JSON deliberately skips the internal label dimensions.
+            // The emitted translation consumes that same measured height in both modes.
+            let (x, y) = translated_center(label);
+            assert!(
+                (y + expected * 1.5 / 2.0).abs() < 0.000001,
+                "html={html}: {y}"
+            );
+            assert!((x - if html { -expected } else { 0.0 }).abs() < 0.000001);
+            if html {
+                let viewport = label
+                    .descendants()
+                    .find(|node| node.has_tag_name("foreignObject"))
+                    .expect("HTML label viewport");
+                assert!((numeric_attribute(viewport, "width") - expected * 2.0).abs() < 0.000001);
+                assert!((numeric_attribute(viewport, "height") - expected * 1.5).abs() < 0.000001);
+            }
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap();
+            let size = css
+                .split("font-size:")
+                .nth(1)
+                .unwrap()
+                .split("px")
+                .next()
+                .unwrap()
+                .parse::<f64>()
+                .unwrap();
+            assert!((size - expected).abs() < 0.000001, "{css}");
+            let calls = calls.lock().unwrap();
+            for label in ["Alpha", "Beta", "relates"] {
+                assert!(
+                    calls.iter().any(|(text, _)| text == label),
+                    "{label}: {calls:?}"
+                );
+            }
+            assert!(
+                calls
+                    .iter()
+                    .all(|(_, size)| (size - expected).abs() < 0.000001),
+                "{calls:?}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                2 - usize::from(config_size.is_some())
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(config_size.is_some())
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn block_local_zero_fonts_and_unknown_host_sizes_have_distinct_evidence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::BLOCK,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Block Face").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for html in [false, true] {
+        for (style, unknown) in [
+            ("0px", false),
+            ("0pt", false),
+            ("var(--host-size)", true),
+            ("1rem", true),
+        ] {
+            for owner in ["direct", "default", "assigned"] {
+                let declarations = match owner {
+                    "direct" => format!("style A font-size:{style}\n"),
+                    "default" => format!("classDef default font-size:{style}\n"),
+                    _ => format!("classDef face font-size:{style}\nclass A face\n"),
+                };
+                let source = format!("block\nA[\"Alpha\"]\n{declarations}");
+                let rendered = render_block_with_theme_requirement(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels":html, "themeVariables":{"fontSize":"0px"}}),
+                    ),
+                ),
+                ThemePortabilityRequirement::BestEffort,
+            );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 0, "{html}/{style}");
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if unknown { 0 } else { 2 },
+                    "{html}/{style}"
+                );
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    if unknown { 2 } else { 0 },
+                    "{html}/{style}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn block_inline_absolute_text_can_escape_a_zero_parent_without_reviving_hidden_siblings() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::BLOCK,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Block Face").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for (label, visible) in [
+        ("<span style='font-size:0px'>Hidden</span>", false),
+        ("<span style='font-size:2em'>Hidden</span>", false),
+        (
+            "<span style='font-size:24px'>Visible</span><span style='font-size:0px'>Hidden</span>",
+            true,
+        ),
+    ] {
+        let source = format!("block\nA[\"{label}\"]\n");
+        let rendered = render_block_with_theme_and_engine(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels":true,"themeVariables":{"fontSize":"0px"}}),
+                ),
+            ),
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            if visible { 2 } else { 0 },
+            "{label}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            if visible { 0 } else { 2 },
+            "{label}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{label}");
+    }
+}
+
+#[test]
+fn block_zero_edge_label_class_keeps_its_background_without_font_evidence() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::BLOCK,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Block Face").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for html in [false, true] {
+        let rendered = render_block_with_theme_and_engine(
+            "block\nA[\"\"] -- \"relates\" --> B[\"\"]\nclassDef edgeLabel font-size:0px\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"htmlLabels":html}),
+                ),
+            ),
+        );
+        assert!(
+            rendered
+                .svg()
+                .contains(".edgeLabel{background-color:#123456;")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(
+            evidence.applied_count(),
+            1,
+            "background consumes paint: html={html}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            1,
+            "zero edge label cannot prove the font: html={html}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }

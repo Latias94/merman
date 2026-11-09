@@ -23,11 +23,11 @@ impl<'a> BlockConfigView<'a> {
             padding: self.block_f64("padding").unwrap_or(DEFAULT_BLOCK_PADDING),
             text_style: TextStyle {
                 font_family: Some(config_font_family_or_first_array_css(self.effective_config)),
-                font_size: crate::config::config_theme_or_root_font_size_px(
+                font_size: crate::config::config_theme_or_root_font_size_px_opt(
                     self.effective_config,
-                    DEFAULT_BLOCK_FONT_SIZE,
                 )
-                .max(1.0),
+                .filter(|size| *size >= 0.0)
+                .unwrap_or(DEFAULT_BLOCK_FONT_SIZE),
                 font_weight: None,
                 font_style: None,
             },
@@ -100,7 +100,7 @@ mod tests {
     }
 
     #[test]
-    fn block_layout_settings_clamp_font_size_but_preserve_padding_semantics() {
+    fn block_layout_settings_preserve_zero_font_size_and_padding_semantics() {
         let cfg = json!({
             "themeVariables": {
                 "fontSize": 0
@@ -113,7 +113,21 @@ mod tests {
         let settings = BlockConfigView::new(&cfg).layout_settings();
 
         assert_eq!(settings.padding, -2.0);
-        assert_eq!(settings.text_style.font_size, 1.0);
+        assert_eq!(settings.text_style.font_size, 0.0);
+    }
+
+    #[test]
+    fn invalid_negative_font_sizes_use_the_default_without_changing_padding() {
+        for value in [json!(-2), json!("-2px")] {
+            for config in [
+                json!({"themeVariables": {"fontSize": value}, "block": {"padding": -2}}),
+                json!({"fontSize": value, "block": {"padding": -2}}),
+            ] {
+                let settings = BlockConfigView::new(&config).layout_settings();
+                assert_eq!(settings.text_style.font_size, DEFAULT_BLOCK_FONT_SIZE);
+                assert_eq!(settings.padding, -2.0);
+            }
+        }
     }
 
     #[test]
