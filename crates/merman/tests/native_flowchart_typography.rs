@@ -62,6 +62,66 @@ fn native_flowchart_admits_px_size_and_node_font_weight() {
 }
 
 #[test]
+fn native_source_geometry_guards_follow_normalized_css_properties() {
+    let families = [
+        "flowchart LR\nA[Measured label]\n",
+        #[cfg(feature = "diagram-class")]
+        "classDiagram\nclass A\n",
+    ];
+    for family in families {
+        for style in [
+            "letter-spacing /* comment */ :20px",
+            "/* comment */letter-spacing:20px",
+            "letter-spacing\u{2003}:20px",
+        ] {
+            let source = format!("{family}style A {style}\n");
+            let error = Renderer::new()
+                .render(RenderRequest::new(
+                    &source,
+                    RenderTarget::Svg(request(true)),
+                    OperationControl::new(),
+                ))
+                .expect_err("comments cannot admit unmeasured source geometry");
+            assert!(
+                error.to_string().contains("letter-spacing"),
+                "{source}: {error}"
+            );
+            let compatibility = Renderer::new().render(RenderRequest::new(
+                &source,
+                RenderTarget::Svg(request(false)),
+                OperationControl::new(),
+            ));
+            let merman::RenderOutput::Svg(Some(output)) =
+                compatibility.unwrap_or_else(|error| panic!("{source}: {error}"))
+            else {
+                panic!("expected compatibility SVG");
+            };
+            let document = roxmltree::Document::parse(output.svg()).unwrap();
+            assert!(
+                document.descendants().any(|node| node
+                    .attribute("style")
+                    .is_some_and(|style| style.contains("letter-spacing:20px"))),
+                "source normalization emits the rejected geometry style: {source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_source_font_names_do_not_create_geometry_declarations() {
+    let source = r#"flowchart LR
+A[Measured label]
+style A font-family:"Face;letter-spacing:20px",monospace
+"#;
+    let result = Renderer::new().render(RenderRequest::new(
+        source,
+        RenderTarget::Svg(request(true)),
+        OperationControl::new(),
+    ));
+    assert!(result.is_ok(), "{:?}", result.err());
+}
+
+#[test]
 fn native_source_font_sizes_reject_rem_only_when_it_wins_within_the_style_list() {
     let families = [
         "flowchart LR\nA[Measured label]\n",
