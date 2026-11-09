@@ -167,7 +167,7 @@
         "domId": "state-A----parent-3",
         "id": "A----parent",
         "isGroup": true,
-        "label": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
+        "label": "literal <br> should be treated as text\n    line2\\\\nline3 (escaped)",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -185,7 +185,7 @@
         "domId": "state-A----note-3",
         "id": "A----note-3",
         "isGroup": false,
-        "label": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
+        "label": "literal <br> should be treated as text\n    line2\\\\nline3 (escaped)",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -223,7 +223,7 @@
         "id": "A",
         "note": {
           "position": "left of",
-          "text": "literal <br/> should be treated as text\nline2\\\\nline3 (escaped)"
+          "text": "literal <br/> should be treated as text\n    line2\\\\nline3 (escaped)"
         },
         "start": null,
         "styles": [],

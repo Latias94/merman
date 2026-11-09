@@ -6,8 +6,8 @@
 use super::{
     LexError, Tok,
     actor::{
-        ActorBoundary, config_followed_by_alias, is_ecmascript_whitespace, scan_actor,
-        signal_type_at, trim_ecmascript, trim_end_ecmascript,
+        ActorBoundary, central_suffix_precedes_signal, config_followed_by_alias,
+        is_ecmascript_whitespace, scan_actor, signal_type_at, trim_ecmascript,
     },
 };
 use crate::{SourceSpan, diagrams::scan::ScanStep};
@@ -659,7 +659,7 @@ impl<'input> SequenceScanner<'input> {
     }
 
     fn lex_actor(&mut self) -> Option<(usize, Tok, usize)> {
-        self.lex_actor_with_boundary(ActorBoundary::StatementEnd)
+        self.lex_actor_with_boundary(ActorBoundary::Text)
     }
 
     fn lex_forced_actor_id(&mut self) -> Option<(usize, Tok, usize)> {
@@ -672,21 +672,14 @@ impl<'input> SequenceScanner<'input> {
             return None;
         }
         let saved = self.pos;
-        let tok = self.lex_actor_with_boundary(ActorBoundary::SignalSource)?;
+        let tok = self.lex_actor_with_boundary(ActorBoundary::Text)?;
         let after_actor = self.pos;
 
-        if let Tok::Actor(actor) = &tok.1
-            && let Some(stripped) = actor.strip_suffix("()")
-            && self.peek_signal_type_at(after_actor)
-        {
-            let central_start = tok.2.checked_sub(2)?;
-            self.pending.push_back((central_start, Tok::Central, tok.2));
-            let actor_end = trim_end_ecmascript(&self.input[tok.0..central_start]).len() + tok.0;
-            return Some((
-                tok.0,
-                Tok::Actor(trim_end_ecmascript(stripped).to_string()),
-                actor_end,
-            ));
+        if central_suffix_precedes_signal(self.input, after_actor) {
+            self.pos += 2;
+            self.pending
+                .push_back((after_actor, Tok::Central, self.pos));
+            return Some(tok);
         }
 
         if self.peek_signal_type_at_current() {
@@ -799,8 +792,11 @@ impl<'input> SequenceScanner<'input> {
             | Tok::SignalType(_)
             | Tok::Plus
             | Tok::Minus
-            | Tok::Central => Some(ActorBoundary::Text),
-            Tok::LeftOf | Tok::RightOf | Tok::Over | Tok::Comma => Some(ActorBoundary::TextOrComma),
+            | Tok::Central
+            | Tok::LeftOf
+            | Tok::RightOf
+            | Tok::Over
+            | Tok::Comma => Some(ActorBoundary::Text),
             _ => None,
         };
     }

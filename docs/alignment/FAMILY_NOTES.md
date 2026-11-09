@@ -117,6 +117,18 @@ The same-name entity remains in the semantic DB, preserving later entity IDs, al
 styles; the render projection filters it when the subgraph owns that ID. Style targets and
 `classDef` names use their exclusive lexical context, so keyword spellings remain valid there.
 
+Empty backtick attribute bodies change lexical state without emitting a word. Ordinary attribute
+words follow the selected case-insensitive character range, including micro-sign folding; quoted
+bodies retain their wider alphabet. Unicode whitespace inside an already started attribute or
+`STYLE_TEXT` token stays literal when that token's character class admits it. At a style token
+boundary, the earlier ECMAScript whitespace rule applies. Style separators retain the exclusive
+lexer context through the physical newline; invalid components do not become CSS payload text.
+Editor payload selections retain the full consumed tokens independently of compacted style values.
+Failed generic-attribute lookahead reuses its proven nonmatching suffix, and skipped empty bodies
+participate in the existing cooperative scanner checkpoints. Owners:
+[attribute/style regressions](../../crates/merman-core/tests/er_attribute_style_test.rs) and
+[prepared-output regressions](../../crates/merman-render/tests/parser_parity_render_test.rs).
+
 Repeated style-class assignments retain their last-occurrence precedence: `red,blue,red` applies
 red last. Inline source styles still override class definitions. Source text styles reach HTML
 subgraph titles; ordinary SVG subgraph titles use the configured theme title role and inherited
@@ -600,6 +612,16 @@ Bare Sequence participant redeclarations retain an existing display alias. Singl
 values retain hashes and semicolons through the physical line boundary; those values do not change
 ordinary message or control-statement comment rules.
 
+Sequence's initial actor token has a restricted nonempty head and wider continuation chunks.
+Slashes, backslashes and parentheses in those continuations remain part of the participant identity;
+arrow and standalone central-connection markers retain their own boundaries. Menu `link`, `links`
+and `properties` text passes through the existing case-sensitive, single-prefix `parseMessage`
+conversion before decoding its payload. The prefix does not change the actor's wrapping policy.
+Parser facts retain authored identities and menu ranges for navigation and rename. Owners:
+[actor continuations](../../crates/merman-core/tests/sequence_actor_continuation_parity_test.rs),
+[menu text](../../crates/merman-core/tests/sequence_menu_text_parity_test.rs) and
+[prepared SVG](../../crates/merman-render/tests/parser_parity_render_test.rs).
+
 Sequence numeric tokens require the selected lexer's ASCII space or LF right boundary; a
 semicolon directly after an autonumber value does not satisfy it. EOF retains the parser's
 synthetic line boundary. The same numeric-token priority applies to ordinary message endpoints:
@@ -636,6 +658,15 @@ dimensions, and choice, fork and join nodes retain safe static links and tooltip
 Unquoted composite IDs use their own single-token boundary and retain punctuation such as `-`
 and `:`. A plain quoted alias splits its identifier and first description at colons, ignoring later
 segments as the selected parser does; a composite alias retains its complete literal ID.
+
+A completed root quoted alias retains the selected `STATE` context through its first hidden
+newline, allowing the following line to open its composite block. Inside an existing composite,
+the alias block must open on the same line. Multiline note text is trimmed only around the complete
+payload with ECMAScript whitespace; internal indentation, tabs and blank lines remain part of the
+semantic label and parser facts. Selected v2 upstream rendering can fail for a note whose target
+has no ordinary state declaration; successful v1 notes and v2 notes with a bare target declaration
+bound the render evidence. Owners: [note/alias regressions](../../crates/merman-core/tests/state_note_alias_parity_test.rs)
+and [prepared-output regressions](../../crates/merman-render/tests/parser_parity_render_test.rs).
 
 An empty final concurrent region is accepted by the selected parser, but its renderer fails on a
 leaf `divider` shape. Merman retains its existing region partitioning for that input; no successful

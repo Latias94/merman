@@ -964,7 +964,7 @@ end note"#,
     .unwrap()
     .unwrap();
     let note_text = res.model["states"]["A"]["note"]["text"].as_str().unwrap();
-    assert_eq!(note_text, "line1\nline2");
+    assert_eq!(note_text, "line1\n  line2");
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram
@@ -2350,8 +2350,8 @@ fn parse_diagram_state_note_terminator_comments_preserve_body_and_following_edge
                 .parse_diagram_sync(&source, ParseOptions::strict())
                 .unwrap()
                 .unwrap();
-            let note_text = "this sentence contains end note %% literal text\n\
-                             another %% literal line";
+            let note_text =
+                "this sentence contains end note %% literal text\n  another %% literal line";
             assert_eq!(parsed.model["states"]["A"]["note"]["text"], note_text);
             let nodes = parsed.model["nodes"].as_array().unwrap();
             assert!(

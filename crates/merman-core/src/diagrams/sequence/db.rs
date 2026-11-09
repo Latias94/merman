@@ -1,4 +1,5 @@
 use crate::{OperationControl, OperationControlResult};
+use merman_model::text::is_ecmascript_whitespace;
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -215,17 +216,17 @@ impl SequenceDb {
     }
 
     fn parse_message(&self, raw: &str) -> ParsedText {
-        let trimmed = raw.trim();
+        let trimmed = raw.trim_matches(is_ecmascript_whitespace);
         let (wrap, cleaned) = if let Some(rest) = trimmed
             .strip_prefix(":wrap:")
             .or_else(|| trimmed.strip_prefix("wrap:"))
         {
-            (Some(true), rest.trim())
+            (Some(true), rest.trim_matches(is_ecmascript_whitespace))
         } else if let Some(rest) = trimmed
             .strip_prefix(":nowrap:")
             .or_else(|| trimmed.strip_prefix("nowrap:"))
         {
-            (Some(false), rest.trim())
+            (Some(false), rest.trim_matches(is_ecmascript_whitespace))
         } else {
             (None, trimmed)
         };
@@ -602,7 +603,8 @@ impl SequenceDb {
     }
 
     fn add_links(&mut self, actor: &str, raw_text: &str) {
-        let s = unescape_entities(raw_text);
+        let text = self.parse_message(raw_text);
+        let s = unescape_entities(&text.text);
         let Ok(v) = serde_json::from_str::<Value>(&s) else {
             return;
         };
@@ -620,13 +622,19 @@ impl SequenceDb {
     }
 
     fn add_link(&mut self, actor: &str, raw_text: &str) {
-        let s = unescape_entities(raw_text);
+        let text = self.parse_message(raw_text);
+        let s = unescape_entities(&text.text);
         let Some(idx) = s.find('@') else {
             return;
         };
         let (left, right) = s.split_at(idx);
-        let label = left.strip_suffix(' ').unwrap_or(left).trim();
-        let url = right.trim_start_matches('@').trim();
+        let label = left
+            .strip_suffix(' ')
+            .unwrap_or(left)
+            .trim_matches(is_ecmascript_whitespace);
+        let url = right
+            .trim_start_matches('@')
+            .trim_matches(is_ecmascript_whitespace);
         if label.is_empty() || url.is_empty() {
             return;
         }
@@ -638,7 +646,8 @@ impl SequenceDb {
     }
 
     fn add_properties(&mut self, actor: &str, raw_text: &str) {
-        let s = unescape_entities(raw_text);
+        let text = self.parse_message(raw_text);
+        let s = unescape_entities(&text.text);
         let Ok(v) = serde_json::from_str::<Value>(&s) else {
             return;
         };

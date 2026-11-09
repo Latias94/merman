@@ -54,7 +54,7 @@
         "domId": "state-State1----parent-0",
         "id": "State1----parent",
         "isGroup": true,
-        "label": "Important information! You can write\nnotes with . and  in them.",
+        "label": "Important information! You can write\n  notes with . and  in them.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -72,7 +72,7 @@
         "domId": "state-State1----note-0",
         "id": "State1----note-0",
         "isGroup": false,
-        "label": "Important information! You can write\nnotes with . and  in them.",
+        "label": "Important information! You can write\n  notes with . and  in them.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -96,7 +96,7 @@
         "id": "State1",
         "note": {
           "position": "left of",
-          "text": "Important information! You can write\nnotes with . and  in them."
+          "text": "Important information! You can write\n  notes with . and  in them."
         },
         "start": null,
         "styles": [],

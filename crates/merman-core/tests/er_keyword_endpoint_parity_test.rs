@@ -226,7 +226,12 @@ fn adjacent_backtick_attributes_keep_types_keys_comments_and_ecmascript_separato
             let model = parse_er(&source);
             let attributes = &model.entities["E"].attributes;
             assert_eq!(attributes.len(), 1);
-            assert_eq!(attributes[0].ty, "int");
+            let expected_type = if matches!(separator, "\u{2003}" | "\u{feff}") {
+                format!("int{separator}")
+            } else {
+                "int".to_string()
+            };
+            assert_eq!(attributes[0].ty, expected_type);
             assert_eq!(attributes[0].name, "id");
             assert_eq!(attributes[0].keys, ["pk", "Fk"]);
             assert_eq!(attributes[0].comment, "comment");
@@ -473,10 +478,15 @@ mod editor {
                 );
                 let (model, facts) = capture(&source);
                 assert_eq!(model.entities["E"].attributes[0].name, "属性");
+                let expected_type = if separator == "\u{feff}" {
+                    format!("int{separator}")
+                } else {
+                    "int".to_string()
+                };
                 assert_eq!(model.entities["E"].attributes[0].keys, ["pk", "Fk"]);
                 for (name, start, role) in [
                     (
-                        "int",
+                        expected_type.as_str(),
                         source.find("int").unwrap(),
                         EditorSemanticRole::Payload,
                     ),
@@ -637,7 +647,7 @@ mod editor {
                 ("A ||--|| 12abc : rel", "abc"),
                 ("A[12.3abc]", "abc"),
                 ("E {int`id` PK,}", "}"),
-                ("E {int``}", "``"),
+                ("E {int``}", "}"),
             ] {
                 let source = format!(
                     "\u{feff}---{newline}title: 顧客{newline}---{newline}erDiagram{newline}{tail}{newline}"

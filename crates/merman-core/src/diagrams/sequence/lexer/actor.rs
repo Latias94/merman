@@ -37,8 +37,6 @@ pub(super) enum ActorBoundary {
     Declaration,
     StatementEnd,
     Text,
-    TextOrComma,
-    SignalSource,
 }
 
 pub(super) struct ActorScan<'input> {
@@ -53,59 +51,26 @@ pub(super) fn scan_actor(
     start: usize,
     boundary: ActorBoundary,
 ) -> Option<ActorScan<'_>> {
-    let mut end = start;
-    let bytes = input.as_bytes();
     let uses_id_rules = matches!(
         boundary,
         ActorBoundary::Declaration | ActorBoundary::StatementEnd
     );
-
-    while end < input.len() {
-        if !input.is_char_boundary(end) {
-            end += 1;
-            continue;
-        }
-        if !uses_id_rules && signal_type_at(input, end).is_some() {
-            break;
-        }
-        if !uses_id_rules && input[end..].starts_with("--") {
-            break;
-        }
-        let ch = input[end..].chars().next()?;
-        let b = bytes[end];
-        if b == b'\n' || b == b';' || b == b',' || b == b':' || b == b'<' || b == b'>' {
-            break;
-        }
-        if uses_id_rules {
-            if b == b'@' {
-                break;
-            }
-            if boundary == ActorBoundary::Declaration
-                && is_ecmascript_whitespace(ch)
-                && declaration_alias_starts_at(input, start, end)
+    let end = if uses_id_rules {
+        let mut end = start;
+        for ch in input[start..].chars() {
+            if matches!(ch, '\n' | ';' | ',' | ':' | '<' | '>' | '@')
+                || (boundary == ActorBoundary::Declaration
+                    && is_ecmascript_whitespace(ch)
+                    && declaration_alias_starts_at(input, start, end))
             {
                 break;
             }
-        } else {
-            if b == b'+' || b == b'/' || b == b'\\' || b == b')' {
-                break;
-            }
-            if boundary == ActorBoundary::Text && end == start && b == b'-' {
-                break;
-            }
-            if b == b'(' {
-                if boundary == ActorBoundary::SignalSource
-                    && central_suffix_precedes_signal(input, end)
-                {
-                    end += 2;
-                    continue;
-                }
-                break;
-            }
+            end += ch.len_utf8();
         }
-
-        end += ch.len_utf8();
-    }
+        end
+    } else {
+        scan_initial_actor_end(input, start)?
+    };
 
     let mut token_end = end;
     while token_end > start {
@@ -127,6 +92,45 @@ pub(super) fn scan_actor(
         config_allowed: boundary == ActorBoundary::Declaration
             && declaration_id_allows_config(text),
     })
+}
+
+fn scan_initial_actor_end(input: &str, start: usize) -> Option<usize> {
+    // The pinned ACTOR rule has a restrictive nonempty head followed by wider chunks. Slashes
+    // and parentheses are legal inside a continuation, where only a new chunk checks arrows.
+    let head = &input[start..];
+    let head_len = head
+        .find(|ch| {
+            matches!(
+                ch,
+                '/' | '\\' | '+' | '(' | ')' | '<' | '-' | '>' | ':' | '\n' | ',' | ';'
+            )
+        })
+        .unwrap_or(head.len());
+    if head_len == 0 {
+        return None;
+    }
+
+    let mut end = start + head_len;
+    loop {
+        let rest = &input[end..];
+        if signal_type_at(input, end).is_some()
+            || ["--", "-/", "-\\", "()"]
+                .iter()
+                .any(|prefix| rest.starts_with(prefix))
+        {
+            break;
+        }
+        let hyphen_end = end + rest.bytes().take_while(|byte| *byte == b'-').count();
+        let tail = &input[hyphen_end..];
+        let tail_len = tail
+            .find(['+', '<', '-', '>', ':', '\n', ',', ';'])
+            .unwrap_or(tail.len());
+        if tail_len == 0 {
+            break;
+        }
+        end = hyphen_end + tail_len;
+    }
+    Some(end)
 }
 
 pub(super) fn signal_type_at(input: &str, position: usize) -> Option<(usize, i32)> {
@@ -175,10 +179,6 @@ pub(super) fn trim_start_ecmascript(value: &str) -> &str {
     value.trim_start_matches(is_ecmascript_whitespace)
 }
 
-pub(super) fn trim_end_ecmascript(value: &str) -> &str {
-    value.trim_end_matches(is_ecmascript_whitespace)
-}
-
 pub(super) fn trim_ecmascript(value: &str) -> &str {
     value.trim_matches(is_ecmascript_whitespace)
 }
@@ -196,7 +196,7 @@ fn declaration_id_allows_config(actor_id: &str) -> bool {
         })
 }
 
-fn central_suffix_precedes_signal(input: &str, position: usize) -> bool {
+pub(super) fn central_suffix_precedes_signal(input: &str, position: usize) -> bool {
     if !input[position..].starts_with("()") {
         return false;
     }

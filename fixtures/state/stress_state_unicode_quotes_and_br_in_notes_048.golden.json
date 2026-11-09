@@ -206,7 +206,7 @@
         "domId": "state-CN----parent-4",
         "id": "CN----parent",
         "isGroup": true,
-        "label": "Mixed scripts: 中文 / 日本語 / العربية<br>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br>\n  punctuation: ,.;:!? () [] {} / \\\\ |",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -224,7 +224,7 @@
         "domId": "state-CN----note-4",
         "id": "CN----note-4",
         "isGroup": false,
-        "label": "Mixed scripts: 中文 / 日本語 / العربية<br>\npunctuation: ,.;:!? () [] {} / \\\\ |",
+        "label": "Mixed scripts: 中文 / 日本語 / العربية<br>\n  punctuation: ,.;:!? () [] {} / \\\\ |",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -280,7 +280,7 @@
         "id": "CN",
         "note": {
           "position": "right of",
-          "text": "Mixed scripts: 中文 / 日本語 / العربية<br/>\npunctuation: ,.;:!? () [] {} / \\\\ |"
+          "text": "Mixed scripts: 中文 / 日本語 / العربية<br/>\n  punctuation: ,.;:!? () [] {} / \\\\ |"
         },
         "start": null,
         "styles": [],

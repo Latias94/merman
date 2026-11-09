@@ -42,8 +42,9 @@ fn parse_diagram_er_attributes_accept_ecmascript_whitespace_and_preserve_key_spe
     for separator in [
         '\u{00a0}', '\u{1680}', '\u{2003}', '\u{2028}', '\u{2029}', '\u{202f}', '\u{feff}',
     ] {
-        let text =
-            format!("erDiagram\nENTITY {{\n  int{separator}id{separator}pk,{separator}Fk\n}}\n");
+        let text = format!(
+            "erDiagram\nENTITY {{\n  {separator}int {separator}id {separator}pk, {separator}Fk\n}}\n"
+        );
         let parsed = block_on(engine.parse_diagram(&text, ParseOptions::strict()))
             .unwrap_or_else(|error| panic!("{separator:?}: {error}"))
             .unwrap();
@@ -51,6 +52,15 @@ fn parse_diagram_er_attributes_accept_ecmascript_whitespace_and_preserve_key_spe
         assert_eq!(attribute["type"], json!("int"));
         assert_eq!(attribute["name"], json!("id"));
         assert_eq!(attribute["keys"], json!(["pk", "Fk"]));
+        if separator != '\u{00a0}' {
+            let compact =
+                format!("erDiagram\nENTITY {{int{separator}id{separator}pk,{separator}Fk}}\n");
+            assert!(
+                engine
+                    .parse_diagram_sync(&compact, ParseOptions::strict())
+                    .is_err()
+            );
+        }
     }
 }
 

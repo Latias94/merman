@@ -17,10 +17,10 @@
           "offset_y": 0.0,
           "padding": 16.0,
           "requested_dir": null,
-          "title": "Multi-line note<br>\nwith HTML break.",
+          "title": "Multi-line note<br>\n  with HTML break.",
           "title_label": {
             "height": 63.0,
-            "width": 105.42,
+            "width": 114.66,
             "x": 447.0,
             "y": 97.5
           },
