@@ -1113,8 +1113,7 @@ fn gantt_config_font_family_css(config: &PresentationConfig) -> String {
         .get("gantt")
         .and_then(|gantt| gantt.get("fontFamily"))
         .and_then(serde_json::Value::as_str)
-        .map(crate::config::normalize_css_font_family)
-        .filter(|value| !value.is_empty());
+        .and_then(crate::config::normalized_config_font_family);
     value.unwrap_or_else(|| crate::config::config_font_family_css(config.as_value()))
 }
 
@@ -1124,7 +1123,8 @@ fn gantt_config_owns_font_stack(config: &PresentationConfig) -> bool {
         .get("gantt")
         .and_then(|gantt| gantt.get("fontFamily"))
         .and_then(serde_json::Value::as_str)
-        .is_some_and(|font| !crate::config::normalize_css_font_family(font).is_empty())
+        .and_then(crate::config::normalized_config_font_family)
+        .is_some()
     {
         return config.config_path_overrides_typed_default("gantt.fontFamily");
     }
