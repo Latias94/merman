@@ -573,8 +573,7 @@ fn prepare_c4_family<'parsed>(
         meta.effective_config.as_value(),
         &typography_theme,
         execution.text_measurer(),
-        execution.container_width,
-        execution.container_height,
+        crate::geom::Size::new(execution.container_width, execution.container_height),
         execution.screen_available_width,
         execution.work_meter_ref(),
     )?;
