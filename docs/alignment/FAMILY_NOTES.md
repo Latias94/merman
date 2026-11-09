@@ -426,6 +426,17 @@ Rust `roughr` paths are not coordinate-identical to JavaScript RoughJS. This doe
 classic SVG or grant a family-wide geometry exemption. Venn layout derives from the admitted
 Venn optimization/intersection source, rather than ad hoc circle placement.
 
+Venn statements are token-delimited rather than line-delimited: `set A:1set B` declares two sets.
+The parser consumes quoted and bracketed payloads whole, applies the selected lexer priority to
+keywords, numbers and style values, and tracks beginning-of-line indentation independently of
+statement completion. Semantic construction and editor facts share the same cursor; recovery
+retains completed statements and resumes at a following statement with original source ranges.
+
+Owners: [Venn parser](../../crates/merman-core/src/diagrams/venn.rs),
+[Venn layout](../../crates/merman-render/src/venn.rs),
+[Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs), and
+[Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs).
+
 ## Journey
 
 Fractional scores are canonical values and determine face position and expression. Invalid scores
@@ -579,9 +590,20 @@ editor ranges through normalized line endings and removed comments.
 Owners: [Timeline parser](../../crates/merman-core/src/diagrams/timeline.rs) and
 [SVG tests](../../crates/merman-render/tests/timeline_svg_test.rs).
 
-Owners: [Ishikawa SVG tests](../../crates/merman-render/tests/ishikawa_svg_test.rs),
-[Venn layout](../../crates/merman-render/src/venn.rs), and
-[Venn SVG tests](../../crates/merman-render/tests/venn_svg_test.rs).
+## Kanban
+
+The initial-state `kanban` token uses a case-insensitive JavaScript word boundary. Header suffixes
+such as `[x]` and `-X` start inline sections. The same token is reserved at the start of a body
+statement, while identifiers such as `kanbanX` and `kanban_id` remain ordinary nodes. Recovery
+diagnoses the reserved token and retains following valid statements and original editor ranges.
+
+Numeric ticket, icon and assignee metadata use binary64 rounding and JavaScript Number text.
+Ticket truthiness is evaluated before conversion, so numeric zero is absent and quoted `"0"`
+is retained. Raw metadata keeps its authored JSON values; prepared ticket text and links consume
+the converted ticket string.
+
+Owners: [parser](../../crates/merman-core/src/diagrams/kanban.rs) and
+[parser/render regressions](../../crates/merman-render/tests/kanban_parser_parity_test.rs).
 
 ## Mindmap
 
@@ -628,6 +650,10 @@ their original byte ranges, including after rejected Unicode prefixes.
 Negative-value diagnostics stringify the converted JavaScript Number, including shortest decimal
 and exponent forms and `-Infinity`, while retaining the original numeric token's diagnostic span.
 Negative zero and negative values that underflow to zero remain valid.
+
+`showData` legends stringify their original Number values without coordinate rounding, including
+small fractions, binary64-rounded integers and JavaScript exponent thresholds. Legend measurement,
+typed text preparation and SVG emission share that same string.
 
 `pieOuterStrokeWidth` affects the prepared outer-circle radius as well as its CSS. The selected
 renderer uses `parseFontSize`'s numeric component for this radius, without converting CSS units into
@@ -882,6 +908,12 @@ Annotation numbers retain the grammar's binary64 conversion instead of saturatin
 Point and annotation-box labels use JavaScript Number text, and numeric box sorting remains stable
 for rounded ties and multiple overflowing values. Canonical models retain nonfinite numbers;
 compatibility JSON projects them as null.
+
+Component and pipeline-child label offsets retain the signed Number produced by the grammar.
+Their complete source ranges include the optional minus sign and whitespace. Offsets never
+become allocation counts, and SVG emits their resulting coordinates with JavaScript Number
+text instead of replacing nonfinite coordinates with zero. Absent offsets retain strategy and
+anchor defaults; explicit zero remains an authored override.
 
 Owners: [Wardley layout](../../crates/merman-render/src/wardley.rs) and
 [SVG tests](../../crates/merman-render/tests/wardley_svg_test.rs).

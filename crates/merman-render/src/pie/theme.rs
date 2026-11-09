@@ -496,10 +496,6 @@ impl PieThemePlan {
             .map(|stroke| stroke.css.as_ref())
     }
 
-    pub(crate) fn text_measurement_requested(&self) -> bool {
-        self.text.requested()
-    }
-
     pub(crate) fn begin_terminal_receipt<'a>(
         &self,
         visible_slice_labels: impl IntoIterator<Item = &'a str>,

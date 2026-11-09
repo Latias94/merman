@@ -74,6 +74,120 @@ fn number_conversion_keeps_annotation_int_grammar() {
 }
 
 #[test]
+fn signed_label_offsets_preserve_number_values_for_components_and_pipeline_children() {
+    for (token, expected) in [
+        ("0".to_string(), 0.0),
+        ("9007199254740993".into(), 9_007_199_254_740_992.0),
+        ("18446744073709551616".into(), 18_446_744_073_709_551_616.0),
+        ("1000000000000000000000".into(), 1e21),
+        ("9".repeat(309), f64::INFINITY),
+    ] {
+        let source = format!(
+            "wardley-beta\ncomponent Regular [0.5, 0.5] label [{token}, - {token}]\n\
+             component Parent [0.5, 0.5]\npipeline Parent {{\n\
+             component Child [0.25] label [- {token}, {token}]\n}}\n"
+        );
+        let model = parse_wardley(&source);
+        for (id, sign) in [("Regular", 1.0), ("Parent_Child", -1.0)] {
+            let node = model.nodes.iter().find(|node| node.id == id).unwrap();
+            assert_eq!(
+                node.label_offset_x.unwrap().to_bits(),
+                (sign * expected).to_bits()
+            );
+            assert_eq!(
+                node.label_offset_y.unwrap().to_bits(),
+                (-sign * expected).to_bits()
+            );
+        }
+        #[cfg(feature = "compat-json")]
+        {
+            let projected = merman_core::MermaidEngine::new()
+                .parse_diagram_sync(&source, merman_core::ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .model;
+            for node in projected["nodes"].as_array().unwrap() {
+                if node["id"] == "Parent" {
+                    assert!(node.get("labelOffsetX").is_none());
+                    continue;
+                }
+                if expected.is_infinite() {
+                    assert!(node["labelOffsetX"].is_null());
+                    assert!(node["labelOffsetY"].is_null());
+                } else {
+                    let sign = if node["id"] == "Regular" { 1.0 } else { -1.0 };
+                    assert_eq!(node["labelOffsetX"].as_f64().unwrap(), sign * expected);
+                    assert_eq!(node["labelOffsetY"].as_f64().unwrap(), -sign * expected);
+                }
+            }
+        }
+    }
+    for token in ["01", "1.0", "+1", "1e3", "Infinity", "- -1"] {
+        assert!(
+            merman_core::SemanticParser::new()
+                .parse_diagram_sync(&format!(
+                    "wardley-beta\ncomponent X [0.5, 0.5] label [{token}, 0]\n"
+                ))
+                .is_err(),
+            "{token}"
+        );
+    }
+}
+
+#[cfg(feature = "editor-facts")]
+#[test]
+fn signed_label_offsets_keep_sign_whitespace_in_editor_and_recovery_ranges() {
+    use merman_core::{EditorSemanticCompleteness, ParsedEditorFacts, SemanticSnapshotCapture};
+    for newline in ["\n", "\r\n"] {
+        for invalid_suffix in [false, true] {
+            let mut source = concat!(
+                "\u{feff}---\ntitle: Numeric 😀\n---\nwardley-beta\n",
+                "component Regular [0.5, 0.5] label [1000000000000000000000, - \t1000000000000000000000]\n",
+                "component Parent [0.5, 0.5]\npipeline Parent {\n",
+                "component Child [0.25] label [- \t1000000000000000000000, 1000000000000000000000]\n}\n",
+            ).to_string();
+            if invalid_suffix {
+                source.push_str("component Bad [0.5, 0.5] label [1.5, 0]\n");
+            }
+            let source = source.replace('\n', newline);
+            let SemanticSnapshotCapture::Snapshot(snapshot) =
+                SemanticParser::new().capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("Wardley retains a snapshot")
+            };
+            let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                panic!("Wardley retains editor facts")
+            };
+            assert_eq!(
+                facts.completeness,
+                if invalid_suffix {
+                    EditorSemanticCompleteness::Recovered
+                } else {
+                    EditorSemanticCompleteness::Complete
+                }
+            );
+            let offsets: Vec<_> = facts
+                .symbols
+                .iter()
+                .filter(|symbol| {
+                    matches!(
+                        symbol.detail.as_deref(),
+                        Some("wardley label X offset" | "wardley label Y offset")
+                    )
+                })
+                .collect();
+            assert_eq!(offsets.len(), 4);
+            for (start, _) in source.match_indices("1000000000000000000000") {
+                let negative = source[..start].ends_with("- \t");
+                let span = SourceSpan::new(start - if negative { 3 } else { 0 }, start + 22);
+                assert!(offsets.iter().any(|symbol| symbol.selection == span
+                    && symbol.name == if negative { "-1e+21" } else { "1e+21" }));
+            }
+        }
+    }
+}
+
+#[test]
 fn annotation_coordinate_errors_keep_number_text_and_exact_source_spans() {
     for (token, label, coordinate, received) in [
         (

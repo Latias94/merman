@@ -47,6 +47,51 @@ fn text_in_group(svg: &str, class: &str) -> Vec<String> {
 }
 
 #[test]
+fn component_and_pipeline_label_offsets_reach_svg_as_javascript_numbers() {
+    for (token, expected_x, expected_y) in [
+        (
+            "9007199254740993".to_string(),
+            "9007199254741442",
+            "-9007199254740692",
+        ),
+        (
+            "18446744073709551616".into(),
+            "18446744073709552000",
+            "-18446744073709552000",
+        ),
+        ("1000000000000000000000".into(), "1e+21", "-1e+21"),
+        ("9".repeat(309), "Infinity", "-Infinity"),
+    ] {
+        let source =
+            format!("wardley-beta\ncomponent Regular [0.5, 0.5] label [{token}, - {token}]\n");
+        let (_, svg) = render_wardley(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| {
+                node.attribute("class") == Some("wardley-node-label")
+                    && node.text() == Some("Regular")
+            })
+            .unwrap();
+        assert_eq!(label.attribute("x"), Some(expected_x));
+        assert_eq!(label.attribute("y"), Some(expected_y));
+    }
+    let (_, svg) = render_wardley(concat!(
+        "wardley-beta\ncomponent Parent [0.5, 0.5]\npipeline Parent {\n",
+        "component Child [0.25] label [-18446744073709551616, 18446744073709551616]\n}\n",
+    ));
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let label = document
+        .descendants()
+        .find(|node| {
+            node.attribute("class") == Some("wardley-node-label") && node.text() == Some("Child")
+        })
+        .unwrap();
+    assert_eq!(label.attribute("x"), Some("-18446744073709552000"));
+    assert_eq!(label.attribute("y"), Some("18446744073709552000"));
+}
+
+#[test]
 fn annotation_points_and_box_lines_use_javascript_number_display() {
     for (token, expected) in [
         ("0".to_string(), "0"),

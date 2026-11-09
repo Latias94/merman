@@ -39,15 +39,17 @@ pub struct WardleyNode {
     #[serde(
         default,
         rename = "labelOffsetX",
+        with = "crate::number::serde_optional_number",
         skip_serializing_if = "Option::is_none"
     )]
-    pub label_offset_x: Option<i64>,
+    pub label_offset_x: Option<f64>,
     #[serde(
         default,
         rename = "labelOffsetY",
+        with = "crate::number::serde_optional_number",
         skip_serializing_if = "Option::is_none"
     )]
-    pub label_offset_y: Option<i64>,
+    pub label_offset_y: Option<f64>,
     #[serde(default, rename = "inPipeline", skip_serializing_if = "is_false")]
     pub in_pipeline: bool,
     #[serde(default, rename = "isPipelineParent", skip_serializing_if = "is_false")]

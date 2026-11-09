@@ -3,6 +3,67 @@
 use merman_model::families::wardley::{WardleyAnnotation, WardleyDiagramModel, WardleyPoint};
 use serde_json::{Value, json};
 
+#[test]
+fn label_offset_presence_and_number_states_survive_canonical_and_compatibility_projection() {
+    use merman_model::families::wardley::WardleyNode;
+    let ordinary = json!({"id":"n", "label":"N", "x":50, "y":50});
+    for value in [
+        0.0,
+        -0.0,
+        18_446_744_073_709_551_616.0,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NAN,
+    ] {
+        let mut node: WardleyNode = serde_json::from_value(ordinary.clone()).unwrap();
+        node.label_offset_x = Some(value);
+        node.label_offset_y = Some(-value);
+        let text = serde_json::to_string(&node).unwrap();
+        let restored: WardleyNode = serde_json::from_str(&text).unwrap();
+        for (actual, expected) in [
+            (restored.label_offset_x.unwrap(), value),
+            (restored.label_offset_y.unwrap(), -value),
+        ] {
+            assert!(actual.to_bits() == expected.to_bits() || actual.is_nan() && expected.is_nan());
+        }
+        #[cfg(feature = "compat-json")]
+        {
+            use merman_model::families::wardley::compat;
+            use merman_model::presentation::compat::CompatJsonMetadata;
+            let config = merman_model::MermaidConfig::empty_object();
+            let meta = CompatJsonMetadata {
+                diagram_type: "wardley",
+                config: &config,
+                authored_config: &config,
+                title: None,
+            };
+            let projection = compat::project(
+                &WardleyDiagramModel {
+                    nodes: vec![node],
+                    ..Default::default()
+                },
+                &meta,
+            )
+            .unwrap();
+            if value.is_finite() {
+                assert_eq!(projection["nodes"][0]["labelOffsetX"].as_f64(), Some(value));
+            } else {
+                assert!(projection["nodes"][0]["labelOffsetX"].is_null());
+                assert!(projection["nodes"][0]["labelOffsetY"].is_null());
+            }
+        }
+    }
+    for field in ["labelOffsetX", "labelOffsetY"] {
+        let mut wire = ordinary.clone();
+        wire[field] = Value::Null;
+        let node: WardleyNode = serde_json::from_value(wire.clone()).unwrap();
+        assert_eq!((node.label_offset_x, node.label_offset_y), (None, None));
+        assert!(serde_json::to_value(node).unwrap().get(field).is_none());
+        wire[field] = json!("18446744073709551616");
+        assert!(serde_json::from_value::<WardleyNode>(wire).is_err());
+    }
+}
+
 fn model_with_annotation(number: f64) -> WardleyDiagramModel {
     WardleyDiagramModel {
         annotations: vec![WardleyAnnotation {

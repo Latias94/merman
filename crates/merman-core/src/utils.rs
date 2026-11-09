@@ -12,6 +12,7 @@ pub(crate) use merman_markup::url::sanitize_url;
 
 #[cfg(any(
     feature = "diagram-block",
+    feature = "diagram-kanban",
     feature = "diagram-packet",
     feature = "diagram-pie",
     feature = "diagram-radar",

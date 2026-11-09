@@ -183,8 +183,8 @@ fn write_text(
     let _ = write!(
         out,
         r#" x="{}" y="{}" fill="{}" font-size="{}""#,
-        fmt(text.x),
-        fmt(text.y),
+        ryu_js::Buffer::new().format(text.x),
+        ryu_js::Buffer::new().format(text.y),
         escape_attr_display(fill),
         fmt(text.font_size)
     );

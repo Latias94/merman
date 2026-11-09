@@ -60,6 +60,54 @@ fn render_pie_from_text_with_options(text: &str, options: &SvgRenderOptions) -> 
 }
 
 #[test]
+fn pie_show_data_preserves_number_precision_in_text_and_measured_bounds() {
+    let theme = pie_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    for (token, expected) in [
+        ("0.0000001", "1e-7"),
+        ("0.000001", "0.000001"),
+        ("1.0000001", "1.0000001"),
+        ("42", "42"),
+        ("9007199254740993", "9007199254740992"),
+        ("1000000000000000000000", "1e+21"),
+    ] {
+        let source = format!("pie showData\n\"Data\": {token}\n");
+        let legend = format!("Data [{expected}]");
+        let literal_source = format!("pie\n\"{legend}\": 1\n");
+        for themed in [false, true] {
+            let render = |source: &str| {
+                if themed {
+                    render_pie_with_theme(source, &theme).svg().to_owned()
+                } else {
+                    render_pie_from_text(source)
+                }
+            };
+            let actual = render(&source);
+            let literal = render(&literal_source);
+            let document = roxmltree::Document::parse(&actual).unwrap();
+            let literal_document = roxmltree::Document::parse(&literal).unwrap();
+            let rendered_legend = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("legend"))
+                .and_then(|node| node.children().find(|child| child.has_tag_name("text")))
+                .and_then(|node| node.text());
+            assert_eq!(
+                rendered_legend,
+                Some(legend.as_str()),
+                "{token}, themed={themed}"
+            );
+            assert_eq!(
+                document.root_element().attribute("viewBox"),
+                literal_document.root_element().attribute("viewBox"),
+                "measurement must consume the same Number text as output, {token}, themed={themed}"
+            );
+            assert!(document.descendants().any(|node| node.has_tag_name("text")
+                && node.attribute("class") == Some("slice")
+                && node.text() == Some("100%")));
+        }
+    }
+}
+
+#[test]
 fn pie_multiline_string_reaches_visible_legend_and_preserves_slice_values() {
     let svg = render_pie_from_text("pie showData\n\"First\nSecond\": 10\n\"Other\": 5\n");
     let document = roxmltree::Document::parse(&svg).expect("valid multiline Pie SVG");

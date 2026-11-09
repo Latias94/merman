@@ -994,8 +994,8 @@ fn layout_wardley_diagram_with_font_family(
 
             let (label_x, label_y, weight, anchor, baseline) = if is_anchor {
                 (
-                    position.x + node.label_offset_x.unwrap_or(0) as f64,
-                    position.y + node.label_offset_y.map_or(-3.0, |offset| offset as f64),
+                    position.x + node.label_offset_x.unwrap_or(0.0),
+                    position.y + node.label_offset_y.unwrap_or(-3.0),
                     WardleyFontWeight::Bold,
                     WardleyTextAnchor::Middle,
                     Some(WardleyDominantBaseline::Middle),
@@ -1012,14 +1012,8 @@ fn layout_wardley_diagram_with_font_family(
                     }
                 }
                 (
-                    position.x
-                        + node
-                            .label_offset_x
-                            .map_or(default_x, |offset| offset as f64),
-                    position.y
-                        + node
-                            .label_offset_y
-                            .map_or(default_y, |offset| offset as f64),
+                    position.x + node.label_offset_x.unwrap_or(default_x),
+                    position.y + node.label_offset_y.unwrap_or(default_y),
                     WardleyFontWeight::Normal,
                     WardleyTextAnchor::Start,
                     Some(WardleyDominantBaseline::Auto),

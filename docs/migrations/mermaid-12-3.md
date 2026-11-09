@@ -50,6 +50,16 @@ diagram language nor public syntax for internal producer options such as
 attachment, marker rows, or pool roles. Grid and the unwired anchor pipeline
 remain upstream implementation groundwork, outside the registered layout surface.
 
+## Empty Class programs
+
+The selected Class grammar requires a statement after `classDiagram`. A header-only program
+rejects. Use a direction statement to render a diagram with no classes or relationships:
+
+```mermaid
+classDiagram
+direction TB
+```
+
 ## Rust source changes
 
 Current development changes `JourneyTask::score` in `merman_model::families::journey`
@@ -112,6 +122,11 @@ The DB applies the final authored ticks value before enforcing its upper limit o
 `WardleyAnnotation::number` and `WardleyAnnotationLayout::number` change from `u64` to
 `f64`. Use `number: 1.0` in direct literals. Annotation labels use JavaScript Number text,
 and the annotation box preserves authored order when rounded or overflowing numbers tie.
+`WardleyNode::label_offset_x` and `label_offset_y` use `Option<f64>` instead of
+`Option<i64>`. Use values such as `Some(-40.0)`. Component and pipeline-child offsets retain
+Number rounding, signed zero, and overflow; their editor ranges include an authored minus sign
+and intervening whitespace. SVG label coordinates use JavaScript Number text, including
+nonfinite values, while the map's root viewport retains its ordinary finite dimensions.
 
 These Block, Packet, Radar, and Wardley canonical numeric fields retain finite integer JSON
 shapes where representable, preserve negative zero, and encode nonfinite values as exactly
@@ -146,6 +161,17 @@ Agentflow's input syntax resolves its internal `lean_right` alias to
 Include/Extend edge labels render as `«include»` and `«extend»`; their semantic
 relationship names stay unchanged. Swimlane preparation, label ranks, nested
 bounds, directional layout and endpoint docking follow the selected source.
+
+Kanban's inline header nodes follow the selected reserved-keyword boundary. Body identifiers
+matching the standalone `kanban` token now reject, while `kanbanX` and `kanban_id` remain valid.
+Numeric tickets, icons and assignees use JavaScript Number text; quote identifiers when their
+exact authored spelling or integer precision must survive numeric conversion. Pie `showData`
+legends retain their Number precision and use the same text for measurement and SVG output.
+
+Venn accepts complete adjacent statements without requiring a physical newline. Numbers retain
+their lexical endpoint, so `set A:1set B` declares both sets. Quoted and bracketed payloads remain
+whole, indentation retains its selected text behavior, and recovered editor facts preserve
+completed and following statements with their original source ranges.
 
 ## Independent syntax package
 

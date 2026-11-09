@@ -373,7 +373,9 @@ fn apply_shape_data(node: &mut KanbanNode, document: &Value, span: SourceSpan) -
 fn value_to_string(v: &Value) -> String {
     match v {
         Value::String(s) => s.clone(),
-        Value::Number(n) => n.to_string(),
+        Value::Number(n) => n
+            .as_f64()
+            .map_or_else(|| n.to_string(), crate::utils::format_js_number),
         Value::Bool(b) => b.to_string(),
         Value::Null => "null".to_string(),
         other => other.to_string(),
@@ -417,6 +419,18 @@ fn strip_inline_comment(line: &str) -> &str {
     }
 
     line
+}
+
+fn strip_kanban_keyword(input: &str) -> Option<&str> {
+    input
+        .get("kanban".len()..)
+        .filter(|_| starts_with_case_insensitive(input, "kanban"))
+        .filter(|after| {
+            after
+                .as_bytes()
+                .first()
+                .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+        })
 }
 
 fn parse_node_spec_for_render(
@@ -1233,14 +1247,7 @@ fn construct_kanban_semantic_source_controlled(
             continue;
         }
         let trimmed_start = line.start + visible_start;
-        let after_keyword = trimmed
-            .get("kanban".len()..)
-            .filter(|_| starts_with_case_insensitive(trimmed, "kanban"))
-            .filter(|after| {
-                after.is_empty()
-                    || after.starts_with("%%")
-                    || after.chars().next().is_some_and(char::is_whitespace)
-            });
+        let after_keyword = strip_kanban_keyword(trimmed);
         if let Some(after_keyword) = after_keyword {
             let keyword_end = trimmed_start + "kanban".len();
             if !after_keyword.trim().is_empty() {
@@ -1402,6 +1409,14 @@ fn parse_kanban_statement(
         return Ok(Ok(()));
     }
     let rest_start = source_start + line.len() - rest.len();
+
+    if strip_kanban_keyword(rest).is_some() {
+        return Ok(Err(Error::diagram_parse_exact(
+            "kanban",
+            "unexpected kanban header in document",
+            SourceSpan::new(rest_start, rest_start + "kanban".len()),
+        )));
+    }
 
     if starts_with_case_insensitive(rest, "::icon(") {
         let value_start = "::icon(".len();
@@ -2579,6 +2594,15 @@ mod semantic_tests {
             ("''", serde_json::json!(""), None),
             ("'0'", serde_json::json!("0"), Some("0")),
             ("1", serde_json::json!(1), Some("1")),
+            ("1.0", serde_json::json!(1.0), Some("1")),
+            ("'1.0'", serde_json::json!("1.0"), Some("1.0")),
+            (
+                "9007199254740993",
+                serde_json::json!(9_007_199_254_740_993_u64),
+                Some("9007199254740992"),
+            ),
+            ("1e-7", serde_json::json!(1e-7), Some("1e-7")),
+            ("1e21", serde_json::json!(1e21), Some("1e+21")),
         ] {
             let source = format!("kanban\n  todo\n    card[Task]@{{ ticket: {raw} }}\n");
             let model = parse_semantic(&source);
@@ -2593,6 +2617,118 @@ mod semantic_tests {
                     rendered.nodes[1].compatibility().ticket.as_deref(),
                     expected
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn semantic_numeric_icon_and_assignee_share_number_text_without_changing_metadata() {
+        let model = parse_semantic(concat!(
+            "kanban\n  todo\n",
+            "    card[Task]@{ icon: 1.0, assigned: 9007199254740993 }\n",
+        ));
+        let card = &model.nodes[1];
+        assert_eq!(card.icon.as_deref(), Some("1"));
+        assert_eq!(card.assigned.as_deref(), Some("9007199254740992"));
+        let authored = card.metadata.as_ref().unwrap();
+        assert_eq!(authored["icon"], serde_json::json!(1.0));
+        assert_eq!(
+            authored["assigned"],
+            serde_json::json!(9_007_199_254_740_993_u64)
+        );
+    }
+
+    #[test]
+    fn semantic_header_and_body_use_the_same_reserved_keyword_boundary() {
+        for (source, id) in [
+            ("kanban[x]\n", "x"),
+            ("KANBAN-X\n", "-X"),
+            ("kanbané\n", "é"),
+        ] {
+            let model = parse_semantic(source);
+            assert_eq!(model.nodes.len(), 1);
+            assert_eq!(model.nodes[0].id, id);
+            assert!(model.nodes[0].is_group);
+        }
+        let model = parse_semantic("kanban\n  kanbanX[kanban-X]\n  kanban_id\n");
+        assert_eq!(model.nodes.len(), 2);
+        assert_eq!(model.nodes[0].id, "kanbanX");
+        assert_eq!(model.nodes[0].label, "kanban-X");
+        assert_eq!(model.nodes[1].id, "kanban_id");
+        for source in ["kanbanX\n", "kanban_id\n"] {
+            assert!(
+                parse_kanban_semantic_model_controlled(
+                    source,
+                    &metadata(),
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Omit,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap()
+                .model
+                .is_err(),
+                "{source}"
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn semantic_reserved_keywords_recover_at_the_token_without_publishing_a_node() {
+        for newline in ["\n", "\r\n"] {
+            for reserved in ["kanban", "kanban-X", "KANBAN[x]", "kanbané"] {
+                let source =
+                    format!("kanban{newline}  {reserved}{newline}  safe[Recovered 中文]{newline}");
+                let parsed = parse_kanban_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    EditorFactsDemand::Capture,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap();
+                let Error::DiagramParse { diagnostic, .. } = parsed.model.unwrap_err() else {
+                    panic!("expected a reserved keyword diagnostic");
+                };
+                let start = "kanban".len() + newline.len() + 2;
+                let span = SourceSpan::new(start, start + "kanban".len());
+                assert_eq!(diagnostic.span(), Some(span));
+                let facts = parsed.editor_facts.unwrap();
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                assert_eq!(facts.diagnostics.len(), 1);
+                assert_eq!(facts.diagnostics[0].span, Some(span));
+                assert!(!facts.symbols.iter().any(|symbol| symbol.name == reserved));
+                let safe_start = source.find("safe").unwrap();
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == "safe"
+                    && symbol.selection == SourceSpan::new(safe_start, safe_start + 4)));
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn semantic_header_suffix_keeps_original_editor_ranges() {
+        use crate::{ParsedEditorFacts, SemanticParser, SemanticSnapshotCapture};
+
+        for (header, id) in [("kanban[x]", "x"), ("kanban-X", "-X"), ("kanbané", "é")] {
+            for newline in ["\n", "\r\n"] {
+                let source = format!(
+                    "\u{feff}---{newline}title: 中文😀{newline}---{newline}{header}{newline}"
+                );
+                let SemanticSnapshotCapture::Snapshot(snapshot) =
+                    SemanticParser::new().capture_diagram_snapshot_sync(&source)
+                else {
+                    panic!("Kanban retains a snapshot");
+                };
+                let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("Kanban retains editor facts");
+                };
+                assert!(facts.diagnostics.is_empty());
+                let start = source.rfind(id).unwrap();
+                assert!(facts.symbols.iter().any(|symbol| symbol.name == id
+                    && symbol.selection == SourceSpan::new(start, start + id.len())));
             }
         }
     }

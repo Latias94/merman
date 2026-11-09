@@ -428,8 +428,8 @@ fn strategies_market_inertia_and_labels_are_fully_positioned() {
     buy.source_strategy = Some(WardleySourceStrategy::Buy);
     let mut outsource = node("outsource", 50.0, 60.0);
     outsource.source_strategy = Some(WardleySourceStrategy::Outsource);
-    outsource.label_offset_x = Some(2);
-    outsource.label_offset_y = Some(3);
+    outsource.label_offset_x = Some(2.0);
+    outsource.label_offset_y = Some(3.0);
     let mut market = node("market", 70.0, 60.0);
     market.source_strategy = Some(WardleySourceStrategy::Market);
     let mut parent = node("parent", 90.0, 60.0);
