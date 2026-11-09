@@ -154,15 +154,17 @@ fn write_area_label(
     out: &mut impl SvgOutput,
     area: &crate::model::VennAreaLayout,
     font_size: f64,
-    text_color: &str,
+    text_color: Option<&str>,
 ) -> Result<()> {
+    let text_fill = text_color
+        .map(|color| format!(" fill: {};", escape_css_attr(color)))
+        .unwrap_or_default();
     let _ = write!(
         out,
-        r#"<text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px; fill: {text_fill};"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text>"#,
+        r#"<text class="label" text-anchor="middle" dy=".35em" x="{x}" y="{y}" style="font-size: {font_size}px;{text_fill}"><tspan x="{x}" y="{y}" dy="0.35em">{label}</tspan></text>"#,
         x = fmt(area.text_x),
         y = fmt(area.text_y),
         font_size = fmt(font_size),
-        text_fill = escape_css_attr(text_color),
         label = escape_xml(crate::venn::rendered_area_label(area)),
     );
     out.checkpoint()
@@ -255,9 +257,8 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
 
     let theme = typography_theme.css_binding();
     let title_fill = theme.title_color.as_str();
-    let text_fill = theme.set_text_color.as_str();
     let mut typography_theme_receipt = typography_theme.begin_terminal_receipt();
-    let css = typography_theme.stylesheet(diagram_id.semantic_str(), title_fill, text_fill);
+    let css = typography_theme.stylesheet(diagram_id.semantic_str());
     out.push_str("<style>");
     super::super::output::XmlTextOutput::new(&mut out).push_str(&css);
     out.push_str("</style>");
@@ -354,7 +355,12 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 );
                 out.checkpoint()?;
             }
-            write_area_label(&mut out, area, 48.0 * layout.scale, text_color.as_str())?;
+            write_area_label(
+                &mut out,
+                area,
+                48.0 * layout.scale,
+                Some(text_color.as_str()),
+            )?;
             typography_theme_receipt.record_circle_label(
                 crate::venn::VENN_CIRCLE_CLASS,
                 crate::venn::VENN_AREA_LABEL_CLASS,
@@ -366,11 +372,12 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
         } else if let crate::venn::VennAreaPaintBinding::Intersection {
             fill,
             text,
-            source_text_owned,
+            typed_text_fill,
+            ..
         } = paint
         {
             let custom_fill = fill.as_deref();
-            let text_color = text.as_str();
+            let text_color = text.as_deref();
             let _ = write!(
                 &mut out,
                 r#"<g class="venn-area venn-intersection" data-venn-sets="{sets}">"#,
@@ -418,8 +425,8 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 crate::venn::VENN_INTERSECTION_CLASS,
                 crate::venn::VENN_AREA_LABEL_CLASS,
                 crate::venn::rendered_area_label(area),
-                *source_text_owned,
-                text_color,
+                *typed_text_fill,
+                text_color.unwrap_or_default(),
             );
             out.push_str("</g>");
             out.checkpoint()?;
@@ -498,8 +505,10 @@ pub(crate) fn render_venn_diagram_svg_model_with_title_theme(
                 typography_theme_receipt.record_text_node(
                     crate::venn::VENN_TEXT_NODE_CLASS,
                     label,
-                    text_color.is_some(),
-                    text_color.unwrap_or(text_fill),
+                    theme.typed_text_node_fill && text_color.is_none(),
+                    text_color
+                        .or(theme.text_node_color.as_deref())
+                        .unwrap_or_default(),
                 );
             }
             out.push_str("</g>");
@@ -658,7 +667,7 @@ mod tests {
             path: String::new(),
         };
 
-        let error = write_area_label(&mut out, &area, 24.0, "#111111")
+        let error = write_area_label(&mut out, &area, 24.0, Some("#111111"))
             .expect_err("the rejecting sink must stop Venn label emission");
 
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
