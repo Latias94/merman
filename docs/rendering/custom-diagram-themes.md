@@ -226,6 +226,16 @@ from fixed 10px and 11px annotation roles; unknown receiving-host sizes retain r
 Railroad measures direct SVG text in all four grammar dialects. Empty, whitespace-only or
 sanitized-empty literals reserve their box padding without an extra font-size height.
 
+Timeline keeps the root `fontSize` layout offset separate from the displayed theme-variable
+size. Rejected display sizes inherit the ordinary text ancestor; valid unknown host sizes
+retain their CSS and unverified typography or text-paint evidence. Architecture also preserves
+unknown inherited text sizes without changing its independent Cytoscape layout font.
+
+C4 element font settings follow Mermaid's CSSOM assignment: numeric sizes use pixels, while
+string sizes retain their CSS units. Empty or rejected element sizes expose the inherited
+root; they do not restore the initialized 14px default. Element names, type/description rows,
+boundary annotations and relationship labels keep their separate sizing rules.
+
 Block label measurement follows its effective `classDef` typography, including the default class,
 and direct node styles. Class rules and direct declarations retain their CSS priority rather than
 using a separate font choice for measurement.
@@ -340,6 +350,9 @@ in a small intersection can overlap. Theme verification does not certify collisi
 
 Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
 value does not own the property, and an unused fallback does not own the selected value.
+Font lists are admitted before normalization, so a rejected list cannot become valid by
+dropping empty entries or hide an accepted lower-priority font. Quoted font names and safe
+host-dependent values retain their distinct spelling and portability requirements.
 Family configuration determines its accepted units, font-array handling and numeric bounds. Pie
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
