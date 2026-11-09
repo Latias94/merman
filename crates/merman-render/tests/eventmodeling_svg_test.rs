@@ -657,6 +657,59 @@ fn eventmodeling_layout_json_with_theme(theme: &DiagramTheme) -> serde_json::Val
         .expect("Event Modeling layout projection")
 }
 
+fn render_authored_eventmodeling_title(
+    title: &str,
+    font_size_css: &str,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
+    use merman_model::families::event_modeling::{EventModelingDiagramModel, EventModelingFrame};
+    use merman_model::presentation::{
+        AuthoredPresentationMetadata, PresentationContext, PresentationDiagram, RenderSemanticModel,
+    };
+
+    // This public data boundary accepts caller-authored labels without claiming grammar support.
+    let config = merman_model::MermaidConfig::from_value(serde_json::json!({
+        "themeVariables": { "fontSize": font_size_css }
+    }));
+    let presentation = PresentationDiagram::try_new(
+        AuthoredPresentationMetadata {
+            diagram_type: "eventmodeling".to_string(),
+            config: config.clone(),
+            effective_config: config,
+            title: None,
+            theme_recipe: Some(theme.compatibility_recipe().clone()),
+        },
+        RenderSemanticModel::EventModeling(EventModelingDiagramModel {
+            frames: vec![EventModelingFrame {
+                name: "01".to_string(),
+                frame_kind: "timeframe".to_string(),
+                model_entity_type: "ui".to_string(),
+                entity_identifier: title.to_string(),
+                source_frames: Vec::new(),
+                data_inline_value: None,
+                data_reference: None,
+            }],
+            ..Default::default()
+        }),
+        PresentationContext::None,
+        &merman_model::resources::InputResourcePolicy::default(),
+        &merman_model::OperationControl::new(),
+    )
+    .unwrap()
+    .expect("public caller-authored Event Modeling model");
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(portability)
+        .begin_session_with_theme(theme)
+        .unwrap();
+    family::prepare(
+        &presentation,
+        &LayoutOptions::headless_svg_defaults(),
+        session,
+    )?
+    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+}
+
 fn style_property<'a>(style: &'a str, expected_property: &str) -> Option<&'a str> {
     style
         .split(';')
@@ -955,6 +1008,374 @@ fn eventmodeling_typed_font_stack_reaches_both_text_selectors_and_strict_receipt
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
+}
+
+#[test]
+fn eventmodeling_font_stack_requires_visible_consumers_despite_retained_dom() {
+    let font_stack = FontStack::single("EventVisibleFont").unwrap();
+    let expected_font = font_stack.as_css().to_string();
+    let theme =
+        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_stack(font_stack));
+    for (size, applied) in [("0px", 0), ("20px", 1)] {
+        let source = format!(
+            "---\nconfig:\n  themeVariables:\n    fontSize: '{size}'\n---\neventmodeling\ntf 01 ui View\n"
+        );
+        let rendered =
+            render_eventmodeling_with_theme(&source, &theme, MermaidEngine::new()).unwrap();
+        let stylesheet = eventmodeling_stylesheet(rendered.svg());
+        assert!(stylesheet.contains(&format!("font-family: {expected_font};")));
+        assert!(stylesheet.contains(&format!("font-size: {size};")));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("b") && node.text() == Some("View"))
+        );
+        assert!(
+            document
+                .descendants()
+                .any(|node| node.has_tag_name("text") && node.text() == Some("UI/Automation"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{size}");
+        assert_eq!(evidence.applied_count(), applied, "{size}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied, "{size}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{size}");
+    }
+}
+
+#[test]
+fn eventmodeling_zero_text_paint_does_not_hide_shape_paint_consumers() {
+    for target in [
+        ThemeTarget::Text,
+        ThemeTarget::NodeLabel,
+        ThemeTarget::ClusterLabel,
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Node,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#234567").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Cluster,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#345678").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )),
+                ),
+            )
+            .unwrap();
+        for (size, visible) in [("0px", false), ("20px", true)] {
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": { "fontSize": size }
+                    }),
+                ),
+            );
+            let rendered =
+                render_eventmodeling_with_theme("eventmodeling\ntf 01 ui View\n", &theme, engine)
+                    .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for (class, fill) in [("em-box", "#234567"), ("em-swimlane", "#345678")] {
+                let shape = document
+                    .descendants()
+                    .find(|node| node.attribute("class") == Some(class))
+                    .unwrap();
+                assert_eq!(
+                    shape
+                        .children()
+                        .find(|node| node.has_tag_name("rect"))
+                        .unwrap()
+                        .attribute("fill"),
+                    Some(fill)
+                );
+            }
+            let stylesheet = eventmodeling_stylesheet(rendered.svg());
+            assert_eq!(
+                stylesheet.contains("color: #123456;"),
+                visible,
+                "{target:?} {size}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 3, "{target:?} {size}");
+            assert_eq!(
+                evidence.applied_count(),
+                2 + usize::from(visible),
+                "{target:?} {size}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!visible),
+                "{target:?} {size}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{target:?} {size}");
+        }
+    }
+}
+
+#[test]
+fn eventmodeling_unknown_final_size_keeps_font_stack_residual() {
+    let theme = eventmodeling_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
+    );
+    let engine = || {
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": { "fontSize": "var(--host-size)" }
+            })),
+        )
+    };
+    let source = "eventmodeling\ntf 01 ui View\n";
+    let rendered = render_eventmodeling_with_theme_requirement(
+        source,
+        &theme,
+        engine(),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    assert!(eventmodeling_stylesheet(rendered.svg()).contains("font-size: var(--host-size);"));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+    assert_eq!(
+        render_eventmodeling_with_theme(source, &theme, engine())
+            .err()
+            .unwrap()
+            .unverified_family_theme(),
+        Some((DiagramFamilyId::EVENT_MODELING, 1)),
+    );
+}
+
+#[test]
+fn eventmodeling_prepared_source_data_retains_spans_without_reactivating_attributes() {
+    let theme = eventmodeling_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
+    );
+    let source = "eventmodeling\ntf 01 ui View { <br/><span>Data</span><b style=\"font-size:20px\"><span>Nested</span></b> }\n";
+    for security in ["strict", "loose"] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "securityLevel": security,
+                "themeVariables": { "fontSize": "0px" }
+            })),
+        );
+        let rendered = render_eventmodeling_with_theme(source, &theme, engine).unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let code = document
+            .descendants()
+            .find(|node| node.has_tag_name("code"))
+            .unwrap();
+        for text in ["Data", "Nested"] {
+            assert!(
+                code.descendants()
+                    .any(|node| node.has_tag_name("span") && node.text() == Some(text)),
+                "{security}: {text}"
+            );
+        }
+        assert!(!code.descendants().any(|node| {
+            node.attribute("style")
+                .is_some_and(|style| style.contains("font-size"))
+        }));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0, "{security}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{security}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{security}");
+    }
+}
+
+#[test]
+fn eventmodeling_authored_inline_descendants_use_prepared_span_and_code_rules() {
+    let font_theme = eventmodeling_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
+    );
+    let paint_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for (html, tag, font_applied, paint_applied) in [
+        ("<b style=\"font-size:20px\">View</b><br/>", "b", true, true),
+        (
+            "<b style=\"font-size:20px\"><span>View</span></b><br/>",
+            "b",
+            false,
+            false,
+        ),
+        (
+            "<span style=\"font-size:20px\">View</span><br/>",
+            "span",
+            true,
+            true,
+        ),
+        (
+            "<code style=\"font-size:20px\">View</code><br/>",
+            "code",
+            false,
+            true,
+        ),
+        (
+            "<code><span style=\"font-size:20px\">View</span></code><br/>",
+            "span",
+            true,
+            true,
+        ),
+    ] {
+        for (theme, applied) in [(&font_theme, font_applied), (&paint_theme, paint_applied)] {
+            let rendered = render_authored_eventmodeling_title(
+                html,
+                "0px",
+                theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document.descendants().any(|node| node.has_tag_name(tag)
+                    && node.attribute("style") == Some("font-size:20px")),
+                "prepared inline style: {html}"
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some("View")),
+                "prepared DOM content: {html}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{html}");
+            assert_eq!(evidence.applied_count(), usize::from(applied), "{html}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!applied),
+                "{html}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{html}");
+        }
+    }
+}
+
+#[test]
+fn eventmodeling_relative_span_sizes_use_authored_parent_for_label_visibility() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::NodeLabel,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ))),
+        )
+        .unwrap();
+    for size_css in ["inherit", "100%", "2em"] {
+        for (parent_size, visible) in [("0px", false), ("20px", true)] {
+            let title = format!("<b style=\"font-size:{parent_size}\"><span>View</span></b><br/>");
+            let rendered = render_authored_eventmodeling_title(
+                &title,
+                size_css,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let span = document
+                .descendants()
+                .find(|node| node.has_tag_name("span") && node.text() == Some("View"))
+                .unwrap();
+            assert_eq!(span.attribute("style"), None, "{size_css}: {title}");
+            let parent_style = format!("font-size:{parent_size}");
+            assert_eq!(
+                span.parent().unwrap().attribute("style"),
+                Some(parent_style.as_str())
+            );
+            let stylesheet = eventmodeling_stylesheet(rendered.svg());
+            assert!(
+                stylesheet.contains(".em-box span { font-family:"),
+                "{stylesheet}"
+            );
+            assert!(
+                stylesheet.contains(&format!("font-size: {size_css};")),
+                "{stylesheet}"
+            );
+            assert_eq!(
+                stylesheet.contains(".em-box span { fill: #123456; color: #123456; }"),
+                visible,
+                "{size_css}: {title}",
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{size_css}: {title}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(visible),
+                "{size_css}: {title}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(!visible),
+                "{size_css}: {title}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{size_css}: {title}");
+        }
+    }
+}
+
+#[test]
+fn eventmodeling_authored_unknown_hosts_remain_residual_under_zero_root() {
+    let font_theme = eventmodeling_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("EventVisibleFont").unwrap()),
+    );
+    let paint_theme = eventmodeling_text_fill_theme(CanvasPaint::solid("#123456").unwrap());
+    for (html, font_residual, paint_residual) in [
+        ("<b class=\"host\"><span>View</span></b><br/>", true, true),
+        (
+            "<b style=\"font-size:var(--host-size)\">View</b><br/>",
+            true,
+            true,
+        ),
+        (
+            "<b style=\"font-size:20px;font-family:var(--host-font)\">View</b><br/>",
+            true,
+            false,
+        ),
+    ] {
+        for (theme, residual) in [(&font_theme, font_residual), (&paint_theme, paint_residual)] {
+            let rendered = render_authored_eventmodeling_title(
+                html,
+                "0px",
+                theme,
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.attribute("class") == Some("host")
+                        || node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("var(--host-"))),
+                "prepared unknown dependency: {html}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "{html}");
+            assert_eq!(evidence.applied_count(), usize::from(!residual), "{html}");
+            assert_eq!(evidence.not_applicable_count(), 0, "{html}");
+            assert_eq!(
+                evidence.theme_residual_count(),
+                usize::from(residual),
+                "{html}"
+            );
+        }
+    }
 }
 
 #[test]
