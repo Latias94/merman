@@ -72,72 +72,82 @@ fn gantt_empty_end_fields_keep_dependency_navigation_and_rename() {
 fn gantt_tasks_after_directives_keep_navigation_and_applied_rename() {
     use merman_editor_core::{Position, goto_definition, rename};
 
-    let diagram = concat!(
+    let same_line = concat!(
         "gantt\r\n",
         "dateFormat YYYY-MM-DD;\u{1f680} Build:build,2026-01-01,1d\r\n",
         "axisFormat %d#Ship:ship,after build,1d\r\n",
     );
-    for markdown in [false, true] {
-        let source = if markdown {
-            format!("# Delivery\r\n\r\n```mermaid\r\n{diagram}```\r\n")
-        } else {
-            diagram.to_string()
-        };
-        let kind = if markdown {
-            DocumentKind::Markdown
-        } else {
-            DocumentKind::Diagram
-        };
-        let snapshot = SnapshotHarness::new()
-            .analyze("file:///tmp/gantt-directives.mmd", 1, source.as_str(), kind)
-            .unwrap();
-        assert_eq!(
-            snapshot.fences()[0].text_index().source(),
-            FenceTextIndexSource::ParserComplete
-        );
-        let definition_offset = source.find("build,").unwrap();
-        let reference_offset = source.rfind("build,").unwrap();
-        let position = snapshot
-            .source_map()
-            .utf16_position(reference_offset)
-            .unwrap();
-        let position = Position::new(position.line, position.character);
-        let definition = goto_definition(&snapshot, position).unwrap();
-        assert_eq!(
-            snapshot.byte_offset_for_position(definition.range.start),
-            Some(definition_offset)
-        );
-        let edits = rename(&snapshot, position, "release").unwrap().unwrap();
-        assert_eq!(edits.changes[snapshot.uri()].len(), 2);
-        let mut changed = source.clone();
-        for edit in edits.changes[snapshot.uri()].iter().rev() {
-            let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
-            let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
-            changed.replace_range(start..end, &edit.new_text);
+    let cross_line = concat!(
+        "gantt\r\n",
+        "dateFormat\r\n",
+        "%% Removed before parsing\r\n",
+        "YYYY-MM-DD;\u{1f680} Build:build,2026-01-01,1d\r\n",
+        "axisFormat\r\n%d#Ship:ship,after build,1d\r\n",
+    );
+    for diagram in [same_line, cross_line] {
+        for markdown in [false, true] {
+            let source = if markdown {
+                format!("# Delivery\r\n\r\n```mermaid\r\n{diagram}```\r\n")
+            } else {
+                diagram.to_string()
+            };
+            let kind = if markdown {
+                DocumentKind::Markdown
+            } else {
+                DocumentKind::Diagram
+            };
+            let snapshot = SnapshotHarness::new()
+                .analyze("file:///tmp/gantt-directives.mmd", 1, source.as_str(), kind)
+                .unwrap();
+            assert_eq!(
+                snapshot.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete
+            );
+            let definition_offset = source.find("build,").unwrap();
+            let reference_offset = source.rfind("build,").unwrap();
+            let position = snapshot
+                .source_map()
+                .utf16_position(reference_offset)
+                .unwrap();
+            let position = Position::new(position.line, position.character);
+            let definition = goto_definition(&snapshot, position).unwrap();
+            assert_eq!(
+                snapshot.byte_offset_for_position(definition.range.start),
+                Some(definition_offset)
+            );
+            let edits = rename(&snapshot, position, "release").unwrap().unwrap();
+            assert_eq!(edits.changes[snapshot.uri()].len(), 2);
+            let mut changed = source.clone();
+            for edit in edits.changes[snapshot.uri()].iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            assert_eq!(changed, source.replace("build", "release"));
+            let reparsed = SnapshotHarness::new()
+                .analyze(
+                    "file:///tmp/gantt-directives.mmd",
+                    2,
+                    changed.as_str(),
+                    kind,
+                )
+                .unwrap();
+            assert_eq!(
+                reparsed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete
+            );
+            let position = reparsed
+                .source_map()
+                .utf16_position(changed.rfind("release,").unwrap())
+                .unwrap();
+            let definition =
+                goto_definition(&reparsed, Position::new(position.line, position.character))
+                    .unwrap();
+            assert_eq!(
+                reparsed.byte_offset_for_position(definition.range.start),
+                changed.find("release,")
+            );
         }
-        assert_eq!(changed, source.replace("build", "release"));
-        let reparsed = SnapshotHarness::new()
-            .analyze(
-                "file:///tmp/gantt-directives.mmd",
-                2,
-                changed.as_str(),
-                kind,
-            )
-            .unwrap();
-        assert_eq!(
-            reparsed.fences()[0].text_index().source(),
-            FenceTextIndexSource::ParserComplete
-        );
-        let position = reparsed
-            .source_map()
-            .utf16_position(changed.rfind("release,").unwrap())
-            .unwrap();
-        let definition =
-            goto_definition(&reparsed, Position::new(position.line, position.character)).unwrap();
-        assert_eq!(
-            reparsed.byte_offset_for_position(definition.range.start),
-            changed.find("release,")
-        );
     }
 }
 

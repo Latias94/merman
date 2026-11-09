@@ -13,7 +13,10 @@ impl PreprocessedSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let Some(span) = self.try_map_span(symbol.span) else {
+            let Some(span) = self
+                .try_map_span(symbol.span)
+                .or_else(|| self.try_map_enclosing_span(symbol.span))
+            else {
                 continue;
             };
             let Some(selection) = self.try_map_span(symbol.selection) else {
@@ -114,5 +117,48 @@ impl PreprocessedSource {
         }
         control.checkpoint()?;
         Ok(facts)
+    }
+}
+
+#[cfg(all(test, feature = "presentation"))]
+mod tests {
+    use super::*;
+    use crate::{EditorSemanticKind, EditorSemanticSymbol, SourceSpan};
+
+    #[test]
+    fn statement_context_can_enclose_deleted_comments_while_selection_stays_exact() {
+        let original = "journey\r\ntitle\r\n%% Removed\r\nPlan\r\nPay:4:Actor\r\n";
+        let engine = crate::MermaidEngine::new();
+        let source = crate::preprocess::preprocess_diagram_with_known_type(
+            original,
+            engine.registry(),
+            None,
+        )
+        .unwrap()
+        .source;
+        let start = source.text().find("title").unwrap();
+        let selection = source.text().find("Plan").unwrap();
+        let mut facts = EditorSemanticFacts::new();
+        facts.push_symbol(EditorSemanticSymbol::payload(
+            "Plan",
+            Some("journey title".to_string()),
+            EditorSemanticKind::String,
+            SourceSpan::new(start, selection + 4),
+            SourceSpan::new(selection, selection + 4),
+        ));
+        source
+            .remap_editor_facts_controlled(&mut facts, &OperationControl::new())
+            .unwrap();
+        assert!(facts.diagnostics.is_empty());
+        assert_eq!(facts.symbols.len(), 1);
+        let symbol = &facts.symbols[0];
+        assert_eq!(
+            &original[symbol.selection.start..symbol.selection.end],
+            "Plan"
+        );
+        assert_eq!(
+            &original[symbol.span.start..symbol.span.end],
+            "title\r\n%% Removed\r\nPlan"
+        );
     }
 }

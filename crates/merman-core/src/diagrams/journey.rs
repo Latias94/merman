@@ -132,96 +132,130 @@ impl JourneySemanticSource {
     }
 }
 
-fn parse_keyword_arg_one_ws<'a>(line: &'a str, keyword: &str) -> Option<&'a str> {
-    let t = line.trim_start_matches(is_ecmascript_whitespace);
-    if !starts_with_case_insensitive(t, keyword) {
-        return None;
+struct JourneyText<'a> {
+    text: &'a str,
+    #[cfg(feature = "editor-facts")]
+    span: SourceSpan,
+    statement: SourceSpan,
+}
+
+fn scan_journey_while(
+    source: &str,
+    start: usize,
+    mut accepts: impl FnMut(char) -> bool,
+    control: &OperationControl,
+) -> OperationControlResult<usize> {
+    for (count, (relative, ch)) in source[start..].char_indices().enumerate() {
+        if count.is_multiple_of(128) {
+            control.checkpoint()?;
+        }
+        if !accepts(ch) {
+            return Ok(start + relative);
+        }
     }
-    let after = &t[keyword.len()..];
-    let ws = after.chars().next()?;
+    control.checkpoint()?;
+    Ok(source.len())
+}
+
+fn parse_keyword_arg_one_ws<'a>(
+    source: &'a str,
+    start: usize,
+    keyword: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Option<JourneyText<'a>>> {
+    let rest = &source[start..];
+    if !starts_with_case_insensitive(rest, keyword) {
+        return Ok(None);
+    }
+    let Some(ws) = rest[keyword.len()..].chars().next() else {
+        return Ok(None);
+    };
     if !is_ecmascript_whitespace(ws) {
-        return None;
+        return Ok(None);
     }
-    let rest = &after[ws.len_utf8()..];
-    let value = split_statement_suffix_hash_or_semi(rest);
-    (!value.is_empty()).then_some(value)
+    let value_start = start + keyword.len() + ws.len_utf8();
+    let value_end = scan_journey_while(
+        source,
+        value_start,
+        |ch| !matches!(ch, '#' | '\n' | ';') && (keyword != "section" || ch != ':'),
+        control,
+    )?;
+    Ok((value_start < value_end).then(|| JourneyText {
+        text: &source[value_start..value_end],
+        #[cfg(feature = "editor-facts")]
+        span: SourceSpan::new(value_start, value_end),
+        statement: SourceSpan::new(start, value_end),
+    }))
 }
 
-fn parse_key_colon_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
-    let t = line.trim_start_matches(is_ecmascript_whitespace);
-    if !starts_with_case_insensitive(t, key) {
-        return None;
+fn parse_accessibility_delimiter(
+    source: &str,
+    start: usize,
+    key: &str,
+    delimiter: u8,
+    control: &OperationControl,
+) -> OperationControlResult<Option<usize>> {
+    if !starts_with_case_insensitive(&source[start..], key) {
+        return Ok(None);
     }
-    let rest = t[key.len()..].trim_start_matches(is_ecmascript_whitespace);
-    let rest = rest.strip_prefix(':')?;
-    Some(rest.trim_matches(is_ecmascript_whitespace))
+    let end = scan_journey_while(source, start + key.len(), is_ecmascript_whitespace, control)?;
+    Ok((source.as_bytes().get(end) == Some(&delimiter)).then_some(end))
 }
 
-struct JourneyBlockText {
-    text: String,
+fn parse_key_colon_value<'a>(
+    source: &'a str,
+    start: usize,
+    key: &str,
+    control: &OperationControl,
+) -> OperationControlResult<Option<JourneyText<'a>>> {
+    let Some(colon) = parse_accessibility_delimiter(source, start, key, b':', control)? else {
+        return Ok(None);
+    };
+    let value_start = scan_journey_while(source, colon + 1, is_ecmascript_whitespace, control)?;
+    let value_end = scan_journey_while(source, value_start, |ch| ch != '\n', control)?;
+    Ok(Some(JourneyText {
+        text: &source[value_start..value_end],
+        #[cfg(feature = "editor-facts")]
+        span: SourceSpan::new(value_start, value_end),
+        statement: SourceSpan::new(start, value_end),
+    }))
+}
+
+struct JourneyBlockText<'a> {
+    text: &'a str,
     span: SourceSpan,
     #[cfg(feature = "editor-facts")]
     opening: SourceSpan,
     closing: Option<SourceSpan>,
+    #[cfg(feature = "editor-facts")]
+    statement: SourceSpan,
 }
 
-fn parse_acc_descr_block_spanned(
-    lines: &mut LineCursor<'_>,
-    first_line: &str,
-    first_line_start: usize,
+fn parse_acc_descr_block_spanned<'a>(
+    lines: &mut LineCursor<'a>,
+    start: usize,
     control: &OperationControl,
-) -> OperationControlResult<Option<JourneyBlockText>> {
+) -> OperationControlResult<Option<JourneyBlockText<'a>>> {
     control.checkpoint()?;
-    let t = first_line.trim_start_matches(is_ecmascript_whitespace);
-    if !starts_with_case_insensitive(t, "accDescr") {
-        return Ok(None);
-    }
-    let rest = t["accDescr".len()..].trim_start_matches(is_ecmascript_whitespace);
-    let Some(rest) = rest.strip_prefix('{') else {
+    let source = lines.source();
+    let Some(open) = parse_accessibility_delimiter(source, start, "accDescr", b'{', control)?
+    else {
         return Ok(None);
     };
-    let Some(open) = first_line.find('{') else {
-        return Ok(None);
-    };
-    let content_start = first_line_start + open + 1;
-
-    let mut buf = String::new();
-    if let Some(end) = rest.find('}') {
-        buf.push_str(&rest[..end]);
-        let closing = SourceSpan::new(content_start + end, content_start + end + 1);
-        lines.resume_same_line_at(closing.end);
-        return Ok(Some(JourneyBlockText {
-            text: buf.trim_matches(is_ecmascript_whitespace).to_string(),
-            span: SourceSpan::new(content_start, content_start + end),
-            #[cfg(feature = "editor-facts")]
-            opening: SourceSpan::new(content_start - 1, content_start),
-            closing: Some(closing),
-        }));
-    }
-    buf.push_str(rest);
-    buf.push('\n');
-
-    let mut content_end = lines.offset();
-    let mut closing = None;
-    while let Some((line, line_start)) = lines.next_line() {
-        control.checkpoint()?;
-        if let Some(end) = line.find('}') {
-            buf.push_str(&line[..end]);
-            content_end = line_start + end;
-            closing = Some(SourceSpan::new(content_end, content_end + 1));
-            lines.resume_same_line_at(content_end + 1);
-            break;
-        }
-        buf.push_str(line);
-        buf.push('\n');
-        content_end = line_start + line.len();
-    }
+    let content_start = open + 1;
+    let content_end = scan_journey_while(source, content_start, |ch| ch != '}', control)?;
+    let closing =
+        (content_end < source.len()).then_some(SourceSpan::new(content_end, content_end + 1));
+    let end = closing.map_or(content_end, |span| span.end);
+    lines.resume_at(end);
     Ok(Some(JourneyBlockText {
-        text: buf.trim_matches(is_ecmascript_whitespace).to_string(),
-        span: SourceSpan::new(content_start, content_end.max(content_start)),
+        text: source[content_start..content_end].trim_matches(is_ecmascript_whitespace),
+        span: SourceSpan::new(content_start, content_end),
         #[cfg(feature = "editor-facts")]
         opening: SourceSpan::new(content_start - 1, content_start),
         closing,
+        #[cfg(feature = "editor-facts")]
+        statement: SourceSpan::new(start, end),
     }))
 }
 
@@ -236,20 +270,6 @@ fn strip_comment_prefix(line: &str) -> &str {
         .is_some_and(|ch| ch != '}' && ch.len_utf16() == 1 && t[ch.len_utf8()..].starts_with("%%"));
     if (t.starts_with("%%") && !t.starts_with("%%{")) || prefixed_comment {
         return "";
-    }
-    // The exclusive acc_title / acc_descr lexer states consume the physical-line remainder.
-    if parse_key_colon_value(line, "accTitle").is_some()
-        || parse_key_colon_value(line, "accDescr").is_some()
-    {
-        return line;
-    }
-    // The multiline lexer likewise owns punctuation through its closing brace.
-    if starts_with_case_insensitive(t, "accDescr")
-        && t["accDescr".len()..]
-            .trim_start_matches(is_ecmascript_whitespace)
-            .starts_with('{')
-    {
-        return line;
     }
     split_statement_suffix_hash_or_semi(line)
 }
@@ -484,64 +504,81 @@ fn parse_journey_semantic_source(
             continue;
         }
 
-        if let Some(v) = parse_keyword_arg_one_ws(stripped, "title") {
+        let token_start =
+            line_start + line.len() - line.trim_start_matches(is_ecmascript_whitespace).len();
+        if let Some(v) = parse_keyword_arg_one_ws(lines.source(), token_start, "title", control)? {
+            lines.resume_at(v.statement.end);
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
                 .as_mut()
                 .filter(|_| editor_demand.captures_rich())
             {
                 facts.push_directive_prefix("title");
-                if let Some(value) = spanned_keyword_value(line, line_start, "title") {
-                    push_journey_payload_fact(
-                        facts,
-                        value,
-                        "journey title",
-                        EditorSemanticKind::String,
-                    );
-                }
+                push_journey_payload_fact(facts, &v, "journey title", EditorSemanticKind::String);
             }
-            db.title = v.to_string();
+            db.title = v.text.to_string();
             continue;
         }
-        if let Some(v) = parse_key_colon_value(stripped, "accTitle") {
+        if let Some(v) = parse_key_colon_value(lines.source(), token_start, "accTitle", control)? {
+            lines.resume_at(v.statement.end);
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
                 .as_mut()
                 .filter(|_| editor_demand.captures_rich())
             {
                 facts.push_directive_prefix("accTitle");
-                if let Some(value) = spanned_colon_value(line, line_start, "accTitle") {
-                    push_journey_payload_fact(
-                        facts,
-                        value,
-                        "journey accessibility title",
-                        EditorSemanticKind::String,
-                    );
-                }
+                push_journey_payload_fact(
+                    facts,
+                    &v,
+                    "journey accessibility title",
+                    EditorSemanticKind::String,
+                );
             }
-            db.acc_title = v.to_string();
+            if v.text.is_empty() {
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        diagram_type.to_string(),
+                        "expected journey accessibility title value",
+                        v.statement.end,
+                    )
+                });
+                continue;
+            }
+            db.acc_title = v.text.trim_matches(is_ecmascript_whitespace).to_string();
             continue;
         }
-        if let Some(v) = parse_key_colon_value(stripped, "accDescr") {
+        if let Some(v) = parse_key_colon_value(lines.source(), token_start, "accDescr", control)? {
+            lines.resume_at(v.statement.end);
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
                 .as_mut()
                 .filter(|_| editor_demand.captures_rich())
             {
                 facts.push_directive_prefix("accDescr");
-                if let Some(value) = spanned_colon_value(line, line_start, "accDescr") {
-                    push_journey_payload_fact(
-                        facts,
-                        value,
-                        "journey accessibility description",
-                        EditorSemanticKind::String,
-                    );
-                }
+                push_journey_payload_fact(
+                    facts,
+                    &v,
+                    "journey accessibility description",
+                    EditorSemanticKind::String,
+                );
             }
-            db.acc_descr = v.to_string();
+            if v.text.is_empty() {
+                first_error.get_or_insert_with(|| {
+                    Error::diagram_parse_insertion_point(
+                        diagram_type.to_string(),
+                        "expected journey accessibility description value",
+                        v.statement.end,
+                    )
+                });
+                continue;
+            }
+            db.acc_descr = v.text.trim_matches(is_ecmascript_whitespace).to_string();
             continue;
         }
-        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, stripped, line_start, control)? {
+        if let Some(v) = parse_acc_descr_block_spanned(&mut lines, token_start, control)? {
+            if v.text.is_empty() && v.closing.is_some() {
+                continue;
+            }
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = editor_facts
                 .as_mut()
@@ -550,7 +587,8 @@ fn parse_journey_semantic_source(
                 facts.push_directive_prefix("accDescr");
                 push_journey_payload_fact_spanned(
                     facts,
-                    &v.text,
+                    v.text,
+                    v.statement,
                     v.span,
                     "journey accessibility description",
                     EditorSemanticKind::String,
@@ -572,18 +610,21 @@ fn parse_journey_semantic_source(
                     )
                 });
             }
-            db.acc_descr = v.text;
+            db.acc_descr = v.text.to_string();
             continue;
         }
-        if let Some(v) = parse_keyword_arg_one_ws(stripped, "section")
-            && !v.starts_with(':')
+        if let Some(v) = parse_keyword_arg_one_ws(lines.source(), token_start, "section", control)?
         {
-            if let Some(colon) = stripped.find(':') {
+            let end = v.statement.end;
+            lines.resume_at(end);
+            if lines.source().as_bytes().get(end) == Some(&b':') {
+                let line_end = scan_journey_while(lines.source(), end, |ch| ch != '\n', control)?;
+                lines.resume_at(line_end);
                 first_error.get_or_insert_with(|| {
                     Error::diagram_parse_exact(
                         diagram_type.to_string(),
                         "unexpected journey task data after section",
-                        SourceSpan::new(line_start + colon, line_start + stripped.len()),
+                        SourceSpan::new(end, line_end),
                     )
                 });
                 continue;
@@ -592,17 +633,21 @@ fn parse_journey_semantic_source(
             if let Some(facts) = editor_facts
                 .as_mut()
                 .filter(|_| editor_demand.captures_rich())
-                && let Some(value) = spanned_keyword_value(line, line_start, "section")
             {
-                facts.push_symbol(EditorSemanticSymbol::outline(
-                    value.text.to_string(),
-                    Some("journey section".to_string()),
-                    EditorSemanticKind::Namespace,
-                    SourceSpan::new(line_start, line_start + line.len()),
-                    SourceSpan::new(value.start, value.end),
-                ));
+                let value = v.text.trim_matches(is_ecmascript_whitespace);
+                if !value.is_empty() {
+                    let start = v.span.start + v.text.len()
+                        - v.text.trim_start_matches(is_ecmascript_whitespace).len();
+                    facts.push_symbol(EditorSemanticSymbol::outline(
+                        value.to_string(),
+                        Some("journey section".to_string()),
+                        EditorSemanticKind::Namespace,
+                        SourceSpan::new(line_start, end),
+                        SourceSpan::new(start, start + value.len()),
+                    ));
+                }
             }
-            db.add_section(v);
+            db.add_section(v.text);
             continue;
         }
 
@@ -755,58 +800,32 @@ fn parse_journey_semantic_source(
 }
 
 #[cfg(feature = "editor-facts")]
-fn spanned_keyword_value<'a>(
-    line: &'a str,
-    line_start: usize,
-    keyword: &str,
-) -> Option<EditorPayloadSpan<'a>> {
-    let value = parse_keyword_arg_one_ws(line, keyword)?.trim_matches(is_ecmascript_whitespace);
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = value.as_ptr() as usize - line.as_ptr() as usize;
-    Some(EditorPayloadSpan {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-#[cfg(feature = "editor-facts")]
-fn spanned_colon_value<'a>(
-    line: &'a str,
-    line_start: usize,
-    key: &str,
-) -> Option<EditorPayloadSpan<'a>> {
-    let value = parse_key_colon_value(line, key)?;
-    if value.is_empty() {
-        return None;
-    }
-    let value_rel = value.as_ptr() as usize - line.as_ptr() as usize;
-    Some(EditorPayloadSpan {
-        text: value,
-        start: line_start + value_rel,
-        end: line_start + value_rel + value.len(),
-    })
-}
-
-#[cfg(feature = "editor-facts")]
 fn push_journey_payload_fact(
     facts: &mut EditorSemanticFacts,
-    span: EditorPayloadSpan<'_>,
+    value: &JourneyText<'_>,
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
+    let text = value.text.trim_matches(is_ecmascript_whitespace);
+    if text.is_empty() {
+        return;
+    }
+    let start = value.span.start + value.text.len()
+        - value
+            .text
+            .trim_start_matches(is_ecmascript_whitespace)
+            .len();
+    let selection = SourceSpan::new(start, start + text.len());
     facts.push_expected_syntax(EditorExpectedSyntax::new(
         EditorExpectedSyntaxKind::Payload,
-        SourceSpan::new(span.start, span.end),
+        selection,
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
-        span.text.to_string(),
+        text.to_string(),
         Some(detail.to_string()),
         kind,
-        SourceSpan::new(span.start, span.end),
-        SourceSpan::new(span.start, span.end),
+        value.statement,
+        selection,
     ));
 }
 
@@ -814,6 +833,7 @@ fn push_journey_payload_fact(
 fn push_journey_payload_fact_spanned(
     facts: &mut EditorSemanticFacts,
     text: &str,
+    statement: SourceSpan,
     span: SourceSpan,
     detail: &'static str,
     kind: EditorSemanticKind,
@@ -826,16 +846,9 @@ fn push_journey_payload_fact_spanned(
         text.to_string(),
         Some(detail.to_string()),
         kind,
-        span,
+        statement,
         span,
     ));
-}
-
-#[cfg(feature = "editor-facts")]
-struct EditorPayloadSpan<'a> {
-    text: &'a str,
-    start: usize,
-    end: usize,
 }
 
 #[cfg(test)]
@@ -1347,6 +1360,320 @@ mod tests {
             assert!(!model.tasks[0].score_is_nan);
             assert_eq!(model.tasks[0].people, ["Actor"]);
         }
+    }
+
+    #[test]
+    fn journey_multiline_keywords_consume_one_separator_and_retain_payloads() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            for payload in [
+                "Value",
+                "  Value ",
+                "\u{feff}Value\u{feff} ",
+                "\u{0085}Value",
+            ] {
+                let source = format!(
+                    "journey{ending}title{ending}{payload}:4:Actor{ending}section{ending}{payload}{ending}Pay:4:Actor{ending}"
+                );
+                let parsed = parser.parse_diagram_sync(&source).unwrap();
+                let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model
+                else {
+                    panic!("expected Journey model");
+                };
+
+                let expected_title = format!("{payload}:4:Actor");
+                assert_eq!(model.title.as_deref(), Some(expected_title.as_str()));
+                assert_eq!(model.sections, [payload]);
+                assert_eq!(model.tasks.len(), 1);
+                assert_eq!(model.tasks[0].task, "Pay");
+                assert_eq!(model.tasks[0].section, payload);
+            }
+        }
+    }
+
+    #[test]
+    fn journey_multiline_keyword_failures_do_not_join_extra_separators_or_task_data() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            for keyword in ["title", "section"] {
+                for separator in [
+                    format!("{ending}{ending}"),
+                    format!(" {ending}"),
+                    format!("\t{ending}"),
+                    format!("\u{feff}{ending}"),
+                ] {
+                    let source = format!(
+                        "journey{ending}{keyword}{separator}Value{ending}Pay:4:Actor{ending}"
+                    );
+                    assert!(parser.parse_diagram_sync(&source).is_err(), "{source:?}");
+                }
+            }
+            for payload in ["Value:4:Actor", ":4:Actor", " :4:Actor"] {
+                let source =
+                    format!("journey{ending}section{ending}{payload}{ending}Pay:4:Actor{ending}");
+                assert!(parser.parse_diagram_sync(&source).is_err(), "{source:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn journey_raw_keyword_scan_distinguishes_crlf_and_preserves_token_priority() {
+        let control = OperationControl::new();
+        let title = parse_keyword_arg_one_ws("title\nValue:4:Actor", 0, "title", &control)
+            .unwrap()
+            .unwrap();
+        assert_eq!(title.text, "Value:4:Actor");
+        assert_eq!(
+            title.statement,
+            SourceSpan::new(0, "title\nValue:4:Actor".len())
+        );
+        for source in ["title\r\nValue", "title \nValue", "title\n\nValue"] {
+            assert!(
+                parse_keyword_arg_one_ws(source, 0, "title", &control)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        assert!(
+            parse_keyword_arg_one_ws("section :4", 0, "section", &control)
+                .unwrap()
+                .is_none()
+        );
+        let section = parse_keyword_arg_one_ws("section\nValue:4", 0, "section", &control)
+            .unwrap()
+            .unwrap();
+        assert_eq!(section.text, "Value");
+        assert_eq!(section.statement.end, "section\nValue".len());
+    }
+
+    #[test]
+    fn journey_multiline_accessibility_prefixes_own_their_scalar_lines() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "journey{ending}",
+                    "accTitle{ending}\u{feff}\t:{ending}{ending}\u{feff}\u{0085}Title;#%%literal\u{0085}\u{feff}{ending}",
+                    "accDescr\u{feff}{ending}{ending}:\u{feff}{ending}Consumed:4:Ghost{ending}",
+                    "Pay:4:Actor{ending}",
+                ),
+                ending = ending,
+            );
+            let parsed = parser.parse_diagram_sync(&source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model else {
+                panic!("expected Journey model");
+            };
+
+            assert_eq!(
+                model.acc_title.as_deref(),
+                Some("\u{0085}Title;#%%literal\u{0085}")
+            );
+            assert_eq!(model.acc_descr.as_deref(), Some("Consumed:4:Ghost"));
+            assert_eq!(model.tasks.len(), 1);
+            assert_eq!(model.tasks[0].task, "Pay");
+            assert_eq!(model.actors, ["Actor"]);
+        }
+    }
+
+    #[test]
+    fn journey_empty_multiline_accessibility_blocks_retain_the_last_value() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "journey{ending}",
+                    "accDescr: Old{ending}",
+                    "accDescr{ending}{{}}{ending}",
+                    "accDescr{ending}{{ \t{ending}\u{feff} }}title{ending}Plan{ending}",
+                    "Pay:4:Actor{ending}",
+                ),
+                ending = ending,
+            );
+            let parsed = parser.parse_diagram_sync(&source).unwrap();
+            let merman_model::semantic::SemanticDiagramModel::Journey(model) = parsed.model else {
+                panic!("expected Journey model");
+            };
+
+            assert_eq!(model.acc_descr.as_deref(), Some("Old"));
+            assert_eq!(model.title.as_deref(), Some("Plan"));
+            assert_eq!(model.tasks.len(), 1);
+            assert_eq!(model.tasks[0].task, "Pay");
+            #[cfg(feature = "editor-facts")]
+            {
+                let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                    parser.capture_diagram_snapshot_sync(&source)
+                else {
+                    panic!("expected Journey snapshot");
+                };
+                let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                    panic!("expected Journey editor facts");
+                };
+                let descriptions = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| {
+                        symbol.detail.as_deref() == Some("journey accessibility description")
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(descriptions.len(), 1);
+                assert_eq!(descriptions[0].name, "Old");
+                assert!(facts.diagnostics.is_empty());
+            }
+        }
+    }
+
+    #[test]
+    fn journey_accessibility_tokens_reject_missing_eof_values_and_unclosed_blocks() {
+        let parser = crate::SemanticParser::new();
+        for ending in ["\n", "\r\n"] {
+            for suffix in [
+                "accTitle:".to_string(),
+                format!("accTitle:{ending}"),
+                format!("accTitle{ending}:\u{feff}{ending}"),
+                "accDescr:".to_string(),
+                format!("accDescr:{ending}"),
+                "accDescr {".to_string(),
+                format!("accDescr{ending}{{Help"),
+                format!("accDescr{ending}{{ \u{feff}{ending}"),
+            ] {
+                let source = format!("journey{ending}title Plan{ending}{suffix}");
+                assert!(parser.parse_diagram_sync(&source).is_err(), "{source:?}");
+                #[cfg(feature = "editor-facts")]
+                {
+                    let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                        parser.capture_diagram_snapshot_sync(&source)
+                    else {
+                        panic!("expected recovered Journey snapshot");
+                    };
+                    let crate::ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+                        panic!("expected Journey editor facts");
+                    };
+                    assert_eq!(
+                        facts.completeness,
+                        crate::EditorSemanticCompleteness::Recovered
+                    );
+                    let title = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| symbol.detail.as_deref() == Some("journey title"))
+                        .unwrap();
+                    assert_eq!(title.name, "Plan");
+                    assert_eq!(&source[title.selection.start..title.selection.end], "Plan");
+                    assert!(
+                        facts.diagnostics.iter().any(|diagnostic| {
+                            diagnostic.kind == crate::EditorSemanticDiagnosticKind::ParserRecovery
+                                && diagnostic.span
+                                    == Some(SourceSpan::new(source.len(), source.len()))
+                        }),
+                        "{source:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn journey_multiline_tokens_and_block_suffix_keep_original_editor_ranges() {
+        for ending in ["\n", "\r\n"] {
+            let source = format!(
+                concat!(
+                    "journey{ending}",
+                    "\u{feff}accDescr{ending} \u{feff}{{{ending}Help{ending}Next{ending}}}title{ending} Plan {ending}",
+                    "section{ending}\u{feff}Checkout\u{feff} {ending}",
+                    "accTitle{ending}\u{feff}:{ending}\u{0085}Accessible\u{0085}{ending}",
+                    "Pay:4:Actor{ending}",
+                ),
+                ending = ending,
+            );
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                crate::SemanticParser::new().capture_diagram_snapshot_sync(&source)
+            else {
+                panic!("expected Journey snapshot");
+            };
+            let (_, outcome, editor_facts) = snapshot.into_parts();
+            let crate::SemanticParseOutcome::Parsed(
+                merman_model::semantic::SemanticDiagramModel::Journey(model),
+            ) = outcome
+            else {
+                panic!("expected Journey model");
+            };
+            assert_eq!(model.acc_descr.as_deref(), Some("Help\nNext"));
+            assert_eq!(model.title.as_deref(), Some(" Plan "));
+            assert_eq!(model.sections, ["\u{feff}Checkout\u{feff} "]);
+            assert_eq!(model.tasks.len(), 1);
+            let crate::ParsedEditorFacts::Available(facts) = editor_facts else {
+                panic!("expected Journey editor facts");
+            };
+            assert!(facts.diagnostics.is_empty());
+            for (detail, keyword, payload) in [
+                ("journey title", "title", "Plan"),
+                ("journey section", "section", "Checkout"),
+                (
+                    "journey accessibility title",
+                    "accTitle",
+                    "\u{0085}Accessible\u{0085}",
+                ),
+            ] {
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.detail.as_deref() == Some(detail))
+                    .unwrap();
+                let start = source.find(keyword).unwrap();
+                let value_start = source.find(payload).unwrap();
+                assert_eq!(symbol.name, payload);
+                assert_eq!(symbol.span.start, start);
+                assert_eq!(
+                    &source[symbol.selection.start..symbol.selection.end],
+                    payload
+                );
+                assert_eq!(
+                    symbol.selection,
+                    SourceSpan::new(value_start, value_start + payload.len())
+                );
+                assert!(source[symbol.span.start..symbol.span.end].contains(ending));
+                assert!(symbol.span.end >= symbol.selection.end);
+            }
+            let block = facts
+                .symbols
+                .iter()
+                .find(|symbol| {
+                    symbol.detail.as_deref() == Some("journey accessibility description")
+                })
+                .unwrap();
+            let open = source.find('{').unwrap();
+            let close = source.find('}').unwrap();
+            assert_eq!(block.name, "Help\nNext");
+            assert_eq!(
+                block.span,
+                SourceSpan::new(source.find("accDescr").unwrap(), close + 1)
+            );
+            assert_eq!(block.selection, SourceSpan::new(open + 1, close));
+            assert_eq!(
+                &source[block.selection.start..block.selection.end],
+                format!("{ending}Help{ending}Next{ending}")
+            );
+            let task = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("journey task"))
+                .unwrap();
+            assert_eq!(&source[task.selection.start..task.selection.end], "Pay");
+        }
+    }
+
+    #[test]
+    fn journey_multiline_scans_observe_cancellation_within_large_tokens() {
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        let scalar = format!("accTitle{}:Value", "\u{feff}\n".repeat(2048));
+        assert!(parse_key_colon_value(&scalar, 0, "accTitle", &control).is_err());
+
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let block = format!("accDescr{{{}}}", "\u{0085}".repeat(4096));
+        assert!(parse_acc_descr_block_spanned(&mut LineCursor::new(&block), 0, &control).is_err());
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]

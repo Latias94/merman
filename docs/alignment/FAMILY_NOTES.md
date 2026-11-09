@@ -247,8 +247,24 @@ tick intervals and inclusion/exclusion lists stop before `#` or `;`; `todayMarke
 `;` while retaining `#`. Day selectors and fixed flags respect the generated lexer's ASCII word
 boundaries. Titles, sections and accessibility values own their full line. Merman retains its
 working `topAxis` support rather than reproducing the selected runtime's missing `TopAxis()` action.
-Bare title/section keywords that consume a following physical line upstream remain outside the
-current line-oriented parser contract.
+One-separator directives can consume a physical LF immediately after the keyword, retaining the
+following line's authored payload. An extra inline blank or a second LF cannot be substituted for
+that single separator. Day selectors, click prefixes and accessibility punctuation use their
+separate repeated-whitespace rules. Click target IDs consume one whitespace character when leaving
+their lexer state; the default state's bare LF ends the statement, while whitespace starting with
+an inline blank can continue across LF. Public preprocessing normalizes CRLF and bare CR before these
+tokens are read; editor ranges still refer to the original source. Empty closed description blocks
+emit no replacement value and preserve an earlier description; missing scalar values and unclosed
+blocks retain recovery diagnostics.
+Quoted click values and callback arguments retain exclusive ownership through their closing
+delimiter or EOF. Both successful and failed delimiter scans advance recovery from the consumed
+source boundary, preventing repeated suffix scans; long payloads observe cooperative cancellation.
+
+Structural whitespace, inclusion/exclusion token lists and task-field/tag trimming use the
+ECMAScript set. BOM is whitespace, while NEL remains literal task/ID text. Click bindings use each
+lexed ID without a second trim; a NEL-bearing ID therefore keeps its matching link and editor
+references. Callback arguments use ECMAScript trimming outside their optional quotes. Date-parser
+fallback dialects remain governed by the separate date owner.
 
 The date parser implements evidenced Day.js-style tokens and JavaScript date fallback forms;
 arbitrary locale formats and every `Date.parse()` dialect are not a compatibility promise.
@@ -320,11 +336,16 @@ Structural dispatch and accessibility values use the same ECMAScript whitespace 
 whitespace and NEL remains literal text. Title/section tokens consume one whitespace separator,
 retaining subsequent payload whitespace; task names omit leading indentation and retain their
 authored tails. Parser-derived editor facts refer to the original byte slices, including repeated
-keyword text, Unicode values, CRLF and a task after a closed accessibility block. Cross-line
-keyword separators remain outside the current line-oriented parser contract.
+keyword text, Unicode values, CRLF and a task after a closed accessibility block. Title and section
+tokens admit exactly one separator, including LF, while accessibility prefixes admit repeated
+whitespace across lines. Payloads retain their own punctuation and trailing whitespace. Empty
+description blocks preserve earlier text; missing scalar values and unclosed blocks reject while
+retaining useful recovery facts.
 At a plain lexer cursor, one BMP character other than `}` immediately followed by `%%` starts a
 comment, including a literal NEL prefix. Longer labels and astral prefixes retain their percent
 markers; accessibility lexer states continue owning their complete payloads.
+Multiline statement ranges may enclose source comments deleted by preprocessing. Selections still
+require exact mapping, so a deleted or generated identity never becomes a guessed rename target.
 The existing long-actor-label browser-text receipt was renewed after task indentation was
 corrected. Restoring only the old six spaces in its five HTML and five native task text nodes
 reconstructs the previous full SVG signature exactly. A fresh selected-runtime browser capture

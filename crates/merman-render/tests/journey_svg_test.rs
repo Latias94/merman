@@ -896,7 +896,7 @@ fn journey_accessibility_dom_links_complete_punctuation_payloads() {
 
 #[test]
 fn journey_unicode_structural_whitespace_reaches_accessible_and_visible_svg_text() {
-    let source = concat!(
+    let same_line = concat!(
         "journey\r\n",
         "\u{feff}title\u{feff}Checkout\r\n",
         "\u{feff}accTitle\u{feff}:\u{feff}\u{0085}Accessible\u{0085}\u{feff}\r\n",
@@ -904,29 +904,40 @@ fn journey_unicode_structural_whitespace_reaches_accessible_and_visible_svg_text
         "\u{feff}section\u{feff}Delivery\r\n",
         "\u{feff}Ship: 5: Customer\r\n",
     );
-    let rendered =
-        render_journey_text_rules(source, ThemeRuleSet::default(), serde_json::json!({})).unwrap();
-    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-    let root = document.root_element();
-    for (aria, tag, expected) in [
-        ("aria-labelledby", "title", "\u{0085}Accessible\u{0085}"),
-        ("aria-describedby", "desc", "Help"),
-    ] {
-        let id = root.attribute(aria).unwrap();
-        let target = root
-            .children()
-            .find(|node| node.attribute("id") == Some(id))
-            .unwrap();
-        assert!(target.has_tag_name(tag));
-        assert_eq!(target.text(), Some(expected));
-    }
-    for text in ["Checkout", "Delivery", "Pay", "Ship"] {
-        assert!(
-            document
-                .descendants()
-                .any(|node| node.is_text() && node.text() == Some(text)),
-            "{text}"
-        );
+    let cross_line = concat!(
+        "journey\r\n",
+        "\u{feff}title\r\nCheckout\r\n",
+        "accTitle\r\n\u{feff}:\r\n\u{feff}\u{0085}Accessible\u{0085}\u{feff}\r\n",
+        "accDescr\r\n\u{feff}{\r\n\u{feff}Help\r\n}\u{feff}Pay: 4: Customer\r\n",
+        "section\r\nDelivery\r\n",
+        "\u{feff}Ship: 5: Customer\r\n",
+    );
+    for source in [same_line, cross_line] {
+        let rendered =
+            render_journey_text_rules(source, ThemeRuleSet::default(), serde_json::json!({}))
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let root = document.root_element();
+        for (aria, tag, expected) in [
+            ("aria-labelledby", "title", "\u{0085}Accessible\u{0085}"),
+            ("aria-describedby", "desc", "Help"),
+        ] {
+            let id = root.attribute(aria).unwrap();
+            let target = root
+                .children()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap();
+            assert!(target.has_tag_name(tag));
+            assert_eq!(target.text(), Some(expected));
+        }
+        for text in ["Checkout", "Delivery", "Pay", "Ship"] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some(text)),
+                "{text}"
+            );
+        }
     }
 }
 

@@ -103,6 +103,18 @@ impl<'a> LineCursor<'a> {
     pub(crate) fn offset(&self) -> usize {
         self.offset
     }
+
+    pub(crate) fn source(&self) -> &'a str {
+        self.source
+    }
+
+    pub(crate) fn resume_at(&mut self, start: usize) {
+        debug_assert!(start <= self.source.len());
+        debug_assert!(self.source.is_char_boundary(start));
+        self.segments = self.source[start..].split_inclusive('\n');
+        self.same_line_remainder = None;
+        self.offset = start;
+    }
 }
 
 pub(crate) fn physical_line_at(source: &str, offset: usize) -> (&str, usize) {
@@ -231,6 +243,42 @@ mod tests {
             cursor.next_line(),
             Some(("next", "first } \u{03b2}eta\r\n".len()))
         );
+        assert_eq!(cursor.next_line(), None);
+    }
+
+    #[test]
+    fn line_cursor_resumes_across_lines_without_replaying_consumed_segments() {
+        let source = "title\r\n\u{03b2} value;task\r\nnext\n";
+        let mut cursor = LineCursor::new(source);
+        assert_eq!(cursor.source(), source);
+        assert_eq!(cursor.next_line(), Some(("title", 0)));
+        let start = source.find(";task").unwrap();
+        cursor.resume_at(start);
+        assert_eq!(cursor.offset(), start);
+        assert_eq!(cursor.next_line(), Some((";task", start)));
+        assert_eq!(cursor.offset(), source.find("next").unwrap());
+        assert_eq!(
+            cursor.next_line(),
+            Some(("next", source.find("next").unwrap()))
+        );
+        assert_eq!(cursor.next_line(), None);
+    }
+
+    #[test]
+    fn line_cursor_resume_clears_pending_input_and_handles_line_boundaries_and_eof() {
+        let source = "first } tail\n\u{03b2}eta\nlast";
+        let mut cursor = LineCursor::new(source);
+        cursor.next_line();
+        cursor.resume_same_line_at(source.find("tail").unwrap());
+        let start = source.find('\u{03b2}').unwrap();
+        cursor.resume_at(start);
+        assert_eq!(cursor.next_line(), Some(("\u{03b2}eta", start)));
+        let newline = source.find("\nlast").unwrap();
+        cursor.resume_at(newline);
+        assert_eq!(cursor.next_line(), Some(("", newline)));
+        assert_eq!(cursor.next_line(), Some(("last", newline + 1)));
+        cursor.resume_at(source.len());
+        assert_eq!(cursor.offset(), source.len());
         assert_eq!(cursor.next_line(), None);
     }
 
