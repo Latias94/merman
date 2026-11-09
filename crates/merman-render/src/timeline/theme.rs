@@ -123,28 +123,26 @@ impl TimelineEventTheme {
     pub(crate) fn resolve_with_binding(
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
-        binding: &super::TimelineCssBinding,
+        typography: &super::TimelineTypographyThemePlan,
         layout: &TimelineDiagramLayout,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
         let Some(theme) = theme else {
             return Ok(Self::baseline());
         };
+        let binding = typography.css_binding();
+        let title = layout
+            .title
+            .as_deref()
+            .filter(|title| !title.trim().is_empty())
+            .filter(|_| typography.layout_settings().text_style.font_size > 0.0);
         let mut evidence = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             theme,
             &mut evidence,
             &[UnsupportedTerminalDomain::direct(
                 ThemeTarget::Title,
-                TerminalVariantDomain::uniform(
-                    usize::from(
-                        layout
-                            .title
-                            .as_deref()
-                            .is_some_and(|title| !title.trim().is_empty()),
-                    ),
-                    ThemeVariant::Default,
-                ),
+                TerminalVariantDomain::uniform(usize::from(title.is_some()), ThemeVariant::Default),
             )
             .with_source_owned_fill(&[super::TimelineCssBinding::config_owns_color(
                 effective_config,
@@ -152,10 +150,6 @@ impl TimelineEventTheme {
             )])],
             work_meter,
         )?;
-        let title = layout
-            .title
-            .as_deref()
-            .filter(|title| !title.trim().is_empty());
         let title_owned =
             super::TimelineCssBinding::config_owns_color(effective_config, "textColor");
         let mut title_fill = None;

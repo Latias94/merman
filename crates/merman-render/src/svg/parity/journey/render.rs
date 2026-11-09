@@ -109,12 +109,11 @@ fn write_text_candidate(
         {
             let _ = write!(out, r#" fill="{}""#, escape_attr(colour));
         }
-        let _ = write!(
-            out,
-            r#" style="text-anchor: middle; font-size: {fs}px; font-family: {ff};"#,
-            fs = fmt(task_font_size),
-            ff = font_family_esc,
-        );
+        out.push_str(r#" style="text-anchor: middle;"#);
+        if task_font_size >= 0.0 {
+            let _ = write!(out, " font-size: {}px;", fmt(task_font_size));
+        }
+        let _ = write!(out, " font-family: {font_family_esc};");
         if placement == JourneyTextPlacement::Fo {
             let _ = write!(out, " fill: {fill_esc};");
         }
@@ -929,6 +928,7 @@ mod tests {
                 None,
                 &PresentationConfig::empty_object(),
                 None,
+                &typography_theme,
                 execution.work_meter(),
             )?,
             None,
@@ -1172,6 +1172,7 @@ mod tests {
                     None,
                     &crate::test_support::presentation_config(cfg.clone()),
                     None,
+                    &typography_theme,
                     options.work_meter(),
                 )?,
                 None,
@@ -1236,6 +1237,7 @@ mod tests {
                     None,
                     &PresentationConfig::empty_object(),
                     None,
+                    &typography_theme,
                     options.work_meter(),
                 )?,
                 None,

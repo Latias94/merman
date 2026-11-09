@@ -802,6 +802,39 @@ pub(crate) fn css_font_size_is_zero(raw: &str) -> bool {
     }
 }
 
+/// Recognizes a zero SVG font-size attribute without estimating font or host metrics.
+#[cfg(feature = "diagram-journey")]
+pub(crate) fn svg_font_size_is_zero_at_parent(raw: &str, parent_px: f64) -> bool {
+    let raw = raw.trim();
+    let Some(parsed) = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle) else {
+        return false;
+    };
+    // Presentation attributes do not accept a declaration's priority or trailing semicolon.
+    if parsed.value != raw || !parsed.analysis.is_single_component() {
+        return false;
+    }
+    if css_font_size_is_zero(raw) {
+        return true;
+    }
+    if parent_px != 0.0 || parsed.analysis.depends_on_root_font_size() {
+        return false;
+    }
+    if parsed
+        .analysis
+        .resolve_font_size_px(CssFontSizeContext::uniform(parent_px))
+        == Some(0.0)
+    {
+        return true;
+    }
+    // These units use the parent's font metrics. A zero parent supplies zero metrics even
+    // when the selected font's positive-size x-height or advance is host-dependent.
+    let mut parser = Parser::new(parsed.value);
+    matches!(parser.next(), Ok(Token::Dimension { unit, .. })
+        if parse_css_number_prefix(parsed.value).is_some_and(|value| value >= 0.0)
+            && ["ex", "ch", "cap", "ic"].iter()
+            .any(|candidate| unit.eq_ignore_ascii_case(candidate)))
+}
+
 fn is_css_length_unit(unit: &str) -> bool {
     [
         "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
@@ -1166,9 +1199,13 @@ fn finish_css_value<'i>(
 fn parse_css_scalar(token: &Token<'_>, token_source: &str) -> Option<CssScalar> {
     match token {
         Token::Number { .. } => Some(CssScalar::Number(parse_css_number_prefix(token_source)?)),
-        Token::Percentage { .. } => Some(CssScalar::Percentage(
-            parse_css_number_prefix(token_source)? / 100.0,
-        )),
+        Token::Percentage { .. } => {
+            let coefficient = parse_css_number_prefix(token_source)?;
+            let factor = coefficient / 100.0;
+            // Preserve the scalar parser's no-underflow contract through normalization too.
+            // In particular, a negative nonzero coefficient must not become an admissible -0.
+            (factor != 0.0 || coefficient == 0.0).then_some(CssScalar::Percentage(factor))
+        }
         Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("px") => {
             Some(CssScalar::Px(parse_css_number_prefix(token_source)?))
         }
@@ -2065,6 +2102,15 @@ mod tests {
                 "negative coefficients are invalid before multiplication: {raw}"
             );
         }
+        for raw in ["-5e-324%", "5e-324%", "-1e-323%", "1e-323%"] {
+            for parent_px in [0.0, 16.0] {
+                assert_eq!(
+                    resolve_mermaid_font_size_px(raw, CssFontSizeContext::uniform(parent_px)),
+                    None,
+                    "normalization must not erase a nonzero coefficient: {raw}"
+                );
+            }
+        }
         assert_eq!(
             resolve_mermaid_font_size_px("1rem", CssFontSizeContext::new(0.0, 18.0)),
             Some(18.0)
@@ -2107,6 +2153,40 @@ mod tests {
         ] {
             assert!(!css_font_size_is_zero(value), "{value}");
         }
+    }
+
+    #[cfg(feature = "diagram-journey")]
+    #[test]
+    fn zero_parent_only_hides_known_parent_relative_font_sizes() {
+        for value in [
+            "0px", "0rem", "2em", "150%", "4ex", "1ch", "2cap", "1ic", "inherit", "unset",
+            "smaller",
+        ] {
+            assert!(svg_font_size_is_zero_at_parent(value, 0.0), "{value}");
+        }
+        for value in [
+            "16px",
+            "medium",
+            "1rem",
+            "1rex",
+            "1lh",
+            "1vw",
+            "var(--size)",
+            "calc(1em + 2px)",
+            "-1em",
+            "-4ex",
+            "-1e-10000ex",
+            "-5e-324%",
+            "0px !important",
+            "0px;",
+            "4ex !important !important",
+        ] {
+            assert!(!svg_font_size_is_zero_at_parent(value, 0.0), "{value}");
+        }
+        assert!(!svg_font_size_is_zero_at_parent("4ex", 16.0));
+        assert!(!svg_font_size_is_zero_at_parent("1e-10000px", 0.0));
+        assert!(!svg_font_size_is_zero_at_parent("-5e-324%", 16.0));
+        assert!(svg_font_size_is_zero_at_parent("0px", 16.0));
     }
 
     #[test]

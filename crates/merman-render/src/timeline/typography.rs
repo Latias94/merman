@@ -2,14 +2,12 @@ use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::config_theme_or_root_font_size_px;
+use crate::config::config_theme_or_root_font_size_px_opt;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
 };
-use crate::family::{
-    FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason, InheritedFontStackPlan,
-};
+use crate::family::{FamilyThemeEvidence, FamilyThemeResidualReason, InheritedFontStackPlan};
 
 /// Resolves Timeline's base typography once for layout, CSS emission, and evidence.
 #[derive(Debug)]
@@ -20,7 +18,6 @@ pub(crate) struct TimelineTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
-    evidence: FamilyThemeOutcomes,
     terminal: OnceLock<TimelineTypographyOutcome>,
 }
 
@@ -59,17 +56,20 @@ impl TimelineTypographyThemePlan {
                 effective_config.as_value(),
                 &["themeVariables", "fontSize"],
             )
+            .filter(|size| *size >= 0.0)
             .is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let (font_size_px, font_size_css) = match theme {
             Some(theme) if typed_font_size_active => {
-                let font_size_px = theme.typography().font_size_px().max(1.0);
+                let font_size_px = theme.typography().font_size_px();
                 (f64::from(font_size_px), format!("{font_size_px}px"))
             }
             _ => {
                 let font_size_px =
-                    config_theme_or_root_font_size_px(effective_config.as_value(), 16.0).max(1.0);
+                    config_theme_or_root_font_size_px_opt(effective_config.as_value())
+                        .filter(|size| *size >= 0.0)
+                        .unwrap_or(16.0);
                 (font_size_px, format!("{font_size_px}px"))
             }
         };
@@ -94,7 +94,6 @@ impl TimelineTypographyThemePlan {
             inherited_font_stack,
             typed_font_size_requested,
             typed_font_size_active,
-            evidence: FamilyThemeOutcomes::default(),
             terminal: OnceLock::new(),
         }
     }
@@ -125,7 +124,6 @@ impl TimelineTypographyThemePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
-        evidence.merge_borrowed(&self.evidence);
         if !self.typography_requested() {
             return;
         }
@@ -188,8 +186,8 @@ impl TimelineTypographyThemePlan {
 }
 
 impl TimelineTypographyOutcome {
-    pub(crate) fn record_base_text_run(&mut self, text: &str) {
-        self.has_visible_base_text |= !text.trim().is_empty();
+    pub(crate) fn record_base_text_run(&mut self, text: &str, font_size_px: f64) {
+        self.has_visible_base_text |= font_size_px > 0.0 && !text.trim().is_empty();
     }
 }
 
@@ -225,5 +223,14 @@ mod tests {
             plan.layout_settings().node_text_style.font_family,
             plan.layout_settings().text_style.font_family
         );
+        for size in [0.0, 0.5] {
+            let config = crate::test_support::presentation_config(serde_json::json!({
+                "fontSize": "18px", "themeVariables": {"fontSize": format!("{size}px")}
+            }));
+            let plan = TimelineTypographyThemePlan::resolve(None, &config);
+            assert_eq!(plan.layout_settings().text_style.font_size, size);
+            assert_eq!(plan.layout_settings().node_text_style.font_size, size);
+            assert_eq!(plan.layout_settings().layout_font_size, 18.0);
+        }
     }
 }

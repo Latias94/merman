@@ -677,7 +677,7 @@ fn prepare_timeline_family<'parsed>(
     let event_theme = crate::timeline::TimelineEventTheme::resolve_with_binding(
         execution.resolved_theme(),
         &meta.effective_config,
-        typography_theme.css_binding(),
+        &typography_theme,
         &layout,
         execution.work_meter_ref(),
     )?;
@@ -698,6 +698,10 @@ fn prepare_journey_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
+    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve(
+        execution.resolved_theme(),
+        &meta.effective_config,
+    );
     let text_paint = crate::journey::JourneyTextPaintPlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
@@ -706,13 +710,10 @@ fn prepare_journey_family<'parsed>(
             .as_deref()
             .filter(|title| !title.trim().is_empty())
             .or(meta.title.as_deref()),
+        &typography_theme,
         execution.work_meter_ref(),
     )?;
-    let typography_theme = crate::journey::JourneyTypographyThemePlan::resolve_with_text_paint(
-        execution.resolved_theme(),
-        &meta.effective_config,
-        text_paint.fill_css(),
-    );
+    let typography_theme = typography_theme.with_text_paint(text_paint.fill_css());
     let layout = crate::journey::layout_journey_diagram_typed_with_resolved_typography(
         model,
         &typography_theme,

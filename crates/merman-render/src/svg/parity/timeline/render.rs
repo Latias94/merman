@@ -180,6 +180,7 @@ struct TimelineTextPaintEmissionState<'a> {
     theme: &'a TimelineCssBinding,
     neo_gradient: bool,
     event_stroke: Option<&'a str>,
+    text_can_be_visible: bool,
     outcome: Option<crate::timeline::TimelineTextPaintOutcome>,
 }
 
@@ -201,7 +202,7 @@ impl TimelineTextPaintEmissionState<'_> {
         outcome.record_node(
             shape_fill,
             label_fill,
-            node.label_lines.iter().any(|line| !line.trim().is_empty()),
+            self.text_can_be_visible && node.label_lines.iter().any(|line| !line.trim().is_empty()),
         );
     }
 
@@ -299,7 +300,8 @@ impl<'a> TimelineTypographyEmissionState<'a> {
 
     fn record_base_text_run(&mut self, text: &str) {
         if let Some(outcome) = &mut self.outcome {
-            outcome.record_base_text_run(text);
+            outcome
+                .record_base_text_run(text, self.plan.layout_settings().node_text_style.font_size);
         }
     }
 
@@ -713,6 +715,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         neo_gradient: use_neo_gradient,
         event_stroke: event_theme.stroke_for_redux(),
         outcome: text_paint.begin_emission(),
+        text_can_be_visible: typography_theme.layout_settings().node_text_style.font_size > 0.0,
     };
     options.checkpoint_emit()?;
     out.push_str("<style>");
@@ -863,7 +866,9 @@ pub(crate) fn render_timeline_diagram_svg_model(
                 message: "Timeline title paint did not match the terminal SVG".to_owned(),
             });
         }
-        if let Some(outcome) = &mut text_emission.outcome {
+        if text_emission.text_can_be_visible
+            && let Some(outcome) = &mut text_emission.outcome
+        {
             outcome.record_title(fill.is_none());
         }
     }
