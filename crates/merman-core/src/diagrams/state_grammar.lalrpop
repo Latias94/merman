@@ -117,7 +117,7 @@ Statement: StateStatement = {
   }),
 
   <descr:StateDescr> "as" <l:@L> <id:Id> <doc:OptBlock> => {
-    let trimmed = descr.trim().to_string();
+    let trimmed = descr.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace).to_string();
     let mut state_id = id;
     let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
     let description = trimmed;
@@ -128,7 +128,7 @@ Statement: StateStatement = {
       let alias_id = parts.next().unwrap_or_default();
       if let Some(extra) = parts.next() {
         id_span = Some(SourceSpan::new(l, l + alias_id.len()));
-        let extra = extra.trim();
+        let extra = extra.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
         if !extra.is_empty() {
           descriptions.push(extra.to_string());
         }

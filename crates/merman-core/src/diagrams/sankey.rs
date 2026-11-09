@@ -9,6 +9,7 @@ use crate::{
 use crate::{Error, SourceSpan, family};
 #[cfg(feature = "presentation")]
 use crate::{Result, SourcePresentationMetadata};
+use merman_model::text::is_ecmascript_whitespace;
 use serde_json::Value;
 #[cfg(test)]
 use std::cell::Cell;
@@ -149,11 +150,9 @@ impl SankeySemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let source_raw = normalize_field_value(&record.source.text);
-            let target_raw = normalize_field_value(&record.target.text);
-            let source = db.find_or_create_node(&source_raw, config);
-            let target = db.find_or_create_node(&target_raw, config);
-            let value = parse_float_json(record.value.text.trim());
+            let source = db.find_or_create_node(&record.source.text, config);
+            let target = db.find_or_create_node(&record.target.text, config);
+            let value = parse_float_json(&record.value.text);
             db.add_link(source, target, value);
         }
         control.checkpoint()?;
@@ -385,17 +384,18 @@ fn push_sankey_payload(
 }
 
 fn is_sankey_header(header: &str) -> bool {
-    let h = header.trim_start().to_ascii_lowercase();
+    let h = header
+        .trim_start_matches(is_ecmascript_whitespace)
+        .to_ascii_lowercase();
     h == "sankey" || h == "sankey-beta"
 }
 
-fn normalize_field_value(s: &str) -> String {
-    // CsvParser already applies Mermaid's `replaceAll('""', '"')` while decoding a quoted field.
-    s.trim().to_string()
+fn is_sankey_text_data(ch: char) -> bool {
+    matches!(ch, ' '..='!' | '#'..='+' | '-'..='~')
 }
 
 fn parse_float_json(s: &str) -> Value {
-    let t = s.trim_start();
+    let t = s.trim_start_matches(is_ecmascript_whitespace);
     let bytes = t.as_bytes();
     let mut end = usize::from(matches!(bytes.first(), Some(b'+') | Some(b'-')));
     if t[end..].starts_with("Infinity") {
@@ -486,7 +486,7 @@ impl PreparedSankeyText {
         let mut next_checkpoint = 0usize;
         for (index, ch) in source.char_indices() {
             checkpoint_sankey_scan(control, index, &mut next_checkpoint)?;
-            if !ch.is_whitespace() || ch == '\n' || ch == '\r' {
+            if !is_ecmascript_whitespace(ch) || ch == '\n' || ch == '\r' {
                 start = index;
                 break;
             }
@@ -499,7 +499,7 @@ impl PreparedSankeyText {
                 source.len().saturating_sub(index),
                 &mut next_checkpoint,
             )?;
-            if !ch.is_whitespace() || ch == '\n' || ch == '\r' {
+            if !is_ecmascript_whitespace(ch) || ch == '\n' || ch == '\r' {
                 end = index + ch.len_utf8();
                 break;
             }
@@ -541,8 +541,8 @@ impl PreparedSankeyText {
             offset += ch.len_utf8();
         }
 
-        let trimmed_start = text.len() - text.trim_start().len();
-        let trimmed_end = text.trim_end().len();
+        let trimmed_start = text.len() - text.trim_start_matches(is_ecmascript_whitespace).len();
+        let trimmed_end = text.trim_end_matches(is_ecmascript_whitespace).len();
         if trimmed_start >= trimmed_end {
             return Ok(Self {
                 text: String::new(),
@@ -623,10 +623,12 @@ fn parse_sankey_syntax_outcome_controlled(
         });
     };
     let header_raw = &prepared.text[..header_end];
-    let header = header_raw.trim();
-    let header_start = header_raw
-        .len()
-        .saturating_sub(header_raw.trim_start().len());
+    let header = header_raw.trim_matches(is_ecmascript_whitespace);
+    let header_start = header_raw.len().saturating_sub(
+        header_raw
+            .trim_start_matches(is_ecmascript_whitespace)
+            .len(),
+    );
     let header_span = SourceSpan::new(header_start, header_start + header.len());
     if !is_sankey_header(header) {
         let span = prepared.map_span(header_span);
@@ -783,11 +785,10 @@ impl<'input, 'control> CsvParser<'input, 'control> {
     fn parse_field(&mut self) -> ControlledSankeySyntaxResult<SankeyField> {
         match self.peek_char() {
             Some('"') => self.parse_quoted_field(),
-            Some('\n') | None => Ok(Ok(SankeyField {
-                text: String::new(),
-                span: SourceSpan::new(self.pos, self.pos),
-                quotes: None,
-            })),
+            Some(',') | Some('\n') | None => Ok(Err(self.error(
+                "expected a CSV field",
+                SourceSpan::new(self.pos, self.pos + usize::from(!self.eof())),
+            ))),
             _ => self.parse_unquoted_field(),
         }
     }
@@ -806,11 +807,17 @@ impl<'input, 'control> CsvParser<'input, 'control> {
                     SourceSpan::new(self.pos, self.pos + ch.len_utf8()),
                 )));
             }
+            if !is_sankey_text_data(ch) {
+                return Ok(Err(self.error(
+                    "invalid character in unquoted field",
+                    SourceSpan::new(self.pos, self.pos + ch.len_utf8()),
+                )));
+            }
             self.pos += ch.len_utf8();
         }
         let raw = &self.input[start..self.pos];
-        let text = raw.trim();
-        let leading = raw.len() - raw.trim_start().len();
+        let text = raw.trim_matches(is_ecmascript_whitespace);
+        let leading = raw.len() - raw.trim_start_matches(is_ecmascript_whitespace).len();
         Ok(Ok(SankeyField {
             text: text.to_string(),
             span: SourceSpan::new(start + leading, start + leading + text.len()),
@@ -836,11 +843,17 @@ impl<'input, 'control> CsvParser<'input, 'control> {
                     out.push('"');
                     continue;
                 }
+                if char_start == content_start {
+                    return Ok(Err(self.error(
+                        "expected quoted CSV field content",
+                        SourceSpan::new(char_start, self.pos),
+                    )));
+                }
                 let raw = &self.input[content_start..char_start];
-                let trimmed = raw.trim();
-                let leading = raw.len() - raw.trim_start().len();
+                let trimmed = raw.trim_matches(is_ecmascript_whitespace);
+                let leading = raw.len() - raw.trim_start_matches(is_ecmascript_whitespace).len();
                 return Ok(Ok(SankeyField {
-                    text: out.trim().to_string(),
+                    text: out.trim_matches(is_ecmascript_whitespace).to_string(),
                     span: SourceSpan::new(
                         content_start + leading,
                         content_start + leading + trimmed.len(),
@@ -850,6 +863,12 @@ impl<'input, 'control> CsvParser<'input, 'control> {
                         SourceSpan::new(char_start, char_start + 1),
                     ]),
                 }));
+            }
+            if !is_sankey_text_data(ch) && !matches!(ch, ',' | '\r' | '\n') {
+                return Ok(Err(self.error(
+                    "invalid character in quoted field",
+                    SourceSpan::new(char_start, self.pos),
+                )));
             }
             out.push(ch);
         }

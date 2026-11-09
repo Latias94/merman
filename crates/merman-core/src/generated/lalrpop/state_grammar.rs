@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: 578c8898d179a0c110f910d62e06234d9ccc2539623bb11e120fa9f66dcab82c
+// sha3: 76af1098460b9b7403edb75589bc7e1fa79b05bd25108c7a59cf5ad1bebc334f
 // features:
 use crate::diagrams::state::{StateStatementClick, StateStatementNote, StateStatementRelation, StateStatementState, StateStatement, StateDocumentScratch as StateDocument, StateDocumentId, Tok};
 use crate::SourceSpan;
@@ -2503,7 +2503,7 @@ fn ___action20<
 ) -> StateStatement
 {
     {
-    let trimmed = descr.trim().to_string();
+    let trimmed = descr.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace).to_string();
     let mut state_id = id;
     let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
     let description = trimmed;
@@ -2514,7 +2514,7 @@ fn ___action20<
       let alias_id = parts.next().unwrap_or_default();
       if let Some(extra) = parts.next() {
         id_span = Some(SourceSpan::new(l, l + alias_id.len()));
-        let extra = extra.trim();
+        let extra = extra.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
         if !extra.is_empty() {
           descriptions.push(extra.to_string());
         }

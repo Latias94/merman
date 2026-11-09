@@ -472,22 +472,10 @@ impl ErDb {
                     }
                 }
                 Action::SetAccTitle(t) => {
-                    self.acc_title = Some(t.trim_matches(is_ecmascript_whitespace).to_string());
+                    self.acc_title = Some(t);
                 }
                 Action::SetAccDescr(t) => {
-                    // Mermaid's commonDb.ts: `sanitizeText(txt).replace(/\n\s+/g, '\n')`
-                    let trimmed = t.trim_matches(is_ecmascript_whitespace);
-                    let mut out = String::with_capacity(trimmed.len());
-                    let mut chars = trimmed.chars().peekable();
-                    while let Some(ch) = chars.next() {
-                        out.push(ch);
-                        if ch == '\n' {
-                            while chars.peek().is_some_and(|c| is_ecmascript_whitespace(*c)) {
-                                chars.next();
-                            }
-                        }
-                    }
-                    self.acc_descr = Some(out);
+                    self.acc_descr = Some(t);
                 }
             }
         }
@@ -1696,7 +1684,7 @@ impl<'input> Lexer<'input> {
         )))
     }
 
-    fn lex_acc_descr(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    fn lex_acc_descr(&mut self) -> Option<ScanStep<ErLexicalEvent>> {
         let start = self.pos;
         if !self.starts_with_ci("accDescr") {
             return None;
@@ -1709,29 +1697,32 @@ impl<'input> Lexer<'input> {
             self.pos = self.input.len() - body.len();
             let Some(end_rel) = self.input[self.pos..].find('}') else {
                 self.pos = self.input.len();
-                return Some(Err(LexError::new(
+                return Some(ScanStep::Emit(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
                     SourceSpan::new(start, self.input.len()),
-                )));
+                ))));
             };
             let body = self.input[self.pos..self.pos + end_rel].to_string();
             self.pos = self.pos + end_rel + 1;
-            return Some(Ok((
+            if body.is_empty() {
+                return Some(ScanStep::Skip);
+            }
+            return Some(ScanStep::Emit(Ok((
                 start,
                 Tok::AccDescrMultiline(body.trim_matches(is_ecmascript_whitespace).to_string()),
                 self.pos,
-            )));
+            ))));
         }
         let body = rest_trim
             .strip_prefix(':')?
             .trim_start_matches(is_ecmascript_whitespace);
         self.pos = self.input.len() - body.len();
         let s = self.read_to_newline();
-        Some(Ok((
+        Some(ScanStep::Emit(Ok((
             start,
             Tok::AccDescr(s.trim_matches(is_ecmascript_whitespace).to_string()),
             self.pos,
-        )))
+        ))))
     }
 
     fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
@@ -2366,8 +2357,8 @@ impl TokenScanner for Lexer<'_> {
             if let Some(tok) = self.lex_acc_title() {
                 return ScanStep::Emit(tok);
             }
-            if let Some(tok) = self.lex_acc_descr() {
-                return ScanStep::Emit(tok);
+            if let Some(step) = self.lex_acc_descr() {
+                return step;
             }
             if let Some(tok) = self.lex_direction() {
                 return ScanStep::Emit(Ok(tok));

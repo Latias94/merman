@@ -12,6 +12,7 @@ use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
+use merman_model::text::is_ecmascript_whitespace;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
@@ -137,18 +138,14 @@ fn parse_styles(styles: &[String]) -> Result<QuadrantChartStyles> {
         if style.is_empty() {
             continue;
         }
-        let (key, value) = style.split_once(':').ok_or_else(|| {
-            Error::diagram_parse_fallback(
-                "quadrantChart".to_string(),
-                format!("style named {style} is not supported."),
-            )
-        })?;
-        let key = key.trim();
-        let value = value.trim();
+        // Mermaid destructures the first two components of split(/\s*:\s*/).
+        let mut components = style.split(':');
+        let key = components.next().unwrap_or_default().trim();
+        let value = components.next().map(str::trim).unwrap_or("undefined");
 
         match key {
             "radius" => {
-                if !value.chars().all(|c| c.is_ascii_digit()) {
+                if value.is_empty() || !value.chars().all(|c| c.is_ascii_digit()) {
                     return Err(Error::diagram_parse_fallback(
                         "quadrantChart".to_string(),
                         format!("value for {key} {value} is invalid, please use a valid number"),
@@ -268,6 +265,11 @@ impl<'source> SourceSlice<'source> {
 
     fn trim(self) -> Self {
         self.trim_start().trim_end()
+    }
+
+    fn trim_ascii(self) -> Self {
+        let leading = self.text.len() - self.text.trim_ascii_start().len();
+        Self::new(self.text.trim_ascii(), self.start + leading)
     }
 
     fn subslice(self, start: usize, end: usize) -> Self {
@@ -447,7 +449,7 @@ fn parse_axis_text(input: SourceSlice<'_>) -> Result<ParsedAxis<'_>> {
 }
 
 fn parse_unit_interval_token(raw: &str) -> Result<f64> {
-    let s = raw.trim();
+    let s = raw.trim_matches(is_ecmascript_whitespace);
     if s == "1" {
         return Ok(1.0);
     }
@@ -472,23 +474,80 @@ struct ParsedStyleList<'source> {
     items: Vec<SourceSlice<'source>>,
 }
 
-fn split_style_slices(input: SourceSlice<'_>) -> ParsedStyleList<'_> {
+fn split_style_slices(input: SourceSlice<'_>) -> Result<ParsedStyleList<'_>> {
+    // UNICODE_TEXT and punctuation outside styleComponent remain lexer errors,
+    // including in components that the DB subsequently ignores.
+    if !input.text.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+            || matches!(byte, b':' | b'#' | b'-' | b',' | b' ' | b'\t' | 0x0b | 0x0c)
+    }) {
+        return Err(Error::diagram_parse_fallback(
+            "quadrantChart".to_string(),
+            "invalid character in style".to_string(),
+        ));
+    }
+    let mut cursor = 0;
+    while cursor < input.text.len() {
+        let rest = &input.text[cursor..];
+        let first = rest.as_bytes()[0];
+        let token_len = if first.is_ascii_alphabetic() {
+            rest.bytes().take_while(u8::is_ascii_alphabetic).count()
+        } else if first.is_ascii_digit() {
+            rest.bytes().take_while(u8::is_ascii_digit).count()
+        } else {
+            1
+        };
+        let reserved = rest.starts_with(":::")
+            || [
+                "title",
+                "x-axis",
+                "y-axis",
+                "quadrant-1",
+                "quadrant-2",
+                "quadrant-3",
+                "quadrant-4",
+                "classDef",
+                "quadrantChart",
+            ]
+            .iter()
+            .any(|keyword| {
+                keyword.len() >= token_len
+                    && rest
+                        .get(..keyword.len())
+                        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+            })
+            || ["accTitle", "accDescr"].iter().any(|keyword| {
+                rest.get(..keyword.len())
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+                    && rest[keyword.len()..]
+                        .trim_start_matches(|ch: char| ch.is_ascii_whitespace())
+                        .starts_with(':')
+            });
+        if reserved {
+            return Err(Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                "reserved token in style".to_string(),
+            ));
+        }
+        // A longer ALPHA token wins over a keyword prefix; equal lengths keep rule order.
+        cursor += token_len;
+    }
     let mut styles = Vec::new();
     let mut start = 0usize;
     for (index, ch) in input.text.char_indices() {
         if ch == ',' {
-            let style = input.subslice(start, index).trim();
+            let style = input.subslice(start, index).trim_ascii();
             if !style.text.is_empty() {
                 styles.push(style);
             }
             start = index + ch.len_utf8();
         }
     }
-    let style = input.subslice(start, input.text.len()).trim();
+    let style = input.subslice(start, input.text.len()).trim_ascii();
     if !style.text.is_empty() {
         styles.push(style);
     }
-    ParsedStyleList { items: styles }
+    Ok(ParsedStyleList { items: styles })
 }
 
 fn find_point_colon(s: &str) -> Option<usize> {
@@ -614,12 +673,12 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
             "invalid point coordinate".to_string(),
         ));
     }
-    let x_token = inside.subslice(0, comma_rel).trim();
-    let y_token = inside.subslice(comma_rel + 1, inside.text.len()).trim();
+    let x_token = inside.subslice(0, comma_rel);
+    let y_token = inside.subslice(comma_rel + 1, inside.text.len());
     let x = parse_unit_interval_token(x_token.text)?;
     let y = parse_unit_interval_token(y_token.text)?;
 
-    let styles = split_style_slices(after);
+    let styles = split_style_slices(after)?;
     Ok(Some(ParsedPoint {
         label,
         class_name,
@@ -1284,7 +1343,7 @@ fn parse_quadrant_chart_semantic_source(
             continue;
         }
 
-        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
+        if let Some(directive) = parse_keyword_rest_ci(statement, "classDef") {
             let rest = directive.rest;
             let name_end = rest
                 .text
@@ -1302,8 +1361,16 @@ fn parse_quadrant_chart_semantic_source(
                 });
                 continue;
             }
-            let style_text = rest.subslice(name_end, rest.text.len()).trim();
-            let styles = split_style_slices(style_text);
+            let style_text = rest.subslice(name_end, rest.text.len()).trim_ascii();
+            let styles = match split_style_slices(style_text) {
+                Ok(styles) => styles,
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        quadrant_error_at(error, diagram_type, statement_span)
+                    });
+                    continue;
+                }
+            };
             #[cfg(feature = "editor-facts")]
             push_quadrant_class_fact(
                 editor_facts
@@ -1324,7 +1391,7 @@ fn parse_quadrant_chart_semantic_source(
             continue;
         }
 
-        match parse_point_statement(statement_trimmed) {
+        match parse_point_statement(statement) {
             Ok(Some(point)) => {
                 #[cfg(feature = "editor-facts")]
                 push_quadrant_point_facts(

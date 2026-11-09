@@ -23,7 +23,7 @@ use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::db::SequenceDb;
 #[cfg(feature = "editor-facts")]
-use super::db::{is_css_color_value, split_box_color_and_title};
+use super::db::box_color_and_title;
 use super::lexer::Lexer;
 use super::model::SequenceDiagramModel;
 use super::sequence_grammar;
@@ -740,31 +740,9 @@ fn sequence_box_name_and_selection(
     code: &str,
 ) -> Option<(String, SourceSpan)> {
     let raw = code.get(start..end).unwrap_or(text);
-    let leading = raw.len().saturating_sub(raw.trim_start().len());
-    let trailing = raw.trim_end().len();
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    let (color, title_candidate) = split_box_color_and_title(trimmed);
-    let title_start = if is_css_color_value(color) {
-        trimmed.len().saturating_sub(title_candidate.len())
-    } else {
-        0
-    };
-    let title = trimmed[title_start..].trim();
-    if title.is_empty() {
-        return None;
-    }
-
-    let local_start = leading + title_start + trimmed[title_start..].len()
-        - trimmed[title_start..].trim_start().len();
-    let local_end = start + trailing;
-    Some((
-        title.to_string(),
-        SourceSpan::new(start + local_start, local_end),
-    ))
+    let (_, title) = box_color_and_title(raw);
+    let selection = sequence_payload_selection(title, start, end, code)?;
+    Some((title.to_string(), selection))
 }
 
 #[cfg(test)]

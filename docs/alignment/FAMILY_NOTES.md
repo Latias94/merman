@@ -99,6 +99,18 @@ a matching signature fails semantic construction while the source snapshot retai
 facts. The [method-signature tests](../../crates/merman-core/tests/class_method_signature_parity_test.rs)
 own valid, invalid and recovered inputs.
 
+Accessibility prefixes consume only ECMAScript whitespace around their delimiters, including
+physical line boundaries. Common sanitization owns newline folding after HTML cleanup; a family
+DB must not fold the raw description first. Cardinality labels use ECMAScript trimming as well.
+Adjacent class-name terminals concatenate after skipped whitespace, and editor selections cover
+the complete authored name while retaining generic suffixes. Quoted or generic terminals finish
+that name; annotation bodies retain their own single-token production. Partially quoted names
+with a generic inside the quote retain navigation but withhold group rename when a contiguous
+replacement cannot preserve their delimiters. Accessibility keywords apply only in their initial
+lexical context. Empty description blocks emit no statement: they can precede another statement,
+but their own physical line remains invalid under Class's statement grammar. Owners:
+[text normalization tests](../../crates/merman-core/tests/jison_text_normalization_parity_test.rs).
+
 Numeric-leading class names retain their authored semantic identity; the DOM prefix does not
 rename the class or merge it with a separately declared `classId-*` name. The selected DB applies
 its numeric target prefix only inside CSS-class and link assignment; tooltip and callback lookup
@@ -118,6 +130,10 @@ The [node DOM regressions](../../crates/merman-render/tests/class_mermaid12_dom_
 corresponding namespace, link, and output-specific color contracts.
 
 ## ER
+
+Empty or whitespace-only accessibility description blocks emit no assignment and preserve an
+earlier description. NEL is a value character rather than ECMAScript whitespace. This shares
+Sequence and State's assignment behavior while retaining each family's statement boundaries.
 
 Numeric tokens take precedence over unquoted entity text: `12abc` declares `12` before `abc`,
 including when the latter owns an alias or relationship. Quote the name to retain a single
@@ -493,6 +509,12 @@ their stroke does not add artificial padding. Host font measurements remain a bo
 Unquoted CSV fields reject embedded double quotes; doubled quotes in escaped fields decode once,
 and recovery retains later records with their original source ranges.
 
+CSV field tokens must be nonempty and use the selected ASCII `TEXTDATA` alphabet, with commas
+and physical line endings additionally allowed inside quotes. A field containing spaces can
+still normalize to an empty value; `parseFloat` then yields compatibility JSON `null`. Numeric
+conversion never widens the CSV grammar. Field normalization occurs once at its lexical owner.
+Owners: [value ingestion tests](../../crates/merman-core/tests/sankey_value_ingestion_parity_test.rs).
+
 Owners: [palette](../../crates/merman-render/src/sankey/theme.rs) and
 [SVG tests](../../crates/merman-render/tests/sankey_svg_test.rs).
 
@@ -595,6 +617,12 @@ and percent pairs within that payload remain literal text. Ordinary quoted and M
 labels can span physical lines; their backslashes remain literal under the selected Jison grammar.
 Multiline tokens belong to one statement, and editor selections retain the original payload range.
 
+Coordinate boundaries use ECMAScript whitespace. Style validation reads only the first two
+colon-separated components, but every component must first pass the selected lexer alphabet.
+Empty radius values fail rather than becoming zero; missing and ignored values retain the DB's
+own validation behavior. Owners:
+[value ingestion tests](../../crates/merman-core/tests/quadrant_value_ingestion_parity_test.rs).
+
 Markdown delimiters select the upstream text token; they do not add rich Markdown rendering to this
 family's direct SVG text terminals. Font measurement remains subject to the shared headless boundary.
 
@@ -656,6 +684,16 @@ Bare Sequence participant redeclarations retain an existing display alias. Singl
 values retain hashes and semicolons through the physical line boundary; those values do not change
 ordinary message or control-statement comment rules.
 
+Ordinary titles retain the text after their one lexical separator, including trailing whitespace
+before a comment. Accessibility values instead use ECMAScript trimming; empty description blocks
+emit no assignment. Common sanitization runs before newline folding. Box DB construction and
+editor payloads share color/title boundaries, including literal NEL and case-sensitive functional
+color prefixes. Functional-color extraction follows the selected greedy closing parenthesis;
+the CSS tokenizer rejects additional top-level values in that capture. Named colors reuse the
+existing CSS parser's catalog. Full browser CSS color validation remains a headless boundary.
+Owners:
+[text normalization tests](../../crates/merman-core/tests/sequence_text_normalization_parity_test.rs).
+
 Sequence's initial actor token has a restricted nonempty head and wider continuation chunks.
 Slashes, backslashes and parentheses in those continuations remain part of the participant identity;
 arrow and standalone central-connection markers retain their own boundaries. Menu `link`, `links`
@@ -699,6 +737,12 @@ tooling skip, never a comparator allowance. Owners:
 [browser-text comparator](../../crates/xtask/src/cmd/compare/browser_text_layout.rs).
 
 ## State
+
+State IDs, descriptions, style payloads and corresponding editor selections use the selected
+ECMAScript trim set. Literal NEL remains part of an identity and its relationship, note and link
+targets; BOM remains boundary whitespace. Empty accessibility blocks preserve earlier values,
+and common sanitization alone owns newline folding after HTML cleanup. Owners:
+[whitespace regressions](../../crates/merman-core/tests/state_whitespace_parity_test.rs).
 
 Root-only interaction, scale, hide and accessibility directives do not reserve ordinary state
 names inside an exclusive composite body. Canonical parsing and editor facts share this lexical
@@ -810,6 +854,13 @@ each category to build the unique coordinate domain, as D3 does; canonical categ
 and repeated tick occurrences remain intact. Repeated categories therefore share a position without
 compressing later unique categories. XY Chart always emits a responsive SVG in the selected upstream
 renderer, including when `xyChart.useMaxWidth` is false.
+
+Numeric ranges and plot lists apply ECMAScript whitespace consistently through parsing and
+original-source diagnostics: BOM is permitted padding, while NEL cannot be discarded to make an
+invalid number valid. Numeric token grammar remains separate from JavaScript conversion, as in
+Pie and Sankey. Owners:
+[numeric whitespace tests](../../crates/merman-core/tests/xychart_numeric_whitespace_parity_test.rs)
+and [cross-family numeric tests](../../crates/merman-core/tests/popular_numeric_grammar_parity_test.rs).
 
 Owners: [XYChart layout](../../crates/merman-render/src/xychart.rs),
 [SVG tests](../../crates/merman-render/tests/xychart_svg_test.rs), and

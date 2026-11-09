@@ -36,7 +36,7 @@ use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::class_grammar;
 use super::db::ClassDb;
-use super::lexer::Lexer;
+use super::lexer::{ClassLexicalEvent, Lexer};
 
 #[cfg(test)]
 thread_local! {
@@ -53,7 +53,6 @@ pub(crate) fn class_syntax_construction_count() -> usize {
     CLASS_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
 type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct ClassSyntaxOutcome {
@@ -72,7 +71,39 @@ impl ClassSyntax {
         CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
         let events = crate::diagrams::scan::collect_lexical_events(&mut Lexer::new(code), control)?;
-        Ok(Self { events })
+        let mut combined: Vec<ClassLexicalEvent> = Vec::with_capacity(events.len());
+        let mut can_prefix_name = false;
+        let mut in_annotation = false;
+        for (index, event) in events.into_iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let next_can_prefix = !in_annotation
+                && match &event {
+                    Ok((start, Tok::Name(_), end)) => !code[*start..*end].contains(['`', '~']),
+                    _ => false,
+                };
+            match &event {
+                Ok((_, Tok::AnnotationStart, _)) => in_annotation = true,
+                Ok((_, Tok::AnnotationStop | Tok::Newline, _)) => in_annotation = false,
+                _ => {}
+            }
+            // Only alphaNumToken can prefix another className. A quoted or generic name
+            // completes the production; annotations retain their single terminal as well.
+            match (combined.last_mut(), event) {
+                (
+                    Some(Ok((_, Tok::Name(previous), previous_end))),
+                    Ok((_, Tok::Name(next), end)),
+                ) if can_prefix_name => {
+                    previous.push_str(&next);
+                    *previous_end = end;
+                }
+                (_, event) => combined.push(event),
+            }
+            can_prefix_name = next_can_prefix;
+        }
+        control.checkpoint()?;
+        Ok(Self { events: combined })
     }
 
     fn into_actions(
@@ -1101,6 +1132,10 @@ impl<'a> ClassEditorFactCollector<'a> {
             return;
         }
         let selection = selection_span_for_class_name(self.code, &symbol.name, symbol.span);
+        let needs_composite_quote_edit = self
+            .code
+            .get(selection.start..selection.end)
+            .is_some_and(|source| source.contains('`') && source.contains('~'));
         match expected {
             ExpectedClassName::Class => {
                 self.declared_entities.insert(symbol.name.clone());
@@ -1168,6 +1203,11 @@ impl<'a> ClassEditorFactCollector<'a> {
                 ));
             }
         }
+        if needs_composite_quote_edit && let Some(symbol) = facts.symbols.last_mut() {
+            // One contiguous replacement cannot preserve a generic inside an embedded quote.
+            // The editor requires every occurrence's policy to allow a group rename.
+            symbol.rename_policy = crate::EditorRenamePolicy::None;
+        }
     }
 
     fn push_payload_symbol(
@@ -1197,7 +1237,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
-        let value = value.trim();
+        let value = value.trim_matches(is_ecmascript_whitespace);
         if value.is_empty() {
             return;
         }
@@ -1376,7 +1416,25 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
     } else {
         (source, span.start)
     };
-    SourceSpan::new(start, start + name.len().min(source_name.len()))
+    if source_name.starts_with(name) {
+        return SourceSpan::new(start, start + name.len());
+    }
+    // A className can concatenate terminals separated by whitespace or backticks. Rename
+    // the complete authored name in that case, leaving its generic suffix in place.
+    let mut quoted = false;
+    let end = source
+        .char_indices()
+        .find_map(|(offset, ch)| {
+            if ch == '`' {
+                quoted = !quoted;
+            }
+            (ch == '~' && !quoted).then_some(offset)
+        })
+        .unwrap_or(source.len());
+    let end = source[..end]
+        .trim_end_matches(is_ecmascript_whitespace)
+        .len();
+    SourceSpan::new(span.start, span.start + end)
 }
 
 #[cfg(feature = "editor-facts")]

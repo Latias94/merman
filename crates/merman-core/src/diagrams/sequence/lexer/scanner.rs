@@ -204,9 +204,14 @@ impl<'input> SequenceScanner<'input> {
             return None;
         };
         let end = self.pos + rel_end;
-        let s = self.input[self.pos..end].to_string();
+        let s = trim_ecmascript(&self.input[self.pos..end]).to_string();
         self.pos = end + 1;
         self.mode = Mode::Default;
+        // The opening Jison rule consumes all ECMAScript whitespace. An empty body therefore
+        // emits no acc_descr_multiline_value and leaves the previous description untouched.
+        if s.is_empty() {
+            return None;
+        }
         // In the upstream Jison grammar the multiline value is a complete statement and the
         // closing brace returns the lexer to INITIAL, where a same-line statement may begin.
         // The local grammar uses Newline as its statement boundary, so preserve that token-level
@@ -243,71 +248,69 @@ impl<'input> SequenceScanner<'input> {
     fn lex_keyword_lines(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
 
-        if self.starts_with_ci_word("title:") {
-            self.pos += "title:".len();
-            self.skip_ws();
-            let s = self.read_to_line_end();
-            return Some((
-                start,
-                Tok::CompatTitle(trim_ecmascript(&s).to_string()),
-                self.pos,
-            ));
-        }
-
-        if self.starts_with_ci_word("title") {
-            let after = self.pos + "title".len();
-            if after < self.input.len() && self.char_at_is_inline_whitespace(after) {
-                self.pos = after;
-                self.skip_ws();
-                let s = self.read_to_line_end();
-                return Some((start, Tok::Title(trim_ecmascript(&s).to_string()), self.pos));
+        for (keyword, token) in [
+            ("title:", Tok::CompatTitle as fn(String) -> Tok),
+            ("title", Tok::Title),
+        ] {
+            if !self.starts_with_ci(keyword) {
+                continue;
             }
-        }
-
-        if self.starts_with_ci_word("accTitle") {
-            let after = self.pos + "accTitle".len();
-            let rest = &self.input[after..];
-            let colon_pos = rest.find(':')?;
-            if rest[..colon_pos].chars().any(|c| c == '\n' || c == ';') {
-                return None;
+            let after = start + keyword.len();
+            let Some(separator) = self.input[after..].chars().next() else {
+                continue;
+            };
+            // The selected \s separator can cross a physical line; the following
+            // [^#\n;]+ payload must contain at least one character.
+            if !is_ecmascript_whitespace(separator) {
+                continue;
             }
-            let colon = after + colon_pos;
-            self.pos = colon + 1;
-            self.skip_ws();
-            let s = self.read_accessibility_line();
-            return Some((
-                start,
-                Tok::AccTitle(trim_ecmascript(&s).to_string()),
-                self.pos,
-            ));
+            let content_start = after + separator.len_utf8();
+            let content = &self.input[content_start..];
+            let length = content.find(['#', '\n', ';']).unwrap_or(content.len());
+            if length == 0 {
+                continue;
+            }
+            self.pos = content_start + length;
+            return Some((start, token(content[..length].to_string()), self.pos));
         }
 
-        if self.starts_with_ci_word("accDescr") {
-            let after = self.pos + "accDescr".len();
+        self.lex_accessibility()
+    }
+
+    fn lex_accessibility(&mut self) -> Option<(usize, Tok, usize)> {
+        let start = self.pos;
+        for (keyword, description) in [("accTitle", false), ("accDescr", true)] {
+            if !self.starts_with_ci_word(keyword) {
+                continue;
+            }
+            let after = start + keyword.len();
             let rest = &self.input[after..];
             let non_ws = rest.find(|c: char| !is_ecmascript_whitespace(c))?;
             match rest[non_ws..].chars().next() {
                 Some(':') => {
-                    let colon = after + non_ws;
-                    self.pos = colon + 1;
-                    self.skip_ws();
+                    self.pos = after + non_ws + 1;
+                    // The directive's \s* includes physical line boundaries, unlike ordinary
+                    // same-line Sequence whitespace and the exclusive value state that follows.
+                    let tail = &self.input[self.pos..];
+                    self.pos +=
+                        tail.len() - tail.trim_start_matches(is_ecmascript_whitespace).len();
                     let s = self.read_accessibility_line();
-                    return Some((
-                        start,
-                        Tok::AccDescr(trim_ecmascript(&s).to_string()),
-                        self.pos,
-                    ));
+                    let text = trim_ecmascript(&s).to_string();
+                    let token = if description {
+                        Tok::AccDescr(text)
+                    } else {
+                        Tok::AccTitle(text)
+                    };
+                    return Some((start, token, self.pos));
                 }
-                Some('{') => {
-                    let opening = after + non_ws;
-                    self.pos = opening + 1;
+                Some('{') if description => {
+                    self.pos = after + non_ws + 1;
                     self.mode = Mode::AccDescrMultiline;
                     return self.lex_multiline_acc_descr();
                 }
-                _ => {}
+                _ => return None,
             }
         }
-
         None
     }
 
@@ -631,13 +634,6 @@ impl<'input> SequenceScanner<'input> {
         Some((start, Tok::Actor(actor), scan.token_end))
     }
 
-    fn char_at_is_inline_whitespace(&self, position: usize) -> bool {
-        self.input
-            .get(position..)
-            .and_then(|rest| rest.chars().next())
-            .is_some_and(|ch| ch != '\n' && is_ecmascript_whitespace(ch))
-    }
-
     fn char_at_is_ecmascript_whitespace(&self, position: usize) -> bool {
         self.input
             .get(position..)
@@ -863,8 +859,12 @@ impl<'input> SequenceScanner<'input> {
             return self.emit(tok);
         }
 
+        let keyword_start = self.pos;
         if let Some(tok) = self.lex_keyword_lines() {
             return self.emit(tok);
+        }
+        if self.pos != keyword_start {
+            return ScanStep::Skip;
         }
         if self.pos >= self.input.len() {
             return ScanStep::End;

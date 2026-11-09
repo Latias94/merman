@@ -1442,7 +1442,7 @@ fn sequence_accessibility_reader_keeps_ordinary_text_boundaries_scoped() {
         .parse_diagram_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap();
-    assert_eq!(parsed.model["title"], "Final");
+    assert_eq!(parsed.model["title"], "Final ");
     assert_eq!(parsed.model["actorOrder"], json!(["A", "B"]));
     let messages = parsed.model["messages"].as_array().unwrap();
     let kinds: Vec<_> = messages

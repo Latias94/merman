@@ -164,25 +164,6 @@ fn is_js_regex_line_terminator(ch: char) -> bool {
     matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}')
 }
 
-fn collapse_acc_descr_newline_whitespace(input: &str) -> String {
-    let mut out = String::with_capacity(input.len());
-    let mut chars = input.chars().peekable();
-
-    while let Some(ch) = chars.next() {
-        out.push(ch);
-        if ch == '\n' {
-            while chars
-                .peek()
-                .is_some_and(|next| is_ecmascript_whitespace(*next))
-            {
-                chars.next();
-            }
-        }
-    }
-
-    out
-}
-
 #[derive(Debug, Clone)]
 struct ClassNode {
     id: String,
@@ -965,12 +946,11 @@ impl<'a> ClassDb<'a> {
                 Ok(())
             }
             Action::SetAccTitle(t) => {
-                self.acc_title = Some(t.trim_start().to_string());
+                self.acc_title = Some(t);
                 Ok(())
             }
             Action::SetAccDescr(t) => {
-                let trimmed = t.trim().to_string();
-                self.acc_descr = Some(collapse_acc_descr_newline_whitespace(&trimmed));
+                self.acc_descr = Some(t);
                 Ok(())
             }
 
@@ -1041,10 +1021,16 @@ impl<'a> ClassDb<'a> {
                     data.title = Some(self.cleanup_label(&t));
                 }
                 if let Some(t) = data.relation_title1.take() {
-                    data.relation_title1 = Some(sanitize_text(t.trim(), self.config));
+                    data.relation_title1 = Some(sanitize_text(
+                        t.trim_matches(is_ecmascript_whitespace),
+                        self.config,
+                    ));
                 }
                 if let Some(t) = data.relation_title2.take() {
-                    data.relation_title2 = Some(sanitize_text(t.trim(), self.config));
+                    data.relation_title2 = Some(sanitize_text(
+                        t.trim_matches(is_ecmascript_whitespace),
+                        self.config,
+                    ));
                 }
                 self.add_relation(data);
                 Ok(())

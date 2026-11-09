@@ -1,4 +1,6 @@
 #[cfg(feature = "editor-facts")]
+use crate::diagrams::scan::is_ecmascript_whitespace;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
@@ -703,7 +705,7 @@ impl StateTokenFactCollector<'_> {
                 self.expect_after_separator(EditorExpectedSyntaxKind::ClassName, end);
             }
             Tok::ClassDefId(id) => {
-                if !id.trim().is_empty() {
+                if !id.trim_matches(is_ecmascript_whitespace).is_empty() {
                     push_state_expected_syntax(
                         facts,
                         EditorExpectedSyntaxKind::ClassName,
@@ -742,7 +744,7 @@ impl StateTokenFactCollector<'_> {
                 self.expect_after_separator(EditorExpectedSyntaxKind::IdList, end);
             }
             Tok::ClassEntityIds(ids) => {
-                let has_targets = !ids.trim().is_empty();
+                let has_targets = !ids.trim_matches(is_ecmascript_whitespace).is_empty();
                 push_state_reference_id_list_facts(
                     facts,
                     self.code,
@@ -757,7 +759,7 @@ impl StateTokenFactCollector<'_> {
                 }
             }
             Tok::StyleClass(class_id) => {
-                if !class_id.trim().is_empty() {
+                if !class_id.trim_matches(is_ecmascript_whitespace).is_empty() {
                     self.pending_directive_slot = None;
                 }
                 push_state_payload_fact_from_token_as(
@@ -777,7 +779,7 @@ impl StateTokenFactCollector<'_> {
                 self.expect_after_separator(EditorExpectedSyntaxKind::IdList, end);
             }
             Tok::StyleIds(ids) => {
-                let has_targets = !ids.trim().is_empty();
+                let has_targets = !ids.trim_matches(is_ecmascript_whitespace).is_empty();
                 push_state_reference_id_list_facts(
                     facts,
                     self.code,
@@ -920,8 +922,12 @@ impl StateTokenFactCollector<'_> {
             if let Some(separator) = entity.name.find(':') {
                 entity.name.truncate(separator);
             }
-            let trimmed = entity.name.trim();
-            let leading = entity.name.len() - entity.name.trim_start().len();
+            let trimmed = entity.name.trim_matches(is_ecmascript_whitespace);
+            let leading = entity.name.len()
+                - entity
+                    .name
+                    .trim_start_matches(is_ecmascript_whitespace)
+                    .len();
             entity.selection.start += leading;
             entity.selection.end = entity
                 .selection
@@ -1140,7 +1146,7 @@ fn push_state_class_definition_fact(
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
-    if name.trim().is_empty() {
+    if name.trim_matches(is_ecmascript_whitespace).is_empty() {
         return;
     }
 
@@ -1184,7 +1190,7 @@ fn push_state_reference_id_list_facts(
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            let id = raw_id.trim();
+            let id = raw_id.trim_matches(is_ecmascript_whitespace);
             if !id.is_empty() {
                 push_state_reference_fact_with_selection(facts, id.to_string(), span, detail);
             }
@@ -1204,8 +1210,10 @@ fn push_state_reference_id_list_facts(
             .map(|offset| cursor + offset)
             .unwrap_or(slice.len());
         let part = &slice[cursor..next_comma];
-        let leading = part.len().saturating_sub(part.trim_start().len());
-        let trailing = part.trim_end().len();
+        let leading = part
+            .len()
+            .saturating_sub(part.trim_start_matches(is_ecmascript_whitespace).len());
+        let trailing = part.trim_end_matches(is_ecmascript_whitespace).len();
         if leading < trailing {
             let id_start = cursor + leading;
             let id_end = cursor + trailing;
@@ -1256,7 +1264,7 @@ fn push_state_payload_fact_from_token_as(
     kind: EditorSemanticKind,
     expected_kind: EditorExpectedSyntaxKind,
 ) {
-    let value = value.trim();
+    let value = value.trim_matches(is_ecmascript_whitespace);
     if value.is_empty() {
         return;
     }
@@ -1303,7 +1311,8 @@ fn push_state_string_payload_fact(
 
 #[cfg(feature = "editor-facts")]
 fn is_editor_visible_state_name(id: &str) -> bool {
-    !id.trim().is_empty() && id.trim() != "[*]"
+    let id = id.trim_matches(is_ecmascript_whitespace);
+    !id.is_empty() && id != "[*]"
 }
 
 #[cfg(all(test, feature = "editor-facts"))]

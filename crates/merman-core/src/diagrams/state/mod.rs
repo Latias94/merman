@@ -427,6 +427,11 @@ impl<'input> Lexer<'input> {
                     )));
                 };
                 self.pos = self.input.len() - body.len() + end_rel + 1;
+                // The opening rule consumes all whitespace. A closing brace before any
+                // payload does not emit acc_descr_multiline_value or assign the common DB.
+                if end_rel == 0 {
+                    return None;
+                }
                 return Some(Ok((
                     start,
                     Tok::AccDescrMultiline(body[..end_rel].to_string()),
@@ -509,7 +514,10 @@ impl<'input> Lexer<'input> {
                 self.pos += "as".len();
                 self.skip_ws();
                 let id_start = self.pos;
-                let id = self.read_to_newline().trim().to_string();
+                let id = self
+                    .read_to_newline()
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string();
 
                 self.pending.push_back((start, Tok::Note, kw_end));
                 self.pending
@@ -542,14 +550,16 @@ impl<'input> Lexer<'input> {
                 self.pos += ch.len_utf8();
             }
             let id_end = self.pos;
-            let id = self.input[id_start..self.pos].trim().to_string();
+            let id = self.input[id_start..self.pos].to_string();
 
             self.skip_ws();
             let text_start = self.pos;
             let text = if self.peek() == Some(b':') {
                 self.pos += 1;
 
-                self.read_to_newline().trim().to_string()
+                self.read_to_newline()
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string()
             } else {
                 let Some(rest) = self.input.get(self.pos..) else {
                     return Some(Err(LexError::new(
@@ -590,9 +600,12 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let id_end = self.pos;
-            let id = self.input[id_start..id_end].trim().to_string();
+            let id = self.input[id_start..id_end].to_string();
             self.skip_ws();
-            let raw = self.read_to_newline().trim().to_string();
+            let raw = self
+                .read_to_newline()
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
 
             self.pending.push_back((start, Tok::ClassDef, kw_end));
             self.pending
@@ -631,9 +644,14 @@ impl<'input> Lexer<'input> {
                 self.pos = after_word;
                 break;
             }
-            let ids = self.input[ids_start..ids_end].trim().to_string();
+            let ids = self.input[ids_start..ids_end]
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
             self.skip_ws();
-            let style = self.read_to_newline().trim().to_string();
+            let style = self
+                .read_to_newline()
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
 
             self.pending.push_back((start, Tok::Class, kw_end));
             self.pending
@@ -656,9 +674,12 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let ids_end = self.pos;
-            let ids = self.input[ids_start..ids_end].trim().to_string();
+            let ids = self.input[ids_start..ids_end].to_string();
             self.skip_ws();
-            let raw = self.read_to_newline().trim().to_string();
+            let raw = self
+                .read_to_newline()
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
 
             self.pending.push_back((start, Tok::Style, kw_end));
             if !ids.is_empty() {
@@ -792,9 +813,11 @@ impl<'input> Lexer<'input> {
             .map(|rel| look + rel)
             .unwrap_or(self.input.len());
         let same_line_tail = &self.input[look..same_line_end];
-        let tail_leading = same_line_tail
-            .len()
-            .saturating_sub(same_line_tail.trim_start().len());
+        let tail_leading = same_line_tail.len().saturating_sub(
+            same_line_tail
+                .trim_start_matches(is_ecmascript_whitespace)
+                .len(),
+        );
         let same_line_value_start = look + tail_leading;
         let same_line_value = &self.input[same_line_value_start..same_line_end];
         if !same_line_value.starts_with('{')
@@ -803,7 +826,7 @@ impl<'input> Lexer<'input> {
             let bad_start = same_line_value_start;
             let bad_end_untrimmed = same_line_value_start + brace_rel;
             let bad = &self.input[bad_start..bad_end_untrimmed];
-            let bad_end = bad_start + bad.trim_end().len();
+            let bad_end = bad_start + bad.trim_end_matches(is_ecmascript_whitespace).len();
             return Some(Err(LexError::with_span(
                 "State name must be a single word",
                 crate::SourceSpan::new(bad_start, bad_end.max(bad_start)),
@@ -862,7 +885,9 @@ impl<'input> Lexer<'input> {
             }
             self.pos += 1;
         }
-        let body = self.input[body_start..self.pos].trim().to_string();
+        let body = self.input[body_start..self.pos]
+            .trim_matches(is_ecmascript_whitespace)
+            .to_string();
         Some((start, Tok::Descr(body), self.pos))
     }
 
@@ -1061,10 +1086,14 @@ impl TokenScanner for Lexer<'_> {
 
         // Accessibility rules are unqualified in Jison; exclusive struct/STATE
         // modes instead parse these names as ordinary state identifiers.
-        if self.mode() == Mode::Default
-            && let Some(acc) = self.lex_accessibility()
-        {
-            return ScanStep::Emit(self.emit_result(acc));
+        if self.mode() == Mode::Default {
+            let before_accessibility = self.pos;
+            if let Some(acc) = self.lex_accessibility() {
+                return ScanStep::Emit(self.emit_result(acc));
+            }
+            if self.pos != before_accessibility {
+                return ScanStep::Skip;
+            }
         }
         if self.pos >= self.input.len() {
             return ScanStep::Skip;
