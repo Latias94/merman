@@ -1,7 +1,10 @@
 #![cfg(feature = "diagram-er")]
 
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::OperationControl;
 use merman_model::family::DiagramFamilyId;
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_model::resources::InputResourcePolicy;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
     DiagramThemeCompiler, DiagramThemeSpec, FontStack, ThemePortabilityRequirement, ThemeTextStyle,
@@ -92,6 +95,7 @@ fn render_subgraph_typography(
     source: &str,
     spec: DiagramThemeSpec,
     requirement: ThemePortabilityRequirement,
+    typed_group_font_size: Option<(&str, &str)>,
 ) -> Result<(String, [usize; 3]), merman_render::Error> {
     let theme = DiagramThemeCompiler::new().compile(spec).unwrap();
     let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
@@ -99,6 +103,34 @@ fn render_subgraph_typography(
         .unwrap()
         .unwrap()
         .into_presentation();
+    let parsed = if let Some((group_id, size)) = typed_group_font_size {
+        let (metadata, mut model, context) = parsed.into_parts();
+        let RenderSemanticModel::Er(er) = &mut model else {
+            panic!("expected ER model");
+        };
+        let group = er
+            .subgraphs
+            .iter_mut()
+            .find(|group| group.id == group_id)
+            .unwrap();
+        let font_size = group
+            .css_styles
+            .iter_mut()
+            .find(|style| style.as_str() == "font-size:0px")
+            .expect("valid source seed supplies a zero-sized group font");
+        *font_size = format!("font-size:{size}");
+        PresentationDiagram::try_from_frozen(
+            metadata,
+            model,
+            context,
+            &InputResourcePolicy::default(),
+            &OperationControl::new(),
+        )
+        .expect("validate caller-authored ER presentation")
+        .expect("admit caller-authored ER presentation")
+    } else {
+        parsed
+    };
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(requirement)
         .begin_session_with_theme(&theme)
@@ -151,6 +183,7 @@ fn er_html_subgraph_titles_consume_fonts_when_entity_text_is_zero_sized() {
             &source,
             spec.clone(),
             ThemePortabilityRequirement::BestEffort,
+            None,
         )
         .unwrap();
         assert_eq!(evidence, [1, 0, 1], "nested={nested}, restored={restored}");
@@ -168,9 +201,13 @@ fn er_html_subgraph_titles_consume_fonts_when_entity_text_is_zero_sized() {
                 .any(|node| node.text() == Some("Visible lane"))
         );
         assert!(svg.contains("font-family:TypedFace;"));
-        let error =
-            render_subgraph_typography(&source, spec, ThemePortabilityRequirement::RequirePortable)
-                .unwrap_err();
+        let error = render_subgraph_typography(
+            &source,
+            spec,
+            ThemePortabilityRequirement::RequirePortable,
+            None,
+        )
+        .unwrap_err();
         assert_eq!(
             error.unverified_family_theme(),
             Some((DiagramFamilyId::ER, 1))
@@ -179,19 +216,23 @@ fn er_html_subgraph_titles_consume_fonts_when_entity_text_is_zero_sized() {
 }
 
 #[test]
-fn er_html_subgraph_source_fonts_only_own_potentially_visible_title_runs() {
+fn er_html_subgraph_local_fonts_only_own_potentially_visible_title_runs() {
     for (root, flowchart, styled_group) in [(false, true, "Outer"), (true, false, "Inner")] {
-        for (size, title, visible) in [
-            ("0px", "Hidden title", false),
+        for (source_size, typed_size, title, visible) in [
+            ("0px", None, "Hidden title", false),
             (
                 "0px",
+                None,
                 "<span style='font-size:20px'>Restored title</span>",
                 true,
             ),
-            ("var(--host-size)", "Possible title", true),
+            // ER source styles exclude parentheses; author CSS functions in the typed model.
+            ("0px", Some("var(--host-size)"), "Possible title", true),
         ] {
+            let size = typed_size.unwrap_or(source_size);
+            let typed_group_font_size = typed_size.map(|size| (styled_group, size));
             let source = format!(
-                "---\nconfig: {}\n---\nerDiagram\nsubgraph Outer[\"{}\"]\nsubgraph Inner[\"{}\"]\nA\nend\nend\nstyle {styled_group} font-size:{size},font-family:Other\n",
+                "---\nconfig: {}\n---\nerDiagram\nsubgraph Outer[\"{}\"]\nsubgraph Inner[\"{}\"]\nA\nend\nend\nstyle {styled_group} font-size:{source_size},font-family:Other\n",
                 json!({"layout": "swimlane", "htmlLabels": root,
                     "flowchart": {"htmlLabels": flowchart}}),
                 if styled_group == "Outer" {
@@ -218,6 +259,7 @@ fn er_html_subgraph_source_fonts_only_own_potentially_visible_title_runs() {
                 &source,
                 spec.clone(),
                 ThemePortabilityRequirement::BestEffort,
+                typed_group_font_size,
             )
             .unwrap();
             assert_eq!(
@@ -243,6 +285,7 @@ fn er_html_subgraph_source_fonts_only_own_potentially_visible_title_runs() {
                 &source,
                 spec,
                 ThemePortabilityRequirement::RequirePortable,
+                typed_group_font_size,
             );
             if visible {
                 assert_eq!(
