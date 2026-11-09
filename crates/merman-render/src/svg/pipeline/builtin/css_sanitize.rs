@@ -15,26 +15,50 @@ use crate::svg::pipeline::{SvgPostprocessContext, SvgPostprocessor};
 
 const CSS_NESTING_HARD_LIMIT: u8 = 64;
 
-/// usvg omits some CSS length units, but every admitted literal zero has the same used size.
+#[derive(Debug, PartialEq)]
+pub(super) enum NativeFontSizeValue {
+    Unchanged,
+    Invalid,
+    Normalized(String),
+}
+
+/// usvg omits some CSS length units and scales absolute keywords by the parent size.
+/// Resolve context-free CSS sizes using the same parser and baseline as text measurement.
 /// Presentation attributes reject declaration-only priority and trailing semicolons.
-pub(super) fn normalize_zero_font_size_value(
+pub(super) fn prepare_native_font_size_value(
     value: &str,
     presentation_attribute: bool,
-) -> Option<String> {
-    if !crate::mermaid_style::css_font_size_is_zero(value) {
-        return None;
-    }
+) -> NativeFontSizeValue {
+    use NativeFontSizeValue::{Invalid, Normalized, Unchanged};
     let declaration = format!("font-size:{value}");
-    let parsed = crate::mermaid_style::parse_style_declaration(&declaration)?;
-    if presentation_attribute && parsed.value() != value.trim() {
-        return None;
-    }
-    let canonical = if parsed.important() {
-        "0px!important"
-    } else {
-        "0px"
+    let Some(parsed) = crate::mermaid_style::parse_style_declaration(&declaration) else {
+        return Unchanged;
     };
-    (value != canonical).then(|| canonical.to_owned())
+    if presentation_attribute && parsed.value() != value.trim() {
+        return Unchanged;
+    }
+    // Browsers ignore negative literal sizes and inherit. usvg otherwise hides the text.
+    if parsed.font_size_is_negative_literal() {
+        return Invalid;
+    }
+    let size = if parsed.font_size_is_literal_zero() {
+        0.0
+    } else if let Some(size) = parsed.analysis().context_free_font_size_px() {
+        size
+    } else {
+        return Unchanged;
+    };
+    let size = if size == 0.0 { 0.0 } else { size };
+    let canonical = if parsed.important() {
+        format!("{size}px!important")
+    } else {
+        format!("{size}px")
+    };
+    if value == canonical {
+        Unchanged
+    } else {
+        Normalized(canonical)
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -67,7 +91,7 @@ pub(super) fn native_font_size_declaration(
 }
 
 /// usvg keeps the first repeated inline property. Retain the actual CSS font-size winner
-/// before handing it a normalized zero; declarations for other properties stay in order.
+/// before handing it a normalized size; declarations for other properties stay in order.
 pub(super) fn join_with_native_font_size_winner(
     declarations: Vec<(String, NativeFontSizeDeclaration)>,
     separator: &str,
@@ -664,11 +688,12 @@ fn rewrite_declaration_list(
             if value.trim().is_empty() {
                 return Err(ParseError::custom(CssViolation::EmptyDeclaration));
             }
-            if mode == CssProcessingMode::Sanitize
-                && property.eq_ignore_ascii_case("font-size")
-                && let Some(normalized) = normalize_zero_font_size_value(&value, false)
-            {
-                value = normalized;
+            if mode == CssProcessingMode::Sanitize && property.eq_ignore_ascii_case("font-size") {
+                match prepare_native_font_size_value(&value, false) {
+                    NativeFontSizeValue::Unchanged => {}
+                    NativeFontSizeValue::Invalid => return Ok(None),
+                    NativeFontSizeValue::Normalized(normalized) => value = normalized,
+                }
             }
             let priority = if mode == CssProcessingMode::Sanitize {
                 native_font_size_declaration(&property, &value)
@@ -1051,7 +1076,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn zero_font_sizes_use_native_units_without_claiming_other_sizes() {
+    fn zero_font_sizes_use_native_units_without_claiming_host_sizes() {
         for value in ["0rem", "0cap", "0pt", "0ex", "0%", "0", r"0c\61p"] {
             assert_eq!(
                 sanitize_css(&format!("text{{font-size:{value};}}")),
@@ -1064,29 +1089,122 @@ mod tests {
         );
         for value in [
             "1rem",
-            "-1rem",
             "0futureunit",
             "0 rem",
             "var(--size)",
             "calc(0px)",
             "1e-10000rem",
-            "-5e-324%",
         ] {
             assert_eq!(
-                normalize_zero_font_size_value(value, false),
-                None,
+                prepare_native_font_size_value(value, false),
+                NativeFontSizeValue::Unchanged,
                 "{value}"
             );
         }
         assert_eq!(
-            normalize_zero_font_size_value("0rem !important", true),
-            None
+            prepare_native_font_size_value("0rem !important", true),
+            NativeFontSizeValue::Unchanged
         );
-        assert_eq!(normalize_zero_font_size_value("0rem;", true), None);
         assert_eq!(
-            normalize_zero_font_size_value("0rem", true).as_deref(),
-            Some("0px")
+            prepare_native_font_size_value("0rem;", true),
+            NativeFontSizeValue::Unchanged
         );
+        assert_eq!(
+            prepare_native_font_size_value("0rem", true),
+            NativeFontSizeValue::Normalized("0px".into())
+        );
+    }
+
+    #[test]
+    fn context_free_font_sizes_preserve_priority_and_attribute_grammar() {
+        for value in ["127q", r"127\71 !IMPORTANT"] {
+            let NativeFontSizeValue::Normalized(normalized) =
+                prepare_native_font_size_value(value, false)
+            else {
+                panic!("expected a normalized absolute size for {value}");
+            };
+            let number = normalized
+                .strip_suffix("!important")
+                .unwrap_or(&normalized)
+                .strip_suffix("px")
+                .unwrap();
+            assert!((number.parse::<f64>().unwrap() - 120.0).abs() < 1e-10);
+            assert_eq!(normalized.ends_with("!important"), value.contains('!'));
+        }
+        for (value, expected) in [
+            ("24pt", "32px"),
+            ("xx-small", "9px"),
+            ("LARGE", "18px"),
+            (r"m\65 dium", "16px"),
+        ] {
+            assert_eq!(
+                prepare_native_font_size_value(value, false),
+                NativeFontSizeValue::Normalized(expected.into()),
+                "{value}"
+            );
+        }
+        for value in ["large !important", "large;", "127q !important", "127q;"] {
+            assert_eq!(
+                prepare_native_font_size_value(value, true),
+                NativeFontSizeValue::Unchanged
+            );
+        }
+        for value in [
+            "24",
+            "inherit",
+            "unset",
+            "initial",
+            "larger",
+            "smaller",
+            "125%",
+            "1rem",
+            "1em",
+            "1cap",
+            "calc(24px)",
+            "var(--size)",
+            "1e-10000q",
+        ] {
+            assert_eq!(
+                prepare_native_font_size_value(value, false),
+                NativeFontSizeValue::Unchanged,
+                "{value}"
+            );
+        }
+    }
+
+    #[test]
+    fn negative_literal_font_sizes_are_ignored_without_hiding_the_parent() {
+        for value in ["-1", "-24pt", "-1rem", "-1cap", "-5e-324%", r"-2p\74"] {
+            assert_eq!(
+                prepare_native_font_size_value(value, false),
+                NativeFontSizeValue::Invalid,
+                "{value}"
+            );
+            assert_eq!(
+                sanitize_css(&format!(
+                    "text{{font-size:24px;font-size:{value}!important;}}"
+                )),
+                "text{font-size:24px;}"
+            );
+        }
+        for value in ["-0px", "-0cap", "-0%"] {
+            assert_eq!(
+                prepare_native_font_size_value(value, false),
+                NativeFontSizeValue::Normalized("0px".into())
+            );
+        }
+        for value in [
+            "calc(-1px)",
+            "var(--negative-size)",
+            "-1futureunit",
+            "-1e-10000px",
+        ] {
+            assert_eq!(
+                prepare_native_font_size_value(value, false),
+                NativeFontSizeValue::Unchanged,
+                "{value}"
+            );
+        }
     }
 
     #[test]

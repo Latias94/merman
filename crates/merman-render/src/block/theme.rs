@@ -619,7 +619,6 @@ impl BlockTypographyThemePlan {
                 });
         let config_owns_font_size =
             crate::config::configured_theme_or_root_font_size_px(effective_config.as_value())
-                .filter(|(size, _)| *size >= 0.0)
                 .is_some_and(|(_, path)| {
                     effective_config.config_path_overrides_typed_default(path)
                 });

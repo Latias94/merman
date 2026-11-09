@@ -64,6 +64,23 @@ impl<'a> ParsedStyleDeclaration<'a> {
     pub(crate) fn resolve_font_size_px(&self, context: CssFontSizeContext) -> Option<f64> {
         self.analysis.resolve_font_size_px(context)
     }
+
+    pub(crate) fn font_size_is_literal_zero(&self) -> bool {
+        css_font_size_value_is_zero(self.value, &self.analysis)
+    }
+
+    pub(crate) fn font_size_is_negative_literal(&self) -> bool {
+        if !self.is_single_component_value() {
+            return false;
+        }
+        let mut parser = Parser::new(self.value);
+        let numeric_size = match parser.next() {
+            Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
+            Ok(Token::Dimension { unit, .. }) => is_css_length_unit(unit),
+            _ => false,
+        };
+        numeric_size && parse_css_number_prefix(self.value).is_some_and(|value| value < 0.0)
+    }
 }
 
 pub(crate) fn parse_style_declaration(raw: &str) -> Option<ParsedStyleDeclaration<'_>> {
@@ -784,17 +801,20 @@ pub(crate) fn css_font_size_is_zero(raw: &str) -> bool {
     let Some(parsed) = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle) else {
         return false;
     };
+    css_font_size_value_is_zero(parsed.value, &parsed.analysis)
+}
+
+fn css_font_size_value_is_zero(value: &str, analysis: &CssValueAnalysis) -> bool {
     // Inspect the admitted numeric mantissa so tiny nonzero values cannot underflow to zero.
-    if !parsed.analysis.is_single_component()
-        || parsed
-            .value
+    if !analysis.is_single_component()
+        || value
             .bytes()
             .take_while(|byte| byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.'))
             .any(|byte| byte.is_ascii_digit() && byte != b'0')
     {
         return false;
     }
-    let mut parser = Parser::new(parsed.value);
+    let mut parser = Parser::new(value);
     match parser.next() {
         Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
         Ok(Token::Dimension { unit, .. }) => is_css_length_unit(unit),
@@ -1063,6 +1083,7 @@ impl CssValueAnalysis {
                 "large" => context.medium_px * (18.0 / 16.0),
                 "x-large" => context.medium_px * 1.5,
                 "xx-large" => context.medium_px * 2.0,
+                "xxx-large" => context.medium_px * 3.0,
                 "smaller" => context.inherited_px * (5.0 / 6.0),
                 "larger" => context.inherited_px * 1.2,
                 "inherit" | "unset" => context.inherited_px,
@@ -1070,6 +1091,30 @@ impl CssValueAnalysis {
             },
         };
         (value.is_finite() && value >= 0.0).then_some(value)
+    }
+
+    /// Resolves CSS absolute sizes without borrowing an inherited or document-root size.
+    /// Nonzero unitless numbers remain invalid CSS even though SVG attributes accept them.
+    pub(crate) fn context_free_font_size_px(&self) -> Option<f64> {
+        match self.scalar.as_ref()? {
+            CssScalar::Px(_) | CssScalar::AbsoluteLengthPx(_) => self.absolute_font_size_px(),
+            CssScalar::Ident(keyword)
+                if matches!(
+                    keyword.as_str(),
+                    "xx-small"
+                        | "x-small"
+                        | "small"
+                        | "medium"
+                        | "large"
+                        | "x-large"
+                        | "xx-large"
+                        | "xxx-large"
+                ) =>
+            {
+                self.resolve_font_size_px(CssFontSizeContext::uniform(16.0))
+            }
+            _ => None,
+        }
     }
 
     fn absolute_font_size_px(&self) -> Option<f64> {
@@ -2027,6 +2072,7 @@ mod tests {
             ("large", 18.0),
             ("x-large", 24.0),
             ("xx-large", 32.0),
+            ("xxx-large", 48.0),
             ("smaller", 20.0),
             ("larger", 28.8),
             (r"\6c arge", 18.0),

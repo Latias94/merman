@@ -203,6 +203,87 @@ fn native_zero_fonts_cover_stylesheets_inline_styles_and_presentation_attributes
 }
 
 #[test]
+fn native_context_free_font_sizes_keep_the_measured_css_scale() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    for (size, expected) in [
+        ("xx-small", 9.0),
+        ("x-small", 10.0),
+        ("small", 13.0),
+        ("medium", 16.0),
+        ("large", 18.0),
+        ("x-large", 24.0),
+        ("xx-large", 32.0),
+        ("xxx-large", 48.0),
+        ("LARGE", 18.0),
+        ("127q", 120.0),
+        (r"127\71", 120.0),
+    ] {
+        for (css, attributes) in [
+            (format!("text{{font-size:{size}!important}}"), String::new()),
+            (String::new(), format!("style='font-size:{size}!important'")),
+            (String::new(), format!("font-size='{size}'")),
+        ] {
+            let source = format!(
+                "<svg xmlns='http://www.w3.org/2000/svg' width='800' height='200' font-size='64'><style>{css}</style><text x='10' y='140' {attributes}>Label</text></svg>"
+            );
+            let svg = SvgPipeline::resvg_safe()
+                .process_to_string(&source, &session)
+                .unwrap();
+            let actual = usvg_fallback_text_font_size(&svg, "Label");
+            assert!(
+                (actual - expected).abs() < 1e-4,
+                "{size}/{css}/{attributes}: native text uses {actual}px, expected {expected}px: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_negative_font_sizes_inherit_instead_of_hiding_text() {
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    for size in ["-1", "-1px", "-1pt", "-1em", "-1rem", "-1cap", "-5e-324%"] {
+        for (css, attributes) in [
+            (format!("text{{font-size:{size}!important}}"), String::new()),
+            (String::new(), format!("style='font-size:{size}!important'")),
+            (String::new(), format!("font-size='{size}'")),
+        ] {
+            let source = format!(
+                "<svg xmlns='http://www.w3.org/2000/svg' width='200' height='60' font-size='32'><style>{css}</style><text x='10' y='40' {attributes}>Label</text></svg>"
+            );
+            let svg = SvgPipeline::resvg_safe()
+                .process_to_string(&source, &session)
+                .unwrap();
+            assert_eq!(
+                usvg_fallback_text_font_size(&svg, "Label"),
+                32.0,
+                "{size}/{css}/{attributes}: invalid local sizes must leave visible inherited text"
+            );
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn flowchart_svg_label_sizes_reach_the_native_text_painter() {
+    for (size, expected) in [("large", 18.0), ("127q", 120.0), ("24pt", 32.0)] {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: false\n  themeVariables: {{fontSize: '48px'}}\n---\nflowchart TD\nA[\"Label\"]\nclassDef sized font-size:{size}\nclass A sized\n"
+        );
+        let svg = render_resvg_safe("resvg-flowchart-absolute-size", &source);
+        assert!(!svg.contains("<foreignObject"));
+        let actual = usvg_fallback_text_font_size(&svg, "Label");
+        assert!(
+            (actual - expected).abs() < 1e-4,
+            "{size}: native SVG text uses {actual}px, expected {expected}px"
+        );
+    }
+}
+
+#[test]
 #[cfg(all(
     feature = "diagram-git-graph",
     feature = "png",
@@ -416,6 +497,10 @@ fn class_html_size_elements_reach_the_native_text_painter() {
         ("AccountAccount", 24.0),
         ("<big><big><big>AccountAccount</big></big></big>", 41.472),
         ("<small><small>AccountAccount</small></small>", 24.0 / 1.44),
+        (
+            "<span style='font-size:xxx-large'>AccountAccount</span>",
+            48.0,
+        ),
         ("<big style='font-size:inherit'>AccountAccount</big>", 24.0),
     ] {
         let svg = render_resvg_safe(

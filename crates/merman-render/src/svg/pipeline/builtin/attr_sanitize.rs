@@ -5,8 +5,8 @@ use std::borrow::Cow;
 use std::convert::Infallible;
 
 use super::css_sanitize::{
-    join_with_native_font_size_winner, native_font_size_declaration,
-    normalize_zero_font_size_value, sanitize_css_value_with_checkpoints,
+    NativeFontSizeValue, join_with_native_font_size_winner, native_font_size_declaration,
+    prepare_native_font_size_value, sanitize_css_value_with_checkpoints,
 };
 use super::quadrant_resvg_fallback::is_mermaid_missing_amount_hsl;
 use super::util::{
@@ -209,10 +209,14 @@ fn sanitized_attr_replacement<E>(
 
     if name.eq_ignore_ascii_case("font-size") {
         let decoded = merman_model::text::decode_html_entities_to_unicode(value);
-        if let Some(normalized) = normalize_zero_font_size_value(&decoded, true) {
-            return Ok(AttrReplacement::Replace(format!(
-                r#" {name}="{normalized}""#
-            )));
+        match prepare_native_font_size_value(&decoded, true) {
+            NativeFontSizeValue::Unchanged => {}
+            NativeFontSizeValue::Invalid => return Ok(AttrReplacement::Drop),
+            NativeFontSizeValue::Normalized(normalized) => {
+                return Ok(AttrReplacement::Replace(format!(
+                    r#" {name}="{normalized}""#
+                )));
+            }
         }
     }
 
@@ -632,10 +636,12 @@ fn sanitize_style_attribute<E>(
             continue;
         }
 
-        if property.eq_ignore_ascii_case("font-size")
-            && let Some(normalized) = normalize_zero_font_size_value(&normalized_value, false)
-        {
-            normalized_value = normalized;
+        if property.eq_ignore_ascii_case("font-size") {
+            match prepare_native_font_size_value(&normalized_value, false) {
+                NativeFontSizeValue::Unchanged => {}
+                NativeFontSizeValue::Invalid => continue,
+                NativeFontSizeValue::Normalized(normalized) => normalized_value = normalized,
+            }
         }
 
         let priority = native_font_size_declaration(&property, &normalized_value);
