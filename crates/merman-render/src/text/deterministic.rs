@@ -112,7 +112,7 @@ fn literal_svg_text_width_px(
         &collapsed
     };
     LineWidthModel {
-        font_size: style.font_size.max(1.0),
+        font_size: style.font_size.max(0.0),
         source,
         style,
         html_text: false,
@@ -592,7 +592,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
             LineWidthSource::UniformAdvanceEm(self.char_width_factor)
         };
         let model = LineWidthModel {
-            font_size: style.font_size.max(1.0),
+            font_size: style.font_size.max(0.0),
             source,
             style,
             html_text: true,
@@ -663,7 +663,7 @@ impl TextMeasurer for DeterministicTextMeasurer {
         if t.is_empty() {
             return 0.0;
         }
-        (style.font_size.max(1.0) * 1.1).max(0.0)
+        style.font_size.max(0.0) * 1.1
     }
 
     fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -788,7 +788,7 @@ impl TextMeasurer for WidthCallbackTextMeasurer {
         if text.is_empty() {
             return 0.0;
         }
-        (style.font_size.max(1.0) * 1.1).max(0.0)
+        style.font_size.max(0.0) * 1.1
     }
 
     fn measure_svg_tspan_text_bbox_height_px(&self, text: &str, style: &TextStyle) -> f64 {
@@ -841,7 +841,7 @@ impl DeterministicTextMeasurer {
             configured_line_height_factor
         };
 
-        let font_size = style.font_size.max(1.0);
+        let font_size = style.font_size.max(0.0);
         let mut width_model = LineWidthModel {
             font_size,
             source: width_source,

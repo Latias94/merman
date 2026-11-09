@@ -1852,6 +1852,141 @@ fn requirement_source_fonts_reach_node_measurement_and_retire_inherited_claims()
 }
 
 #[test]
+fn requirement_source_points_reach_terminal_measurement_and_keep_css_ownership() {
+    let theme = requirement_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("RequirementTyped").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    for html_labels in [false, true] {
+        for declaration in [
+            "style req1 font-size:24pt",
+            "classDef sourceSize font-size:24pt\nclass req1 sourceSize",
+        ] {
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.requirement-source-points").unwrap(),
+                    "test",
+                )
+                .unwrap(),
+                Arc::new(RequirementSvgModeProbe {
+                    calls: Arc::clone(&calls),
+                    width_per_byte: None,
+                }),
+            );
+            let rendered = render_requirement_with_theme_requirement_and_environment(
+                &format!("{}\n{declaration}\n", requirement_source()),
+                &theme,
+                classic_engine().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels": html_labels}),
+                    ),
+                ),
+                ThemePortabilityRequirement::RequirePortable,
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+            );
+            assert!(rendered.svg().contains("font-size:24pt !important"));
+            let calls = calls.lock().unwrap();
+            let terminal = calls.iter().filter(|call| call.is_terminal(html_labels));
+            assert!(terminal.clone().next().is_some());
+            assert!(
+                terminal.clone().all(|call| call.style.font_size == 32.0),
+                "{calls:?}"
+            );
+            assert!(
+                calls.iter().any(|call| {
+                    call.operation == TextMeasurementOperation::MermaidCalculateTextDimensions
+                        && call.style.font_size == 16.0
+                }),
+                "the independent root/config wrapping probe must stay unchanged: {calls:?}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn requirement_typed_base_size_minimum_is_shared_by_measurement_css_and_evidence() {
+    for html_labels in [false, true] {
+        for (requested_size, source_size, expected_size, applied) in [
+            (0.5, None, 1.0, 1),
+            (1.0, None, 1.0, 1),
+            (2.0, None, 2.0, 1),
+            (0.5, Some("0.5px"), 0.5, 0),
+        ] {
+            let theme = requirement_typography_theme(
+                ThemeTextStyle::default()
+                    .with_font_size_px(requested_size)
+                    .unwrap(),
+            );
+            let calls = Arc::new(Mutex::new(Vec::new()));
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.requirement-base-size-minimum").unwrap(),
+                    "test",
+                )
+                .unwrap(),
+                Arc::new(RequirementSvgModeProbe {
+                    calls: Arc::clone(&calls),
+                    width_per_byte: None,
+                }),
+            );
+            let source = match source_size {
+                Some(size) => format!("{}\nstyle req1 font-size:{size}\n", requirement_source()),
+                None => requirement_source().to_owned(),
+            };
+            let rendered = render_requirement_with_theme_requirement_and_environment(
+                &source,
+                &theme,
+                classic_engine().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"htmlLabels": html_labels}),
+                    ),
+                ),
+                ThemePortabilityRequirement::RequirePortable,
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+            );
+            let css = requirement_stylesheet(rendered.svg());
+            let root_size = requested_size.max(1.0);
+            assert!(css.contains(&format!("font-size:{root_size}px")), "{css}");
+            assert!(
+                !css.contains("font-size:0.5px"),
+                "base CSS retains its 1px minimum: {css}"
+            );
+            if let Some(size) = source_size {
+                assert!(
+                    rendered
+                        .svg()
+                        .contains(&format!("font-size:{size} !important"))
+                );
+            }
+            let calls = calls.lock().unwrap();
+            let terminal = calls.iter().filter(|call| call.is_terminal(html_labels));
+            assert!(terminal.clone().next().is_some());
+            assert!(
+                terminal
+                    .clone()
+                    .all(|call| call.style.font_size == expected_size),
+                "{calls:?}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), applied);
+            assert_eq!(evidence.not_applicable_count(), 1 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn requirement_source_font_faces_reach_measurement_and_override_name_defaults() {
     let theme = requirement_typography_theme(
         ThemeTextStyle::default()

@@ -147,10 +147,12 @@ impl RequirementPaintThemePlan {
             )
             .is_some_and(|(_, path)| effective_config.config_path_overrides_typed_default(path));
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let typed_font_size_px =
-            typed_font_size_active.then(|| f64::from(theme.typography().font_size_px()).max(1.0));
-        let typed_font_size_css =
-            typed_font_size_active.then(|| format!("{}px", theme.typography().font_size_px()));
+        // Requirement retains its 1px minimum for inherited base typography. Prepare the
+        // effective f32 value once so layout, CSS spelling, and evidence share that minimum.
+        let typed_font_size =
+            typed_font_size_active.then(|| theme.typography().font_size_px().max(1.0));
+        let typed_font_size_px = typed_font_size.map(f64::from);
+        let typed_font_size_css = typed_font_size.map(|size| format!("{size}px"));
 
         let mut evidence = FamilyThemeOutcomes::default();
         let relation_paint = super::RequirementRelationPaintPlan::resolve(

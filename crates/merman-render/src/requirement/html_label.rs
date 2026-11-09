@@ -16,6 +16,19 @@ pub(crate) struct RequirementHtmlLabel {
     _retained: PreparedTextRetainedReservation,
 }
 
+/// The node writer and native admission must sanitize the same decoded row source.
+pub(crate) fn sanitize_label_with_sink(
+    raw: &str,
+    config: &MermaidConfig,
+    sink: &HtmlSanitizeSink<'_>,
+) -> std::result::Result<String, SanitizeFailure<HtmlOutputError>> {
+    let decoded = raw
+        .replace("ﬂ°°", "&#")
+        .replace("ﬂ°", "&")
+        .replace("¶ß", ";");
+    merman_markup::sanitize::sanitize_text_with_sink(&decoded, config, sink)
+}
+
 impl RequirementHtmlLabel {
     pub(super) fn prepare(
         raw: &str,
@@ -32,25 +45,20 @@ impl RequirementHtmlLabel {
             });
         let parse_work = Cell::new(0);
         let sink = HtmlSanitizeSink::new(max, work_meter, &parse_work, OperationPhase::Layout);
-        let decoded = raw
-            .replace("ﬂ°°", "&#")
-            .replace("ﬂ°", "&")
-            .replace("¶ß", ";");
-        let sanitized =
-            match merman_markup::sanitize::sanitize_text_with_sink(&decoded, config, &sink) {
-                Ok(sanitized) => sanitized,
-                Err(SanitizeFailure::Output(HtmlOutputError::Operation(error))) => {
-                    return Err(error.into());
-                }
-                Err(SanitizeFailure::Output(HtmlOutputError::Limit { attempted })) => {
-                    work_meter.preflight_prepared_text_retained_bytes(
-                        owner_bytes.saturating_add(attempted),
-                    )?;
-                    String::new()
-                }
-                // Keep the existing sanitizer's fail-closed input/allocation behavior.
-                Err(_) => String::new(),
-            };
+        let sanitized = match sanitize_label_with_sink(raw, config, &sink) {
+            Ok(sanitized) => sanitized,
+            Err(SanitizeFailure::Output(HtmlOutputError::Operation(error))) => {
+                return Err(error.into());
+            }
+            Err(SanitizeFailure::Output(HtmlOutputError::Limit { attempted })) => {
+                work_meter.preflight_prepared_text_retained_bytes(
+                    owner_bytes.saturating_add(attempted),
+                )?;
+                String::new()
+            }
+            // Keep the existing sanitizer's fail-closed input/allocation behavior.
+            Err(_) => String::new(),
+        };
         work_meter.charge(sanitized.len())?;
         let xhtml = crate::text::mermaid_markdown_to_xhtml_label_fragment(&sanitized, true);
         work_meter.checkpoint(OperationPhase::Layout)?;

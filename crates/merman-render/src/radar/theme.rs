@@ -57,7 +57,11 @@ impl RadarTypographyThemePlan {
             &["themeVariables", "fontSize"],
         );
         let config_owns_font_size = typed_font_size_requested
-            && configured_font_size.is_some()
+            && configured_font_size.as_ref().is_some_and(|css| {
+                // Drop known-invalid static CSS sizes without displacing valid author lengths
+                // or expressions whose computed value belongs to the receiving host.
+                crate::mermaid_style::css_font_size_override(&format!("font-size:{css}")).is_some()
+            })
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let font_size_css = match theme {

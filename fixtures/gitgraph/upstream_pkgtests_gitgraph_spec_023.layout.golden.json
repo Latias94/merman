@@ -11,49 +11,49 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 30.72,
           "index": 0.0,
           "name": "main",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 59.2,
           "index": 1.0,
           "name": "branch01",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 74.88,
           "index": 2.0,
           "name": "checkout02",
           "pos": 180.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 93.44,
           "index": 3.0,
           "name": "cherry-pick03",
           "pos": 270.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 144.48,
           "index": 4.0,
           "name": "branch/example-branch",
           "pos": 360.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 118.08,
           "index": 5.0,
           "name": "merge/test_merge",
           "pos": 450.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 9.6,
           "index": 6.0,
           "name": "A",

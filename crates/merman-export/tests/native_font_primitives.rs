@@ -86,6 +86,53 @@ fn svg_advance(tree: &usvg::Tree) -> f64 {
 }
 
 #[test]
+fn zero_font_primitives_need_no_glyph_coverage_and_preserve_row_counts() {
+    let context = context(&["Cousine-Regular.ttf"]).with_strict_glyph_coverage(true);
+    let zero = TextStyle {
+        font_size: 0.0,
+        ..style("__missing_family__")
+    };
+    for operation in TextMeasurementOperation::ALL {
+        for wrap_mode in [WrapMode::HtmlLike, WrapMode::SvgLike] {
+            let measured = context
+                .measure(HostTextMeasurementRequest {
+                    operation,
+                    phase: TextMeasurementPhase::SvgBBox,
+                    text: "missing \u{10ffff}\nrow",
+                    style: &zero,
+                    max_width: Some(1.0),
+                    wrap_mode,
+                })
+                .unwrap()
+                .expect("zero glyphs do not require a font face");
+            match measured {
+                HostTextMeasurement::Length(value) => assert_eq!(value, 0.0, "{operation:?}"),
+                HostTextMeasurement::HorizontalExtents { left, right } => {
+                    assert_eq!((left, right), (0.0, 0.0), "{operation:?}");
+                }
+                HostTextMeasurement::Metrics(metrics)
+                | HostTextMeasurement::WrappedWithRawWidth { metrics, .. } => {
+                    assert_eq!((metrics.width, metrics.height), (0.0, 0.0), "{operation:?}");
+                    assert!(
+                        metrics.line_count > 0,
+                        "zero height does not erase rows: {operation:?}"
+                    );
+                }
+            }
+        }
+    }
+    context.check().unwrap();
+    assert!(context.selected_faces().is_empty());
+    assert!(advance(&context, "AVA", &style("Cousine")) > 0.0);
+    assert!(
+        context
+            .measure(request("\u{10ffff}", &style("Cousine")))
+            .is_err(),
+        "the positive-size missing-glyph control must still fail"
+    );
+}
+
+#[test]
 fn advance_matches_independent_export_for_kerning_nbsp_rtl_and_fallback_runs() {
     let context = context(&[
         "NotoSans-Latin-subset.ttf",

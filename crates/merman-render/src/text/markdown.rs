@@ -56,12 +56,120 @@ pub(super) fn html_markdown_measurement_lines(
     markdown_to_lines(markdown, true, true)
 }
 
+/// Marked accepts single-tilde deletions inside words; pulldown only accepts double tildes there.
+/// Project paired deletions in paragraph text through the existing SVG token allowlist.
+/// Retained HTML, code, escaped punctuation and unpaired delimiters keep their source spelling.
+fn project_svg_markdown_deletions(markdown: &str) -> Option<String> {
+    if !markdown.contains('~') {
+        return None;
+    }
+    let escaped = |index| {
+        markdown[..index]
+            .bytes()
+            .rev()
+            .take_while(|&byte| byte == b'\\')
+            .count()
+            % 2
+            != 0
+    };
+    let closers = markdown
+        .match_indices('~')
+        .filter_map(|(index, _)| {
+            let previous = markdown[..index].chars().next_back();
+            let next = markdown[index + 1..].chars().next();
+            (previous.is_some_and(|ch| ch != '~' && !is_ecmascript_whitespace(ch))
+                && next != Some('~')
+                && !escaped(index))
+            .then_some(index)
+        })
+        .collect::<Vec<_>>();
+    let parser = pulldown_cmark::Parser::new_ext(
+        markdown,
+        pulldown_cmark::Options::ENABLE_TABLES
+            | pulldown_cmark::Options::ENABLE_STRIKETHROUGH
+            | pulldown_cmark::Options::ENABLE_TASKLISTS,
+    );
+    let mut contexts = Vec::new();
+    let mut deletions = Vec::new();
+    let mut consumed_until = 0;
+    let mut next_closer = 0;
+    for (event, range) in parser.into_offset_iter() {
+        match event {
+            pulldown_cmark::Event::Start(tag) => {
+                if matches!(tag, pulldown_cmark::Tag::Strikethrough)
+                    && contexts.last().is_some_and(|&(_, allowed)| allowed)
+                    && range.start >= consumed_until
+                {
+                    deletions.push((range.start, range.end));
+                    consumed_until = range.end;
+                }
+                let allowed = match tag {
+                    pulldown_cmark::Tag::Paragraph => contexts.is_empty(),
+                    pulldown_cmark::Tag::Strong | pulldown_cmark::Tag::Emphasis => {
+                        contexts.last().is_some_and(|&(_, allowed)| allowed)
+                    }
+                    _ => false,
+                };
+                contexts.push((range.end, allowed));
+            }
+            pulldown_cmark::Event::End(_) => {
+                contexts.pop();
+            }
+            pulldown_cmark::Event::Text(_) => {
+                let Some(&(parent_end, true)) = contexts.last() else {
+                    continue;
+                };
+                for (offset, _) in markdown[range.clone()].match_indices('~') {
+                    let index = range.start + offset;
+                    if index < consumed_until
+                        || markdown[..index].ends_with('~')
+                        || markdown[index + 1..]
+                            .chars()
+                            .next()
+                            .is_none_or(|ch| ch == '~' || is_ecmascript_whitespace(ch))
+                        || escaped(index)
+                    {
+                        continue;
+                    }
+                    while closers
+                        .get(next_closer)
+                        .is_some_and(|&closer| closer <= index + 1)
+                    {
+                        next_closer += 1;
+                    }
+                    if let Some(&closer) = closers.get(next_closer)
+                        && closer < parent_end
+                    {
+                        deletions.push((index, closer + 1));
+                        consumed_until = closer + 1;
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    if deletions.is_empty() {
+        return None;
+    }
+    let mut normalized = String::with_capacity(markdown.len());
+    let mut start = 0;
+    for (opening, end) in deletions {
+        normalized.push_str(&markdown[start..opening]);
+        // The SVG projection drops the entire deletion. Use an opaque del token so original
+        // double tildes or inline markup inside it cannot close the normalized token early.
+        normalized.push_str("~~x~~");
+        start = end;
+    }
+    normalized.push_str(&markdown[start..]);
+    Some(normalized)
+}
+
 fn markdown_to_lines(
     markdown: &str,
     markdown_auto_wrap: bool,
     preserve_inline_literals: bool,
 ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
-    fn preprocess_mermaid_markdown(markdown: &str, markdown_auto_wrap: bool) -> String {
+    fn preprocess_mermaid_markdown(markdown: &str) -> String {
         let markdown = markdown.replace("\r\n", "\n");
 
         // Mermaid preprocessing:
@@ -137,9 +245,6 @@ fn markdown_to_lines(
             s = dedented;
         }
 
-        if !markdown_auto_wrap {
-            s = s.replace(' ', "&nbsp;");
-        }
         s
     }
 
@@ -235,7 +340,14 @@ fn markdown_to_lines(
         markdown
     };
 
-    let pre = preprocess_mermaid_markdown(markdown, markdown_auto_wrap);
+    let pre = preprocess_mermaid_markdown(markdown);
+    let deletions = if preserve_inline_literals {
+        None
+    } else {
+        project_svg_markdown_deletions(&pre)
+    };
+    let projected_deletions = deletions.is_some();
+    let pre = deletions.unwrap_or(pre);
 
     fn needs_full_delimiter_resolution(markdown: &str) -> bool {
         // Code spans and images are omitted by the pinned SVG token allowlist. Keep their
@@ -281,6 +393,7 @@ fn markdown_to_lines(
     fn resolve_full_delimiter_runs(
         markdown: &str,
         preserve_inline_literals: bool,
+        markdown_auto_wrap: bool,
     ) -> Vec<Vec<(String, MermaidMarkdownWordType)>> {
         fn line_mut(
             out: &mut Vec<Vec<(String, MermaidMarkdownWordType)>>,
@@ -502,6 +615,11 @@ fn markdown_to_lines(
                                     == text
                         })
                         .unwrap_or(text);
+                    let source_text = if markdown_auto_wrap {
+                        std::borrow::Cow::Borrowed(source_text)
+                    } else {
+                        std::borrow::Cow::Owned(source_text.replace(' ', "&nbsp;"))
+                    };
                     let word_type = style_stack
                         .last()
                         .copied()
@@ -509,7 +627,7 @@ fn markdown_to_lines(
                     append_source_text(
                         &mut out,
                         &mut line_idx,
-                        source_text,
+                        &source_text,
                         range,
                         word_type,
                         &mut previous_text,
@@ -565,10 +683,15 @@ fn markdown_to_lines(
         out
     }
 
-    if needs_full_delimiter_resolution(&pre) {
-        return resolve_full_delimiter_runs(&pre, preserve_inline_literals);
+    if projected_deletions || needs_full_delimiter_resolution(&pre) {
+        return resolve_full_delimiter_runs(&pre, preserve_inline_literals, markdown_auto_wrap);
     }
 
+    let pre = if markdown_auto_wrap {
+        pre
+    } else {
+        pre.replace(' ', "&nbsp;")
+    };
     let chars: Vec<char> = pre.chars().collect();
 
     let mut out: Vec<Vec<(String, MermaidMarkdownWordType)>> = vec![Vec::new()];
@@ -761,6 +884,86 @@ mod tests {
     use super::*;
 
     #[test]
+    fn svg_markdown_omits_deletion_tokens_without_converting_entity_generics() {
+        use MermaidMarkdownWordType::Normal;
+        for deleted in ["~T~", "~~T~~"] {
+            assert_eq!(
+                mermaid_markdown_to_lines(&format!("<b>WWWW</b> List{deleted}"), true),
+                vec![vec![
+                    ("<b>".into(), Normal),
+                    ("WWWW".into(), Normal),
+                    ("</b>".into(), Normal),
+                    ("List".into(), Normal),
+                ]],
+            );
+        }
+        assert_eq!(
+            mermaid_markdown_to_lines("List~T", true),
+            vec![vec![("List~T".into(), Normal)]],
+        );
+    }
+
+    #[test]
+    fn single_tilde_projection_respects_inline_styles_and_literal_contexts() {
+        use MermaidMarkdownWordType::{Em, Normal, Strong};
+        for (source, expected) in [
+            ("List~**T**~", vec![("List", Normal)]),
+            ("**List~T~**", vec![("List", Strong)]),
+            ("List~T~Body~U~", vec![("List", Normal), ("Body", Normal)]),
+            ("List~T~~U~", vec![("List", Normal)]),
+            ("List~T", vec![("List~T", Normal)]),
+            ("List~ T~", vec![("List~", Normal), ("T~", Normal)]),
+            ("List~T ~", vec![("List~T", Normal), ("~", Normal)]),
+            (r"List\~T~", vec![("List", Normal), ("T~", Normal)]),
+            (r"List~T\~", vec![("List~T", Normal)]),
+            (r"List~T\\~", vec![("List", Normal)]),
+            (
+                "Before `List~T~` After",
+                vec![("Before", Normal), ("After", Normal)],
+            ),
+            (
+                "<span title='List~T~'>Label</span>",
+                vec![
+                    ("<span title='List~T~'>", Normal),
+                    ("Label", Normal),
+                    ("</span>", Normal),
+                ],
+            ),
+            ("*List~T* Tail~", vec![("List~T", Em), ("Tail~", Normal)]),
+        ] {
+            assert_eq!(
+                mermaid_markdown_to_lines(source, true),
+                vec![
+                    expected
+                        .into_iter()
+                        .map(|(word, kind)| (word.into(), kind))
+                        .collect::<Vec<_>>()
+                ],
+                "{source}"
+            );
+        }
+        assert_eq!(
+            html_markdown_measurement_lines("List~T~"),
+            vec![vec![("List~T~".into(), MermaidMarkdownWordType::Normal)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("~ T~", false),
+            vec![vec![("~&nbsp;T~".into(), Normal)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("List~T~", false),
+            vec![vec![("List".into(), Normal)]],
+        );
+        assert_eq!(
+            mermaid_markdown_to_lines("A~B~ C~~ D~~", false),
+            vec![vec![
+                ("A".into(), Normal),
+                ("&nbsp;C~~&nbsp;D~~".into(), Normal),
+            ]],
+        );
+    }
+
+    #[test]
     fn html_inline_literal_projection_keeps_child_styles_and_code_adjacency() {
         use MermaidMarkdownWordType::*;
         assert_eq!(
@@ -920,7 +1123,7 @@ mod tests {
         );
         assert_eq!(
             mermaid_markdown_to_lines("`**CoreResult~T~**`", true),
-            vec![vec![("CoreResult~T~".to_string(), Strong)]]
+            vec![vec![("CoreResult".to_string(), Strong)]]
         );
     }
 

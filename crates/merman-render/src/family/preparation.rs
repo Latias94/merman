@@ -133,7 +133,7 @@ fn prepare_mindmap_family<'parsed>(
     meta: &PresentationMetadata,
     execution: &LayoutExecution<'_>,
 ) -> Result<BuiltinFamilyArtifact<'parsed>> {
-    let node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
+    let mut node_palette = crate::mindmap::MindmapNodePalettePlan::resolve(
         execution.resolved_theme(),
         &meta.effective_config,
         model,
@@ -148,6 +148,13 @@ fn prepare_mindmap_family<'parsed>(
         execution.work_meter(),
         #[cfg(feature = "layout-elk")]
         execution.elk_operation_seed(),
+    )?;
+    node_palette.prepare_label_evidence(
+        execution.resolved_theme(),
+        &meta.effective_config,
+        model,
+        &prepared_labels,
+        execution.work_meter_ref(),
     )?;
     Ok(BuiltinFamilyArtifact::Mindmap(Box::new(
         MindmapFamilyArtifact {

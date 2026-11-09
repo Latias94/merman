@@ -148,6 +148,13 @@ to share loaded fonts across layout and export. Source HTML `nowrap` and its wid
 still apply.
 Stable `data-merman-foreignobject` markers and fallback classes remain available to host consumers.
 
+ER, Mindmap and Requirement native-font admission inspects the retained HTML labels, after the
+applicable normalization or sanitization step. Unsupported text geometry such as `letter-spacing`,
+a font shorthand, an unresolved font-size expression, or an `all` reset is rejected rather than
+measured with an unrelated font style.
+Malformed retained markup cannot bypass that check. SVG-only labels and declarations removed by
+the sanitizer do not acquire the same HTML restriction.
+
 Short labels can expose this mismatch too: an ER attribute such as `name` can lose part of its
 first or last glyph when the painting font is wider than the deterministic estimate. Increasing
 character-class estimates may move that particular boundary, but cannot establish a fit for an

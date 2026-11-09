@@ -60,7 +60,7 @@ pub(crate) use activation_geometry::SequencePreparedActivationGeometry;
 pub(crate) use block_steps::SequenceBlockLabelBoxMetrics;
 pub(crate) use constants::{
     SEQUENCE_FRAME_SIDE_PAD_PX, SEQUENCE_GLYPH_BAND_HEIGHT, SEQUENCE_MESSAGE_WRAP_PADDING_SIDES,
-    SequenceActorBands, sequence_actor_popup_panel_height, sequence_actor_popup_rect_height,
+    SequenceActorBands, SequenceActorLabelFootprint,
 };
 pub(crate) use drawing_geometry::SequenceFramePlacement;
 pub(crate) use math_artifact::{
@@ -194,7 +194,8 @@ pub(crate) struct SequenceBoxLayout {
 pub(crate) struct SequencePreparedArtifact {
     layout: SequenceDiagramLayout,
     visible_model: Option<Box<SequenceDiagramModel>>,
-    actor_popup_widths: HashMap<String, f64>,
+    actor_popup_layouts: HashMap<String, actors::SequenceActorPopupLayout>,
+    actor_label_footprints: Vec<Option<SequenceActorLabelFootprint>>,
     wrapped_note_text: SequencePreparedNoteLabels,
     message_metrics: SequenceMessageMetricSidecar,
     box_indices: Vec<Option<usize>>,
@@ -279,8 +280,14 @@ impl SequencePreparedArtifact {
         self.block_label_box_metrics
     }
 
-    pub(crate) const fn actor_popup_widths(&self) -> &HashMap<String, f64> {
-        &self.actor_popup_widths
+    pub(crate) const fn actor_popup_layouts(
+        &self,
+    ) -> &HashMap<String, actors::SequenceActorPopupLayout> {
+        &self.actor_popup_layouts
+    }
+
+    pub(crate) fn actor_label_footprints(&self) -> &[Option<SequenceActorLabelFootprint>] {
+        &self.actor_label_footprints
     }
 }
 
@@ -638,9 +645,9 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
     let SequenceActorLayoutPlan {
         actor_index,
         actor_widths,
-        actor_popup_widths,
+        actor_popup_layouts,
         actor_base_heights,
-        actor_has_prepared_math,
+        actor_label_footprints,
         actor_text_heights,
         actor_centers_x,
         box_layouts,
@@ -691,7 +698,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         actor_centers_x: &actor_centers_x,
         actor_widths: &actor_widths,
         actor_base_heights: &actor_base_heights,
-        actor_has_prepared_math: &actor_has_prepared_math,
+        actor_label_footprints: &actor_label_footprints,
         actor_text_heights: &actor_text_heights,
         actor_top_offset_y,
         max_actor_layout_height,
@@ -808,7 +815,6 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         bounds,
         diagram_title,
     } = prepare_sequence_root_geometry(SequenceRootBoundsContext {
-        is_neo: settings.is_neo,
         model,
         diagram_title: effective_title,
         nodes: &nodes,
@@ -818,7 +824,7 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
         bounds_stop_x,
         actor_index: &actor_index,
         actor_centers_x: &actor_centers_x,
-        actor_popup_widths: &actor_popup_widths,
+        actor_popup_layouts: &actor_popup_layouts,
         box_layouts: &box_layouts,
         actor_width_min: settings.sequence_default_width,
         actor_height: settings.actor_height,
@@ -864,7 +870,8 @@ pub(crate) fn prepare_sequence_diagram_typed_with_title_and_work_meter(
             boxes,
             title: diagram_title,
         },
-        actor_popup_widths,
+        actor_popup_layouts,
+        actor_label_footprints,
         wrapped_note_text,
         message_metrics,
         math_sidecar,

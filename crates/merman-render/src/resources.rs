@@ -1020,7 +1020,8 @@ impl OperationWorkMeter {
         self.charge_work(additional, OperationPhase::Emit)
     }
 
-    fn charge_work(
+    /// Charges the shared work ceiling while retaining the caller's operation phase.
+    pub(crate) fn charge_work(
         &self,
         additional: usize,
         phase: OperationPhase,

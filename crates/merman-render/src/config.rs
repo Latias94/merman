@@ -267,7 +267,7 @@ pub(crate) fn config_theme_or_root_font_size_px_opt(cfg: &Value) -> Option<f64> 
 }
 
 pub(crate) fn configured_theme_or_root_font_size_px(cfg: &Value) -> Option<(f64, &'static str)> {
-    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
+    config_f64_css_absolute_px(cfg, &["themeVariables", "fontSize"])
         .map(|size| (size, "themeVariables.fontSize"))
         .or_else(|| config_f64_css_px(cfg, &["fontSize"]).map(|size| (size, "fontSize")))
 }
@@ -283,7 +283,7 @@ pub(crate) fn config_theme_font_size_css_or_root_number_px_opt(cfg: &Value) -> O
 pub(crate) fn configured_theme_font_size_css_or_root_number_px(
     cfg: &Value,
 ) -> Option<(f64, &'static str)> {
-    config_f64_css_px(cfg, &["themeVariables", "fontSize"])
+    config_f64_css_absolute_px(cfg, &["themeVariables", "fontSize"])
         .map(|size| (size, "themeVariables.fontSize"))
         .or_else(|| config_f64(cfg, &["fontSize"]).map(|size| (size, "fontSize")))
 }
@@ -319,12 +319,24 @@ pub(crate) fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
     value_at(cfg, path).and_then(json_f64_css_px)
 }
 
-pub(crate) fn json_f64_explicit_css_px(value: &Value) -> Option<f64> {
-    value.as_str().and_then(parse_explicit_css_px_to_f64)
+/// Extends the legacy numeric/px configuration subset with context-free CSS length units.
+/// Relative lengths, keywords, and expressions retain their existing family-specific owners.
+pub(crate) fn config_f64_css_absolute_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    value_at(cfg, path).and_then(|value| {
+        json_f64_css_px(value).or_else(|| {
+            value
+                .as_str()
+                .and_then(crate::mermaid_style::resolve_mermaid_absolute_font_size_px)
+        })
+    })
 }
 
-pub(crate) fn config_f64_explicit_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
-    value_at(cfg, path).and_then(json_f64_explicit_css_px)
+pub(crate) fn json_f64_explicit_css_absolute_px(value: &Value) -> Option<f64> {
+    crate::mermaid_style::resolve_explicit_css_absolute_font_size_px(value.as_str()?)
+}
+
+pub(crate) fn config_f64_explicit_css_absolute_px(cfg: &Value, path: &[&str]) -> Option<f64> {
+    value_at(cfg, path).and_then(json_f64_explicit_css_absolute_px)
 }
 
 pub(crate) fn json_css_number_or_string(value: &Value) -> Option<String> {
@@ -347,13 +359,6 @@ pub(crate) fn config_css_number_or_string(cfg: &Value, path: &[&str]) -> Option<
 fn parse_css_px_to_f64(text: &str) -> Option<f64> {
     let text = normalize_css_value_text(text);
     let text = text.strip_suffix("px").unwrap_or(text).trim();
-    let value = text.parse::<f64>().ok()?;
-    value.is_finite().then_some(value)
-}
-
-fn parse_explicit_css_px_to_f64(text: &str) -> Option<f64> {
-    let text = normalize_css_value_text(text);
-    let text = text.strip_suffix("px")?.trim();
     let value = text.parse::<f64>().ok()?;
     value.is_finite().then_some(value)
 }
@@ -502,15 +507,82 @@ mod tests {
     }
 
     #[test]
-    fn json_f64_explicit_css_px_accepts_only_px_strings() {
-        assert_eq!(json_f64_explicit_css_px(&json!(24)), None);
-        assert_eq!(json_f64_explicit_css_px(&json!("24")), None);
-        assert_eq!(json_f64_explicit_css_px(&json!("24px")), Some(24.0));
+    fn configured_theme_font_sizes_resolve_absolute_css_lengths() {
+        for (value, expected) in [
+            ("24pt", 32.0),
+            ("2pc", 32.0),
+            ("1in", 96.0),
+            ("2.54cm", 96.0),
+            ("25.4mm", 96.0),
+            ("101.6Q", 96.0),
+            (r"24p\74", 32.0),
+        ] {
+            let config = json!({"themeVariables": {"fontSize": value}});
+            let (size, owner) = configured_theme_or_root_font_size_px(&config).unwrap();
+            assert!((size - expected).abs() < 1e-9, "{value}: {size}");
+            assert_eq!(owner, "themeVariables.fontSize");
+            assert!(
+                (config_theme_font_size_css_or_root_number_px_opt(&config).unwrap() - expected)
+                    .abs()
+                    < 1e-9,
+                "{value}"
+            );
+        }
+        for value in ["1rem", "125%", "large", "calc(1px + 2px)", "24pt trailing"] {
+            assert_eq!(
+                config_f64_css_absolute_px(&json!({"size": value}), &["size"]),
+                None,
+                "{value}"
+            );
+        }
         assert_eq!(
-            json_f64_explicit_css_px(&json!("24px !important;")),
+            config_f64_css_absolute_px(&json!({"size": "-2px"}), &["size"]),
+            Some(-2.0),
+            "legacy numeric/px clamping remains owned by the consuming family"
+        );
+    }
+
+    #[test]
+    fn json_f64_explicit_css_absolute_px_accepts_only_absolute_length_strings() {
+        assert_eq!(json_f64_explicit_css_absolute_px(&json!(24)), None);
+        assert_eq!(json_f64_explicit_css_absolute_px(&json!("24")), None);
+        assert_eq!(
+            json_f64_explicit_css_absolute_px(&json!("24px")),
             Some(24.0)
         );
-        assert_eq!(json_f64_explicit_css_px(&json!("24pt")), None);
+        assert_eq!(
+            json_f64_explicit_css_absolute_px(&json!("24px !important;")),
+            Some(24.0)
+        );
+        assert_eq!(
+            json_f64_explicit_css_absolute_px(&json!("24pt")),
+            Some(32.0)
+        );
+        assert_eq!(json_f64_explicit_css_absolute_px(&json!("1em")), None);
+        assert_eq!(json_f64_explicit_css_absolute_px(&json!("medium")), None);
+        for raw in [
+            "32 !IMPORTANT",
+            "32 ! important",
+            r"32 !\69mportant",
+            "-2px",
+        ] {
+            assert_eq!(
+                json_f64_explicit_css_absolute_px(&json!(raw)),
+                None,
+                "{raw}"
+            );
+        }
+        for raw in [
+            "24pt !IMPORTANT",
+            "24pt ! important",
+            r"24p\74 !\69mportant",
+        ] {
+            assert_eq!(
+                json_f64_explicit_css_absolute_px(&json!(raw)),
+                Some(32.0),
+                "{raw}"
+            );
+        }
     }
 
     #[test]

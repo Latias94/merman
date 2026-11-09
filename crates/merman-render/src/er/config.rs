@@ -269,6 +269,14 @@ impl<'a> ErConfigView<'a> {
         Self::evaluate_html_labels(self.flowchart_config.get("htmlLabels"))
     }
 
+    pub(crate) fn subgraph_html_labels(&self, is_swimlane_lane: bool) -> bool {
+        if is_swimlane_lane {
+            self.swimlane_title_html_labels()
+        } else {
+            self.relationship_html_labels()
+        }
+    }
+
     fn evaluate_html_labels(value: Option<&Value>) -> bool {
         match value {
             None => true,

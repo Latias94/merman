@@ -761,6 +761,102 @@ fn kanban_task_palette_derives_dark_mode_from_the_final_typed_winner() {
 }
 
 #[test]
+fn kanban_theme_variable_dark_mode_reaches_sections_and_task_palettes() {
+    let theme = kanban_task_palette_theme(&["#123456"]);
+    let source = "kanban\n  todo[Todo]\n    task[Task]\n";
+    for (root, variable, dark) in [
+        (None, serde_json::json!(true), true),
+        (Some(false), serde_json::json!(true), true),
+        (Some(true), serde_json::json!(false), false),
+        (None, serde_json::json!("false"), true),
+        (None, serde_json::json!(0), false),
+    ] {
+        let mut config = serde_json::json!({
+            "themeVariables": { "darkMode": variable, "cScale1": "#123456" }
+        });
+        if let Some(root) = root {
+            config["darkMode"] = root.into();
+        }
+        let fill = if dark {
+            "hsl(210, 65.3846153846%, 10.3921568627%)"
+        } else {
+            "hsl(210, 65.3846153846%, 30.3921568627%)"
+        };
+        for from_source in [false, true] {
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{source}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (source.to_owned(), config.clone())
+            };
+            let rendered = render_kanban_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).expect("valid Kanban SVG");
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Kanban stylesheet");
+            assert!(
+                css.contains(&format!(".section-0 path{{fill:{fill};")),
+                "section dark mode: config={config}, source={from_source}"
+            );
+            assert_eq!(
+                kanban_task_rect_style(&document, "kanban-palette-task"),
+                format!("fill:{fill};"),
+                "task palette dark mode: config={config}, source={from_source}"
+            );
+        }
+    }
+}
+
+#[test]
+fn kanban_selected_dark_palette_keeps_its_independent_dark_mode_input() {
+    let theme = kanban_task_palette_theme(&["#123456"]);
+    // Upstream Dark selects a palette; it does not initialize themeVariables.darkMode=true.
+    for dark in [false, true] {
+        let mut config = serde_json::json!({
+            "theme": "dark", "themeVariables": { "cScale1": "#123456" }
+        });
+        if dark {
+            config["themeVariables"]["darkMode"] = true.into();
+        }
+        let rendered = render_kanban_with_theme_and_engine(
+            "kanban\n  todo[Todo]\n    task[Task]\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid dark Kanban SVG");
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Kanban stylesheet");
+        let fill = if dark {
+            "hsl(210, 65.3846153846%, 10.3921568627%)"
+        } else {
+            "hsl(210, 65.3846153846%, 30.3921568627%)"
+        };
+        assert!(css.contains(&format!(".section-0 path{{fill:{fill};")));
+        assert_eq!(
+            kanban_task_rect_style(&document, "kanban-palette-task"),
+            format!("fill:{fill};")
+        );
+    }
+}
+
+#[test]
 fn kanban_task_label_foreground_survives_the_resvg_fallback_without_a_palette() {
     let theme = kanban_task_label_theme("#123456");
     let rendered = render_kanban_with_theme_and_engine(

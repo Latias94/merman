@@ -120,10 +120,15 @@ fn er_attribute_free_entity_uses_draw_rect_generic_source_semantics() {
         DeterministicTextMeasurer::default().measure_svg_tspan_text_bbox_height_px("A", &style);
     // drawRect/labelHelper bypasses erBox.addText and its generic textContent workaround.
     for html_labels in [false, true] {
-        for (label, expected, emphasis) in [
-            ("A~br~B", "A~br~B", false),
-            ("*A~br~B*", "A~br~B", true),
-            ("A~br~B&amp;lt;br&amp;gt;C", "A~br~B&lt;br&gt;C", false),
+        for (label, html_text, svg_text, emphasis) in [
+            ("A~br~B", "A~br~B", "A B", false),
+            ("*A~br~B*", "A~br~B", "A B", true),
+            (
+                "A~br~B&amp;lt;br&amp;gt;C",
+                "A~br~B&lt;br&gt;C",
+                "A B&lt;br&gt;C",
+                false,
+            ),
         ] {
             let (layout, svg) = render(&format!("  E[\"{label}\"]"), html_labels);
             let document = roxmltree::Document::parse(&svg).expect("final ER SVG is XML");
@@ -131,6 +136,8 @@ fn er_attribute_free_entity_uses_draw_rect_generic_source_semantics() {
                 .descendants()
                 .find(|node| node.attribute("class") == Some("label"))
                 .expect("attribute-free entity label");
+            // SVG's Markdown projection drops deletion tokens; HTML retains their raw text.
+            let expected = if html_labels { html_text } else { svg_text };
             assert_eq!(text(terminal), expected, "{html_labels}/{label}");
             assert!(!terminal.descendants().any(|node| node.has_tag_name("br")));
             if html_labels {

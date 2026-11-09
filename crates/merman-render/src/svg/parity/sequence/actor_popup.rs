@@ -12,7 +12,6 @@ pub(super) struct SequenceActorPopupOptions<'a> {
     pub(super) is_neo: bool,
     pub(super) force_menus: bool,
     pub(super) mirror_actors: bool,
-    pub(super) actor_height: f64,
     pub(super) actor_text_style: &'a TextStyle,
 }
 
@@ -26,7 +25,7 @@ pub(super) fn render_sequence_actor_popup_menus(
     nodes_by_id: &FxHashMap<&str, &LayoutNode>,
     sanitize_config: &merman_model::presentation::PresentationConfig,
     options: SequenceActorPopupOptions,
-    actor_popup_widths: &std::collections::HashMap<String, f64>,
+    prepared: &crate::sequence::SequencePreparedArtifact,
     label_ctx: &super::actor_shapes::ActorLabelContext<'_>,
     checkpoints: SequenceEmitCheckpoints<'_>,
 ) -> Result<()> {
@@ -78,23 +77,20 @@ pub(super) fn render_sequence_actor_popup_menus(
             continue;
         };
         let (x, _y) = node_left_top(n);
-        let panel_width = actor_popup_widths.get(actor_id).copied().unwrap_or(n.width);
+        let popup = prepared
+            .actor_popup_layouts()
+            .get(actor_id)
+            .ok_or_else(|| Error::InvalidModel {
+                message: format!("missing prepared Sequence popup for {actor_id}"),
+            })?;
 
         let is_neo = options.is_neo;
-        let rect_height = crate::sequence::sequence_actor_popup_rect_height(
-            &actor.actor_type,
-            n.height,
-            options.actor_height,
-            is_neo,
-            options.mirror_actors,
-        );
+        let rect_height = popup.origin_y;
         let radius = match actor.actor_type.as_str() {
             "collections" | "queue" | "database" => 0,
             _ if is_neo => 6,
             _ => 3,
         };
-        let mut link_y: f64 = 20.0;
-        let panel_height = crate::sequence::sequence_actor_popup_panel_height(actor.links.len());
         let text_style = super::settings::sequence_text_style_attribute(options.actor_text_style);
 
         let _ = write!(
@@ -109,11 +105,12 @@ pub(super) fn render_sequence_actor_popup_menus(
             class = escape_attr(&popup_panel_class),
             x = fmt(x),
             y = fmt(rect_height),
-            w = fmt(panel_width),
-            h = fmt(panel_height),
+            w = fmt(popup.width),
+            h = fmt(popup.height),
             fill = escape_xml_display(popup_fill),
         );
 
+        let mut row_index = 0;
         for (link_index, (label, url)) in actor.links.iter().enumerate() {
             checkpoints.checkpoint_loop(link_index)?;
             let Some(href) = url.as_str() else {
@@ -131,7 +128,7 @@ pub(super) fn render_sequence_actor_popup_menus(
                 ""
             };
             let text_x = x + 10.0;
-            let text_y = rect_height + link_y + 10.0;
+            let text_y = rect_height + popup.text_y_offset(row_index);
             // Hidden interactive links do not survive native export. Keep their
             // requested effect incomplete instead of certifying an absent filter.
             let application = if options.force_menus {
@@ -184,7 +181,7 @@ pub(super) fn render_sequence_actor_popup_menus(
             );
             typography_receipt
                 .record_terminal_text(crate::sequence::SequenceTextSurface::ParticipantLabel);
-            link_y += 30.0;
+            row_index += 1;
         }
 
         out.push_str("</g>");

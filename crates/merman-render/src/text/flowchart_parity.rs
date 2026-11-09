@@ -1,7 +1,7 @@
 //! Flowchart-specific HTML label measurement parity helpers.
 
 pub fn flowchart_html_line_height_px(font_size_px: f64) -> f64 {
-    (font_size_px.max(1.0) * 1.5).max(1.0)
+    font_size_px.max(0.0) * 1.5
 }
 
 pub fn flowchart_html_has_inline_style_tags(lower_html: &str) -> bool {
@@ -35,9 +35,37 @@ pub fn flowchart_html_has_inline_style_tags(lower_html: &str) -> bool {
             continue;
         }
         let name = &lower_html[start..i];
-        if matches!(name, "strong" | "b" | "em" | "i" | "code") {
+        if ["font-weight", "font-style", "font-family", "font-size"]
+            .iter()
+            .any(|property| super::xhtml_font_default(name, property).is_some())
+        {
             return true;
         }
     }
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn shared_html_font_defaults_select_the_structured_measurement_path() {
+        for tag in [
+            "strong", "b", "em", "i", "cite", "dfn", "var", "code", "kbd", "samp", "tt", "big",
+            "small",
+        ] {
+            assert!(
+                flowchart_html_has_inline_style_tags(&format!("<{tag}>Label</{tag}>")),
+                "{tag}"
+            );
+        }
+        for html in [
+            "<br/>",
+            "<blockquote>Label</blockquote>",
+            "<span>Label</span>",
+        ] {
+            assert!(!flowchart_html_has_inline_style_tags(html), "{html}");
+        }
+    }
 }

@@ -32,6 +32,7 @@ mod theme;
 pub(crate) use config::RequirementConfigView;
 pub(crate) use css_binding::{RequirementCssBinding, requirement_color_indices};
 use html_label::RequirementHtmlLabel;
+pub(crate) use html_label::sanitize_label_with_sink;
 pub(crate) use relation_paint::RequirementRelationPaintPlan;
 pub(crate) use source_typography::RequirementNodeTypography;
 pub(crate) use text_paint::{
@@ -755,6 +756,22 @@ fn element_node_label_specs(node: &RequirementElement) -> Vec<RequirementLabelSp
             false,
         ),
     ]
+}
+
+pub(crate) fn requirement_node_label_sources(
+    node: &RequirementNode,
+) -> impl Iterator<Item = String> {
+    requirement_node_label_specs(node)
+        .into_iter()
+        .map(|line| line.display_text)
+}
+
+pub(crate) fn element_node_label_sources(
+    node: &RequirementElement,
+) -> impl Iterator<Item = String> {
+    element_node_label_specs(node)
+        .into_iter()
+        .map(|line| line.display_text)
 }
 
 #[derive(Clone)]

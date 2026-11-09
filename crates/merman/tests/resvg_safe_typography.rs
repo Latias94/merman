@@ -120,16 +120,36 @@ fn usvg_options_with_system_sans_serif() -> usvg::Options<'static> {
     .expect("usvg typography assertions require at least one system font");
     options.font_family = fallback_family.clone();
     options.fontdb_mut().set_sans_serif_family(fallback_family);
+    // Inline code defaults to the generic monospace family. Fontdb's platform default may name
+    // an absent face even when system sans-serif fonts exist, so give it checked-in test assets.
+    for bytes in [
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Regular.ttf").as_slice(),
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Bold.ttf").as_slice(),
+        include_bytes!("../../merman-export/tests/fonts/Cousine-Italic.ttf").as_slice(),
+    ] {
+        options.fontdb_mut().load_font_data(bytes.to_vec());
+    }
+    options.fontdb_mut().set_monospace_family("Cousine");
     options
 }
 
-fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
-    fn find_font_size(group: &usvg::Group, label: &str) -> Option<f32> {
+#[cfg(all(feature = "png", feature = "native-fonts"))]
+fn native_export_fonts() -> merman::svg::export::NativeFontContext {
+    let fonts =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../merman-export/tests/fonts");
+    merman::svg::export::NativeFontOptions::default()
+        .with_font_file(fonts.join("Cousine-Regular.ttf"))
+        .load(&OperationControl::new())
+        .unwrap()
+}
+
+fn usvg_fallback_text_span(svg: &str, label: &str) -> usvg::TextSpan {
+    fn find_span(group: &usvg::Group, label: &str) -> Option<usvg::TextSpan> {
         for node in group.children() {
             match node {
                 usvg::Node::Group(group) => {
-                    if let Some(size) = find_font_size(group, label) {
-                        return Some(size);
+                    if let Some(span) = find_span(group, label) {
+                        return Some(span);
                     }
                 }
                 usvg::Node::Text(text) => {
@@ -143,7 +163,7 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
                             .chunks()
                             .iter()
                             .find_map(|chunk| chunk.spans().first())
-                            .map(|span| span.font_size().get());
+                            .cloned();
                     }
                 }
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
@@ -154,8 +174,12 @@ fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
 
     let options = usvg_options_with_system_sans_serif();
     let tree = usvg::Tree::from_str(svg, &options).expect("resvg-safe output should parse in usvg");
-    find_font_size(tree.root(), label)
+    find_span(tree.root(), label)
         .unwrap_or_else(|| panic!("expected usvg text span for {label:?}: {svg}"))
+}
+
+fn usvg_fallback_text_font_size(svg: &str, label: &str) -> f32 {
+    usvg_fallback_text_span(svg, label).font_size().get()
 }
 
 fn usvg_fallback_text_fill(svg: &str, label: &str) -> Option<(u8, u8, u8)> {
@@ -315,6 +339,112 @@ fn class_html_size_elements_reach_the_native_text_painter() {
 }
 
 #[test]
+fn class_html_emphasis_reaches_the_native_text_painter_with_computed_fonts() {
+    for (label, expected_weight, expected_style) in [
+        (
+            "<span style='font-weight:100'><strong>Account</strong></span>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<strong><strong>Account</strong></strong>",
+            900,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:600'><b>Account</b></span>",
+            900,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:700'><span style='font-weight:lighter'>Account</span></span>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:100'><span style='font-weight:bolder'><span style='font-weight:bolder'>Account</span></span></span>",
+            700,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:700'><b style='font-weight:inherit'>Account</b></span>",
+            700,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<b style='font-weight:normal'>Account</b>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<b style='font-weight:initial'>Account</b>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            r"<b style='font-weight:\69nitial'>Account</b>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<em style='font-style:initial;font-weight:400'>Account</em>",
+            400,
+            usvg::FontStyle::Normal,
+        ),
+        (
+            "<span style='font-weight:400;font-style:oblique'><em>Account</em></span>",
+            400,
+            usvg::FontStyle::Italic,
+        ),
+        (
+            "<span style='font-weight:400;font-style:oblique'><i>Account</i></span>",
+            400,
+            usvg::FontStyle::Italic,
+        ),
+        (
+            "<span style='font-weight:400;font-style:oblique'><em style='font-style:inherit'>Account</em></span>",
+            400,
+            usvg::FontStyle::Oblique,
+        ),
+    ] {
+        let svg = render_resvg_safe(
+            "resvg-class-html-emphasis",
+            &format!(
+                "---\nconfig:\n  htmlLabels: true\n  securityLevel: loose\n---\nclassDiagram\nclass E[\"{label}\"]\n"
+            ),
+        );
+        assert!(!svg.contains("<foreignObject"));
+        let span = usvg_fallback_text_span(&svg, "Account");
+        assert_eq!(span.font().weight(), expected_weight, "{label}");
+        assert_eq!(span.font().style(), expected_style, "{label}");
+    }
+}
+
+#[test]
+fn class_html_phrasing_defaults_reach_the_native_text_painter() {
+    for tag in ["cite", "dfn", "var", "code", "kbd", "samp", "tt"] {
+        let svg = render_resvg_safe(
+            "resvg-class-html-phrasing",
+            &format!(
+                "---\nconfig:\n  htmlLabels: true\n  securityLevel: loose\n---\nclassDiagram\nclass E[\"<{tag}>Account</{tag}>\"]\n"
+            ),
+        );
+        let span = usvg_fallback_text_span(&svg, "Account");
+        if matches!(tag, "cite" | "dfn" | "var") {
+            assert_eq!(span.font().style(), usvg::FontStyle::Italic, "{tag}");
+        } else {
+            assert!(
+                span.font()
+                    .families()
+                    .contains(&usvg::FontFamily::Monospace),
+                "{tag}: {:?}",
+                span.font().families()
+            );
+        }
+    }
+}
+
+#[test]
 fn er_fallback_keeps_entity_and_relationship_context_typography() {
     let svg = render_resvg_safe(
         "resvg-typography-er",
@@ -443,13 +573,14 @@ fn filtered_html_fallback_does_not_assume_unknown_css_is_absent() {
 }
 
 #[test]
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "native-fonts"))]
 fn class_native_label_paint_reaches_usvg_and_png() {
     use merman::svg::{
         CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, ThemeRule, ThemeRuleSet,
         ThemeStylePatch, ThemeTarget,
     };
 
+    let font_context = native_export_fonts();
     let renderer = Renderer::new();
     for (body, label, target) in [
         (
@@ -464,7 +595,7 @@ fn class_native_label_paint_reaches_usvg_and_png() {
         ),
     ] {
         let source = format!(
-            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n---\nclassDiagram\n{body}"
+            "---\nconfig:\n  htmlLabels: false\n  layout: dagre\n  themeVariables:\n    fontFamily: Cousine\n---\nclassDiagram\n{body}"
         );
         for (paint, expected_fill) in [
             (CanvasPaint::solid("#ff0000").unwrap(), Some((255, 0, 0))),
@@ -499,7 +630,8 @@ fn class_native_label_paint_reaches_usvg_and_png() {
                         OperationControl::new(),
                         merman::PngRequest {
                             svg: SvgRequest::default(),
-                            options: merman::svg::export::RasterOptions::default(),
+                            options: merman::svg::export::RasterOptions::default()
+                                .with_font_context(font_context.clone()),
                         },
                     )
                     .with_theme(theme),
@@ -525,8 +657,9 @@ fn class_native_label_paint_reaches_usvg_and_png() {
 }
 
 #[test]
-#[cfg(feature = "png")]
+#[cfg(all(feature = "png", feature = "native-fonts"))]
 fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
+    let font_context = native_export_fonts();
     let source = r##"<svg id="diagram" xmlns="http://www.w3.org/2000/svg" width="300" height="140" viewBox="0 0 300 140"><style>@keyframes dash {to {stroke-dashoffset:0}} #diagram :root {--mermaid-font-family:sans-serif} #diagram .label text {fill:#222;color:#222}</style><defs><filter id="label-theme-effect-glow" color-interpolation-filters="linearRGB" filterUnits="userSpaceOnUse" x="-20" y="-20" width="170" height="100"><feDropShadow in="SourceGraphic" dx="0" dy="0" stdDeviation="4" flood-color="#ff0080"/></filter></defs><g class="label" transform="translate(60,40)"><g filter="url(#label-theme-effect-glow)"><foreignObject width="120" height="48"><div xmlns="http://www.w3.org/1999/xhtml" style="font-family:sans-serif;font-size:20px;color:#222">Alpha</div></foreignObject></g></g></svg>"##;
     for (overflow, source, expected_receipt) in [
         ("hidden", source.to_string(), false),
@@ -559,8 +692,10 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
                 .contains(&format!("overflow:{overflow}")),
             "{overflow}: source viewport clipping must survive finalization"
         );
+        let options =
+            merman::svg::export::RasterOptions::default().with_font_context(font_context.clone());
         let (bytes, report) =
-            merman::svg::export::svg_to_png_with_report(&sealed, &Default::default()).unwrap();
+            merman::svg::export::svg_to_png_with_report(&sealed, &options).unwrap();
         let receipt = report.native_filter_receipt();
         // A clipped source viewport cannot prove the exporter's unclipped-glyph receipt.
         // Explicit visible overflow keeps the original glow and its stronger evidence.
@@ -585,8 +720,10 @@ fn filtered_html_fallback_reaches_native_glow_pixels_and_receipts() {
         );
         #[cfg(feature = "pdf")]
         if expected_receipt {
+            let options =
+                merman::svg::export::PdfOptions::default().with_font_context(font_context.clone());
             let (_, pdf_report) =
-                merman::svg::export::svg_to_pdf_with_report(&sealed, &Default::default()).unwrap();
+                merman::svg::export::svg_to_pdf_with_report(&sealed, &options).unwrap();
             assert_eq!(pdf_report.native_filter_receipt(), receipt);
         }
     }

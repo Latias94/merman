@@ -336,7 +336,7 @@ impl BuiltinHtmlLineWidth {
             BuiltinHtmlLineWidthSource::Heuristic(BuiltinInlineRawLineWidth::new(style))
         } else {
             BuiltinHtmlLineWidthSource::Uniform {
-                font_size: style.font_size.max(1.0),
+                font_size: style.font_size.max(0.0),
                 char_width_factor,
                 char_count: 0,
             }
@@ -461,7 +461,7 @@ impl BuiltinSvgComputedLength {
 impl BuiltinInlineRawLineWidth {
     fn new(style: &TextStyle) -> Self {
         Self {
-            font_size: style.font_size.max(1.0),
+            font_size: style.font_size.max(0.0),
             state: RefCell::new(BuiltinInlineRawLineWidthState::default()),
         }
     }

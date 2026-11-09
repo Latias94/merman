@@ -216,8 +216,8 @@ pub(super) fn measure_note_label_for_layout(
     measure_svg_like_with_html_br(measurer, text, measurement_style, checkpoints)
 }
 
-/// The typed non-normal participant extension must measure the emitted tspan, rather than
-/// changing the pinned calculateTextDimensions operation (which intentionally ignores style).
+/// Typed participant fonts reserve the emitted line stack, including normal and base typography.
+/// Keep the pinned calculateTextDimensions operation unchanged for unthemed and math labels.
 pub(super) fn measure_typed_actor_label_for_layout(
     measurer: &dyn TextMeasurer,
     text: &str,

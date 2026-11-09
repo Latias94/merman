@@ -59,6 +59,8 @@ struct SequenceBaseTypography {
     font_family_css: String,
     font_size_px: f64,
     typed_properties: BTreeSet<ThemeTypographyProperty>,
+    root_font_size_px: f64,
+    root_typed_properties: BTreeSet<ThemeTypographyProperty>,
 }
 
 impl SequenceBaseTypography {
@@ -86,7 +88,7 @@ impl SequenceBaseTypography {
         let configured_font_family = compat.font_family.clone();
         // Diagram titles inherit root CSS, not the message role's inline font size.
         let configured_font_size =
-            crate::mermaid_style::parse_svg_number_or_px(&compat.font_size_css)
+            crate::mermaid_style::resolve_mermaid_absolute_font_size_px(&compat.font_size_css)
                 .unwrap_or(16.0)
                 .max(1.0);
         let mut font_family_css = configured_font_family.clone();
@@ -126,11 +128,30 @@ impl SequenceBaseTypography {
             }
         }
 
+        // Sequence role sizes are inline declarations, while the diagram title inherits the
+        // root theme variable. A configured root size must not suppress the role defaults.
+        let root_size_owned = effective_config
+            .config_path_overrides_typed_default("themeVariables.fontSize")
+            && crate::mermaid_style::css_font_size_override(&format!(
+                "font-size:{}",
+                compat.font_size_css
+            ))
+            .is_some();
+        let mut root_typed_properties = typed_properties.clone();
+        let root_font_size_px = if root_size_owned {
+            root_typed_properties.remove(&ThemeTypographyProperty::FontSize);
+            configured_font_size
+        } else {
+            font_size_px
+        };
+
         Self {
             configured_font_family_css: configured_font_family,
             font_family_css,
             font_size_px,
             typed_properties,
+            root_font_size_px,
+            root_typed_properties,
         }
     }
 
@@ -353,6 +374,11 @@ impl SequenceResolvedTypography {
 
     pub(crate) const fn terminal_text_style(&self) -> &TextStyle {
         &self.terminal_text_style
+    }
+
+    pub(crate) fn typed_terminal_style(&self) -> Option<&TextStyle> {
+        self.has_typed_typography()
+            .then_some(&self.terminal_text_style)
     }
 
     pub(crate) fn non_normal_typed_terminal_style(&self) -> Option<&TextStyle> {
@@ -587,14 +613,15 @@ impl SequenceTypographyPlan {
         &self.base_typography.font_family_css
     }
 
-    pub(crate) const fn base_font_size_px(&self) -> f64 {
-        self.base_typography.font_size_px
+    pub(crate) const fn root_font_size_px(&self) -> f64 {
+        self.base_typography.root_font_size_px
     }
 
+    /// Root-inherited text, including the diagram title, has its own size owner.
     pub(crate) fn base_measurement_style(&self) -> TextStyle {
         TextStyle {
             font_family: Some(self.base_typography.font_family_css.clone()),
-            font_size: self.base_typography.font_size_px,
+            font_size: self.base_typography.root_font_size_px,
             font_weight: None,
             font_style: None,
         }
@@ -602,6 +629,10 @@ impl SequenceTypographyPlan {
 
     pub(crate) const fn base_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
         &self.base_typography.typed_properties
+    }
+
+    pub(crate) const fn root_typed_properties(&self) -> &BTreeSet<ThemeTypographyProperty> {
+        &self.base_typography.root_typed_properties
     }
 
     pub(crate) const fn role(&self, role: SequenceTypographyRole) -> &SequenceResolvedTypography {
@@ -759,6 +790,65 @@ fn append_font_weight_and_style_declarations(style: &mut String, typography: &Te
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn root_size_ownership_is_local_to_inherited_text_and_preserves_host_values() {
+        use crate::diagram_theme::{
+            DiagramThemeCompiler, DiagramThemeSpec, ThemeTextStyle, TypographySpec,
+        };
+        use crate::resources::RenderResourcePolicy;
+        use serde_json::json;
+
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_typography(
+                TypographySpec::default().with_family_style(
+                    crate::DiagramFamilyId::SEQUENCE,
+                    ThemeTextStyle::default().with_font_size_px(24.0).unwrap(),
+                ),
+            ))
+            .unwrap();
+        let resolved = theme.resolve(crate::DiagramFamilyId::SEQUENCE);
+        for (css, expected_size, root_typed) in [
+            ("52px", 52.0, false),
+            ("24pt", 32.0, false),
+            ("2em", 16.0, false),
+            ("calc(1rem + 4px)", 16.0, false),
+            ("-12px", 24.0, true),
+            ("invalid", 24.0, true),
+        ] {
+            let config = merman_core::MermaidEngine::new()
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "theme": "base", "themeVariables": {"fontSize": css}
+                    })),
+                )
+                .parse_metadata_sync("sequenceDiagram\nA->>B: Ping\n")
+                .unwrap()
+                .effective_config;
+            let meter =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            let plan = SequenceTypographyPlan::resolve(&config, Some(&resolved), &meter).unwrap();
+            assert_eq!(plan.root_font_size_px(), expected_size, "{css}");
+            assert_eq!(
+                plan.root_typed_properties()
+                    .contains(&ThemeTypographyProperty::FontSize),
+                root_typed,
+                "{css}"
+            );
+            assert_eq!(
+                plan.base_measurement_style().font_size,
+                expected_size,
+                "{css}"
+            );
+            for role in [plan.actor(), plan.message(), plan.note(), plan.loop_label()] {
+                assert_eq!(role.measurement_style().font_size, 24.0, "{css}");
+                assert!(
+                    role.base_typed_properties()
+                        .contains(&ThemeTypographyProperty::FontSize)
+                );
+            }
+        }
+    }
 
     #[test]
     fn equal_terminal_foregrounds_keep_distinct_source_provenance() {

@@ -24,11 +24,11 @@ pub(crate) fn svg_bbox_round_px_ties_to_even(v: f64) -> f64 {
 }
 
 pub(crate) fn svg_wrapped_first_line_bbox_height_px(style: &TextStyle) -> f64 {
-    svg_bbox_round_px_ties_to_even(style.font_size.max(1.0) * SVG_DEFAULT_FIRST_LINE_BBOX_EM)
+    svg_bbox_round_px_ties_to_even(style.font_size.max(0.0) * SVG_DEFAULT_FIRST_LINE_BBOX_EM)
 }
 
 pub(crate) fn svg_title_bbox_vertical_extents_px(style: &TextStyle) -> (f64, f64) {
-    let font_size = style.font_size.max(1.0);
+    let font_size = style.font_size.max(0.0);
     (
         font_size * SVG_DEFAULT_TITLE_ASCENT_EM,
         font_size * SVG_DEFAULT_TITLE_DESCENT_EM,

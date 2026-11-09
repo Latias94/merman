@@ -184,6 +184,11 @@ pub(super) fn write_actor_man_glyph(
     let label_y = bands
         .as_ref()
         .map(|band| band.label_center_y)
+        .or_else(|| {
+            label_ctx
+                .classic_glyph_label_center_y(placement.footer)
+                .map(|center| actor_y + center - translate_y)
+        })
         .unwrap_or_else(|| {
             actor_y
                 + height / 2.0

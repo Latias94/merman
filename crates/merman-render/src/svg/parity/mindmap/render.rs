@@ -258,7 +258,7 @@ fn mindmap_css(
     out: &mut impl SvgOutput,
     diagram_id: impl SvgDiagramIdValue,
     node_palette: &crate::mindmap::MindmapNodePalettePlan,
-) -> Result<()> {
+) -> Result<bool> {
     // Mirrors pinned Mermaid `diagrams/mindmap/styles.ts` + shared base stylesheet ordering.
     //
     // Keep `:root` last within the Mermaid baseline. The typed terminal overlay is appended after
@@ -268,7 +268,7 @@ fn mindmap_css(
     let use_gradient = binding.use_gradient;
     let id = super::super::util::css_selector_diagram_id(diagram_id);
     let fragment_id = diagram_id;
-    binding
+    let base_font = binding
         .common
         .write_prefix_with_font_emission(out, diagram_id)?;
 
@@ -482,7 +482,7 @@ fn mindmap_css(
     }
     out.checkpoint()?;
 
-    binding
+    let root_font = binding
         .common
         .write_root_with_font_emission(out, diagram_id, fragment_id)?;
 
@@ -513,7 +513,11 @@ fn mindmap_css(
         out.checkpoint()?;
     }
     out.checkpoint()?;
-    Ok(())
+    Ok(
+        base_font.diagram_root_font_family_css() == node_palette.font_family_css()
+            && base_font.nested_svg_font_family_css() == node_palette.font_family_css()
+            && root_font.font_family_css() == node_palette.font_family_css(),
+    )
 }
 
 fn write_mindmap_edge_label(
@@ -807,11 +811,12 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     let mut node_palette_receipt = node_palette.begin_terminal_receipt();
     out.push_str("<style>");
     out.checkpoint()?;
-    mindmap_css(
+    let typography_css_emitted = mindmap_css(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         node_palette,
     )?;
+    node_palette.record_typography_css(&mut node_palette_receipt, typography_css_emitted);
     for (index, node) in model.nodes.iter().enumerate() {
         let Some(fill) = node_palette.label_fill_for_node(index) else {
             continue;

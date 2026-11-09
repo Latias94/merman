@@ -102,28 +102,28 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 30.72,
           "index": 0.0,
           "name": "main",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 80.96,
           "index": 1.0,
           "name": "feature/auth",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 108.48,
           "index": 2.0,
           "name": "feature/database",
           "pos": 180.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 98.72,
           "index": 3.0,
           "name": "hotfix/security",

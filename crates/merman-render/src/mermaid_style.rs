@@ -515,6 +515,7 @@ fn font_size_value_ownership(
         Some(
             CssScalar::Percentage(value)
             | CssScalar::Px(value)
+            | CssScalar::AbsoluteLengthPx(value)
             | CssScalar::Em(value)
             | CssScalar::Rem(value),
         ) if value.is_finite() && *value >= 0.0 => Some(CssFontSizeOwnership::SourceOwned),
@@ -536,10 +537,30 @@ fn font_size_value_ownership(
         {
             Some(CssFontSizeOwnership::SourceOwned)
         }
-        None => Some(CssFontSizeOwnership::Unverified),
+        None => {
+            // The scalar representation covers measurable units only. Inspect the existing
+            // CSS token to distinguish other lengths from definitely invalid literal values.
+            let mut parser = Parser::new(declaration.value());
+            match parser.next().ok()? {
+                Token::Dimension { unit, .. }
+                    if is_css_length_unit(unit)
+                        && parse_css_number_prefix(declaration.value())
+                            .is_some_and(|value| value.is_finite() && value >= 0.0) =>
+                {
+                    Some(CssFontSizeOwnership::Unverified)
+                }
+                // Expression resolution remains the receiving host's responsibility.
+                Token::Function(_) => Some(CssFontSizeOwnership::Unverified),
+                _ => None,
+            }
+        }
         Some(CssScalar::Number(_) | CssScalar::Ident(_)) => None,
         Some(
-            CssScalar::Percentage(_) | CssScalar::Px(_) | CssScalar::Em(_) | CssScalar::Rem(_),
+            CssScalar::Percentage(_)
+            | CssScalar::Px(_)
+            | CssScalar::AbsoluteLengthPx(_)
+            | CssScalar::Em(_)
+            | CssScalar::Rem(_),
         ) => None,
     }
 }
@@ -575,7 +596,7 @@ pub(crate) fn is_static_css_font_family_list(value: &str) -> bool {
     family_count != 0
 }
 
-fn visit_style_declaration_boundaries<'a>(
+pub(crate) fn visit_style_declaration_boundaries<'a>(
     declaration_list: &'a str,
     mut visit: impl FnMut(StyleDeclarationBoundary<'a>),
 ) {
@@ -661,6 +682,10 @@ pub(crate) fn is_label_style_key(key: &str) -> bool {
     )
 }
 
+/// Context for the admitted CSS font-size subset, with a 16px browser-default medium.
+///
+/// `em`/percentages follow the computed parent, including zero. `rem` uses the explicit
+/// document-root argument; callers without a document root retain their documented approximation.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct CssFontSizeContext {
     inherited_px: f64,
@@ -671,8 +696,8 @@ pub(crate) struct CssFontSizeContext {
 impl CssFontSizeContext {
     pub(crate) fn new(inherited_px: f64, root_px: f64) -> Self {
         Self {
-            inherited_px: inherited_px.max(1.0),
-            root_px: root_px.max(1.0),
+            inherited_px: inherited_px.max(0.0),
+            root_px: root_px.max(0.0),
             medium_px: 16.0,
         }
     }
@@ -692,6 +717,28 @@ pub(crate) fn resolve_mermaid_font_size_px(raw: &str, context: CssFontSizeContex
     parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?
         .analysis
         .resolve_font_size_px(context)
+}
+
+/// Resolves only absolute CSS lengths and the legacy unitless numeric form.
+///
+/// CSS tokens own unit case/escaping and numeric precision. Relative lengths, keywords,
+/// and functions need a separate context or host and are intentionally not resolved here.
+pub(crate) fn resolve_mermaid_absolute_font_size_px(raw: &str) -> Option<f64> {
+    parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?
+        .analysis
+        .absolute_font_size_px()
+}
+
+/// Resolves CSS absolute dimension tokens, excluding legacy unitless configuration numbers.
+pub(crate) fn resolve_explicit_css_absolute_font_size_px(raw: &str) -> Option<f64> {
+    let parsed = parse_css_value(raw, CssValuePolicy::MermaidSourceStyle)?;
+    if !matches!(
+        parsed.analysis.scalar,
+        Some(CssScalar::Px(_) | CssScalar::AbsoluteLengthPx(_))
+    ) {
+        return None;
+    }
+    parsed.analysis.absolute_font_size_px()
 }
 
 pub(crate) fn parse_svg_number_or_px(raw: &str) -> Option<f64> {
@@ -719,16 +766,20 @@ pub(crate) fn css_font_size_is_zero(raw: &str) -> bool {
     let mut parser = Parser::new(parsed.value);
     match parser.next() {
         Ok(Token::Number { .. } | Token::Percentage { .. }) => true,
-        Ok(Token::Dimension { unit, .. }) => [
-            "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
-            "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh",
-            "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw",
-            "dvh", "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
-        ]
-        .iter()
-        .any(|length_unit| unit.eq_ignore_ascii_case(length_unit)),
+        Ok(Token::Dimension { unit, .. }) => is_css_length_unit(unit),
         _ => false,
     }
+}
+
+fn is_css_length_unit(unit: &str) -> bool {
+    [
+        "px", "cm", "mm", "q", "in", "pt", "pc", "em", "rem", "ex", "rex", "cap", "rcap", "ch",
+        "rch", "ic", "ric", "lh", "rlh", "vw", "vh", "vi", "vb", "vmin", "vmax", "svw", "svh",
+        "svi", "svb", "svmin", "svmax", "lvw", "lvh", "lvi", "lvb", "lvmin", "lvmax", "dvw", "dvh",
+        "dvi", "dvb", "dvmin", "dvmax", "cqw", "cqh", "cqi", "cqb", "cqmin", "cqmax",
+    ]
+    .iter()
+    .any(|length_unit| unit.eq_ignore_ascii_case(length_unit))
 }
 
 pub(crate) fn strip_css_important(raw: &str) -> &str {
@@ -829,7 +880,7 @@ pub(crate) fn is_supported_css_line_height_value(value: &str) -> bool {
             | CssScalar::Px(value)
             | CssScalar::Em(value),
         ) => value.is_finite() && *value > 0.0,
-        Some(CssScalar::Rem(_)) | None => false,
+        Some(CssScalar::AbsoluteLengthPx(_) | CssScalar::Rem(_)) | None => false,
     }
 }
 
@@ -844,7 +895,8 @@ pub(crate) fn is_supported_css_spacing_value(value: &str) -> bool {
         Some(CssScalar::Ident(value)) => value == "normal",
         Some(CssScalar::Number(value)) => *value == 0.0,
         Some(CssScalar::Px(value) | CssScalar::Em(value)) => value.is_finite(),
-        Some(CssScalar::Percentage(_) | CssScalar::Rem(_)) | None => false,
+        Some(CssScalar::AbsoluteLengthPx(_) | CssScalar::Percentage(_) | CssScalar::Rem(_))
+        | None => false,
     }
 }
 
@@ -853,6 +905,7 @@ enum CssScalar {
     Number(f64),
     Percentage(f64),
     Px(f64),
+    AbsoluteLengthPx(f64),
     Em(f64),
     Rem(f64),
     Ident(String),
@@ -901,6 +954,7 @@ impl CssValueAnalysis {
             CssScalar::Number(_)
             | CssScalar::Percentage(_)
             | CssScalar::Px(_)
+            | CssScalar::AbsoluteLengthPx(_)
             | CssScalar::Em(_)
             | CssScalar::Rem(_) => None,
         }
@@ -917,6 +971,7 @@ impl CssValueAnalysis {
         let value = match self.scalar.as_ref()? {
             CssScalar::Number(value) | CssScalar::Px(value) => *value,
             CssScalar::Percentage(_)
+            | CssScalar::AbsoluteLengthPx(_)
             | CssScalar::Em(_)
             | CssScalar::Rem(_)
             | CssScalar::Ident(_) => return None,
@@ -929,24 +984,41 @@ impl CssValueAnalysis {
             return None;
         }
         let value = match self.scalar.as_ref()? {
-            CssScalar::Number(value) | CssScalar::Px(value) => *value,
-            CssScalar::Percentage(factor) => context.inherited_px * factor,
-            CssScalar::Em(scale) => context.inherited_px * scale,
-            CssScalar::Rem(scale) => context.root_px * scale,
+            CssScalar::Number(value)
+            | CssScalar::Px(value)
+            | CssScalar::AbsoluteLengthPx(value) => *value,
+            CssScalar::Percentage(factor) if *factor >= 0.0 => context.inherited_px * factor,
+            CssScalar::Em(scale) if *scale >= 0.0 => context.inherited_px * scale,
+            CssScalar::Rem(scale) if *scale >= 0.0 => context.root_px * scale,
+            CssScalar::Percentage(_) | CssScalar::Em(_) | CssScalar::Rem(_) => return None,
             CssScalar::Ident(keyword) => match keyword.as_str() {
-                "xx-small" => context.medium_px * 0.6,
-                "x-small" => context.medium_px * 0.75,
-                "small" => context.medium_px * 0.89,
-                "medium" => context.medium_px,
-                "large" => context.medium_px * 1.2,
+                "xx-small" => context.medium_px * (9.0 / 16.0),
+                "x-small" => context.medium_px * (10.0 / 16.0),
+                "small" => context.medium_px * (13.0 / 16.0),
+                "medium" | "initial" => context.medium_px,
+                "large" => context.medium_px * (18.0 / 16.0),
                 "x-large" => context.medium_px * 1.5,
                 "xx-large" => context.medium_px * 2.0,
-                "smaller" => context.inherited_px * 0.8,
+                "smaller" => context.inherited_px * (5.0 / 6.0),
                 "larger" => context.inherited_px * 1.2,
+                "inherit" | "unset" => context.inherited_px,
                 _ => return None,
             },
         };
-        (value.is_finite() && value > 0.0).then_some(value)
+        (value.is_finite() && value >= 0.0).then_some(value)
+    }
+
+    fn absolute_font_size_px(&self) -> Option<f64> {
+        if !self.is_single_component() {
+            return None;
+        }
+        let value = match self.scalar.as_ref()? {
+            CssScalar::Number(value)
+            | CssScalar::Px(value)
+            | CssScalar::AbsoluteLengthPx(value) => *value,
+            _ => return None,
+        };
+        (value.is_finite() && value >= 0.0).then_some(value)
     }
 }
 
@@ -1075,6 +1147,20 @@ fn parse_css_scalar(token: &Token<'_>, token_source: &str) -> Option<CssScalar> 
         Token::Dimension { unit, .. } if unit.eq_ignore_ascii_case("rem") => {
             Some(CssScalar::Rem(parse_css_number_prefix(token_source)?))
         }
+        Token::Dimension { unit, .. } => {
+            let factor = match unit.to_ascii_lowercase().as_str() {
+                "pt" => 96.0 / 72.0,
+                "pc" => 16.0,
+                "in" => 96.0,
+                "cm" => 96.0 / 2.54,
+                "mm" => 96.0 / 25.4,
+                "q" => 96.0 / 101.6,
+                _ => return None,
+            };
+            Some(CssScalar::AbsoluteLengthPx(
+                parse_css_number_prefix(token_source)? * factor,
+            ))
+        }
         Token::Ident(value) => Some(CssScalar::Ident(value.to_ascii_lowercase())),
         _ => None,
     }
@@ -1106,6 +1192,7 @@ fn parse_css_number_prefix(raw: &str) -> Option<f64> {
     if !has_digit {
         return None;
     }
+    let mantissa_end = end;
 
     if bytes
         .get(end)
@@ -1129,6 +1216,14 @@ fn parse_css_number_prefix(raw: &str) -> Option<f64> {
     }
 
     let value = raw[..end].parse::<f64>().ok()?;
+    // A nonzero source magnitude must not underflow into a valid zero font size.
+    if value == 0.0
+        && bytes[..mantissa_end]
+            .iter()
+            .any(|byte| byte.is_ascii_digit() && *byte != b'0')
+    {
+        return None;
+    }
     value.is_finite().then_some(value)
 }
 
@@ -1637,19 +1732,39 @@ mod tests {
         for declarations in [
             "font-size:40px",
             "font-size:0",
+            "font-size:0rem",
             "font-size:125%",
             "font-size:larger",
+            "font-size:24pt",
+            "font-size:0pt",
+            r"font-size:12p\74",
         ] {
             assert_eq!(ownership(declarations), Some(SourceOwned), "{declarations}");
         }
         for declarations in [
             "font-size:var(--descendant-size)",
+            "font-size:var(--negative-root-size, -1rem)",
             "font-size:calc(20px + 1vw)",
+            "font-size:calc(-1rem)",
+            "font-size:clamp(16px, 2vw, 32px)",
+            "font-size:-0vw",
+            "font-size:2vw",
+            "font-size:1cap",
+            "font-size:1rem",
+            "font-size:1rlh",
+            "font-size:1rex",
+            "font-size:1rcap",
+            "font-size:1rch",
+            "font-size:1ric",
+            "font-size:-0rlh",
+            "font-size:1cqmin",
             "font-size:initial",
             "font:16px DescendantOwned",
             "font:caption",
             "all:initial",
             "font-size:/* host comment */40px",
+            "font-size:/*host*/24pt",
+            "font-size: /*host*/ 24pt",
         ] {
             assert_eq!(ownership(declarations), Some(Unverified), "{declarations}");
         }
@@ -1659,6 +1774,21 @@ mod tests {
         for declarations in [
             "font-size:red",
             "font-size:24",
+            "font-size:-2pt",
+            "font-size:-1vw",
+            "font-size:-1rem",
+            "font-size:-1rlh",
+            "font-size:-1rex",
+            "font-size:-1rcap",
+            "font-size:-1rch",
+            "font-size:-1ric",
+            "font-size:24furlong",
+            "font-size:0futureunit",
+            "font-size:24deg",
+            "font-size:1fr",
+            "font-size:\"24px\"",
+            r"font-size:-2p\74",
+            r"font-size:12f\72",
             "font:red",
             "font:16px",
             "all:red",
@@ -1669,7 +1799,7 @@ mod tests {
 
     #[test]
     fn font_size_ownership_follows_source_order_and_important() {
-        use CssFontSizeOwnership::{Inherited, SourceOwned};
+        use CssFontSizeOwnership::{Inherited, SourceOwned, Unverified};
 
         assert_eq!(
             css_font_size_override("font-size:40px;font-size:inherit")
@@ -1691,6 +1821,42 @@ mod tests {
                 .map(CssFontSizeOverride::ownership),
             Some(CssFontSizeOwnership::Unverified)
         );
+        for ignored in ["-2pt", "-1vw", "-1rem", "-1rlh", "24furlong"] {
+            assert_eq!(
+                css_font_size_override(&format!("font-size:40px;font-size:{ignored} !important"))
+                    .map(CssFontSizeOverride::ownership),
+                Some(SourceOwned),
+                "{ignored} cannot replace a valid winner"
+            );
+            assert_eq!(
+                css_font_size_override(&format!(
+                    "font-size:{ignored} !important;font-size:inherit"
+                ))
+                .map(CssFontSizeOverride::ownership),
+                Some(Inherited),
+                "invalid {ignored} cannot reserve important precedence"
+            );
+        }
+        assert_eq!(
+            css_font_size_override("font-size:24pt !important;font-size:inherit")
+                .map(CssFontSizeOverride::ownership),
+            Some(SourceOwned)
+        );
+        for value in [
+            "2vw",
+            "1rem",
+            "1rlh",
+            "/*host*/24pt",
+            "var(--size)",
+            "calc(20px + 1vw)",
+            "calc(-1rem)",
+        ] {
+            let winner =
+                css_font_size_override(&format!("font-size:{value} !important;font-size:inherit"))
+                    .expect("valid unmeasured sizes keep their authored precedence");
+            assert_eq!(winner.ownership(), Unverified, "{value}");
+            assert!(winner.important(), "{value}");
+        }
     }
 
     #[test]
@@ -1732,16 +1898,108 @@ mod tests {
             Some(25.0)
         );
         assert_eq!(resolve_mermaid_font_size_px("medium", context), Some(16.0));
-        assert_eq!(resolve_mermaid_font_size_px("small", context), Some(14.24));
+        assert_eq!(resolve_mermaid_font_size_px("small", context), Some(13.0));
         assert_eq!(
             resolve_mermaid_font_size_px("medium", context.with_medium_px(18.0),),
             Some(18.0)
         );
-        assert_eq!(resolve_mermaid_font_size_px("0px", context), None);
+        assert_eq!(resolve_mermaid_font_size_px("0px", context), Some(0.0));
         assert_eq!(strip_css_important("600 !IMPORTANT"), "600");
         assert_eq!(strip_css_important("\"important!\""), "\"important!\"");
         assert_eq!(strip_css_important("red !foo"), "red !foo");
         assert_eq!(strip_css_important("!"), "!");
+    }
+
+    #[test]
+    fn font_size_scalars_share_absolute_units_and_browser_medium_keywords() {
+        let context = CssFontSizeContext::new(24.0, 18.0);
+        for (raw, expected) in [
+            ("xx-small", 9.0),
+            ("x-small", 10.0),
+            ("small", 13.0),
+            ("medium", 16.0),
+            ("large", 18.0),
+            ("x-large", 24.0),
+            ("xx-large", 32.0),
+            ("smaller", 20.0),
+            ("larger", 28.8),
+            (r"\6c arge", 18.0),
+            ("1.5rem", 27.0),
+            ("125%", 30.0),
+            ("0px", 0.0),
+            ("0em", 0.0),
+            ("0%", 0.0),
+        ] {
+            let resolved = resolve_mermaid_font_size_px(raw, context);
+            assert!(
+                resolved.is_some_and(|value| (value - expected).abs() < 1e-10),
+                "{raw}: {resolved:?}"
+            );
+        }
+        for (raw, expected) in [
+            ("32", 32.0),
+            ("32px", 32.0),
+            ("24pt", 32.0),
+            ("2PC", 32.0),
+            ("1in", 96.0),
+            ("2.54cm", 96.0),
+            ("25.4mm", 96.0),
+            ("101.6q", 96.0),
+            (r"24p\74 !important", 32.0),
+            (r"24\70t", 32.0),
+            ("-0pt", 0.0),
+        ] {
+            for resolved in [
+                resolve_mermaid_absolute_font_size_px(raw),
+                resolve_mermaid_font_size_px(raw, context),
+            ] {
+                assert!(
+                    resolved.is_some_and(|value| (value - expected).abs() < 1e-10),
+                    "{raw}: {resolved:?}"
+                );
+            }
+        }
+        for raw in [
+            "1em",
+            "1rem",
+            "100%",
+            "medium",
+            "inherit",
+            "calc(24pt)",
+            "var(--size)",
+        ] {
+            assert_eq!(resolve_mermaid_absolute_font_size_px(raw), None, "{raw}");
+        }
+        for raw in [
+            "-1px",
+            "-2pt",
+            "-1em",
+            "-1e-1000px",
+            "1e999px",
+            "12fr",
+            "24px trailing",
+        ] {
+            assert_eq!(resolve_mermaid_font_size_px(raw, context), None, "{raw}");
+            assert_eq!(resolve_mermaid_absolute_font_size_px(raw), None, "{raw}");
+        }
+        for raw in ["1em", "150%", "smaller", "larger", "inherit"] {
+            assert_eq!(
+                resolve_mermaid_font_size_px(raw, CssFontSizeContext::new(0.0, 18.0)),
+                Some(0.0),
+                "{raw}"
+            );
+        }
+        for raw in ["-1em", "-100%", "-1rem"] {
+            assert_eq!(
+                resolve_mermaid_font_size_px(raw, CssFontSizeContext::uniform(0.0)),
+                None,
+                "negative coefficients are invalid before multiplication: {raw}"
+            );
+        }
+        assert_eq!(
+            resolve_mermaid_font_size_px("1rem", CssFontSizeContext::new(0.0, 18.0)),
+            Some(18.0)
+        );
     }
 
     #[test]

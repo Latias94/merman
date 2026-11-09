@@ -30,91 +30,91 @@
       },
       "branches": [
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 30.72,
           "index": 0.0,
           "name": "main",
           "pos": 0.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 41.28,
           "index": 1.0,
           "name": "branch",
           "pos": 90.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 80.8,
           "index": 2.0,
           "name": "azAZ_-./test",
           "pos": 180.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 35.84,
           "index": 3.0,
           "name": "1.0.1",
           "pos": 270.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 59.2,
           "index": 4.0,
           "name": "branch01",
           "pos": 360.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 74.88,
           "index": 5.0,
           "name": "checkout02",
           "pos": 450.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 93.44,
           "index": 6.0,
           "name": "cherry-pick03",
           "pos": 540.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 144.48,
           "index": 7.0,
           "name": "branch/example-branch",
           "pos": 630.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 118.08,
           "index": 8.0,
           "name": "merge/test_merge",
           "pos": 720.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 9.6,
           "index": 9.0,
           "name": "A",
           "pos": 810.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 10.0,
           "name": "test3",
           "pos": 900.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 11.0,
           "name": "test2",
           "pos": 990.0
         },
         {
-          "bbox_height": 17.6,
+          "bbox_height": 19.0,
           "bbox_width": 36.48,
           "index": 12.0,
           "name": "test1",
