@@ -14,7 +14,9 @@ files rather than caching the library's size or copying every design into this s
 | [Paper Cut](../../../../playground/src/themes/recipes/paper-cut.theme.json) · [Flowchart SVG](../../../../playground/src/themes/previews/paper-cut-flowchart.svg) | Independent hard backing sheets plus a softer contact shadow express paper thickness. | Actors and notes use different stacks; XY bars use reduced offsets; Class and Pie retain paint/type treatments without requesting the same body effect. |
 | [Aurora](../../../../playground/src/themes/recipes/aurora.theme.json) · [XY SVG](../../../../playground/src/themes/previews/aurora-xychart.svg) | Gradient canvas, radial light ribbons, restrained panel halos, and sharp foreground lettering. | Keep unsupported node/sector gradients in the canvas; Class uses solid surfaces; narrow chart type gives legends room. Halos and transparency do not implement backdrop blur. |
 | [Signal](../../../../playground/src/themes/recipes/signal.theme.json) · [Class SVG](../../../../playground/src/themes/previews/signal-class.svg) | Mounted sign plates, straight yellow lower flanges, condensed lettering, and perimeter warning tape. | Dense Class signatures use a measured monospace role; XY accents stay functional; [review.md](review.md#worked-failures-signal) explains the rejected bleed request and height-scaled rails. |
-| [Reading](../../../../playground/src/themes/recipes/reading.theme.json) | One shared role template with two authored appearances and independent annotation/category palettes. | Inspect and render each appearance through the same five scenes; changing a shared font affects its references, while appearance-specific ink and surface values remain local. Gallery previews use the matching runtime. |
+| [Reading](../../../../playground/src/themes/recipes/reading.theme.json) | One shared role template with two authored appearances and independent annotation/category palettes. | Inspect both appearances using the current core scenes; changing a shared font affects its references, while appearance-specific ink and surface values remain local. Gallery previews use the matching runtime. |
+| [Monograph](../../../../playground/src/themes/recipes/monograph.theme.json) | Pure white, black lettering, neutral hierarchy, and explicit suppression of active look effects. | Inspect actual paints for inherited colored borders and Mindmap decorations. A neutral compatibility base and supported effect Clears remove defaults that omitting an effect retains; keep any independent source-owned colors visible. |
+| [Prism](../../../../playground/src/themes/recipes/prism.theme.json) | Ordered data hues retain identity across appearances; text-bearing category surfaces have separate luminance. | Sankey's scoped cyclic Node fills use brighter data inks without recoloring Mindmap/Treemap. Review flow blending and label stacking as well as node swatches; a dark palette alone cannot repair multiply-composited flows. |
 
 For a minimal complete example, use [starter.theme.json](../assets/starter.theme.json) with the
 bundled [Flowchart source](../assets/flowchart.mmd). It intentionally has only three color tokens,
@@ -32,8 +34,9 @@ prepared runtime so parallel preview work does not start competing builds.
 
 ```text
 Use $design-merman-theme to create two standalone examples: Stencil and Night Transit.
-Prepare one matching CLI and share its absolute path/identity. Keep the five common sources
-and configs in playground/src/themes/samples/ unchanged so the comparison is meaningful.
+Prepare one matching runtime and share its path/URL and artifact identity. Assign the current
+core scenes and any requested additional families explicitly. Keep their common sources and
+configs in playground/src/themes/samples/ unchanged so the comparison is meaningful.
 
 Spawn two workers with the worker prompt below:
 - Worker A: id stencil; stencil-*.svg; target/theme-design/stencil/.
@@ -41,8 +44,8 @@ Spawn two workers with the worker prompt below:
 - Worker B: id night-transit; night-transit-*.svg; target/theme-design/night-transit/.
   Brief: luminous transport signage, dark panels, condensed names, precise route accents.
 
-Each worker may write only its recipe, its five previews, and its temporary output directory.
-I own catalog/locales/UI/docs integration. I will inspect the five-family comparisons, review
+Each worker may write only its recipe, its assigned previews, and its temporary output directory.
+I own catalog/locales/UI/docs integration. I will inspect the assigned family comparisons, review
 the reports against the final inputs, and rerender any inputs changed during integration.
 Then independently review visual bounds and generated Rust/CLI/Web adoption. Register no new
 preset IDs. Keep font and target limitations visible in the handoff.
@@ -54,20 +57,21 @@ preset IDs. Keep font and target limitations visible in the handoff.
 Use $design-merman-theme for ID and BRIEF assigned above. You share this checkout with others.
 Your only tracked write paths are:
   playground/src/themes/recipes/ID.theme.json
-  playground/src/themes/previews/ID-{flowchart,sequence,class,xychart,pie}.svg
+  playground/src/themes/previews/ID-FAMILY.svg for the explicitly assigned families
 Temporary output: target/theme-design/ID/. Do not change shared sources/configs or other files.
-Do not build, commit, or integrate UI. Use the supplied existing CLI and its fixed identity.
+Do not build, commit, or integrate UI. Use the supplied existing runtime and its fixed identity.
 
 Start with a short material/structure/typography brief. Author an editable recipe with useful
-shared relationships. Render all five exact saved samples with their configs and this recipe.
-Use explicit checked native fonts for Class; record font files, order, and measurement mode.
+shared relationships. Render every assigned exact saved sample with its config and this recipe
+in every declared appearance. Record the actual fonts and measurement mode. Native Class
+previews use checked font files; browser previews use the existing host measurement path.
 Keep each SVG and report from the same execution. Inspect those exact SVGs and distinguish
 runtime evidence from visual findings. Check Class compartments, XY legends, Sequence full
 canvas, label contrast, and effect scope. Preserve unsupported or no-consumer probes under
 your temporary directory; describe any design compromise rather than hiding a failure.
 
 Return: changed paths; final recipe/input/runtime identity and exact invocations; reports;
-five-family screenshots and visual findings; fonts; actual limits; preview colors and light/
+assigned-family screenshots and visual findings; fonts; actual limits; preview colors and light/
 dark classification for integration. Keep theme JSON, optional scene configuration, and
 Rust/CLI/Web adoption responsibilities distinct. Stop after handing off your assigned files.
 ```

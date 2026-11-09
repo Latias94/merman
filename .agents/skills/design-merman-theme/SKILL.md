@@ -31,6 +31,9 @@ The brief is ready when an ordinary diagram can demonstrate its intended hierarc
 Deliberate tonal and multi-hue relationships can satisfy a reading brief without decoration.
 For real recipes, borrowed mechanisms, parallel design, or a bounded family-audit prompt,
 read [examples.md](references/examples.md).
+For a new library entry, compare a small prototype with its closest existing designs before
+expanding family coverage; use [collection fit](references/review.md#collection-fit) to decide
+whether the result earns a separate entry.
 
 ## 2. Author the smallest useful recipe
 
@@ -58,10 +61,12 @@ Read [runtime.md](references/runtime.md) when selecting an artifact or invoking 
 matching source runtime; the package version alone is insufficient. Render the exact saved recipe,
 source, and configuration. Keep their ownership, look, layout, fonts, and pipeline explicit.
 
-Start with the user's actual diagram. For cross-family design, use three to five representative
-families from [the review matrix](references/review.md#representative-scenes), including the
-requested families. Library additions use all five shared scenes. Retain SVG and same-execution
-metadata/report together. Repair structured authoring errors before reviewing the design.
+Start with the user's actual diagram. For cross-family design, use representative families from
+[the review matrix](references/review.md#representative-scenes), including the requested families.
+For library work, read the current sample inventory and each design's declared family scope.
+Render every newly declared family in every appearance; new designs also use the existing core
+scenes. Retain SVG and same-execution metadata/report together. Repair structured authoring
+errors before reviewing the design.
 
 ## 4. Review runtime and appearance separately
 

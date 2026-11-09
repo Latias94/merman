@@ -266,7 +266,8 @@ configuration location and the nested fields when reproducing an appearance.
 Treemap uses `themeVariables.cScaleN` for section and leaf fills and `cScalePeerN` for section
 borders, including with Default. Visible labels normally use `cScaleLabelN`, which overrides
 the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fall back to
-`textColor` for readability. Compiled label paint follows that selected source; unused
+`textColor` for readability, using the final body fill after a compiled Node rule or palette.
+Compiled label paint follows that selected source; unused
 stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
 `borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
 Native Treemap font admission checks styles selected by rendered nodes. An unused `classDef`
@@ -287,6 +288,9 @@ sizes for portable value placement.
 
 Set `themeVariables.archGroupBorderColor` directly to change an Architecture group border.
 Changing only `primaryBorderColor` does not recalculate an initialized group color.
+With a compiled theme, Architecture group surfaces paint from ancestors to descendants before connections and services;
+their labels and icons remain in front. Opaque or translucent Cluster fills therefore affect
+the enclosing surface without covering its content.
 
 Cynefin and Wardley also retain initialized family colors. Set the selected role directly,
 such as `themeVariables.cynefin.textColor`, `themeVariables.cynefin.arrowColor`,
@@ -429,17 +433,43 @@ These two local display preferences are remembered separately.
 ### Standalone explorations and example scenes
 
 Open **Theme designs** from the toolbar or the Appearance panel to browse standalone
-recipes. Reading provides a coordinated Light/Dark example. Riso, Pop Art, Metro, Carbon Copy
+recipes. Reading and Prism provide coordinated Light/Dark examples. Riso, Pop Art, Metro, Carbon Copy
 and Signal have distinct artistic treatments, alongside Field Notes,
-Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall and Blueprint. Each card combines several diagram
-previews; opening a design shows Flowchart, Sequence,
-Class, XY Chart, and Pie together. Browsing does not change the workspace. **Apply to my diagram**
+Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall, Blueprint, Porcelain, Chalk and Monograph.
+The first visit uses the detected current diagram as a visible family filter in the search area.
+Change the family selector or remove its chip to browse other diagrams. Search text, appearance
+and style filters combine; **Clear filters** keeps the search text. Returning from detail or
+reopening the library preserves explicit filter choices and browsing position. Closing and
+reopening a detail also retains preview controls, adoption target and selected project file.
+
+Cards combine a large primary diagram with two supporting previews, each labeled by type.
+A family filter makes that sample primary across designs for direct comparison while retaining
+the other previews. Without a family filter, each card uses its representative example where
+declared, such as Metro's Git Graph or Blueprint's Architecture diagram. Opening a design defaults
+to **Diagram gallery**, a responsive gallery showing that design's reviewed families together.
+All designs include Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap. Metro adds
+Git Graph, Signal adds Gantt, Carbon Copy adds Kanban, Field Notes adds Timeline, and Blueprint
+adds Architecture. Prism adds Radar, Quadrant Chart, Sankey and Treemap; Monograph adds Requirement
+and Tree View. Entering from a family filter highlights its tile while keeping the design's
+other examples available. Click a diagram to inspect it in an expanded preview with zoom, fit and source/configuration
+controls. The expanded preview's family selector and **Previous example** / **Next example** buttons
+switch examples; **Close expanded preview** returns focus and scroll position to the tile you opened.
+**My current diagram** retains an inline preview and controls, rendering an isolated candidate
+using the current source and configuration. In this inline preview, scrolling the mouse wheel
+continues to scroll the detail page; hold Ctrl or Command while scrolling to zoom the diagram.
+Drag with the mouse to pan. A one-finger touch gesture continues to scroll the page. In the
+expanded preview, the mouse wheel zooms directly; drag to pan, or use one finger to pan and
+two fingers to pinch-zoom on a touch screen. **Zoom in** and **Zoom out** also work in both views.
+**Fit** scales the diagram to the available space and recenters it, so the fitted percentage
+depends on the diagram and viewport. **Reset view** restores 100% and centers the diagram.
+Showing source and returning to the inline diagram preserves its zoom and position.
+Browsing does not change the workspace. **Apply to my diagram**
 uses the recipe on the current source and configuration, with an explicit appearance choice.
 These are not core preset IDs: use their downloaded recipe
 with CLI `--theme-file`, Rust `compile_document`, or Web `theme: {recipe, appearance}`. Their names and source
 labels are display metadata, not claims of runtime availability or family support.
 
-Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's five-family preview and integration examples without changing the current workspace.
+Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's preview and integration examples without changing the current workspace. Theme library adoption requires Merman v0.10.0-alpha.2 or newer.
 
 The inputs have separate purposes:
 
@@ -462,18 +492,37 @@ Project files shows a navigable file tree with the complete `Cargo.toml` and use
 Downloading the example supplies the complete directory structure and setup instructions.
 
 Each design includes syntax-highlighted theme JSON and Rust, CLI, and Web adoption code.
-Select a sample family before downloading its example project to include the
+Inspecting a gallery tile selects its family for the integration code. Each tile also offers
+**Use this example**, which selects that family and scrolls to the adoption section. The expanded
+preview and adoption section provide family selectors limited to that design's reviewed examples;
+the gallery keeps those examples visible.
+The selected concrete appearance applies to every gallery tile, sample link and integration example.
+Choose a tile or an adoption sample family before downloading its example project to include the
 matching Mermaid source, theme, configuration, and setup instructions. These materials describe
 an independent example, not a captured rendering of the current workspace. **Open sample** starts
 a separate tab with the source and configuration, leaving the current work intact.
 
-Gallery previews use their saved example scenes rather than the current workspace.
+Standard gallery previews use their saved example scenes; current-diagram previews remain isolated from the workspace.
+Fixed thumbnails, including Reading and Prism's separate Light/Dark assets, use saved SVGs and
+lazy image loading. Expanding an example or previewing the current diagram uses the active runtime.
 The recipes, shared samples, configurations, and SVGs live in
-[`playground/src/themes`](../../playground/src/themes/). The examples cover five families;
-other families and targets need their own review. Source styles and
+[`playground/src/themes`](../../playground/src/themes/). The sample inventory covers 19 families;
+each catalog entry declares its own dedicated design scope. Monograph uses a grayscale design;
+Prism keeps category identity across its two appearances. These design intentions do not certify
+black-and-white printing, accessibility, or output portability. Other families and targets need
+their own review. Source styles and
 explicit font/configuration choices can change the result.
 The shared diagram text is English in both interface languages; controls and explanations retain
 English and Chinese localization.
+
+Prism's Sankey treatment uses family-scoped cyclic Node paint rules to distinguish flows from
+the darker text-bearing category surfaces used by other diagrams. With a compiled Merman theme,
+Sankey draws flow bands below nodes and labels using normal compositing; bands keep their 0.5
+opacity. Without a compiled theme, the renderer preserves Mermaid's multiply compositing and
+original group order. Selecting an empty or canvas-only compiled theme also selects the themed
+compositing path. Source `sankey.nodeColors` and `linkColor` retain their existing paint ownership.
+Exact and cyclic rules apply only the supported solid, transparent, or cleared Node fill/stroke
+facets; they do not add ordinal geometry, effects, or label typography support.
 
 To refresh a library SVG, render its saved source, configuration, and recipe together, for example:
 
@@ -481,19 +530,12 @@ To refresh a library SVG, render its saved source, configuration, and recipe tog
 merman-cli render playground/src/themes/samples/xychart.mmd --config-file playground/src/themes/samples/xychart.config.json --theme-file playground/src/themes/recipes/atlas.theme.json --svg-id atlas-xychart --svg-pipeline parity --font-measurement deterministic --font-system off -o playground/src/themes/previews/atlas-xychart.svg
 ```
 
-The Letterpress Class preview uses native measurement with Menlo to size its monospace signatures
-(`--font-file /System/Library/Fonts/Menlo.ttc --font-system off` on macOS, replacing the deterministic
-measurement flag). Fonts are not embedded. With another host font, review label bounds before
-replacing the asset. Native SVG text does not imply native font measurement.
-The Riso, Phosphor, and Field Notes Class previews also use bounded native fonts: Menlo for
-Phosphor, and Avenir plus Menlo for Riso and Field Notes. Their method signatures need measured
-monospace widths to stay inside the class compartments. Blueprint and Pop Art use bounded native
-measurement for Class as well. Lacquer Class explicitly loads Georgia, Avenir and Menlo for its
-mixed serif, supporting text and signature roles.
-Paper Cut Class uses Avenir; Aurora Class uses Menlo and Avenir. The named font files must match
-the recipe when regenerating these assets.
-Metro Class uses Helvetica Neue, Carbon Copy uses Menlo and Avenir, and Signal uses Menlo and
-Avenir Next Condensed. These previews use bounded native measurement for their class compartments.
+Class compartments and chart legends need actual font measurement. Browser previews use the
+Playground's host measurer and available browser fonts. For native Class regeneration, replace
+deterministic measurement with checked files matching the recipe's actual font roles, using
+repeatable `--font-file` arguments and `--font-system off`. Record that measurement condition
+alongside the same-render report. Fonts are not embedded; another host font requires a fresh
+label-bounds review. Native SVG text alone does not establish native font measurement.
 
 Riso's small opposing shadows suggest ink registration offsets on supported bodies; they do not
 simulate physical ink mixing or paper noise. Phosphor scopes glow to connections, activations,
@@ -502,7 +544,7 @@ slips. Class and Pie use their own paint and typography treatments rather than u
 effects. Their recipes remain editable without adding new preset IDs.
 Blueprint combines a drafting grid, technical annotations and crisp outlines. Pop Art uses
 poster colors, bold contours and offset ink. Lacquer pairs deep panels with asymmetric gold rims
-and a restrained canvas sheen. Their dedicated treatments also cover the same five families.
+and a restrained canvas sheen. Their dedicated treatments include the core scenes above.
 Paper Cut uses independent hard paper edges plus soft contact depth. Aurora combines a gradient
 night canvas, radial light ribbons and supported panel halos; text remains unfiltered.
 Metro uses flat station signs and distinct route colors on a dark concourse. Carbon Copy uses
@@ -510,12 +552,32 @@ violet side impressions, typewritten records and red review marks. Signal uses c
 plates, hard mounting edges and warning stripes confined to the canvas perimeter. Their Class
 treatments rely on paint and typography rather than unsupported body effects.
 
+State treatments distinguish ordinary states, composite headers, notes and transitions. ER
+treatments use entity surfaces, alternating attribute rows and relationship paint; attribute text
+shares the existing Text owner. Mindmap treatments preserve distinct branch colors through a Node
+palette rather than flattening branches with a universal node fill. Its font stack and label paint
+use their own supported routes; ER and Mindmap do not inherit Flowchart body effects.
+
+Porcelain uses warm white ceramic surfaces, fine cobalt contours, terracotta annotations and a
+bounded reflected edge on supported Flowchart/Sequence bodies. Chalk uses a matte slate ground,
+cream contours and pastel categories, with contrasting dark labels on categorical surfaces.
+Both include the same eight sample families and remain standalone editable recipes.
+
+The Mindmap root uses the independent scalar `git0` compatibility value because the branch
+palette excludes it. Redux Color ER relationship captions use `erEdgeLabelBackground` to keep
+their backing readable; other Mermaid bases require their own review. These literals are separate
+from retained palette/token bindings, so recoloring a palette does not update them automatically.
+The current runtime reports `compatibility-unverified` and rejected target admission for these
+fallbacks, even when the SVG renders and its typed family styling applies. The interface retains
+that evidence; dedicated sample coverage is not an execution-verification or portability claim.
+
 These designs also illustrate current authoring limits:
 
 | Design request | Current behavior and supported alternative |
 | --- | --- |
 | Gradient Flowchart node bodies or Pie sectors | These role paths report `unsupported-paint`. The examples keep solid surfaces and place gradients in the canvas. |
 | Class body glow or the same layered shadows as Flowchart | Class reports `unsupported-effect`. Its treatment uses paint and typography. |
+| Match each ordinal body color with a separate label color | Flowchart supports ordinal Node fills, but its ordinal NodeLabel fill and Class ordinal Node/NodeLabel paint report `unsupported-paint`. Use body colors that work with the shared label paint, or explicitly style the corresponding source nodes. |
 | Flowchart cluster-label weight or a local XY legend font stack | These role paths report `unsupported-typography`. Shared or family typography can still apply; support is property-specific. |
 | Blur the scene behind a panel | Effects take the source graphic or previous effect result, not a backdrop input. Transparency and halos cannot reproduce backdrop blur. |
 | Unlimited radial-gradient positioning | Percentage centers and radii have a validated range. Out-of-range values are rejected rather than silently clipped. |
@@ -1145,6 +1207,22 @@ spread and inset shadows are not part of this stack.
 `cascade` applies each shadow to the preceding result. Advanced effect graphs retain the concrete
 primitive interface. Canvas paints support solid colors, gradients and patterns, with optional
 ordered layers, opacity, offsets and blend modes. These values use the same generic binding controls.
+
+Supported body effects in Flowchart (including its Agentflow/Swimlane consumers), State, Usecase
+and rectangular Sequence actors paint depth behind connectors or lifelines. The body surface
+and its text retain their foreground position; a translucent surface is emitted once. This
+ordering preserves the visible connection outside a body's own contour without moving its
+route or shortening the authored shadow. Source-owned filters and unsupported shapes/looks
+retain their existing behavior. Label, message, activation and plotted-series effects have
+separate semantic owners.
+
+Body depth and surface are separate scene layers. Each retains the selected shape's paint
+opacity, and the depth filter derives its mask from that shape's fill/stroke alpha. A translucent
+surface can therefore reveal its depth. The effect's `color_space` governs the filter's internal
+shadow computation; the final depth and surface composite normally in the SVG canvas. This alpha
+design replaces the former single filtered-body composite, whose whole-object opacity and
+linearRGB source merge can produce different overlap colors. Independent/cascade shadow order
+and `Previous`/`SourceGraphic` inputs remain defined within the depth calculation.
 
 Saving a theme does not establish family or export support. Query support for the requested family,
 output and mechanism, and inspect execution metadata on the actual render. Keep asset licensing

@@ -33,8 +33,8 @@ runtime. Use it as a Rust library, a CLI, or through browser and native bindings
   </tr>
 </table>
 
-Actual Merman SVG exports using four of the Playground's **15 JSON theme explorations**.
-Open a design above for its diagram sources, editable recipe, and integration examples.
+Actual Merman SVG exports from the Playground's **standalone JSON theme library**.
+Open a design above for its gallery of diagram types, sources, editable recipe, and integration examples.
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend.
 > [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
@@ -113,9 +113,9 @@ and terminal output. Start with the [capability guide] for feature selection or 
 ## Make it your own
 
 **Built-in presets** such as Brutalist, Spotless, Cyberpunk, and Ghibli are selected by their
-runtime preset IDs. The **15 standalone explorations** in the [Playground theme designs]
-are editable JSON recipes, including the four designs shown above. Copy a recipe to use it
-through Rust, CLI, Web, or Node.
+runtime preset IDs. The standalone explorations in the [Playground theme designs]
+are editable JSON recipes, including the four designs shown above and coordinated light/dark
+designs. Browse by diagram type and style, then copy a recipe to use it through Rust, CLI, Web, or Node.
 
 The [theme guide] covers adopting and customizing recipes, family scope, and output support.
 The [preset gallery] shows more real renders and includes [design credits][theme credits].

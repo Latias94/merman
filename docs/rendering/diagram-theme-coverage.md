@@ -21,7 +21,7 @@ does not automatically create a Merman theme adapter.
 | Tree View | Text/node-label, edge/marker and existing highlight-body paint, inherited fonts and measured base font size. A Node body rule styles existing `:::highlight` rectangles; it does not add rectangles to ordinary file labels. |
 | Packet | Block-body fill/stroke, byte-label, field-label and title paint, plus font-stack support. Mermaid's Packet variables remain independent property owners; semantic body effects are not implemented. |
 | Class, ER, Architecture, Block, C4, Gantt, GitGraph, Journey, Kanban, Mindmap, Pie, Quadrant Chart, Radar, Requirement, Sequence, State, Timeline, XY Chart, ZenUML | Family-owned semantic paint and typography consumers. Targets differ: a Radar axis, a Gantt task and a Sequence actor do not share one universal Node rule. Existing labels/titles and source-owned roles retain their own terminal domains. |
-| Sankey, Treemap | Node/section paint, text and inherited fonts, with family-specific palette and source-style ownership. A diagram without a visual title does not gain a title merely because a recipe requests it. |
+| Sankey, Treemap | Node/section paint, text and inherited fonts, with family-specific palette and source-style ownership. Sankey also consumes exact/cyclic Node fill and stroke rules; compiled themes composite flow bands normally below nodes and labels. A diagram without a visual title does not gain a title merely because a recipe requests it. |
 | Info | Version-label paint and inherited font stack. There is no separate visual title or node-body surface. |
 
 Packet layout settings such as `showBits` and `rowHeight` belong under `packet`; colors and role
@@ -59,14 +59,32 @@ and Neo. Agentflow shares those bounds; Usecase admits bounded Classic body shad
 Classic. A coarse conditional support query does not promise the effect under the current look.
 Other families can have Mermaid look decorations without consuming compiled theme effects.
 
+Admitted body effects in Flowchart and its shared consumers, State, Usecase and rectangular
+Sequence actors keep depth behind connections and the surface/text in front. Depth and surface
+have separate emission passes, with one visible surface even for alpha paint. This does not
+extend effect admission to additional shapes or looks. State composite titles use the same
+normalized measured box for layout and header placement, in native text and HTML labels.
+
 The current source catalog groups 8 built-in design identities with 11 concrete appearances.
 They share paint and typography defaults, with selected family-specific rules. Their catalog
 design scope is narrower than runtime theme availability. The current Playground library contains
-16 designs: Reading adds a coordinated Light/Dark example to Riso, Pop Art, Metro, Carbon Copy,
+20 designs: Reading and Prism add coordinated Light/Dark examples to Riso, Pop Art, Metro, Carbon Copy,
 Signal, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall,
-and Blueprint. The library uses examples and scoped rules for
-Flowchart, Sequence, Class, XY Chart and Pie. Other families can receive shared text, font, palette
+Blueprint, Porcelain, Chalk and Monograph. All library designs use examples and scoped rules for
+Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap. Additional dedicated treatments are
+Metro/Git Graph, Signal/Gantt, Carbon Copy/Kanban, Field Notes/Timeline, Blueprint/Architecture,
+Prism/Radar/Quadrant Chart/Sankey/Treemap, and Monograph/Requirement/Tree View. The sample inventory
+is separate from each design's reviewed family list. The library's family filter and
+coverage labels describe this dedicated design scope. Other families can receive shared text, font, palette
 or canvas values; those changes do not establish a dedicated design for that family.
+
+The library recipes use scalar Mermaid compatibility values for the Mindmap root (`git0`) and
+the Redux Color ER relationship-label backing (`erEdgeLabelBackground`). These are independent
+fallback values, not retained palette bindings; explicit source/configuration can replace them.
+The current execution accounting reports `compatibility-unverified` for these requests, including
+renders of other families. Keep that residual and the resulting rejected target admission visible:
+dedicated design scope and a visually reviewed sample do not upgrade the execution result to
+`verified` or establish portability. Non-Redux ER bases need separate backing review.
 
 Use discovery and the same render's execution evidence below to inspect an actual document. In
 particular, distinguish an SVG that renders successfully, styling that visibly applies, completed

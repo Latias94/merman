@@ -24,20 +24,59 @@ using the exact family/target/facet, then test a focused recipe on a scene conta
 Local font-stack support does not follow from local font-size or fill support. Current gaps live
 beside the [theme guide's examples](../../../../docs/rendering/custom-diagram-themes.md#standalone-explorations-and-example-scenes).
 
+## Collection fit
+
+When extending the Playground collection, compare the candidate and its closest existing designs
+on the same ordinary scenes at full size and at gallery thumbnail size. Hide names and material
+descriptions for one pass. Describe the visible difference in surfaces, contours, connection
+hierarchy, typography, or effects; a material name does not establish a new rendering mechanism.
+An attractive palette variation can be useful for a requested reading context, but does not by
+itself establish a distinct artistic addition to an already populated collection.
+
+Start with a small representative prototype before rendering every declared family. If the
+candidate's differences disappear at the intended scale or depend on sample-specific content,
+refine an existing design or keep the candidate under ignored `target/` instead of adding a
+catalog entry. When the user permits declining additions, no new theme is a valid design outcome.
+
 ## Representative scenes
 
-Use the user's diagram first. For general design work select three to five families that exercise
-different consumers; a Playground library addition uses all five saved
-[sources and configurations](../../../../playground/src/themes/samples/). Keep those inputs common
-across competing designs. Add a targeted dense or long scene only when its mechanism needs it.
+Use the user's diagram first. For general design work select families that exercise different
+consumers. For Playground work, read the current [core scene inventory](../../../../playground/src/themes/families.ts),
+[design scope](../../../../playground/src/themes/catalog.ts), and saved
+[sources and configurations](../../../../playground/src/themes/samples/). New designs use the core
+scenes plus their declared additions; an existing design's extension renders the new families.
+Rerender existing scenes when shared tokens, palettes, or compatibility values change their
+inputs. Keep sources common across designs. Add a targeted dense or long scene only when a
+concrete mechanism needs it.
 
 | Family | Representative content | Inspect before calling it visually reviewed |
 | --- | --- | --- |
-| Flowchart | Branches, a cluster, mixed basic shapes, edge labels | Body vs label effects; label backings; marker tips; cluster hierarchy; source style precedence; material at ordinary density when requested. |
-| Sequence | Actors, activations, notes, a loop, bottom lifelines | The entire scene lies within viewBox and authored canvas, including lifeline strokes when `mirrorActors: false`; note/actor effects keep labels legible. |
+| Flowchart | Branches, a cluster, mixed basic shapes, edge labels | Body vs label effects; connector departures and marker tips above body depth; label backings; cluster hierarchy; source style precedence; material at ordinary density when requested. |
+| Sequence | Actors, activations, notes, a loop, bottom lifelines | The entire scene lies within viewBox and authored canvas, including lifeline strokes when `mirrorActors: false`; actor depth keeps lifeline junctions visible; note/actor effects keep labels legible. |
 | Class | Namespaces, methods, long signatures, multiplicities | Fonts match measured roles, including signature monospace; text boxes fit their own compartments as well as the root viewport. |
 | XY Chart | Bar and line series, titles, axes, visible legend | Actual legend text and swatches fit their reserved regions; series order and legend associations survive appearance changes; ticks and endpoints remain clear; effects preserve series distinctions. |
 | Pie | Several unequal sectors, title, percentages, legend | Neighboring sectors remain distinct; sector order and category/legend associations survive appearance changes; labels contrast against every actual sector and canvas; small sectors and legends remain readable. |
+
+For additional families, inspect their actual semantic roles before selecting rules. Planning
+scenes need task states, columns, or phase distinctions; architecture scenes need services and
+group boundaries; data scenes need category/legend associations, axes, overlap, and labels on
+small regions. Requirement relationships and Tree View highlights have their own consumers.
+The [coverage guide](../../../../docs/rendering/diagram-theme-coverage.md) owns current mechanism
+limits. A global palette or canvas change alone does not qualify a dedicated family treatment.
+
+Compatibility scalars can affect other families: Kanban and Mindmap may share `cScale` values,
+while Git Graph and the Mindmap root share `git0`. Trace the winning consumer before selecting
+such a fallback and rerender affected existing examples. Inspect actual group stacking as well:
+an Architecture group painted after its services can obscure them when given an opaque fill.
+
+For material effects, inspect a connection entering and leaving the affected body. Depth belongs
+behind connections while the actual surface keeps its foreground position. Check a translucent
+body as well: the depth filter's final output must omit the surface, which is painted once.
+Observe alpha and color in overlapping depth/surface pixels under the current layer semantics;
+matching filter stages alone does not prove equivalence to a combined filtered body. Source
+class filters must retain ownership without disabling a depth carrier and exposing another face.
+For background-dependent label defaults, inspect a supported body-fill change without an explicit
+text-color rule; explicit ink in a library recipe can hide a stale family fallback.
 
 For a light/dark pair, compare the same diagram with source/configuration, look, layout, and
 category order held fixed. Reuse the scenes above; add a dense case only for a concrete concern.
@@ -58,9 +97,14 @@ Load the intended fonts before browser measurement (`document.fonts.ready` where
 Read computed font families and text boxes from the rendered elements; check local compartments,
 legend reservations, and the root canvas in a common coordinate system. Account for transforms,
 strokes, and visible effects rather than comparing unrelated screen and SVG coordinates.
+When a measured label is normalized to its box origin, place that box in its reserved compartment;
+raw SVG helper offsets apply only to the corresponding raw text recipe. A centered layout box
+alone does not establish that the painted text is centered.
 
-For font-sensitive Class scenes, use native measurement with explicit, checked font files and
-system discovery off; [runtime.md](runtime.md#native-rendering-and-fonts) has a reproducible example.
+For native Class previews, use native measurement with explicit, checked font files and system
+discovery off; [runtime.md](runtime.md#native-rendering-and-fonts) has a reproducible example.
+Browser previews use the actual host measurement path and loaded viewer fonts; record that
+condition separately rather than describing browser measurement as native qualification.
 Record any fallback. Library examples include Riso with Avenir + Menlo, Carbon Copy with Menlo +
 Avenir, Metro with Helvetica Neue, and Signal with Menlo + Avenir Next Condensed. Resolve file
 paths on the current host rather than making these macOS font names a portability requirement.
