@@ -776,11 +776,22 @@ Typed Rust geometry construction has no encoded-byte charge; the maintained cont
 enforces the exact ceiling during encoding. See the
 [development migration](../migrations/render-reuse-host-integration.md#migrate-edge-geometry-budgets).
 
-`interactive` is the default for binding surfaces. `constrained` is tighter and is enforced by
-the Typst plugin for every call; caller-provided `resources.limits` may tighten that transport
-ceiling, while a looser profile or override returns an options error. `trusted-native` is intended for CLI or
-controlled batch rendering. `unbounded-for-trusted-input` is an explicit opt-out for trusted inputs,
-not a browser or server default.
+`interactive` is the default for binding surfaces. Typst selects `constrained`, including 125,000
+layout work units. Development source builds accept an explicit finite positive integer in
+`resources.limits.max_layout_work_units` below or above that default; omission keeps 125,000.
+Null, nonpositive, fractional, and overflowing values are rejected. Resources may be direct or
+inside one `analysis` or `merman` object wrapper. Other limits may only be tightened; looser
+profiles, unknown IDs, and hard-cap overrides remain rejected. Options byte admission and
+constrained theme preflight still apply. This requires a wrapper/plugin pair built from development
+source; published Typst package 0.5.0 does not support raising the limit. The shared strict ceiling
+and typed analysis helpers retain their existing restrictions for other transports. See the
+[Typst guide](../../distribution/typst/merman/README.md) for direct options and profile examples.
+
+Layout work is cumulative accounting, so iterative Mindmap layouts can exceed the allowance even
+for a small input. A rejected charge's `actual` value is not the final cost of completing the
+diagram. `trusted-native` is intended for CLI or controlled batch rendering.
+`unbounded-for-trusted-input` is an explicit opt-out for trusted inputs, not a browser or server
+default.
 
 The profile is a resource-policy choice, not a promise of isolation. `interactive` assumes a
 cooperative author and is suitable for an editor or local preview; it does not stop a hostile or

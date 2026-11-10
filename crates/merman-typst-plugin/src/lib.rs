@@ -342,8 +342,12 @@ fn typst_result_payload(
 }
 
 fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    let normalized =
-        merman_bindings_core::apply_resource_ceiling_json(options_json, "constrained", &[])?;
+    let normalized = merman_bindings_core::apply_resource_ceiling_json_with_allowed_overrides(
+        options_json,
+        "constrained",
+        &[],
+        &["max_layout_work_units"],
+    )?;
     let mut options = serde_json::from_slice::<Value>(&normalized).map_err(|error| {
         merman_bindings_core::BindingError::new(
             merman_bindings_core::BindingStatus::InternalError,
@@ -919,11 +923,11 @@ mod tests {
     }
 
     #[test]
-    fn typst_transport_keeps_a_fixed_constrained_resource_policy() {
+    fn typst_transport_keeps_constrained_resource_defaults() {
         let options = typst_options_json(b"").expect("default Typst options");
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
         assert_eq!(payload["runtime_policy"], "deterministic");
-        assert_eq!(payload["resources"]["profile"], "constrained");
+        assert_eq!(payload["resources"], json!({ "profile": "constrained" }));
         if typst_artifact_contract()
             .runtime_capabilities()
             .has_operation("svg")
@@ -977,6 +981,104 @@ mod tests {
             assert_eq!(resources["limits"]["max_model_items"], Value::from(1));
             assert_eq!(payload["runtime_policy"], "deterministic");
             assert_eq!(payload.get("resources").is_some(), wrapper.is_none());
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn typst_resource_policy_accepts_explicit_layout_work_limits() {
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            for limit in [1, 125_000, 1_000_000] {
+                let analysis = json!({ "resources": {
+                    "profile": null,
+                    "limits": { "max_layout_work_units": limit }
+                } });
+                let input = wrapper
+                    .map(|wrapper| json!({ wrapper: analysis.clone() }))
+                    .unwrap_or(analysis);
+                let options = typst_options_json(&serde_json::to_vec(&input).unwrap())
+                    .expect("explicit finite layout allowance");
+                let payload: Value = serde_json::from_slice(&options).unwrap();
+                let resources = wrapper
+                    .map(|wrapper| &payload[wrapper]["resources"])
+                    .unwrap_or(&payload["resources"]);
+
+                assert_eq!(resources["profile"], "constrained");
+                assert_eq!(
+                    resources["limits"],
+                    json!({ "max_layout_work_units": limit })
+                );
+                assert_eq!(payload.get("resources").is_some(), wrapper.is_none());
+                assert_eq!(payload["runtime_policy"], "deterministic");
+                assert_eq!(payload["environment"]["math_renderer"], "none");
+            }
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn typst_resource_policy_rejects_invalid_layout_work_limits() {
+        for value in [
+            "0",
+            "-1",
+            "1.5",
+            "null",
+            "true",
+            r#""250000""#,
+            "18446744073709551616",
+            "1e100",
+        ] {
+            let input =
+                format!(r#"{{"resources":{{"limits":{{"max_layout_work_units":{value}}}}}}}"#);
+            let error = typst_options_json(input.as_bytes()).unwrap_err();
+            let expected = if value == "0" {
+                merman_bindings_core::BindingStatus::InvalidArgument
+            } else {
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            };
+            assert_eq!(error.status(), expected, "value={value}: {error:?}");
+        }
+
+        for input in [
+            br#"{"resources":null}"#.as_slice(),
+            br#"{"resources":{"limits":null}}"#.as_slice(),
+            br#"{"resources":{"limits":[]}}"#.as_slice(),
+        ] {
+            let error = typst_options_json(input).unwrap_err();
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            );
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn typst_layout_allowance_does_not_loosen_other_limits_or_profiles() {
+        for mut resources in [
+            json!({ "profile": "interactive" }),
+            json!({ "profile": "trusted-native" }),
+            json!({ "profile": "unbounded-for-trusted-input" }),
+            json!({ "limits": { "max_source_bytes": 1048577 } }),
+            json!({ "limits": { "max_model_items": 1000000000 } }),
+            json!({ "limits": { "max_svg_bytes": 12582913 } }),
+        ] {
+            let limits = resources
+                .as_object_mut()
+                .unwrap()
+                .entry("limits")
+                .or_insert_with(|| json!({}));
+            limits["max_layout_work_units"] = json!(1_000_000);
+            let input = serde_json::to_vec(&json!({ "resources": resources })).unwrap();
+            let error = typst_options_json(&input).unwrap_err();
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            );
+            assert!(
+                error.message().contains("loosen the transport ceiling"),
+                "{error:?}"
+            );
         }
     }
 
@@ -1086,6 +1188,19 @@ mod tests {
             merman_bindings_core::BindingStatus::OptionsJsonError
         );
         assert!(error.message().contains("must not contain both"));
+
+        for wrapper in ["analysis", "merman"] {
+            let input = json!({
+                "resources": { "limits": { "max_layout_work_units": 1_000_000 } },
+                wrapper: {}
+            });
+            let error = typst_options_json(&serde_json::to_vec(&input).unwrap()).unwrap_err();
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::OptionsJsonError
+            );
+            assert!(error.message().contains("must not mix top-level resources"));
+        }
     }
 
     #[cfg(feature = "svg")]
@@ -1358,11 +1473,56 @@ mod tests {
         assert_eq!(payload["details"]["resource"]["profile"], "constrained");
     }
 
+    #[cfg(all(feature = "diagram-mindmap", feature = "layout-cytoscape"))]
+    #[test]
+    fn render_svg_json_mindmap_accepts_explicit_layout_work_allowance() {
+        use std::fmt::Write as _;
+
+        let mut source = String::from("mindmap\n  root[Root]\n");
+        for branch in 0..8 {
+            writeln!(source, "    branch{branch}[Branch {branch}]").unwrap();
+            for leaf in 0..8 {
+                writeln!(source, "      leaf{branch}_{leaf}[Leaf {leaf}]").unwrap();
+            }
+        }
+        let limited: Value = serde_json::from_slice(&render_svg_json(source.as_bytes(), b""))
+            .expect("default-budget result");
+        assert_error_envelope(&limited, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        let resource = &limited["details"]["resource"];
+        assert_eq!(resource["limit_id"], "max_layout_work_units", "{limited}");
+        assert_eq!(resource["max"], 125_000);
+        assert_eq!(resource["cause"], "ceiling");
+        assert_eq!(resource["profile"], "constrained");
+
+        let options = serde_json::to_vec(&json!({
+            "runtime_policy": "deterministic",
+            "environment": { "math_renderer": "none" },
+            "resources": {
+                "profile": "constrained",
+                "limits": { "max_layout_work_units": 5_000_000 }
+            },
+            "svg": { "diagram_id": "typst-mindmap-layout-work" }
+        }))
+        .unwrap();
+        let raised: Value = serde_json::from_slice(&render_svg_json(source.as_bytes(), &options))
+            .expect("explicit-budget result");
+        assert_eq!(raised["ok"], true, "{raised}");
+        assert_success_envelope(&raised, RENDER_OPERATION);
+        let reference = execute_typst_operation("svg", source.as_bytes(), &options)
+            .expect("same finite policy through the shared engine");
+        assert_eq!(
+            raised["data"]["svg"].as_str().unwrap().as_bytes(),
+            reference
+        );
+    }
+
     #[cfg(feature = "svg")]
     #[test]
     fn typst_options_preflight_measures_raw_theme_bytes_before_value_normalization() {
         let raw_padding = " ".repeat(600 * 1024);
-        let options_json = format!(r#"{{"theme":{{{raw_padding}"preset":"base"}}}}"#);
+        let options_json = format!(
+            r#"{{"resources":{{"limits":{{"max_layout_work_units":1000000}}}},"theme":{{{raw_padding}"preset":"base"}}}}"#
+        );
 
         let error = typst_options_json(options_json.as_bytes())
             .expect_err("raw encoded theme bytes must be checked before Value normalization");
@@ -1376,7 +1536,11 @@ mod tests {
         assert_eq!(resource.limit_id, "max_theme_encoded_bytes");
         assert_eq!(resource.profile, "constrained");
 
-        let compact = json!({ "theme": { "preset": "base" } }).to_string();
+        let compact = json!({
+            "resources": { "limits": { "max_layout_work_units": 1_000_000 } },
+            "theme": { "preset": "base" }
+        })
+        .to_string();
         typst_options_json(compact.as_bytes())
             .expect("the same semantic theme without raw padding must remain below the ceiling");
     }

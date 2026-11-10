@@ -61,8 +61,9 @@ pub use common::{
     BindingCancellationErrorDetails, BindingDiagnosticErrorDetails, BindingDiagnosticSpan,
     BindingError, BindingErrorKind, BindingIconRegistryErrorDetails, BindingResourceErrorDetails,
     BindingResourceLimitCause, BindingRuntimePolicy, BindingStatus, apply_resource_ceiling_json,
-    binding_error_payload_json_bytes, error_payload_json_bytes, render_payload_json_bytes,
-    render_resource_options_unavailable, resource_options_json,
+    apply_resource_ceiling_json_with_allowed_overrides, binding_error_payload_json_bytes,
+    error_payload_json_bytes, render_payload_json_bytes, render_resource_options_unavailable,
+    resource_options_json,
 };
 #[doc(hidden)]
 pub use common::{

@@ -2757,8 +2757,32 @@ pub fn apply_resource_ceiling_json(
     ceiling_profile_id: &str,
     ceiling_overrides: &[(&str, usize)],
 ) -> Result<Vec<u8>, BindingError> {
-    let value =
-        options_value_with_resource_ceiling(options_json, ceiling_profile_id, ceiling_overrides)?;
+    apply_resource_ceiling_json_with_allowed_overrides(
+        options_json,
+        ceiling_profile_id,
+        ceiling_overrides,
+        &[],
+    )
+}
+
+/// Applies a transport ceiling with explicit caller overrides for host-approved limit IDs.
+///
+/// Only explicitly supplied, compiled, overridable limits may replace their ceiling values.
+/// Omitted limits retain the host defaults, and all other limits and the selected profile must
+/// remain no looser than the host ceiling. Raw-byte admission and theme preflight still use the
+/// host policy before any request limits are considered.
+pub fn apply_resource_ceiling_json_with_allowed_overrides(
+    options_json: &[u8],
+    ceiling_profile_id: &str,
+    ceiling_overrides: &[(&str, usize)],
+    allowed_request_limit_ids: &[&str],
+) -> Result<Vec<u8>, BindingError> {
+    let value = options_value_with_resource_ceiling(
+        options_json,
+        ceiling_profile_id,
+        ceiling_overrides,
+        allowed_request_limit_ids,
+    )?;
     let serialized = serde_json::to_vec(&value).map_err(internal_json_error)?;
     enforce_options_json_byte_budget(&serialized)?;
     #[cfg(feature = "svg")]
@@ -2783,8 +2807,12 @@ pub fn analysis_options_with_resource_ceiling(
     ceiling_profile_id: &str,
     ceiling_overrides: &[(&str, usize)],
 ) -> Result<merman_analysis::AnalysisOptions, BindingError> {
-    let value =
-        options_value_with_resource_ceiling(options_json, ceiling_profile_id, ceiling_overrides)?;
+    let value = options_value_with_resource_ceiling(
+        options_json,
+        ceiling_profile_id,
+        ceiling_overrides,
+        &[],
+    )?;
     artifact_analysis_options(&parse_options_value(&value)?)
 }
 
@@ -2792,9 +2820,10 @@ fn options_value_with_resource_ceiling(
     options_json: &[u8],
     ceiling_profile_id: &str,
     ceiling_overrides: &[(&str, usize)],
+    allowed_request_limit_ids: &[&str],
 ) -> Result<Value, BindingError> {
     let ceiling_value = resource_options_value(Some(ceiling_profile_id), ceiling_overrides)?;
-    let ceiling = parse_options_value(&ceiling_value)?
+    let mut ceiling = parse_options_value(&ceiling_value)?
         .analysis
         .resources
         .ok_or_else(|| {
@@ -2862,6 +2891,16 @@ fn options_value_with_resource_ceiling(
             })
         })
         .transpose()?;
+    if !allowed_request_limit_ids.is_empty()
+        && let Some(requested) = &requested
+    {
+        validate_compiled_resource_options(Some(requested))?;
+        for (id, value) in &requested.limits {
+            if allowed_request_limit_ids.contains(&id.as_str()) {
+                ceiling.limits.insert(id.clone(), *value);
+            }
+        }
+    }
     let resources = requested
         .as_ref()
         .map(|requested| tighten_resource_options(&ceiling, requested))
@@ -4992,6 +5031,137 @@ mod tests {
         ] {
             let error = apply_resource_ceiling_json(input, "constrained", &[]).unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn resource_ceiling_allowed_overrides_preserve_unspecified_defaults() {
+        for input in [
+            b"".as_slice(),
+            br#"{}"#.as_slice(),
+            br#"{"resources":{}}"#.as_slice(),
+            br#"{"resources":{"profile":null}}"#.as_slice(),
+        ] {
+            let normalized = apply_resource_ceiling_json_with_allowed_overrides(
+                input,
+                "constrained",
+                &[],
+                &["max_layout_work_units"],
+            )
+            .unwrap();
+            let value: Value = serde_json::from_slice(&normalized).unwrap();
+            assert_eq!(
+                value["resources"],
+                serde_json::json!({ "profile": "constrained" })
+            );
+            let options = parse_options_value(&value).unwrap();
+            assert_eq!(
+                effective_resource_limits(options.analysis.resources.as_ref().unwrap()).unwrap()["max_layout_work_units"],
+                Some(125_000)
+            );
+        }
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn resource_ceiling_allowed_layout_overrides_preserve_wrappers_and_other_limits() {
+        for wrapper in [None, Some("analysis"), Some("merman")] {
+            for limit in [1, 125_000, 1_000_000] {
+                let analysis = serde_json::json!({ "resources": { "limits": {
+                    "max_layout_work_units": limit,
+                    "max_source_bytes": 4096
+                } } });
+                let input = wrapper
+                    .map(|wrapper| serde_json::json!({ wrapper: analysis.clone() }))
+                    .unwrap_or(analysis);
+                let normalized = apply_resource_ceiling_json_with_allowed_overrides(
+                    &serde_json::to_vec(&input).unwrap(),
+                    "constrained",
+                    &[],
+                    &["max_layout_work_units"],
+                )
+                .unwrap();
+                let value: Value = serde_json::from_slice(&normalized).unwrap();
+                let resources = wrapper
+                    .map(|wrapper| &value[wrapper]["resources"])
+                    .unwrap_or(&value["resources"]);
+                assert_eq!(resources["profile"], "constrained");
+                assert_eq!(
+                    resources["limits"],
+                    serde_json::json!({
+                        "max_layout_work_units": limit,
+                        "max_source_bytes": 4096
+                    })
+                );
+                assert_eq!(value.get("resources").is_some(), wrapper.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn resource_ceiling_allowlist_cannot_bypass_resource_validation() {
+        for (id, value, message) in [
+            ("unknown_limit", 1, "not part of resource contract"),
+            (BINDING_OPTIONS_JSON_LIMIT_ID, 1, "not overridable"),
+            ("max_source_bytes", 0, "must be at least 1"),
+        ] {
+            let input = serde_json::json!({ "resources": { "limits": { id: value } } });
+            let error = apply_resource_ceiling_json_with_allowed_overrides(
+                &serde_json::to_vec(&input).unwrap(),
+                "constrained",
+                &[],
+                &[id],
+            )
+            .unwrap_err();
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains(message), "{error:?}");
+        }
+    }
+
+    #[test]
+    fn resource_ceiling_allowed_overrides_keep_raw_options_byte_admission() {
+        let error = apply_resource_ceiling_json_with_allowed_overrides(
+            &vec![b' '; BINDING_OPTIONS_JSON_MAX_BYTES + 1],
+            "constrained",
+            &[],
+            &["max_layout_work_units"],
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert_eq!(
+            error.resource_details().unwrap().limit_id,
+            BINDING_OPTIONS_JSON_LIMIT_ID
+        );
+    }
+
+    #[cfg(not(feature = "svg"))]
+    #[test]
+    fn resource_ceiling_allowlist_rejects_uncompiled_layout_limits() {
+        let error = apply_resource_ceiling_json_with_allowed_overrides(
+            br#"{"resources":{"limits":{"max_layout_work_units":1000000}}}"#,
+            "constrained",
+            &[],
+            &["max_layout_work_units"],
+        )
+        .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("not part of resource contract"));
+    }
+
+    #[cfg(feature = "svg")]
+    #[test]
+    fn original_resource_ceiling_helpers_still_reject_raised_layout_limits() {
+        let input = br#"{"resources":{"limits":{"max_layout_work_units":125001}}}"#;
+        let error = apply_resource_ceiling_json(input, "constrained", &[]).unwrap_err();
+        assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        assert!(error.message().contains("max_layout_work_units"));
+        #[cfg(feature = "analysis")]
+        {
+            let analysis_error =
+                analysis_options_with_resource_ceiling(input, "constrained", &[]).unwrap_err();
+            assert_eq!(analysis_error.status(), error.status());
+            assert_eq!(analysis_error.message(), error.message());
         }
     }
 
