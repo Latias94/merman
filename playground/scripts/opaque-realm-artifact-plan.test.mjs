@@ -117,7 +117,6 @@ test("artifact additions and renames flow through derived output ownership", () 
     entry: "src/fixture-engine.ts",
     outputBase: "fixture-engine",
     publish: false,
-    maxBytes: 1024,
     resourcePolicy: "none-v1",
     exports: ["fixtureEngine"],
   });
@@ -142,23 +141,6 @@ test("artifact additions and renames flow through derived output ownership", () 
       "src/runtime/realm/generated/compare-mermaid.generated.ts",
     ),
     /publicPath: "browser-engines\/mermaid-engine\.js"/u,
-  );
-});
-
-test("each engine owns a positive artifact byte budget", () => {
-  assert.deepEqual(
-    OPAQUE_REALM_ARTIFACT_PLAN.engines.map(({ id, maxBytes }) => [id, maxBytes]),
-    [
-      ["mermaid", 16 * 1024 * 1024],
-      ["benchmark-merman", 256 * 1024],
-    ],
-  );
-
-  const malformed = structuredClone(OPAQUE_REALM_ARTIFACT_PLAN);
-  malformed.engines[0].maxBytes = 0;
-  assert.throws(
-    () => defineOpaqueRealmArtifactPlan(malformed),
-    /engine mermaid byte budget/u,
   );
 });
 

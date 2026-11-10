@@ -17,7 +17,7 @@
           "offset_y": 0.0,
           "padding": 16.0,
           "requested_dir": null,
-          "title": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
+          "title": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n  <img src=\"x\">",
           "title_label": {
             "height": 63.0,
             "width": 627.34,

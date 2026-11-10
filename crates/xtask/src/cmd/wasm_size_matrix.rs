@@ -45,7 +45,6 @@ struct Options {
     surface: Option<Surface>,
     artifact_profile: Option<String>,
     no_strip: bool,
-    budget_file: Option<PathBuf>,
     web_package_root: Option<PathBuf>,
 }
 
@@ -177,12 +176,6 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
     let all_artifacts = all_artifacts()?;
     let options = parse_options(args, &all_artifacts)?;
     let artifacts = selected_artifacts(&options, &all_artifacts)?;
-    validate_measurement_source(&options, &artifacts)?;
-    let budgets = options
-        .budget_file
-        .as_deref()
-        .map(|path| load_budget_file(path, &all_artifacts))
-        .transpose()?;
     let package_artifacts = options
         .web_package_root
         .as_deref()
@@ -205,8 +198,6 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
         "wasm-size-matrix columns=surface,artifact_profile,package,manifest,cargo_profile,target,default_features,features,capabilities,runtime_ids,outputs,raw_bytes,stripped_bytes,gzip_bytes,brotli_bytes,compressed_source,artifact"
     );
 
-    let mut budget_failures = Vec::new();
-
     for artifact in artifacts {
         let package_path = package_artifacts
             .as_ref()
@@ -218,23 +209,9 @@ pub(crate) fn wasm_size_matrix(args: Vec<String>) -> Result<(), XtaskError> {
             package_path.map(PathBuf::as_path),
         )?;
         println_measurement(artifact, &measurement);
-
-        if let Some(budgets) = budgets.as_ref() {
-            budget_failures.extend(check_budget(artifact, &measurement, budgets));
-        }
     }
 
-    if budget_failures.is_empty() {
-        if let Some(path) = options.budget_file.as_deref() {
-            println!(
-                "wasm-size-matrix budget_file={} result=ok",
-                resolve_repo_path(path).display()
-            );
-        }
-        Ok(())
-    } else {
-        Err(XtaskError::WasmSizeMatrixFailed(budget_failures.join("\n")))
-    }
+    Ok(())
 }
 
 pub(crate) fn check_typst_artifact_budget(
@@ -334,9 +311,6 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
             "--no-strip" => {
                 options.no_strip = true;
             }
-            "--budget-file" => {
-                options.budget_file = Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
-            }
             "--web-package-root" => {
                 options.web_package_root =
                     Some(PathBuf::from(iter.next().ok_or(XtaskError::Usage)?));
@@ -346,13 +320,6 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
                 return Err(XtaskError::Usage);
             }
         }
-    }
-
-    if options.no_strip && options.budget_file.is_some() {
-        return Err(XtaskError::WasmSizeMatrixFailed(
-            "--no-strip cannot be combined with --budget-file because committed budgets use stripped artifacts"
-                .to_string(),
-        ));
     }
 
     if options.surface.is_none() && options.artifact_profile.is_none() {
@@ -366,8 +333,9 @@ fn parse_options(args: Vec<String>, artifacts: &[WasmArtifact]) -> Result<Option
 
 fn print_usage(artifacts: &[WasmArtifact]) {
     println!(
-        "usage: xtask wasm-size-matrix (--surface web | --artifact-profile <web-id>) [--web-package-root <path>] [--no-strip] [--budget-file <path>]"
+        "usage: xtask wasm-size-matrix (--surface web | --artifact-profile <web-id>) [--web-package-root <path>] [--no-strip]"
     );
+    println!("  Web sizes are reported without byte ceilings");
     println!("  --web-package-root  measure assembled Web package artifacts instead of rebuilding");
     println!("  Typst: use build-typst-package --profile publish --budget-file <path>");
     println!();
@@ -566,6 +534,7 @@ fn validate_budget_coverage(
 
     let expected = artifacts
         .iter()
+        .filter(|artifact| artifact.surface == Surface::Typst)
         .map(|artifact| artifact.id.clone())
         .collect::<BTreeSet<_>>();
     let actual = budgets
@@ -577,7 +546,7 @@ fn validate_budget_coverage(
         let missing = expected.difference(&actual).cloned().collect::<Vec<_>>();
         let stale = actual.difference(&expected).cloned().collect::<Vec<_>>();
         return Err(XtaskError::WasmSizeMatrixFailed(format!(
-            "WASM size budgets must exactly cover artifact profiles; missing=[{}] stale=[{}]",
+            "WASM size budgets must exactly cover Typst artifact profiles; missing=[{}] stale=[{}]",
             missing.join(","),
             stale.join(",")
         )));
@@ -710,25 +679,6 @@ fn selected_artifacts<'a>(
     }
 
     Ok(artifacts)
-}
-
-fn validate_measurement_source(
-    options: &Options,
-    artifacts: &[&WasmArtifact],
-) -> Result<(), XtaskError> {
-    if options.budget_file.is_some()
-        && options.web_package_root.is_none()
-        && artifacts
-            .iter()
-            .any(|artifact| artifact.surface == Surface::Web)
-    {
-        return Err(XtaskError::WasmSizeMatrixFailed(
-            "budgeted Web measurements require --web-package-root because the committed budgets describe assembled npm package artifacts"
-                .to_string(),
-        ));
-    }
-
-    Ok(())
 }
 
 fn build_artifact(artifact: &WasmArtifact) -> Result<(), XtaskError> {
@@ -950,18 +900,23 @@ mod tests {
     }
 
     #[test]
-    fn budgeted_web_measurements_require_assembled_package_artifacts() {
-        let all_artifacts = artifacts();
-        let options = Options {
-            surface: Some(Surface::Web),
-            budget_file: Some(PathBuf::from("docs/release/WASM_SIZE_BUDGETS.json")),
-            ..Options::default()
-        };
-        let selected = selected_artifacts(&options, all_artifacts).unwrap();
+    fn web_package_measurements_succeed_without_a_budget() {
+        let temporary = tempfile::tempdir().unwrap();
+        for artifact in artifacts()
+            .iter()
+            .filter(|artifact| artifact.surface == Surface::Web)
+        {
+            write_web_package_artifact(temporary.path(), &artifact.id, artifact);
+        }
 
-        let error = validate_measurement_source(&options, &selected).unwrap_err();
-
-        assert!(error.to_string().contains("require --web-package-root"));
+        wasm_size_matrix(vec![
+            "--surface".to_string(),
+            "web".to_string(),
+            "--web-package-root".to_string(),
+            temporary.path().display().to_string(),
+            "--no-strip".to_string(),
+        ])
+        .unwrap();
     }
 
     #[test]
@@ -1093,7 +1048,7 @@ mod tests {
     }
 
     #[test]
-    fn option_parser_accepts_surface_artifact_profile_and_budget() {
+    fn option_parser_accepts_surface_artifact_profile_and_web_package_root() {
         let all_artifacts = artifacts();
         let options = parse_options(
             vec![
@@ -1101,8 +1056,6 @@ mod tests {
                 "web".to_string(),
                 "--artifact-profile".to_string(),
                 "web-analysis".to_string(),
-                "--budget-file".to_string(),
-                "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
                 "--web-package-root".to_string(),
                 "platforms/web/packages".to_string(),
             ],
@@ -1113,10 +1066,6 @@ mod tests {
         assert_eq!(options.surface, Some(Surface::Web));
         assert_eq!(options.artifact_profile.as_deref(), Some("web-analysis"));
         assert!(!options.no_strip);
-        assert_eq!(
-            options.budget_file.as_deref(),
-            Some(Path::new("docs/release/WASM_SIZE_BUDGETS.json"))
-        );
         assert_eq!(
             options.web_package_root.as_deref(),
             Some(Path::new("platforms/web/packages"))
@@ -1165,44 +1114,56 @@ mod tests {
     }
 
     #[test]
-    fn web_package_artifacts_reject_runtime_identity_drift() {
-        let temporary = tempfile::tempdir().unwrap();
-        let all_artifacts = artifacts();
-        let analysis = all_artifacts
-            .iter()
-            .find(|artifact| artifact.id == "web-analysis")
-            .unwrap();
-        write_web_package_artifact(temporary.path(), "slim", analysis);
-        let provenance_path = temporary
-            .path()
-            .join("slim/artifacts")
-            .join(WEB_PACKAGE_PROVENANCE);
-        let mut provenance: serde_json::Value =
-            serde_json::from_str(&fs::read_to_string(&provenance_path).unwrap()).unwrap();
-        provenance["runtime_capability_ids"] = serde_json::json!(["svg"]);
-        fs::write(provenance_path, serde_json::to_string(&provenance).unwrap()).unwrap();
+    fn web_package_artifacts_reject_runtime_and_output_identity_drift() {
+        for (field, expected) in [
+            ("runtime_capability_ids", "runtime capability IDs drifted"),
+            ("outputs", "output IDs drifted"),
+        ] {
+            let temporary = tempfile::tempdir().unwrap();
+            let analysis = artifacts()
+                .iter()
+                .find(|artifact| artifact.id == "web-analysis")
+                .unwrap();
+            write_web_package_artifact(temporary.path(), "slim", analysis);
+            let provenance_path = temporary
+                .path()
+                .join("slim/artifacts")
+                .join(WEB_PACKAGE_PROVENANCE);
+            let mut provenance: serde_json::Value =
+                serde_json::from_str(&fs::read_to_string(&provenance_path).unwrap()).unwrap();
+            provenance[field] = serde_json::json!(["svg"]);
+            fs::write(provenance_path, serde_json::to_string(&provenance).unwrap()).unwrap();
 
-        let error = load_web_package_artifacts(temporary.path(), &[analysis]).unwrap_err();
+            let error = load_web_package_artifacts(temporary.path(), &[analysis]).unwrap_err();
 
-        assert!(
-            error.to_string().contains("runtime capability IDs drifted"),
-            "{error}"
-        );
+            assert!(error.to_string().contains(expected), "{error}");
+        }
     }
 
     #[test]
-    fn option_parser_rejects_budget_checks_without_stripping() {
-        let error = parse_options(
+    fn option_parser_rejects_the_retired_web_budget_option() {
+        for mut args in [
+            vec!["--surface".to_string(), "web".to_string()],
             vec![
+                "--artifact-profile".to_string(),
+                "web-analysis".to_string(),
+                "--web-package-root".to_string(),
+                "platforms/web/packages".to_string(),
+            ],
+            vec![
+                "--surface".to_string(),
+                "web".to_string(),
                 "--no-strip".to_string(),
+            ],
+        ] {
+            args.extend([
                 "--budget-file".to_string(),
                 "docs/release/WASM_SIZE_BUDGETS.json".to_string(),
-            ],
-            artifacts(),
-        )
-        .unwrap_err();
+            ]);
+            let error = parse_options(args, artifacts()).unwrap_err();
 
-        assert!(error.to_string().contains("cannot be combined"), "{error}");
+            assert!(matches!(error, XtaskError::Usage), "{error}");
+        }
     }
 
     #[test]
@@ -1221,10 +1182,10 @@ mod tests {
     }
 
     #[test]
-    fn budget_check_reports_missing_artifact_profile_budget() {
+    fn typst_budget_check_reports_missing_artifact_profile_budget() {
         let artifact = artifacts()
             .iter()
-            .find(|artifact| artifact.id == "web-analysis")
+            .find(|artifact| artifact.id == "typst-wasm")
             .unwrap();
         let budgets = WasmSizeBudgets {
             schema_version: WASM_SIZE_BUDGET_SCHEMA_VERSION,
@@ -1239,15 +1200,15 @@ mod tests {
 
         assert_eq!(
             failures,
-            vec!["missing wasm size budget for artifact profile web-analysis"]
+            vec!["missing wasm size budget for artifact profile typst-wasm"]
         );
     }
 
     #[test]
-    fn budget_check_reports_only_exceeded_metrics() {
+    fn typst_budget_check_reports_only_exceeded_metrics() {
         let artifact = artifacts()
             .iter()
-            .find(|artifact| artifact.id == "web-analysis")
+            .find(|artifact| artifact.id == "typst-wasm")
             .unwrap();
         let mut budgets = WasmSizeBudgets {
             schema_version: WASM_SIZE_BUDGET_SCHEMA_VERSION,
@@ -1257,7 +1218,7 @@ mod tests {
             artifact_profiles: BTreeMap::new(),
         };
         budgets.artifact_profiles.insert(
-            "web-analysis".to_string(),
+            "typst-wasm".to_string(),
             WasmArtifactBudget {
                 max_raw_bytes: 9,
                 max_stripped_bytes: 7,
@@ -1272,19 +1233,84 @@ mod tests {
         assert_eq!(
             failures,
             vec![
-                "artifact profile web-analysis exceeds raw_bytes: actual=10 max=9",
-                "artifact profile web-analysis exceeds brotli_bytes: actual=4 max=3",
+                "artifact profile typst-wasm exceeds raw_bytes: actual=10 max=9",
+                "artifact profile typst-wasm exceeds brotli_bytes: actual=4 max=3",
             ]
         );
     }
 
     #[test]
-    fn committed_budget_exactly_covers_every_wasm_artifact_profile() {
+    fn typst_budget_check_accepts_limits_and_requires_stripped_bytes() {
+        let artifact = artifacts()
+            .iter()
+            .find(|artifact| artifact.id == "typst-wasm")
+            .unwrap();
+        let budgets = load_budget_file(
+            Path::new("docs/release/WASM_SIZE_BUDGETS.json"),
+            artifacts(),
+        )
+        .unwrap();
+        let budget = &budgets.artifact_profiles[&artifact.id];
+        let measurement = WasmMeasurement {
+            raw_bytes: budget.max_raw_bytes,
+            stripped_bytes: Some(budget.max_stripped_bytes),
+            gzip_bytes: budget.max_gzip_bytes,
+            brotli_bytes: budget.max_brotli_bytes,
+            ..measurement_for_test()
+        };
+
+        assert!(check_budget(artifact, &measurement, &budgets).is_empty());
+
+        let unstripped = WasmMeasurement {
+            stripped_bytes: None,
+            compressed_source: CompressionSource::Raw,
+            ..measurement
+        };
+        assert_eq!(
+            check_budget(artifact, &unstripped, &budgets),
+            vec![format!(
+                "artifact profile typst-wasm skipped stripped_bytes but budget requires max_stripped_bytes={}",
+                budget.max_stripped_bytes
+            )]
+        );
+    }
+
+    #[test]
+    fn committed_budget_exactly_covers_registered_typst_artifact_profiles() {
         load_budget_file(
             Path::new("docs/release/WASM_SIZE_BUDGETS.json"),
             artifacts(),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn budget_coverage_tracks_registered_typst_profiles() {
+        let mut registered = artifacts().clone();
+        let mut typst = registered
+            .iter()
+            .find(|artifact| artifact.id == "typst-wasm")
+            .unwrap()
+            .clone();
+        typst.id = "typst-preview".to_string();
+        registered.push(typst);
+        let mut budgets = load_budget_file(
+            Path::new("docs/release/WASM_SIZE_BUDGETS.json"),
+            artifacts(),
+        )
+        .unwrap();
+
+        let error = validate_budget_coverage(&budgets, &registered).unwrap_err();
+        assert!(
+            error.to_string().contains("missing=[typst-preview]"),
+            "{error}"
+        );
+
+        let limits = budgets.artifact_profiles["typst-wasm"].clone();
+        budgets
+            .artifact_profiles
+            .insert("typst-preview".to_string(), limits);
+        validate_budget_coverage(&budgets, &registered).unwrap();
     }
 
     #[test]
@@ -1294,9 +1320,9 @@ mod tests {
             artifacts(),
         )
         .unwrap();
-        budgets.artifact_profiles.remove("web-full");
+        budgets.artifact_profiles.remove("typst-wasm");
         budgets.artifact_profiles.insert(
-            "web-math".to_string(),
+            "web-full".to_string(),
             WasmArtifactBudget {
                 max_raw_bytes: 1,
                 max_stripped_bytes: 1,
@@ -1306,8 +1332,11 @@ mod tests {
         );
 
         let error = validate_budget_coverage(&budgets, artifacts()).unwrap_err();
-        assert!(error.to_string().contains("missing=[web-full]"), "{error}");
-        assert!(error.to_string().contains("stale=[web-math]"), "{error}");
+        assert!(
+            error.to_string().contains("missing=[typst-wasm]"),
+            "{error}"
+        );
+        assert!(error.to_string().contains("stale=[web-full]"), "{error}");
     }
 
     #[test]

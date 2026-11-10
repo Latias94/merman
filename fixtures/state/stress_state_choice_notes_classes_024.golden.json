@@ -263,7 +263,7 @@
         "domId": "state-Decide----parent-4",
         "id": "Decide----parent",
         "isGroup": true,
-        "label": "Multi-line note<br>\nwith HTML line break.",
+        "label": "Multi-line note<br>\n  with HTML line break.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -281,7 +281,7 @@
         "domId": "state-Decide----note-4",
         "id": "Decide----note-4",
         "isGroup": false,
-        "label": "Multi-line note<br>\nwith HTML line break.",
+        "label": "Multi-line note<br>\n  with HTML line break.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -397,7 +397,7 @@
         "id": "Decide",
         "note": {
           "position": "right of",
-          "text": "Multi-line note<br/>\nwith HTML line break."
+          "text": "Multi-line note<br/>\n  with HTML line break."
         },
         "start": null,
         "styles": [],

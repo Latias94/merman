@@ -99,15 +99,15 @@ fn structured_text_models() -> Vec<(&'static str, RenderSemanticModel)> {
     let packet = PacketDiagramModel {
         packet: vec![vec![
             PacketBlock {
-                start: 0,
-                end: 0,
-                bits: 1,
+                start: 0.0,
+                end: 0.0,
+                bits: 1.0,
                 label: "first".to_string(),
             },
             PacketBlock {
-                start: 1,
-                end: 1,
-                bits: 1,
+                start: 1.0,
+                end: 1.0,
+                bits: 1.0,
                 label: "second".to_string(),
             },
         ]],

@@ -32,7 +32,6 @@ struct VennSemanticState {
     model: VennDiagramModel,
     known_sets: HashSet<String>,
     current_sets: Option<Vec<String>>,
-    indent_mode: bool,
     #[cfg(feature = "editor-facts")]
     editor_facts: Option<EditorSemanticFacts>,
     #[cfg(feature = "editor-facts")]
@@ -45,7 +44,6 @@ impl VennSemanticState {
             model: VennDiagramModel::default(),
             known_sets: HashSet::new(),
             current_sets: None,
-            indent_mode: false,
             #[cfg(feature = "editor-facts")]
             editor_facts: match editor_demand {
                 EditorFactsDemand::Omit => None,
@@ -159,312 +157,366 @@ struct VennFieldSpan {
     selection: SourceSpan,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum VennTokenKind {
+    Header,
+    Title,
+    Set,
+    Union,
+    Text,
+    IndentedText,
+    Style,
+    Identifier,
+    String,
+    BracketLabel,
+    Numeric,
+    Color,
+    Comma,
+    Colon,
+    Newline,
+    End,
+    Invalid,
+}
+
+impl VennTokenKind {
+    fn starts_statement(self) -> bool {
+        matches!(
+            self,
+            Self::Title | Self::Set | Self::Union | Self::Text | Self::IndentedText | Self::Style
+        )
+    }
+
+    fn ends_statement(self) -> bool {
+        self.starts_statement() || matches!(self, Self::Newline | Self::End)
+    }
+
+    fn is_style_value(self) -> bool {
+        matches!(self, Self::Identifier | Self::Numeric | Self::Color)
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+struct VennToken {
+    kind: VennTokenKind,
+    span: SourceSpan,
+}
+
 struct VennCursor<'a> {
     input: &'a str,
-    #[cfg(feature = "editor-facts")]
-    line_start: usize,
     pos: usize,
+    consumed_end: usize,
+    lookahead: Option<VennToken>,
+    beginning_of_line: bool,
+    indent_mode: bool,
+    next_quote: usize,
+    next_label_delimiter: usize,
+    #[cfg(test)]
+    inspected_terminal_bytes: usize,
 }
 
 impl<'a> VennCursor<'a> {
-    fn new(input: &'a str, _line_start: usize) -> Self {
+    fn new(input: &'a str) -> Self {
         Self {
             input,
-            #[cfg(feature = "editor-facts")]
-            line_start: _line_start,
             pos: 0,
+            consumed_end: 0,
+            lookahead: None,
+            beginning_of_line: false,
+            indent_mode: false,
+            next_quote: 0,
+            next_label_delimiter: 0,
+            #[cfg(test)]
+            inspected_terminal_bytes: 0,
         }
     }
 
-    fn remaining(&self) -> &'a str {
-        &self.input[self.pos..]
+    fn peek(&mut self) -> VennToken {
+        if let Some(token) = self.lookahead {
+            return token;
+        }
+        let token = self.lex();
+        self.lookahead = Some(token);
+        token
     }
 
-    fn skip_ws(&mut self) {
-        self.pos += self
-            .remaining()
-            .chars()
-            .take_while(|ch| matches!(ch, ' ' | '\t'))
-            .map(char::len_utf8)
-            .sum::<usize>();
+    fn take(&mut self) -> VennToken {
+        let token = self.peek();
+        self.lookahead = None;
+        self.consumed_end = token.span.end;
+        token
     }
 
-    #[cfg(feature = "editor-facts")]
-    fn abs_start(&self) -> usize {
-        self.line_start + self.pos
+    fn token(&mut self, kind: VennTokenKind, start: usize, len: usize) -> VennToken {
+        self.pos = start + len;
+        VennToken {
+            kind,
+            span: SourceSpan::new(start, self.pos),
+        }
+    }
+
+    fn lex(&mut self) -> VennToken {
+        // Match venn.jison's rule order and bol state. Payload tokens are consumed whole
+        // before any following statement is considered; keywords use JavaScript's ASCII \b.
+        loop {
+            let start = self.pos;
+            let input = self.input;
+            let rest = &input[start..];
+            let Some(first) = rest.chars().next() else {
+                return self.token(VennTokenKind::End, start, 0);
+            };
+            let after_first = &rest[first.len_utf8()..];
+            if rest.starts_with("%%") {
+                self.pos += rest.find('\n').unwrap_or(rest.len());
+                continue;
+            }
+            if first != '}' && first.len_utf16() == 1 && after_first.starts_with("%%") {
+                self.pos += first.len_utf8() + after_first.find('\n').unwrap_or(after_first.len());
+                continue;
+            }
+            if matches!(first, ' ' | '\t') {
+                let len = rest
+                    .bytes()
+                    .take_while(|byte| matches!(byte, b' ' | b'\t'))
+                    .count();
+                self.pos += len;
+                let after = &self.input[self.pos..];
+                if self.beginning_of_line && self.indent_mode && keyword_prefix(after, "text") {
+                    self.beginning_of_line = false;
+                    return self.token(VennTokenKind::IndentedText, self.pos, "text".len());
+                }
+                continue;
+            }
+            if matches!(first, '\n' | '\r') {
+                let len = rest
+                    .bytes()
+                    .take_while(|byte| matches!(byte, b'\n' | b'\r'))
+                    .count();
+                self.beginning_of_line = true;
+                return self.token(VennTokenKind::Newline, start, len);
+            }
+            if self.beginning_of_line {
+                self.indent_mode = false;
+                self.beginning_of_line = false;
+            }
+
+            if let Some(len) = title_token_len(rest) {
+                return self.token(VennTokenKind::Title, start, len);
+            }
+            for (keyword, kind) in [
+                ("venn-beta", VennTokenKind::Header),
+                ("set", VennTokenKind::Set),
+                ("union", VennTokenKind::Union),
+                ("text", VennTokenKind::Text),
+                ("style", VennTokenKind::Style),
+            ] {
+                if keyword_prefix(rest, keyword) {
+                    return self.token(kind, start, keyword.len());
+                }
+            }
+            if let Some(len) = self.bracket_label_token_len(start) {
+                return self.token(VennTokenKind::BracketLabel, start, len);
+            }
+            if let Some((value, _)) = parse_numeric_token(rest) {
+                return self.token(VennTokenKind::Numeric, start, value.len());
+            }
+            if let Some((value, _)) =
+                parse_hex_color_token(rest).or_else(|| parse_rgb_like_token(rest))
+            {
+                return self.token(VennTokenKind::Color, start, value.len());
+            }
+            if let Some((value, _)) = parse_bare_identifier_token(rest) {
+                return self.token(VennTokenKind::Identifier, start, value.len());
+            }
+            if first == '"'
+                && let Some(end) = self.payload_delimiter(start + 1, true)
+            {
+                return self.token(VennTokenKind::String, start, end + 1 - start);
+            }
+            let kind = match first {
+                ',' => VennTokenKind::Comma,
+                ':' => VennTokenKind::Colon,
+                _ => VennTokenKind::Invalid,
+            };
+            return self.token(kind, start, first.len_utf8());
+        }
+    }
+
+    fn payload_delimiter(&mut self, start: usize, quoted: bool) -> Option<usize> {
+        let cached = if quoted {
+            &mut self.next_quote
+        } else {
+            &mut self.next_label_delimiter
+        };
+        // Lexing advances monotonically. Cache both the next delimiter and a missing
+        // delimiter (input.len()) so malformed nested openers cannot rescan a suffix.
+        if *cached < start {
+            let rest = &self.input[start..];
+            let distance = if quoted {
+                rest.find('"')
+            } else {
+                rest.find([']', '"'])
+            };
+            #[cfg(test)]
+            {
+                self.inspected_terminal_bytes +=
+                    distance.map_or(rest.len(), |distance| distance + 1);
+            }
+            *cached = distance.map_or(self.input.len(), |distance| start + distance);
+        }
+        (*cached < self.input.len()).then_some(*cached)
+    }
+
+    fn bracket_label_token_len(&mut self, start: usize) -> Option<usize> {
+        if self.input.as_bytes()[start] != b'[' {
+            return None;
+        }
+        if self.input.as_bytes().get(start + 1) == Some(&b'"') {
+            let end = self.payload_delimiter(start + 2, true)?;
+            return (self.input.as_bytes().get(end + 1) == Some(&b']')).then_some(end + 2 - start);
+        }
+        let end = self.payload_delimiter(start + 1, false)?;
+        (end > start + 1 && self.input.as_bytes()[end] == b']').then_some(end + 1 - start)
+    }
+
+    fn field(&self, token: VennToken) -> VennFieldSpan {
+        let raw = &self.input[token.span.start..token.span.end];
+        let (text, leading, trailing) = match token.kind {
+            VennTokenKind::String => (&raw[1..raw.len() - 1], 1, 1),
+            VennTokenKind::BracketLabel if raw.starts_with("[\"") => (&raw[2..raw.len() - 2], 2, 2),
+            VennTokenKind::BracketLabel => {
+                let inner = &raw[1..raw.len() - 1];
+                (
+                    inner.trim(),
+                    1 + inner.len() - inner.trim_start().len(),
+                    1 + inner.len() - inner.trim_end().len(),
+                )
+            }
+            _ => (raw, 0, 0),
+        };
+        #[cfg(not(feature = "editor-facts"))]
+        let _ = (leading, trailing);
+        VennFieldSpan {
+            text: text.to_string(),
+            #[cfg(feature = "editor-facts")]
+            span: token.span,
+            #[cfg(feature = "editor-facts")]
+            selection: SourceSpan::new(token.span.start + leading, token.span.end - trailing),
+        }
     }
 
     fn take_identifier_like(&mut self, diagram_type: &str) -> Result<VennFieldSpan> {
-        self.skip_ws();
-        #[cfg(feature = "editor-facts")]
-        let token_start = self.abs_start();
-        let rest = self.remaining();
-
-        if let Some((value, after)) = parse_string_token(rest) {
-            let consumed = rest.len() - after.len();
-            self.pos += consumed;
-            return Ok(VennFieldSpan {
-                text: normalize_text(&value),
-                #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(token_start, token_start + consumed),
-                #[cfg(feature = "editor-facts")]
-                selection: SourceSpan::new(token_start + 1, token_start + consumed - 1),
-            });
-        }
-
-        let Some((value, after)) = parse_bare_identifier_token(rest) else {
+        if !matches!(
+            self.peek().kind,
+            VennTokenKind::Identifier | VennTokenKind::String
+        ) {
             return Err(parse_error(diagram_type, "expected identifier"));
-        };
-        let consumed = rest.len() - after.len();
-        self.pos += consumed;
-        Ok(VennFieldSpan {
-            text: value.to_string(),
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(token_start, token_start + consumed),
-            #[cfg(feature = "editor-facts")]
-            selection: SourceSpan::new(token_start, token_start + consumed),
-        })
+        }
+        let token = self.take();
+        Ok(self.field(token))
     }
 
     fn take_bare_identifier(&mut self, diagram_type: &str) -> Result<VennFieldSpan> {
-        self.skip_ws();
-        #[cfg(feature = "editor-facts")]
-        let token_start = self.abs_start();
-        let rest = self.remaining();
-        let Some((value, after)) = parse_bare_identifier_token(rest) else {
+        if self.peek().kind != VennTokenKind::Identifier {
             return Err(parse_error(diagram_type, "expected identifier"));
-        };
-        let consumed = rest.len() - after.len();
-        self.pos += consumed;
-        Ok(VennFieldSpan {
-            text: value.to_string(),
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(token_start, token_start + consumed),
-            #[cfg(feature = "editor-facts")]
-            selection: SourceSpan::new(token_start, token_start + consumed),
-        })
+        }
+        let token = self.take();
+        Ok(self.field(token))
     }
 
     fn take_text_id(&mut self, diagram_type: &str) -> Result<(VennFieldSpan, TextIdKind)> {
-        self.skip_ws();
-        #[cfg(feature = "editor-facts")]
-        let token_start = self.abs_start();
-        let rest = self.remaining();
-
-        if let Some((value, after)) = parse_string_token(rest) {
-            let consumed = rest.len() - after.len();
-            self.pos += consumed;
-            return Ok((
-                VennFieldSpan {
-                    text: normalize_text(&value),
-                    #[cfg(feature = "editor-facts")]
-                    span: SourceSpan::new(token_start, token_start + consumed),
-                    #[cfg(feature = "editor-facts")]
-                    selection: SourceSpan::new(token_start + 1, token_start + consumed - 1),
-                },
-                TextIdKind::IdentifierOrString,
-            ));
+        if self.peek().kind == VennTokenKind::Numeric {
+            let token = self.take();
+            return Ok((self.field(token), TextIdKind::Numeric));
         }
-
-        if let Some((value, after)) = parse_numeric_token(rest) {
-            let consumed = rest.len() - after.len();
-            self.pos += consumed;
-            return Ok((
-                VennFieldSpan {
-                    text: value,
-                    #[cfg(feature = "editor-facts")]
-                    span: SourceSpan::new(token_start, token_start + consumed),
-                    #[cfg(feature = "editor-facts")]
-                    selection: SourceSpan::new(token_start, token_start + consumed),
-                },
-                TextIdKind::Numeric,
-            ));
-        }
-
         let token = self.take_identifier_like(diagram_type)?;
         Ok((token, TextIdKind::IdentifierOrString))
     }
 
     fn take_optional_bracket_label(&mut self, diagram_type: &str) -> Result<Option<VennFieldSpan>> {
-        self.skip_ws();
-        let Some(rest) = self.remaining().strip_prefix('[') else {
-            return Ok(None);
-        };
-
-        #[cfg(feature = "editor-facts")]
-        let token_start = self.abs_start();
-        if let Some(rest) = rest.strip_prefix('"') {
-            let Some(end) = rest.find("\"]") else {
-                return Err(parse_error(diagram_type, "unterminated bracket label"));
-            };
-            let text = rest[..end].to_string();
-            let consumed = end + 4;
-            self.pos += consumed;
-            if text.is_empty() {
-                return Ok(None);
-            }
-            return Ok(Some(VennFieldSpan {
-                text,
-                #[cfg(feature = "editor-facts")]
-                span: SourceSpan::new(token_start, token_start + consumed),
-                #[cfg(feature = "editor-facts")]
-                selection: SourceSpan::new(token_start + 2, token_start + 2 + end),
-            }));
+        let token = self.peek();
+        if token.kind == VennTokenKind::BracketLabel {
+            self.take();
+            return Ok(Some(self.field(token)));
         }
-
-        let Some(end) = rest.find(']') else {
+        if self.input[token.span.start..].starts_with('[') {
             return Err(parse_error(diagram_type, "unterminated bracket label"));
-        };
-        if rest[..end].contains('"') {
-            return Err(parse_error(diagram_type, "invalid bracket label"));
         }
-        let raw = &rest[..end];
-        let text = raw.trim().to_string();
-        let consumed = end + 2;
-        self.pos += consumed;
-        if text.is_empty() {
-            return Ok(None);
-        }
-        #[cfg(feature = "editor-facts")]
-        let leading = raw.len() - raw.trim_start().len();
-        #[cfg(feature = "editor-facts")]
-        let trailing = raw.len() - raw.trim_end().len();
-        #[cfg(feature = "editor-facts")]
-        let selection = SourceSpan::new(
-            token_start + 1 + leading,
-            token_start + 1 + raw.len() - trailing,
-        );
-        Ok(Some(VennFieldSpan {
-            text,
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(token_start, token_start + consumed),
-            #[cfg(feature = "editor-facts")]
-            selection,
-        }))
+        Ok(None)
     }
 
     fn take_optional_size(&mut self, diagram_type: &str) -> Result<Option<VennFieldSpan>> {
-        self.skip_ws();
-        let Some(_) = self.remaining().strip_prefix(':') else {
+        if !self.take_delimiter(':') {
             return Ok(None);
-        };
-
-        self.pos += 1;
-        self.skip_ws();
-        #[cfg(feature = "editor-facts")]
-        let token_start = self.abs_start();
-        let rest = self.remaining();
-        let Some((value, after)) = parse_numeric_token(rest) else {
-            return Err(parse_error(diagram_type, "expected numeric"));
-        };
-        let consumed = rest.len() - after.len();
-        self.pos += consumed;
-        Ok(Some(VennFieldSpan {
-            text: value,
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(token_start, token_start + consumed),
-            #[cfg(feature = "editor-facts")]
-            selection: SourceSpan::new(token_start, token_start + consumed),
-        }))
-    }
-
-    fn take_remaining_payload(&mut self) -> Option<VennFieldSpan> {
-        self.skip_ws();
-        let rest = self.remaining();
-        let trimmed = rest.trim_end();
-        if trimmed.is_empty() {
-            return None;
         }
-
-        #[cfg(feature = "editor-facts")]
-        let leading = rest.len() - rest.trim_start().len();
-        #[cfg(feature = "editor-facts")]
-        let trailing = rest.len() - trimmed.len();
-        #[cfg(feature = "editor-facts")]
-        let span_start = self.abs_start() + leading;
-        #[cfg(feature = "editor-facts")]
-        let span_end = self.abs_start() + rest.len() - trailing;
-        self.pos = self.input.len();
-
-        #[cfg(feature = "editor-facts")]
-        let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
-        {
-            SourceSpan::new(span_start + 1, span_end - 1)
-        } else {
-            SourceSpan::new(span_start, span_end)
-        };
-
-        Some(VennFieldSpan {
-            text: normalize_text(trimmed),
-            #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(span_start, span_end),
-            #[cfg(feature = "editor-facts")]
-            selection,
-        })
+        if self.peek().kind != VennTokenKind::Numeric {
+            return Err(parse_error(diagram_type, "expected numeric"));
+        }
+        let token = self.take();
+        Ok(Some(self.field(token)))
     }
 
     fn take_style_value(&mut self, diagram_type: &str) -> Result<VennFieldSpan> {
-        self.skip_ws();
-        #[cfg(feature = "editor-facts")]
-        let token_start = self.abs_start();
-        let rest = self.remaining();
-        let (raw, _after_raw) = take_style_value_segment(rest);
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
+        if self.peek().kind == VennTokenKind::String {
+            let token = self.take();
+            return Ok(self.field(token));
+        }
+        if !self.peek().kind.is_style_value() {
             return Err(parse_error(diagram_type, "expected style value"));
         }
-
-        #[cfg(feature = "editor-facts")]
-        let leading = raw.len() - raw.trim_start().len();
-        #[cfg(feature = "editor-facts")]
-        let span_start = token_start + leading;
-        #[cfg(feature = "editor-facts")]
-        let span_end = span_start + trimmed.len();
-        self.pos += raw.len();
-        let text = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"') {
-            normalize_text(trimmed)
-        } else {
-            style_value_tokens(trimmed, diagram_type)?.join(" ")
-        };
-
-        #[cfg(feature = "editor-facts")]
-        let selection = if trimmed.len() >= 2 && trimmed.starts_with('"') && trimmed.ends_with('"')
-        {
-            SourceSpan::new(span_start + 1, span_end - 1)
-        } else {
-            SourceSpan::new(span_start, span_end)
-        };
-
-        Ok(VennFieldSpan {
-            text,
+        let token = self.take();
+        let mut value = self.field(token);
+        while self.peek().kind.is_style_value() {
+            let token = self.take();
+            value.text.push(' ');
+            value
+                .text
+                .push_str(&self.input[token.span.start..token.span.end]);
             #[cfg(feature = "editor-facts")]
-            span: SourceSpan::new(span_start, span_end),
-            #[cfg(feature = "editor-facts")]
-            selection,
-        })
+            {
+                value.span.end = token.span.end;
+                value.selection.end = token.span.end;
+            }
+        }
+        if self.peek().kind == VennTokenKind::Invalid {
+            return Err(parse_error(diagram_type, "expected style value"));
+        }
+        Ok(value)
     }
 
-    fn expect_end(&self, diagram_type: &str) -> Result<()> {
-        if self.remaining().trim().is_empty() {
+    fn expect_end(&mut self, diagram_type: &str) -> Result<()> {
+        let token = self.peek();
+        if token.kind.ends_statement() {
             Ok(())
         } else {
             Err(parse_error(
                 diagram_type,
                 format!(
                     "unexpected trailing venn tokens: {}",
-                    self.remaining().trim()
+                    &self.input[token.span.start..token.span.end]
                 ),
             ))
         }
     }
 
     fn take_delimiter(&mut self, delimiter: char) -> bool {
-        if self.remaining().starts_with(delimiter) {
-            self.pos += delimiter.len_utf8();
+        let kind = match delimiter {
+            ',' => VennTokenKind::Comma,
+            ':' => VennTokenKind::Colon,
+            _ => return false,
+        };
+        if self.peek().kind == kind {
+            self.take();
             true
         } else {
             false
         }
+    }
+
+    fn recover_statement(&mut self, start: usize) -> SourceSpan {
+        while !self.peek().kind.ends_statement() {
+            self.take();
+        }
+        SourceSpan::new(start, self.consumed_end.max(start))
     }
 }
 
@@ -608,29 +660,25 @@ fn construct_venn_parse_outcome_controlled(
         editor_demand,
     );
     let mut header_decided = false;
-    let mut offset = 0usize;
     let mut first_error = None;
+    let mut cursor = VennCursor::new(code);
 
-    for segment in code.split_inclusive('\n') {
+    loop {
         control.checkpoint()?;
-        let line_start = offset;
-        offset += segment.len();
-        let line = segment.trim_end_matches(['\n', '\r']);
-        let stripped = strip_inline_comment_aware(line);
-        if stripped.trim().is_empty() {
+        let token = cursor.peek();
+        if token.kind == VennTokenKind::End {
+            break;
+        }
+        if token.kind == VennTokenKind::Newline {
+            cursor.take();
             continue;
         }
 
         if !header_decided {
             header_decided = true;
-            let indent = leading_indent_len(stripped);
-            let statement = &stripped[indent..];
-            let statement_start = line_start + indent;
-            let Some(rest) = strip_keyword_ci(statement, "venn-beta") else {
-                let span = SourceSpan::new(
-                    statement_start,
-                    statement_start + statement.trim_end().len(),
-                );
+            cursor.take();
+            if token.kind != VennTokenKind::Header {
+                let span = cursor.recover_statement(token.span.start);
                 recover_venn_error(
                     diagram_type,
                     &mut state,
@@ -640,11 +688,12 @@ fn construct_venn_parse_outcome_controlled(
                     "expected venn-beta header",
                     span,
                 );
+                cursor.indent_mode = false;
                 continue;
-            };
+            }
 
             #[cfg(feature = "editor-facts")]
-            let header_span = SourceSpan::new(statement_start, statement_start + "venn-beta".len());
+            let header_span = token.span;
             #[cfg(feature = "editor-facts")]
             if let Some(facts) = state.rich_editor_facts() {
                 facts.push_expected_syntax(EditorExpectedSyntax::new(
@@ -663,36 +712,11 @@ fn construct_venn_parse_outcome_controlled(
                 ));
             }
 
-            if !rest.trim().is_empty()
-                && let Err(error) = parse_venn_statement_facts(
-                    rest,
-                    statement_start + "venn-beta".len(),
-                    &mut state,
-                    diagram_type,
-                )
-            {
-                #[cfg(feature = "editor-facts")]
-                let message = venn_error_message(&error);
-                recover_venn_error(
-                    diagram_type,
-                    &mut state,
-                    &mut first_error,
-                    error,
-                    #[cfg(feature = "editor-facts")]
-                    format!("venn parser recovered after parse error: {message}"),
-                    SourceSpan::new(
-                        statement_start,
-                        statement_start + statement.trim_end().len(),
-                    ),
-                );
-            }
             continue;
         }
 
-        if let Err(error) =
-            parse_venn_statement_facts(stripped, line_start, &mut state, diagram_type)
-        {
-            let indent = leading_indent_len(stripped);
+        if let Err(error) = parse_venn_statement_facts(&mut cursor, &mut state, diagram_type) {
+            let span = cursor.recover_statement(token.span.start);
             #[cfg(feature = "editor-facts")]
             let message = venn_error_message(&error);
             recover_venn_error(
@@ -702,8 +726,9 @@ fn construct_venn_parse_outcome_controlled(
                 error,
                 #[cfg(feature = "editor-facts")]
                 format!("venn parser recovered after parse error: {message}"),
-                SourceSpan::new(line_start + indent, line_start + stripped.trim_end().len()),
+                span,
             );
+            cursor.indent_mode = false;
         }
     }
 
@@ -750,7 +775,6 @@ fn recover_venn_error(
         facts.mark_recovered_from_parse_error(recovery_message, Some(span));
     }
     state.current_sets = None;
-    state.indent_mode = false;
 }
 
 fn venn_error_message(error: &Error) -> String {
@@ -761,136 +785,81 @@ fn venn_error_message(error: &Error) -> String {
 }
 
 fn parse_venn_statement_facts(
-    line: &str,
-    line_start: usize,
+    cursor: &mut VennCursor<'_>,
     state: &mut VennSemanticState,
     diagram_type: &str,
 ) -> Result<()> {
-    let indent = leading_indent_len(line);
-    let statement = &line[indent..];
-    if statement.trim().is_empty() {
-        return Ok(());
-    }
-
-    let statement_start = line_start + indent;
-    if indent > 0 && state.indent_mode && starts_with_keyword_ci(statement, "text") {
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.rich_editor_facts() {
-            facts.push_directive_prefix("text");
-        }
-        let rest = strip_keyword_ci(statement, "text")
-            .expect("starts_with_keyword_ci and strip_keyword_ci agree");
-        return parse_venn_text_statement_facts(
-            rest,
-            statement_start + "text".len(),
-            state,
-            diagram_type,
-            true,
-        );
-    }
-
-    if indent == 0 {
-        state.indent_mode = false;
-    }
-
-    if let Some(rest) = strip_keyword_ci(statement, "title") {
-        let Some(separator) = rest.chars().next() else {
-            return Err(parse_error(diagram_type, "expected title text"));
+    let token = cursor.take();
+    #[cfg(feature = "editor-facts")]
+    if let Some(facts) = state.rich_editor_facts() {
+        let prefix = match token.kind {
+            VennTokenKind::Title => Some("title"),
+            VennTokenKind::Set => Some("set"),
+            VennTokenKind::Union => Some("union"),
+            VennTokenKind::Text | VennTokenKind::IndentedText => Some("text"),
+            VennTokenKind::Style => Some("style"),
+            _ => None,
         };
-        if !separator.is_whitespace()
-            || rest[separator.len_utf8()..].is_empty()
-            || rest.contains(['#', ';'])
-        {
-            return Err(parse_error(diagram_type, "invalid Venn title syntax"));
+        if let Some(prefix) = prefix {
+            facts.push_directive_prefix(prefix);
         }
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.rich_editor_facts() {
-            facts.push_directive_prefix("title");
-        }
-        let mut cursor = VennCursor::new(rest, statement_start + "title".len());
-        let Some(_payload) = cursor.take_remaining_payload() else {
-            return Err(parse_error(diagram_type, "expected title text"));
-        };
-        #[cfg(feature = "editor-facts")]
-        push_venn_payload_fact(
-            state.rich_editor_facts(),
-            &_payload,
-            "venn title",
-            EditorSemanticKind::String,
-        );
-        state.model.title = Some(rest.trim().to_string());
-        return Ok(());
     }
-
-    if let Some(rest) = strip_keyword_ci(statement, "set") {
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.rich_editor_facts() {
-            facts.push_directive_prefix("set");
+    match token.kind {
+        VennTokenKind::Title => {
+            cursor
+                .expect_end(diagram_type)
+                .map_err(|_| parse_error(diagram_type, "invalid Venn title syntax"))?;
+            let raw = &cursor.input[token.span.start + "title".len()..token.span.end];
+            let trimmed = raw.trim();
+            #[cfg(feature = "editor-facts")]
+            {
+                let start = token.span.start + "title".len() + raw.len() - raw.trim_start().len();
+                let end = start + trimmed.len();
+                let quoted =
+                    trimmed.starts_with('"') && trimmed.ends_with('"') && trimmed.len() >= 2;
+                push_venn_payload_fact(
+                    state.rich_editor_facts(),
+                    &VennFieldSpan {
+                        text: normalize_text(trimmed),
+                        span: SourceSpan::new(start, end),
+                        selection: SourceSpan::new(
+                            start + usize::from(quoted),
+                            end - usize::from(quoted),
+                        ),
+                    },
+                    "venn title",
+                    EditorSemanticKind::String,
+                );
+            }
+            state.model.title = Some(trimmed.to_string());
+            Ok(())
         }
-        return parse_venn_set_statement_facts(
-            rest,
-            statement_start + "set".len(),
+        VennTokenKind::Set => parse_venn_set_statement_facts(cursor, state, diagram_type),
+        VennTokenKind::Union => parse_venn_union_statement_facts(cursor, state, diagram_type),
+        VennTokenKind::Text | VennTokenKind::IndentedText => parse_venn_text_statement_facts(
+            cursor,
             state,
             diagram_type,
-        );
-    }
-
-    if let Some(rest) = strip_keyword_ci(statement, "union") {
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.rich_editor_facts() {
-            facts.push_directive_prefix("union");
-        }
-        return parse_venn_union_statement_facts(
-            rest,
-            statement_start + "union".len(),
-            state,
+            token.kind == VennTokenKind::IndentedText,
+        ),
+        VennTokenKind::Style => parse_venn_style_statement_facts(cursor, state, diagram_type),
+        _ => Err(parse_error(
             diagram_type,
-        );
+            format!(
+                "unexpected venn statement: {}",
+                &cursor.input[token.span.start..token.span.end]
+            ),
+        )),
     }
-
-    if let Some(rest) = strip_keyword_ci(statement, "text") {
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.rich_editor_facts() {
-            facts.push_directive_prefix("text");
-        }
-        return parse_venn_text_statement_facts(
-            rest,
-            statement_start + "text".len(),
-            state,
-            diagram_type,
-            false,
-        );
-    }
-
-    if let Some(rest) = strip_keyword_ci(statement, "style") {
-        #[cfg(feature = "editor-facts")]
-        if let Some(facts) = state.rich_editor_facts() {
-            facts.push_directive_prefix("style");
-        }
-        return parse_venn_style_statement_facts(
-            rest,
-            statement_start + "style".len(),
-            state,
-            diagram_type,
-        );
-    }
-
-    Err(parse_error(
-        diagram_type,
-        format!("unexpected venn statement: {}", statement.trim()),
-    ))
 }
 
 fn parse_venn_set_statement_facts(
-    input: &str,
-    line_start: usize,
+    cursor: &mut VennCursor<'_>,
     state: &mut VennSemanticState,
     diagram_type: &str,
 ) -> Result<()> {
-    let mut cursor = VennCursor::new(input, line_start);
     let parsed = (|| {
         let identifier = cursor.take_identifier_like(diagram_type)?;
-        cursor.skip_ws();
         if cursor.take_delimiter(',') {
             return Err(parse_error(diagram_type, "set requires single identifier"));
         }
@@ -946,19 +915,17 @@ fn parse_venn_set_statement_facts(
         label.map(|field| field.text),
         size_value,
     );
-    state.indent_mode = true;
+    cursor.indent_mode = true;
     Ok(())
 }
 
 fn parse_venn_union_statement_facts(
-    input: &str,
-    line_start: usize,
+    cursor: &mut VennCursor<'_>,
     state: &mut VennSemanticState,
     diagram_type: &str,
 ) -> Result<()> {
-    let mut cursor = VennCursor::new(input, line_start);
     let parsed = (|| {
-        let identifiers = parse_venn_identifier_list(&mut cursor, diagram_type)?;
+        let identifiers = parse_venn_identifier_list(cursor, diagram_type)?;
         if identifiers.len() < 2 {
             return Err(parse_error(
                 diagram_type,
@@ -1024,18 +991,16 @@ fn parse_venn_union_statement_facts(
     }
 
     state.add_subset(identifier_values, label.map(|field| field.text), size_value);
-    state.indent_mode = true;
+    cursor.indent_mode = true;
     Ok(())
 }
 
 fn parse_venn_text_statement_facts(
-    input: &str,
-    line_start: usize,
+    cursor: &mut VennCursor<'_>,
     state: &mut VennSemanticState,
     diagram_type: &str,
     indented: bool,
 ) -> Result<()> {
-    let mut cursor = VennCursor::new(input, line_start);
     let parsed = (|| {
         let (explicit_sets, set_fields) = if indented {
             (
@@ -1046,7 +1011,7 @@ fn parse_venn_text_statement_facts(
                 None,
             )
         } else {
-            let sets = parse_venn_identifier_list(&mut cursor, diagram_type)?;
+            let sets = parse_venn_identifier_list(cursor, diagram_type)?;
             let values = sets.iter().map(|set| set.text.clone()).collect::<Vec<_>>();
             (values, Some(sets))
         };
@@ -1121,31 +1086,21 @@ fn parse_venn_text_statement_facts(
 }
 
 fn parse_venn_style_statement_facts(
-    input: &str,
-    line_start: usize,
+    cursor: &mut VennCursor<'_>,
     state: &mut VennSemanticState,
     diagram_type: &str,
 ) -> Result<()> {
-    let mut cursor = VennCursor::new(input, line_start);
     let parsed = (|| {
-        let targets = parse_venn_identifier_list(&mut cursor, diagram_type)?;
+        let targets = parse_venn_identifier_list(cursor, diagram_type)?;
         let mut styles = Vec::new();
         loop {
-            cursor.skip_ws();
-            let value = cursor.remaining();
-            if value.trim().is_empty() {
-                break;
-            }
-
             let key = cursor.take_bare_identifier(diagram_type)?;
-            cursor.skip_ws();
             if !cursor.take_delimiter(':') {
                 return Err(parse_error(diagram_type, "expected ':' after style field"));
             }
             let value = cursor.take_style_value(diagram_type)?;
             styles.push((key, value));
 
-            cursor.skip_ws();
             if cursor.take_delimiter(',') {
                 continue;
             }
@@ -1153,9 +1108,6 @@ fn parse_venn_style_statement_facts(
         }
 
         cursor.expect_end(diagram_type)?;
-        if styles.is_empty() {
-            return Err(parse_error(diagram_type, "expected style field"));
-        }
         Ok((targets, styles))
     })();
     let (targets, styles) = parsed?;
@@ -1206,7 +1158,6 @@ fn parse_venn_identifier_list(
     let mut identifiers = vec![first];
 
     loop {
-        cursor.skip_ws();
         if !cursor.take_delimiter(',') {
             break;
         }
@@ -1293,11 +1244,28 @@ fn push_venn_payload_fact(
     ));
 }
 
-fn parse_string_token(input: &str) -> Option<(String, &str)> {
-    let rest = input.strip_prefix('"')?;
-    let end = rest.find('"')?;
-    let value = &input[..end + 2];
-    Some((value.to_string(), &rest[end + 1..]))
+fn keyword_prefix(input: &str, keyword: &str) -> bool {
+    input
+        .get(..keyword.len())
+        .is_some_and(|candidate| candidate.eq_ignore_ascii_case(keyword))
+        && input
+            .as_bytes()
+            .get(keyword.len())
+            .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+}
+
+fn title_token_len(input: &str) -> Option<usize> {
+    if !input.get(..5)?.eq_ignore_ascii_case("title") {
+        return None;
+    }
+    let rest = &input[5..];
+    let separator = rest.chars().next()?;
+    if !crate::diagrams::scan::is_ecmascript_whitespace(separator) {
+        return None;
+    }
+    let payload = &rest[separator.len_utf8()..];
+    let end = payload.find(['#', '\n', ';']).unwrap_or(payload.len());
+    (end > 0).then_some(5 + separator.len_utf8() + end)
 }
 
 fn parse_bare_identifier_token(input: &str) -> Option<(&str, &str)> {
@@ -1319,7 +1287,7 @@ fn parse_bare_identifier_token(input: &str) -> Option<(&str, &str)> {
     Some((&input[..end], &input[end..]))
 }
 
-fn parse_numeric_token(input: &str) -> Option<(String, &str)> {
+fn parse_numeric_token(input: &str) -> Option<(&str, &str)> {
     let bytes = input.as_bytes();
     let mut end = usize::from(
         bytes
@@ -1345,79 +1313,54 @@ fn parse_numeric_token(input: &str) -> Option<(String, &str)> {
         return None;
     }
 
-    Some((input[..end].to_string(), &input[end..]))
-}
-
-fn take_style_value_segment(input: &str) -> (&str, &str) {
-    let mut in_quote = false;
-    let mut paren_depth = 0usize;
-
-    for (idx, ch) in input.char_indices() {
-        match ch {
-            '"' => in_quote = !in_quote,
-            '(' if !in_quote => paren_depth += 1,
-            ')' if !in_quote => paren_depth = paren_depth.saturating_sub(1),
-            ',' if !in_quote && paren_depth == 0 => return (&input[..idx], &input[idx..]),
-            _ => {}
-        }
-    }
-
-    (input, "")
-}
-
-fn style_value_tokens(input: &str, diagram_type: &str) -> Result<Vec<String>> {
-    let mut rest = input.trim();
-    let mut tokens = Vec::new();
-    while !rest.is_empty() {
-        if let Some((token, after)) = parse_rgb_like_token(rest) {
-            tokens.push(token.to_string());
-            rest = skip_ws(after);
-            continue;
-        }
-        if let Some((token, after)) = parse_hex_color_token(rest) {
-            tokens.push(token.to_string());
-            rest = skip_ws(after);
-            continue;
-        }
-        if let Some((token, after)) = parse_numeric_token(rest) {
-            tokens.push(token);
-            rest = skip_ws(after);
-            continue;
-        }
-        if let Some((identifier, after)) = parse_bare_identifier_token(rest) {
-            tokens.push(identifier.to_string());
-            rest = skip_ws(after);
-            continue;
-        }
-
-        return Err(parse_error(diagram_type, "expected style value"));
-    }
-    Ok(tokens)
+    Some((&input[..end], &input[end..]))
 }
 
 fn parse_rgb_like_token(input: &str) -> Option<(&str, &str)> {
-    let lower = input.to_ascii_lowercase();
-    let (prefix_len, component_count) = if lower.starts_with("rgba(") {
+    let (prefix_len, component_count) = if input
+        .get(..5)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("rgba("))
+    {
         ("rgba(".len(), 4)
-    } else if lower.starts_with("rgb(") {
+    } else if input
+        .get(..4)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case("rgb("))
+    {
         ("rgb(".len(), 3)
     } else {
         return None;
     };
-    let end = input.find(')')?;
-    let components = input[prefix_len..end].split(',').collect::<Vec<_>>();
-    if components.len() != component_count
-        || components.iter().any(|component| {
-            let component = component.trim();
-            component.is_empty()
-                || !component
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || byte == b'.')
-        })
-    {
-        return None;
+    let mut pos = prefix_len;
+    for component in 0..component_count {
+        pos += input[pos..]
+            .chars()
+            .take_while(|ch| crate::diagrams::scan::is_ecmascript_whitespace(*ch))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let number_start = pos;
+        pos += input[pos..]
+            .bytes()
+            .take_while(|byte| byte.is_ascii_digit() || *byte == b'.')
+            .count();
+        if number_start == pos {
+            return None;
+        }
+        pos += input[pos..]
+            .chars()
+            .take_while(|ch| crate::diagrams::scan::is_ecmascript_whitespace(*ch))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let delimiter = if component + 1 == component_count {
+            b')'
+        } else {
+            b','
+        };
+        if input.as_bytes().get(pos) != Some(&delimiter) {
+            return None;
+        }
+        pos += 1;
     }
-    Some((&input[..end + 1], &input[end + 1..]))
+    Some((&input[..pos], &input[pos..]))
 }
 
 fn parse_hex_color_token(input: &str) -> Option<(&str, &str)> {
@@ -1425,6 +1368,7 @@ fn parse_hex_color_token(input: &str) -> Option<(&str, &str)> {
     let len = rest
         .bytes()
         .take_while(|byte| byte.is_ascii_hexdigit())
+        .take(8)
         .count();
     if (3..=8).contains(&len) {
         Some((&input[..len + 1], &input[len + 1..]))
@@ -1451,69 +1395,6 @@ fn normalize_text(text: &str) -> String {
     }
 }
 
-fn leading_indent_len(line: &str) -> usize {
-    line.chars()
-        .take_while(|ch| matches!(ch, ' ' | '\t'))
-        .map(char::len_utf8)
-        .sum()
-}
-
-fn skip_ws(input: &str) -> &str {
-    input.trim_start_matches([' ', '\t'])
-}
-
-fn strip_keyword_ci<'a>(input: &'a str, keyword: &str) -> Option<&'a str> {
-    let candidate = input.get(..keyword.len())?;
-    if !candidate.eq_ignore_ascii_case(keyword) {
-        return None;
-    }
-    let rest = &input[keyword.len()..];
-    if rest
-        .chars()
-        .next()
-        .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
-    {
-        return None;
-    }
-    Some(rest)
-}
-
-fn starts_with_keyword_ci(input: &str, keyword: &str) -> bool {
-    let Some(candidate) = input.get(..keyword.len()) else {
-        return false;
-    };
-    if !candidate.eq_ignore_ascii_case(keyword) {
-        return false;
-    }
-    input[keyword.len()..]
-        .chars()
-        .next()
-        .is_none_or(|ch| ch.is_whitespace())
-}
-
-fn strip_inline_comment_aware(line: &str) -> &str {
-    let mut in_quote = false;
-    let mut bracket_depth = 0usize;
-    let mut iter = line.char_indices().peekable();
-
-    while let Some((idx, ch)) = iter.next() {
-        match ch {
-            '"' => in_quote = !in_quote,
-            '[' if !in_quote => bracket_depth += 1,
-            ']' if !in_quote => bracket_depth = bracket_depth.saturating_sub(1),
-            '%' if !in_quote
-                && bracket_depth == 0
-                && iter.peek().is_some_and(|(_, next)| *next == '%') =>
-            {
-                return &line[..idx];
-            }
-            _ => {}
-        }
-    }
-
-    line
-}
-
 fn parse_error(diagram_type: &str, message: impl Into<String>) -> Error {
     Error::diagram_parse_fallback(diagram_type.to_string(), message.into())
 }
@@ -1538,6 +1419,344 @@ mod tests {
 
     fn parse(input: &str) -> VennDiagramModel {
         parse_venn_model_for_render(input, &meta()).unwrap()
+    }
+
+    #[test]
+    fn venn_adjacent_sets_share_model_and_editor_semantics() {
+        for (body, first_size) in [("set A:1set B", 1.0), ("set A set B", 10.0)] {
+            let source = format!("venn-beta\n{body}\n");
+            let model = parse(&source);
+            assert_eq!(model.subsets.len(), 2);
+            assert_eq!(model.subsets[0].sets, ["A"]);
+            assert_eq!(model.subsets[0].size, first_size);
+            assert_eq!(model.subsets[1].sets, ["B"]);
+            assert_eq!(model.subsets[1].size, 10.0);
+            let compat = parse_venn(&source, &meta()).unwrap();
+            assert_eq!(compat["subsets"], json!(model.subsets));
+
+            #[cfg(feature = "editor-facts")]
+            {
+                let (combined, facts) =
+                    crate::family::test_support::into_result(parse_venn_json_and_editor_facts(
+                        &source,
+                        &meta(),
+                        &crate::OperationControl::new(),
+                    ))
+                    .unwrap();
+                assert_eq!(combined, compat);
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+                assert!(facts.diagnostics.is_empty());
+                for name in ["A", "B"] {
+                    let start = source.find(name).unwrap();
+                    let symbol = facts
+                        .symbols
+                        .iter()
+                        .find(|symbol| {
+                            symbol.name == name && symbol.detail.as_deref() == Some("venn set")
+                        })
+                        .unwrap();
+                    assert_eq!(symbol.span, SourceSpan::new(start, start + 1));
+                    assert_eq!(symbol.selection, symbol.span);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn venn_adjacent_union_text_and_styles_follow_grammar() {
+        let source = concat!(
+            "venn-beta\n",
+            "set A[set union text style]set B[Beta]:2",
+            "union A,B[Both]:.5text A note[set union text style]",
+            "style A fill:rgb(1, 2, 3), stroke:red blue ",
+            "style B fill:\"set A union text style\"set C\n",
+        );
+        let model = parse(source);
+        assert_eq!(model.subsets.len(), 4);
+        assert_eq!(
+            model.subsets[0].label.as_deref(),
+            Some("set union text style")
+        );
+        assert_eq!(model.subsets[1].size, 2.0);
+        assert_eq!(model.subsets[2].sets, ["A", "B"]);
+        assert_eq!(model.subsets[2].label.as_deref(), Some("Both"));
+        assert_eq!(model.subsets[2].size, 0.5);
+        assert_eq!(model.subsets[3].sets, ["C"]);
+        assert_eq!(model.text_nodes.len(), 1);
+        assert_eq!(model.text_nodes[0].sets, ["A"]);
+        assert_eq!(model.text_nodes[0].id, "note");
+        assert_eq!(
+            model.text_nodes[0].label.as_deref(),
+            Some("set union text style")
+        );
+        assert_eq!(model.style_entries.len(), 2);
+        assert_eq!(model.style_entries[0].styles["fill"], "rgb(1, 2, 3)");
+        assert_eq!(model.style_entries[0].styles["stroke"], "red blue");
+        assert_eq!(
+            model.style_entries[1].styles["fill"],
+            "set A union text style"
+        );
+    }
+
+    #[test]
+    fn venn_adjacent_statements_preserve_bol_indent_mode() {
+        let model = parse(concat!(
+            "venn-beta\nset A:1set B\n",
+            "  text\"one\" text A two\n",
+            "  %% comment\n\n",
+            "  text 1set C\n",
+            "  text three\n",
+            "  style A fill:red\n",
+            "  text A explicit\n",
+        ));
+        let texts = model
+            .text_nodes
+            .iter()
+            .map(|node| {
+                (
+                    node.sets.iter().map(String::as_str).collect::<Vec<_>>(),
+                    node.id.as_str(),
+                )
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            texts,
+            vec![
+                (vec!["B"], "one"),
+                (vec!["A"], "two"),
+                (vec!["B"], "1"),
+                (vec!["C"], "three"),
+                (vec!["A"], "explicit"),
+            ]
+        );
+    }
+
+    #[test]
+    fn venn_adjacent_multiline_payloads_keep_keyword_text() {
+        let source = concat!(
+            "venn-beta\n",
+            "set A[\"first\nset second\"]",
+            "text A \"text\nstyle payload\"",
+            "style A fill:\"union\nset payload\"set B\n",
+        );
+        let model = parse(source);
+        assert_eq!(model.subsets.len(), 2);
+        assert_eq!(model.subsets[0].label.as_deref(), Some("first\nset second"));
+        assert_eq!(model.text_nodes[0].id, "text\nstyle payload");
+        assert_eq!(model.style_entries[0].styles["fill"], "union\nset payload");
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_venn_json_and_editor_facts,
+                source,
+                &meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            for (raw, name, detail, inset) in [
+                (
+                    "[\"first\nset second\"]",
+                    "first\nset second",
+                    "venn set label",
+                    2,
+                ),
+                (
+                    "\"text\nstyle payload\"",
+                    "text\nstyle payload",
+                    "venn text node",
+                    1,
+                ),
+                (
+                    "\"union\nset payload\"",
+                    "union\nset payload",
+                    "venn style value",
+                    1,
+                ),
+            ] {
+                let start = source.find(raw).unwrap();
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+                    .unwrap();
+                assert_eq!(symbol.span, SourceSpan::new(start, start + raw.len()));
+                assert_eq!(
+                    symbol.selection,
+                    SourceSpan::new(start + inset, start + raw.len() - inset)
+                );
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn venn_adjacent_public_ranges_preserve_bom_unicode_and_line_endings() {
+        let engine = MermaidEngine::new();
+        for newline in ["\n", "\r\n"] {
+            let source = format!(
+                "\u{feff}%% préface{newline}venn-beta{newline}set \"集合\"[\"标签\"]:1set B{newline}union \"集合\",B[\"共同\"]:.5text \"集合\" \"注记\"[\"正文\"]style B fill:\"set 关键词\"set C{newline}"
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Venn(model) = parsed.model() else {
+                panic!("expected Venn model");
+            };
+            assert_eq!(model.subsets.len(), 4);
+            assert_eq!(model.subsets[0].sets, ["集合"]);
+            assert_eq!(model.subsets[2].sets, ["B", "集合"]);
+            assert_eq!(model.text_nodes[0].id, "注记");
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("venn", &source)
+                .unwrap()
+                .unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            for (raw, name, detail, inset) in [
+                ("venn-beta", "venn-beta", "venn header", 0),
+                ("\"集合\"", "集合", "venn set", 1),
+                ("[\"标签\"]", "标签", "venn set label", 2),
+                ("[\"共同\"]", "共同", "venn union label", 2),
+                ("\"注记\"", "注记", "venn text node", 1),
+                ("[\"正文\"]", "正文", "venn text label", 2),
+                ("\"set 关键词\"", "set 关键词", "venn style value", 1),
+            ] {
+                let start = source.find(raw).unwrap();
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| symbol.name == name && symbol.detail.as_deref() == Some(detail))
+                    .unwrap_or_else(|| panic!("missing {detail}: {name}"));
+                assert_eq!(symbol.span, SourceSpan::new(start, start + raw.len()));
+                assert_eq!(
+                    symbol.selection,
+                    SourceSpan::new(start + inset, start + raw.len() - inset)
+                );
+            }
+            for name in ["B", "C"] {
+                let start = source.find(&format!("set {name}")).unwrap() + 4;
+                let symbol = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| {
+                        symbol.name == name && symbol.detail.as_deref() == Some("venn set")
+                    })
+                    .unwrap();
+                assert_eq!(symbol.selection, SourceSpan::new(start, start + 1));
+            }
+        }
+    }
+
+    #[test]
+    fn venn_adjacent_recovery_preserves_completed_and_following_statements() {
+        for newline in ["\n", "\r\n"] {
+            for (body, invalid) in [
+                ("set A:1union A,set C", "union A,"),
+                ("set A:1set B invalid set C", "set B invalid"),
+            ] {
+                let source = format!("venn-beta{newline}{body}{newline}set D{newline}");
+                let start = source.find(invalid).unwrap();
+                let expected = SourceSpan::new(start, start + invalid.len());
+                let Error::DiagramParse { diagnostic, .. } =
+                    parse_venn(&source, &meta()).unwrap_err()
+                else {
+                    panic!("expected Venn parse error");
+                };
+                assert_eq!(diagnostic.span(), Some(expected));
+                #[cfg(feature = "editor-facts")]
+                {
+                    let facts = crate::family::test_support::editor_facts(
+                        parse_venn_json_and_editor_facts,
+                        &source,
+                        &meta(),
+                    );
+                    assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                    assert!(
+                        facts
+                            .diagnostics
+                            .iter()
+                            .any(|diagnostic| diagnostic.span == Some(expected))
+                    );
+                    let sets = facts
+                        .symbols
+                        .iter()
+                        .filter(|symbol| symbol.detail.as_deref() == Some("venn set"))
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        sets.iter()
+                            .map(|symbol| symbol.name.as_str())
+                            .collect::<Vec<_>>(),
+                        ["A", "C", "D"]
+                    );
+                    for symbol in sets {
+                        let offset = source.find(&format!("set {}", symbol.name)).unwrap() + 4;
+                        assert_eq!(symbol.selection, SourceSpan::new(offset, offset + 1));
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn venn_adjacent_tokens_do_not_relax_invalid_follow_rules() {
+        for body in [
+            "set A:1setB",
+            "set A\ntext A 1[label]set B",
+            "set A\nstyle A fill:\"a\" red set B",
+            "set A\nstyle A fill:red \"a\" set B",
+        ] {
+            assert!(
+                parse_venn(&format!("venn-beta\n{body}\n"), &meta()).is_err(),
+                "{body}"
+            );
+        }
+    }
+
+    #[test]
+    fn venn_adjacent_comments_preserve_utf16_prefix_rules_and_byte_ranges() {
+        for prefix in ["é", "中", " "] {
+            let source = format!("venn-beta\n{prefix}%% comment\nset A\n");
+            assert_eq!(parse(&source).subsets[0].sets, ["A"]);
+        }
+        for newline in ["\n", "\r\n"] {
+            let source = format!("venn-beta{newline}😀%% comment{newline}set A{newline}");
+            let start = source.find('😀').unwrap();
+            let expected = SourceSpan::new(start, start + '😀'.len_utf8());
+            let Error::DiagramParse { diagnostic, .. } = parse_venn(&source, &meta()).unwrap_err()
+            else {
+                panic!("expected Venn lexical parse error");
+            };
+            assert_eq!(diagnostic.span(), Some(expected));
+            #[cfg(feature = "editor-facts")]
+            {
+                let original = format!("\u{feff}{source}");
+                let facts = MermaidEngine::new()
+                    .parse_editor_semantic_facts_with_type_sync("venn", &original)
+                    .unwrap()
+                    .unwrap();
+                let original_start = original.find('😀').unwrap();
+                assert_eq!(facts.completeness, EditorSemanticCompleteness::Recovered);
+                assert!(facts.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.span
+                        == Some(SourceSpan::new(
+                            original_start,
+                            original_start + '😀'.len_utf8(),
+                        ))
+                }));
+                let entity = facts
+                    .symbols
+                    .iter()
+                    .find(|symbol| {
+                        symbol.name == "A" && symbol.detail.as_deref() == Some("venn set")
+                    })
+                    .unwrap();
+                let entity_start = original.find("set A").unwrap() + 4;
+                assert_eq!(
+                    entity.selection,
+                    SourceSpan::new(entity_start, entity_start + 1)
+                );
+            }
+        }
     }
 
     #[test]
@@ -2119,6 +2338,37 @@ style A,B fill:#ff6b6b, color:red
 mod semantic_tests {
     use super::*;
 
+    #[test]
+    fn venn_adjacent_recovery_bounds_failed_payload_lookahead() {
+        for count in [256, 2048] {
+            for (opener, suffix) in [("[[", ""), ("[[", "\""), ("[\"", ""), ("rgb(", "")] {
+                let source = format!(
+                    "venn-beta\nset A {}{suffix}\nset Later\n",
+                    opener.repeat(count),
+                );
+                let mut cursor = VennCursor::new(&source);
+                while cursor.peek().kind != VennTokenKind::End {
+                    cursor.take();
+                }
+                assert!(
+                    cursor.inspected_terminal_bytes <= source.len() * 2,
+                    "payload lookahead rescanned a suffix: {opener:?}, {count}, {} bytes inspected",
+                    cursor.inspected_terminal_bytes,
+                );
+                let outcome = construct_venn_parse_outcome_controlled(
+                    &source,
+                    "venn",
+                    #[cfg(feature = "editor-facts")]
+                    EditorFactsDemand::Capture,
+                    &crate::OperationControl::new(),
+                )
+                .unwrap();
+                assert!(outcome.first_error.is_some());
+                assert_eq!(outcome.source.model.subsets.last().unwrap().sets, ["Later"]);
+            }
+        }
+    }
+
     fn metadata() -> crate::SemanticMetadata {
         crate::SemanticMetadata {
             diagram_type: "venn".to_string(),
@@ -2177,8 +2427,7 @@ mod semantic_tests {
         let source = concat!(
             "venn-beta\n",
             "title <b>Overlap</b>\n",
-            "set B[\"Backend\"]:12\n",
-            "set A[\"Frontend\"]:20\n",
+            "set B[\"Backend\"]:12set A[\"Frontend\"]:20",
             "union B,A[\"Shared\"]:3\n",
             "  text note[\"API contracts\"]\n",
             "style B,A fill:#ff0000, color:blue\n",
@@ -2255,7 +2504,7 @@ mod semantic_tests {
 
     #[test]
     fn semantic_entry_can_cancel_between_statements() {
-        let source = "venn-beta\nset A\nset B\nset C\nset D\n";
+        let source = "venn-beta\nset A set B set C set D\n";
         let control = crate::OperationControl::new();
         control.cancel_after_checkpoints(4);
         assert!(matches!(

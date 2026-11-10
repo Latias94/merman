@@ -85,8 +85,8 @@
             "width": 23.0,
             "y": 0.0
           },
-          "offset_x": -160.0,
-          "offset_y": 10.0,
+          "offset_x": "-160",
+          "offset_y": "10",
           "rel_type": "rel",
           "start_point": {
             "x": 308.0,
@@ -109,8 +109,8 @@
             "width": 23.0,
             "y": 0.0
           },
-          "offset_x": 140.0,
-          "offset_y": 10.0,
+          "offset_x": "140",
+          "offset_y": "10",
           "rel_type": "rel",
           "start_point": {
             "x": 624.0,
@@ -134,7 +134,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel",
           "start_point": {
             "x": 303.407,
@@ -164,7 +164,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel",
           "start_point": {
             "x": 619.001,
@@ -194,7 +194,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel_b",
           "start_point": {
             "x": 262.835,
@@ -223,8 +223,8 @@
             "width": 23.0,
             "y": 0.0
           },
-          "offset_x": 40.0,
-          "offset_y": 40.0,
+          "offset_x": "40",
+          "offset_y": "40",
           "rel_type": "rel",
           "start_point": {
             "x": 293.395,
@@ -253,8 +253,8 @@
             "width": 23.0,
             "y": 0.0
           },
-          "offset_x": -90.0,
-          "offset_y": 40.0,
+          "offset_x": "-90",
+          "offset_y": "40",
           "rel_type": "rel",
           "start_point": {
             "x": 548.276,
@@ -284,7 +284,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel",
           "start_point": {
             "x": 578.835,

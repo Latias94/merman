@@ -34,38 +34,46 @@ pub(crate) fn layout_packet_diagram_typed(
     let words_count = model.packet.len();
     let svg_height = total_row_height * ((words_count + 1) as f64)
         - if has_title { 0.0 } else { cfg.row_height };
-    let svg_width = cfg.bit_width * (cfg.bits_per_row as f64) + 2.0;
+    let svg_width = cfg.bit_width * cfg.bits_per_row + 2.0;
 
     let mut words: Vec<PacketWordLayout> = Vec::new();
     for (row_number, word) in model.packet.iter().enumerate() {
         let word_y = (row_number as f64) * total_row_height + cfg.padding_y;
         let mut blocks: Vec<PacketBlockLayout> = Vec::new();
         for block in word {
-            if block.start < 0 || block.end < block.start {
+            if !block.start.is_finite()
+                || !block.end.is_finite()
+                || block.start < 0.0
+                || block.end < 0.0
+            {
                 return Err(Error::InvalidModel {
-                    message: "Packet block ranges must be nonnegative and ordered".to_string(),
+                    message: "Packet geometry requires finite, nonnegative block endpoints"
+                        .to_string(),
                 });
             }
-            let bits = block
-                .end
-                .checked_sub(block.start)
-                .and_then(|width| width.checked_add(1))
-                .ok_or_else(|| Error::InvalidModel {
-                    message: "Packet block range exceeds the supported integer range".to_string(),
-                })?;
+            // Mermaid draws the inclusive range, independently of the DB's retained `bits`.
+            let bits = block.end - block.start + 1.0;
             let first_column = block.start % cfg.bits_per_row;
-            // Source construction splits fields at row boundaries before producing these blocks.
-            if bits > cfg.bits_per_row - first_column {
+            // Fractional row boundaries may have end < start while their inclusive extent is
+            // positive. Remainders also retain binary64 drift; a second row-containment check
+            // would reject valid source fragments and change the selected positioning formula.
+            if !bits.is_finite() || bits < 0.0 {
                 return Err(Error::InvalidModel {
-                    message: "Packet block range crosses a row boundary".to_string(),
+                    message: "Packet geometry requires a finite, nonnegative inclusive extent"
+                        .to_string(),
                 });
             }
             let column = match cfg.bit_order {
                 PacketBitOrder::Ascending => first_column,
                 PacketBitOrder::Descending => cfg.bits_per_row - first_column - bits,
             };
-            let block_x = column as f64 * cfg.bit_width + 1.0;
-            let width = bits as f64 * cfg.bit_width - cfg.padding_x;
+            let block_x = column * cfg.bit_width + 1.0;
+            let width = bits * cfg.bit_width - cfg.padding_x;
+            if !block_x.is_finite() || !width.is_finite() {
+                return Err(Error::InvalidModel {
+                    message: "Packet block geometry must be finite".to_string(),
+                });
+            }
             blocks.push(PacketBlockLayout {
                 start: block.start,
                 end: block.end,

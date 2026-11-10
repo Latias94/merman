@@ -70,6 +70,177 @@ fn render_class_svg_from_text_with_session(
         .to_owned()
 }
 
+#[test]
+fn class_svg_numeric_collisions_keep_nodes_members_and_interaction_owners_distinct() {
+    let source = concat!(
+        "classDiagram\n",
+        "namespace Raw {\n",
+        "class `1`~RawType~ {\n",
+        "+rawOnly\n",
+        "}\n",
+        "}\n",
+        "namespace Prefixed {\n",
+        "class `classId-1`~PrefixedType~ {\n",
+        "+prefixedOnly\n",
+        "}\n",
+        "}\n",
+        "1 --> classId-1 : separate\n",
+        "link 1 \"https://example.com/\" \"Raw tooltip\" _self\n",
+        "callback 1 \"open\"\n",
+    );
+    for html_labels in [false, true] {
+        let svg = render_class_svg_from_text_with_engine(
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "htmlLabels": html_labels,
+                    "flowchart": { "htmlLabels": html_labels },
+                })),
+            ),
+            source,
+        );
+        let document = roxmltree::Document::parse(&svg).expect("valid Class SVG");
+        let find_node = |id: &str| {
+            let prefix = format!("merman-classId-{id}-");
+            let matches = document
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|id| id.starts_with(&prefix))
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(matches.len(), 1, "{id}: htmlLabels={html_labels}");
+            matches[0]
+        };
+        let raw = find_node("1");
+        let prefixed = find_node("classId-1");
+        assert_ne!(raw.id(), prefixed.id());
+        let text_content = |node: roxmltree::Node<'_, '_>| {
+            node.descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>()
+        };
+        let raw_text = text_content(raw);
+        let prefixed_text = text_content(prefixed);
+        assert!(raw_text.contains('1'));
+        assert!(raw_text.contains("rawOnly"));
+        assert!(!raw_text.contains("prefixedOnly"));
+        assert!(!raw_text.contains("classId-1"));
+        assert!(prefixed_text.contains("classId-1"));
+        assert!(prefixed_text.contains("prefixedOnly"));
+        assert!(!prefixed_text.contains("rawOnly"));
+        assert_eq!(raw.attribute("title"), Some("Raw tooltip"));
+        assert_eq!(prefixed.attribute("title"), None);
+        assert_eq!(raw.attribute("class"), Some("node default"));
+        assert!(
+            prefixed
+                .attribute("class")
+                .unwrap()
+                .split_whitespace()
+                .any(|class| class == "clickable")
+        );
+        assert!(!raw.ancestors().any(|node| node.has_tag_name("a")));
+        let link = prefixed
+            .parent_element()
+            .expect("prefixed Class link wrapper");
+        assert!(link.has_tag_name("a"));
+        assert_eq!(
+            link.attribute(("http://www.w3.org/1999/xlink", "href")),
+            Some("https://example.com/")
+        );
+    }
+}
+
+#[test]
+fn class_svg_keeps_raw_note_input_and_distinct_namespace_attachments() {
+    let raw_payload = " \t raw note \t ";
+    let prefixed_payload = "\n prefixed note \n";
+    let source = format!(
+        "classDiagram\nnamespace Outer {{\nnamespace Inner {{\nclass `1`\nnote for 1 \"{raw_payload}\"\n}}\nclass `classId-1`\nnote for classId-1 \"{prefixed_payload}\"\nnote \" \t \"\n}}\n"
+    );
+    for html_labels in [false, true] {
+        let parsed = MermaidEngine::new()
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "htmlLabels": html_labels,
+                    "flowchart": { "htmlLabels": html_labels },
+                })),
+            )
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(model) = parsed.model() else {
+            panic!("expected typed Class model");
+        };
+        let notes = &model.model().notes;
+        assert_eq!(notes.len(), 3);
+        assert_eq!(notes[0].class_id.as_deref(), Some("1"));
+        assert_eq!(notes[0].parent.as_deref(), Some("Outer.Inner"));
+        assert_eq!(notes[0].text, raw_payload);
+        assert_eq!(notes[1].class_id.as_deref(), Some("classId-1"));
+        assert_eq!(notes[1].parent.as_deref(), Some("Outer"));
+        assert_eq!(notes[1].text, prefixed_payload);
+        assert_eq!(notes[2].class_id, None);
+        assert_eq!(notes[2].parent.as_deref(), Some("Outer"));
+        assert_eq!(notes[2].text, " \t ");
+        let full = serde_json::to_value(model).unwrap();
+        assert_eq!(
+            full["namespaces"]["Outer.Inner"]["noteIds"],
+            json!(["note0"])
+        );
+        assert_eq!(
+            full["namespaces"]["Outer"]["noteIds"],
+            json!(["note1", "note2"])
+        );
+        assert_eq!(full["notes"][0]["text"], raw_payload);
+        assert_eq!(full["notes"][1]["text"], prefixed_payload);
+
+        let session = RenderEnvironment::deterministic().begin_session().unwrap();
+        let presentation = parsed.into_presentation();
+        let artifact = family::prepare(
+            &presentation,
+            &LayoutOptions::headless_svg_defaults(),
+            session,
+        )
+        .expect("layout Class notes with raw payloads");
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render Class notes with raw payloads");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid Class SVG");
+        for (id, visible_text) in [
+            ("note0", "raw note"),
+            ("note1", "prefixed note"),
+            ("note2", ""),
+        ] {
+            let dom_id = format!("merman-{id}");
+            let note = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(dom_id.as_str()))
+                .expect("distinct rendered Class note");
+            let text = note
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .collect::<String>();
+            assert_eq!(text.trim(), visible_text, "{id}: htmlLabels={html_labels}");
+        }
+        let mut note_edges = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node
+                        .attribute("data-id")
+                        .is_some_and(|id| id.starts_with("edgeNote"))
+            })
+            .map(|node| node.attribute("data-id").unwrap())
+            .collect::<Vec<_>>();
+        note_edges.sort_unstable();
+        assert_eq!(note_edges, ["edgeNote0", "edgeNote1"]);
+    }
+}
+
 fn class_paint_theme_spec(theme: &str) -> DiagramThemeSpec {
     DiagramThemeSpec::new().with_mermaid_compatibility(
         MermaidThemeCompatibility::default()
@@ -739,9 +910,12 @@ fn class_font_stack_without_inherited_text_is_not_applicable() {
     let theme = class_typography_theme(ThemeTextStyle::default().with_font_stack(
         FontStack::single("ClassTerminalFree").expect("valid Class terminal-free font"),
     ));
-    let rendered =
-        try_render_class_svg_with_theme_and_engine("classDiagram\n", &theme, MermaidEngine::new())
-            .expect("render terminal-free Class diagram");
+    let rendered = try_render_class_svg_with_theme_and_engine(
+        "classDiagram\ndirection TB\n",
+        &theme,
+        MermaidEngine::new(),
+    )
+    .expect("render terminal-free Class diagram");
 
     assert!(rendered.svg().contains("ClassTerminalFree"));
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
@@ -3322,7 +3496,7 @@ fn class_node_and_label_fallbacks_are_reconciled_against_visible_nodes() {
     assert_eq!(evidence.theme_residual_count(), 3);
 
     let empty = try_render_class_svg_with_theme_requirement(
-        "classDiagram\n",
+        "classDiagram\ndirection TB\n",
         &theme,
         MermaidEngine::new(),
         ThemePortabilityRequirement::RequirePortable,
@@ -4762,7 +4936,7 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.theme_residual_count(), usize::from(rejected));
     }
-    for source in ["classDiagram\n", "classDiagram\nA --> B\n"] {
+    for source in ["classDiagram\ndirection TB\n", "classDiagram\nA --> B\n"] {
         let rendered = try_render_class_svg_with_theme_requirement(
             source,
             &theme,
@@ -7859,5 +8033,23 @@ mod class_svg_terminal_contracts {
                 );
             }
         }
+    }
+}
+
+#[test]
+fn class_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source =
+            format!("classDiagram\naccTitle: {title}\naccDescr {{\n{description}\n}}\nclass App\n");
+        let svg = render_class_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
     }
 }

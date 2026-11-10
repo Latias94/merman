@@ -342,8 +342,14 @@ fn push_task(
     document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
         push_wrapped_field(line, "", "task", &task.task)?;
         line.push_str(" score=")?;
-        if task.score_is_nan || !task.score.is_finite() {
+        if task.score_is_nan || task.score.is_nan() {
             line.push_str("NaN")?;
+        } else if task.score.is_infinite() {
+            line.push_str(if task.score.is_sign_negative() {
+                "-Infinity"
+            } else {
+                "Infinity"
+            })?;
         } else {
             line.write_fmt(format_args!("{}", task.score))?;
         }

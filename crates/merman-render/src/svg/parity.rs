@@ -350,8 +350,8 @@ use util::decode_mermaid_entities_for_render_text;
 use util::{
     config_bool, config_f64, config_string, css_rgba_fade, escape_attr_display, escape_attr_into,
     escape_xml_display, escape_xml_into, fmt, fmt_display, fmt_into, fmt_path, fmt_path_into,
-    fmt_points, fmt_string, json_stringify_points, json_stringify_points_into,
-    normalize_css_font_family, scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
+    fmt_string, json_stringify_points, json_stringify_points_into, normalize_css_font_family,
+    scoped_drop_shadow, scoped_svg_id, scoped_svg_url, theme_token,
 };
 pub(crate) use util::{escape_attr, escape_xml};
 

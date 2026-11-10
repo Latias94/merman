@@ -88,7 +88,7 @@
           ],
           "score": 5.0,
           "section": "Order from website",
-          "task": "  Add to cart",
+          "task": "Add to cart",
           "width": 150.0,
           "x": 150.0,
           "y": 110.0
@@ -121,7 +121,7 @@
           ],
           "score": 5.0,
           "section": "Checkout from website",
-          "task": "  Add payment details",
+          "task": "Add payment details",
           "width": 150.0,
           "x": 350.0,
           "y": 110.0

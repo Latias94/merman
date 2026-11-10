@@ -28,16 +28,8 @@ pub(crate) fn render_tree_view_diagram_svg_model(
 ) -> Result<root_svg::RootedSvg> {
     theme.ensure_portable_typography(options.family.session().portability_requirement())?;
     let diagram_id = options.diagram_id_or("treeView");
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|t| !t.is_empty());
-    let acc_descr = model
-        .acc_descr
-        .as_deref()
-        .map(str::trim)
-        .filter(|d| !d.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|t| !t.is_empty());
+    let acc_descr = model.acc_descr.as_deref().filter(|d| !d.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let root_bounds = if theme.additional_paint_outset_px() > 0.0 {

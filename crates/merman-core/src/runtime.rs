@@ -1,6 +1,14 @@
 //! Ambient operation context for source orchestration.
 
-use merman_model::runtime::{OperationContext, RuntimePolicy};
+use merman_model::runtime::OperationContext;
+#[cfg(any(
+    test,
+    feature = "diagram-gantt",
+    feature = "diagram-block",
+    feature = "diagram-git-graph",
+    feature = "diagram-mindmap"
+))]
+use merman_model::runtime::RuntimePolicy;
 #[cfg(test)]
 use merman_model::runtime::{RuntimeCapability, RuntimePolicyError, compiled_system_adapter_ids};
 #[cfg(any(test, feature = "diagram-gantt"))]

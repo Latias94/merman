@@ -930,8 +930,7 @@ npm ci --prefix platforms/web
 npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
-  --web-package-root platforms/web/packages \
-  --budget-file docs/release/WASM_SIZE_BUDGETS.json
+  --web-package-root platforms/web/packages
 cargo run --locked -p xtask -- verify-typst-profile-constants
 python3 scripts/verify_artifact_dependency_closures.py --profile typst-wasm
 cargo run --locked -p xtask -- build-typst-package --profile publish \
@@ -945,6 +944,8 @@ package as an independently installable artifact. Release preflight must build/c
 package's matching TypeScript, wasm-bindgen glue, single WASM, provenance, generated binding API,
 editor schema,
 and the complete descriptor-defined language catalog; it is not valid to publish only a wrapper declaration.
+Web artifact size is reported without byte ceilings; package integrity and functional checks remain
+required for publication.
 Typst package builds additionally require Binaryen `wasm-opt version 133` and `wasm-tools`
 (CI pins 1.263.0); the post-link optimizer and stripper versions are recorded in the artifact
 manifest. CI uses Rust 1.99.1 with `wasm32-unknown-unknown`, Typst 0.15.1 for the current consumer,

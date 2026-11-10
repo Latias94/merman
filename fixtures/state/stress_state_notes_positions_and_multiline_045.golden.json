@@ -182,7 +182,7 @@
         "domId": "state-A----parent-3",
         "id": "A----parent",
         "isGroup": true,
-        "label": "Multi-line note<br>\nwith an HTML break.",
+        "label": "Multi-line note<br>\n  with an HTML break.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -200,7 +200,7 @@
         "domId": "state-A----note-3",
         "id": "A----note-3",
         "isGroup": false,
-        "label": "Multi-line note<br>\nwith an HTML break.",
+        "label": "Multi-line note<br>\n  with an HTML break.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -275,7 +275,7 @@
         "id": "A",
         "note": {
           "position": "right of",
-          "text": "Multi-line note<br/>\nwith an HTML break."
+          "text": "Multi-line note<br/>\n  with an HTML break."
         },
         "start": null,
         "styles": [],

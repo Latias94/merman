@@ -23,6 +23,27 @@ union A,B["Shared"]:3
   text AB1["Nested Shared"]
 "#;
 
+#[test]
+fn venn_adjacent_statements_reach_the_same_typed_layout_and_svg() {
+    let separated = concat!(
+        "venn-beta\nset A[Alpha]:20\nset B[Beta]:12\n",
+        "union A,B[Shared]:3\ntext A note[set union text style]\n",
+        "style A fill:rgb(1, 2, 3)\nstyle B fill:\"#123456\"\n",
+    );
+    let adjacent = concat!(
+        "venn-beta\nset A[Alpha]:20set B[Beta]:12",
+        "union A,B[Shared]:3text A note[set union text style]",
+        "style A fill:rgb(1, 2, 3)style B fill:\"#123456\"\n",
+    );
+    let (expected_layout, expected_svg) = render_typed_venn(separated);
+    let (actual_layout, actual_svg) = render_typed_venn(adjacent);
+    assert_eq!(
+        serde_json::to_value(actual_layout).unwrap(),
+        serde_json::to_value(expected_layout).unwrap()
+    );
+    assert_eq!(actual_svg, expected_svg);
+}
+
 fn venn_typography_theme(typography: ThemeTextStyle) -> DiagramTheme {
     DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new().with_typography(

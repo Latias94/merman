@@ -72,7 +72,7 @@ diagram-ishikawa = ["merman-model/diagram-ishikawa", "merman-core/diagram-ishika
 diagram-journey = ["merman-model/diagram-journey", "merman-core/diagram-journey"]
 diagram-kanban = ["merman-model/diagram-kanban", "merman-core/diagram-kanban"]
 diagram-mindmap = ["merman-model/diagram-mindmap", "merman-core/diagram-mindmap"]
-diagram-packet = ["merman-model/diagram-packet", "merman-core/diagram-packet"]
+diagram-packet = ["merman-model/diagram-packet", "merman-core/diagram-packet", "dep:ryu-js"]
 diagram-pie = ["merman-model/diagram-pie", "merman-core/diagram-pie"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart", "merman-core/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "merman-core/diagram-radar"]
@@ -92,6 +92,7 @@ diagram-zenuml = ["merman-model/diagram-zenuml", "merman-core/diagram-zenuml"]
 default = []
 
 [dependencies]
+ryu-js = { workspace = true, optional = true }
 dugong = { workspace = true, optional = true }
 merman-model = { workspace = true, features = ["terminal-text", "html-entities"] }
 serde.workspace = true

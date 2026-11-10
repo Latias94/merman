@@ -42,7 +42,7 @@
         "label": {
           "text": "Submits credentials to"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "JSON/HTTPS"
         },
@@ -59,7 +59,7 @@
         "label": {
           "text": "Calls isAuthenticated() on"
         },
-        "offsetX": -40,
+        "offsetX": "-40",
         "offsetY": 60,
         "techn": {
           "text": ""
@@ -78,7 +78,7 @@
           "text": "select * from users where username = ?"
         },
         "offsetX": 10,
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "JDBC"
         },

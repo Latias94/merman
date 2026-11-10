@@ -69,7 +69,7 @@
         "min_y": 0.0
       },
       "categories": [
-        "Section"
+        "    Section"
       ],
       "date_format": " YYYY-MM-DD HH:mm:ss",
       "display_mode": "",
@@ -116,9 +116,9 @@
           "dy_em": -0.0,
           "index": 0.0,
           "lines": [
-            "Section"
+            "    Section"
           ],
-          "section": "Section",
+          "section": "    Section",
           "x": 10.0,
           "y": 74.0
         }
@@ -149,10 +149,10 @@
           "milestone": false,
           "order": 0.0,
           "render_end_ms": 1751970630000.0,
-          "section": "Section",
+          "section": "    Section",
           "start_ms": 1751661030000.0,
           "task": "A task      ",
-          "task_type": "Section",
+          "task_type": "    Section",
           "vert": false
         },
         {
@@ -180,10 +180,10 @@
           "milestone": false,
           "order": 1.0,
           "render_end_ms": null,
-          "section": "Section",
+          "section": "    Section",
           "start_ms": 1752057030000.0,
           "task": "Another task",
-          "task_type": "Section",
+          "task_type": "    Section",
           "vert": false
         }
       ],

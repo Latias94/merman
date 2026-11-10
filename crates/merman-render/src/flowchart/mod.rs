@@ -217,6 +217,7 @@ pub(crate) use self_loop::{
 pub(crate) use shapes::{
     FlowchartShape, OrganicShapeGeometry, RelativeArc, bang_geometry, cloud_geometry,
     is_flowchart_process_shape, validate_flowchart_model_shapes,
+    validate_flowchart_node_asset_dimensions,
 };
 #[cfg(test)]
 pub(crate) use style::flowchart_swimlane_label_rect_text_style;

@@ -249,14 +249,8 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("radar");
 
-    let has_acc_title = model
-        .acc_title
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-    let has_acc_descr = model
-        .acc_descr
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_title = model.acc_title.as_deref().is_some_and(|s| !s.is_empty());
+    let has_acc_descr = model.acc_descr.as_deref().is_some_and(|s| !s.is_empty());
 
     let render_settings = crate::radar::RadarConfigView::new(effective_config).render_settings();
 
@@ -356,7 +350,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             if graticule.points.is_empty() {
                 out.push_str(r#"<polygon points="" class="radarGraticule"/>"#);
             } else {
-                let points = fmt_points(&graticule.points);
+                let points = crate::radar::format_points(&graticule.points);
                 let _ = write!(
                     &mut out,
                     r#"<polygon points="{points}" class="radarGraticule"/>"#,
@@ -367,7 +361,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
             let _ = write!(
                 &mut out,
                 r#"<circle r="{r}" class="radarGraticule"/>"#,
-                r = fmt_display(r)
+                r = ryu_js::Buffer::new().format(r)
             );
         }
         out.checkpoint()?;
@@ -388,7 +382,7 @@ pub(crate) fn render_radar_diagram_svg_model_with_theme_plans(
     let polygon_curves = model.options.graticule.trim() == "polygon";
     for (curve_index, curve) in layout.curves.iter().enumerate() {
         if polygon_curves && !curve.points.is_empty() {
-            let points = fmt_points(&curve.points);
+            let points = crate::radar::format_points(&curve.points);
             let _ = write!(
                 &mut out,
                 r#"<polygon points="{points}" class="radarCurve-{idx}"/>"#,

@@ -1,4 +1,5 @@
 use super::*;
+use merman_model::text::is_ecmascript_whitespace;
 
 pub(super) const JS_MAX_TIME_MILLIS: i64 = 8_640_000_000_000_000;
 
@@ -968,7 +969,7 @@ pub(super) fn get_start_date(
     date_format: &str,
     raw: &str,
 ) -> Result<Option<OffsetDateTime>> {
-    let s = raw.trim();
+    let s = raw.trim_matches(is_ecmascript_whitespace);
 
     if let Some(ids) = relative_ref_ids(s, "after") {
         let mut latest: Option<Option<OffsetDateTime>> = None;
@@ -1028,7 +1029,7 @@ pub(super) fn get_start_date(
 }
 
 pub(super) fn parse_duration(str_: &str) -> (f64, String) {
-    let s = str_.trim();
+    let s = str_.trim_matches(is_ecmascript_whitespace);
     let bytes = s.as_bytes();
 
     let mut end = 0usize;
@@ -1126,7 +1127,7 @@ pub(super) fn get_end_date(
     raw: &str,
     inclusive: bool,
 ) -> Result<Option<OffsetDateTime>> {
-    let s = raw.trim();
+    let s = raw.trim_matches(is_ecmascript_whitespace);
 
     if let Some(ids) = relative_ref_ids(s, "until") {
         let mut earliest: Option<Option<OffsetDateTime>> = None;
@@ -1176,7 +1177,7 @@ pub(super) fn get_end_date(
 }
 
 pub(super) fn is_strict_yyyy_mm_dd(s: &str) -> bool {
-    let s = s.trim();
+    let s = s.trim_matches(is_ecmascript_whitespace);
     let bytes = s.as_bytes();
     if bytes.len() != 10
         || !bytes[..4].iter().all(u8::is_ascii_digit)

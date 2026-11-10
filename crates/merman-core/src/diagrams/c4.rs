@@ -30,7 +30,8 @@ pub(crate) fn c4_syntax_construction_count() -> usize {
 }
 
 pub(crate) use merman_model::families::c4::{
-    C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4Shape, C4Text,
+    C4Boundary, C4DiagramModel, C4LayoutConfig, C4Relation, C4RelationOffset, C4Shape, C4Text,
+    parse_integer_prefix,
 };
 
 pub(crate) fn sanitize_common_db_fields(model: &mut C4DiagramModel, config: &crate::MermaidConfig) {
@@ -52,8 +53,8 @@ struct C4Db {
 
     rels: Vec<C4RelationRecord>,
 
-    c4_shape_in_row: i64,
-    c4_boundary_in_row: i64,
+    c4_shape_in_row: f64,
+    c4_boundary_in_row: f64,
 }
 
 #[derive(Debug, Clone)]
@@ -1274,8 +1275,8 @@ impl C4Db {
         let wrap_enabled = config.get_bool("wrap").unwrap_or(false);
         let mut db = Self {
             wrap_enabled,
-            c4_shape_in_row: 4,
-            c4_boundary_in_row: 2,
+            c4_shape_in_row: 4.0,
+            c4_boundary_in_row: 2.0,
             ..Default::default()
         };
         db.add_global_boundary();
@@ -1327,7 +1328,7 @@ impl C4Db {
         if let Some(index) = self
             .rels
             .iter()
-            .position(|rel| rel.model.from_alias == from && rel.model.to_alias == to)
+            .position(|rel| rel.matches_endpoints(from, to))
         {
             return &mut self.rels[index];
         }
@@ -1514,7 +1515,7 @@ impl C4Db {
         let Some(target) = self
             .rels
             .iter_mut()
-            .find(|rel| rel.model.from_alias == from && rel.model.to_alias == to)
+            .find(|rel| rel.matches_endpoints(&from, &to))
         else {
             return Ok(());
         };
@@ -1528,14 +1529,14 @@ impl C4Db {
 
     fn update_layout_config(&mut self, args: &[C4Arg]) -> Result<()> {
         if let Some(arg) = args.first()
-            && let Some(parsed) = javascript_parse_int(arg.value())
-            && parsed >= 1
+            && let Some(parsed) = parse_integer_prefix(arg.value())
+            && parsed >= 1.0
         {
             self.c4_shape_in_row = parsed;
         }
         if let Some(arg) = args.get(1)
-            && let Some(parsed) = javascript_parse_int(arg.value())
-            && parsed >= 1
+            && let Some(parsed) = parse_integer_prefix(arg.value())
+            && parsed >= 1.0
         {
             self.c4_boundary_in_row = parsed;
         }
@@ -1652,14 +1653,29 @@ struct C4RelationRecord {
     // A named text argument can temporarily replace the required string type with {text: ...}.
     // Later redeclarations/style assignments may repair it before final model validation.
     invalid_type: Option<Value>,
+    invalid_string_fields: std::collections::BTreeMap<String, Value>,
 }
 
 impl C4RelationRecord {
+    fn matches_endpoints(&self, from: &str, to: &str) -> bool {
+        // Upstream uses strict equality: a numeric endpoint cannot match an authored alias.
+        !self.invalid_string_fields.contains_key("from")
+            && !self.invalid_string_fields.contains_key("to")
+            && self.model.from_alias == from
+            && self.model.to_alias == to
+    }
+
     fn into_model(self) -> Result<C4Relation> {
         if let Some(value) = self.invalid_type {
             return Err(Error::diagram_parse_fallback(
                 "c4".to_string(),
                 format!("expected string field `type`, got {value:?}"),
+            ));
+        }
+        if let Some((key, value)) = self.invalid_string_fields.into_iter().next() {
+            return Err(Error::diagram_parse_fallback(
+                "c4".to_string(),
+                format!("expected string field `{key}`, got {value:?}"),
             ));
         }
         Ok(self.model)
@@ -1668,6 +1684,13 @@ impl C4RelationRecord {
 
 impl C4Attributes for C4RelationRecord {
     fn assign(&mut self, key: &str, value: Value) {
+        if matches!(key, "from" | "to" | "lineColor" | "textColor") {
+            if !value.is_string() {
+                self.invalid_string_fields.insert(key.to_string(), value);
+                return;
+            }
+            self.invalid_string_fields.remove(key);
+        }
         match key {
             "from" => self.model.from_alias = c4_string_argument(value),
             "to" => self.model.to_alias = c4_string_argument(value),
@@ -1685,8 +1708,8 @@ impl C4Attributes for C4RelationRecord {
             "sprite" => self.model.sprite = Some(value),
             "tags" => self.model.tags = Some(value),
             "link" => self.model.link = Some(value),
-            "offsetX" => self.model.offset_x = value_as_i64(&value),
-            "offsetY" => self.model.offset_y = value_as_i64(&value),
+            "offsetX" => self.model.offset_x = c4_relation_offset(value),
+            "offsetY" => self.model.offset_y = c4_relation_offset(value),
             "lineColor" => self.model.line_color = Some(c4_string_argument(value)),
             "textColor" => self.model.text_color = Some(c4_string_argument(value)),
             _ => {}
@@ -1828,7 +1851,7 @@ fn apply_update_argument(obj: &mut impl C4Attributes, positional_key: &str, arg:
 }
 
 fn apply_relation_style_argument(
-    obj: &mut impl C4Attributes,
+    obj: &mut C4RelationRecord,
     positional_key: &str,
     arg: Option<&C4Arg>,
 ) {
@@ -1837,48 +1860,38 @@ fn apply_relation_style_argument(
     };
 
     let key = arg.key_or(positional_key);
-    let value = match key {
-        "offsetX" | "offsetY" => javascript_parse_int(arg.value())
-            .map(Value::from)
-            .unwrap_or(Value::Null),
-        _ => json!(arg.value()),
-    };
-    obj.assign(key, value);
-}
-
-fn javascript_parse_int(input: &str) -> Option<i64> {
-    let input = input.trim_start_matches(|ch: char| ch.is_whitespace() || ch == '\u{feff}');
-    let (negative, unsigned) = match input.as_bytes().first() {
-        Some(b'-') => (true, &input[1..]),
-        Some(b'+') => (false, &input[1..]),
-        _ => (false, input),
-    };
-    let (radix, digits) = unsigned
-        .strip_prefix("0x")
-        .or_else(|| unsigned.strip_prefix("0X"))
-        .map_or((10, unsigned), |digits| (16, digits));
-    let digit_count = digits
-        .bytes()
-        .take_while(|byte| match radix {
-            16 => byte.is_ascii_hexdigit(),
-            _ => byte.is_ascii_digit(),
-        })
-        .count();
-    if digit_count == 0 {
-        return None;
+    if matches!(key, "offsetX" | "offsetY") {
+        let offset = if matches!(positional_key, "offsetX" | "offsetY") {
+            C4RelationOffset::Number(parse_integer_prefix(arg.value()).unwrap_or(f64::NAN))
+        } else {
+            C4RelationOffset::String(arg.value().to_string())
+        };
+        match key {
+            "offsetX" => obj.model.offset_x = Some(offset),
+            _ => obj.model.offset_y = Some(offset),
+        }
+    } else {
+        let value = if matches!(positional_key, "offsetX" | "offsetY") {
+            // Conversion belongs to the argument slot, even when a named argument
+            // targets another property such as wrap, label, or tags.
+            let parsed = parse_integer_prefix(arg.value()).unwrap_or(f64::NAN);
+            if key == "wrap" {
+                // JSON's null projection would lose Infinity's truthiness.
+                obj.model.wrap = !parsed.is_nan() && parsed != 0.0;
+                return;
+            }
+            merman_model::json::number_value(parsed)
+        } else {
+            json!(arg.value())
+        };
+        obj.assign(key, value);
     }
-
-    let magnitude = i128::from_str_radix(&digits[..digit_count], radix).ok()?;
-    let signed = if negative { -magnitude } else { magnitude };
-    i64::try_from(signed).ok()
 }
 
-fn value_as_i64(v: &Value) -> Option<i64> {
-    match v {
-        Value::Number(n) => n
-            .as_i64()
-            .or_else(|| n.as_u64().and_then(|value| i64::try_from(value).ok())),
-        Value::String(s) => javascript_parse_int(s),
+fn c4_relation_offset(value: Value) -> Option<C4RelationOffset> {
+    match value {
+        Value::Number(number) => number.as_f64().map(C4RelationOffset::Number),
+        Value::String(text) => Some(C4RelationOffset::String(text)),
         _ => None,
     }
 }
@@ -2653,8 +2666,8 @@ mod semantic_tests {
         assert_eq!(model.rels[0].descr.as_ref().unwrap().as_str(), "Request");
         assert_eq!(model.rels[0].line_color.as_deref(), Some("green"));
         assert_eq!(model.rels[0].text_color.as_deref(), Some("black"));
-        assert_eq!(model.layout.c4_shape_in_row, 3);
-        assert_eq!(model.layout.c4_boundary_in_row, 2);
+        assert_eq!(model.layout.c4_shape_in_row, 3.0);
+        assert_eq!(model.layout.c4_boundary_in_row, 2.0);
     }
 
     #[test]
@@ -3881,7 +3894,7 @@ UpdateRelStyle(c2, c3, $textColor="red", $offsetX="-40", $offsetY="60")
             rel.get("lineColor").is_none(),
             "omitting lineColor must not consume a named offset"
         );
-        assert_eq!(rel["offsetX"], json!(-40));
+        assert_eq!(rel["offsetX"], json!("-40"));
         assert_eq!(rel["offsetY"], json!(60));
     }
 
@@ -3896,7 +3909,7 @@ UpdateRelStyle(a, b, $offsetX="-40", $textColor="red", $offsetY="60")
         let rel = &model["rels"][0];
 
         assert_eq!(rel["textColor"], json!("red"));
-        assert_eq!(rel["offsetX"], json!(-40));
+        assert_eq!(rel["offsetX"], json!("-40"));
         assert_eq!(rel["offsetY"], json!(60));
     }
 
@@ -3917,8 +3930,8 @@ UpdateRelStyle(c, d, $offsetX="not-a-number", $offsetY="0x10tail")
         assert_eq!(positional["lineColor"], json!("blue"));
         assert_eq!(positional["offsetX"], json!(-40));
         assert_eq!(positional["offsetY"], json!(60));
-        assert!(named.get("offsetX").is_none());
-        assert_eq!(named["offsetY"], json!(16));
+        assert_eq!(named["offsetX"], json!("not-a-number"));
+        assert_eq!(named["offsetY"], json!("0x10tail"));
     }
 
     #[test]

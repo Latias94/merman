@@ -254,6 +254,351 @@ state "Display label" as S1: Trailing description
 }
 
 #[test]
+fn parse_state_plain_alias_uses_only_the_first_two_colon_segments() {
+    use merman_model::families::state::StateStatement;
+
+    let engine = MermaidEngine::new();
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        for newline in ["\n", "\r\n"] {
+            for (tail, extra) in [
+                ("A:x", Some("x")),
+                ("A:x:y", Some("x")),
+                ("A:x:y:z", Some("x")),
+                ("A: x :y:z", Some("x")),
+                ("A:x:", Some("x")),
+                ("A", None),
+            ] {
+                let source = format!("{header}{newline}state \"L\" as {tail}{newline}");
+                let compat = engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let expected_descriptions = match extra {
+                    Some(description) => vec!["L", description],
+                    None => vec!["L"],
+                };
+                let expected_node_description =
+                    Some(extra.into_iter().map(str::to_string).collect::<Vec<_>>());
+                assert_eq!(compat.model["states"].as_object().unwrap().len(), 1);
+                assert_eq!(
+                    compat.model["states"]["A"]["descriptions"],
+                    json!(expected_descriptions),
+                    "{source:?}"
+                );
+                let nodes = compat.model["nodes"].as_array().unwrap();
+                assert_eq!(nodes.len(), 1);
+                assert_eq!(nodes[0]["id"], "A");
+                assert_eq!(nodes[0]["label"], "L");
+                assert_eq!(nodes[0]["description"], json!(expected_node_description));
+
+                let semantic = SemanticParser::new().parse_diagram_sync(&source).unwrap();
+                let SemanticDiagramModel::State(model) = semantic.model else {
+                    panic!("expected canonical State model");
+                };
+                assert_eq!(model.states["A"].descriptions, expected_descriptions);
+                assert_eq!(model.nodes[0].description, expected_node_description);
+                let root = model.document.get(model.document.root().unwrap()).unwrap();
+                let StateStatement::State(alias) = &root[0] else {
+                    panic!("expected alias declaration");
+                };
+                let normalized_source = source.replace("\r\n", "\n");
+                let start = normalized_source.find(tail).unwrap();
+                assert_eq!(alias.id, "A");
+                assert_eq!(alias.id_span, Some(SourceSpan::new(start, start + 1)));
+
+                let typed = engine
+                    .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let RenderSemanticModel::State(model) = typed.model() else {
+                    panic!("expected typed State model");
+                };
+                assert_eq!(
+                    merman_model::families::state::compat::project(
+                        model,
+                        &merman_model::presentation::compat::CompatJsonMetadata::from(
+                            typed.metadata()
+                        )
+                    )
+                    .unwrap(),
+                    compat.model,
+                    "{source:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn parse_state_composite_token_ids_preserve_nested_identity_across_models() {
+    use merman_model::families::state::StateStatement;
+
+    let engine = MermaidEngine::new();
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        for newline in ["\n", "\r\n"] {
+            for id in ["A-B", "A:B", "外部-状態:組"] {
+                for separator in [" ", newline] {
+                    for body in ["", "[*] --> Child"] {
+                        let source = format!(
+                            "{header}{newline}state Outer {{{newline}state {id}{separator}{{{newline}\
+                             {body}{newline}}}{newline}}}{newline}"
+                        );
+                        let compat = engine
+                            .parse_diagram_sync(&source, ParseOptions::strict())
+                            .unwrap()
+                            .unwrap();
+                        let composite = &compat.model["states"]["Outer"]["doc"][0];
+                        assert_eq!(composite["id"], id, "{source:?}");
+                        assert_eq!(
+                            composite["doc"].as_array().unwrap().len(),
+                            usize::from(!body.is_empty())
+                        );
+
+                        let semantic = SemanticParser::new().parse_diagram_sync(&source).unwrap();
+                        let SemanticDiagramModel::State(model) = semantic.model else {
+                            panic!("expected canonical State model");
+                        };
+                        let group = model.nodes.iter().find(|node| node.id == id).unwrap();
+                        assert!(group.is_group, "{source:?}");
+                        assert_eq!(group.label, Some(json!(id)));
+                        assert_eq!(group.parent_id.as_deref(), Some("Outer"));
+                        assert_eq!(model.nodes.len(), if body.is_empty() { 2 } else { 4 });
+                        let outer = model
+                            .document
+                            .get(model.states["Outer"].doc.unwrap())
+                            .unwrap();
+                        let StateStatement::State(group_statement) = &outer[0] else {
+                            panic!("expected nested composite declaration");
+                        };
+                        let normalized_source = source.replace("\r\n", "\n");
+                        let start = normalized_source.find(&format!("state {id}")).unwrap()
+                            + "state ".len();
+                        assert_eq!(group_statement.id, id);
+                        assert_eq!(
+                            group_statement.id_span,
+                            Some(SourceSpan::new(start, start + id.len()))
+                        );
+                        if !body.is_empty() {
+                            let start_id = format!("{id}_start");
+                            let start_node =
+                                model.nodes.iter().find(|node| node.id == start_id).unwrap();
+                            assert_eq!(start_node.shape, "stateStart");
+                            assert_eq!(start_node.parent_id.as_deref(), Some(id));
+                            let child = model.nodes.iter().find(|node| node.id == "Child").unwrap();
+                            assert_eq!(child.parent_id.as_deref(), Some(id));
+                            assert_eq!(model.edges.len(), 1);
+                            assert_eq!(model.edges[0].start, start_id);
+                            assert_eq!(model.edges[0].end, "Child");
+                            assert_eq!(composite["doc"][0]["state1"]["id"], start_id);
+                        }
+
+                        let typed = engine
+                            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                            .unwrap()
+                            .unwrap();
+                        let RenderSemanticModel::State(model) = typed.model() else {
+                            panic!("expected typed State model");
+                        };
+                        assert_eq!(
+                            merman_model::families::state::compat::project(
+                                model,
+                                &merman_model::presentation::compat::CompatJsonMetadata::from(
+                                    typed.metadata()
+                                )
+                            )
+                            .unwrap(),
+                            compat.model,
+                            "{source:?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn parse_state_ordinary_transition_ids_keep_their_existing_boundaries() {
+    let engine = MermaidEngine::new();
+    for statement in ["A-B --> C", "A --> B-C"] {
+        let source = format!("stateDiagram-v2\n{statement}\n");
+        assert!(
+            engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .is_err(),
+            "{source:?}"
+        );
+        assert!(SemanticParser::new().parse_diagram_sync(&source).is_err());
+    }
+    let parsed = engine
+        .parse_diagram_sync("stateDiagram-v2\nA-->B:x:y\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    assert_eq!(parsed.model["states"].as_object().unwrap().len(), 2);
+    assert_eq!(parsed.model["edges"][0]["start"], "A");
+    assert_eq!(parsed.model["edges"][0]["end"], "B");
+    assert_eq!(parsed.model["edges"][0]["label"], "x:y");
+}
+
+#[test]
+fn parse_state_editor_facts_keep_composite_token_selections_and_alias_payloads() {
+    let engine = MermaidEngine::new();
+    for header in ["stateDiagram", "stateDiagram-v2"] {
+        for newline in ["\n", "\r\n"] {
+            let source = [
+                header,
+                "state Outer {",
+                "state A-B {",
+                "[*] --> Left",
+                "}",
+                "state A:B {",
+                "[*] --> Right",
+                "}",
+                "state 外部-状態:組 {",
+                "Child",
+                "}",
+                "}",
+                "state \"L\" as A:x:y",
+                "A --> Done: continue",
+                "state \"Container\" as Box:x:y {",
+                "Nested",
+                "}",
+                "",
+            ]
+            .join(newline);
+            let closing = format!("}}{newline}");
+            let incomplete = source.strip_suffix(closing.as_str()).unwrap();
+            for (source, completeness) in [
+                (source.as_str(), EditorSemanticCompleteness::Complete),
+                (incomplete, EditorSemanticCompleteness::Recovered),
+            ] {
+                let facts = engine
+                    .parse_editor_semantic_facts_with_type_sync("stateDiagram", source)
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(facts.completeness, completeness, "{source:?}");
+                assert_eq!(
+                    facts.diagnostics.is_empty(),
+                    completeness == EditorSemanticCompleteness::Complete,
+                    "{source:?}"
+                );
+                for id in ["Outer", "A-B", "A:B", "外部-状態:組", "Box:x:y"] {
+                    let start = source.find(id).unwrap();
+                    let selection = SourceSpan::new(start, start + id.len());
+                    assert!(
+                        facts.symbols.iter().any(|symbol| {
+                            symbol.name == id
+                                && symbol.role == EditorSemanticRole::Entity
+                                && symbol.selection == selection
+                        }),
+                        "missing composite {id}: {source:?}"
+                    );
+                    assert!(facts.expected_syntax.iter().any(|expected| {
+                        expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                            && expected.span == selection
+                    }));
+                }
+                let alias_start = source.find("A:x:y").unwrap();
+                let alias_selection = SourceSpan::new(alias_start, alias_start + 1);
+                assert_eq!(
+                    facts
+                        .symbols
+                        .iter()
+                        .filter(|symbol| {
+                            symbol.name == "A"
+                                && symbol.role == EditorSemanticRole::Entity
+                                && symbol.selection == alias_selection
+                        })
+                        .count(),
+                    1,
+                    "{source:?}"
+                );
+                assert!(facts.expected_syntax.iter().any(|expected| {
+                    expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                        && expected.span == alias_selection
+                }));
+                assert!(!facts.expected_syntax.iter().any(|expected| {
+                    expected.kind == EditorExpectedSyntaxKind::NodeIdentifier
+                        && expected.span.start == alias_start
+                        && expected.span.end > alias_selection.end
+                }));
+                let reference_start = source.find("A --> Done").unwrap();
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == "A"
+                        && symbol.role == EditorSemanticRole::Reference
+                        && symbol.selection == SourceSpan::new(reference_start, reference_start + 1)
+                }));
+                let label_start = source.find("\"L\"").unwrap() + 1;
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == "L"
+                        && symbol.role == EditorSemanticRole::Payload
+                        && symbol.selection == SourceSpan::new(label_start, label_start + 1)
+                }));
+                assert!(!facts.symbols.iter().any(|symbol| {
+                    matches!(
+                        symbol.role,
+                        EditorSemanticRole::Entity | EditorSemanticRole::Reference
+                    ) && matches!(symbol.name.as_str(), "A:x:y" | "A:x" | "x" | "y" | "x:y")
+                }));
+            }
+        }
+    }
+}
+
+#[test]
+fn parse_state_alias_editor_identity_trims_before_colon_suffixes() {
+    let engine = MermaidEngine::new();
+    for newline in ["\n", "\r\n"] {
+        for separator in [" ", "\t", " \t"] {
+            let source = format!(
+                "stateDiagram-v2{newline}state \"L\" as A{separator}:x:y{newline}A --> Done{newline}"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                parsed.model["states"]["A"]["descriptions"],
+                json!(["L", "x"])
+            );
+            for recovery in ["", "state Open {\n"] {
+                let input = format!("{source}{recovery}");
+                let facts = engine
+                    .parse_editor_semantic_facts_with_type_sync("stateDiagram", &input)
+                    .unwrap()
+                    .unwrap();
+                let declaration = input.find(&format!("A{separator}:")).unwrap();
+                let reference = input.find("A --> Done").unwrap();
+                let entities = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| {
+                        symbol.name == "A" && symbol.role == EditorSemanticRole::Entity
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(entities.len(), 1, "{input:?}");
+                assert_eq!(
+                    entities[0].selection,
+                    SourceSpan::new(declaration, declaration + 1)
+                );
+                assert!(facts.symbols.iter().any(|symbol| {
+                    symbol.name == "A"
+                        && symbol.role == EditorSemanticRole::Reference
+                        && symbol.selection == SourceSpan::new(reference, reference + 1)
+                }));
+                assert!(!facts.symbols.iter().any(|symbol| {
+                    matches!(
+                        symbol.role,
+                        EditorSemanticRole::Entity | EditorSemanticRole::Reference
+                    ) && symbol.name.starts_with('A')
+                        && symbol.name != "A"
+                }));
+            }
+        }
+    }
+}
+
+#[test]
 fn parse_state_render_model_tracks_explicit_composite_direction() {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(
@@ -619,7 +964,7 @@ end note"#,
     .unwrap()
     .unwrap();
     let note_text = res.model["states"]["A"]["note"]["text"].as_str().unwrap();
-    assert_eq!(note_text, "line1\nline2");
+    assert_eq!(note_text, "line1\n  line2");
 
     let res = block_on(engine.parse_diagram(
         r#"stateDiagram
@@ -2005,8 +2350,8 @@ fn parse_diagram_state_note_terminator_comments_preserve_body_and_following_edge
                 .parse_diagram_sync(&source, ParseOptions::strict())
                 .unwrap()
                 .unwrap();
-            let note_text = "this sentence contains end note %% literal text\n\
-                             another %% literal line";
+            let note_text =
+                "this sentence contains end note %% literal text\n  another %% literal line";
             assert_eq!(parsed.model["states"]["A"]["note"]["text"], note_text);
             let nodes = parsed.model["nodes"].as_array().unwrap();
             assert!(

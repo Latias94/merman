@@ -624,6 +624,25 @@ fn author_metadata_drops_internal_keys_without_creating_empty_subgraph_metadata(
 }
 
 #[test]
+fn comma_click_tooltips_keep_missing_targets_and_overwrite_each_target_independently() {
+    for action in ["\"https://example.test\"", "call cb()"] {
+        let source = format!(
+            "flowchart TD\nA\nclick A,Later {action} \"first\"\nLater\nclick Later,Missing {action} \"second\"\n"
+        );
+        let parsed = parse_flowchart_semantic_source(&source, &metadata()).unwrap();
+        assert_eq!(
+            parsed.tooltips,
+            HashMap::from([
+                ("A".to_string(), "first".to_string()),
+                ("Later".to_string(), "second".to_string()),
+                ("Missing".to_string(), "second".to_string()),
+            ]),
+        );
+        assert!(!parsed.nodes.iter().any(|node| node.id == "Missing"));
+    }
+}
+
+#[test]
 fn dropped_subgraph_members_keep_first_owner_and_source_order() {
     let model = parse(concat!(
         "flowchart LR\nsubgraph one\na\nb\nend\n",

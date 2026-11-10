@@ -56,6 +56,11 @@ fn kanban_ticket_truthiness_reaches_prepared_items_and_actual_links() {
         ("''", None),
         ("'0'", Some("0")),
         ("1", Some("1")),
+        ("1.0", Some("1")),
+        ("'1.0'", Some("1.0")),
+        ("9007199254740993", Some("9007199254740992")),
+        ("1e-7", Some("1e-7")),
+        ("1e21", Some("1e+21")),
     ] {
         let (layout, svg) = prepare_and_render(&format!(
             "kanban\n  todo[Todo]\n    card[Task]@{{ ticket: {raw} }}\n"
@@ -87,6 +92,19 @@ fn kanban_ticket_truthiness_reaches_prepared_items_and_actual_links() {
         } else {
             assert_eq!(visible_text(card).trim(), "Task");
         }
+    }
+}
+
+#[test]
+fn kanban_inline_header_suffix_reaches_rendered_sections() {
+    for (header, id) in [("kanban[x]", "x"), ("kanban-X", "-X"), ("kanbané", "é")] {
+        let (layout, svg) = prepare_and_render(&format!("{header}\n"));
+        assert_eq!(layout["sections"].as_array().unwrap().len(), 1);
+        assert_eq!(layout["sections"][0]["id"], id);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("g") && node.attribute("id") == Some(&format!("kanban-123-{id}"))
+        }));
     }
 }
 

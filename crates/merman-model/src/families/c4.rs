@@ -32,10 +32,61 @@ impl C4Text {
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct C4LayoutConfig {
+    /// JavaScript Number after `parseInt` and the database's minimum-one check.
     #[serde(default, rename = "c4ShapeInRow")]
-    pub c4_shape_in_row: i64,
+    pub c4_shape_in_row: f64,
+    /// JavaScript Number after `parseInt` and the database's minimum-one check.
     #[serde(default, rename = "c4BoundaryInRow")]
-    pub c4_boundary_in_row: i64,
+    pub c4_boundary_in_row: f64,
+}
+
+/// A relationship offset as stored by Mermaid's C4 database.
+///
+/// Named offsets in the color argument slots remain strings; offsets in the offset slots
+/// have already passed through `parseInt`. The renderer coerces both again before use.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum C4RelationOffset {
+    Number(f64),
+    String(String),
+}
+
+/// Parses the integer prefix consumed by C4's database and relationship renderer.
+///
+/// This is JavaScript `parseInt` with an omitted radix: only decimal and `0x` hexadecimal
+/// prefixes are recognized. Results retain binary64 rounding, signed zero, and overflow.
+pub fn parse_integer_prefix(input: &str) -> Option<f64> {
+    let input = input.trim_start_matches(crate::text::is_ecmascript_whitespace);
+    let (negative, unsigned) = match input.as_bytes().first() {
+        Some(b'-') => (true, &input[1..]),
+        Some(b'+') => (false, &input[1..]),
+        _ => (false, input),
+    };
+    let (hexadecimal, digits) = unsigned
+        .strip_prefix("0x")
+        .or_else(|| unsigned.strip_prefix("0X"))
+        .map_or((false, unsigned), |digits| (true, digits));
+    let digit_count = digits
+        .bytes()
+        .take_while(|byte| {
+            if hexadecimal {
+                byte.is_ascii_hexdigit()
+            } else {
+                byte.is_ascii_digit()
+            }
+        })
+        .count();
+    if digit_count == 0 {
+        return None;
+    }
+
+    let digits = &digits[..digit_count];
+    let magnitude = if hexadecimal {
+        crate::number::parse_power_of_two_digits(digits, 16)?
+    } else {
+        digits.parse::<f64>().ok()?
+    };
+    Some(if negative { -magnitude } else { magnitude })
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -163,9 +214,9 @@ pub struct C4Relation {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub link: Option<Value>,
     #[serde(default, rename = "offsetX", skip_serializing_if = "Option::is_none")]
-    pub offset_x: Option<i64>,
+    pub offset_x: Option<C4RelationOffset>,
     #[serde(default, rename = "offsetY", skip_serializing_if = "Option::is_none")]
-    pub offset_y: Option<i64>,
+    pub offset_y: Option<C4RelationOffset>,
     #[serde(default, rename = "lineColor", skip_serializing_if = "Option::is_none")]
     pub line_color: Option<String>,
     #[serde(default, rename = "textColor", skip_serializing_if = "Option::is_none")]

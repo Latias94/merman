@@ -20,7 +20,7 @@
         ],
         "score": 5,
         "section": "Onboarding",
-        "task": "        Sign Up",
+        "task": "Sign Up",
         "type": "Onboarding"
       },
       {
@@ -29,7 +29,7 @@
         ],
         "score": 4,
         "section": "Onboarding",
-        "task": "        Complete Profile",
+        "task": "Complete Profile",
         "type": "Onboarding"
       },
       {
@@ -38,7 +38,7 @@
         ],
         "score": 3,
         "section": "Engagement",
-        "task": "        Browse Features",
+        "task": "Browse Features",
         "type": "Engagement"
       },
       {
@@ -47,7 +47,7 @@
         ],
         "score": 4,
         "section": "Engagement",
-        "task": "        Use Core Functionality",
+        "task": "Use Core Functionality",
         "type": "Engagement"
       },
       {
@@ -56,7 +56,7 @@
         ],
         "score": 5,
         "section": "Retention",
-        "task": "        Revisit Application",
+        "task": "Revisit Application",
         "type": "Retention"
       },
       {
@@ -65,7 +65,7 @@
         ],
         "score": 3,
         "section": "Retention",
-        "task": "        Invite Friends",
+        "task": "Invite Friends",
         "type": "Retention"
       },
       {
@@ -73,7 +73,7 @@
         "score": 0,
         "scoreIsNaN": true,
         "section": "Retention",
-        "task": "        size",
+        "task": "size",
         "type": "Retention"
       }
     ],

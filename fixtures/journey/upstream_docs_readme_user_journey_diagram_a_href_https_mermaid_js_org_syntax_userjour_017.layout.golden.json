@@ -105,7 +105,7 @@
           ],
           "score": 5.0,
           "section": "Go to work",
-          "task": "      Make tea",
+          "task": "Make tea",
           "width": 150.0,
           "x": 150.0,
           "y": 110.0
@@ -138,7 +138,7 @@
           ],
           "score": 3.0,
           "section": "Go to work",
-          "task": "      Go upstairs",
+          "task": "Go upstairs",
           "width": 150.0,
           "x": 350.0,
           "y": 110.0
@@ -180,7 +180,7 @@
           ],
           "score": 1.0,
           "section": "Go to work",
-          "task": "      Do work",
+          "task": "Do work",
           "width": 150.0,
           "x": 550.0,
           "y": 110.0
@@ -213,7 +213,7 @@
           ],
           "score": 5.0,
           "section": "Go home",
-          "task": "      Go downstairs",
+          "task": "Go downstairs",
           "width": 150.0,
           "x": 750.0,
           "y": 110.0
@@ -246,7 +246,7 @@
           ],
           "score": 3.0,
           "section": "Go home",
-          "task": "      Sit down",
+          "task": "Sit down",
           "width": 150.0,
           "x": 950.0,
           "y": 110.0

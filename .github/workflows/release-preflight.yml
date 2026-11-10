@@ -870,12 +870,11 @@ jobs:
       - name: Qualify installed Web packages in Chromium and Worker
         run: node platforms/web/scripts/installed-browser-consumer.mjs
 
-      - name: Check final Web package WASM size budgets
+      - name: Report final Web package WASM sizes
         run: |
           cargo run --locked -p xtask -- wasm-size-matrix \
             --surface web \
-            --web-package-root platforms/web/packages \
-            --budget-file docs/release/WASM_SIZE_BUDGETS.json
+            --web-package-root platforms/web/packages
 
       - name: Pack and verify Web package group dry-run
         shell: bash

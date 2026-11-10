@@ -856,11 +856,17 @@ impl<'input> Lexer<'input> {
                 };
                 #[cfg(feature = "editor-facts")]
                 if self.recover_partial_node_labels && target.start < target.end {
+                    let (ids, id_spans) = lex::split_click_targets(
+                        &self.input[target.start..target.end],
+                        target.start,
+                    )
+                    .map(|(id, span)| (id.to_string(), span))
+                    .unzip();
                     return Some(Ok((
                         start,
                         Tok::ClickStmt(ClickStmt {
-                            ids: vec![self.input[target.start..target.end].to_string()],
-                            id_spans: vec![target],
+                            ids,
+                            id_spans,
                             tooltip: None,
                             action: ClickAction::Callback,
                             #[cfg(feature = "editor-facts")]
@@ -1041,7 +1047,8 @@ impl<'input> Lexer<'input> {
         let first = bytes[start];
         // Ordinary comments are removed by preprocessing. Mermaid's NODE_STRING includes `%`,
         // so remaining markers belong to identifiers and must reach the grammar unchanged.
-        if first.is_ascii_alphanumeric() || matches!(first, b'_' | b'%') {
+        // Its idStringToken also includes COMMA, even at the start of a literal vertex ID.
+        if first.is_ascii_alphanumeric() || matches!(first, b'_' | b'%' | b',') {
             self.pos += 1;
         } else {
             self.pos += non_ascii_id_char_len(self.input, start)?;
@@ -1055,7 +1062,7 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let b = bytes[self.pos];
-            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'%') {
+            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'%' | b',') {
                 self.pos += 1;
                 continue;
             }

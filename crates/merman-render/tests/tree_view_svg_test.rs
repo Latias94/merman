@@ -3059,3 +3059,27 @@ fn tree_view_icon_paint_tracks_inheritance_and_non_painting_channels() {
         );
     }
 }
+
+#[test]
+fn tree_view_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source =
+            format!("treeView-beta\naccTitle: {title}\naccDescr {{\n{description}\n}}\n\"Root\"\n");
+        let svg = render_tree_view_svg_with_options(&source, SvgRenderOptions::default());
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

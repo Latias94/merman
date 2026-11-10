@@ -119,15 +119,20 @@ profile-specific: packages with `layout-elk` carry the EPL-2.0 ELK closure, and 
 `math` may carry the OFL-1.1 RaTeX font closure. Use the generated package manifest and bundled
 notices as the distribution authority.
 
-## Size Verification
+## Size Reporting
 
 ```sh
+npm ci --prefix platforms/web
+npm run build --prefix platforms/web
+npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix \
   --surface web \
-  --budget-file docs/release/WASM_SIZE_BUDGETS.json
+  --web-package-root platforms/web/packages
 ```
 
-The matrix reports raw, stripped, gzip, and brotli sizes. Committed budgets always use the stripped artifact for compression measurements.
+The matrix reports raw, stripped, gzip, and Brotli sizes from the assembled packages without byte
+ceilings. Compression measurements use the stripped artifact; package provenance and smoke checks
+remain required.
 
 ## Related Documentation
 

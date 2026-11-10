@@ -23,6 +23,8 @@ use crate::{
     },
 };
 use merman_model::families::class as class_typed;
+#[cfg(feature = "editor-facts")]
+use merman_model::text::is_ecmascript_whitespace;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -30,17 +32,17 @@ use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
 use std::collections::HashSet;
 
-#[cfg(feature = "editor-facts")]
-use super::MERMAID_DOM_ID_PREFIX;
 use super::Tok;
 use super::ast::{ActionArena, Actions};
 use super::class_grammar;
 use super::db::ClassDb;
-use super::lexer::Lexer;
+use super::lexer::{ClassLexicalEvent, Lexer};
 
 #[cfg(test)]
 thread_local! {
     static CLASS_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+    #[cfg(feature = "editor-facts")]
+    static CLASS_ACTION_RECOVERY_INSPECTIONS: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -53,7 +55,6 @@ pub(crate) fn class_syntax_construction_count() -> usize {
     CLASS_SYNTAX_CONSTRUCTION_COUNT.get()
 }
 
-type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), super::LexError>;
 type ClassGrammarError = lalrpop_util::ParseError<usize, Tok, super::LexError>;
 
 struct ClassSyntaxOutcome {
@@ -72,7 +73,39 @@ impl ClassSyntax {
         CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
         let events = crate::diagrams::scan::collect_lexical_events(&mut Lexer::new(code), control)?;
-        Ok(Self { events })
+        let mut combined: Vec<ClassLexicalEvent> = Vec::with_capacity(events.len());
+        let mut can_prefix_name = false;
+        let mut in_annotation = false;
+        for (index, event) in events.into_iter().enumerate() {
+            if index.is_multiple_of(128) {
+                control.checkpoint()?;
+            }
+            let next_can_prefix = !in_annotation
+                && match &event {
+                    Ok((start, Tok::Name(_), end)) => !code[*start..*end].contains(['`', '~']),
+                    _ => false,
+                };
+            match &event {
+                Ok((_, Tok::AnnotationStart, _)) => in_annotation = true,
+                Ok((_, Tok::AnnotationStop | Tok::Newline, _)) => in_annotation = false,
+                _ => {}
+            }
+            // Only alphaNumToken can prefix another className. A quoted or generic name
+            // completes the production; annotations retain their single terminal as well.
+            match (combined.last_mut(), event) {
+                (
+                    Some(Ok((_, Tok::Name(previous), previous_end))),
+                    Ok((_, Tok::Name(next), end)),
+                ) if can_prefix_name => {
+                    previous.push_str(&next);
+                    *previous_end = end;
+                }
+                (_, event) => combined.push(event),
+            }
+            can_prefix_name = next_can_prefix;
+        }
+        control.checkpoint()?;
+        Ok(Self { events: combined })
     }
 
     fn into_actions(
@@ -633,6 +666,27 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::Name(name) => {
                 if self.interaction == Some(ClassInteractionKind::Click)
+                    && self.expected_name.is_some_and(|expected| {
+                        matches!(expected.kind, ExpectedClassName::ClickTarget)
+                    })
+                    && let Some((target, action_span)) =
+                        self.recover_interaction_action(name, SourceSpan::new(start, end))
+                {
+                    self.expected_name = None;
+                    self.interaction_target_end = Some(target.span.end);
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        target.span,
+                    ));
+                    self.push_symbol(facts, target, ExpectedClassName::ClickTarget);
+                    self.push_interaction_expected_syntax(
+                        facts,
+                        action_span.start,
+                        action_span.end,
+                    );
+                    return;
+                }
+                if self.interaction == Some(ClassInteractionKind::Click)
                     && self.expected_name.is_none()
                     && !self.interaction_action_seen
                     && self
@@ -991,6 +1045,49 @@ impl<'a> ClassEditorFactCollector<'a> {
         ));
     }
 
+    fn recover_interaction_action(
+        &self,
+        name: &str,
+        span: SourceSpan,
+    ) -> Option<(ClassTokenSymbol, SourceSpan)> {
+        let source = self.code.get(span.start..span.end)?;
+        // Quoted and generic terminals complete className rather than prefixing a bare action.
+        // Incomplete literals retain that ownership through EOF.
+        if source.contains(['`', '~']) {
+            return None;
+        }
+        let separator = source.rfind(|ch: char| ch.is_ascii_whitespace())?;
+        let action = &source[separator + 1..];
+        if !is_class_interaction_action_prefix(action)
+            || !self.code[span.end..]
+                .chars()
+                .take_while(|ch| !matches!(ch, '\r' | '\n'))
+                .all(|ch| {
+                    #[cfg(test)]
+                    CLASS_ACTION_RECOVERY_INSPECTIONS.update(|count| count + 1);
+                    is_ecmascript_whitespace(ch)
+                })
+        {
+            return None;
+        }
+        // className concatenates adjacent terminals, including a partially typed action.
+        // Recover only a bare final action prefix; completed interactions keep that grammar rule.
+        let target_name = name.strip_suffix(action)?;
+        let target_len = source[..separator]
+            .trim_end_matches(|ch: char| ch.is_ascii_whitespace())
+            .len();
+        if target_name.is_empty() || target_len == 0 {
+            return None;
+        }
+        Some((
+            ClassTokenSymbol {
+                name: target_name.to_string(),
+                span: SourceSpan::new(span.start, span.start + target_len),
+            },
+            SourceSpan::new(span.start + separator + 1, span.end),
+        ))
+    }
+
     fn push_interaction_payload_expected_syntax(
         &mut self,
         facts: &mut EditorSemanticFacts,
@@ -1101,6 +1198,10 @@ impl<'a> ClassEditorFactCollector<'a> {
             return;
         }
         let selection = selection_span_for_class_name(self.code, &symbol.name, symbol.span);
+        let needs_composite_quote_edit = self
+            .code
+            .get(selection.start..selection.end)
+            .is_some_and(|source| source.contains('`') && source.contains('~'));
         match expected {
             ExpectedClassName::Class => {
                 self.declared_entities.insert(symbol.name.clone());
@@ -1168,6 +1269,11 @@ impl<'a> ClassEditorFactCollector<'a> {
                 ));
             }
         }
+        if needs_composite_quote_edit && let Some(symbol) = facts.symbols.last_mut() {
+            // One contiguous replacement cannot preserve a generic inside an embedded quote.
+            // The editor requires every occurrence's policy to allow a group rename.
+            symbol.rename_policy = crate::EditorRenamePolicy::None;
+        }
     }
 
     fn push_payload_symbol(
@@ -1197,7 +1303,7 @@ impl<'a> ClassEditorFactCollector<'a> {
         detail: &'static str,
         kind: EditorSemanticKind,
     ) {
-        let value = value.trim();
+        let value = value.trim_matches(is_ecmascript_whitespace);
         if value.is_empty() {
             return;
         }
@@ -1376,23 +1482,34 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
     } else {
         (source, span.start)
     };
-    let authored_name = if source_name
-        .as_bytes()
-        .first()
-        .is_some_and(u8::is_ascii_digit)
-    {
-        name.strip_prefix(MERMAID_DOM_ID_PREFIX).unwrap_or(name)
-    } else {
-        name
-    };
-    SourceSpan::new(start, start + authored_name.len().min(source_name.len()))
+    if source_name.starts_with(name) {
+        return SourceSpan::new(start, start + name.len());
+    }
+    // A className can concatenate terminals separated by whitespace or backticks. Rename
+    // the complete authored name in that case, leaving its generic suffix in place.
+    let mut quoted = false;
+    let end = source
+        .char_indices()
+        .find_map(|(offset, ch)| {
+            if ch == '`' {
+                quoted = !quoted;
+            }
+            (ch == '~' && !quoted).then_some(offset)
+        })
+        .unwrap_or(source.len());
+    let end = source[..end]
+        .trim_end_matches(is_ecmascript_whitespace)
+        .len();
+    SourceSpan::new(span.start, span.start + end)
 }
 
 #[cfg(feature = "editor-facts")]
 fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
-    let trimmed_start = member.len().saturating_sub(member.trim_start().len());
+    let trimmed_start = member
+        .len()
+        .saturating_sub(member.trim_start_matches(is_ecmascript_whitespace).len());
     let text = &member[trimmed_start..];
-    let trimmed_len = text.trim_end().len();
+    let trimmed_len = text.trim_end_matches(is_ecmascript_whitespace).len();
     if trimmed_len == 0 {
         return None;
     }
@@ -1411,11 +1528,13 @@ fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, Sou
 fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {
     let after_colon = label.strip_prefix(':').unwrap_or(label);
     let colon_offset = usize::from(label.starts_with(':'));
-    let leading = after_colon
-        .len()
-        .saturating_sub(after_colon.trim_start().len());
+    let leading = after_colon.len().saturating_sub(
+        after_colon
+            .trim_start_matches(is_ecmascript_whitespace)
+            .len(),
+    );
     let text = &after_colon[leading..];
-    let trimmed_len = text.trim_end().len();
+    let trimmed_len = text.trim_end_matches(is_ecmascript_whitespace).len();
     if trimmed_len == 0 {
         return None;
     }
@@ -1554,11 +1673,48 @@ mod semantic_tests {
     }
 
     #[test]
+    fn canonical_class_preserves_note_bytes_at_the_family_parse_boundary() {
+        for payload in [
+            " padded ",
+            " \t ",
+            "\tTabbed\t",
+            "\ninner\n",
+            "\r\n 名𠀀\r\n",
+            "",
+        ] {
+            let source = format!(
+                "classDiagram\nnote \"{payload}\"\nnamespace Outer {{\nclass 1\nnote for 1 \"{payload}\"\n}}\n"
+            );
+            let model = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &OperationControl::new(),
+            )
+            .unwrap()
+            .model
+            .unwrap();
+            assert_eq!(model.notes.len(), 2);
+            for note in &model.notes {
+                assert_eq!(note.text.as_bytes(), payload.as_bytes(), "{payload:?}");
+            }
+            assert_eq!(model.notes[0].class_id, None);
+            assert_eq!(model.notes[0].parent, None);
+            assert_eq!(model.notes[1].class_id.as_deref(), Some("1"));
+            assert_eq!(model.notes[1].parent.as_deref(), Some("Outer"));
+            assert_eq!(model.namespaces["Outer"].note_ids, ["note1"]);
+        }
+    }
+
+    #[test]
     #[cfg(feature = "editor-facts")]
     fn canonical_class_captures_success_and_failure_from_one_construction() {
         for (source, valid) in [
             ("classDiagram\nclass Service\n", true),
             ("classDiagram\nclass Service {\n+field\n", false),
+            ("classDiagram\nclass Service\nclick Service h", false),
+            ("classDiagram\nclass Service\nclick Service c", false),
         ] {
             reset_class_syntax_construction_count();
             #[cfg(feature = "editor-facts")]
@@ -1585,6 +1741,98 @@ mod semantic_tests {
                 }
             );
             assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn class_interaction_recovery_preserves_completed_composite_targets() {
+        for (target, id) in [
+            ("User c", "Userc"),
+            ("User h", "Userh"),
+            ("User `c`", "Userc"),
+            ("`User h`", "User h"),
+        ] {
+            let source = format!(
+                "classDiagram\nclass {target}\nclick {target} href \"https://example.com\"\n"
+            );
+            let parsed = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let model = parsed.model.expect("completed composite target parses");
+            assert!(model.classes.contains_key(id), "{target}");
+            let facts = parsed.editor_facts.expect("same-pass Class facts");
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("class interaction target"))
+                .expect("completed interaction retains its target");
+            let start = source.rfind(target).unwrap();
+            let target_span = SourceSpan::new(start, start + target.len());
+            assert_eq!(symbol.name, id, "{target}");
+            assert_eq!(symbol.span, target_span, "{target}");
+            assert!(facts.expected_syntax.iter().all(|expected| {
+                expected.kind != EditorExpectedSyntaxKind::InteractionAction
+                    || expected.span.start >= target_span.end
+            }));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn class_interaction_recovery_retains_unterminated_literal_targets() {
+        for (target, id) in [("`User h", "User h"), ("Prefix `User h", "PrefixUser h")] {
+            let source = format!("classDiagram\nclick {target}");
+            let parsed = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(parsed.model.is_err());
+            let facts = parsed.editor_facts.unwrap();
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("class interaction target"))
+                .unwrap();
+            assert_eq!(symbol.name, id, "{target}");
+            assert_eq!(
+                symbol.span,
+                SourceSpan::new("classDiagram\nclick ".len(), source.len())
+            );
+            assert!(
+                facts.expected_syntax.iter().all(|expected| {
+                    expected.kind != EditorExpectedSyntaxKind::InteractionAction
+                })
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn class_interaction_recovery_bounds_adjacent_suffix_inspection() {
+        for count in [256, 2048] {
+            let source = format!("classDiagram\n{}", "click A h ".repeat(count));
+            CLASS_ACTION_RECOVERY_INSPECTIONS.set(0);
+            let parsed = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(parsed.model.is_err());
+            let inspected = CLASS_ACTION_RECOVERY_INSPECTIONS.get();
+            assert!(
+                inspected > 0 && inspected <= count * 2,
+                "{count}: {inspected}"
+            );
         }
     }
 

@@ -750,7 +750,7 @@ def _classify_path(path: str) -> tuple[frozenset[str], str, bool]:
         elif path.startswith("docs/security/"):
             owners.add("security")
         elif path == "docs/release/WASM_SIZE_BUDGETS.json":
-            owners.update({"typst", "web"})
+            owners.add("typst")
         return frozenset(owners), f"documentation owner changed: {path}", False
 
     if path in {

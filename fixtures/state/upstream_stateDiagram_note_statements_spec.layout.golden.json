@@ -38,7 +38,7 @@
           "offset_y": 0.0,
           "padding": 16.0,
           "requested_dir": null,
-          "title": "A note can also\nbe defined on\nseveral lines",
+          "title": "A note can also\n  be defined on\n  several lines",
           "title_label": {
             "height": 63.0,
             "width": 86.38,

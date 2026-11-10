@@ -17,10 +17,10 @@
           "offset_y": 0.0,
           "padding": 16.0,
           "requested_dir": null,
-          "title": "Decision point.\nMultiple lines.",
+          "title": "Decision point.\n    Multiple lines.",
           "title_label": {
             "height": 42.0,
-            "width": 82.88,
+            "width": 97.16,
             "x": 498.333,
             "y": 312.0
           },

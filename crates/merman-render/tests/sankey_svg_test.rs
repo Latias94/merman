@@ -1,4 +1,7 @@
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::OperationControl;
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_model::resources::InputResourcePolicy;
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
@@ -63,17 +66,54 @@ fn render_sankey_with_theme_requirement(
         .expect("parse themed Sankey")
         .expect("detect themed Sankey")
         .into_presentation();
+    render_sankey_presentation_with_theme_requirement(&parsed, theme, portability)
+}
+
+fn render_sankey_presentation_with_theme_requirement(
+    parsed: &PresentationDiagram,
+    theme: &DiagramTheme,
+    portability: ThemePortabilityRequirement,
+) -> merman_render::Result<family::RenderedFamilySvg> {
     let session = RenderEnvironment::deterministic()
         .with_theme_portability_requirement(portability)
         .begin_session_with_theme(theme)
         .expect("begin themed Sankey session");
-    family::prepare(&parsed, &LayoutOptions::default(), session)?.render_svg(
+    family::prepare(parsed, &LayoutOptions::default(), session)?.render_svg(
         &SvgRenderOptions {
             diagram_id: Some("sankey-theme".to_string()),
             ..SvgRenderOptions::default()
         },
         &SvgDebugOptions::default(),
     )
+}
+
+fn amend_sankey_node_ids(parsed: PresentationDiagram, ids: [&str; 2]) -> PresentationDiagram {
+    let (metadata, mut model, context) = parsed.into_parts();
+    let RenderSemanticModel::Sankey(sankey) = &mut model else {
+        panic!("expected Sankey model");
+    };
+    let [source, target] = sankey.graph.nodes.as_mut_slice() else {
+        panic!("Sankey label fixture must contain exactly two nodes");
+    };
+    let [link] = sankey.graph.links.as_mut_slice() else {
+        panic!("Sankey label fixture must contain exactly one link");
+    };
+    assert_eq!(link.source, source.id);
+    assert_eq!(link.target, target.id);
+    assert_ne!(ids[0], ids[1]);
+    source.id = ids[0].to_string();
+    target.id = ids[1].to_string();
+    link.source = source.id.clone();
+    link.target = target.id.clone();
+    PresentationDiagram::try_from_frozen(
+        metadata,
+        model,
+        context,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("validate caller-authored Sankey presentation")
+    .expect("admit caller-authored Sankey presentation")
 }
 
 fn render_sankey_with_theme_and_engine(
@@ -496,13 +536,16 @@ fn sankey_label_bounds_use_the_raw_text_profile_and_emitted_font() {
     let source = concat!(
         "---\nconfig:\n  fontFamily: monospace\n  sankey:\n",
         "    labelStyle: outlined\n    prefix: 'total '\n    suffix: ' units'\n---\n",
-        "sankey\n\"#35;32;\",\"#32;\",1\n"
+        "sankey\nSource,Target,1\n"
     );
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .unwrap()
         .unwrap()
         .into_presentation();
+    // Exercise the renderer's preprocessor-placeholder decoding with checked typed IDs;
+    // the CSV grammar itself admits only ASCII field content.
+    let parsed = amend_sankey_node_ids(parsed, ["ﬂ°°35¶ß32;", "ﬂ°°32¶ß"]);
     let session = environment.begin_session().unwrap();
     let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
         .unwrap()
@@ -1685,16 +1728,21 @@ fn sankey_decoded_empty_labels_do_not_consume_text_themes_or_merge_node_identiti
         )
         .unwrap();
     for label_style in ["legacy", "outlined"] {
-        for (first, second, decoded) in [("#32;", "#9;", [" ", "\t"]), ("#1;", "#2;", ["", ""])] {
+        // Explicit renderer-only IDs preserve placeholder decoding and XML filtering.
+        for (first, second, decoded) in [
+            ("ﬂ°°32¶ß", "ﬂ°°9¶ß", [" ", "\t"]),
+            ("ﬂ°°1¶ß", "ﬂ°°2¶ß", ["", ""]),
+        ] {
             for show_values in [false, true] {
                 let source = format!(
-                    "---\nconfig:\n  sankey:\n    labelStyle: {label_style}\n    showValues: {show_values}\n---\nsankey\n\"{first}\",\"{second}\",1\n"
+                    "---\nconfig:\n  sankey:\n    labelStyle: {label_style}\n    showValues: {show_values}\n---\nsankey\nSource,Target,1\n"
                 );
                 let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
                     .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
                     .unwrap()
                     .unwrap()
                     .into_presentation();
+                let parsed = amend_sankey_node_ids(parsed, [first, second]);
                 let merman_model::presentation::RenderSemanticModel::Sankey(model) = parsed.model()
                 else {
                     panic!("expected Sankey model");
@@ -1773,16 +1821,16 @@ fn sankey_text_ordinals_use_visible_labels_without_renumbering_nodes() {
     use merman_render::diagram_theme::OrdinalSelector;
 
     for label_style in ["legacy", "outlined"] {
-        for (first_id, show_values, ordinal, applicable, first_visible) in [
-            ("", false, 1, false, false),
-            ("", false, 2, true, false),
-            ("", true, 1, true, true),
-            ("A", false, 1, true, true),
-            ("", false, 3, false, false),
-            ("#32;", false, 1, false, false),
-            ("#32;", false, 2, true, false),
-            ("#1;", false, 1, false, false),
-            ("#32;", true, 1, true, true),
+        for (first_id, render_ids, show_values, ordinal, applicable, first_visible) in [
+            (" ", None, false, 1, false, false),
+            (" ", None, false, 2, true, false),
+            (" ", None, true, 1, true, true),
+            ("A", None, false, 1, true, true),
+            (" ", None, false, 3, false, false),
+            ("Source", Some(["ﬂ°°32¶ß", "B"]), false, 1, false, false),
+            ("Source", Some(["ﬂ°°32¶ß", "B"]), false, 2, true, false),
+            ("Source", Some(["ﬂ°°1¶ß", "B"]), false, 1, false, false),
+            ("Source", Some(["ﬂ°°32¶ß", "B"]), true, 1, true, true),
         ] {
             let theme = DiagramThemeCompiler::new()
                 .compile(
@@ -1806,13 +1854,19 @@ fn sankey_text_ordinals_use_visible_labels_without_renumbering_nodes() {
             } else {
                 ThemePortabilityRequirement::RequirePortable
             };
-            let rendered = render_sankey_with_theme_requirement(
-                &source,
-                &theme,
-                MermaidEngine::new(),
-                portability,
-            )
-            .unwrap();
+            let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .expect("parse valid Sankey label seed")
+                .expect("detect Sankey label seed")
+                .into_presentation();
+            let parsed = if let Some(ids) = render_ids {
+                amend_sankey_node_ids(parsed, ids)
+            } else {
+                parsed
+            };
+            let rendered =
+                render_sankey_presentation_with_theme_requirement(&parsed, &theme, portability)
+                    .unwrap();
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
             let visible = document
                 .descendants()
@@ -1878,7 +1932,7 @@ fn sankey_visible_text_ordinals_keep_fill_and_stroke_ownership_independent() {
                 MermaidEngine::new()
             };
             let rendered = render_sankey_with_theme_requirement(
-                "---\nconfig:\n  sankey:\n    showValues: false\n---\nsankey-beta\n\"\",B,10\n",
+                "---\nconfig:\n  sankey:\n    showValues: false\n---\nsankey-beta\n\" \",B,10\n",
                 &theme,
                 engine,
                 ThemePortabilityRequirement::BestEffort,

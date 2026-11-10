@@ -4759,3 +4759,28 @@ fn repair_u7_xychart_quoted_source_palette_receipt_uses_serialized_css() {
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
+
+#[test]
+fn xychart_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "xychart-beta\naccTitle: {title}\naccDescr {{\n{description}\n}}\nx-axis [a,b]\nbar [1,2]\n"
+        );
+        let svg = render_xychart_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

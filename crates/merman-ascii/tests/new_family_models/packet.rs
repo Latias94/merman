@@ -9,22 +9,22 @@ fn packet_render_model_renders_rows_and_ranges() {
         packet: vec![
             vec![
                 PacketBlock {
-                    start: 0,
-                    end: 7,
-                    bits: 8,
+                    start: 0.0,
+                    end: 7.0,
+                    bits: 8.0,
                     label: "header".to_string(),
                 },
                 PacketBlock {
-                    start: 8,
-                    end: 15,
-                    bits: 8,
+                    start: 8.0,
+                    end: 15.0,
+                    bits: 8.0,
                     label: "payload".to_string(),
                 },
             ],
             vec![PacketBlock {
-                start: 16,
-                end: 31,
-                bits: 16,
+                start: 16.0,
+                end: 31.0,
+                bits: 16.0,
                 label: "footer".to_string(),
             }],
         ],
@@ -47,7 +47,7 @@ fn packet_render_model_renders_rows_and_ranges() {
     );
 }
 #[test]
-fn packet_parser_split_blocks_render_inclusive_bit_counts() {
+fn packet_parser_split_blocks_render_the_database_bit_counts() {
     let rendered = render_parsed(
         r#"packet
 0-10: "test"
@@ -60,38 +60,12 @@ fn packet_parser_split_blocks_render_inclusive_bit_counts() {
         concat!(
             "row 1:\n",
             "  - range=[0..10] bits=11 label(bytes=4)=\"test\"\n",
-            "  - range=[11..31] bits=21 label(bytes=8)=\"multiple\"\n",
+            "  - range=[11..31] bits=20 label(bytes=8)=\"multiple\"\n",
             "row 2:\n",
-            "  - range=[32..63] bits=32 label(bytes=8)=\"multiple\"\n",
+            "  - range=[32..63] bits=31 label(bytes=8)=\"multiple\"\n",
             "row 3:\n",
-            "  - range=[64..90] bits=27 label(bytes=8)=\"multiple\"",
+            "  - range=[64..90] bits=26 label(bytes=8)=\"multiple\"",
         )
-    );
-}
-
-#[test]
-fn packet_render_model_rejects_noninclusive_bit_counts() {
-    let model = PacketDiagramModel {
-        packet: vec![vec![PacketBlock {
-            start: 11,
-            end: 31,
-            bits: 20,
-            label: "multiple".to_string(),
-        }]],
-        ..Default::default()
-    };
-
-    let error = render_model(
-        &RenderSemanticModel::Packet(model),
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect_err("packet range width must be validated before rendering");
-    assert_eq!(
-        error,
-        AsciiError::UnsupportedFeature {
-            diagram_type: "packet",
-            feature: "packet block bit count does not match inclusive range",
-        }
     );
 }
 
@@ -99,9 +73,9 @@ fn packet_render_model_rejects_noninclusive_bit_counts() {
 fn packet_labels_cannot_forge_following_block_boundaries() {
     let forged = PacketDiagramModel {
         packet: vec![vec![PacketBlock {
-            start: 0,
-            end: 7,
-            bits: 8,
+            start: 0.0,
+            end: 7.0,
+            bits: 8.0,
             label: "header (8 bits) | [8..15] payload".to_string(),
         }]],
         ..Default::default()
@@ -109,15 +83,15 @@ fn packet_labels_cannot_forge_following_block_boundaries() {
     let split = PacketDiagramModel {
         packet: vec![vec![
             PacketBlock {
-                start: 0,
-                end: 7,
-                bits: 8,
+                start: 0.0,
+                end: 7.0,
+                bits: 8.0,
                 label: "header".to_string(),
             },
             PacketBlock {
-                start: 8,
-                end: 15,
-                bits: 8,
+                start: 8.0,
+                end: 15.0,
+                bits: 8.0,
                 label: "payload".to_string(),
             },
         ]],
@@ -132,18 +106,18 @@ fn packet_labels_cannot_forge_following_block_boundaries() {
 
     let leading = PacketDiagramModel {
         packet: vec![vec![PacketBlock {
-            start: 0,
-            end: 7,
-            bits: 8,
+            start: 0.0,
+            end: 7.0,
+            bits: 8.0,
             label: " label".to_string(),
         }]],
         ..Default::default()
     };
     let trailing = PacketDiagramModel {
         packet: vec![vec![PacketBlock {
-            start: 0,
-            end: 7,
-            bits: 8,
+            start: 0.0,
+            end: 7.0,
+            bits: 8.0,
             label: "label ".to_string(),
         }]],
         ..Default::default()

@@ -88,14 +88,8 @@ fn render_state_diagram_svg_with_plan(
     );
     let rough_cache = StateRoughCache::default();
 
-    let has_acc_title = model
-        .acc_title
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
-    let has_acc_descr = model
-        .acc_descr
-        .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
+    let has_acc_title = model.acc_title.as_deref().is_some_and(|s| !s.is_empty());
+    let has_acc_descr = model.acc_descr.as_deref().is_some_and(|s| !s.is_empty());
 
     let mut nodes_by_id: FxHashMap<&str, &StateSvgNode> =
         FxHashMap::with_capacity_and_hasher(model.nodes.len(), Default::default());

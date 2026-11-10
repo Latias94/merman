@@ -54,7 +54,7 @@
         "domId": "state-State1----parent-0",
         "id": "State1----parent",
         "isGroup": true,
-        "label": "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line...",
+        "label": "Important information! You\ncan write\n      notes with multiple lines...\n      Here is another line...\n      And another line...",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -72,7 +72,7 @@
         "domId": "state-State1----note-0",
         "id": "State1----note-0",
         "isGroup": false,
-        "label": "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line...",
+        "label": "Important information! You\ncan write\n      notes with multiple lines...\n      Here is another line...\n      And another line...",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -96,7 +96,7 @@
         "id": "State1",
         "note": {
           "position": "right of",
-          "text": "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line..."
+          "text": "Important information! You\ncan write\n      notes with multiple lines...\n      Here is another line...\n      And another line..."
         },
         "start": null,
         "styles": [],

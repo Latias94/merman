@@ -145,7 +145,7 @@
         "domId": "state-A----parent-2",
         "id": "A----parent",
         "isGroup": true,
-        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
+        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n  <img src=\"x\">",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -163,7 +163,7 @@
         "domId": "state-A----note-2",
         "id": "A----note-2",
         "isGroup": false,
-        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n<img src=\"x\">",
+        "label": "<a href=\"https://mermaid.js.org/\" target=\"_blank\" rel=\"noopener\"><code>note about mermaid</code></a><br>\n  <img src=\"x\">",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -223,7 +223,7 @@
         "id": "A",
         "note": {
           "position": "right of",
-          "text": "<a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>\n<img src=x onerror=alert(1)>"
+          "text": "<a href='https://mermaid.js.org/' target='_blank'><code>note about mermaid</code></a><br/>\n  <img src=x onerror=alert(1)>"
         },
         "start": null,
         "styles": [],

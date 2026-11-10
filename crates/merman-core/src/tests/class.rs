@@ -4,6 +4,348 @@ use futures::executor::block_on;
 use serde_json::json;
 
 #[test]
+fn class_numeric_names_preserve_semantic_and_compatibility_identity() {
+    let engine = MermaidEngine::new();
+    for (declaration, id, type_param) in [
+        ("1", "1", ""),
+        ("`1`", "1", ""),
+        ("1st", "1st", ""),
+        ("`1`~T~", "1", "T"),
+        ("1~T~", "1", "T"),
+        ("1 \t~T~", "1", "T"),
+    ] {
+        let source = format!("classDiagram\nclass {declaration}\n");
+        let semantic = SemanticParser::new().parse_diagram_sync(&source).unwrap();
+        let SemanticDiagramModel::Class(model) = semantic.model else {
+            panic!("expected canonical Class model");
+        };
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let canonical = serde_json::to_value(&model).unwrap();
+        for wire in [&canonical, &parsed.model] {
+            let classes = wire["classes"].as_object().unwrap();
+            assert_eq!(classes.len(), 1, "{declaration}");
+            let class = &classes[id];
+            assert_eq!(class["id"], id, "{declaration}");
+            assert_eq!(class["label"], id, "{declaration}");
+            assert_eq!(class["type"], type_param, "{declaration}");
+            assert_eq!(
+                class["text"],
+                if type_param.is_empty() {
+                    id.to_string()
+                } else {
+                    format!("{id}&lt;{type_param}&gt;")
+                },
+                "{declaration}"
+            );
+            assert!(!classes.contains_key(&format!("classId-{id}")));
+        }
+    }
+}
+
+#[test]
+fn class_numeric_collisions_keep_members_namespaces_and_relations_distinct() {
+    let source = concat!(
+        "classDiagram\n",
+        "namespace Outer {\n",
+        "namespace Inner {\n",
+        "class `1`~Raw~ {\n",
+        "+rawField\n",
+        "+rawMethod()\n",
+        "}\n",
+        "}\n",
+        "class `classId-1`~Prefixed~ {\n",
+        "+prefixedField\n",
+        "+prefixedMethod()\n",
+        "}\n",
+        "}\n",
+        "`1`~Other~ --> `classId-1`~Other~ : separate\n",
+        "note for 1 \" raw note \"\n",
+        "note for classId-1 \" prefixed note \"\n",
+    );
+    let semantic = SemanticParser::new().parse_diagram_sync(source).unwrap();
+    let SemanticDiagramModel::Class(model) = semantic.model else {
+        panic!("expected canonical Class model");
+    };
+    let engine = MermaidEngine::new();
+    let parsed = engine
+        .parse_diagram_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let typed = engine
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Class(typed_model) = typed.model() else {
+        panic!("expected typed Class model");
+    };
+    assert_ne!(
+        typed_model.class("1").unwrap().dom_id,
+        typed_model.class("classId-1").unwrap().dom_id
+    );
+    let canonical = serde_json::to_value(&model).unwrap();
+    let full = serde_json::to_value(typed_model).unwrap();
+    for wire in [&canonical, &parsed.model, &full] {
+        let classes = wire["classes"].as_object().unwrap();
+        assert_eq!(classes.len(), 2);
+        for (id, type_param, parent, member, method) in [
+            ("1", "Raw", "Outer.Inner", "rawField", "rawMethod"),
+            (
+                "classId-1",
+                "Prefixed",
+                "Outer",
+                "prefixedField",
+                "prefixedMethod",
+            ),
+        ] {
+            let class = &classes[id];
+            assert_eq!(class["id"], id);
+            assert_eq!(class["label"], id);
+            assert_eq!(class["type"], type_param);
+            assert_eq!(class["text"], format!("{id}&lt;{type_param}&gt;"));
+            assert_eq!(class["parent"], parent);
+            assert_eq!(class["members"].as_array().unwrap().len(), 1);
+            assert_eq!(class["members"][0]["id"], member);
+            assert_eq!(class["methods"].as_array().unwrap().len(), 1);
+            assert_eq!(class["methods"][0]["id"], method);
+        }
+        assert_eq!(
+            wire["namespaces"]["Outer"]["classIds"],
+            json!(["classId-1"])
+        );
+        assert_eq!(wire["namespaces"]["Outer.Inner"]["classIds"], json!(["1"]));
+        assert_eq!(wire["relations"].as_array().unwrap().len(), 1);
+        assert_eq!(wire["relations"][0]["id1"], "1");
+        assert_eq!(wire["relations"][0]["id2"], "classId-1");
+        assert_eq!(wire["notes"][0]["class"], "1");
+        assert_eq!(wire["notes"][0]["text"], " raw note ");
+        assert_eq!(wire["notes"][1]["class"], "classId-1");
+        assert_eq!(wire["notes"][1]["text"], " prefixed note ");
+    }
+}
+
+#[test]
+fn class_numeric_css_targets_route_each_element_before_generic_split() {
+    let declarations = concat!(
+        "classDiagram\n",
+        "class 1~Raw~\n",
+        "class classId-1~Prefixed~\n",
+        "class Peer~T~\n",
+        "class ` 1`~Spaced~\n",
+    );
+    for (statement, styled_prefixed, styled_peer, styled_spaced) in [
+        ("cssClass \"1~U~,Peer~V~\" accent", true, true, false),
+        ("cssClass \"Peer~V~,1~U~\" accent", true, true, false),
+        ("cssClass \"Peer~V~, 1~U~\" accent", false, true, true),
+        ("cssClass \"classId-1~U~\" accent", true, false, false),
+        ("class 1:::accent", true, false, false),
+    ] {
+        let source = format!(
+            "{declarations}{statement}\nclassDef accent fill:#ff0000\nstyle 1 fill:#00ff00\n"
+        );
+        let parsed = MermaidEngine::new()
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let classes = parsed.model["classes"].as_object().unwrap();
+        assert_eq!(classes.len(), 4, "{statement}");
+        assert_eq!(classes["1"]["cssClasses"], "default", "{statement}");
+        assert_eq!(
+            classes["1"]["styles"],
+            json!(["fill:#00ff00"]),
+            "{statement}"
+        );
+        for (id, styled) in [
+            ("classId-1", styled_prefixed),
+            ("Peer", styled_peer),
+            (" 1", styled_spaced),
+        ] {
+            assert_eq!(
+                classes[id]["cssClasses"],
+                if styled { "default accent" } else { "default" },
+                "{statement}: {id}"
+            );
+            assert_eq!(
+                classes[id]["styles"],
+                if styled {
+                    json!(["fill:#ff0000"])
+                } else {
+                    json!([])
+                },
+                "{statement}: {id}"
+            );
+        }
+    }
+}
+
+#[test]
+fn class_numeric_links_and_tooltips_keep_separate_target_routes() {
+    let declarations = concat!(
+        "classDiagram\n",
+        "class 1~Raw~\n",
+        "class classId-1~Prefixed~\n",
+        "class Peer~T~\n",
+        "class 2~Unprefixed~\n",
+    );
+    for (command, href) in [("link", ""), ("click", " href")] {
+        for targets in [
+            "1~U~,Peer~V~,2~W~,Unknown,Later",
+            "Peer~V~,2~W~,1~U~,Unknown,Later",
+        ] {
+            let source = format!(
+                "{declarations}{command} `{targets}`{href} \"https://example.com/\" \"Raw tooltip\" _self\nclass Later\n"
+            );
+            let parsed = MermaidEngine::new()
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let classes = parsed.model["classes"].as_object().unwrap();
+            assert_eq!(classes.len(), 5, "{command}: {targets}");
+            assert!(!classes.contains_key("Unknown"));
+            assert!(!classes.contains_key("classId-2"));
+            for id in ["classId-1", "Peer"] {
+                assert_eq!(classes[id]["link"], "https://example.com/");
+                assert_eq!(classes[id]["linkTarget"], "_self");
+                assert_eq!(classes[id]["cssClasses"], "default clickable");
+            }
+            for id in ["1", "2", "Later"] {
+                assert!(classes[id]["link"].is_null(), "{command}: {targets}: {id}");
+                assert!(classes[id]["linkTarget"].is_null());
+                assert_eq!(classes[id]["cssClasses"], "default");
+            }
+            for id in ["1", "2", "Peer"] {
+                assert_eq!(classes[id]["tooltip"], "Raw tooltip");
+            }
+            assert!(classes["classId-1"]["tooltip"].is_null());
+            assert!(classes["Later"]["tooltip"].is_null());
+            assert_eq!(classes["1"]["type"], "Raw");
+            assert_eq!(classes["classId-1"]["type"], "Prefixed");
+        }
+    }
+}
+
+#[test]
+fn class_numeric_callbacks_keep_raw_lookup_and_prefixed_clickable_routes() {
+    let declarations = concat!(
+        "classDiagram\n",
+        "class 1~Raw~\n",
+        "class classId-1~Prefixed~\n",
+        "class Peer~T~\n",
+        "class 2~Unprefixed~\n",
+    );
+    for security_level in ["strict", "loose"] {
+        let engine = MermaidEngine::new().with_site_config({
+            let mut config = SourcePresentationConfig::empty_object();
+            config.set_value("securityLevel", json!(security_level));
+            config
+        });
+        for (command, action, args) in [
+            ("callback", "\"open\"", None),
+            ("click", "call open(value)", Some("value")),
+        ] {
+            for targets in [
+                "1~U~,Peer~V~,2~W~,Unknown,Later",
+                "Peer~V~,2~W~,1~U~,Unknown,Later",
+            ] {
+                let source = format!(
+                    "{declarations}{command} `{targets}` {action} \"Raw tooltip\"\nclass Later\n"
+                );
+                let parsed = engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let classes = parsed.model["classes"].as_object().unwrap();
+                assert_eq!(classes.len(), 5, "{command}: {security_level}: {targets}");
+                for id in ["1", "2", "Peer"] {
+                    assert_eq!(classes[id]["haveCallback"], true);
+                    assert_eq!(classes[id]["callback"]["function"], "open");
+                    assert_eq!(classes[id]["callback"]["args"].as_str(), args);
+                    assert_eq!(classes[id]["callbackEffective"], security_level == "loose");
+                    assert_eq!(classes[id]["tooltip"], "Raw tooltip");
+                }
+                for id in ["classId-1", "Later"] {
+                    assert_eq!(classes[id]["haveCallback"], false);
+                    assert!(classes[id]["callback"].is_null());
+                    assert!(classes[id]["tooltip"].is_null());
+                }
+                for id in ["classId-1", "Peer"] {
+                    assert_eq!(classes[id]["cssClasses"], "default clickable");
+                }
+                for id in ["1", "2", "Later"] {
+                    assert_eq!(classes[id]["cssClasses"], "default");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn class_note_payloads_preserve_whitespace_and_namespace_ownership_across_models() {
+    for payload in [
+        " padded ",
+        " \t ",
+        "\tTabbed\t",
+        "\ninner\n",
+        "\r\n  名𠀀\r\n",
+        "",
+    ] {
+        let expected_payload = payload.replace("\r\n", "\n");
+        let source = format!(
+            "classDiagram\nnote \"{payload}\"\nnamespace Outer {{\nclass A\nnote for A \"{payload}\"\nnamespace Inner {{\nclass B\nnote \"{payload}\"\nnote for B \"{payload}\"\n}}\n}}\n"
+        );
+        let semantic = SemanticParser::new().parse_diagram_sync(&source).unwrap();
+        let SemanticDiagramModel::Class(model) = semantic.model else {
+            panic!("expected canonical Class model");
+        };
+        let engine = MermaidEngine::new();
+        let parsed = engine
+            .parse_diagram_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let typed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Class(typed_model) = typed.model() else {
+            panic!("expected typed Class model");
+        };
+        let canonical = serde_json::to_value(&model).unwrap();
+        let full = serde_json::to_value(typed_model).unwrap();
+        for wire in [&canonical, &parsed.model, &full] {
+            let notes = wire["notes"].as_array().unwrap();
+            assert_eq!(notes.len(), 4, "{payload:?}");
+            for (index, (class_id, parent)) in [
+                (None, None),
+                (Some("A"), Some("Outer")),
+                (None, Some("Outer.Inner")),
+                (Some("B"), Some("Outer.Inner")),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                assert_eq!(notes[index]["id"], format!("note{index}"));
+                assert_eq!(
+                    notes[index]["text"].as_str(),
+                    Some(expected_payload.as_str()),
+                    "{payload:?}"
+                );
+                assert_eq!(notes[index]["class"].as_str(), class_id);
+                assert_eq!(notes[index]["parent"].as_str(), parent);
+            }
+            assert_eq!(wire["namespaces"]["Outer"]["classIds"], json!(["A"]));
+            assert_eq!(wire["namespaces"]["Outer"]["noteIds"], json!(["note1"]));
+            assert_eq!(wire["namespaces"]["Outer.Inner"]["classIds"], json!(["B"]));
+            assert_eq!(
+                wire["namespaces"]["Outer.Inner"]["noteIds"],
+                json!(["note2", "note3"])
+            );
+        }
+    }
+}
+
+#[test]
 fn class_namespace_carriers_preserve_entry_completion_and_source_order() {
     let source = concat!(
         "classDiagram\n",
@@ -1535,6 +1877,59 @@ fn class_interaction_list_suffix_outside_quotes_keeps_each_target() {
 }
 
 #[test]
+fn class_interaction_newlines_restore_accessibility_fields_and_payload_spans() {
+    // Mermaid 12.3.0 classDiagram.jison restores INITIAL after interaction strings/args;
+    // the following accessibility directives keep their dedicated tokens and values.
+    for newline in ["\n", "\r\n"] {
+        for interaction in [
+            "click User href \"https://example.com\" \"Open user\" _blank",
+            "click User call open(userId) \"Open user\"",
+            "click User call open()",
+        ] {
+            let text = format!(
+                "classDiagram{newline}class User{newline}{interaction}{newline}accTitle: Class chart{newline}accDescr: Shows class relationships{newline}"
+            );
+            let engine = MermaidEngine::new();
+            let canonical = engine
+                .parse_diagram_sync(&text, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(canonical.model["accTitle"], "Class chart", "{interaction}");
+            assert_eq!(
+                canonical.model["accDescr"], "Shows class relationships",
+                "{interaction}",
+            );
+            let facts = engine
+                .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+                .unwrap()
+                .unwrap();
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            for (value, detail) in [
+                ("Class chart", "class accessibility title"),
+                (
+                    "Shows class relationships",
+                    "class accessibility description",
+                ),
+            ] {
+                let symbols = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.detail.as_deref() == Some(detail))
+                    .collect::<Vec<_>>();
+                assert_eq!(symbols.len(), 1, "{interaction}: {detail}");
+                let symbol = symbols[0];
+                assert_eq!(symbol.name, value, "{interaction}");
+                assert_eq!(symbol.role, EditorSemanticRole::Payload);
+                let start = text.find(value).unwrap();
+                assert_eq!(symbol.selection.start, start);
+                assert_eq!(symbol.selection.end, start + value.len());
+                assert_eq!(&text[symbol.selection.start..symbol.selection.end], value);
+            }
+        }
+    }
+}
+
+#[test]
 fn parse_class_editor_facts_preserve_parser_symbol_spans() {
     let engine = MermaidEngine::new();
     let text = r#"classDiagram
@@ -1804,6 +2199,47 @@ style User fill:#fff
 }
 
 #[test]
+fn parse_class_editor_facts_keep_mixed_numeric_target_lists_raw_and_precise() {
+    for targets in ["1~U~,Peer~V~", "Peer~V~,1~U~"] {
+        let text = format!(
+            "classDiagram\nclass 1~T~\nclass classId-1~T~\nclass Peer~T~\ncssClass \"{targets}\" accent\nlink `{targets}` \"https://example.com\"\ncallback `{targets}` \"open\"\n"
+        );
+        let facts = MermaidEngine::new()
+            .parse_editor_semantic_facts_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .unwrap();
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        for (detail, count) in [("class css target", 2), ("class interaction target", 4)] {
+            let symbols = facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.detail.as_deref() == Some(detail))
+                .collect::<Vec<_>>();
+            assert_eq!(symbols.len(), count, "{targets}: {detail}");
+            for symbol in symbols {
+                assert!(matches!(symbol.name.as_str(), "1" | "Peer"));
+                assert_eq!(symbol.role, EditorSemanticRole::Reference);
+                assert_eq!(
+                    &text[symbol.selection.start..symbol.selection.end],
+                    symbol.name,
+                    "{targets}: {detail}"
+                );
+                assert!(symbol.span.start <= symbol.selection.start);
+                assert!(symbol.selection.end <= symbol.span.end);
+            }
+        }
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .filter(|symbol| symbol.name == "classId-1")
+                .count(),
+            1
+        );
+    }
+}
+
+#[test]
 fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
     let engine = MermaidEngine::new();
     let text =
@@ -1824,7 +2260,7 @@ fn parse_class_editor_facts_preserve_quoted_numeric_class_selection_spans() {
             .symbols
             .iter()
             .find(|symbol| {
-                symbol.name == "classId-123"
+                symbol.name == "123"
                     && symbol.detail.as_deref() == Some(detail)
                     && symbol.selection.start == start
             })
@@ -1893,7 +2329,7 @@ fn parse_class_editor_facts_keep_compact_members_generics_and_classdef_target_sp
     let numeric = facts
         .symbols
         .iter()
-        .find(|symbol| symbol.name == "classId-123")
+        .find(|symbol| symbol.name == "123")
         .expect("numeric quoted generic class");
     let start = text.find("123").unwrap();
     assert_eq!(numeric.selection, SourceSpan::new(start, start + 3));
@@ -1909,9 +2345,9 @@ fn parse_class_editor_facts_canonicalize_generic_class_identity_and_selections()
         ("`Car` \t~T~", "Car~U~", "Car", "Car"),
         ("Car \t~T~", "Car ~U~", "Car", "Car"),
         ("`Car~T~`", "`Car` ~U~", "Car", "Car"),
-        ("`123`~类型~", "123", "classId-123", "123"),
-        ("123~类型~", "`123`", "classId-123", "123"),
-        ("123 ~类型~", "`123` ~U~", "classId-123", "123"),
+        ("`123`~类型~", "123", "123", "123"),
+        ("123~类型~", "`123`", "123", "123"),
+        ("123 ~类型~", "`123` ~U~", "123", "123"),
         ("`名𠀀`~类型~", "`名𠀀`", "名𠀀", "名𠀀"),
         (
             "`classId-Car`~T~",

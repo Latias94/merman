@@ -1,5 +1,4 @@
 use crate::Result;
-use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
@@ -13,7 +12,7 @@ pub(super) fn render_packet_diagram(
 ) -> Result<String> {
     let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
-    validate_packet_blocks(model, document.resources_mut(), execution)?;
+    charge_packet_layout_work(model, document.resources_mut(), execution)?;
     execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
     push_optional_document_field(&mut document, "title", model.title.as_deref())?;
@@ -30,9 +29,9 @@ pub(super) fn render_packet_diagram(
             document.push_line_with(|line| {
                 line.write_fmt(format_args!(
                     "  - range=[{}..{}] bits={} label(bytes={})=",
-                    block.start,
-                    block.end,
-                    block.bits,
+                    ryu_js::Buffer::new().format(block.start),
+                    ryu_js::Buffer::new().format(block.end),
+                    ryu_js::Buffer::new().format(block.bits),
                     block.label.len(),
                 ))?;
                 line.push_quoted_text(&block.label)
@@ -43,11 +42,12 @@ pub(super) fn render_packet_diagram(
     document.finish_with_execution(execution)
 }
 
-fn validate_packet_blocks(
+fn charge_packet_layout_work(
     model: &PacketDiagramModel,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let block_count = model
         .packet
         .iter()
@@ -55,37 +55,8 @@ fn validate_packet_blocks(
     let block_count = block_count.ok_or_else(|| resources.work_overflow())?;
     resources.charge_layout_work(block_count)?;
 
-    for row in &model.packet {
-        for block in row {
-            execution.checkpoint(merman_model::OperationPhase::Layout)?;
-            if block.start > block.end {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "packet",
-                    feature: "packet blocks with end before start",
-                });
-            }
-            let expected_bits = block
-                .end
-                .checked_sub(block.start)
-                .and_then(|value| value.checked_add(1))
-                .ok_or(AsciiError::UnsupportedFeature {
-                    diagram_type: "packet",
-                    feature: "packet block range overflow",
-                })?;
-            if block.bits <= 0 {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "packet",
-                    feature: "packet blocks must have positive bit counts",
-                });
-            }
-            if block.bits != expected_bits {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: "packet",
-                    feature: "packet block bit count does not match inclusive range",
-                });
-            }
-        }
-    }
+    // Source splitting can retain negative fractional bits or end < start. This textual view
+    // reports those DB fields directly and never uses them as iteration or allocation counts.
     Ok(())
 }
 

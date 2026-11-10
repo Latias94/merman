@@ -71,17 +71,17 @@ extern {
 }
 
 pub Actions: ActionList = {
-  <_n:Newlines> "classDiagram" <_n1:Newlines1> <s:Statements> => s
+  <_n:Newlines> "classDiagram" Newline <s:Statements> => s
 };
 
 Statements: ActionList = {
-  => ActionList::default(),
   <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
 };
 
 StatementRest: ActionList = {
-  <_n:Newlines1> <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
-  Newlines => ActionList::default(),
+  Newline <s:Statement> <rest:StatementRest> =>? arena.concat(s, rest, control),
+  Newline => ActionList::default(),
+  => ActionList::default(),
 };
 
 Newlines: () = {

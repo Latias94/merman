@@ -18,7 +18,7 @@
         ],
         "score": 5,
         "section": "Go to work",
-        "task": "        Make tea",
+        "task": "Make tea",
         "type": "Go to work"
       },
       {
@@ -27,7 +27,7 @@
         ],
         "score": 3,
         "section": "Go to work",
-        "task": "        Go upstairs",
+        "task": "Go upstairs",
         "type": "Go to work"
       },
       {
@@ -37,7 +37,7 @@
         ],
         "score": 1,
         "section": "Go to work",
-        "task": "        Do work",
+        "task": "Do work",
         "type": "Go to work"
       },
       {
@@ -46,7 +46,7 @@
         ],
         "score": 5,
         "section": "Go home",
-        "task": "        Go downstairs",
+        "task": "Go downstairs",
         "type": "Go home"
       },
       {
@@ -55,7 +55,7 @@
         ],
         "score": 5,
         "section": "Go home",
-        "task": "        Sit down",
+        "task": "Sit down",
         "type": "Go home"
       }
     ],

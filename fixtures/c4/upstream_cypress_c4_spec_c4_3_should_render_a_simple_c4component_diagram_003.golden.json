@@ -42,7 +42,7 @@
         "label": {
           "text": "Uses"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "JSON/HTTPS"
         },

@@ -22,10 +22,6 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
       entry: "src/runtime/realm/engines/mermaid-engine-artifact-entry.ts",
       outputBase: "mermaid-engine",
       publish: true,
-      // Mermaid 12.0.0's minified browser engine is about 14 MiB. Keep a
-      // small amount of headroom for patch releases without making the
-      // transport budget the build-time artifact budget.
-      maxBytes: 16 * 1024 * 1024,
       resourcePolicy: "none-v1",
       exports: ["benchmarkEngineAdapter", "renderWithMermaid"],
     },
@@ -35,7 +31,6 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
         "src/benchmark/realm/engines/benchmark-merman-artifact-entry.ts",
       outputBase: "benchmark-merman-engine",
       publish: true,
-      maxBytes: 256 * 1024,
       resourcePolicy: "same-origin-wasm-v1",
       exports: ["benchmarkEngineAdapter"],
       browserProjection: {
@@ -54,7 +49,6 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
         entry: "src/runtime/realm/opaque-compare-entry.ts",
         outputBase: "opaque-compare-bootstrap",
         cspPlaceholder: "__MERMAN_COMPARE_BOOTSTRAP_CSP_HASH__",
-        maxBytes: 256 * 1024,
         browserProjection: {
           module:
             "src/runtime/realm/generated/compare-mermaid.generated.ts",
@@ -70,7 +64,6 @@ export const OPAQUE_REALM_ARTIFACT_PLAN = defineOpaqueRealmArtifactPlan({
         entry: "src/benchmark/realm/opaque-mermaid-entry.ts",
         outputBase: "opaque-benchmark-mermaid-bootstrap",
         cspPlaceholder: "__MERMAN_BENCHMARK_BOOTSTRAP_CSP_HASH__",
-        maxBytes: 256 * 1024,
         browserProjection: {
           module:
             "src/benchmark/realm/generated/benchmark-mermaid.generated.ts",
@@ -169,7 +162,6 @@ function projectEngine(value, index) {
   if (typeof value.publish !== "boolean") {
     throw new Error(`Engine ${id} publish policy must be boolean.`);
   }
-  positiveInteger(value.maxBytes, `engine ${id} byte budget`);
   const projection =
     value.browserProjection === undefined
       ? undefined
@@ -179,7 +171,6 @@ function projectEngine(value, index) {
     entry: typescriptModule(value.entry, `engine ${id} entry`),
     outputBase: outputBase(value.outputBase, `engine ${id} output`),
     publish: value.publish,
-    maxBytes: value.maxBytes,
     resourcePolicy: enumValue(
       value.resourcePolicy,
       RESOURCE_POLICIES,
@@ -228,10 +219,6 @@ function projectRealmBootstrap(value, realmKey) {
   if (!CSP_PLACEHOLDER.test(String(value.cspPlaceholder))) {
     throw new Error(`Realm ${realmKey} CSP placeholder is invalid.`);
   }
-  positiveInteger(
-    value.maxBytes,
-    `realm ${realmKey} bootstrap byte budget`,
-  );
   return Object.freeze({
     entry: typescriptModule(
       value.entry,
@@ -242,7 +229,6 @@ function projectRealmBootstrap(value, realmKey) {
       `realm ${realmKey} bootstrap output`,
     ),
     cspPlaceholder: value.cspPlaceholder,
-    maxBytes: value.maxBytes,
     browserProjection: projectBrowserProjection(
       value.browserProjection,
       `realm ${realmKey}`,
@@ -459,12 +445,6 @@ function enumValue(value, values, label) {
     throw new Error(`Invalid ${label}: ${String(value)}.`);
   }
   return value;
-}
-
-function positiveInteger(value, label) {
-  if (!Number.isSafeInteger(value) || value <= 0) {
-    throw new Error(`${label} must be a positive safe integer.`);
-  }
 }
 
 function stringArray(value, label) {

@@ -145,6 +145,7 @@ enum Mode {
     Struct,
     State,
     StateId,
+    StateAfterAlias,
 }
 
 fn note_block_terminator_range(input: &str) -> Option<(usize, usize)> {
@@ -175,6 +176,7 @@ struct Lexer<'input> {
     modes: Vec<Mode>,
     emitted_eof_newline: bool,
     direction_scan_end: usize,
+    after_root_alias_newline: bool,
 }
 
 impl<'input> Lexer<'input> {
@@ -186,6 +188,7 @@ impl<'input> Lexer<'input> {
             modes: vec![Mode::Default],
             emitted_eof_newline: false,
             direction_scan_end: 0,
+            after_root_alias_newline: false,
         }
     }
 
@@ -201,26 +204,6 @@ impl<'input> Lexer<'input> {
         result: std::result::Result<(usize, Tok, usize), LexError>,
     ) -> std::result::Result<(usize, Tok, usize), LexError> {
         result
-    }
-
-    fn normalize_note_block_text(raw: &'input str) -> String {
-        // Mermaid's state diagram note blocks do not preserve leading indentation for each line.
-        // The upstream SVG baselines reflect line-wise trimming.
-        let lines: Vec<&str> = raw
-            .lines()
-            .map(|l| l.trim_end_matches('\r').trim())
-            .collect();
-
-        let mut start = 0usize;
-        let mut end = lines.len();
-        while start < end && lines[start].is_empty() {
-            start += 1;
-        }
-        while end > start && lines[end - 1].is_empty() {
-            end -= 1;
-        }
-
-        lines[start..end].join("\n")
     }
 
     fn mode(&self) -> Mode {
@@ -444,6 +427,11 @@ impl<'input> Lexer<'input> {
                     )));
                 };
                 self.pos = self.input.len() - body.len() + end_rel + 1;
+                // The opening rule consumes all whitespace. A closing brace before any
+                // payload does not emit acc_descr_multiline_value or assign the common DB.
+                if end_rel == 0 {
+                    return None;
+                }
                 return Some(Ok((
                     start,
                     Tok::AccDescrMultiline(body[..end_rel].to_string()),
@@ -526,7 +514,10 @@ impl<'input> Lexer<'input> {
                 self.pos += "as".len();
                 self.skip_ws();
                 let id_start = self.pos;
-                let id = self.read_to_newline().trim().to_string();
+                let id = self
+                    .read_to_newline()
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string();
 
                 self.pending.push_back((start, Tok::Note, kw_end));
                 self.pending
@@ -559,14 +550,16 @@ impl<'input> Lexer<'input> {
                 self.pos += ch.len_utf8();
             }
             let id_end = self.pos;
-            let id = self.input[id_start..self.pos].trim().to_string();
+            let id = self.input[id_start..self.pos].to_string();
 
             self.skip_ws();
             let text_start = self.pos;
             let text = if self.peek() == Some(b':') {
                 self.pos += 1;
 
-                self.read_to_newline().trim().to_string()
+                self.read_to_newline()
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string()
             } else {
                 let Some(rest) = self.input.get(self.pos..) else {
                     return Some(Err(LexError::new(
@@ -578,7 +571,10 @@ impl<'input> Lexer<'input> {
                         "Unterminated note block; missing 'end note'",
                     )));
                 };
-                let t = Self::normalize_note_block_text(&rest[..marker_start]);
+                // NOTE_TEXT trims the complete payload, preserving internal indentation.
+                let t = rest[..marker_start]
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string();
                 self.pos += marker_end;
                 t
             };
@@ -604,9 +600,12 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let id_end = self.pos;
-            let id = self.input[id_start..id_end].trim().to_string();
+            let id = self.input[id_start..id_end].to_string();
             self.skip_ws();
-            let raw = self.read_to_newline().trim().to_string();
+            let raw = self
+                .read_to_newline()
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
 
             self.pending.push_back((start, Tok::ClassDef, kw_end));
             self.pending
@@ -645,9 +644,14 @@ impl<'input> Lexer<'input> {
                 self.pos = after_word;
                 break;
             }
-            let ids = self.input[ids_start..ids_end].trim().to_string();
+            let ids = self.input[ids_start..ids_end]
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
             self.skip_ws();
-            let style = self.read_to_newline().trim().to_string();
+            let style = self
+                .read_to_newline()
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
 
             self.pending.push_back((start, Tok::Class, kw_end));
             self.pending
@@ -670,9 +674,12 @@ impl<'input> Lexer<'input> {
                 break;
             }
             let ids_end = self.pos;
-            let ids = self.input[ids_start..ids_end].trim().to_string();
+            let ids = self.input[ids_start..ids_end].to_string();
             self.skip_ws();
-            let raw = self.read_to_newline().trim().to_string();
+            let raw = self
+                .read_to_newline()
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string();
 
             self.pending.push_back((start, Tok::Style, kw_end));
             if !ids.is_empty() {
@@ -716,6 +723,9 @@ impl<'input> Lexer<'input> {
             let id = self.input[id_start..id_end].to_string();
             self.pop_mode(); // StateId
             self.pop_mode(); // State
+            if self.mode() == Mode::Default {
+                self.push_mode(Mode::StateAfterAlias);
+            }
             return Some(Ok((id_start, Tok::Id(id), id_end)));
         }
 
@@ -775,7 +785,7 @@ impl<'input> Lexer<'input> {
         }
 
         // Otherwise treat it as a composite state ID: read only the identifier token.
-        let Some(id) = self.read_plain_id() else {
+        let Some(id) = self.read_composite_id() else {
             self.pop_mode();
             return Some(Err(LexError::new("Expected a state id")));
         };
@@ -803,9 +813,11 @@ impl<'input> Lexer<'input> {
             .map(|rel| look + rel)
             .unwrap_or(self.input.len());
         let same_line_tail = &self.input[look..same_line_end];
-        let tail_leading = same_line_tail
-            .len()
-            .saturating_sub(same_line_tail.trim_start().len());
+        let tail_leading = same_line_tail.len().saturating_sub(
+            same_line_tail
+                .trim_start_matches(is_ecmascript_whitespace)
+                .len(),
+        );
         let same_line_value_start = look + tail_leading;
         let same_line_value = &self.input[same_line_value_start..same_line_end];
         if !same_line_value.starts_with('{')
@@ -814,7 +826,7 @@ impl<'input> Lexer<'input> {
             let bad_start = same_line_value_start;
             let bad_end_untrimmed = same_line_value_start + brace_rel;
             let bad = &self.input[bad_start..bad_end_untrimmed];
-            let bad_end = bad_start + bad.trim_end().len();
+            let bad_end = bad_start + bad.trim_end_matches(is_ecmascript_whitespace).len();
             return Some(Err(LexError::with_span(
                 "State name must be a single word",
                 crate::SourceSpan::new(bad_start, bad_end.max(bad_start)),
@@ -873,8 +885,26 @@ impl<'input> Lexer<'input> {
             }
             self.pos += 1;
         }
-        let body = self.input[body_start..self.pos].trim().to_string();
+        let body = self.input[body_start..self.pos]
+            .trim_matches(is_ecmascript_whitespace)
+            .to_string();
         Some((start, Tok::Descr(body), self.pos))
+    }
+
+    fn read_composite_id(&mut self) -> Option<String> {
+        let start = self.pos;
+        let mut end = start;
+        while let Some(ch) = self.input[end..].chars().next() {
+            if is_ecmascript_whitespace(ch) || ch == '{' {
+                break;
+            }
+            end += ch.len_utf8();
+        }
+        if end == start {
+            return None;
+        }
+        self.pos = end;
+        Some(self.input[start..end].to_string())
     }
 
     fn read_plain_id(&mut self) -> Option<String> {
@@ -932,6 +962,7 @@ impl TokenScanner for Lexer<'_> {
         if let Some(item) = self.pending.pop_front() {
             return ScanStep::Emit(self.emit_token(item));
         }
+        let after_root_alias_newline = std::mem::take(&mut self.after_root_alias_newline);
 
         // STATE_ID can emit an empty identifier before a comment, newline or EOF.
         if self.mode() == Mode::StateId
@@ -993,8 +1024,30 @@ impl TokenScanner for Lexer<'_> {
         // Whitespace is a lexer rule, not preprocessing: INITIAL directions see
         // its original cursor, while struct whitespace precedes directions.
         let before_whitespace = self.pos;
-        self.skip_ws();
+        if after_root_alias_newline
+            && self.input[self.pos..]
+                .chars()
+                .next()
+                .is_some_and(is_ecmascript_inline_whitespace)
+        {
+            // INITIAL's \s+ may include later LF when the token starts with inline blanks.
+            // A token starting with LF still belongs to the earlier NL rule.
+            let suffix = &self.input[self.pos..];
+            self.pos += suffix.len() - suffix.trim_start_matches(is_ecmascript_whitespace).len();
+        } else {
+            self.skip_ws();
+        }
         if self.pos != before_whitespace {
+            return ScanStep::Skip;
+        }
+        // A root alias retains STATE's hidden newline before INITIAL can open its block.
+        // Inside struct, a block must stay on the alias line: struct has no `{` rule.
+        if self.mode() == Mode::StateAfterAlias
+            && let Some(end) = consume_line_ending(self.input, self.pos)
+        {
+            self.pos = end;
+            self.pop_mode();
+            self.after_root_alias_newline = true;
             return ScanStep::Skip;
         }
         if let Some(nl) = self.lex_newline() {
@@ -1033,17 +1086,23 @@ impl TokenScanner for Lexer<'_> {
 
         // Accessibility rules are unqualified in Jison; exclusive struct/STATE
         // modes instead parse these names as ordinary state identifiers.
-        if self.mode() == Mode::Default
-            && let Some(acc) = self.lex_accessibility()
-        {
-            return ScanStep::Emit(self.emit_result(acc));
+        if self.mode() == Mode::Default {
+            let before_accessibility = self.pos;
+            if let Some(acc) = self.lex_accessibility() {
+                return ScanStep::Emit(self.emit_result(acc));
+            }
+            if self.pos != before_accessibility {
+                return ScanStep::Skip;
+            }
         }
         if self.pos >= self.input.len() {
             return ScanStep::Skip;
         }
 
-        if !matches!(self.mode(), Mode::State | Mode::StateId)
-            && let Some(tok) = self.lex_stmt_line()
+        if !matches!(
+            self.mode(),
+            Mode::State | Mode::StateId | Mode::StateAfterAlias
+        ) && let Some(tok) = self.lex_stmt_line()
         {
             return ScanStep::Emit(self.emit_result(tok));
         }
@@ -1072,7 +1131,7 @@ impl TokenScanner for Lexer<'_> {
 
         if self.peek() == Some(b'{') {
             self.pos += 1;
-            if self.mode() == Mode::State {
+            if matches!(self.mode(), Mode::State | Mode::StateAfterAlias) {
                 self.pop_mode();
             }
             self.push_mode(Mode::Struct);
@@ -1124,6 +1183,53 @@ impl Iterator for Lexer<'_> {
 #[cfg(test)]
 mod tests {
     use super::{Lexer, Tok};
+
+    #[test]
+    fn composite_ids_preserve_punctuation_and_utf8_token_spans() {
+        for id in ["A-B", "A:B", "外部-状態:組"] {
+            for newline in ["\n", "\r\n"] {
+                let source = format!("stateDiagram-v2{newline}state {id} {{{newline}}}{newline}");
+                let tokens = Lexer::new(&source)
+                    .collect::<Result<Vec<_>, _>>()
+                    .expect("composite tokens");
+                let composites: Vec<_> = tokens
+                    .iter()
+                    .filter_map(|(start, token, end)| match token {
+                        Tok::CompositState(value) => Some((*start, value.as_str(), *end)),
+                        _ => None,
+                    })
+                    .collect();
+                let start = source.find(id).unwrap();
+                assert_eq!(composites, [(start, id, start + id.len())], "{source:?}");
+            }
+        }
+    }
+
+    #[test]
+    fn ordinary_ids_keep_transition_and_description_boundaries() {
+        let tokens = Lexer::new("stateDiagram-v2\nA-->B:x:y")
+            .map(|event| event.expect("ordinary transition token").1)
+            .collect::<Vec<_>>();
+        assert!(matches!(
+            tokens.as_slice(),
+            [
+                Tok::Sd,
+                Tok::Id(source),
+                Tok::Arrow,
+                Tok::Id(target),
+                Tok::Descr(description),
+                Tok::Newline,
+            ] if source == "A" && target == "B" && description == "x:y"
+        ));
+
+        let events: Vec<_> = Lexer::new("stateDiagram-v2\nA-B --> C\n").collect();
+        assert!(events.iter().any(Result::is_err));
+        assert!(
+            !events
+                .iter()
+                .any(|event| { matches!(event, Ok((_, Tok::Id(id), _)) if id == "A-B") })
+        );
+    }
 
     #[test]
     fn missing_state_id_leaves_the_error_state_before_recovery() {

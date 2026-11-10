@@ -51,9 +51,11 @@ Statement boundaries remain line-oriented outside quoted tokens. A Langium `STRI
 physical newlines, so the parser consumes the complete token before selecting the next statement.
 Semantic construction and editor facts share that source parse and its original byte ranges.
 
-The historical split-`bits` consequence above is superseded by the current native model contract:
-split fields retain the inclusive count `end - start + 1`. ASCII validation and drawing both depend
-on that invariant; the selected Mermaid renderer likewise uses inclusive endpoints even though its
-redundant split DB field omits one bit. Compatibility JSON projects the native count. See the
-[Packet family note](../alignment/FAMILY_NOTES.md#packet) for the maintained boundary.
+The native model and compatibility JSON preserve the selected DB's split-`bits` values, including
+`end - start` for split fragments. SVG independently derives the inclusive extent from the
+endpoints; ASCII reports the retained DB fields without imposing that geometric invariant.
+All numeric fields use binary64 conversion and arithmetic. Fractional `bitsPerRow` can produce
+short fragments with `end < start` and a positive inclusive extent. Expansion is bounded by
+materialized rows, with an explicit failure when Number arithmetic cannot advance a split.
+See the [Packet family note](../alignment/FAMILY_NOTES.md#packet) for the maintained boundary.
 

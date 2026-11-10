@@ -1,6 +1,10 @@
 #![cfg(feature = "diagram-er")]
 
 use merman_core::{MermaidEngine, ParseOptions};
+use merman_model::OperationControl;
+use merman_model::families::er::ErDiagramModel;
+use merman_model::presentation::{PresentationDiagram, RenderSemanticModel};
+use merman_model::resources::InputResourcePolicy;
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalSelector, ThemeRule,
     ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
@@ -117,6 +121,36 @@ fn render_with_root_size(
     layout: &str,
     root_size: i64,
 ) -> (String, Vec<FontCall>) {
+    render_with_root_size_and_model(source, html, layout, root_size, |_| {})
+}
+
+fn amend_er_model(
+    parsed: PresentationDiagram,
+    amend: impl FnOnce(&mut ErDiagramModel),
+) -> PresentationDiagram {
+    let (metadata, mut model, context) = parsed.into_parts();
+    let RenderSemanticModel::Er(er) = &mut model else {
+        panic!("expected ER model");
+    };
+    amend(er);
+    PresentationDiagram::try_from_frozen(
+        metadata,
+        model,
+        context,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .expect("validate caller-authored ER presentation")
+    .expect("admit caller-authored ER presentation")
+}
+
+fn render_with_root_size_and_model(
+    source: &str,
+    html: bool,
+    layout: &str,
+    root_size: i64,
+    amend: impl FnOnce(&mut ErDiagramModel),
+) -> (String, Vec<FontCall>) {
     let fonts = Arc::new(Fonts::default());
     let profile = TextMeasurementProfile::new(
         TextMeasurementProfileIdentity::new(
@@ -156,6 +190,7 @@ fn render_with_root_size(
         .unwrap()
         .unwrap()
         .into_presentation();
+    let parsed = amend_er_model(parsed, amend);
     let artifact = family::prepare(
         &parsed,
         &LayoutOptions::default(),
@@ -213,7 +248,7 @@ fn er_source_and_classdef_fonts_win_before_entity_and_attribute_measurement() {
                 "style E font-family:SourceFace,font-size:32px,font-weight:500,font-style:italic",
                 "classDef local font-family:SourceFace,font-size:32px,font-weight:500,font-style:italic\nclass E local",
                 "style E font-family:SourceFace,font-size:32px,font-weight:500,font-style:italic\nclassDef later font-family:WrongFace,font-size:48px,font-weight:900,font-style:normal\nclass E later",
-                "classDef earlier font-family:WrongFace,font-size:48px,font-weight:900,font-style:normal\nclass E earlier\nstyle E font-family:SourceFace,font-size:32px,font-weight:900!important,font-weight:500,font-style:italic",
+                "classDef earlier font-family:WrongFace,font-size:48px,font-weight:900,font-style:normal\nclass E earlier\nstyle E font-family:SourceFace,font-size:32px,font-weight:900,font-weight:500,font-style:italic",
             ] {
                 let source = format!("erDiagram\nE {{\n string account PK\n}}\n{source_style}\n");
                 let (svg, calls) = render(&source, html, layout);
@@ -294,6 +329,56 @@ fn er_source_and_classdef_fonts_win_before_entity_and_attribute_measurement() {
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn er_authored_duplicate_font_weights_keep_the_last_declaration() {
+    for layout in layouts() {
+        for html in [false, true] {
+            let (svg, calls) = render_with_root_size_and_model(
+                "erDiagram\nE {\n string account PK\n}\nclassDef earlier font-family:WrongFace,font-size:48px,font-weight:900,font-style:normal\nclass E earlier\n",
+                html,
+                layout,
+                10,
+                |model| {
+                    // `!important` is valid caller-authored CSS, outside ER's source grammar.
+                    model.entities.get_mut("E").unwrap().css_styles = [
+                        "font-family:SourceFace",
+                        "font-size:32px",
+                        "font-weight:900!important",
+                        "font-weight:500",
+                        "font-style:italic",
+                    ]
+                    .map(str::to_owned)
+                    .into();
+                },
+            );
+            let terminal_calls: Vec<_> = calls
+                .iter()
+                .filter(|call| call.operation != "budget")
+                .collect();
+            assert!(!terminal_calls.is_empty());
+            for call in terminal_calls {
+                assert_eq!(call.style.font_family.as_deref(), Some("SourceFace"));
+                assert_eq!(call.style.font_size, 32.0);
+                assert_eq!(
+                    call.style.font_weight.as_deref(),
+                    Some(if html { "500" } else { "normal" })
+                );
+                assert_eq!(
+                    call.style.font_style.as_deref(),
+                    Some(if html { "italic" } else { "normal" })
+                );
+            }
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            assert!(
+                label(&document, "label name")
+                    .attribute("style")
+                    .unwrap()
+                    .contains("font-weight:500 !important")
+            );
         }
     }
 }
@@ -743,12 +828,16 @@ fn er_html_projection_consumes_table_and_draw_rect_width_budgets() {
 }
 
 #[test]
-fn er_generic_html_keeps_the_create_text_width_decision_after_span_removal() {
-    let (svg, calls) = render_with_root_size(
-        "erDiagram\nE[\"&lt; &gt; &lt; &gt;\"] {\n string id\n}\nstyle E font-size:1.5em\n",
+fn er_authored_generic_html_keeps_the_create_text_width_decision_after_span_removal() {
+    let (svg, calls) = render_with_root_size_and_model(
+        "erDiagram\nE[\"&lt; &gt; &lt; &gt;\"] {\n string id\n}\n",
         true,
         "dagre",
         16,
+        |model| {
+            // Decimal relative sizes belong to the typed CSS path, not ER source syntax.
+            model.entities.get_mut("E").unwrap().css_styles = vec!["font-size:1.5em".into()];
+        },
     );
     let doc = roxmltree::Document::parse(&svg).unwrap();
     let name = label(&doc, "label name");
@@ -792,6 +881,15 @@ fn typed_stack() -> ThemeTextStyle {
 }
 
 fn render_terminal(source: &str, site: Value, spec: DiagramThemeSpec) -> TerminalRender {
+    render_terminal_with_model(source, site, spec, |_| {})
+}
+
+fn render_terminal_with_model(
+    source: &str,
+    site: Value,
+    spec: DiagramThemeSpec,
+    amend: impl FnOnce(&mut ErDiagramModel),
+) -> TerminalRender {
     let fonts = Arc::new(Fonts::default());
     let profile = TextMeasurementProfile::new(
         TextMeasurementProfileIdentity::new(
@@ -813,6 +911,7 @@ fn render_terminal(source: &str, site: Value, spec: DiagramThemeSpec) -> Termina
         .unwrap()
         .unwrap()
         .into_presentation();
+    let parsed = amend_er_model(parsed, amend);
     let environment = RenderEnvironment::deterministic()
         .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile));
     let artifact = family::prepare(
@@ -1136,17 +1235,46 @@ fn er_unknown_html_sizes_remain_possible_consumers_above_a_zero_root() {
             );
         }
     }
+}
+
+#[test]
+fn er_authored_unknown_sizes_remain_possible_consumers_above_a_zero_root() {
     for html in [false, true] {
-        let rendered = render_terminal(
-            "erDiagram\nE {\n string id\n}\nstyle E font-size:var(--host-size)\n",
+        let rendered = render_terminal_with_model(
+            "erDiagram\nE {\n string id\n}\n",
             json!({"look": "classic", "htmlLabels": html,
                 "themeVariables": {"fontSize": "0px"}}),
             font_spec(typed_stack()),
+            |model| {
+                model.entities.get_mut("E").unwrap().css_styles =
+                    vec!["font-size:var(--host-size)".into()];
+            },
         );
         assert_eq!(
             rendered.evidence,
             [0, 0, 1],
-            "an unresolved source size must not certify fallback-zero visibility"
+            "an unresolved authored size must not certify fallback-zero visibility"
+        );
+    }
+}
+
+fn assert_font_stack_inheritance(rendered: &TerminalRender, value: &str, inherits: bool) {
+    assert_eq!(
+        rendered.evidence,
+        if inherits { [1, 0, 0] } else { [0, 0, 1] }
+    );
+    let document = roxmltree::Document::parse(&rendered.svg).unwrap();
+    assert!(document.descendants().any(|node| {
+        node.attribute("style")
+            .is_some_and(|style| style.contains(&format!("font-family:{value} !important")))
+    }));
+    if inherits {
+        assert!(
+            rendered
+                .calls
+                .iter()
+                .filter(|call| call.operation != "budget")
+                .all(|call| call.style.font_family.as_deref() == Some("TypedFace"))
         );
     }
 }
@@ -1154,13 +1282,7 @@ fn er_unknown_html_sizes_remain_possible_consumers_above_a_zero_root() {
 #[test]
 fn er_source_and_class_font_inheritance_preserves_the_typed_stack_receipt() {
     for html in [false, true] {
-        for (value, inherits) in [
-            ("inherit", true),
-            ("unset", true),
-            (r"i\6eherit", true),
-            ("'inherit'", false),
-            ("Other", false),
-        ] {
+        for (value, inherits) in [("inherit", true), ("unset", true), ("Other", false)] {
             for class_def in [false, true] {
                 let style = if class_def {
                     format!("classDef local font-family:{value}\nclass E local")
@@ -1173,27 +1295,36 @@ fn er_source_and_class_font_inheritance_preserves_the_typed_stack_receipt() {
                     json!({"look": "classic", "htmlLabels": html}),
                     font_spec(typed_stack()),
                 );
-                assert_eq!(
-                    rendered.evidence,
-                    if inherits { [1, 0, 0] } else { [0, 0, 1] }
+                assert_font_stack_inheritance(&rendered, value, inherits);
+            }
+        }
+    }
+}
+
+#[test]
+fn er_authored_escaped_and_quoted_fonts_preserve_the_typed_stack_receipt() {
+    for html in [false, true] {
+        for (value, inherits) in [(r"i\6eherit", true), ("'inherit'", false)] {
+            for class_def in [false, true] {
+                let source = if class_def {
+                    "erDiagram\nE {\n string id\n}\nclassDef local font-family:inherit\nclass E local\n"
+                } else {
+                    "erDiagram\nE {\n string id\n}\n"
+                };
+                let rendered = render_terminal_with_model(
+                    source,
+                    json!({"look": "classic", "htmlLabels": html}),
+                    font_spec(typed_stack()),
+                    |model| {
+                        let styles = if class_def {
+                            &mut model.classes.get_mut("local").unwrap().styles
+                        } else {
+                            &mut model.entities.get_mut("E").unwrap().css_styles
+                        };
+                        *styles = vec![format!("font-family:{value}")];
+                    },
                 );
-                let document = roxmltree::Document::parse(&rendered.svg).unwrap();
-                assert!(
-                    document
-                        .descendants()
-                        .any(|node| node.attribute("style").is_some_and(
-                            |style| style.contains(&format!("font-family:{value} !important"))
-                        ))
-                );
-                if inherits {
-                    assert!(
-                        rendered
-                            .calls
-                            .iter()
-                            .filter(|call| call.operation != "budget")
-                            .all(|call| call.style.font_family.as_deref() == Some("TypedFace"))
-                    );
-                }
+                assert_font_stack_inheritance(&rendered, value, inherits);
             }
         }
     }

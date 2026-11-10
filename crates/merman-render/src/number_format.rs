@@ -25,9 +25,21 @@ pub(crate) fn canonical_number(value: f64) -> CanonicalNumber {
     CanonicalNumber(canonicalize_number(value))
 }
 
+#[cfg(any(feature = "diagram-c4", feature = "diagram-journey"))]
+pub(crate) fn canonical_number_with_nonfinite(value: f64) -> CanonicalNumber {
+    CanonicalNumber(if value.is_finite() {
+        canonicalize_number(value)
+    } else {
+        value
+    })
+}
+
 impl std::fmt::Display for CanonicalNumber {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let value = self.0;
+        if !value.is_finite() {
+            return formatter.write_str(ryu_js::Buffer::new().format(value));
+        }
         if value.fract() == 0.0 && value.abs() <= MAX_SAFE_INTEGER_F64 {
             return write!(formatter, "{}", value as i64);
         }

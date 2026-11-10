@@ -42,8 +42,8 @@
         "label": {
           "text": "Uses"
         },
-        "offsetX": 90,
-        "offsetY": 60,
+        "offsetX": "90",
+        "offsetY": "60",
         "techn": {
           "text": "HTTPS"
         },
@@ -59,7 +59,7 @@
         "label": {
           "text": "Uses"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "HTTPS"
         },
@@ -75,7 +75,7 @@
         "label": {
           "text": "Uses"
         },
-        "offsetY": -30,
+        "offsetY": "-30",
         "techn": {
           "text": ""
         },
@@ -91,7 +91,7 @@
         "label": {
           "text": "Delivers"
         },
-        "offsetX": 130,
+        "offsetX": "130",
         "techn": {
           "text": ""
         },
@@ -152,7 +152,7 @@
         "label": {
           "text": "Sends e-mails to"
         },
-        "offsetX": -45,
+        "offsetX": "-45",
         "techn": {
           "text": ""
         },
@@ -168,7 +168,7 @@
         "label": {
           "text": "Sends e-mails using"
         },
-        "offsetY": -60,
+        "offsetY": "-60",
         "techn": {
           "text": "sync, SMTP"
         },
@@ -184,8 +184,8 @@
         "label": {
           "text": "Uses"
         },
-        "offsetX": -140,
-        "offsetY": -50,
+        "offsetX": "-140",
+        "offsetY": "-50",
         "techn": {
           "text": "sync/async, XML/HTTPS"
         },

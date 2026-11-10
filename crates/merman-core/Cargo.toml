@@ -59,7 +59,7 @@ all-diagrams = [
     "diagram-zenuml",
 ]
 diagram-architecture = ["merman-model/diagram-architecture"]
-diagram-block = ["merman-model/diagram-block", "dep:indexmap"]
+diagram-block = ["merman-model/diagram-block", "dep:indexmap", "dep:ryu-js"]
 diagram-c4 = ["merman-model/diagram-c4"]
 diagram-class = ["merman-model/diagram-class", "dep:lalrpop-util", "dep:indexmap"]
 diagram-cynefin = ["merman-model/diagram-cynefin"]
@@ -73,12 +73,12 @@ diagram-git-graph = ["merman-model/diagram-git-graph"]
 diagram-info = ["merman-model/diagram-info"]
 diagram-ishikawa = ["merman-model/diagram-ishikawa"]
 diagram-journey = ["merman-model/diagram-journey"]
-diagram-kanban = ["merman-model/diagram-kanban"]
+diagram-kanban = ["merman-model/diagram-kanban", "dep:ryu-js"]
 diagram-mindmap = ["merman-model/diagram-mindmap"]
-diagram-packet = ["merman-model/diagram-packet"]
-diagram-pie = ["merman-model/diagram-pie"]
+diagram-packet = ["merman-model/diagram-packet", "dep:ryu-js"]
+diagram-pie = ["merman-model/diagram-pie", "dep:ryu-js"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart"]
-diagram-radar = ["merman-model/diagram-radar"]
+diagram-radar = ["merman-model/diagram-radar", "dep:ryu-js"]
 diagram-railroad = ["merman-model/diagram-railroad"]
 diagram-requirement = ["merman-model/diagram-requirement"]
 diagram-sankey = ["merman-model/diagram-sankey"]
@@ -89,8 +89,8 @@ diagram-timeline = ["merman-model/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap"]
 diagram-venn = ["merman-model/diagram-venn"]
-diagram-wardley = ["merman-model/diagram-wardley", "dep:indexmap"]
-diagram-xychart = ["merman-model/diagram-xychart"]
+diagram-wardley = ["merman-model/diagram-wardley", "dep:indexmap", "dep:ryu-js"]
+diagram-xychart = ["merman-model/diagram-xychart", "dep:ryu-js"]
 diagram-zenuml = ["merman-model/diagram-zenuml", "dep:unicode-general-category", "dep:indexmap"]
 # Configuration, sanitization, detection, and family identity remain unconditional.
 # Parsers and typed models are selected independently from explicit system adapters.
@@ -106,6 +106,7 @@ system-timing = ["merman-model/system-timing"]
 merman-markup = { workspace = true, features = ["html", "url"] }
 merman-model = { workspace = true, features = ["html-entities"] }
 cssparser.workspace = true
+ryu-js = { workspace = true, optional = true }
 indexmap = { workspace = true, features = ["serde"], optional = true }
 lalrpop-util = { workspace = true, optional = true }
 serde.workspace = true

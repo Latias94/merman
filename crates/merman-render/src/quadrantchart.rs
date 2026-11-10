@@ -45,7 +45,8 @@ fn scale_linear(domain: (f64, f64), range: (f64, f64), v: f64) -> f64 {
         return r0;
     }
     let t = (v - d0) / (d1 - d0);
-    r0 + t * (r1 - r0)
+    // d3-interpolate's number interpolator preserves overflow/NaN arithmetic too.
+    r0 * (1.0 - t) + r1 * t
 }
 
 pub(crate) fn layout_quadrantchart_diagram_typed(
