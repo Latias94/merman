@@ -35,3 +35,50 @@ cargo run --locked -p xtask -- typst-package-smoke --profile publish --skip-wasm
 ```
 
 The original Linux job remains failed at the previous budget. The repaired commit requires its own CI results. This reassessment establishes artifact-size acceptance only; it makes no latency or memory claim.
+
+## Theme layering reassessment, 2026-11-10
+
+[PR 295](https://github.com/Latias94/merman/pull/295) separates body depth from foreground
+surfaces and corrects themed drawing order and label contrast. Only the insufficient
+`typst-wasm.max_brotli_bytes` ceiling is reassessed, from 3,697,000 to 3,810,000 bytes.
+The raw, stripped and gzip ceilings remain 26,285,000, 13,178,000 and 4,996,000 bytes.
+Web and Playground use size reports without ceilings under the current owner policy.
+
+The direct control is the successful Typst job on exact main
+`2f677e45db5d2e71211a19c22907cd09770d71bf`,
+[run 42739958865 / job 129579356844](https://github.com/Latias94/merman/actions/runs/42739958865/job/129579356844).
+The PR measurement is from head `fed8a37e8503bed3cc127a9196823d8fedb8eeac`,
+[run 42744386013 / job 129597526440](https://github.com/Latias94/merman/actions/runs/42744386013/job/129597526440).
+Its tested merge `14ac0a29b7c1f4cf5b15c93cfdbde24eb87aad8d` has the same Git tree
+as that head. Both runs use Rust 1.99.1, Binaryen 133 and wasm-tools 1.263.0 on the
+same Ubuntu runner image, `20261101.360.1`.
+
+| Metric | Exact main | PR head | Increase | Retained or accepted ceiling |
+| --- | ---: | ---: | ---: | ---: |
+| Raw bytes | 26,202,486 | 26,224,165 | 21,679 | 26,285,000 |
+| Stripped bytes | 13,109,819 | 13,121,188 | 11,369 | 13,178,000 |
+| Gzip bytes | 4,959,380 | 4,963,377 | 3,997 | 4,996,000 |
+| Brotli bytes | 3,695,942 | 3,698,682 | 2,740 | 3,810,000 |
+
+All four increases are below 0.09%. Main already had only 1,058 bytes of Brotli
+headroom, so the PR's 2,740-byte increase exceeds the old ceiling by 1,682 bytes.
+The replacement applies the existing rule to that one metric:
+
+```text
+((3698682 * 103 + 99999) // 100000) * 1000 = 3810000
+```
+
+The feature recipe, dependency lockfile, artifact descriptor, Cargo profile,
+optimizer arguments and compression implementation are identical between these
+two revisions. The source reuses existing body-shape emitters to paint independent
+depth and face layers for Flowchart, State, Sequence and Usecase. Architecture and
+Sankey correct drawing order; Treemap chooses label contrast after final cell paint.
+These are reachable correctness changes, without function-level binary attribution.
+No measured redundancy justifies removing behavior to recover the small excess.
+
+The main control passes the compatibility consumer with Typst 0.15.0. The PR's
+17 defaults-off and 42 complete-recipe plugin tests and exact dependency closure
+pass, but its old-budget failure occurs before package validation and Typst 0.15.1
+smoke. Those later checks must pass on the repaired source. The decision retains
+all four independent size gates, supported capabilities and functional checks;
+it makes no latency, memory or release-qualification claim.
