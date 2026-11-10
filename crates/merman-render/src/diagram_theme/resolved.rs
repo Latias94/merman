@@ -876,6 +876,25 @@ impl ResolvedDiagramTheme {
             .resolve_text_style_with_work_meter(target, variant, ordinal, work_meter)
     }
 
+    /// Retain a family's historical variant while admitting an additional semantic role.
+    /// Property winners keep author order across both variants, including explicit Clear.
+    pub(crate) fn text_style_with_variant_fallback(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        fallback: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: &crate::resources::OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, crate::resources::OperationWorkError> {
+        let mut style = self.text_style_with_work_meter(target, fallback, ordinal, work_meter)?;
+        if variant != fallback {
+            style.merge_from(
+                &self.text_style_with_work_meter(target, variant, ordinal, work_meter)?,
+            );
+        }
+        Ok(style)
+    }
+
     /// Preserve the existing Text/fallback author order, then override specified role facets.
     pub(crate) fn text_style_with_role_override(
         &self,

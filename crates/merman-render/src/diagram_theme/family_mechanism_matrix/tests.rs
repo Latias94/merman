@@ -375,7 +375,6 @@ fn gitgraph_terminal_less_paint_routes_are_unsupported() {
         (ThemeTarget::Marker, PaintChannel::Stroke),
         (ThemeTarget::Cluster, PaintChannel::Fill),
         (ThemeTarget::Cluster, PaintChannel::Stroke),
-        (ThemeTarget::ClusterLabel, PaintChannel::Fill),
     ] {
         for paint_kind in [
             FamilyThemePaintKind::Transparent,
@@ -1301,6 +1300,7 @@ fn gitgraph_edge_text_and_label_fill_cutovers_are_static_scalar_and_role_local()
         ThemeTarget::Text,
         ThemeTarget::NodeLabel,
         ThemeTarget::EdgeLabel,
+        ThemeTarget::ClusterLabel,
         ThemeTarget::Edge,
     ] {
         for kind in [

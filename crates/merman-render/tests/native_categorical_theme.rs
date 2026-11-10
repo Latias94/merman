@@ -425,6 +425,41 @@ mod mindmap {
     }
 
     #[test]
+    fn root_label_primary_and_legacy_default_rules_keep_property_author_order() {
+        for primary_last in [false, true] {
+            let mut rules = vec![
+                json!({"target": "node-label", "variant": "default", "style": {"fill": "#123456"}}),
+                json!({"target": "node-label", "variant": "primary", "style": {"fill": "#abcdef"}}),
+            ];
+            if !primary_last {
+                rules.reverse();
+            }
+            let theme = recipe(json!(rules));
+            let rendered = render(
+                "mindmap\n  root[Root]\n",
+                Some(&theme),
+                json!({"layout": "tidy-tree"}),
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                ink(&document, node_with_label(&document, "Root"), true).as_deref(),
+                Some(if primary_last { "#abcdef" } else { "#123456" })
+            );
+            assert_fully_accounted(rendered, 1, 1);
+        }
+        let theme = recipe(json!([
+            {"target": "node-label", "variant": "default", "style": {"fill": null}},
+            {"target": "node-label", "variant": "primary", "style": {"fill": "#abcdef"}}
+        ]));
+        let rendered = render(
+            "mindmap\n  root[Root]\n",
+            Some(&theme),
+            json!({"layout": "tidy-tree"}),
+        );
+        assert_fully_accounted(rendered, 1, 1);
+    }
+
+    #[test]
     fn empty_theme_preserves_mermaid_mindmap_output_in_both_label_modes() {
         let empty = DiagramThemeCompiler::new()
             .compile(DiagramThemeSpec::new())

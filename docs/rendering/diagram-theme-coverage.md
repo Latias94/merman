@@ -52,7 +52,9 @@ consumers admit static solid/transparent values with no variant or `default`; th
 establish support for gradients, ordinal selectors, or sibling effects.
 
 Mindmap's `node` and `node-label` primary fills address the root independently of branch
-palettes. Journey's `task-label` fill addresses section and task surfaces in each text placement;
+palettes. Existing unqualified and `default` label rules still reach the root; property winners
+retain author order when combined with `primary` label rules. Journey's `task-label` fill
+addresses section and task surfaces in each text placement;
 explicit `sectionColours` retains its Tspan-specific ownership. Timeline's `node-label` fill
 addresses section, period, and event surface text. Git Graph's `cluster-label` fill addresses
 branch names independently of tag `node-label` and commit `edge-label` ink. Timeline and Git

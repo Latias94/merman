@@ -74,6 +74,7 @@ impl MindmapLabelPaintPlan {
                 &TARGETS,
                 TerminalVariantDomain::indexed(&occurrences),
             )
+            .with_text_variant_fallback(ThemeVariant::Default)
             .with_source_owned_fill(&source_owned)],
             work,
         )?;
@@ -84,9 +85,10 @@ impl MindmapLabelPaintPlan {
                 plan.fills.push(None);
                 continue;
             }
-            let style = theme.text_style_with_work_meter(
+            let style = theme.text_style_with_variant_fallback(
                 ThemeTarget::NodeLabel,
                 super::theme::node_variant(&model.nodes[index]),
+                ThemeVariant::Default,
                 Some(index + 1),
                 work,
             )?;
@@ -98,22 +100,24 @@ impl MindmapLabelPaintPlan {
                     })
                     .map(|(property, origin)| (origin.rule_index(), property)),
             );
-            let fill = (!source_owned[index])
-                .then(|| {
-                    resolve_direct_static_fill(
-                        theme,
-                        &style,
-                        &TARGETS,
-                        if super::theme::node_variant(&model.nodes[index]) == ThemeVariant::Primary
-                        {
-                            DirectStaticSelectorDomain::State(ThemeVariant::Primary)
-                        } else {
-                            DirectStaticSelectorDomain::Default
-                        },
-                    )
-                })
-                .flatten()
-                .map(DirectPaintExpectation::from_paint);
+            let fill =
+                (!source_owned[index])
+                    .then(|| {
+                        resolve_direct_static_fill(
+                            theme,
+                            &style,
+                            &TARGETS,
+                            if style.fill_resolution().winner().is_some_and(|origin| {
+                                origin.variant() == Some(ThemeVariant::Primary)
+                            }) {
+                                DirectStaticSelectorDomain::State(ThemeVariant::Primary)
+                            } else {
+                                DirectStaticSelectorDomain::Default
+                            },
+                        )
+                    })
+                    .flatten()
+                    .map(DirectPaintExpectation::from_paint);
             if let Some(fill) = &fill
                 && (!facts.parse_valid()
                     || facts.inherited_color_run_count() != facts.visible_run_count()
