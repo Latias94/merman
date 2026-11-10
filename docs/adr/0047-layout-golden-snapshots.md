@@ -57,3 +57,12 @@ localized earlier than SVG output, without needing to diff full SVG files.
   reviewable action, similar to semantic snapshots.
 - Layout snapshots are **not** a replacement for upstream SVG parity checks; they complement them
   by narrowing the failure surface.
+
+## Radar path precision amendment, 2026-11-10
+
+Radar curve `path_d` strings retain the renderer's full-precision coordinates in generated
+goldens. The layout snapshot test compares only those strings' numeric operands at the same
+three-decimal precision as other layout geometry. This covers platform-dependent floating-point
+tails in curve control points without changing production layout or SVG serialization. Path
+commands, their case and order, nonfinite markers, and all label strings remain exact. The
+separate SVG parity and numeric-contract tests retain their own checks.

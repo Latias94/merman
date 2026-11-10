@@ -98,6 +98,39 @@ fn first_json_mismatch(expected: &JsonValue, actual: &JsonValue, path: &str) -> 
 }
 
 fn normalize_dynamic_fields(diagram_type: &str, v: &mut JsonValue) {
+    // Radar stores curve coordinates inside path strings. Apply the layout snapshot's
+    // existing numeric precision there too, without normalizing labels or commands.
+    if diagram_type == "radar" {
+        let Some(curves) = v
+            .pointer_mut("/layout/RadarDiagram/curves")
+            .and_then(JsonValue::as_array_mut)
+        else {
+            return;
+        };
+        let number = Regex::new(r"[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?")
+            .expect("path number regex must compile");
+        for curve in curves {
+            if let Some(JsonValue::String(path)) = curve.get_mut("path_d") {
+                *path = number
+                    .replace_all(path, |captures: &regex::Captures<'_>| {
+                        let value = captures[0].parse::<f64>().expect("matched path number");
+                        let rounded = round_f64(value, 3);
+                        let normalized = if !rounded.is_finite() {
+                            captures[0].to_owned()
+                        } else if rounded == 0.0 {
+                            "0".to_owned()
+                        } else {
+                            rounded.to_string()
+                        };
+                        // Comparison-only delimiters preserve sign-separated operand boundaries.
+                        format!("[{normalized}]")
+                    })
+                    .into_owned();
+            }
+        }
+        return;
+    }
+
     // Mermaid gitGraph auto-generates commit ids using random hex suffixes.
     // Normalize these ids so snapshots are stable across runs.
     if diagram_type == "gitGraph" {
@@ -389,4 +422,84 @@ fn layout_snapshot_mismatch_diagnostic_reports_the_first_json_path() {
     let mismatch = first_json_mismatch(&expected, &actual, "").expect("values differ");
     assert!(mismatch.contains("/layout/nodes/0/x"));
     assert!(mismatch.contains("absolute delta"));
+}
+
+#[test]
+fn radar_layout_snapshot_rounds_only_curve_path_coordinates() {
+    let snapshot = |path: &str| {
+        serde_json::json!({
+            "diagramType": "radar",
+            "layout": {"RadarDiagram": {"curves": [{
+                "path_d": path,
+                "label": "Release 1.23456e-7",
+                "points": [{"x": 1.23456, "y": -0.0}]
+            }]}}
+        })
+    };
+    let mut expected = snapshot(
+        "M1.2858791391047208e-14,-210 C-260.58704399873767,-68.8499999999998 -220.83647796503195,-127.49999999999983 0,0 Z",
+    );
+    let mut actual = snapshot(
+        "M1.2858791391047208e-14,-210 C-260.58704399873767,-68.84999999999982 -220.83647796503195,-127.49999999999984 0,0 Z",
+    );
+    let original = actual.clone();
+    normalize_dynamic_fields("radar", &mut expected);
+    normalize_dynamic_fields("radar", &mut actual);
+    assert_eq!(expected, actual);
+    let curve = &actual["layout"]["RadarDiagram"]["curves"][0];
+    assert_eq!(curve["label"], "Release 1.23456e-7");
+    assert_eq!(
+        curve["points"],
+        original["layout"]["RadarDiagram"]["curves"][0]["points"]
+    );
+    assert_eq!(
+        curve["path_d"],
+        "M[0],[-210] C[-260.587],[-68.85] [-220.836],[-127.5] [0],[0] Z"
+    );
+
+    for path in [
+        "M0,-210 C-260.587,-68.852 -220.836,-127.5 0,0 Z",
+        "M0,-210 c-260.587,-68.85 -220.836,-127.5 0,0 Z",
+        "M0,-210 L-260.587,-68.85 -220.836,-127.5 0,0 Z",
+        "M0,-210 C-260.587,-68.85 -220.836,-127.5 0,0",
+    ] {
+        let mut changed = snapshot(path);
+        normalize_dynamic_fields("radar", &mut changed);
+        assert_ne!(
+            expected, changed,
+            "path regression must remain visible: {path}"
+        );
+    }
+
+    let mut nonfinite = snapshot("MNaN,-Infinity CInfinity,NaN -0.0000001,+1.25e2 0,0 Z");
+    normalize_dynamic_fields("radar", &mut nonfinite);
+    assert_eq!(
+        nonfinite["layout"]["RadarDiagram"]["curves"][0]["path_d"],
+        "MNaN,-Infinity CInfinity,NaN [0],[125] [0],[0] Z"
+    );
+
+    let mut huge = snapshot("M1e308,0 C1e309,0 2e308,0 0,0 Z");
+    normalize_dynamic_fields("radar", &mut huge);
+    assert_eq!(
+        huge["layout"]["RadarDiagram"]["curves"][0]["path_d"],
+        "M[1e308],[0] C[1e309],[0] [2e308],[0] [0],[0] Z"
+    );
+
+    for (first, second) in [
+        (
+            "M0,0 C12,34 56,78 90,12 Z",
+            "M0,0 C1+2,3+4 5+6,7+8 9+0,1+2 Z",
+        ),
+        ("M10,20 Z", "M1-0.0000001,2-0.0000001 Z"),
+    ] {
+        let mut first = snapshot(first);
+        let mut second = snapshot(second);
+        normalize_dynamic_fields("radar", &mut first);
+        normalize_dynamic_fields("radar", &mut second);
+        assert_ne!(first, second, "operand boundaries must remain distinct");
+    }
+
+    let mut other_family = original.clone();
+    normalize_dynamic_fields("flowchart", &mut other_family);
+    assert_eq!(other_family, original);
 }
