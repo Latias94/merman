@@ -1,5 +1,9 @@
 # Complete SVG binding budget, 2026-11-01
 
+Web byte ceilings were retired on 2026-11-10. Current CI and release commands report final Web
+package sizes without `--budget-file`; Typst retains its independent publication budget. The
+measurements and decisions below describe the historical gates at their recorded revisions.
+
 The main binding-delivery change explicitly includes math in `web-full` and `web-render`.
 This restores the complete SVG product expectation of published Web 0.9.2. It is a capability
 change relative to the intervening math-free main recipes, not an equal-capability size saving.

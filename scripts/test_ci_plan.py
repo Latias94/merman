@@ -78,6 +78,18 @@ class NameStatusParserTests(unittest.TestCase):
 
 
 class PlannerTests(unittest.TestCase):
+    def test_typst_size_budget_changes_select_only_their_publishing_owner(self) -> None:
+        plan = plan_changes(
+            parse_name_status_z(b"M\0docs/release/WASM_SIZE_BUDGETS.json\0"),
+            base="a" * 40,
+            head="b" * 40,
+        )
+        self.assertFalse(plan["fallback"])
+        self.assertEqual(
+            {name for name, enabled in plan["owners"].items() if enabled},
+            {"hygiene", "typst"},
+        )
+
     def test_binding_delivery_helpers_select_their_actual_surface_owners(self) -> None:
         fixtures = {
             "scripts/android_package.py": {"hygiene", "platform"},

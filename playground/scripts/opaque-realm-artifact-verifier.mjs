@@ -28,10 +28,6 @@ export async function verifyPreparedOpaqueRealmArtifacts(playgroundRoot, plan) {
       "sha256",
     ]);
     verifyIdentity(artifact.manifest, artifact.source, engine.id);
-    assert.ok(
-      artifact.manifest.bytes <= engine.maxBytes,
-      `${engine.id} engine exceeds its byte budget`,
-    );
     if (engine.resourcePolicy === "same-origin-wasm-v1") {
       assert.doesNotMatch(
         artifact.source,
@@ -67,10 +63,6 @@ export async function verifyPreparedOpaqueRealmArtifacts(playgroundRoot, plan) {
       `sha256-${createHash("sha256")
         .update(artifact.source)
         .digest("base64")}`,
-    );
-    assert.ok(
-      artifact.manifest.bytes <= realm.bootstrap.maxBytes,
-      `${realm.key} bootstrap exceeds its byte budget`,
     );
     assert.doesNotMatch(artifact.source, /<\/script/iu);
   }
