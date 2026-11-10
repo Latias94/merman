@@ -6,35 +6,19 @@ Parse, lay out, and render [Mermaid] diagrams for documentation, editor previews
 applications. Merman runs headlessly: its native rendering path needs no browser or JavaScript
 runtime. Use it as a Rust library, a CLI, or through browser and native bindings.
 
+Merman targets Mermaid **12.3.0** syntax, behavior, and SVG structure. Rendering uses Mermaid's
+themes by default; custom Merman themes are optional.
+
 [![CI status](https://github.com/Latias94/merman/actions/workflows/ci.yml/badge.svg)](https://github.com/Latias94/merman/actions/workflows/ci.yml) [![merman on crates.io](https://img.shields.io/crates/v/merman.svg)](https://crates.io/crates/merman) [![Rust API documentation](https://docs.rs/merman/badge.svg)](https://docs.rs/merman) [![MIT or Apache 2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](#license-and-attribution)
 
 [Try the Playground][Playground] · [Quick start](#quick-start) · [Ecosystem](#ecosystem) · [Documentation][documentation index]
 
-<table>
-  <tr>
-    <td width="36%" rowspan="2" align="center" valign="middle">
-      <a href="https://frankorz.com/merman/?theme-design=riso"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/riso-flowchart.svg" width="100%" alt="Riso Flowchart: a review workflow in blue and red ink on a cream canvas"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=riso"><strong>Riso · Flowchart</strong></a>
-    </td>
-    <td colspan="2" align="center">
-      <a href="https://frankorz.com/merman/?theme-design=metro"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/metro-sequence.svg" width="100%" alt="Metro Sequence: author, editor, and archive exchanging messages on a dark canvas with yellow accents"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=metro"><strong>Metro · Sequence</strong></a>
-    </td>
-  </tr>
-  <tr>
-    <td width="32%" align="center" valign="middle">
-      <a href="https://frankorz.com/merman/?theme-design=pop-art"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/pop-art-xychart.svg" width="100%" alt="Pop Art XY Chart: quarterly deliveries shown with yellow bars, a pink line, and black outlines"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=pop-art"><strong>Pop Art · XY Chart</strong></a>
-    </td>
-    <td width="32%" align="center" valign="middle">
-      <a href="https://frankorz.com/merman/?theme-design=atlas"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/atlas-pie.svg" width="100%" alt="Atlas Pie: work by stage, with percentage labels and a legend in a restrained pastel palette"></a><br>
-      <a href="https://frankorz.com/merman/?theme-design=atlas"><strong>Atlas · Pie</strong></a>
-    </td>
-  </tr>
-</table>
+<p align="center">
+  <img src="docs/assets/readme/default-flowchart.svg" width="680" alt="Default Mermaid styling: Mermaid source passes through Merman to an SVG string">
+</p>
 
-Actual Merman SVG exports from the Playground's **standalone JSON theme library**.
-Open a design above for its gallery of diagram types, sources, editable recipe, and integration examples.
+Rendered by Merman with Mermaid's default theme on a white canvas.
+[Source](docs/assets/readme/default-flowchart.mmd) · [SVG-text configuration](docs/assets/readme/default-flowchart.config.json)
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend.
 > [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
@@ -110,12 +94,43 @@ Beyond SVG, Merman offers typed diagram models, diagnostics, editor APIs, image/
 and terminal output. Start with the [capability guide] for feature selection or the
 [package surface guide] for the complete product map.
 
-## Make it your own
+## Optional themes
 
 **Built-in presets** such as Brutalist, Spotless, Cyberpunk, and Ghibli are selected by their
 runtime preset IDs. The standalone explorations in the [Playground theme designs]
-are editable JSON recipes, including the four designs shown above and coordinated light/dark
+are editable JSON recipes, including the designs below and coordinated light/dark
 designs. Browse by diagram type and style, then copy a recipe to use it through Rust, CLI, Web, or Node.
+
+<details>
+<summary>Explore custom themes</summary>
+
+<table>
+  <tr>
+    <td width="36%" rowspan="2" align="center" valign="middle">
+      <a href="https://frankorz.com/merman/?theme-design=riso"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/riso-flowchart.svg" width="100%" alt="Riso Flowchart: a review workflow in blue and red ink on a cream canvas"></a><br>
+      <a href="https://frankorz.com/merman/?theme-design=riso"><strong>Riso · Flowchart</strong></a>
+    </td>
+    <td colspan="2" align="center">
+      <a href="https://frankorz.com/merman/?theme-design=carbon-copy"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/carbon-copy-sequence.svg" width="100%" alt="Carbon Copy Sequence: typewritten exchanges on ruled paper with violet offset impressions and red review notes"></a><br>
+      <a href="https://frankorz.com/merman/?theme-design=carbon-copy"><strong>Carbon Copy · Sequence</strong></a>
+    </td>
+  </tr>
+  <tr>
+    <td width="32%" align="center" valign="middle">
+      <a href="https://frankorz.com/merman/?theme-design=pop-art"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/pop-art-xychart.svg" width="100%" alt="Pop Art XY Chart: quarterly deliveries shown with yellow bars, a pink line, and black outlines"></a><br>
+      <a href="https://frankorz.com/merman/?theme-design=pop-art"><strong>Pop Art · XY Chart</strong></a>
+    </td>
+    <td width="32%" align="center" valign="middle">
+      <a href="https://frankorz.com/merman/?theme-design=atlas"><img src="https://raw.githubusercontent.com/Latias94/merman/main/playground/src/themes/previews/atlas-pie.svg" width="100%" alt="Atlas Pie: work by stage, with percentage labels and a legend in a restrained pastel palette"></a><br>
+      <a href="https://frankorz.com/merman/?theme-design=atlas"><strong>Atlas · Pie</strong></a>
+    </td>
+  </tr>
+</table>
+
+Actual Merman SVG exports from the Playground's standalone JSON theme library.
+Open a design for its diagram gallery, sources, editable recipe, and integration examples.
+
+</details>
 
 The [theme guide] covers adopting and customizing recipes, family scope, and output support.
 The [preset gallery] shows more real renders and includes [design credits][theme credits].
