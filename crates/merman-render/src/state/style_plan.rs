@@ -1034,6 +1034,13 @@ impl StateStylePlan {
         let transition_label_background_div_style_prefix =
             html_background_style(transition_label_background_fallback_fill.as_deref());
         let hidden_prefixes = hidden_state_prefixes(model);
+        let split_composites_supported = source_compositing_allows_split_composites(
+            model,
+            &classes,
+            &compatibility,
+            backend,
+            &hidden_prefixes,
+        );
         let shadowed_self_loops = if backend == crate::layout_backend::GraphLayoutBackend::Dagre {
             shadowed_self_loop_edge_indices(model, &hidden_prefixes)
         } else {
@@ -1097,6 +1104,7 @@ impl StateStylePlan {
                 &mut residuals,
                 &mut theme_evidence,
                 &mut effects,
+                split_composites_supported,
                 work_meter,
             )?;
             nodes.insert(node.id.clone(), node_plan);
@@ -2370,6 +2378,61 @@ fn prepare_class_declarations(
         .collect()
 }
 
+fn source_compositing_property(property: &str) -> &str {
+    // Normalize known browser aliases for ownership and winner selection only;
+    // EmittedDeclaration retains the authored CSS property spelling.
+    match property {
+        "-webkit-opacity" => "opacity",
+        "-webkit-filter" => "filter",
+        _ => property,
+    }
+}
+
+fn source_compositing_allows_split_composites(
+    model: &StateDiagramRenderModel,
+    classes: &IndexMap<String, StateClassStylePlan>,
+    compatibility: &StateCompatibilityPlan,
+    backend: crate::layout_backend::GraphLayoutBackend,
+    hidden_prefixes: &[String],
+) -> bool {
+    if !compatibility.html_labels()
+        || !model.nodes.iter().any(|node| {
+            super::config::state_node_is_effective_group(node)
+                && !matches!(node.shape.as_str(), "divider" | "noteGroup")
+                && !state_is_hidden_id(hidden_prefixes, &node.id)
+        })
+    {
+        return true;
+    }
+
+    // HTML class rules target direct children. These structural owners can therefore
+    // composite a complete cluster (body and title), or a Dagre nested root, once.
+    // Separate scene passes cannot preserve that operation: moving the complete group
+    // above depth would instead cover real child shadows with its background. Keep the
+    // source hierarchy intact and report an unsupported theme effect through admission.
+    // Native rules target individual shapes, so they do not impose this group boundary.
+    ["root", "clusters", "nodes"].into_iter().all(|class_id| {
+        if class_id == "nodes" && backend != crate::layout_backend::GraphLayoutBackend::Dagre {
+            return true;
+        }
+        let Some(class) = classes.get(class_id) else {
+            return true;
+        };
+        ["opacity", "filter"].into_iter().all(|property| {
+            class
+                .styles
+                .iter()
+                .rfind(|(_, declaration)| {
+                    source_compositing_property(declaration.property()) == property
+                })
+                .is_none_or(|(_, declaration)| match property {
+                    "opacity" => declaration.value().trim() == "1",
+                    _ => declaration.value().trim().eq_ignore_ascii_case("none"),
+                })
+        })
+    })
+}
+
 fn push_structural_node_class_declarations(
     class: &StateClassStylePlan,
     compatibility: &StateCompatibilityPlan,
@@ -2387,7 +2450,12 @@ fn push_structural_node_class_declarations(
             {
                 SourceStyleChannel::Shape
             }
-            "filter" if compatibility.is_classic() => SourceStyleChannel::Shape,
+            property
+                if compatibility.is_classic()
+                    && source_compositing_property(property) == "filter" =>
+            {
+                SourceStyleChannel::Shape
+            }
             // HTML .node span matches the label itself. Native class styles target
             // shapes, so their font properties do not directly style a tspan.
             "font-family" | "font-size" | "font-weight" | "font-style" if html_labels => {
@@ -2434,6 +2502,7 @@ fn prepare_node(
     residuals: &mut Vec<SourceStyleResidual>,
     theme_evidence: &mut StateThemeEvidenceBuilder<'_>,
     effects: &mut StateEffectPlan,
+    split_composites_supported: bool,
     work_meter: &OperationWorkMeter,
 ) -> Result<StateNodeStylePlan, OperationWorkError> {
     let shape_surface = compatibility.node_shape_surface(node, target);
@@ -2815,7 +2884,9 @@ fn prepare_node(
             ));
             continue;
         }
-        let accepted = if classic_state_body && declaration.property() == "filter" {
+        let accepted = if classic_state_body
+            && source_compositing_property(declaration.property()) == "filter"
+        {
             // The prepared CSS value owns the same rect as the typed effect. URL values have
             // already been rejected by the source-style parser and never reach this decision.
             true
@@ -2845,8 +2916,9 @@ fn prepare_node(
                 fill_uses_series_color = false;
             }
             let emitted = EmittedDeclaration::from_source(declaration);
-            shape_emission.insert(declaration.property().to_string(), emitted.clone());
-            source_shape_emission.insert(declaration.property().to_string(), emitted);
+            let property = source_compositing_property(declaration.property());
+            shape_emission.insert(property.to_string(), emitted.clone());
+            source_shape_emission.insert(property.to_string(), emitted);
         }
         /*
          * Validation and emission intentionally share the same admission decision.  A malformed
@@ -2866,10 +2938,9 @@ fn prepare_node(
             && !compatibility.html_labels()
             && ["root", "nodes"].iter().any(|class_id| {
                 classes.get(*class_id).is_some_and(|class| {
-                    class
-                        .styles
-                        .iter()
-                        .any(|(_, declaration)| declaration.property() == "filter")
+                    class.styles.iter().any(|(_, declaration)| {
+                        source_compositing_property(declaration.property()) == "filter"
+                    })
                 })
             });
         if source_shape_emission.contains_key("filter") || ancestor_filter_owns_body {
@@ -2885,7 +2956,7 @@ fn prepare_node(
             target,
             style.effect_resolution(),
             resolved,
-            classic_state_body,
+            classic_state_body && split_composites_supported,
             effects,
         )
     });
