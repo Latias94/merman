@@ -108,6 +108,7 @@ impl TimelineEventDecision {
 pub(crate) struct TimelineEventTheme {
     title: Option<Box<str>>,
     title_fill: Option<DirectPaintExpectation>,
+    title_font_size_known: bool,
     title_terminal: OnceLock<()>,
     events: Box<[TimelineEventDecision]>,
     stroke: Option<TimelineStrokePlan>,
@@ -135,7 +136,8 @@ impl TimelineEventTheme {
             .title
             .as_deref()
             .filter(|title| !title.trim().is_empty())
-            .filter(|_| typography.layout_settings().text_style.font_size > 0.0);
+            .filter(|_| typography.used_font_size_px().is_none_or(|size| size > 0.0));
+        let title_font_size_known = typography.used_font_size_px().is_some();
         let mut evidence = FamilyThemeOutcomes::default();
         reconcile_unsupported_terminal_domains(
             theme,
@@ -232,6 +234,7 @@ impl TimelineEventTheme {
             return Ok(Self {
                 title: title.map(Into::into),
                 title_fill,
+                title_font_size_known,
                 evidence,
                 ..Self::baseline()
             });
@@ -589,6 +592,7 @@ impl TimelineEventTheme {
         Ok(Self {
             title: title.map(Into::into),
             title_fill,
+            title_font_size_known,
             title_terminal: OnceLock::new(),
             events: events.into_boxed_slice(),
             stroke,
@@ -606,6 +610,7 @@ impl TimelineEventTheme {
         Self {
             title: None,
             title_fill: None,
+            title_font_size_known: true,
             title_terminal: OnceLock::new(),
             events: Box::new([]),
             stroke: None,
@@ -697,13 +702,15 @@ impl TimelineEventTheme {
         if self.title_terminal.get().is_some()
             && let Some(fill) = &self.title_fill
         {
-            evidence.mark_applied_with_capabilities(
-                FamilyThemeMechanismKey::Rule {
-                    index: fill.rule_index(),
-                    target: ThemeTarget::Title,
-                },
-                [fill.capability()],
-            );
+            let key = FamilyThemeMechanismKey::Rule {
+                index: fill.rule_index(),
+                target: ThemeTarget::Title,
+            };
+            if self.title_font_size_known {
+                evidence.mark_applied_with_capabilities(key, [fill.capability()]);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedPaint);
+            }
         }
         let Some(outcome) = self.terminal_outcome.get() else {
             return;

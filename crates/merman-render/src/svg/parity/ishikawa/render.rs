@@ -579,12 +579,9 @@ impl<'a> IshikawaTextTerminalWriter<'a> {
     }
 
     fn push_fill_style(&self, out: &mut impl SvgOutput, text: &IshikawaTextLayout) {
-        let Some(fill) = self.plan.typed_fill() else {
+        let Some(fill) = self.plan.typed_fill(text) else {
             return;
         };
-        if text.font_size == 0.0 || text.text.trim().is_empty() {
-            return;
-        }
         out.push_str(r#" style="fill:"#);
         escape_attr_into(out, fill);
         out.push_str(r#" !important;""#);

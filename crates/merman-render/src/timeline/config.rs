@@ -1,7 +1,4 @@
-use crate::config::{
-    config_bool, config_f64, config_f64_css_px, config_string,
-    config_theme_or_root_font_size_px_opt,
-};
+use crate::config::{config_bool, config_f64, config_f64_css_px, config_string};
 use crate::text::TextStyle;
 use serde_json::Value;
 
@@ -11,6 +8,21 @@ const DEFAULT_USE_MAX_WIDTH: bool = false;
 const DEFAULT_FONT_SIZE: f64 = 16.0;
 pub(crate) const DEFAULT_THEME_COLOR_LIMIT: usize = 12;
 pub(crate) const MAX_THEME_COLOR_LIMIT: usize = 64;
+
+#[derive(Debug)]
+pub(super) struct TimelineFontSize {
+    pub(super) css: String,
+    pub(super) used_px: Option<f64>,
+}
+
+impl Default for TimelineFontSize {
+    fn default() -> Self {
+        Self {
+            css: format!("{DEFAULT_FONT_SIZE}px"),
+            used_px: Some(DEFAULT_FONT_SIZE),
+        }
+    }
+}
 
 /// Resolve Mermaid's bounded Timeline color-scale count through the shared value-coercion helper so CSS,
 /// layout, and the typed terminal plan share JavaScript-compatible coercion and ceilings.
@@ -90,12 +102,51 @@ impl<'a> TimelineConfigView<'a> {
         settings
     }
 
+    pub(super) fn configured_font_size(&self) -> Option<TimelineFontSize> {
+        let value = self.effective_config.pointer("/themeVariables/fontSize")?;
+        if let Some(size) = value.as_f64() {
+            return (size.is_finite() && size >= 0.0).then(|| TimelineFontSize {
+                css: format!("{size}px"),
+                used_px: Some(size),
+            });
+        }
+        let raw = value.as_str()?.trim();
+        let declaration = format!("font-size:{raw}");
+        let parsed = crate::mermaid_style::parse_style_declaration(&declaration);
+        // This value enters an ordinary stylesheet declaration, not CSSOM setProperty.
+        // Parse its optional terminator before applying the single-value ownership boundary.
+        let css = parsed.as_ref().map_or(raw, |parsed| parsed.source_value());
+        crate::mermaid_style::css_font_size_value_override(css)?;
+        // Relative root sizes need the receiving ancestor. Literal zero is independent of
+        // that ancestor; expressions and unrepresentable sizes retain unknown visibility.
+        let used_px = parsed.as_ref().and_then(|parsed| {
+            if parsed.font_size_is_literal_zero() {
+                Some(0.0)
+            } else {
+                parsed
+                    .analysis()
+                    .context_free_font_size_px()
+                    .filter(|size| *size > 0.0 && (*size as f32).is_normal())
+            }
+        });
+        Some(TimelineFontSize {
+            css: css.to_owned(),
+            used_px,
+        })
+    }
+
+    pub(super) fn render_font_size_px(&self) -> f64 {
+        // Root fontSize controls layout offsets, not CSS inheritance. This estimate is for
+        // layout only; the typography plan retains the actual CSS and used-size facts.
+        self.configured_font_size()
+            .and_then(|size| size.used_px)
+            .unwrap_or(DEFAULT_FONT_SIZE)
+    }
+
     fn text_style(&self) -> TextStyle {
         TextStyle {
             font_family: self.font_family(),
-            font_size: config_theme_or_root_font_size_px_opt(self.effective_config)
-                .filter(|size| *size >= 0.0)
-                .unwrap_or(DEFAULT_FONT_SIZE),
+            font_size: self.render_font_size_px(),
             font_weight: None,
             font_style: None,
         }

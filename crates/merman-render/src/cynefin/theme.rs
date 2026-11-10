@@ -27,22 +27,43 @@ pub(crate) enum CynefinTextRole {
 #[derive(Debug, Default)]
 pub(crate) struct CynefinSurfaceReceipt {
     requested: bool,
+    font_sizes: [Option<f64>; 5],
     visible_text: bool,
+    unverified_text: bool,
     visible_text_fill: usize,
+    unverified_text_fill: usize,
     overridden_text_fill: usize,
     pub(crate) paint_evidence: FamilyThemeOutcomes,
 }
 
 impl CynefinSurfaceReceipt {
+    pub(crate) fn text_font_size(&self, role: CynefinTextRole, text: &str) -> Option<f64> {
+        if text.trim().is_empty() {
+            Some(0.0)
+        } else {
+            self.font_sizes[role as usize]
+        }
+    }
+
     pub(crate) fn record_text(&mut self, role: CynefinTextRole, _emitted_class: &str, text: &str) {
-        if !self.requested || text.trim().is_empty() {
+        if !self.requested {
             return;
         }
-        self.visible_text = true;
-        self.visible_text_fill += usize::from(matches!(
+        let text_fill = matches!(
             role,
             CynefinTextRole::Subtitle | CynefinTextRole::Item | CynefinTextRole::TransitionLabel
-        ));
+        );
+        match self.text_font_size(role, text) {
+            Some(0.0) => {}
+            Some(_) => {
+                self.visible_text = true;
+                self.visible_text_fill += usize::from(text_fill);
+            }
+            None => {
+                self.unverified_text = true;
+                self.unverified_text_fill += usize::from(text_fill);
+            }
+        }
     }
 
     pub(crate) fn record_text_fill_override(&mut self) {
@@ -50,11 +71,11 @@ impl CynefinSurfaceReceipt {
     }
 
     fn has_visible_text(&self) -> bool {
-        self.visible_text
+        self.visible_text || self.unverified_text
     }
 
     fn has_visible_text_fill_surface(&self) -> bool {
-        self.visible_text_fill > self.overridden_text_fill
+        self.visible_text_fill > self.overridden_text_fill || self.unverified_text_fill != 0
     }
 }
 
@@ -213,6 +234,14 @@ impl CynefinTypographyThemePlan {
             requested: self.inherited_font_stack.typography_requested()
                 || !self.unsupported_routes.is_empty()
                 || !self.text_fill_routes.is_empty(),
+            font_sizes: [
+                CynefinTextRole::DomainLabel,
+                CynefinTextRole::Subtitle,
+                CynefinTextRole::Item,
+                CynefinTextRole::TransitionLabel,
+                CynefinTextRole::Title,
+            ]
+            .map(|role| self.colors.font_binding.used_px(role)),
             ..CynefinSurfaceReceipt::default()
         }
     }
@@ -258,10 +287,12 @@ impl CynefinTypographyThemePlan {
         let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
         if !receipt.has_visible_text() {
             evidence.mark_not_applicable(key);
-            return;
-        }
-        if self.inherited_font_stack.typed_font_stack_active() {
-            evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+        } else if self.inherited_font_stack.typed_font_stack_active() {
+            if receipt.unverified_text {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            } else {
+                evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            }
         } else {
             match self.inherited_font_stack.outcome() {
                 InheritedFontStackOutcome::ConfigOwned => {
@@ -282,7 +313,14 @@ impl CynefinTypographyThemePlan {
                 .is_some_and(|fill| fill.rule_index() == *rule_index)
             {
                 if let Some(fill) = self.text_fill.as_ref() {
-                    evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+                    if receipt.unverified_text_fill != 0 {
+                        evidence.mark_residual(
+                            key.clone(),
+                            FamilyThemeResidualReason::UnsupportedTypography,
+                        );
+                    } else {
+                        evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+                    }
                 } else {
                     evidence
                         .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
@@ -388,8 +426,10 @@ mod tests {
         assert_eq!(plan.colors().arrow_color, "root-line");
         assert_eq!(plan.colors().label_color, "root-label");
         assert_eq!(plan.colors().complex_bg, "var(--complex)");
-        assert_eq!(plan.colors().domain_font_size, 23.0);
-        assert_eq!(plan.colors().item_font_size, 15.0);
+        let fonts = &plan.colors().font_binding;
+        assert_eq!(fonts.used_px(CynefinTextRole::DomainLabel), Some(23.0));
+        assert_eq!(fonts.used_px(CynefinTextRole::Item), Some(15.0));
+        assert_eq!(fonts.css(CynefinTextRole::Title), "232px");
         assert_eq!(plan.font_family_css(), "Config Sans");
     }
 }

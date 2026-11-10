@@ -167,27 +167,40 @@ impl<'a> C4ConfigView<'a> {
     }
 
     pub(crate) fn shape_font(&self, type_c4_shape: &str) -> TextStyle {
-        let key_family = format!("{type_c4_shape}FontFamily");
-        let key_size = format!("{type_c4_shape}FontSize");
         let key_weight = format!("{type_c4_shape}FontWeight");
 
         TextStyle {
-            font_family: Some(self.font_family(&key_family)),
-            font_size: self.font_size(&key_size, 14.0),
+            font_family: Some(self.shape_font_family_css(type_c4_shape)),
+            // Configured element sizes are interpreted once by C4ElementFontSize.
+            font_size: 14.0,
             font_weight: self.font_weight(&key_weight),
             font_style: None,
         }
     }
 
-    pub(crate) fn shape_font_size_is_emitted(&self, type_c4_shape: &str) -> bool {
+    pub(crate) fn shape_font_size_value(&self, type_c4_shape: &str) -> Option<&Value> {
         let key = format!("{type_c4_shape}FontSize");
-        // Mermaid skips a numeric zero before CSSOM assignment and CSSOM rejects negatives.
-        // String "0px" is truthy and remains a valid zero-sized declaration.
-        self.font_size(&key, 14.0) >= 0.0
-            && !self
-                .c4_config
-                .get(&key)
-                .is_some_and(|value| value.is_number() && value.as_f64() == Some(0.0))
+        self.c4_config.get(&key)
+    }
+
+    pub(crate) fn shape_font_family_css(&self, type_c4_shape: &str) -> String {
+        let key = format!("{type_c4_shape}FontFamily");
+        let raw = match self.c4_config.get(&key) {
+            None => C4_DEFAULT_FONT_FAMILY,
+            Some(Value::String(raw)) => raw.trim(),
+            Some(_) => return String::new(),
+        };
+        let Some(parsed) = crate::mermaid_style::parse_css_font_family_value(raw) else {
+            return String::new();
+        };
+        // CSSOM receives the raw value and an empty priority, before normalization can remove
+        // invalid trailing syntax. A quoted "!important" remains part of a literal font name.
+        if !cssom_accepts_value_priority(parsed.value, parsed.important)
+            || (!parsed.important && parsed.value != raw)
+        {
+            return String::new();
+        }
+        crate::config::normalize_css_font_family(raw)
     }
 
     pub(crate) fn use_max_width(&self) -> bool {
@@ -233,6 +246,19 @@ pub(crate) struct C4LayoutSettings {
 
 pub(crate) const fn default_use_max_width() -> bool {
     DEFAULT_USE_MAX_WIDTH
+}
+
+pub(super) fn cssom_accepts_value_priority(value: &str, important: bool) -> bool {
+    if !important {
+        return true;
+    }
+    // The pinned browser's CSSOM rejects priority on literal lists/lengths, but its CSS-wide
+    // keyword path accepts it. Keep that observed exception without interpreting expressions.
+    let mut parser = cssparser::Parser::new(value);
+    parser
+        .expect_ident()
+        .is_ok_and(|name| crate::diagram_theme::is_css_wide_keyword(name))
+        && parser.is_exhausted()
 }
 
 #[cfg(test)]
@@ -357,8 +383,8 @@ mod tests {
 
         assert_eq!(view.font_family("personFontFamily"), "Inter, sans-serif");
         assert_eq!(view.font_weight("personFontWeight").as_deref(), Some("700"));
-        assert_eq!(font.font_family.as_deref(), Some("Inter, sans-serif"));
-        assert_eq!(font.font_size, 18.0);
+        assert_eq!(view.font_size("personFontSize", 14.0), 18.0);
+        assert_eq!(font.font_family.as_deref(), Some(""));
         assert_eq!(font.font_weight.as_deref(), Some("700"));
     }
 

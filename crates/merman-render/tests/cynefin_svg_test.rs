@@ -630,6 +630,392 @@ fn cynefin_typed_font_stack_drives_measurement_css_and_terminal_evidence() {
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
 }
 
+#[derive(Debug)]
+struct CynefinTerminalSizeMeasurer(f64);
+
+impl TextMeasurer for CynefinTerminalSizeMeasurer {
+    fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+        assert_eq!(style.font_size, self.0);
+        assert_eq!(style.font_weight, None);
+        assert_eq!(style.font_style, None);
+        TextMetrics {
+            width: self.0 * text.len() as f64,
+            height: self.0,
+            line_count: 1,
+        }
+    }
+}
+
+#[test]
+fn cynefin_item_measurement_uses_the_final_nonnegative_css_size() {
+    for (size, used_size) in [(0.0, 0.0), (1.0, 1.0), (-1.0, 32.0), (0.0004, 0.0004)] {
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.cynefin-terminal-size").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+                identity,
+                Arc::new(CynefinTerminalSizeMeasurer(used_size)),
+            )),
+        );
+        let config = serde_json::json!({"themeVariables": {
+            "fontSize": "24pt", "cynefin": {"itemFontSize": size}
+        }});
+        let source = format!("---\nconfig: {config}\n---\ncynefin-beta\ncomplex\n\"Item\"\n");
+        let (layout, svg) = parse_layout_and_render_with_environment(
+            &source,
+            &LayoutOptions::default(),
+            &environment,
+        );
+        let measured_width = if used_size == 0.0 {
+            28.0
+        } else {
+            used_size * 4.0
+        };
+        assert_eq!(layout.items[0].width, measured_width + 20.0, "{size}");
+        assert!(
+            cynefin_stylesheet(&svg).contains(&format!(".cynefinItemText{{font-size:{size}px;"))
+        );
+    }
+}
+
+fn cynefin_font_binding_theme() -> DiagramTheme {
+    DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::CYNEFIN,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("monospace").unwrap()),
+                    ),
+                )
+                .with_styles(
+                    [
+                        ThemeTarget::Text,
+                        ThemeTarget::NodeLabel,
+                        ThemeTarget::Title,
+                    ]
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), |rules, target| {
+                        rules.with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                    }),
+                ),
+        )
+        .unwrap()
+}
+
+const CYNEFIN_FONT_BINDING_SOURCE: &str =
+    "cynefin-beta\ntitle Cynefin\ncomplex\n\"Item\"\nclear --> complex : \"Transition\"\n";
+
+#[test]
+fn cynefin_font_binding_retains_json_types_and_ignored_role_declarations() {
+    let theme = cynefin_font_binding_theme();
+    for (value, direct, annotation, title, item_px) in [
+        (serde_json::json!(24), "24px", "23px", "26px", 24.0),
+        (serde_json::json!("24"), "24px", "23px", "242px", 24.0),
+        (
+            serde_json::json!("24pt"),
+            "24ptpx",
+            "NaNpx",
+            "24pt2px",
+            32.0,
+        ),
+        (
+            serde_json::json!("potato"),
+            "potatopx",
+            "NaNpx",
+            "potato2px",
+            32.0,
+        ),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"fontSize": "24pt", "cynefin": {
+                    "domainFontSize": value, "itemFontSize": value
+                }}
+            })),
+        );
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("test.cynefin-font-binding").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let environment = portable_cynefin_environment().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+                identity,
+                Arc::new(CynefinTerminalSizeMeasurer(item_px)),
+            )),
+        );
+        let (layout, rendered) = try_render_cynefin_with_theme(
+            CYNEFIN_FONT_BINDING_SOURCE,
+            &theme,
+            engine,
+            &environment,
+            "cynefin-font-binding",
+        )
+        .unwrap();
+        assert_eq!(layout.items[0].width, item_px * 4.0 + 20.0);
+        let stylesheet = cynefin_stylesheet(rendered.svg());
+        for (selector, expected) in [
+            (".cynefinDomainLabel", direct),
+            (".cynefinItemText", direct),
+            (".cynefinSubtitle", annotation),
+            (".cynefinArrowLabel", annotation),
+            (".cynefinTitle", title),
+        ] {
+            assert!(
+                cynefin_rule_body(&stylesheet, "cynefin-font-binding", selector)
+                    .contains(&format!("font-size:{expected};")),
+                "{value}/{selector}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4);
+        assert_eq!(evidence.applied_count(), 4, "{value}");
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn cynefin_unverified_final_sizes_do_not_certify_font_or_text_paint() {
+    let theme = cynefin_font_binding_theme();
+    for size in [
+        "1e-50",
+        "1e-39",
+        "1e-400",
+        "1e400",
+        "1px;fill:red",
+        "var(--size)",
+    ] {
+        let engine = || {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": {"fontSize": "0px", "cynefin": {
+                            "domainFontSize": size, "itemFontSize": size
+                        }}
+                    }),
+                ),
+            )
+        };
+        let (_, rendered) = try_render_cynefin_with_theme(
+            CYNEFIN_FONT_BINDING_SOURCE,
+            &theme,
+            engine(),
+            &RenderEnvironment::deterministic(),
+            "cynefin-unverified-font",
+        )
+        .unwrap();
+        let stylesheet = cynefin_stylesheet(rendered.svg());
+        assert!(!stylesheet.contains("fill:red"));
+        assert!(!stylesheet.contains("var(--size)"));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4);
+        assert_eq!(evidence.accounted_count(), 4);
+        assert_eq!(evidence.applied_count(), 0, "{size}");
+        assert_eq!(evidence.theme_residual_count(), 4, "{size}");
+        assert!(
+            try_render_cynefin_with_theme(
+                CYNEFIN_FONT_BINDING_SOURCE,
+                &theme,
+                engine(),
+                &portable_cynefin_environment(),
+                "cynefin-unverified-font-strict",
+            )
+            .is_err(),
+            "{size}"
+        );
+    }
+}
+
+#[test]
+fn cynefin_numeric_painter_underflow_keeps_the_independent_title_consumer() {
+    let theme = cynefin_font_binding_theme();
+    for (value, css, expected_applied, expected_residual) in [
+        (0.0, "0px", 2, 0),
+        (24.0, "24px", 4, 0),
+        (1e-50, "1e-50px", 1, 3),
+    ] {
+        let engine = || {
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "themeVariables": {"fontSize": "0px", "cynefin": {
+                            "domainFontSize": value, "itemFontSize": value
+                        }}
+                    }),
+                ),
+            )
+        };
+        let (_, rendered) = try_render_cynefin_with_theme(
+            CYNEFIN_FONT_BINDING_SOURCE,
+            &theme,
+            engine(),
+            &RenderEnvironment::deterministic(),
+            "cynefin-painter-range",
+        )
+        .unwrap();
+        let stylesheet = cynefin_stylesheet(rendered.svg());
+        assert!(
+            cynefin_rule_body(&stylesheet, "cynefin-painter-range", ".cynefinItemText")
+                .contains(&format!("font-size:{css};"))
+        );
+        if value < 1.0 {
+            assert!(
+                cynefin_rule_body(&stylesheet, "cynefin-painter-range", ".cynefinTitle")
+                    .contains("font-size:2px;")
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4);
+        assert_eq!(evidence.accounted_count(), 4);
+        assert_eq!(evidence.applied_count(), expected_applied, "{value}");
+        assert_eq!(
+            evidence.theme_residual_count(),
+            expected_residual,
+            "{value}"
+        );
+        assert_eq!(
+            try_render_cynefin_with_theme(
+                CYNEFIN_FONT_BINDING_SOURCE,
+                &theme,
+                engine(),
+                &portable_cynefin_environment(),
+                "cynefin-painter-range-strict",
+            )
+            .is_ok(),
+            expected_residual == 0
+        );
+    }
+}
+
+#[test]
+fn cynefin_zero_sized_roles_retire_only_their_visible_font_and_paint_consumers() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::CYNEFIN,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("monospace").unwrap()),
+                    ),
+                )
+                .with_styles(
+                    [
+                        ThemeTarget::Text,
+                        ThemeTarget::NodeLabel,
+                        ThemeTarget::EdgeLabel,
+                    ]
+                    .into_iter()
+                    .fold(ThemeRuleSet::default(), |rules, target| {
+                        rules.with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                    }),
+                ),
+        )
+        .unwrap();
+    for (item_size, has_item, has_title, expected_applied) in [
+        (1, false, false, 0),
+        (0, true, false, 0),
+        (-1, true, false, 0),
+        (0, true, true, 1),
+        (2, true, false, 3),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "themeVariables": {"fontSize": "0px", "cynefin": {
+                    "domainFontSize": 0, "itemFontSize": item_size
+                }}
+            })),
+        );
+        let source = format!(
+            "cynefin-beta\n{}complex\n{}clear --> complex : \"Transition\"\n",
+            if has_title {
+                "title Visible title\n"
+            } else {
+                ""
+            },
+            if has_item { "\"Item\"\n" } else { "" },
+        );
+        let (_, rendered) = try_render_cynefin_with_theme(
+            &source,
+            &theme,
+            engine,
+            &portable_cynefin_environment(),
+            "cynefin-zero-roles",
+        )
+        .unwrap();
+        let stylesheet = cynefin_stylesheet(rendered.svg());
+        for selector in [".cynefinSubtitle", ".cynefinArrowLabel"] {
+            assert!(
+                cynefin_rule_body(&stylesheet, "cynefin-zero-roles", selector)
+                    .contains(&format!("font-size:{}px;", item_size - 1))
+            );
+        }
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for text in document
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+        {
+            if expected_applied <= 1 {
+                assert_eq!(text.attribute("style"), None);
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4);
+        assert_eq!(evidence.accounted_count(), 4);
+        assert_eq!(
+            evidence.applied_count(),
+            expected_applied,
+            "{item_size}/{has_title}"
+        );
+        assert_eq!(evidence.not_applicable_count(), 4 - expected_applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn cynefin_hidden_labels_keep_unsupported_geometry_applicable() {
+    let theme = cynefin_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::NodeLabel,
+        ThemeStylePatch::default().with_padding(merman_render::diagram_theme::InsetsPx::all(2.0)),
+    )));
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {"fontSize": "0px", "cynefin": {
+                "domainFontSize": 0, "itemFontSize": 0
+            }}
+        })),
+    );
+    let (_, rendered) = try_render_cynefin_with_theme(
+        "cynefin-beta\ncomplex\n\"Item\"\n",
+        &theme,
+        engine,
+        &RenderEnvironment::deterministic(),
+        "cynefin-hidden-geometry",
+    )
+    .unwrap();
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
 #[test]
 fn cynefin_empty_item_does_not_invalidate_font_stack_terminal_evidence() {
     let font_stack =

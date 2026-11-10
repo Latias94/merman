@@ -154,11 +154,14 @@ fn write_c4_css_with_typography(
         let weight = font.font_weight.as_deref().unwrap_or("normal");
         let _ = write!(
             out,
-            r#"#{} .c4-shape.c4-{} .label{{font-family:{};"#,
-            diagram_id, type_name, family,
+            r#"#{} .c4-shape.c4-{} .label{{"#,
+            diagram_id, type_name,
         );
-        if let Some(size) = style.font.css_font_size_px {
-            let _ = write!(out, "font-size:{size}px;");
+        if !family.is_empty() {
+            let _ = write!(out, "font-family:{family};");
+        }
+        if let Some(size) = style.font.element_font_size_css() {
+            let _ = write!(out, "font-size:{size};");
         }
         let _ = write!(out, "font-weight:{weight};}}");
         out.checkpoint()?;
@@ -1092,7 +1095,7 @@ pub(crate) fn render_c4_diagram_svg_typed(
                     .element_style(s.type_c4_shape.as_str())
                     .expect("prepared C4 shape font")
                     .font;
-                shape_text_visible &= font.measurement_style.font_size > 0.0;
+                shape_text_visible &= font.potentially_visible();
                 if shape_text_visible && let Some(receipt) = text_paint_receipt.as_mut() {
                     receipt.record_owned_color(font_color);
                 }

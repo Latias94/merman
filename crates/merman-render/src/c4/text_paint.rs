@@ -35,11 +35,13 @@ pub(crate) struct C4TextPaintPlan {
 #[derive(Debug)]
 struct C4SourceTerminalPaint {
     title_visible: bool,
+    title_visibility_verified: bool,
     elements: Vec<C4ElementTerminalPaint>,
     relations: Vec<C4RelationTerminalPaint>,
     boundaries: Vec<Option<C4LabelTerminalPaint>>,
     role_evidence: FamilyThemeOutcomes,
     typed_roles: BTreeMap<FamilyThemeMechanismKey, BTreeSet<ThemeCapability>>,
+    unverified_text_roles: BTreeSet<FamilyThemeMechanismKey>,
 }
 
 #[derive(Debug)]
@@ -49,6 +51,7 @@ pub(crate) struct C4ElementTerminalPaint {
     pub(crate) text: String,
     typed_text: bool,
     visible: bool,
+    visibility_verified: bool,
 }
 
 #[derive(Debug)]
@@ -60,6 +63,7 @@ pub(crate) struct C4RelationTerminalPaint {
     pub(crate) marker_stroke: String,
     typed_text: bool,
     visible: bool,
+    visibility_verified: bool,
 }
 
 #[derive(Debug)]
@@ -67,6 +71,7 @@ struct C4LabelTerminalPaint {
     text: String,
     typed_text: bool,
     visible: bool,
+    visibility_verified: bool,
 }
 
 #[derive(Debug)]
@@ -333,6 +338,7 @@ impl C4TextPaintPlan {
         let view = super::C4ConfigView::new(config.as_value());
         let mut elements = Vec::with_capacity(layout.shapes.len());
         let mut typed_roles = BTreeMap::new();
+        let mut unverified_text_roles = BTreeSet::new();
         let mut element_text_owned = Vec::new();
         let mut element_fill_owned = Vec::new();
         let mut element_stroke_owned = Vec::new();
@@ -342,20 +348,17 @@ impl C4TextPaintPlan {
                     message: format!("c4: missing model shape {}", shape.alias),
                 }
             })?;
-            let font_size = typography
+            let font = &typography
                 .element_style(&shape.type_c4_shape)
                 .ok_or_else(|| crate::Error::InvalidModel {
                     message: format!("c4: missing prepared element style {}", shape.type_c4_shape),
                 })?
-                .font
-                .measurement_style
-                .font_size;
-            let visible = text_is_visible(&shape.label, font_size)
-                || text_is_visible(&shape.type_block, font_size)
-                || shape
-                    .descr
-                    .as_ref()
-                    .is_some_and(|block| text_is_visible(block, font_size));
+                .font;
+            let visibility_verified = font.font_size_is_known();
+            let visible = font.potentially_visible()
+                && (text_has_visible_content(&shape.label)
+                    || text_has_visible_content(&shape.type_block)
+                    || shape.descr.as_ref().is_some_and(text_has_visible_content));
             let defaults = typography
                 .prepare_element_colors(&shape.type_c4_shape, &view)
                 .ok_or_else(|| crate::Error::InvalidModel {
@@ -404,6 +407,12 @@ impl C4TextPaintPlan {
                     ThemeTarget::NodeLabel,
                     text_paint.as_ref(),
                 );
+                if !visibility_verified && let Some(paint) = &text_paint {
+                    unverified_text_roles.insert(FamilyThemeMechanismKey::Rule {
+                        index: paint.rule_index(),
+                        target: ThemeTarget::NodeLabel,
+                    });
+                }
             }
             elements.push(C4ElementTerminalPaint {
                 background: source
@@ -424,6 +433,7 @@ impl C4TextPaintPlan {
                     .to_owned(),
                 typed_text: visible && self.uses_inherited_fill(text_paint.as_ref()),
                 visible,
+                visibility_verified,
             });
         }
         let source_relations: BTreeMap<_, _> = model
@@ -479,6 +489,14 @@ impl C4TextPaintPlan {
                     ThemeTarget::EdgeLabel,
                     text_paint.as_ref(),
                 );
+                if !typography.message_font().font_size_is_known()
+                    && let Some(paint) = &text_paint
+                {
+                    unverified_text_roles.insert(FamilyThemeMechanismKey::Rule {
+                        index: paint.rule_index(),
+                        target: ThemeTarget::EdgeLabel,
+                    });
+                }
             }
             relation_line_owned.push(explicit_line.is_some());
             record_role_paint(&mut typed_roles, ThemeTarget::Edge, line_paint.as_ref());
@@ -513,6 +531,7 @@ impl C4TextPaintPlan {
                 themed_markers,
                 typed_text: label_visible && self.uses_inherited_fill(text_paint.as_ref()),
                 visible: label_visible,
+                visibility_verified: typography.message_font().font_size_is_known(),
             });
         }
         let mut boundaries = Vec::with_capacity(layout.boundaries.len());
@@ -539,6 +558,14 @@ impl C4TextPaintPlan {
                 || boundary.descr.as_ref().is_some_and(|block| {
                     text_is_visible(block, fonts.descr.measurement_style.font_size)
                 });
+            let visibility_verified = (fonts.name.font_size_is_known()
+                || !text_has_visible_content(&boundary.label))
+                && boundary.ty.as_ref().is_none_or(|block| {
+                    fonts.ty.font_size_is_known() || !text_has_visible_content(block)
+                })
+                && boundary.descr.as_ref().is_none_or(|block| {
+                    fonts.descr.font_size_is_known() || !text_has_visible_content(block)
+                });
             let (paint, _) = self.role_paints(
                 ThemeTarget::ClusterLabel,
                 boundary_text_owned.len() + 1,
@@ -548,6 +575,12 @@ impl C4TextPaintPlan {
             if visible {
                 boundary_text_owned.push(explicit.is_some());
                 record_role_paint(&mut typed_roles, ThemeTarget::ClusterLabel, paint.as_ref());
+                if !visibility_verified && let Some(paint) = &paint {
+                    unverified_text_roles.insert(FamilyThemeMechanismKey::Rule {
+                        index: paint.rule_index(),
+                        target: ThemeTarget::ClusterLabel,
+                    });
+                }
             }
             boundaries.push(Some(C4LabelTerminalPaint {
                 text: explicit
@@ -556,6 +589,7 @@ impl C4TextPaintPlan {
                     .to_owned(),
                 typed_text: visible && self.uses_inherited_fill(paint.as_ref()),
                 visible,
+                visibility_verified,
             }));
         }
         let mut role_evidence = FamilyThemeOutcomes::default();
@@ -624,11 +658,13 @@ impl C4TextPaintPlan {
         self.source_paint
             .set(C4SourceTerminalPaint {
                 title_visible: self.title.is_some() && typography.font_size_px() > 0.0,
+                title_visibility_verified: typography.font_size_is_known(),
                 elements,
                 relations,
                 boundaries,
                 role_evidence,
                 typed_roles,
+                unverified_text_roles,
             })
             .expect("C4 source paint prepared once per family artifact");
         Ok(())
@@ -787,13 +823,19 @@ impl C4TextPaintPlan {
             && self.terminal.get().is_some()
             && let Some(fill) = &self.title_fill
         {
-            evidence.mark_applied_with_capabilities(
-                FamilyThemeMechanismKey::Rule {
-                    index: fill.rule_index(),
-                    target: ThemeTarget::Title,
-                },
-                [fill.capability()],
-            );
+            let key = FamilyThemeMechanismKey::Rule {
+                index: fill.rule_index(),
+                target: ThemeTarget::Title,
+            };
+            if self
+                .source_paint
+                .get()
+                .is_some_and(|source| source.title_visibility_verified)
+            {
+                evidence.mark_applied_with_capabilities(key, [fill.capability()]);
+            } else {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+            }
         }
         for pending in &self.pending {
             let key = &pending.key;
@@ -842,7 +884,10 @@ impl C4TextPaintPlan {
                         continue;
                     }
                     let key = theme.family_mechanism_key(*route);
-                    if let Some(capabilities) = source.typed_roles.get(&key) {
+                    if source.unverified_text_roles.contains(&key) {
+                        evidence
+                            .mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
+                    } else if let Some(capabilities) = source.typed_roles.get(&key) {
                         evidence.mark_applied_with_capabilities(key, capabilities.iter().copied());
                     } else {
                         evidence.mark_not_applicable(key);
@@ -867,6 +912,10 @@ impl C4TextPaintReceipt<'_> {
         self.title_seen = true;
         self.text_seen |= visible;
         self.typed_fill_seen |= visible && self.title_inherits_fill && self.expected_fill.is_some();
+        self.source_colors_static &= !visible
+            || self
+                .expected_source
+                .is_none_or(|source| source.title_visibility_verified);
     }
 
     /// Source-directed inheritance and browser-dependent colors need their own terminal proof.
@@ -888,6 +937,7 @@ impl C4TextPaintReceipt<'_> {
             && expected.visible == visible
             && self.boundaries_seen.insert(index);
         self.typed_fill_seen |= expected.typed_text;
+        self.source_colors_static &= !visible || expected.visibility_verified;
     }
 
     pub(crate) fn record_element(
@@ -909,6 +959,7 @@ impl C4TextPaintReceipt<'_> {
             && expected.border == paint.border
             && self.elements_seen.insert(index);
         self.typed_fill_seen |= expected.typed_text;
+        self.source_colors_static &= !visible || expected.visibility_verified;
     }
 
     pub(crate) fn record_relation(
@@ -931,6 +982,7 @@ impl C4TextPaintReceipt<'_> {
             && expected.marker_stroke == paint.marker_stroke
             && self.relations_seen.insert(index);
         self.typed_fill_seen |= expected.typed_text;
+        self.source_colors_static &= !visible || expected.visibility_verified;
     }
 }
 
@@ -947,9 +999,10 @@ fn is_role_target(target: ThemeTarget) -> bool {
 }
 
 fn text_is_visible(block: &C4TextBlockLayout, used_font_size: f64) -> bool {
-    if used_font_size <= 0.0 {
-        return false;
-    }
+    used_font_size > 0.0 && text_has_visible_content(block)
+}
+
+fn text_has_visible_content(block: &C4TextBlockLayout) -> bool {
     if let Some(plan) = &block.render_plan {
         // Match the unified writer's prepared words and one-layer textContent decoding.
         // A closing break tag or a decoded entity remains a literal word on this path.

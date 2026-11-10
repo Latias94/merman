@@ -50,9 +50,13 @@ fn write_label_paint(
     target: ThemeTarget,
     ordinal: usize,
     domain_label: bool,
+    font_size: Option<f64>,
     base: &crate::cynefin::CynefinTheme,
 ) -> Result<bool> {
     let style = plan.style(target, ordinal, !domain_label)?;
+    if font_size == Some(0.0) {
+        return Ok(false);
+    }
     let (path, color) = if domain_label {
         (base.label_color_source, base.label_color.as_str())
     } else {
@@ -67,6 +71,11 @@ fn write_label_paint(
         color,
     );
     plan.unsupported_property(target, style.as_ref(), ResolvedStyleProperty::Stroke);
+    // Resolving a requested paint without recording an emission preserves its residual, while
+    // a source-owned fill still remains not applicable. Unknown text cannot certify paint.
+    if font_size.is_none() {
+        return Ok(false);
+    }
     let overridden = fill.is_some();
     write_paint_style(out, plan, fill, None)?;
     Ok(overridden)
@@ -198,7 +207,15 @@ pub(crate) fn render_cynefin_diagram_svg_model(
             fmt(layout.width / 2.0),
             fmt(-layout.padding / 2.0)
         );
-        write_label_paint(&mut out, &mut paint_plan, ThemeTarget::Title, 1, true, base)?;
+        write_label_paint(
+            &mut out,
+            &mut paint_plan,
+            ThemeTarget::Title,
+            1,
+            true,
+            surface_receipt.text_font_size(crate::cynefin::CynefinTextRole::Title, title),
+            base,
+        )?;
         let _ = write!(&mut out, ">{}</text>", escape_xml_display(title));
         out.checkpoint()?;
         surface_receipt.record_text(
@@ -447,6 +464,10 @@ fn push_labels(
             ThemeTarget::NodeLabel,
             domain_ordinal(domain_name),
             true,
+            surface_receipt.text_font_size(
+                crate::cynefin::CynefinTextRole::DomainLabel,
+                crate::cynefin::domain_title(domain_name),
+            ),
             base,
         )?;
         let _ = write!(
@@ -472,7 +493,15 @@ fn push_labels(
         fmt(layout.width / 2.0),
         fmt(y)
     );
-    write_label_paint(out, paint_plan, ThemeTarget::NodeLabel, 5, true, base)?;
+    write_label_paint(
+        out,
+        paint_plan,
+        ThemeTarget::NodeLabel,
+        5,
+        true,
+        surface_receipt.text_font_size(crate::cynefin::CynefinTextRole::DomainLabel, "Confusion"),
+        base,
+    )?;
     out.push_str(">Confusion</text></g>");
     out.checkpoint()?;
     surface_receipt.record_text(
@@ -514,6 +543,7 @@ fn push_subtitles(
                 ThemeTarget::NodeLabel,
                 domain_ordinal(domain_name),
                 false,
+                surface_receipt.text_font_size(crate::cynefin::CynefinTextRole::Subtitle, text),
                 base,
             )? {
                 surface_receipt.record_text_fill_override();
@@ -538,7 +568,15 @@ fn push_subtitles(
         fmt(layout.width / 2.0),
         fmt(layout.height / 2.0 + 8.0)
     );
-    if write_label_paint(out, paint_plan, ThemeTarget::NodeLabel, 5, false, base)? {
+    if write_label_paint(
+        out,
+        paint_plan,
+        ThemeTarget::NodeLabel,
+        5,
+        false,
+        surface_receipt.text_font_size(crate::cynefin::CynefinTextRole::Subtitle, "Disorder"),
+        base,
+    )? {
         surface_receipt.record_text_fill_override();
     }
     out.push_str(">Disorder</text></g>");
@@ -611,6 +649,7 @@ fn push_items(
                 ThemeTarget::NodeLabel,
                 ordinal,
                 false,
+                surface_receipt.text_font_size(crate::cynefin::CynefinTextRole::Item, &item.label),
                 base,
             )?
         {
@@ -692,6 +731,8 @@ fn push_transitions(
                 ThemeTarget::EdgeLabel,
                 index + 1,
                 false,
+                surface_receipt
+                    .text_font_size(crate::cynefin::CynefinTextRole::TransitionLabel, label),
                 base,
             )? {
                 surface_receipt.record_text_fill_override();
@@ -724,24 +765,30 @@ fn write_cynefin_css(
     let _ = write!(
         out,
         "#{id} .cynefinDomain{{stroke:none;}}\
-#{id} .cynefinDomainLabel{{font-size:{}px;font-weight:bold;fill:{};}}\
-#{id} .cynefinSubtitle{{font-size:{}px;fill:{};font-style:italic;}}\
+#{id} .cynefinDomainLabel{{font-size:{};font-weight:bold;fill:{};}}\
+#{id} .cynefinSubtitle{{font-size:{};fill:{};font-style:italic;}}\
 #{id} .cynefinItem{{fill-opacity:0.95;stroke:{};stroke-width:1;}}\
-#{id} .cynefinItemText{{font-size:{}px;fill:{};}}\
+#{id} .cynefinItemText{{font-size:{};fill:{};}}\
 #{id} .cynefinItemOverflow{{fill-opacity:0.6;stroke:{};stroke-width:1;stroke-dasharray:3 2;}}\
 #{id} .cynefinBoundary{{stroke:{};stroke-width:{};stroke-dasharray:6 3;}}\
 #{id} .cynefinCliff{{stroke:{};stroke-width:{};}}\
 #{id} .cynefinConfusion{{stroke:{};stroke-width:1.5;stroke-dasharray:4 2;}}\
 #{id} .cynefinArrowLine{{stroke:{};stroke-width:{};fill:none;}}\
 #{id} .cynefinArrowHead{{fill:{};stroke:none;}}\
-#{id} .cynefinArrowLabel{{font-size:{}px;fill:{};}}\
-#{id} .cynefinTitle{{font-size:{}px;font-weight:bold;fill:{};}}",
-        fmt(theme.domain_font_size),
+#{id} .cynefinArrowLabel{{font-size:{};fill:{};}}\
+#{id} .cynefinTitle{{font-size:{};font-weight:bold;fill:{};}}",
+        theme
+            .font_binding
+            .css(crate::cynefin::CynefinTextRole::DomainLabel),
         theme.label_color,
-        fmt((theme.item_font_size - 1.0).max(1.0)),
+        theme
+            .font_binding
+            .css(crate::cynefin::CynefinTextRole::Subtitle),
         text_color,
         theme.boundary_color,
-        fmt(theme.item_font_size),
+        theme
+            .font_binding
+            .css(crate::cynefin::CynefinTextRole::Item),
         text_color,
         theme.boundary_color,
         theme.boundary_color,
@@ -752,9 +799,13 @@ fn write_cynefin_css(
         theme.arrow_color,
         fmt(theme.arrow_width),
         theme.arrow_color,
-        fmt((theme.item_font_size - 1.0).max(1.0)),
+        theme
+            .font_binding
+            .css(crate::cynefin::CynefinTextRole::TransitionLabel),
         text_color,
-        fmt(theme.domain_font_size + 2.0),
+        theme
+            .font_binding
+            .css(crate::cynefin::CynefinTextRole::Title),
         theme.label_color
     );
     common_css.write_root_with_font_emission(

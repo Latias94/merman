@@ -30,7 +30,7 @@ pub(crate) enum XyChartPaintTerminalId {
 struct PaintTerminal {
     content: Box<str>,
     paint: Box<str>,
-    dimension: f64,
+    dimension: String,
     opacity: Option<f32>,
     font_weight: Option<String>,
     placement: Option<TextPlacement>,
@@ -217,6 +217,8 @@ impl XyChartPaintPlan {
                         continue;
                     };
                     let style = &text_styles[&target];
+                    let role = XyChartTextRole::from_groups(group_texts, &layout.chart_orientation);
+                    let size_known = role.is_none_or(|role| typography.font_size_known(role));
                     let source_owned = source_owns(config, channel);
                     let paint = (!source_owned)
                         .then(|| {
@@ -240,8 +242,10 @@ impl XyChartPaintPlan {
                         if let Some(paint) = &paint {
                             label.fill = paint.css().to_owned();
                         }
-                        if text_is_visible(&label.text, label.font_size) {
-                            let effect = effects.get(&target);
+                        if text_is_visible(&label.text, label.font_size)
+                            || (!size_known && !label.text.trim().is_empty())
+                        {
+                            let effect = size_known.then(|| effects.get(&target)).flatten();
                             if let Some(effect) = effect {
                                 work_meter.charge(label.text.len())?;
                                 let dimension = super::max_text_dimension(
@@ -271,11 +275,7 @@ impl XyChartPaintPlan {
                                 style,
                                 paint.as_ref(),
                                 effect.is_some(),
-                                XyChartTextRole::from_groups(
-                                    group_texts,
-                                    &layout.chart_orientation,
-                                )
-                                .map(|role| (typography, role)),
+                                role.map(|role| (typography, role)),
                             )?;
                         }
                     }
@@ -404,8 +404,13 @@ impl XyChartPaintPlan {
                                     group_texts,
                                     &layout.chart_orientation,
                                 )
-                                .map(|role| typography.svg_font_size(role))
-                                .unwrap_or(label.font_size),
+                                .map(|role| typography.svg_font_size(role).to_owned())
+                                .unwrap_or_else(|| {
+                                    terminal_dimension(
+                                        XyChartPaintTerminalId::Text { drawable, item },
+                                        label.font_size,
+                                    )
+                                }),
                                 opacity: None,
                                 placement: self
                                     .text_effects
@@ -430,7 +435,10 @@ impl XyChartPaintPlan {
                             PaintTerminal {
                                 content: path.path.clone().into_boxed_str(),
                                 paint: path.stroke_fill.clone().into_boxed_str(),
-                                dimension: path.stroke_width,
+                                dimension: terminal_dimension(
+                                    XyChartPaintTerminalId::Path { drawable, item },
+                                    path.stroke_width,
+                                ),
                                 opacity: self.path_opacity(group_texts, &layout.chart_orientation),
                                 font_weight: None,
                                 placement: None,
@@ -453,7 +461,13 @@ impl XyChartPaintPlan {
                             PaintTerminal {
                                 content: label.label.into(),
                                 paint: self.data_label_color.clone().into_boxed_str(),
-                                dimension: labels.font_size,
+                                dimension: terminal_dimension(
+                                    XyChartPaintTerminalId::DataLabel {
+                                        drawable,
+                                        item: label.item,
+                                    },
+                                    labels.font_size,
+                                ),
                                 opacity: None,
                                 font_weight: None,
                                 placement: None,
@@ -531,7 +545,7 @@ impl XyChartPaintPlan {
                         ExpectedPaintTerminal {
                             content: escape_xml(&terminal.content),
                             paint: escape_xml(&terminal.paint),
-                            dimension: terminal_dimension(id, terminal.dimension),
+                            dimension: escape_xml(&terminal.dimension),
                             opacity: terminal.opacity.map(|value| value.to_string()),
                             font_weight: terminal.font_weight.clone(),
                             filter: self
@@ -584,6 +598,7 @@ struct PaintAccounting<'a> {
     palette_targets: BTreeSet<ThemeTarget>,
     effect_targets: BTreeSet<ThemeTarget>,
     consumed_effect_targets: BTreeSet<ThemeTarget>,
+    uncertain_text_targets: BTreeSet<ThemeTarget>,
     static_channels: BTreeSet<(&'static str, bool)>,
     has_ordinal: bool,
     text_ordinal: usize,
@@ -660,6 +675,7 @@ impl<'a> PaintAccounting<'a> {
             palette_targets: BTreeSet::new(),
             effect_targets: BTreeSet::new(),
             consumed_effect_targets: BTreeSet::new(),
+            uncertain_text_targets: BTreeSet::new(),
             static_channels: BTreeSet::new(),
             text_ordinal: 0,
             role_ordinals: BTreeMap::new(),
@@ -770,6 +786,9 @@ impl<'a> PaintAccounting<'a> {
         } else {
             &[ThemeTarget::Text, target]
         };
+        if typography.is_some_and(|(plan, role)| !plan.font_size_known(role)) {
+            self.uncertain_text_targets.extend(targets.iter().copied());
+        }
         if !source_owned
             && property == ResolvedStyleProperty::Fill
             && matches!(style.fill_resolution().specified(), Specified::Unspecified)
@@ -838,6 +857,14 @@ impl<'a> PaintAccounting<'a> {
                 .observations
                 .get_mut(&(route_target, rule_index))
                 .expect("registered XYChart rule");
+            if typography.is_some_and(|(plan, role)| !plan.font_size_known(role)) {
+                // Paint and weight may reach the terminal, but an unresolved size cannot
+                // prove that its text has visible ink. Other known roles cannot lend proof.
+                observation
+                    .residual
+                    .get_or_insert(FamilyThemeResidualReason::UnsupportedTypography);
+                continue;
+            }
             match route.disposition() {
                 FamilyThemeDisposition::Unsupported => {
                     observation
@@ -937,6 +964,7 @@ impl<'a> PaintAccounting<'a> {
                 if let FamilyThemeMechanism::EffectBinding { target, .. } = route.mechanism()
                     && self.consumed_effect_targets.contains(&target)
                     && route.disposition() == FamilyThemeDisposition::TypedAdapter
+                    && !self.uncertain_text_targets.contains(&target)
                 {
                     plan.pending_bindings.insert(key);
                 } else {

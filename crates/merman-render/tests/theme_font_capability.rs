@@ -150,10 +150,13 @@ fn absolute_theme_sizes_keep_configuration_priority_and_layout_across_families()
                 "{family_id:?}, typed={typed}"
             );
             assert_eq!(pt_layout, px_layout, "{family_id:?} layout, typed={typed}");
-            if family_id == DiagramFamilyId::CLASS {
+            if matches!(
+                family_id,
+                DiagramFamilyId::CLASS | DiagramFamilyId::TIMELINE
+            ) {
                 assert!(
                     pt_svg.contains("font-size:24pt;"),
-                    "Class preserves source CSS"
+                    "{family_id:?} preserves source CSS while measuring its absolute used size"
                 );
             } else {
                 assert_eq!(pt_svg, px_svg, "{family_id:?} SVG, typed={typed}");

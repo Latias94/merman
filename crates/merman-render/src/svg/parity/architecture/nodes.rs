@@ -245,11 +245,11 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
                         ),
                         work_meter,
                     )?;
-                    if typography_emission.is_some() {
+                    if let Some(emission) = typography_emission.as_deref() {
                         icon_text_facts =
                             Some(VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
                                 &sanitized,
-                                Some(settings.text_style.font_size),
+                                emission.inherited_font_size_px(),
                             ));
                     }
                     let _ = write!(

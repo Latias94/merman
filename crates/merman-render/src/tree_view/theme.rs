@@ -29,7 +29,7 @@ pub(crate) struct TreeViewThemePlan {
     css: TreeViewCssBinding,
     line_thickness_override: Option<TreeViewTerminalStrokeWidth>,
     expected_line_count: Option<NonZeroUsize>,
-    has_visible_typography: bool,
+    has_potential_typography: bool,
     label_color: Option<TreeViewPaintAssignment>,
     highlight_fill: Option<TreeViewPaintAssignment>,
     highlight_stroke: Option<TreeViewPaintAssignment>,
@@ -223,8 +223,8 @@ impl TreeViewThemePlan {
         }
         let (node_count, expected_line_count, expected_highlight_count) =
             tree_view_terminal_counts(&model.root);
-        let has_visible_typography = node_count != 0
-            && !crate::mermaid_style::css_font_size_is_zero(&css.label_font_size_css);
+        let has_potential_typography =
+            node_count != 0 && (!css.label_font_size_verified || css.label_font_size != 0.0);
         let mut paint_residuals =
             BTreeMap::<FamilyThemeMechanismKey, FamilyThemeResidualReason>::new();
 
@@ -394,7 +394,7 @@ impl TreeViewThemePlan {
             label_config_owned,
             &mut label_paint_residuals,
         );
-        if has_visible_typography {
+        if has_potential_typography {
             paint_residuals.extend(label_paint_residuals);
         }
         // Mermaid's line terminal is stroke-first. A fill-only Edge rule is the documented
@@ -503,7 +503,7 @@ impl TreeViewThemePlan {
 
         // Zero-sized labels retain geometry occurrences while their fill is not applicable.
         let label_source_ownership =
-            (label_config_owned || !has_visible_typography).then(|| vec![true; node_count]);
+            (label_config_owned || !has_potential_typography).then(|| vec![true; node_count]);
         let label_domain = UnsupportedTerminalDomain::textual(
             ThemeTarget::NodeLabel,
             &[ThemeTarget::NodeLabel, ThemeTarget::Text],
@@ -625,7 +625,7 @@ impl TreeViewThemePlan {
             css,
             line_thickness_override,
             expected_line_count: NonZeroUsize::new(expected_line_count),
-            has_visible_typography,
+            has_potential_typography,
             label_color,
             highlight_fill,
             highlight_stroke,
@@ -661,13 +661,13 @@ impl TreeViewThemePlan {
         expected_line_count: Option<NonZeroUsize>,
         css: TreeViewCssBinding,
         inherited_font_stack: InheritedFontStackPlan,
-        has_visible_typography: bool,
+        has_potential_typography: bool,
     ) -> Self {
         Self {
             css,
             line_thickness_override: None,
             expected_line_count,
-            has_visible_typography,
+            has_potential_typography,
             label_color: None,
             highlight_fill: None,
             highlight_stroke: None,
@@ -714,9 +714,9 @@ impl TreeViewThemePlan {
         evidence.merge_borrowed(&self.evidence);
         if self.typed_font_size_requested {
             let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontSize);
-            if !self.css.label_font_size_verified && self.has_visible_typography {
+            if !self.css.label_font_size_verified && self.has_potential_typography {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else if self.config_owns_font_size || !self.has_visible_typography {
+            } else if self.config_owns_font_size || !self.has_potential_typography {
                 evidence.mark_not_applicable(key);
             } else if self.terminal_receipt.get().is_some() {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
@@ -725,11 +725,16 @@ impl TreeViewThemePlan {
             }
         }
         self.inherited_font_stack
-            .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
-        if !self.has_visible_typography
-            && let Some(assignment) = &self.label_color
-        {
-            evidence.mark_not_applicable(assignment.key.clone());
+            .record_unsupported_typography_evidence(evidence, self.has_potential_typography);
+        if let Some(assignment) = &self.label_color {
+            if !self.has_potential_typography {
+                evidence.mark_not_applicable(assignment.key.clone());
+            } else if !self.css.label_font_size_verified {
+                evidence.mark_residual(
+                    assignment.key.clone(),
+                    FamilyThemeResidualReason::UnsupportedTypography,
+                );
+            }
         }
         if let Some(receipt) = self.terminal_receipt.get() {
             for (property, assignment) in [
@@ -755,7 +760,8 @@ impl TreeViewThemePlan {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::BorderStyling]);
             }
             if let Some(assignment) = &self.label_color
-                && self.has_visible_typography
+                && self.has_potential_typography
+                && self.css.label_font_size_verified
                 && receipt.label_color_matches(assignment.paint.css())
             {
                 evidence.mark_applied_with_capabilities(
@@ -792,7 +798,7 @@ impl TreeViewThemePlan {
         if self.inherited_font_stack.typed_font_stack_requested() {
             let key = FamilyThemeMechanismKey::Typography(ThemeTypographyProperty::FontStack);
             match self.inherited_font_stack.outcome() {
-                InheritedFontStackOutcome::Typed if !self.has_visible_typography => {
+                InheritedFontStackOutcome::Typed if !self.has_potential_typography => {
                     evidence.mark_not_applicable(key);
                 }
                 InheritedFontStackOutcome::Typed
