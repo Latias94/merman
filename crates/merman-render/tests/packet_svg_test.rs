@@ -50,18 +50,19 @@ fn packet_direct_input_rejects_impossible_block_ranges() {
     use merman_model::families::packet::PacketBlock;
 
     for (start, end) in [
-        (-1, 0),
-        (1, 0),
-        (0, i64::MAX),
-        (i64::MIN, i64::MAX),
-        (31, 32),
+        (-1.0, 0.0),
+        (2.0, 0.0),
+        (0.0, f64::MAX),
+        (f64::NAN, 1.0),
+        (0.0, f64::INFINITY),
+        (0.0, -0.5),
     ] {
         for order in ["ascending", "descending"] {
             let parsed = independent_packet_presentation(
                 vec![vec![PacketBlock {
                     start,
                     end,
-                    bits: 1,
+                    bits: 1.0,
                     label: "Field".to_string(),
                 }]],
                 serde_json::json!({"packet": {"bitOrder": order}}),
@@ -83,11 +84,14 @@ fn packet_direct_input_preserves_split_rows_and_single_bit_fields() {
         let block = |start, end| PacketBlock {
             start,
             end,
-            bits: end - start + 1,
+            bits: end - start + 1.0,
             label: format!("{start}-{end}"),
         };
         let parsed = independent_packet_presentation(
-            vec![vec![block(0, 7)], vec![block(8, 11), block(12, 12)]],
+            vec![
+                vec![block(0.0, 7.0)],
+                vec![block(8.0, 11.0), block(12.0, 12.0)],
+            ],
             serde_json::json!({"packet": {"bitsPerRow": 8, "bitOrder": order}}),
         );
         let session = RenderEnvironment::deterministic().begin_session().unwrap();
@@ -103,7 +107,7 @@ fn packet_direct_input_preserves_split_rows_and_single_bit_fields() {
                 .iter()
                 .map(|block| (block.start, block.end))
                 .collect::<Vec<_>>(),
-            [(0, 7), (8, 11), (12, 12)]
+            [(0.0, 7.0), (8.0, 11.0), (12.0, 12.0)]
         );
         assert_eq!(
             blocks.iter().map(|block| block.width).collect::<Vec<_>>(),
@@ -128,9 +132,9 @@ fn packet_direct_input_validation_preserves_operation_error_priority() {
 
     let parsed = independent_packet_presentation(
         vec![vec![PacketBlock {
-            start: 0,
-            end: i64::MAX,
-            bits: 1,
+            start: 0.0,
+            end: 9_223_372_036_854_775_808.0,
+            bits: 1.0,
             label: "Field".to_string(),
         }]],
         serde_json::json!({}),
@@ -2436,8 +2440,8 @@ fn packet_descending_mirrors_each_row_without_reversing_semantic_ranges() {
                 (before.width, before.height, before.y),
                 (after.width, after.height, after.y)
             );
-            let bits = after.end - after.start + 1;
-            assert_eq!(after.x, 1.0 + (16 - after.start % 16 - bits) as f64 * 10.0);
+            let bits = after.end - after.start + 1.0;
+            assert_eq!(after.x, 1.0 + (16.0 - after.start % 16.0 - bits) * 10.0);
         }
     }
     assert_eq!(

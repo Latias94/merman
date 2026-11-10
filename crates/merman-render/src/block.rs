@@ -45,8 +45,8 @@ struct SizedBlock {
     id: String,
     block_type: String,
     children: Vec<usize>,
-    columns: i64,
-    width_in_columns: i64,
+    columns: f64,
+    width_in_columns: f64,
     width: f64,
     height: f64,
     label_width: f64,
@@ -721,8 +721,8 @@ fn to_sized_block_shallow(
     prepared_label: &BlockPreparedLabel,
     html_labels: bool,
 ) -> SizedBlock {
-    let columns = node.columns.unwrap_or(-1);
-    let width_in_columns = node.width_in_columns.unwrap_or(1).max(1);
+    let columns = node.columns.unwrap_or(-1.0);
+    let width_in_columns = node.width_in_columns.unwrap_or(1.0);
 
     let mut width = 0.0;
     let mut height = 0.0;
@@ -781,28 +781,28 @@ fn get_max_child_size(block: &SizedBlock, records: &[SizedBlock]) -> (f64, f64) 
         if child.block_type == "space" {
             continue;
         }
-        max_width = max_width.max(child.width / child.width_in_columns as f64);
+        max_width = max_width.max(child.width / child.width_in_columns);
         max_height = max_height.max(child.height);
     }
     (max_width, max_height)
 }
 
-fn block_grid_size(block: &SizedBlock, records: &[SizedBlock]) -> (i64, i64) {
+fn block_grid_size(block: &SizedBlock, records: &[SizedBlock]) -> (f64, f64) {
     let num_items = block
         .children
         .iter()
-        .map(|&index| records[index].width_in_columns.max(1))
-        .sum::<i64>();
-    let mut x_size = block.children.len() as i64;
-    if block.columns > 0 && block.columns < num_items {
+        .map(|&index| records[index].width_in_columns)
+        .sum::<f64>();
+    let mut x_size = block.children.len() as f64;
+    if block.columns > 0.0 && block.columns < num_items {
         x_size = block.columns;
     }
-    let y_size = ((num_items as f64) / (x_size.max(1) as f64)).ceil() as i64;
+    let y_size = (num_items / x_size).ceil();
     (x_size, y_size)
 }
 
 fn set_block_sizes_shallow(index: usize, records: &mut [SizedBlock], padding: f64) {
-    if records[index].width <= 0.0 {
+    if records[index].width == 0.0 || records[index].width.is_nan() {
         let block = &mut records[index];
         block.width = 0.0;
         block.height = 0.0;
@@ -817,25 +817,29 @@ fn set_block_sizes_shallow(index: usize, records: &mut [SizedBlock], padding: f6
     let children = block.children.clone();
     for &child in &children {
         let child = &mut records[child];
-        child.width = max_width * child.width_in_columns as f64
-            + padding * (child.width_in_columns as f64 - 1.0);
+        child.width = max_width * child.width_in_columns + padding * (child.width_in_columns - 1.0);
         child.height = max_height;
+        // The second setBlockSizes call initializes a falsy allocated width from sibling size.
+        if child.width == 0.0 || child.width.is_nan() {
+            child.width = max_width;
+            child.height = max_height;
+        }
         child.x = 0.0;
         child.y = 0.0;
     }
     let block = &records[index];
     let (x_size, y_size) = block_grid_size(block, records);
-    let mut width = x_size as f64 * (max_width + padding) + padding;
-    let height = y_size as f64 * (max_height + padding) + padding;
+    let mut width = x_size * (max_width + padding) + padding;
+    let height = y_size * (max_height + padding) + padding;
     if width < block.width {
         width = block.width;
-        let num = if block.columns > 0 {
-            (children.len() as i64).min(block.columns)
+        let num = if block.columns > 0.0 {
+            (children.len() as f64).min(block.columns)
         } else {
-            children.len() as i64
+            children.len() as f64
         };
-        if num > 0 {
-            let child_width = (width - num as f64 * padding - padding) / num as f64;
+        if num > 0.0 {
+            let child_width = (width - num * padding - padding) / num;
             for &child in &children {
                 records[child].width = child_width;
             }
@@ -856,18 +860,18 @@ fn reconcile_block_with_parent_size(index: usize, records: &mut [SizedBlock], pa
     let children = block.children.clone();
     let inherited_width = block.width;
     let inherited_height = block.height;
-    let column_span = block.width_in_columns.max(1) as f64;
+    let column_span = block.width_in_columns;
     let sibling_width = (inherited_width - padding * (column_span - 1.0)) / column_span;
     let (max_width, max_height) = get_max_child_size(block, records);
     let (x_size, y_size) = block_grid_size(block, records);
     let columns = block.columns;
-    let mut width = x_size as f64 * (max_width + padding) + padding;
-    let mut height = y_size as f64 * (max_height + padding) + padding;
+    let mut width = x_size * (max_width + padding) + padding;
+    let mut height = y_size * (max_height + padding) + padding;
     if width < sibling_width {
         width = sibling_width;
         height = inherited_height;
-        let child_width = (sibling_width - x_size as f64 * padding - padding) / x_size as f64;
-        let child_height = (inherited_height - y_size as f64 * padding - padding) / y_size as f64;
+        let child_width = (sibling_width - x_size * padding - padding) / x_size;
+        let child_height = (inherited_height - y_size * padding - padding) / y_size;
         for &child in &children {
             let child = &mut records[child];
             child.width = child_width;
@@ -878,13 +882,13 @@ fn reconcile_block_with_parent_size(index: usize, records: &mut [SizedBlock], pa
     }
     if width < inherited_width {
         width = inherited_width;
-        let num = if columns > 0 {
-            (children.len() as i64).min(columns)
+        let num = if columns > 0.0 {
+            (children.len() as f64).min(columns)
         } else {
-            children.len() as i64
+            children.len() as f64
         };
-        if num > 0 {
-            let child_width = (width - num as f64 * padding - padding) / num as f64;
+        if num > 0.0 {
+            let child_width = (width - num * padding - padding) / num;
             for &child in &children {
                 records[child].width = child_width;
             }
@@ -927,8 +931,7 @@ fn set_block_sizes(root: usize, records: &mut [SizedBlock], padding: f64) {
 
 fn invalid_block_columns_error() -> Error {
     Error::InvalidModel {
-        // Match Mermaid's layout invariant while returning a typed render failure instead of
-        // letting a malformed semantic model reach integer division.
+        // Match Mermaid's Number.isInteger invariant before grid arithmetic.
         message: "Columns must be an integer !== 0.".to_string(),
     }
 }
@@ -962,21 +965,26 @@ fn validate_block_columns(
                 message: format!("repeated Block child index {index}"),
             });
         }
-        if block.columns == Some(0) {
+        if !block.children.is_empty()
+            && block.columns.is_some_and(|columns| {
+                columns == 0.0 || !columns.is_finite() || columns.fract() != 0.0
+            })
+        {
             return Err(invalid_block_columns_error());
         }
         work_meter.charge(block.children.len())?;
-        let mut column_span = 0i64;
         for &child in &block.children {
             let child = records.get(child).ok_or_else(|| Error::InvalidModel {
                 message: format!("invalid Block child index {child}"),
             })?;
-            // Match to_sized_block_shallow before grid sizing and column-position arithmetic.
-            column_span = column_span
-                .checked_add(child.width_in_columns.unwrap_or(1).max(1))
-                .ok_or_else(|| Error::InvalidModel {
-                    message: "Block column span exceeds the supported integer range".to_string(),
-                })?;
+            if child.width_in_columns.is_some_and(|span| {
+                span.is_nan() || span < 0.0 || (span.is_finite() && span.fract() != 0.0)
+            }) {
+                return Err(Error::InvalidModel {
+                    message: "Block column span must be a non-negative integer or Infinity"
+                        .to_string(),
+                });
+            }
         }
         active[index] = true;
         stack.push((index, true));
@@ -985,17 +993,33 @@ fn validate_block_columns(
     Ok(())
 }
 
-fn calculate_block_position(columns: i64, position: i64) -> Result<(i64, i64)> {
-    if columns == 0 {
+fn calculate_block_position(columns: f64, position: f64) -> Result<(f64, f64)> {
+    if columns == 0.0 || !columns.is_finite() || columns.fract() != 0.0 {
         return Err(invalid_block_columns_error());
     }
-    if columns < 0 {
-        return Ok((position, 0));
+    if position < 0.0 || !position.is_finite() || position.fract() != 0.0 {
+        return Err(Error::InvalidModel {
+            message: format!(
+                "Position must be a non-negative integer.{}",
+                ryu_js::Buffer::new().format(position)
+            ),
+        });
     }
-    if columns == 1 {
-        return Ok((0, position));
+    if columns < 0.0 {
+        return Ok((position, 0.0));
     }
-    Ok((position % columns, position / columns))
+    if columns == 1.0 {
+        return Ok((0.0, position));
+    }
+    Ok((position % columns, (position / columns).floor()))
+}
+
+fn filled_columns(span: f64, columns: f64, position: f64) -> f64 {
+    if columns > 0.0 {
+        span.min(columns - position % columns)
+    } else {
+        span
+    }
 }
 
 fn layout_blocks(root: usize, records: &mut [SizedBlock], padding: f64) -> Result<()> {
@@ -1011,35 +1035,33 @@ fn layout_blocks(root: usize, records: &mut [SizedBlock], padding: f64) -> Resul
         let parent_y = block.y;
         let parent_width = block.width;
         let parent_height = block.height;
-        let mut row_heights = BTreeMap::<i64, f64>::new();
-        let mut height_column_pos = 0i64;
+        // Positions are validated non-negative Numbers. Their non-negative row bit patterns
+        // retain numeric sort order without narrowing rows to a machine integer.
+        let mut row_heights = BTreeMap::<u64, f64>::new();
+        let mut height_column_pos = 0.0;
         for &index in &children {
             let child = &records[index];
             let (_, row) = calculate_block_position(columns, height_column_pos)?;
             row_heights
-                .entry(row)
+                .entry(row.to_bits())
                 .and_modify(|height| *height = height.max(child.height))
                 .or_insert(child.height);
-            let mut columns_filled = child.width_in_columns.max(1);
-            if columns > 0 {
-                columns_filled = columns_filled.min((columns - height_column_pos % columns).max(1));
-            }
-            height_column_pos += columns_filled;
+            height_column_pos += filled_columns(child.width_in_columns, columns, height_column_pos);
         }
-        let mut row_offsets = BTreeMap::<i64, f64>::new();
+        let mut row_offsets = BTreeMap::<u64, f64>::new();
         let mut offset = 0.0;
         for (&row, &height) in &row_heights {
             row_offsets.insert(row, offset);
             offset += height + padding;
         }
-        let mut column_pos = 0i64;
+        let mut column_pos = 0.0;
         let row_start = if parent_x != 0.0 {
             parent_x - parent_width / 2.0
         } else {
             -padding
         };
         let mut starting_pos_x = row_start;
-        let mut row_pos = 0i64;
+        let mut row_pos = 0.0;
         for &index in &children {
             let child = &mut records[index];
             let (_, py) = calculate_block_position(columns, column_pos)?;
@@ -1050,14 +1072,13 @@ fn layout_blocks(root: usize, records: &mut [SizedBlock], padding: f64) -> Resul
             let half_width = child.width / 2.0;
             child.x = starting_pos_x + padding + half_width;
             starting_pos_x = child.x + half_width;
-            let row_offset = row_offsets.get(&py).copied().unwrap_or_default();
-            let row_height = row_heights.get(&py).copied().unwrap_or(child.height);
+            let row_offset = row_offsets.get(&py.to_bits()).copied().unwrap_or_default();
+            let row_height = row_heights
+                .get(&py.to_bits())
+                .copied()
+                .unwrap_or(child.height);
             child.y = parent_y - parent_height / 2.0 + row_offset + row_height / 2.0 + padding;
-            let mut columns_filled = child.width_in_columns.max(1);
-            if columns > 0 {
-                columns_filled = columns_filled.min((columns - column_pos % columns).max(1));
-            }
-            column_pos += columns_filled;
+            column_pos += filled_columns(child.width_in_columns, columns, column_pos);
         }
         stack.extend(children.into_iter().rev());
     }
@@ -1307,8 +1328,8 @@ mod tests {
             id: id.to_string(),
             block_type: "square".to_string(),
             children: Vec::new(),
-            columns: -1,
-            width_in_columns,
+            columns: -1.0,
+            width_in_columns: width_in_columns as f64,
             width,
             height,
             label_width: 0.0,
@@ -1339,7 +1360,7 @@ mod tests {
             sized_block("composite", 0.0, 0.0, 3),
         ];
         records.extend((0..7).map(|index| sized_block(&format!("leaf-{index}"), 18.0, 32.0, 1)));
-        records[0].columns = 3;
+        records[0].columns = 3.0;
         records[0].children = vec![1, 2];
         records[2].children = (3..10).collect();
         super::set_block_sizes(0, &mut records, 8.0);
@@ -1361,7 +1382,7 @@ mod tests {
             sized_block("g", 71.0, 88.0, 1),
             sized_block("group2", 223.0, 48.0, 3),
         ];
-        records[0].columns = 3;
+        records[0].columns = 3.0;
         records[0].children = vec![1, 2, 3, 4];
         super::layout_blocks(0, &mut records, 8.0).expect("valid block layout");
         assert_eq!(records[1].y, -96.0);
@@ -1558,11 +1579,75 @@ mod tests {
 
     #[test]
     fn zero_columns_are_a_typed_layout_error_not_a_division_by_zero() {
-        let error = super::calculate_block_position(0, 0).expect_err("zero columns must fail");
+        let error = super::calculate_block_position(0.0, 0.0).expect_err("zero columns must fail");
         assert!(matches!(error, crate::Error::InvalidModel { .. }));
         assert_eq!(
             error.to_string(),
             "invalid semantic model: Columns must be an integer !== 0."
         );
+    }
+
+    #[test]
+    fn block_positions_and_grid_sizes_retain_number_precision_beyond_machine_integers() {
+        let large = 18_446_744_073_709_551_616.0;
+        assert_eq!(
+            super::calculate_block_position(-1.0, large).unwrap(),
+            (large, 0.0)
+        );
+        assert_eq!(
+            super::calculate_block_position(3.0, large).unwrap(),
+            (1.0, (large / 3.0).floor())
+        );
+        let mut records = vec![
+            sized_block("root", 0.0, 0.0, 1),
+            sized_block("A", 40.0, 30.0, 1),
+            sized_block("B", 50.0, 30.0, 1),
+        ];
+        records[0].children = vec![1, 2];
+        records[1].width_in_columns = large;
+        records[2].width_in_columns = large;
+        assert_eq!(super::block_grid_size(&records[0], &records), (2.0, large));
+        super::set_block_sizes(0, &mut records, 8.0);
+        super::layout_blocks(0, &mut records, 8.0).unwrap();
+        assert!(records.iter().all(|block| {
+            [block.width, block.height, block.x, block.y]
+                .iter()
+                .all(|value| value.is_finite())
+        }));
+    }
+
+    #[test]
+    fn zero_and_infinite_spans_keep_source_sizing_and_position_failure_stage() {
+        // layout.ts divides by the authored span and initializes falsy allocated widths from
+        // sibling size. Neither zero nor Infinity is replaced with a one-column span.
+        for (span, expected_width, expected_height) in [
+            (0.0, f64::INFINITY, 8.0),
+            (f64::INFINITY, 16.0, f64::INFINITY),
+        ] {
+            let mut records = vec![
+                sized_block("root", 0.0, 0.0, 1),
+                sized_block("A", 40.0, 30.0, 1),
+            ];
+            records[0].children = vec![1];
+            records[1].width_in_columns = span;
+            super::set_block_sizes(0, &mut records, 8.0);
+            assert_eq!(records[0].width, expected_width);
+            assert_eq!(records[0].height, expected_height);
+            super::layout_blocks(0, &mut records, 8.0).expect("the first position is finite");
+            if span.is_infinite() {
+                assert_eq!(records[1].y, f64::NEG_INFINITY);
+                records.push(sized_block("B", 50.0, 30.0, 1));
+                records[0].children.push(2);
+                let error = super::layout_blocks(0, &mut records, 8.0).unwrap_err();
+                assert!(
+                    error
+                        .to_string()
+                        .contains("Position must be a non-negative integer")
+                );
+                records[0].columns = 2.0;
+                super::layout_blocks(0, &mut records, 8.0)
+                    .expect("finite columns clip filled spans");
+            }
+        }
     }
 }

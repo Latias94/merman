@@ -1,7 +1,5 @@
 //! Canonical Radar data and declared full-output facts.
 
-use serde_json::Value;
-
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RadarAxis {
     pub name: String,
@@ -12,17 +10,20 @@ pub struct RadarAxis {
 pub struct RadarCurve {
     pub name: String,
     pub label: String,
-    #[serde(default)]
-    pub entries: Vec<Value>,
+    #[serde(default, with = "number_list")]
+    pub entries: Vec<f64>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct RadarOptions {
     #[serde(rename = "showLegend")]
     pub show_legend: bool,
-    pub ticks: Value,
-    pub max: Option<Value>,
-    pub min: Value,
+    #[serde(with = "crate::number::serde_number")]
+    pub ticks: f64,
+    #[serde(default, with = "crate::number::serde_optional_number")]
+    pub max: Option<f64>,
+    #[serde(with = "crate::number::serde_number")]
+    pub min: f64,
     pub graticule: String,
 }
 
@@ -30,9 +31,9 @@ impl Default for RadarOptions {
     fn default() -> Self {
         Self {
             show_legend: true,
-            ticks: Value::from(5),
+            ticks: 5.0,
             max: None,
-            min: Value::from(0),
+            min: 0.0,
             graticule: "circle".to_string(),
         }
     }
@@ -67,3 +68,32 @@ pub enum RadarOutputData {
 
 #[cfg(feature = "compat-json")]
 pub mod compat;
+
+mod number_list {
+    use serde::ser::SerializeSeq;
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Serialize)]
+    #[serde(transparent)]
+    struct Number(#[serde(with = "crate::number::serde_number")] f64);
+
+    pub fn serialize<S: serde::Serializer>(
+        values: &[f64],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        let mut sequence = serializer.serialize_seq(Some(values.len()))?;
+        for value in values {
+            sequence.serialize_element(&Number(*value))?;
+        }
+        sequence.end()
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<f64>, D::Error> {
+        Ok(Vec::<Number>::deserialize(deserializer)?
+            .into_iter()
+            .map(|number| number.0)
+            .collect())
+    }
+}

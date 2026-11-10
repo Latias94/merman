@@ -339,6 +339,110 @@ fn render_state_svg_from_text(text: &str) -> String {
 }
 
 #[test]
+fn state_svg_composite_token_ids_preserve_groups_and_nested_starts() {
+    for html_labels in [false, true] {
+        for (declaration, id, label) in [
+            ("state A-B", "A-B", "A-B"),
+            ("state A:B", "A:B", "A:B"),
+            ("state 外部-状態:組", "外部-状態:組", "外部-状態:組"),
+            ("state \"Container\" as Box:x:y", "Box:x:y", "Container"),
+        ] {
+            let source = format!(
+                "stateDiagram-v2\nstate Outer {{\n{declaration} {{\n[*] --> Child\n}}\n}}\n"
+            );
+            let engine = classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "htmlLabels": html_labels
+                    }),
+                ),
+            );
+            let svg = render_state_svg_from_text_with_engine(engine, &source);
+            let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+            let group = document
+                .descendants()
+                .find(|node| node.has_tag_name("g") && node.attribute("data-id") == Some(id))
+                .unwrap_or_else(|| panic!("missing composite {id}: {svg}"));
+            let title = group
+                .children()
+                .find(|node| node.attribute("class") == Some("cluster-label"))
+                .expect("composite title");
+            assert!(
+                title.descendants().any(|node| {
+                    node.is_text() && node.text().is_some_and(|text| text.trim() == label)
+                }),
+                "missing composite label {label}: {svg}"
+            );
+            let start_dom_id = format!("-state-{id}_start-");
+            let start = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|value| value.contains(&start_dom_id))
+                })
+                .unwrap_or_else(|| panic!("missing nested start for {id}: {svg}"));
+            assert!(start.descendants().any(|node| {
+                node.has_tag_name("circle") && node.attribute("class") == Some("state-start")
+            }));
+            assert!(document.descendants().any(|node| {
+                node.has_tag_name("g")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|value| value.contains("-state-Child-"))
+            }));
+            assert!(document.descendants().any(|node| {
+                node.has_tag_name("path") && node.attribute("data-id") == Some("edge0")
+            }));
+        }
+    }
+}
+
+#[test]
+fn state_svg_plain_alias_discards_later_colon_segments() {
+    for html_labels in [false, true] {
+        for (tail, expected) in [
+            ("A:x:y", &["L", "x"][..]),
+            ("A:x:y:z", &["L", "x"][..]),
+            ("A", &["L"][..]),
+        ] {
+            let source = format!("stateDiagram-v2\nstate \"L\" as {tail}\n");
+            let engine = classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "htmlLabels": html_labels
+                    }),
+                ),
+            );
+            let svg = render_state_svg_from_text_with_engine(engine, &source);
+            let document = roxmltree::Document::parse(&svg).expect("valid State SVG");
+            let state = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node
+                            .attribute("id")
+                            .is_some_and(|value| value.contains("-state-A-"))
+                })
+                .unwrap_or_else(|| panic!("missing plain alias A: {svg}"));
+            let text: Vec<_> = state
+                .descendants()
+                .filter(|node| node.is_text())
+                .filter_map(|node| node.text())
+                .map(str::trim)
+                .filter(|text| !text.is_empty())
+                .collect();
+            assert_eq!(
+                text.as_slice(),
+                expected,
+                "{tail}, htmlLabels={html_labels}: {svg}"
+            );
+        }
+    }
+}
+
+#[test]
 fn state_invalid_later_source_width_preserves_the_emitted_class_winner() {
     let svg = render_state_svg_from_text(
         "stateDiagram-v2\nstate \"Ready\" as Ready\nclassDef wide stroke-width:20px\nclass Ready wide\nstyle Ready stroke-width:99px junk\n",
@@ -8974,5 +9078,25 @@ fn state_explicit_radius_wins_compatibility_css_on_plain_title_and_composite_rec
             assert_eq!(evidence.applied, 1);
             assert_eq!(evidence.residual, 0);
         }
+    }
+}
+
+#[test]
+fn state_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("\u{0085}", "\u{0085}", Some("\u{0085}"), Some("\u{0085}")),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "stateDiagram-v2\naccTitle: {title}\naccDescr {{\n{description}\n}}\n[*] --> Ready\n"
+        );
+        let svg = render_state_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
     }
 }

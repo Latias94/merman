@@ -226,7 +226,7 @@
         "label": {
           "text": "Makes API calls to"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": "json/HTTPS"
         },
@@ -242,7 +242,7 @@
         "label": {
           "text": "Delivers to the customer's web browser"
         },
-        "offsetY": -40,
+        "offsetY": "-40",
         "techn": {
           "text": ""
         },
@@ -258,8 +258,8 @@
         "label": {
           "text": "Reads from and writes to"
         },
-        "offsetX": 5,
-        "offsetY": -20,
+        "offsetX": "5",
+        "offsetY": "-20",
         "techn": {
           "text": "JDBC"
         },
@@ -275,8 +275,8 @@
         "label": {
           "text": "Reads from and writes to"
         },
-        "offsetX": -40,
-        "offsetY": -20,
+        "offsetX": "-40",
+        "offsetY": "-20",
         "techn": {
           "text": "JDBC"
         },
@@ -292,7 +292,7 @@
         "label": {
           "text": "Replicates data to"
         },
-        "offsetY": -10,
+        "offsetY": "-10",
         "techn": {
           "text": ""
         },

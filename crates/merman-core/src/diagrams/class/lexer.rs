@@ -1,6 +1,5 @@
 use std::collections::VecDeque;
 
-use super::MERMAID_DOM_ID_PREFIX;
 use crate::diagrams::{
     jison_unicode::is_mermaid_unicode_text,
     scan::{
@@ -120,6 +119,8 @@ pub(super) struct Lexer<'input> {
     mode: Mode,
 }
 
+pub(super) type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
+
 impl<'input> Lexer<'input> {
     pub(super) fn new(input: &'input str) -> Self {
         Self {
@@ -181,10 +182,21 @@ impl<'input> Lexer<'input> {
     fn lex_newline(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
         self.pos = consume_line_ending(self.input, self.pos)?;
-        while let Some(end) = consume_line_ending(self.input, self.pos) {
-            self.pos = end;
+        // Jison emits one NEWLINE for whitespace through its final physical line ending.
+        // A skipped lexical construct between line endings must keep them separate.
+        let after_line_ending = self.pos;
+        for (offset, ch) in self.input[after_line_ending..].char_indices() {
+            if !is_ecmascript_whitespace(ch) {
+                break;
+            }
+            if matches!(ch, '\r' | '\n') {
+                self.pos = after_line_ending + offset + ch.len_utf8();
+            }
         }
-        if matches!(self.mode, Mode::AfterClass | Mode::ClassDefNeedId) {
+        if matches!(
+            self.mode,
+            Mode::AfterClass | Mode::ClassDefNeedId | Mode::ClickAfterId
+        ) {
             self.mode = Mode::Default;
         }
         Some((start, Tok::Newline, self.pos))
@@ -198,57 +210,57 @@ impl<'input> Lexer<'input> {
         false
     }
 
-    fn lex_acc_title(&mut self) -> Option<(usize, Tok, usize)> {
-        let start = self.pos;
-        if !self.starts_with("accTitle") {
+    fn lex_accessibility(&mut self) -> Option<ScanStep<ClassLexicalEvent>> {
+        if self.mode != Mode::Default {
             return None;
         }
-        let after = self.pos + "accTitle".len();
-        let rest = &self.input[after..];
-        let colon = rest.find(':')?;
-        let colon = after + colon;
-        self.pos = colon + 1;
-        let value = self.read_to_newline();
-        Some((start, Tok::AccTitle(value.trim().to_string()), self.pos))
-    }
-
-    fn lex_acc_descr(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.starts_with("accDescr") {
-            return None;
-        }
-        let after = self.pos + "accDescr".len();
-        let rest = &self.input[after..];
-        let rest_trim = rest.trim_start();
-        if rest_trim.starts_with('{') {
-            let consumed_ws = rest.len() - rest_trim.len();
-            let opening = after + consumed_ws;
-            self.pos = opening + 1;
-            let Some(end_rel) = self.input[self.pos..].find('}') else {
+        let (description, suffix) =
+            if let Some(suffix) = self.input[start..].strip_prefix("accTitle") {
+                (false, suffix)
+            } else {
+                (true, self.input[start..].strip_prefix("accDescr")?)
+            };
+        let suffix = suffix.trim_start_matches(is_ecmascript_whitespace);
+        if description && let Some(body) = suffix.strip_prefix('{') {
+            let opening = self.input.len() - suffix.len();
+            let body = body.trim_start_matches(is_ecmascript_whitespace);
+            let Some(end_rel) = body.find('}') else {
                 self.pos = self.input.len();
-                return Some(Err(LexError::new(
+                return Some(ScanStep::Emit(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
                     crate::SourceSpan::new(opening, opening + 1),
-                )));
+                ))));
             };
-            let closing = self.pos + end_rel;
-            let body = self.input[self.pos..self.pos + end_rel].to_string();
-            self.pos = closing + 1;
-            return Some(Ok((
+            self.pos = self.input.len() - body.len() + end_rel + 1;
+            if end_rel == 0 {
+                return Some(ScanStep::Skip);
+            }
+            return Some(ScanStep::Emit(Ok((
                 start,
-                Tok::AccDescrMultiline(body.trim().to_string()),
+                Tok::AccDescrMultiline(
+                    body[..end_rel]
+                        .trim_matches(is_ecmascript_whitespace)
+                        .to_string(),
+                ),
                 self.pos,
-            )));
+            ))));
         }
-        let colon = rest.find(':')?;
-        let colon = after + colon;
-        self.pos = colon + 1;
-        let value = self.read_to_newline();
-        Some(Ok((
-            start,
-            Tok::AccDescr(value.trim().to_string()),
-            self.pos,
-        )))
+        let body = suffix
+            .strip_prefix(':')?
+            .trim_start_matches(is_ecmascript_whitespace);
+        self.pos = self.input.len() - body.len();
+        let end = body.find('\n').unwrap_or(body.len());
+        let value = body[..end]
+            .trim_matches(is_ecmascript_whitespace)
+            .to_string();
+        self.pos += end;
+        let token = if description {
+            Tok::AccDescr(value)
+        } else {
+            Tok::AccTitle(value)
+        };
+        Some(ScanStep::Emit(Ok((start, token, self.pos))))
     }
 
     fn lex_keyword(&mut self) -> Option<(usize, Tok, usize)> {
@@ -504,7 +516,9 @@ impl<'input> Lexer<'input> {
             }
             b'o' => {
                 let next = self.input.as_bytes().get(self.pos + 1).copied();
-                if matches!(next, Some(b'-' | b'.' | b' ' | b'\t') | None) {
+                // The aggregation rule wins ties with ALPHA's ASCII `\w+` rule.
+                // A longer ASCII word keeps its `o`; quoted and Unicode names do not.
+                if next.is_none_or(|byte| !byte.is_ascii_alphanumeric() && byte != b'_') {
                     self.pos += 1;
                     Some((start, Tok::Agg, self.pos))
                 } else {
@@ -670,9 +684,6 @@ impl<'input> Lexer<'input> {
         } else {
             self.pos = after_name;
         }
-        if s.chars().next().is_some_and(|c| c.is_ascii_digit()) {
-            s = format!("{MERMAID_DOM_ID_PREFIX}{s}");
-        }
         if self.mode == Mode::LineNeedId {
             self.mode = Mode::LineRest;
         }
@@ -708,7 +719,7 @@ impl<'input> Lexer<'input> {
             self.pos += 1;
         }
         let s = &self.input[start..self.pos];
-        Some(Ok((start, Tok::Member(s.trim_end().to_string()), self.pos)))
+        Some(Ok((start, Tok::Member(s.to_string()), self.pos)))
     }
 
     fn emit(
@@ -727,7 +738,7 @@ impl<'input> Lexer<'input> {
 }
 
 impl TokenScanner for Lexer<'_> {
-    type Event = std::result::Result<(usize, Tok, usize), LexError>;
+    type Event = ClassLexicalEvent;
 
     fn scan_step(&mut self) -> ScanStep<Self::Event> {
         if let Some(tok) = self.pending.pop_front() {
@@ -791,12 +802,8 @@ impl TokenScanner for Lexer<'_> {
             return self.emit(tok);
         }
 
-        if let Some(tok) = self.lex_acc_title() {
-            return self.emit(tok);
-        }
-
-        if let Some(tok) = self.lex_acc_descr() {
-            return self.emit_result(tok);
+        if let Some(step) = self.lex_accessibility() {
+            return step;
         }
 
         if let Some(tok) = self.lex_direction() {

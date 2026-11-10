@@ -154,9 +154,9 @@ impl ArchitectureDb {
         control: &OperationControl,
     ) -> OperationControlResult<ArchitectureDiagramModel> {
         control.checkpoint()?;
-        let title = (!self.title.trim().is_empty()).then(|| self.title.clone());
-        let acc_title = (!self.acc_title.trim().is_empty()).then(|| self.acc_title.clone());
-        let acc_descr = (!self.acc_descr.trim().is_empty()).then(|| self.acc_descr.clone());
+        let title = (!self.title.is_empty()).then(|| self.title.clone());
+        let acc_title = (!self.acc_title.is_empty()).then(|| self.acc_title.clone());
+        let acc_descr = (!self.acc_descr.is_empty()).then(|| self.acc_descr.clone());
 
         let mut nodes = Vec::with_capacity(self.node_order.len());
         for (index, id) in self.node_order.iter().enumerate() {
@@ -1136,6 +1136,25 @@ service api(server)["Double \"quote\" and \'single\'"]
             model["services"][0]["title"],
             "Double \"quote\" and 'single'"
         );
+    }
+
+    #[test]
+    fn architecture_retains_nel_only_common_values_in_each_projection() {
+        for (value, expected) in [("\u{0085}", Some("\u{0085}")), ("\u{feff}", None)] {
+            let text = format!(
+                "architecture-beta\ntitle {value}\naccTitle: {value}\naccDescr {{{value}}}\nservice api(server)[API]\n"
+            );
+            let meta = test_meta();
+            let source = parse::parse_semantic_source(&text, &meta).unwrap();
+            let json = source.compat_json(&meta);
+            let model = source.render_model();
+            assert_eq!(model.title.as_deref(), expected);
+            assert_eq!(model.acc_title.as_deref(), expected);
+            assert_eq!(model.acc_descr.as_deref(), expected);
+            for field in ["title", "accTitle", "accDescr"] {
+                assert_eq!(json[field].as_str(), expected, "{field}");
+            }
+        }
     }
 
     #[test]

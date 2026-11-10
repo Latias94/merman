@@ -2075,10 +2075,20 @@ fn parse_diagram_flowchart_asset_dimensions_follow_authored_value_truthiness() {
         (r#""""#, 96.0),
         (r#""0""#, 0.0),
         (r#"" ""#, 0.0),
+        (r#""0x30""#, 48.0),
+        (r#""0b110000""#, 48.0),
+        (r#""0o60""#, 48.0),
+        (r#""\uFEFF48\uFEFF""#, 48.0),
         ("true", 1.0),
         ("48", 48.0),
         ("0.5", 0.5),
         ("-4", -4.0),
+        ("[]", 0.0),
+        ("[48]", 48.0),
+        (r#"["0x30"]"#, 48.0),
+        ("[[]]", 0.0),
+        ("[[48]]", 48.0),
+        ("[null]", 0.0),
     ] {
         let source = format!(
             "flowchart LR\nA@{{ shape: icon, w: 96, h: 96 }}\nA@{{ w: {value}, h: {value} }}\nA --> B\n"
@@ -2101,6 +2111,106 @@ fn parse_diagram_flowchart_asset_dimensions_follow_authored_value_truthiness() {
         .unwrap();
     assert_eq!(parsed.model["nodes"][0]["assetWidth"], json!(null));
     assert_eq!(parsed.model["nodes"][0]["assetHeight"], json!(null));
+}
+
+#[test]
+fn parse_diagram_flowchart_invalid_asset_dimensions_replace_prior_values_and_can_recover() {
+    let engine = MermaidEngine::new();
+    for keyword in std::iter::once("flowchart")
+        .chain(cfg!(feature = "diagram-swimlane").then_some("swimlane-beta"))
+    {
+        for (value, expected) in [
+            (r#""bad""#, f64::NAN),
+            (r#""NaN""#, f64::NAN),
+            (r#""infinity""#, f64::NAN),
+            (r#""\u008548\u0085""#, f64::NAN),
+            ("[1, 2]", f64::NAN),
+            ("[true]", f64::NAN),
+            (r#""Infinity""#, f64::INFINITY),
+            (r#""-Infinity""#, f64::NEG_INFINITY),
+            (r#""1e400""#, f64::INFINITY),
+        ] {
+            let source = format!(
+                "{keyword} LR\nA@{{ shape: icon, w: 96, h: 96 }}\nA@{{ w: {value}, h: {value} }}\nA@{{ w: 0, h: false }}\n"
+            );
+            let parsed = engine
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+                panic!("expected shared Flowchart model: {source}");
+            };
+            for dimension in [model.nodes[0].asset_width, model.nodes[0].asset_height] {
+                let dimension = dimension.expect("truthy authored value overwrites earlier size");
+                if expected.is_nan() {
+                    assert!(dimension.is_nan(), "{source}: {dimension}");
+                } else {
+                    assert_eq!(dimension, expected, "{source}");
+                }
+            }
+            let compat = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            assert_eq!(
+                compat.model["nodes"][0]["assetWidth"],
+                json!(null),
+                "{source}"
+            );
+            assert_eq!(
+                compat.model["nodes"][0]["assetHeight"],
+                json!(null),
+                "{source}"
+            );
+
+            let recovered = engine
+                .parse_diagram_for_render_model_sync(
+                    &format!("{source}A@{{ w: 48, h: 32 }}\n"),
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Flowchart(model) = recovered.model() else {
+                panic!("expected shared Flowchart model");
+            };
+            assert_eq!(model.nodes[0].asset_width, Some(48.0));
+            assert_eq!(model.nodes[0].asset_height, Some(32.0));
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_object_dimensions_follow_plain_yaml_numeric_coercion() {
+    let engine = MermaidEngine::new();
+    for value in ["    other: 48", "    - other: 48"] {
+        let source = format!("flowchart LR\nA@{{\n  icon: fa:bell\n  w:\n{value}\n  h: 48\n}}\n");
+        let parsed = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart model");
+        };
+        assert!(model.nodes[0].asset_width.unwrap().is_nan(), "{source}");
+        assert_eq!(model.nodes[0].asset_height, Some(48.0));
+    }
+    for value in [
+        "    toString: bad",
+        "    - toString: bad",
+        "    - 1\n    - toString: bad",
+        "    -\n      - toString: null\n    - 1",
+    ] {
+        let source = format!("flowchart LR\nA@{{\n  icon: fa:bell\n  w:\n{value}\n}}\n");
+        let error = engine
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("Cannot convert object to primitive value"),
+            "{source}: {error}"
+        );
+    }
 }
 
 #[test]
@@ -2164,6 +2274,69 @@ D@{ img: "https://example.com/image.png", label: "", labelType: markdown }
     assert_eq!(find("D")["labelType"], json!("string"));
     assert_eq!(find("A")["icon"], json!("fa:home"));
     assert_eq!(find("B")["img"], json!("https://example.com/image.png"));
+}
+
+#[test]
+fn parse_diagram_flowchart_falsy_metadata_updates_preserve_fields() {
+    let engine = MermaidEngine::new();
+    for value in ["false", "0", "-0", "null", r#""""#] {
+        for (field, expected) in [
+            ("shape", "square"),
+            ("label", "Original"),
+            ("icon", "fa:home"),
+            ("form", "circle"),
+            ("pos", "t"),
+            ("img", "https://example.com/image.png"),
+            ("constraint", "on"),
+        ] {
+            let source = format!(
+                "flowchart LR\nA[\"Original\"]\nA@{{ icon: \"fa:home\", form: circle, pos: t, img: \"https://example.com/image.png\", constraint: on }}\nA@{{ {field}: {value}, labelType: markdown }}\n"
+            );
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let node = &parsed.model["nodes"][0];
+            assert_eq!(node[field], json!(expected), "{source}");
+            assert_eq!(node["label"], json!("Original"), "{source}");
+            assert_eq!(node["labelType"], json!("string"), "{source}");
+        }
+    }
+}
+
+#[test]
+fn parse_diagram_flowchart_unrelated_metadata_preserves_restored_visual_labels() {
+    let engine = MermaidEngine::new();
+    for visual in [
+        r#"icon: "fa:home""#,
+        r#"img: "https://example.com/image.png""#,
+    ] {
+        for (declaration, label_type) in [
+            ("A[A]", "text"),
+            (r#"A["A"]"#, "string"),
+            (r#"A["`A`"]"#, "markdown"),
+        ] {
+            for update in ["w: 96", "shape: rect", r#"label: """#] {
+                let source =
+                    format!("flowchart LR\nA@{{ {visual} }}\n{declaration}\nA@{{ {update} }}\n");
+                let parsed = engine
+                    .parse_diagram_sync(&source, ParseOptions::strict())
+                    .unwrap()
+                    .unwrap();
+                let node = &parsed.model["nodes"][0];
+                assert_eq!(node["label"], json!("A"), "{source}");
+                assert_eq!(node["labelType"], json!(label_type), "{source}");
+            }
+            let source = format!("flowchart LR\n{declaration}\nA@{{ {visual} }}\n");
+            let parsed = engine
+                .parse_diagram_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let node = &parsed.model["nodes"][0];
+            assert_eq!(node["label"], json!(""), "{source}");
+            assert_eq!(node["labelType"], json!(label_type), "{source}");
+        }
+    }
 }
 
 #[test]

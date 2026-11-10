@@ -1,4 +1,6 @@
-use crate::diagrams::scan::{consume_line_ending, is_ecmascript_whitespace};
+use crate::diagrams::scan::{
+    ScanStep, TokenScanner, collect_lexical_events, consume_line_ending, is_ecmascript_whitespace,
+};
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
@@ -26,7 +28,7 @@ use serde_json::Value;
 use serde_json::json;
 #[cfg(test)]
 use std::cell::Cell;
-use std::collections::{HashSet, VecDeque};
+use std::collections::HashSet;
 
 #[cfg(test)]
 thread_local! {
@@ -206,7 +208,6 @@ struct ErDb {
     acc_descr: Option<String>,
     subgraphs: Vec<ErSubgraph>,
     subgraph_lookup: IndexMap<String, usize>,
-    subgraph_counter: usize,
     completed_members: HashSet<String>,
     #[cfg(test)]
     membership_candidates: usize,
@@ -356,7 +357,7 @@ impl ErDb {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let trimmed = member.trim();
+            let trimmed = member.trim_matches(is_ecmascript_whitespace);
             if trimmed.is_empty() || !seen.insert(trimmed.to_string()) {
                 continue;
             }
@@ -366,12 +367,7 @@ impl ErDb {
             }
         }
 
-        let id = if raw_id.trim().is_empty() {
-            format!("subGraph{}", self.subgraph_counter)
-        } else {
-            raw_id.trim().to_string()
-        };
-        self.subgraph_counter = self.subgraph_counter.saturating_add(1);
+        let id = raw_id.trim_matches(is_ecmascript_whitespace).to_string();
         let subgraph = ErSubgraph {
             classes: Vec::new(),
             css_styles: Vec::new(),
@@ -382,7 +378,7 @@ impl ErDb {
                 _ => "markdown".to_string(),
             },
             nodes: retained,
-            title: title.trim().to_string(),
+            title: title.trim_matches(is_ecmascript_whitespace).to_string(),
         };
         let index = self.subgraphs.len();
         self.subgraphs.push(subgraph);
@@ -476,22 +472,10 @@ impl ErDb {
                     }
                 }
                 Action::SetAccTitle(t) => {
-                    self.acc_title = Some(t.trim_matches(is_ecmascript_whitespace).to_string());
+                    self.acc_title = Some(t);
                 }
                 Action::SetAccDescr(t) => {
-                    // Mermaid's commonDb.ts: `sanitizeText(txt).replace(/\n\s+/g, '\n')`
-                    let trimmed = t.trim_matches(is_ecmascript_whitespace);
-                    let mut out = String::with_capacity(trimmed.len());
-                    let mut chars = trimmed.chars().peekable();
-                    while let Some(ch) = chars.next() {
-                        out.push(ch);
-                        if ch == '\n' {
-                            while chars.peek().is_some_and(|c| is_ecmascript_whitespace(*c)) {
-                                chars.next();
-                            }
-                        }
-                    }
-                    self.acc_descr = Some(out);
+                    self.acc_descr = Some(t);
                 }
             }
         }
@@ -528,13 +512,7 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 fn split_styles(raw: &str) -> Vec<String> {
-    let compact: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
-    compact
-        .split(',')
-        .map(|s| s.trim())
-        .filter(|s| !s.is_empty())
-        .map(|s| s.to_string())
-        .collect()
+    raw.split(',').map(str::to_string).collect()
 }
 
 type ErLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
@@ -553,15 +531,9 @@ struct ErSyntax {
 
 impl ErSyntax {
     fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
-        let lexer = Lexer::new(code);
-        let mut events = Vec::new();
-        for event in lexer {
-            if events.len() % 128 == 0 {
-                control.checkpoint()?;
-            }
-            events.push(event);
-        }
-        control.checkpoint()?;
+        let mut lexer = Lexer::new(code);
+        lexer.control = Some(control);
+        let events = collect_lexical_events(&mut lexer, control)?;
         Ok(Self { events })
     }
 
@@ -852,6 +824,7 @@ struct ErEditorFactCollector {
     directive_start: Option<usize>,
     style_payload_pending: bool,
     style_payload_anchor_end: Option<usize>,
+    subgraph_id_pending: bool,
     in_attribute_block: bool,
     in_alias: bool,
     in_relationship_role: bool,
@@ -867,6 +840,20 @@ impl ErEditorFactCollector {
     }
 
     fn finish_line(&mut self, code: &str, line_end: usize, facts: &mut EditorSemanticFacts) {
+        // The exclusive style whitespace rule can consume physical line endings. Keep an
+        // unfinished target/value slot on its authored line without changing strict lexing.
+        let line_end = if self.style_payload_pending {
+            self.style_payload_anchor_end
+                .or(self.directive_start)
+                .and_then(|anchor_end| {
+                    code.get(anchor_end..line_end)?
+                        .find(['\r', '\n'])
+                        .map(|offset| anchor_end + offset)
+                })
+                .unwrap_or(line_end)
+        } else {
+            line_end
+        };
         if let Some(start) = self.directive_start {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::Directive,
@@ -913,6 +900,7 @@ impl ErEditorFactCollector {
 struct ErTokenSymbol {
     name: String,
     span: SourceSpan,
+    selection: SourceSpan,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -967,6 +955,28 @@ impl ErEditorFactCollector {
             self.push_deferred_styled_entity(facts, occurrence);
         }
 
+        if self.subgraph_id_pending
+            && let Tok::Name(name) | Tok::Str(name) = token
+        {
+            self.subgraph_id_pending = false;
+            self.push_pending_entity(facts, ErEntityOccurrence::Definition);
+            let id = name.trim_matches(is_ecmascript_whitespace);
+            let span = SourceSpan::new(start, end);
+            if !id.is_empty()
+                && let Some(selection) = source_value_span(code, span, id)
+            {
+                self.known_entities.insert(id.to_string());
+                facts.push_symbol(EditorSemanticSymbol::new(
+                    id.to_string(),
+                    Some("er subgraph".to_string()),
+                    EditorSemanticKind::Struct,
+                    span,
+                    selection,
+                ));
+            }
+            return;
+        }
+
         match token {
             Tok::ErDiagram => self.reset_line_state(),
             Tok::Newline => {
@@ -993,6 +1003,7 @@ impl ErEditorFactCollector {
             Tok::SubgraphKw => {
                 facts.push_directive_prefix("subgraph");
                 self.directive_start = Some(start);
+                self.subgraph_id_pending = true;
             }
             Tok::EndKw => {
                 self.directive_start = None;
@@ -1039,7 +1050,8 @@ impl ErEditorFactCollector {
                 };
                 let symbol = ErTokenSymbol {
                     name: name.clone(),
-                    span,
+                    span: SourceSpan::new(start, end),
+                    selection: span,
                 };
                 if let Some(entity) = self.pending_entity.replace(symbol) {
                     let occurrence = if self.relationship_started {
@@ -1164,9 +1176,9 @@ impl ErEditorFactCollector {
             }
             Tok::RestOfLine(raw) => {
                 if self.style_payload_pending {
-                    let line_end = line_content_end(code, end);
-                    let trailing_slot =
-                        trailing_ascii_whitespace_slot(code, start, end).or_else(|| {
+                    let line_end = end + code[end..].find(['\r', '\n']).unwrap_or(code.len() - end);
+                    let trailing_slot = trailing_ascii_whitespace_slot(code, start, line_end)
+                        .or_else(|| {
                             (raw.is_empty()
                                 && self.style_payload_anchor_end.is_some_and(|anchor_end| {
                                     has_ascii_separator(code, anchor_end, line_end)
@@ -1179,14 +1191,10 @@ impl ErEditorFactCollector {
                             span,
                         ));
                     }
-                    let payload = raw.trim();
-                    if !payload.is_empty()
-                        && let Some(selection) =
-                            source_value_span(code, SourceSpan::new(start, end), payload)
-                    {
+                    if start < end {
                         facts.push_expected_syntax(EditorExpectedSyntax::new(
                             EditorExpectedSyntaxKind::Payload,
-                            selection,
+                            SourceSpan::new(start, end),
                         ));
                     }
                     self.style_payload_pending = false;
@@ -1203,6 +1211,7 @@ impl ErEditorFactCollector {
         self.directive_start = None;
         self.style_payload_pending = false;
         self.style_payload_anchor_end = None;
+        self.subgraph_id_pending = false;
         self.in_alias = false;
         self.in_relationship_role = false;
         self.relationship_started = false;
@@ -1360,7 +1369,7 @@ impl ErEditorFactCollector {
                     detail,
                     EditorSemanticKind::Struct,
                     symbol.span,
-                    symbol.span,
+                    symbol.selection,
                 )
             } else {
                 EditorSemanticSymbol::new(
@@ -1368,7 +1377,7 @@ impl ErEditorFactCollector {
                     detail,
                     EditorSemanticKind::Struct,
                     symbol.span,
-                    symbol.span,
+                    symbol.selection,
                 )
             };
         facts.push_symbol(entity);
@@ -1542,10 +1551,14 @@ enum Mode {
 
 struct Lexer<'input> {
     input: &'input str,
+    control: Option<&'input OperationControl>,
+    stopped: bool,
     pos: usize,
-    pending: VecDeque<(usize, Tok, usize)>,
     mode: Mode,
     direction_scan_end: usize,
+    generic_scan_end: usize,
+    #[cfg(test)]
+    generic_lookahead_bytes: usize,
 }
 
 impl<'input> Lexer<'input> {
@@ -1555,25 +1568,15 @@ impl<'input> Lexer<'input> {
 
         Self {
             input,
+            control: None,
+            stopped: false,
             pos: 0,
-            pending: VecDeque::new(),
             mode: Mode::Default,
             direction_scan_end: 0,
+            generic_scan_end: 0,
+            #[cfg(test)]
+            generic_lookahead_bytes: 0,
         }
-    }
-
-    fn emit_token(
-        &mut self,
-        token: (usize, Tok, usize),
-    ) -> std::result::Result<(usize, Tok, usize), LexError> {
-        Ok(token)
-    }
-
-    fn emit_result(
-        &mut self,
-        result: std::result::Result<(usize, Tok, usize), LexError>,
-    ) -> std::result::Result<(usize, Tok, usize), LexError> {
-        result
     }
 
     fn peek(&self) -> Option<u8> {
@@ -1581,6 +1584,12 @@ impl<'input> Lexer<'input> {
     }
 
     fn skip_ws_default(&mut self) {
+        if matches!(self.mode, Mode::NeedIdListThenLineRest | Mode::LineRest)
+            && consume_line_ending(self.input, self.pos).is_none()
+        {
+            self.skip_style_whitespace();
+            return;
+        }
         while let Some(b) = self.peek() {
             if b == b' ' || b == b'\t' {
                 self.pos += 1;
@@ -1596,6 +1605,29 @@ impl<'input> Lexer<'input> {
                 break;
             }
             self.pos += ch.len_utf8();
+        }
+    }
+
+    fn scan_checkpoint(&mut self, steps: usize) -> bool {
+        if steps.is_multiple_of(128)
+            && self
+                .control
+                .is_some_and(|control| control.checkpoint().is_err())
+        {
+            self.stopped = true;
+            return false;
+        }
+        true
+    }
+
+    fn skip_style_whitespace(&mut self) {
+        let mut steps = 0usize;
+        while let Some(ch) = self.input[self.pos..].chars().next() {
+            if !is_ecmascript_whitespace(ch) || !self.scan_checkpoint(steps) {
+                break;
+            }
+            self.pos += ch.len_utf8();
+            steps = steps.wrapping_add(1);
         }
     }
 
@@ -1637,7 +1669,7 @@ impl<'input> Lexer<'input> {
         while let Some(end) = consume_line_ending(self.input, self.pos) {
             self.pos = end;
         }
-        if self.mode == Mode::LineRest {
+        if matches!(self.mode, Mode::NeedIdListThenLineRest | Mode::LineRest) {
             self.mode = Mode::Default;
         }
         Some((start, Tok::Newline, self.pos))
@@ -1666,7 +1698,7 @@ impl<'input> Lexer<'input> {
         )))
     }
 
-    fn lex_acc_descr(&mut self) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+    fn lex_acc_descr(&mut self) -> Option<ScanStep<ErLexicalEvent>> {
         let start = self.pos;
         if !self.starts_with_ci("accDescr") {
             return None;
@@ -1679,29 +1711,32 @@ impl<'input> Lexer<'input> {
             self.pos = self.input.len() - body.len();
             let Some(end_rel) = self.input[self.pos..].find('}') else {
                 self.pos = self.input.len();
-                return Some(Err(LexError::new(
+                return Some(ScanStep::Emit(Err(LexError::new(
                     "Unterminated accDescr block; missing '}'",
                     SourceSpan::new(start, self.input.len()),
-                )));
+                ))));
             };
             let body = self.input[self.pos..self.pos + end_rel].to_string();
             self.pos = self.pos + end_rel + 1;
-            return Some(Ok((
+            if body.is_empty() {
+                return Some(ScanStep::Skip);
+            }
+            return Some(ScanStep::Emit(Ok((
                 start,
                 Tok::AccDescrMultiline(body.trim_matches(is_ecmascript_whitespace).to_string()),
                 self.pos,
-            )));
+            ))));
         }
         let body = rest_trim
             .strip_prefix(':')?
             .trim_start_matches(is_ecmascript_whitespace);
         self.pos = self.input.len() - body.len();
         let s = self.read_to_newline();
-        Some(Ok((
+        Some(ScanStep::Emit(Ok((
             start,
             Tok::AccDescr(s.trim_matches(is_ecmascript_whitespace).to_string()),
             self.pos,
-        )))
+        ))))
     }
 
     fn lex_direction(&mut self) -> Option<(usize, Tok, usize)> {
@@ -1850,17 +1885,91 @@ impl<'input> Lexer<'input> {
             return None;
         }
         let start = self.pos;
-        self.skip_ws_default();
-        let s = self.read_to_newline();
+        let mut styles = String::new();
+        let mut separator = None;
+        let mut has_component = false;
+        let mut payload_end = start;
+        let mut failure = None;
+        let mut steps = 0usize;
+        while self.pos < self.input.len() {
+            if !self.scan_checkpoint(steps) {
+                return None;
+            }
+            steps = steps.wrapping_add(1);
+            if consume_line_ending(self.input, self.pos).is_some() {
+                break;
+            }
+            let rest = &self.input[self.pos..];
+            let ch = rest.chars().next()?;
+            if is_ecmascript_whitespace(ch) {
+                self.skip_style_whitespace();
+                if self.stopped {
+                    return None;
+                }
+                continue;
+            }
+            if separator.is_some() {
+                failure = Some(SourceSpan::new(self.pos, self.pos + ch.len_utf8()));
+                break;
+            }
+            if ch == ';' {
+                separator = Some(self.pos);
+                self.pos += 1;
+                continue;
+            }
+            if ch == ',' {
+                if !has_component {
+                    failure = Some(SourceSpan::new(self.pos, self.pos + 1));
+                    break;
+                }
+                styles.push(',');
+                has_component = false;
+                self.pos += 1;
+                payload_end = self.pos;
+                continue;
+            }
+            if matches!(ch, ':' | '#') {
+                styles.push(ch);
+                has_component = true;
+                self.pos += 1;
+                payload_end = self.pos;
+                continue;
+            }
+            // Exclusive STYLE_TEXT keeps non-ASCII characters inside an already started
+            // word. The earlier whitespace rule applies only at a token's start.
+            let text_len = rest
+                .chars()
+                .take_while(|ch| {
+                    !ch.is_ascii() || ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-' | '*')
+                })
+                .map(char::len_utf8)
+                .sum::<usize>();
+            if text_len == 0 {
+                failure = Some(SourceSpan::new(self.pos, self.pos + ch.len_utf8()));
+                break;
+            }
+            styles.push_str(&rest[..text_len]);
+            has_component = true;
+            self.pos += text_len;
+            payload_end = self.pos;
+        }
+        let end = separator.unwrap_or(self.pos);
         self.mode = Mode::Default;
-        let styles = s.trim().trim_end_matches(';').trim_end();
-        if styles.is_empty() {
+        if separator.is_some_and(|offset| self.pos == self.input.len() && self.pos > offset + 1) {
+            failure = Some(SourceSpan::new(self.pos, self.pos));
+        }
+        if let Some(span) = failure {
+            // Recover once at the physical line boundary, retaining later editor facts.
+            let _ = self.read_to_newline();
+            return Some(Err(LexError::new("Invalid ER style payload", span)));
+        }
+        if !has_component {
             return Some(Err(LexError::new(
                 "Expected ER style payload",
-                SourceSpan::new(start, self.pos),
+                SourceSpan::new(start, end),
             )));
         }
-        Some(Ok((start, Tok::RestOfLine(styles.to_string()), self.pos)))
+        Some(Ok((start, Tok::RestOfLine(styles), payload_end)))
     }
 
     /// Whether the word of `len` bytes at the cursor ends at a word boundary, like Mermaid's `\b`
@@ -1984,12 +2093,12 @@ impl<'input> Lexer<'input> {
         let Some(first) = after_one.chars().next() else {
             return false;
         };
-        if !first.is_whitespace() {
+        if !is_ecmascript_whitespace(first) {
             return false;
         }
 
         after_one
-            .trim_start_matches(char::is_whitespace)
+            .trim_start_matches(is_ecmascript_whitespace)
             .chars()
             .next()
             .is_some_and(|next| {
@@ -2077,7 +2186,6 @@ impl<'input> Lexer<'input> {
             return Some(Ok((start, Tok::Comment(s), self.pos)));
         }
         if self.peek() == Some(b'`') {
-            let delimiter_start = self.pos;
             self.pos += 1;
             let body_start = self.pos;
             let Some(rel_end) = self.input[self.pos..].find('`') else {
@@ -2087,13 +2195,6 @@ impl<'input> Lexer<'input> {
                 )));
             };
             let body_end = self.pos + rel_end;
-            if body_end == body_start {
-                self.pos = body_end + 1;
-                return Some(Err(LexError::new(
-                    "Empty backtick attribute word",
-                    SourceSpan::new(delimiter_start, self.pos),
-                )));
-            }
             let s = self.input[body_start..body_end].to_string();
             self.pos = body_end + 1;
             return Some(Ok((body_start, Tok::AttrWord(s), body_end)));
@@ -2122,35 +2223,45 @@ impl<'input> Lexer<'input> {
         // Mermaid's generic rule permits spaces between its first and last tilde on the
         // same physical line. Only search beyond the first word when it contains a tilde;
         // a successful match consumes through the last one instead of rescanning suffixes.
-        let rest = &self.input[self.pos..];
-        let prefix_end = rest.find(is_ecmascript_whitespace).unwrap_or(rest.len());
-        if let Some(first_tilde) = rest[..prefix_end].find('~') {
-            let line_end = rest
-                .find(['\r', '\n', '\u{2028}', '\u{2029}'])
-                .unwrap_or(rest.len());
-            if let Some(last_tilde) = rest[..line_end].rfind('~')
-                && last_tilde > first_tilde
+        if self.pos >= self.generic_scan_end {
+            let rest = &self.input[self.pos..];
+            let prefix_end = rest.find(is_ecmascript_whitespace).unwrap_or(rest.len());
+            #[cfg(test)]
             {
-                let suffix_start = last_tilde + 1;
-                let suffix_len = rest[suffix_start..]
-                    .find(is_ecmascript_whitespace)
-                    .unwrap_or(rest.len() - suffix_start);
-                let end = self.pos + suffix_start + suffix_len;
-                let word = self.input[self.pos..end].to_owned();
-                self.pos = end;
-                return Some(Ok((start, Tok::AttrWord(word), end)));
+                self.generic_lookahead_bytes += prefix_end * 2;
             }
+            if let Some(first_tilde) = rest[..prefix_end].find('~') {
+                let line_end = rest
+                    .find(['\r', '\n', '\u{2028}', '\u{2029}'])
+                    .unwrap_or(rest.len());
+                #[cfg(test)]
+                {
+                    self.generic_lookahead_bytes += line_end * 2;
+                }
+                if let Some(last_tilde) = rest[..line_end].rfind('~')
+                    && last_tilde > first_tilde
+                {
+                    let suffix_start = last_tilde + 1;
+                    let suffix_len = rest[suffix_start..]
+                        .find(is_ecmascript_whitespace)
+                        .unwrap_or(rest.len() - suffix_start);
+                    let end = self.pos + suffix_start + suffix_len;
+                    let word = self.input[self.pos..end].to_owned();
+                    self.pos = end;
+                    return Some(Ok((start, Tok::AttrWord(word), end)));
+                }
+            }
+            // Dropping a prefix before the first whitespace cannot make a failed generic
+            // rule match. Keep that proof local to this immutable, forward-only cursor.
+            self.generic_scan_end = self.pos + prefix_end;
         }
 
-        let start_word = self.pos;
-        let mut end = self.pos;
-        for (rel, ch) in self.input[self.pos..].char_indices() {
-            if is_ecmascript_whitespace(ch) || matches!(ch, '"' | '}' | '?') {
-                break;
-            }
-            end = self.pos + rel + ch.len_utf8();
-        }
-        if end == start_word {
+        // The selected case-insensitive [A-Za-z_\u00C0-\uFFFF] rule also admits the
+        // micro sign through case folding, and astral characters through UTF-16 surrogates.
+        let is_letter = |ch: char| ch.is_ascii_alphabetic() || ch == '\u{00b5}' || ch >= '\u{00c0}';
+        let first = self.input[self.pos..].chars().next()?;
+        if !is_letter(first) && !matches!(first, '*' | '_') {
+            let start_word = self.pos;
             self.pos += self.input[self.pos..]
                 .chars()
                 .next()
@@ -2160,28 +2271,18 @@ impl<'input> Lexer<'input> {
                 SourceSpan::new(start_word, self.pos),
             )));
         }
-        self.pos = end;
-        let raw = &self.input[start_word..end];
-        let mut chars = raw.chars();
-        let first = chars.next()?;
-        let first_ok = first == '*' || first == '_' || first.is_alphabetic() || !first.is_ascii();
-        let rest_ok = chars.all(|c| {
-            c == '*'
-                || c == '-'
-                || c == '_'
-                || c == '.'
-                || c == ','
-                || c.is_ascii_digit()
-                || c.is_alphabetic()
-                || matches!(c, '[' | ']' | '(' | ')')
-                || !c.is_ascii()
-        });
-        if !first_ok || !rest_ok {
-            return Some(Err(LexError::new(
-                "Invalid attribute word",
-                SourceSpan::new(start_word, end),
-            )));
-        }
+        let start_word = self.pos;
+        self.pos += first.len_utf8();
+        self.pos += self.input[self.pos..]
+            .chars()
+            .take_while(|ch| {
+                is_letter(*ch)
+                    || ch.is_ascii_digit()
+                    || matches!(ch, '*' | '-' | '_' | '.' | ',' | '[' | ']' | '(' | ')')
+            })
+            .map(char::len_utf8)
+            .sum::<usize>();
+        let raw = &self.input[start_word..self.pos];
         Some(Ok((start, Tok::AttrWord(raw.to_string()), self.pos)))
     }
 
@@ -2213,6 +2314,26 @@ impl<'input> Lexer<'input> {
             return Some(Ok((start, Tok::Str(s), self.pos)));
         }
 
+        let rest = &self.input[self.pos..];
+        let mut number_len = rest.bytes().take_while(u8::is_ascii_digit).count();
+        if number_len > 0 {
+            if rest.as_bytes().get(number_len) == Some(&b'.') {
+                let fractional_len = rest[number_len + 1..]
+                    .bytes()
+                    .take_while(u8::is_ascii_digit)
+                    .count();
+                if fractional_len > 0 {
+                    number_len += 1 + fractional_len;
+                }
+            }
+            self.pos += number_len;
+            return Some(Ok((
+                start,
+                Tok::Name(rest[..number_len].to_string()),
+                self.pos,
+            )));
+        }
+
         let mut end = self.pos;
         for (rel, ch) in self.input[self.pos..].char_indices() {
             let ok =
@@ -2231,103 +2352,124 @@ impl<'input> Lexer<'input> {
     }
 }
 
+impl TokenScanner for Lexer<'_> {
+    type Event = ErLexicalEvent;
+
+    fn scan_step(&mut self) -> ScanStep<Self::Event> {
+        if self.stopped {
+            return ScanStep::End;
+        }
+        // INITIAL accessibility rules precede directions, which in turn
+        // precede whitespace. Exclusive attribute/style modes bypass them.
+        if matches!(
+            self.mode,
+            Mode::Default
+                | Mode::NeedIdListOnly
+                | Mode::NeedClassFirstIdList
+                | Mode::NeedClassSecondIdList
+        ) {
+            if let Some(tok) = self.lex_acc_title() {
+                return ScanStep::Emit(tok);
+            }
+            if let Some(step) = self.lex_acc_descr() {
+                return step;
+            }
+            if let Some(tok) = self.lex_direction() {
+                return ScanStep::Emit(Ok(tok));
+            }
+        }
+        let before_whitespace = self.pos;
+        match self.mode {
+            Mode::Block => self.skip_ws_block(),
+            _ => self.skip_ws_default(),
+        }
+        if self.stopped {
+            return ScanStep::End;
+        }
+        if self.pos != before_whitespace {
+            return ScanStep::Skip;
+        }
+
+        if self.pos >= self.input.len() {
+            if self.mode == Mode::Block {
+                self.mode = Mode::Default;
+                return ScanStep::Emit(Err(LexError::new(
+                    "EOF inside attribute block",
+                    SourceSpan::new(self.pos, self.pos),
+                )));
+            }
+            return ScanStep::End;
+        }
+
+        if self.lex_comment() {
+            return ScanStep::Skip;
+        }
+
+        // Empty exclusive backtick bodies emit no ATTRIBUTE_WORD token in Mermaid.
+        if self.mode == Mode::Block && self.input[self.pos..].starts_with("``") {
+            self.pos += 2;
+            return ScanStep::Skip;
+        }
+
+        if let Some(tok) = self.lex_block_token() {
+            return ScanStep::Emit(tok);
+        }
+
+        if let Some(tok) = self.lex_rest_of_line() {
+            return ScanStep::Emit(tok);
+        }
+        if self.stopped {
+            return ScanStep::End;
+        }
+
+        if let Some(tok) = self.lex_newline() {
+            return ScanStep::Emit(Ok(tok));
+        }
+
+        if self.mode == Mode::NeedIdListThenLineRest {
+            // Mermaid's exclusive style mode treats keyword-spelled IDs as text.
+            if let Some(tok) = self.lex_id_list() {
+                return ScanStep::Emit(Ok(tok));
+            }
+        } else {
+            if let Some(tok) = self.lex_keyword() {
+                return ScanStep::Emit(Ok(tok));
+            }
+            if let Some(tok) = self.lex_id_list() {
+                return ScanStep::Emit(Ok(tok));
+            }
+        }
+
+        if let Some(tok) = self.lex_punct() {
+            return ScanStep::Emit(Ok(tok));
+        }
+
+        if let Some(tok) = self.lex_rel_tokens() {
+            return ScanStep::Emit(Ok(tok));
+        }
+
+        if let Some(tok) = self.lex_name_or_str() {
+            return ScanStep::Emit(tok);
+        }
+
+        let start = self.pos;
+        let Some(ch) = self.input[self.pos..].chars().next() else {
+            return ScanStep::End;
+        };
+        self.pos += ch.len_utf8();
+        ScanStep::Emit(Err(LexError::new(
+            format!("Unexpected character at {start}"),
+            SourceSpan::new(start, self.pos),
+        )))
+    }
+}
+
+#[cfg(test)]
 impl Iterator for Lexer<'_> {
-    type Item = std::result::Result<(usize, Tok, usize), LexError>;
+    type Item = ErLexicalEvent;
 
     fn next(&mut self) -> Option<Self::Item> {
-        if let Some(tok) = self.pending.pop_front() {
-            return Some(self.emit_token(tok));
-        }
-
-        loop {
-            // INITIAL accessibility rules precede directions, which in turn
-            // precede whitespace. Exclusive attribute/style modes bypass them.
-            if matches!(
-                self.mode,
-                Mode::Default
-                    | Mode::NeedIdListOnly
-                    | Mode::NeedClassFirstIdList
-                    | Mode::NeedClassSecondIdList
-            ) {
-                if let Some(tok) = self.lex_acc_title() {
-                    return Some(self.emit_result(tok));
-                }
-                if let Some(tok) = self.lex_acc_descr() {
-                    return Some(self.emit_result(tok));
-                }
-                if let Some(tok) = self.lex_direction() {
-                    return Some(self.emit_token(tok));
-                }
-            }
-            let before_whitespace = self.pos;
-            match self.mode {
-                Mode::Block => self.skip_ws_block(),
-                _ => self.skip_ws_default(),
-            }
-            if self.pos != before_whitespace {
-                continue;
-            }
-
-            if self.pos >= self.input.len() {
-                if self.mode == Mode::Block {
-                    self.mode = Mode::Default;
-                    return Some(Err(LexError::new(
-                        "EOF inside attribute block",
-                        SourceSpan::new(self.pos, self.pos),
-                    )));
-                }
-                return None;
-            }
-
-            if self.lex_comment() {
-                continue;
-            }
-
-            if let Some(tok) = self.lex_block_token() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_rest_of_line() {
-                return Some(self.emit_result(tok));
-            }
-
-            if let Some(tok) = self.lex_newline() {
-                return Some(self.emit_token(tok));
-            }
-
-            if self.mode == Mode::NeedIdListThenLineRest {
-                // Mermaid's exclusive style mode treats keyword-spelled IDs as text.
-                if let Some(tok) = self.lex_id_list() {
-                    return Some(self.emit_token(tok));
-                }
-            } else {
-                if let Some(tok) = self.lex_keyword() {
-                    return Some(self.emit_token(tok));
-                }
-                if let Some(tok) = self.lex_id_list() {
-                    return Some(self.emit_token(tok));
-                }
-            }
-
-            if let Some(tok) = self.lex_punct() {
-                return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_rel_tokens() {
-                return Some(self.emit_token(tok));
-            }
-
-            if let Some(tok) = self.lex_name_or_str() {
-                return Some(self.emit_result(tok));
-            }
-
-            let start = self.pos;
-            self.pos += self.input[self.pos..].chars().next()?.len_utf8();
-            return Some(Err(LexError::new(
-                format!("Unexpected character at {start}"),
-                SourceSpan::new(start, self.pos),
-            )));
-        }
+        self.next_token()
     }
 }
 
@@ -2366,6 +2508,79 @@ mod tests {
         assert!(
             matches!(&tokens.last().unwrap().1, Tok::Direction(direction) if direction.value == "BT")
         );
+    }
+
+    #[test]
+    fn er_numeric_cardinality_lookahead_uses_ecmascript_whitespace() {
+        for (source, cardinality) in [
+            ("1\u{00a0}B", true),
+            ("1\u{feff}B", true),
+            ("1\u{0085}B", false),
+        ] {
+            let (start, token, end) = Lexer::new(source).next().unwrap().unwrap();
+            assert_eq!((start, end), (0, 1));
+            if cardinality {
+                assert!(matches!(token, Tok::OnlyOne), "{source:?}");
+            } else {
+                assert!(
+                    matches!(token, Tok::Name(name) if name == "1"),
+                    "{source:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn er_attribute_generic_lookahead_bounds_failed_suffix_scans() {
+        for count in [64, 1024] {
+            for invalid in ["!", "\u{0085}"] {
+                for tilde in ["", "~"] {
+                    let source = format!(
+                        "erDiagram\nA {{{}{tilde}}}\nLater {{int id}}\n",
+                        invalid.repeat(count),
+                    );
+                    let mut lexer = Lexer::new(&source);
+                    let events =
+                        collect_lexical_events(&mut lexer, &OperationControl::new()).unwrap();
+                    assert!(
+                        lexer.generic_lookahead_bytes <= 5 * source.len(),
+                        "{count} {invalid:?} {tilde}"
+                    );
+                    let error = events
+                        .iter()
+                        .find_map(|event| event.as_ref().err())
+                        .unwrap();
+                    let start = source.find(invalid).unwrap();
+                    assert_eq!(error.span, SourceSpan::new(start, start + invalid.len()));
+                    assert!(events.iter().any(|event| {
+                        matches!(event, Ok((_, Tok::Name(name), _)) if name == "Later")
+                    }));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn er_empty_backticks_observe_cancellation_before_finishing_skipped_input() {
+        let source = format!("erDiagram\nA {{{}}}\n", "``".repeat(1024));
+        let mut lexer = Lexer::new(&source);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(2);
+        assert!(collect_lexical_events(&mut lexer, &control).is_err());
+        assert!(lexer.pos < source.len() / 2);
+    }
+
+    #[test]
+    fn er_multiline_style_observes_cancellation_before_finishing_aggregate() {
+        for body in ["x \n".repeat(1024), " \n".repeat(1024)] {
+            let source = format!("erDiagram\nA\nstyle A {body}x\n");
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(6);
+            let mut lexer = Lexer::new(&source);
+            lexer.control = Some(&control);
+            assert!(collect_lexical_events(&mut lexer, &control).is_err());
+            assert!(lexer.pos < source.len() / 2);
+        }
     }
 
     #[test]
@@ -2510,6 +2725,7 @@ mod tests {
         let symbol = || ErTokenSymbol {
             name: "CUSTOMER".to_string(),
             span,
+            selection: span,
         };
         let mut collector = ErEditorFactCollector::default();
         let mut facts = EditorSemanticFacts::new();
@@ -2756,6 +2972,39 @@ mod semantic_tests {
                 }
             );
             assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn er_incomplete_style_slots_do_not_relax_required_targets_or_payloads() {
+        for newline in ["\n", "\r\n", "\r"] {
+            for (statement, kind) in [
+                ("style ", EditorExpectedSyntaxKind::IdList),
+                ("style A ", EditorExpectedSyntaxKind::StyleValue),
+                ("classDef accent ", EditorExpectedSyntaxKind::StyleValue),
+            ] {
+                let source =
+                    format!("erDiagram{newline}A{newline}{statement}{newline}\t {newline}");
+                let parsed = parse_er_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    EditorFactsDemand::Capture,
+                    &OperationControl::new(),
+                )
+                .unwrap();
+                assert!(parsed.model.is_err(), "{source:?}");
+                let facts = parsed.editor_facts.expect("same-pass ER recovery facts");
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                let slot = source.find(statement).unwrap() + statement.len();
+                assert!(facts.expected_syntax.contains(&EditorExpectedSyntax::new(
+                    kind,
+                    SourceSpan::new(slot, slot),
+                )));
+            }
         }
     }
 

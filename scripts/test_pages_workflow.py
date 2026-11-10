@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import unittest
 
@@ -17,25 +18,25 @@ PAGES = ROOT / ".github" / "workflows" / "pages.yml"
 
 
 class PagesWorkflowTests(unittest.TestCase):
-    def test_web_and_budget_tool_builds_can_start_in_parallel(self) -> None:
+    def test_web_and_size_tool_builds_can_start_in_parallel(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
         web = workflow_job(text, "web-package")
-        tools = workflow_job(text, "budget-tool")
+        tools = workflow_job(text, "size-tool")
         for job in (web, tools):
             self.assertNotIn("needs:", job)
         self.assertIn("shared-key: pages-web-wasm", web)
-        self.assertIn("shared-key: pages-web-budget-tool", tools)
+        self.assertIn("shared-key: pages-web-size-tool", tools)
         self.assertIn("CARGO_INCREMENTAL: '0'", tools)
         self.assertIn("CARGO_PROFILE_RELEASE_DEBUG: '0'", tools)
         self.assertIn("cargo build --locked --release -p xtask", tools)
         self.assertIn("path: target/release/xtask", tools)
         self.assertNotIn("path: target/\n", tools)
 
-    def test_browser_and_budgets_consume_the_single_web_build(self) -> None:
+    def test_browser_and_size_report_consume_the_single_web_build(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
         web = workflow_job(text, "web-package")
         browser = workflow_job(text, "build")
-        budgets = workflow_job(text, "size-budgets")
+        report = workflow_job(text, "size-report")
         self.assertEqual(text.count("npm run build --prefix platforms/web"), 1)
         self.assertIn("npm run smoke --prefix platforms/web", web)
         self.assertLess(web.index("npm run smoke"), web.index("actions/upload-artifact@"))
@@ -44,19 +45,31 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("platforms/web/dist", web)
         self.assertIn("if-no-files-found: error", web)
         self.assertIn("needs: web-package", browser)
-        self.assertNotIn("size-budgets", browser)
-        self.assertIn("needs: [web-package, budget-tool]", budgets)
-        for job in (browser, budgets):
+        self.assertNotIn("size-report", browser)
+        self.assertIn("needs: [web-package, size-tool]", report)
+        for job in (browser, report):
             self.assertIn("uses: actions/download-artifact@v8.0.2", job)
             self.assertIn("artifact-ids: ${{ needs.web-package.outputs.artifact_id }}", job)
             self.assertIn("path: platforms/web", job)
             self.assertNotIn("build:wasm", job)
-        self.assertIn("chmod +x target/release/xtask", budgets)
-        self.assertIn("target/release/xtask wasm-size-matrix", budgets)
-        self.assertIn("--surface web", budgets)
-        self.assertIn("--web-package-root platforms/web/packages", budgets)
-        self.assertIn("--budget-file docs/release/WASM_SIZE_BUDGETS.json", budgets)
-        self.assertIn("tool: wasm-tools@1.263.0", budgets)
+        self.assertIn("chmod +x target/release/xtask", report)
+        self.assertIn("target/release/xtask wasm-size-matrix", report)
+        self.assertIn("--surface web", report)
+        self.assertIn("--web-package-root platforms/web/packages", report)
+        self.assertNotIn("--budget-file", report)
+        self.assertIn("tool: wasm-tools@1.263.0", report)
+
+    def test_web_ci_and_release_report_sizes_without_byte_ceilings(self) -> None:
+        for workflow in ("pages.yml", "release-web.yml", "release-preflight.yml"):
+            with self.subTest(workflow=workflow):
+                text = (PAGES.parent / workflow).read_text(encoding="utf-8")
+                report = text.split("      - name: Report final Web package WASM sizes\n", 1)[1]
+                report = report.split("\n      - name:", 1)[0]
+                self.assertIn("wasm-size-matrix", report)
+                self.assertIn("--web-package-root platforms/web/packages", report)
+                self.assertNotIn("--budget-file", report)
+        budgets = json.loads((ROOT / "docs/release/WASM_SIZE_BUDGETS.json").read_text(encoding="utf-8"))
+        self.assertEqual(set(budgets["artifact_profiles"]), {"typst-wasm"})
 
     def test_browser_consumer_installs_the_web_checker_dependencies(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
@@ -70,16 +83,16 @@ class PagesWorkflowTests(unittest.TestCase):
 
     def test_partial_reruns_download_the_successful_producers_artifact_ids(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
-        for producer in ("web-package", "budget-tool"):
+        for producer in ("web-package", "size-tool"):
             job = workflow_job(text, producer)
             self.assertIn("artifact_id: ${{ steps.upload.outputs.artifact-id }}", job)
             self.assertIn("id: upload", job)
             self.assertIn("${{ github.run_attempt }}", job)
-        for consumer in ("size-budgets", "build"):
+        for consumer in ("size-report", "build"):
             job = workflow_job(text, consumer)
             self.assertIn("artifact-ids: ${{ needs.web-package.outputs.artifact_id }}", job)
             self.assertNotIn("name: pages-web-package-${{ github.run_attempt }}", job)
-        self.assertIn("artifact-ids: ${{ needs.budget-tool.outputs.artifact_id }}", workflow_job(text, "size-budgets"))
+        self.assertIn("artifact-ids: ${{ needs.size-tool.outputs.artifact_id }}", workflow_job(text, "size-report"))
 
     def test_browser_checks_and_deployment_wait_for_owner_success(self) -> None:
         text = PAGES.read_text(encoding="utf-8")
@@ -100,7 +113,7 @@ class PagesWorkflowTests(unittest.TestCase):
         self.assertIn("playground/test-results", browser)
         self.assertIn("uses: actions/upload-pages-artifact@v5.0.0", browser)
         self.assertNotIn("continue-on-error:", text)
-        tools = workflow_job(text, "budget-tool")
+        tools = workflow_job(text, "size-tool")
         for command in (
             "verify-mermaid-reference",
             "verify-capability-surface",

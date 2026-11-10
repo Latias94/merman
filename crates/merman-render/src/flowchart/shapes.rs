@@ -167,6 +167,33 @@ pub(crate) fn validate_flowchart_model_shapes(
     Ok(())
 }
 
+pub(crate) fn validate_flowchart_node_asset_dimensions(
+    node: &merman_model::families::flowchart::FlowNode,
+) -> Result<()> {
+    let shape = FlowchartShape::resolve(node.layout_shape.as_deref().unwrap_or("squareRect"))?;
+    let uses_asset_dimensions = matches!(
+        shape,
+        FlowchartShape::Icon
+            | FlowchartShape::IconCircle
+            | FlowchartShape::IconRounded
+            | FlowchartShape::IconSquare
+    ) || (shape == FlowchartShape::ImageSquare
+        && node
+            .img
+            .as_deref()
+            .is_some_and(|img| !img.trim().is_empty()));
+    if uses_asset_dimensions {
+        for (name, dimension) in [("width", node.asset_width), ("height", node.asset_height)] {
+            if dimension.is_some_and(|value| !value.is_finite()) {
+                return Err(Error::InvalidModel {
+                    message: format!("Flowchart node {} has non-finite asset {name}", node.id),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn is_flowchart_process_shape(name: &str) -> bool {
     matches!(FlowchartShape::resolve(name), Ok(FlowchartShape::Process))
 }

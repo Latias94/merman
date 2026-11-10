@@ -163,9 +163,15 @@ pub struct BlockNode {
     pub block_type: String,
     /// Indices of direct children in the owning model's `blocks_flat` records.
     pub children: Vec<usize>,
-    pub columns: Option<i64>,
-    pub width_in_columns: Option<i64>,
-    pub width: Option<i64>,
+    /// JavaScript Number column count; `-1.0` selects automatic columns.
+    #[serde(default, with = "crate::number::serde_optional_number")]
+    pub columns: Option<f64>,
+    /// Authored column span, including zero and rounded or overflowing decimal integers.
+    #[serde(default, with = "crate::number::serde_optional_number")]
+    pub width_in_columns: Option<f64>,
+    /// Space expansion count, bounded before parser-owned materialization.
+    #[serde(default, with = "crate::number::serde_optional_number")]
+    pub width: Option<f64>,
     pub classes: Vec<String>,
     pub styles: Vec<String>,
     pub directions: Vec<String>,

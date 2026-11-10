@@ -79,7 +79,16 @@ impl FlowchartBuildState {
                         );
                     }
                 }
-                Stmt::Style(_) => {}
+                Stmt::Style(style) => {
+                    if !self.used_edge_ids.contains(&style.target) {
+                        self.reserve_node(
+                            &style.target,
+                            FlowNodeProvenance::Authored,
+                            FlowNodeSyntax::ExplicitDefinition,
+                            style.target_span,
+                        );
+                    }
+                }
                 Stmt::Subgraph(_) => {}
                 Stmt::Direction(_)
                 | Stmt::ClassDef(_)

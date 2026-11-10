@@ -43,15 +43,6 @@ pub(crate) fn value_to_bool(v: &Value) -> Option<bool> {
     }
 }
 
-#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane",))]
-pub(crate) fn value_to_f64(v: &Value) -> Option<f64> {
-    match v {
-        Value::Number(n) => n.as_f64(),
-        Value::String(s) => s.trim().parse::<f64>().ok(),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

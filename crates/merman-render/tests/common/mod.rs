@@ -1,6 +1,49 @@
 use merman_core::MermaidEngine;
 use merman_core::presentation::SourcePresentationConfig;
 
+#[allow(dead_code)]
+pub fn assert_svg_accessibility(
+    svg: &str,
+    expected_title: Option<&str>,
+    expected_description: Option<&str>,
+) {
+    let document = roxmltree::Document::parse(svg).expect("valid accessibility SVG");
+    let root = document.root_element();
+    for (attribute, tag, expected) in [
+        ("aria-labelledby", "title", expected_title),
+        ("aria-describedby", "desc", expected_description),
+    ] {
+        let nodes = root
+            .children()
+            .filter(|node| node.has_tag_name(tag))
+            .collect::<Vec<_>>();
+        if let Some(expected) = expected {
+            assert_eq!(nodes.len(), 1, "expected one {tag} element");
+            let node = nodes[0];
+            assert_eq!(node.text(), Some(expected), "{tag} text");
+            let id = node
+                .attribute("id")
+                .filter(|id| !id.is_empty())
+                .expect("accessibility node must have a nonempty ID");
+            assert_eq!(root.attribute(attribute), Some(id), "{attribute} target");
+            assert_eq!(
+                document
+                    .descendants()
+                    .filter(|node| node.attribute("id") == Some(id))
+                    .count(),
+                1,
+                "accessibility ID must identify one element"
+            );
+        } else {
+            assert!(nodes.is_empty(), "unexpected {tag} element");
+            assert!(
+                root.attribute(attribute).is_none(),
+                "unexpected {attribute}"
+            );
+        }
+    }
+}
+
 pub fn legacy_init_theme_compat_config() -> SourcePresentationConfig {
     SourcePresentationConfig::from_value(serde_json::json!({
         "secure": [

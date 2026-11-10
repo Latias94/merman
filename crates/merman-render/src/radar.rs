@@ -1,7 +1,6 @@
 #[cfg(test)]
 use crate::RenderResourcePolicy;
 use crate::Result;
-use crate::config::json_f64;
 use crate::model::{
     Bounds, LayoutPoint, RadarAxisLayout, RadarCurveLayout, RadarDiagramLayout,
     RadarGraticuleShapeLayout, RadarLegendItemLayout,
@@ -10,12 +9,12 @@ use crate::resources::OperationWorkMeter;
 use crate::text::TextMeasurer;
 use merman_model::OperationPhase;
 use merman_model::families::radar::{RadarCurve, RadarDiagramModel};
-use serde_json::Value;
 
 mod axis_paint;
 mod config;
 mod css_binding;
 mod paint;
+pub(crate) mod point_list;
 mod text_paint;
 mod theme;
 
@@ -118,42 +117,47 @@ struct RadarTicks {
 }
 
 impl RadarTicks {
-    fn from_value(value: &Value) -> Self {
-        if let Some(value) = value.as_u64() {
-            return Self {
-                value: value as f64,
-                iterations: usize::try_from(value).unwrap_or(usize::MAX),
-            };
-        }
-        let value = value
-            .as_f64()
-            .filter(|value| value.is_finite() && *value > 0.0)
-            .unwrap_or(0.0);
+    fn new(value: f64) -> Self {
         Self {
             value,
-            iterations: value.ceil() as usize,
+            // JavaScript's `i < ticks` performs no iterations for NaN or negatives.
+            // Saturating positive infinity lets the work policy reject unbounded work
+            // without changing canonical model state. Source ticks are already <= 32.
+            iterations: if value > 0.0 {
+                value.ceil() as usize
+            } else {
+                0
+            },
         }
     }
 }
 
 fn fmt_number(v: f64) -> String {
-    if !v.is_finite() {
-        return "0".to_string();
-    }
-    let mut r = (v * 1000.0).round() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
-    }
-    let mut s = format!("{r:.3}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
+    ryu_js::Buffer::new().format(v).to_owned()
+}
+
+pub(crate) fn format_points(points: &[LayoutPoint]) -> String {
+    let mut out = String::new();
+    let mut buffer = ryu_js::Buffer::new();
+    for (index, point) in points.iter().enumerate() {
+        if index > 0 {
+            out.push(' ');
         }
-        if s.ends_with('.') {
-            s.pop();
-        }
+        out.push_str(buffer.format(point.x));
+        out.push(',');
+        out.push_str(buffer.format(point.y));
     }
-    if s == "-0" { "0".to_string() } else { s }
+    out
+}
+
+fn relative_radius(value: f64, min: f64, max: f64, radius: f64) -> f64 {
+    // radar/renderer.ts clips before subtracting, multiplies before dividing,
+    // and lets Math.min/Math.max propagate NaN.
+    if value.is_nan() || min.is_nan() || max.is_nan() {
+        return f64::NAN;
+    }
+    let clipped = value.max(min).min(max);
+    (radius * (clipped - min)) / (max - min)
 }
 
 fn polar_xy(radius: f64, angle: f64) -> LayoutPoint {
@@ -167,11 +171,6 @@ fn closed_round_curve_path(points: &[LayoutPoint], tension: f64) -> String {
     if points.is_empty() {
         return String::new();
     }
-    if points.len() == 1 {
-        let p = points[0].clone();
-        return format!("M{},{}Z", fmt_number(p.x), fmt_number(p.y));
-    }
-
     let mut out = String::new();
     let p0 = points[0].clone();
     out.push_str(&format!("M{},{}", fmt_number(p0.x), fmt_number(p0.y)));
@@ -270,7 +269,7 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
     let title_y = -center_y;
 
     let axis_count = model.axes.len();
-    let ticks = RadarTicks::from_value(&model.options.ticks);
+    let ticks = RadarTicks::new(model.options.ticks);
     let layout_work = RadarLayoutWork::from_model(model, ticks.iterations, work_meter)?;
     work_meter.charge(layout_work.total())?;
     let mut axes: Vec<RadarAxisLayout> = Vec::new();
@@ -325,24 +324,20 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
         }
     }
 
-    let mut inferred_max: f64 = 0.0;
+    let mut inferred_max = f64::NEG_INFINITY;
     for c in &model.curves {
         work_meter.checkpoint(OperationPhase::Layout)?;
         for v in &c.entries {
             work_meter.checkpoint(OperationPhase::Layout)?;
-            if let Some(v) = json_f64(v).filter(|v| v.is_finite()) {
-                inferred_max = inferred_max.max(v);
-            }
+            inferred_max = if inferred_max.is_nan() || v.is_nan() {
+                f64::NAN
+            } else {
+                inferred_max.max(*v)
+            };
         }
     }
-    let max_value = model
-        .options
-        .max
-        .as_ref()
-        .and_then(json_f64)
-        .unwrap_or(inferred_max);
-    let min_value = json_f64(&model.options.min).unwrap_or(0.0);
-    let denom = (max_value - min_value).abs().max(1e-9);
+    let max_value = model.options.max.unwrap_or(inferred_max);
+    let min_value = model.options.min;
 
     let mut curves: Vec<RadarCurveLayout> = Vec::new();
     for (curve_idx, curve) in model.curves.iter().enumerate() {
@@ -356,9 +351,8 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
                 work_meter.checkpoint(OperationPhase::Layout)?;
                 let angle = -std::f64::consts::FRAC_PI_2
                     + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
-                let v = curve.entries.get(i).and_then(json_f64).unwrap_or(min_value);
-                let frac = ((v - min_value) / denom).clamp(0.0, 1.0);
-                points.push(polar_xy(base_radius * frac, angle));
+                let radius = relative_radius(curve.entries[i], min_value, max_value, base_radius);
+                points.push(polar_xy(radius, angle));
             }
         }
         let path_d = if model.options.graticule.trim() == "polygon" {
@@ -422,7 +416,7 @@ mod tests {
     use crate::{Error, RenderResourcePolicy, ResourceLimitId};
     use merman_model::families::radar::{RadarAxis, RadarCurve, RadarDiagramModel, RadarOptions};
     use merman_model::{OperationControl, OperationPhase};
-    use serde_json::{Value, json};
+    use serde_json::json;
 
     fn radar_model_with_entries(entries: &[&[u64]]) -> RadarDiagramModel {
         RadarDiagramModel {
@@ -439,11 +433,11 @@ mod tests {
                 .map(|(index, values)| RadarCurve {
                     name: format!("Curve{index}"),
                     label: format!("Curve {index}"),
-                    entries: values.iter().copied().map(Value::from).collect(),
+                    entries: values.iter().map(|value| *value as f64).collect(),
                 })
                 .collect(),
             options: RadarOptions {
-                ticks: json!(0),
+                ticks: 0.0,
                 ..RadarOptions::default()
             },
             ..RadarDiagramModel::default()
@@ -493,14 +487,41 @@ mod tests {
     }
 
     #[test]
+    fn radar_programmatic_nonfinite_numbers_propagate_through_layout() {
+        for (entry, min, max) in [
+            (f64::NAN, 0.0, None),
+            (1.0, f64::NEG_INFINITY, Some(3.0)),
+            (1.0, 0.0, Some(f64::NEG_INFINITY)),
+            (1.0, 0.0, Some(f64::NAN)),
+        ] {
+            let mut model = radar_model_with_entries(&[&[1, 2, 3]]);
+            model.curves[0].entries[0] = entry;
+            model.options.min = min;
+            model.options.max = max;
+            let layout = layout_radar_diagram_typed(
+                &model,
+                &json!({}),
+                &DeterministicTextMeasurer::default(),
+            )
+            .unwrap();
+            assert!(
+                layout.curves[0]
+                    .points
+                    .iter()
+                    .all(|point| point.x.is_nan() && point.y.is_nan())
+            );
+            assert!(layout.curves[0].path_d.starts_with("MNaN,NaN CNaN,NaN"));
+        }
+    }
+
+    #[test]
     fn radar_fractional_ticks_use_ceil_iterations_and_the_original_denominator() {
         for graticule in ["circle", "polygon"] {
             for (ticks, radii) in [
-                (json!(2), vec![150.0, 300.0]),
-                (json!(2.0), vec![150.0, 300.0]),
-                (json!(2.5), vec![120.0, 240.0, 360.0]),
-                (json!(0.5), vec![600.0]),
-                (json!(0), Vec::new()),
+                (2.0, vec![150.0, 300.0]),
+                (2.5, vec![120.0, 240.0, 360.0]),
+                (0.5, vec![600.0]),
+                (0.0, Vec::new()),
             ] {
                 let mut model = radar_model_with_entries(&[&[1, 2, 3]]);
                 model.options.graticule = graticule.to_owned();
@@ -527,25 +548,14 @@ mod tests {
     }
 
     #[test]
-    fn radar_invalid_or_nonpositive_typed_ticks_do_not_generate_iterations() {
-        for value in [
-            Value::Null,
-            json!(0),
-            json!(0.0),
-            json!(-1),
-            json!(-0.5),
-            json!("NaN"),
-            json!("Infinity"),
-            json!("-Infinity"),
-        ] {
-            let ticks = RadarTicks::from_value(&value);
+    fn radar_nonpositive_or_nan_typed_ticks_do_not_generate_iterations() {
+        for value in [0.0, -0.0, -1.0, -0.5, f64::NAN, f64::NEG_INFINITY] {
+            let ticks = RadarTicks::new(value);
             assert_eq!(ticks.iterations, 0, "{value}");
-            assert!(ticks.value.is_finite(), "{value}");
+            assert_eq!(ticks.value.to_bits(), value.to_bits());
         }
-        assert_eq!(
-            RadarTicks::from_value(&json!(u64::MAX)).iterations,
-            usize::MAX
-        );
+        assert_eq!(RadarTicks::new(u64::MAX as f64).iterations, usize::MAX);
+        assert_eq!(RadarTicks::new(f64::INFINITY).iterations, usize::MAX);
     }
 
     #[test]
@@ -558,7 +568,7 @@ mod tests {
         ] {
             let mut model = radar_model_with_entries(&[&[100, 1], &[1, 2, 3], &[1, 2, 3, 200]]);
             model.options.graticule = graticule.to_owned();
-            model.options.ticks = json!(2.5);
+            model.options.ticks = 2.5;
             model.options.show_legend = show_legend;
             let exact = RenderResourcePolicy::unbounded_for_trusted_input()
                 .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected_work)
@@ -595,7 +605,7 @@ mod tests {
     #[test]
     fn radar_layout_observes_cancellation_before_and_during_fractional_graticules() {
         let mut model = RadarDiagramModel::default();
-        model.options.ticks = json!(2.5);
+        model.options.ticks = 2.5;
         for checkpoints in [0, 2] {
             let control = OperationControl::new();
             control.cancel_after_checkpoints(checkpoints);
@@ -640,19 +650,19 @@ mod tests {
                 RadarCurve {
                     name: "one".to_string(),
                     label: "One".to_string(),
-                    entries: vec![json!(1.0), json!(2.0), json!(3.0)],
+                    entries: vec![1.0, 2.0, 3.0],
                 },
                 RadarCurve {
                     name: "two".to_string(),
                     label: "Two".to_string(),
-                    entries: vec![json!(3.0), json!(2.0), json!(1.0)],
+                    entries: vec![3.0, 2.0, 1.0],
                 },
             ],
             options: RadarOptions {
                 show_legend: true,
-                ticks: json!(3),
-                min: json!(0.0),
-                max: Some(json!(3.0)),
+                ticks: 3.0,
+                min: 0.0,
+                max: Some(3.0),
                 graticule: "circle".to_string(),
             },
             ..Default::default()
@@ -671,7 +681,7 @@ mod tests {
     #[test]
     fn radar_work_budget_is_checked_before_the_layout_allocates_shapes() {
         let mut model = RadarDiagramModel::default();
-        model.options.ticks = json!(3);
+        model.options.ticks = 3.0;
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
@@ -706,7 +716,7 @@ mod tests {
             ],
             ..Default::default()
         };
-        model.options.ticks = json!(3);
+        model.options.ticks = 3.0;
         model.options.graticule = "polygon".to_string();
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
@@ -728,9 +738,7 @@ mod tests {
     }
 
     #[test]
-    fn radar_too_large_unsigned_tick_count_is_rejected_without_integer_wraparound() {
-        let mut model = RadarDiagramModel::default();
-        model.options.ticks = json!(u64::MAX);
+    fn radar_unbounded_typed_tick_counts_are_rejected_without_rewriting_the_model() {
         let measurer = DeterministicTextMeasurer {
             char_width_factor: 8.0,
             line_height_factor: 16.0,
@@ -739,14 +747,22 @@ mod tests {
             .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 1)
             .unwrap();
 
-        let error =
-            layout_radar_diagram_typed_with_resource_policy(&model, &json!({}), &measurer, limits)
-                .unwrap_err();
-
-        let Error::ResourceLimitExceeded(error) = error else {
-            panic!("expected resource limit error");
-        };
-        assert_eq!(error.limit, "max_layout_work_units");
-        assert_eq!(error.actual, usize::MAX);
+        for ticks in [u64::MAX as f64, f64::INFINITY] {
+            let mut model = RadarDiagramModel::default();
+            model.options.ticks = ticks;
+            let error = layout_radar_diagram_typed_with_resource_policy(
+                &model,
+                &json!({}),
+                &measurer,
+                limits,
+            )
+            .unwrap_err();
+            let Error::ResourceLimitExceeded(error) = error else {
+                panic!("expected resource limit error");
+            };
+            assert_eq!(error.limit, "max_layout_work_units");
+            assert_eq!(error.actual, usize::MAX);
+            assert_eq!(model.options.ticks.to_bits(), ticks.to_bits());
+        }
     }
 }

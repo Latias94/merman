@@ -15,6 +15,24 @@ use std::cell::RefCell;
 const EPSILON: f64 = 1.0e-9;
 
 #[test]
+fn annotation_number_admission_rejects_nan_before_numeric_sorting() {
+    let model = WardleyDiagramModel {
+        annotations: vec![WardleyAnnotation {
+            number: f64::NAN,
+            coordinates: vec![point(50.0, 50.0)],
+            text: Some("Invalid direct number".into()),
+        }],
+        annotations_box: Some(point(10.0, 10.0)),
+        ..Default::default()
+    };
+    let error = layout_wardley_diagram_typed(&model, None, &json!({}), &PrimitiveProbe::default())
+        .expect_err("NaN must not reach a numeric sort comparator");
+    assert!(
+        matches!(error, Error::InvalidModel { message } if message == "Wardley annotation numbers must not be NaN")
+    );
+}
+
+#[test]
 fn annotations_measure_the_family_font_override_used_by_svg() {
     struct FontProbe(RefCell<Vec<String>>);
     impl TextMeasurer for FontProbe {
@@ -410,8 +428,8 @@ fn strategies_market_inertia_and_labels_are_fully_positioned() {
     buy.source_strategy = Some(WardleySourceStrategy::Buy);
     let mut outsource = node("outsource", 50.0, 60.0);
     outsource.source_strategy = Some(WardleySourceStrategy::Outsource);
-    outsource.label_offset_x = Some(2);
-    outsource.label_offset_y = Some(3);
+    outsource.label_offset_x = Some(2.0);
+    outsource.label_offset_y = Some(3.0);
     let mut market = node("market", 70.0, 60.0);
     market.source_strategy = Some(WardleySourceStrategy::Market);
     let mut parent = node("parent", 90.0, 60.0);
@@ -485,17 +503,17 @@ fn annotations_use_exact_dom_primitives_source_buffer_and_clamping() {
     let model = WardleyDiagramModel {
         annotations: vec![
             WardleyAnnotation {
-                number: 2,
+                number: 2.0,
                 coordinates: vec![point(10.0, 20.0), point(30.0, 40.0)],
                 text: Some("long".into()),
             },
             WardleyAnnotation {
-                number: 1,
+                number: 1.0,
                 coordinates: vec![point(50.0, 60.0)],
                 text: Some("short".into()),
             },
             WardleyAnnotation {
-                number: 3,
+                number: 3.0,
                 coordinates: vec![point(70.0, 80.0)],
                 text: Some(String::new()),
             },

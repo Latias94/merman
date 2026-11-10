@@ -1,4 +1,5 @@
 use crate::SourceSpan;
+use crate::diagrams::scan::is_ecmascript_whitespace;
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
@@ -301,7 +302,7 @@ fn parse_acc_descr(source: &str, offset: usize, token_start: usize) -> Option<La
         );
     }
 
-    let opening = skip_javascript_whitespace(source, keyword_end);
+    let opening = skip_ecmascript_whitespace(source, keyword_end);
     if source.as_bytes().get(opening) != Some(&b'{') {
         return None;
     }
@@ -351,8 +352,8 @@ fn parsed_inline(
 ) -> Option<LangiumCommonParse> {
     let eol = consume_required_eol(source, raw_end)?;
     let capture = source.get(capture_start..raw_end)?;
-    let trimmed = capture.trim();
-    let leading = capture.len() - capture.trim_start().len();
+    let trimmed = capture.trim_matches(is_ecmascript_whitespace);
+    let leading = capture.len() - capture.trim_start_matches(is_ecmascript_whitespace).len();
     let value_start = capture_start + leading;
     let value_span = SourceSpan::new(value_start, value_start + trimmed.len());
     Some(LangiumCommonParse {
@@ -380,6 +381,12 @@ fn inline_terminal_end(source: &str, start: usize) -> usize {
     cursor
 }
 
+fn single_line_comment_end(source: &str, start: usize) -> usize {
+    source[start..]
+        .find(['\r', '\n'])
+        .map_or(source.len(), |relative| start + relative)
+}
+
 struct ConsumedEol {
     end: usize,
     trailing_whitespace_span: Option<SourceSpan>,
@@ -388,7 +395,7 @@ struct ConsumedEol {
 fn consume_required_eol(source: &str, raw_end: usize) -> Option<ConsumedEol> {
     let mut cursor = raw_end + horizontal_whitespace_len(source.get(raw_end..)?);
     if source.get(cursor..)?.starts_with("%%") {
-        cursor = inline_terminal_end(source, cursor + 2);
+        cursor = single_line_comment_end(source, cursor + 2);
     }
     if cursor == source.len() {
         return Some(ConsumedEol {
@@ -404,7 +411,7 @@ fn consume_required_eol(source: &str, raw_end: usize) -> Option<ConsumedEol> {
         let mut next = cursor + horizontal_whitespace_len(source.get(cursor..)?);
         let comment = source.get(next..)?.starts_with("%%");
         if comment {
-            next = inline_terminal_end(source, next + 2);
+            next = single_line_comment_end(source, next + 2);
         } else if next > trivia_start
             && (next == source.len() || consume_newline(source, next).is_some())
         {
@@ -446,13 +453,13 @@ fn is_horizontal_whitespace(ch: char) -> bool {
     matches!(ch, ' ' | '\t')
 }
 
-fn skip_javascript_whitespace(source: &str, start: usize) -> usize {
+fn skip_ecmascript_whitespace(source: &str, start: usize) -> usize {
     let mut cursor = start;
     let Some(rest) = source.get(start..) else {
         return cursor;
     };
     for ch in rest.chars() {
-        if !is_javascript_whitespace(ch) {
+        if !is_ecmascript_whitespace(ch) {
             break;
         }
         cursor += ch.len_utf8();
@@ -460,23 +467,43 @@ fn skip_javascript_whitespace(source: &str, start: usize) -> usize {
     cursor
 }
 
-fn is_javascript_whitespace(ch: char) -> bool {
-    ch.is_whitespace() || matches!(ch, '\u{000B}' | '\u{000C}' | '\u{FEFF}')
-}
-
 fn normalized_block_value(source: &str, start: usize, end: usize) -> (String, SourceSpan) {
     let raw = &source[start..end];
-    let leading = raw.len() - raw.trim_start().len();
-    let trimmed = raw.trim();
+    let leading = raw.len() - raw.trim_start_matches(is_ecmascript_whitespace).len();
+    let trimmed = raw.trim_matches(is_ecmascript_whitespace);
     let value_start = start + leading;
     let value_span = SourceSpan::new(value_start, value_start + trimmed.len());
-    let value = raw
-        .lines()
-        .map(str::trim)
-        .map(collapse_horizontal_runs)
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n");
+    let mut value = String::with_capacity(trimmed.len());
+    let mut content_end = 0;
+    let mut horizontal = None;
+    let mut after_line_break = false;
+    for ch in trimmed.chars() {
+        if !is_ecmascript_whitespace(ch) {
+            if let Some(pending) = horizontal.take() {
+                value.push(pending);
+            }
+            value.push(ch);
+            content_end = value.len();
+            after_line_break = false;
+            continue;
+        }
+        if after_line_break {
+            continue;
+        }
+        if is_ecmascript_line_terminator(ch) {
+            value.truncate(content_end);
+            value.push(if ch == '\r' { '\n' } else { ch });
+            horizontal = None;
+            after_line_break = true;
+        } else if is_horizontal_whitespace(ch) {
+            horizontal = Some(if horizontal.is_some() { ' ' } else { ch });
+        } else {
+            if let Some(pending) = horizontal.take() {
+                value.push(pending);
+            }
+            value.push(ch);
+        }
+    }
     (value, value_span)
 }
 
@@ -692,6 +719,202 @@ mod tests {
                 "source: {:?}",
                 case.source
             );
+            assert!(parsed.diagnostic.is_none());
+        }
+    }
+
+    #[test]
+    fn common_comments_preserve_exact_terminal_and_trailing_trivia_ranges() {
+        let prefix = "前\r\n";
+        let comment = "%% first %% \"unclosed ' %% final";
+        for (field, raw, value_source, value) in [
+            (LangiumCommonField::Title, "\ttitle  α   β ", "α   β", "α β"),
+            (
+                LangiumCommonField::AccTitle,
+                "\taccTitle:  α   β ",
+                "α   β",
+                "α β",
+            ),
+            (
+                LangiumCommonField::AccDescr,
+                "\taccDescr:  α   β ",
+                "α   β",
+                "α β",
+            ),
+            (
+                LangiumCommonField::AccDescr,
+                "\taccDescr { α   β }",
+                "α   β",
+                "α β",
+            ),
+            (
+                LangiumCommonField::AccDescr,
+                "\taccDescr { α %% \"literal %% β }",
+                "α %% \"literal %% β",
+                "α %% \"literal %% β",
+            ),
+        ] {
+            for newline in ["\n", "\r\n"] {
+                for (suffix, remainder, blank_start) in [
+                    (comment.to_string(), "", None),
+                    (format!("{comment}{newline}"), "next", None),
+                    (
+                        format!("{newline} \t{newline}\t{comment}{newline}"),
+                        "next",
+                        Some(newline.len()),
+                    ),
+                    (
+                        format!("{newline} \t{newline}\t{comment}"),
+                        "",
+                        Some(newline.len()),
+                    ),
+                    (
+                        format!("{comment}{newline} \t{newline}\t{comment}{newline}"),
+                        "next",
+                        Some(comment.len() + newline.len()),
+                    ),
+                ] {
+                    let source = format!("{prefix}{raw}{suffix}{remainder}");
+                    let parsed = parse_langium_common(&source, prefix.len())
+                        .unwrap_or_else(|| panic!("comment did not parse: {source:?}"));
+                    let value_start = prefix.len() + raw.find(value_source).unwrap();
+                    let trailing = blank_start.map(|relative| {
+                        let start = prefix.len() + raw.len() + relative;
+                        SourceSpan::new(start, start + " \t".len())
+                    });
+
+                    assert_eq!(parsed.fact.field, field, "source: {source:?}");
+                    assert_eq!(parsed.fact.value, value, "source: {source:?}");
+                    assert_eq!(
+                        parsed.consumed,
+                        raw.len() + suffix.len(),
+                        "source: {source:?}"
+                    );
+                    assert_eq!(
+                        parsed.fact.raw_span,
+                        SourceSpan::new(prefix.len(), prefix.len() + raw.len()),
+                        "source: {source:?}"
+                    );
+                    assert_eq!(
+                        parsed.fact.value_span,
+                        SourceSpan::new(value_start, value_start + value_source.len()),
+                        "source: {source:?}"
+                    );
+                    assert_eq!(
+                        parsed.trailing_whitespace_span, trailing,
+                        "source: {source:?}"
+                    );
+                    assert_eq!(&source[prefix.len() + parsed.consumed..], remainder);
+                    assert!(parsed.diagnostic.is_none(), "source: {source:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn common_values_use_ecmascript_trim_with_original_payload_ranges() {
+        let prefix = "前\r\n";
+        for (field, opening, closing) in [
+            (LangiumCommonField::Title, "\ttitle ", ""),
+            (LangiumCommonField::AccTitle, "\taccTitle:", ""),
+            (LangiumCommonField::AccDescr, "\taccDescr:", ""),
+            (LangiumCommonField::AccDescr, "\taccDescr {", "}"),
+        ] {
+            for (payload, expected) in [
+                ("\u{0085}Value\u{0085}", "\u{0085}Value\u{0085}"),
+                ("\u{feff}Value\u{feff}", "Value"),
+                (
+                    "\u{feff}\u{0085}Value\u{0085}\u{feff}",
+                    "\u{0085}Value\u{0085}",
+                ),
+                ("\u{0085}", "\u{0085}"),
+            ] {
+                let raw = format!("{opening}{payload}{closing}");
+                let source = format!("{prefix}{raw}\r\nnext");
+                let parsed = parse_langium_common(&source, prefix.len()).unwrap();
+                let start = prefix.len() + opening.len() + payload.find(expected).unwrap();
+
+                assert_eq!(parsed.fact.field, field, "source: {source:?}");
+                assert_eq!(parsed.fact.value, expected, "source: {source:?}");
+                assert_eq!(parsed.consumed, raw.len() + "\r\n".len());
+                assert_eq!(
+                    parsed.fact.raw_span,
+                    SourceSpan::new(prefix.len(), prefix.len() + raw.len())
+                );
+                assert_eq!(
+                    parsed.fact.value_span,
+                    SourceSpan::new(start, start + expected.len()),
+                    "source: {source:?}"
+                );
+                assert!(!parsed.fact.value.contains('\u{feff}'));
+                assert!(parsed.diagnostic.is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn block_description_gap_uses_ecmascript_whitespace() {
+        for gap in ["\u{feff}", "\u{feff}\r\n \t"] {
+            let raw = format!("\taccDescr{gap}{{ Value }}");
+            let source = format!("{raw}\nnext");
+            let parsed = parse_langium_common(&source, 0).unwrap();
+            let start = source.find("Value").unwrap();
+
+            assert_eq!(parsed.fact.value, "Value");
+            assert_eq!(parsed.fact.raw_span, SourceSpan::new(0, raw.len()));
+            assert_eq!(parsed.fact.value_span, SourceSpan::new(start, start + 5));
+            assert_eq!(parsed.consumed, raw.len() + 1);
+            assert!(parsed.diagnostic.is_none());
+        }
+        for gap in ["\u{0085}", "\u{feff}\u{0085}", "\n\u{0085}\n"] {
+            let source = format!("accDescr{gap}{{ Value }}\n");
+            assert!(
+                parse_langium_common(&source, 0).is_none(),
+                "accepted {source:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn block_description_values_follow_public_pipeline_line_boundaries() {
+        for (payload, value_source, expected) in [
+            ("A\u{2028} B", "A\u{2028} B", "A\u{2028}B"),
+            ("A \u{2029} B", "A \u{2029} B", "A\u{2029}B"),
+            ("A\n\u{2028} B", "A\n\u{2028} B", "A\nB"),
+            ("A\u{2028}\n B", "A\u{2028}\n B", "A\u{2028}B"),
+            ("A\u{2028}\u{2029} B", "A\u{2028}\u{2029} B", "A\u{2028}B"),
+            ("A\r\n B", "A\r\n B", "A\nB"),
+            ("A\n\r B", "A\n\r B", "A\nB"),
+            ("A\r B", "A\r B", "A\nB"),
+            ("A\n\n B", "A\n\n B", "A\nB"),
+            ("A\u{2028}\u{2028} B", "A\u{2028}\u{2028} B", "A\u{2028}B"),
+            (
+                " \u{2028} A\n \u{2029} B\u{2028} ",
+                "A\n \u{2029} B",
+                "A\nB",
+            ),
+            ("A\t\tB\u{2028} C", "A\t\tB\u{2028} C", "A B\u{2028}C"),
+            ("A\n \u{2028} \n B", "A\n \u{2028} \n B", "A\nB"),
+            ("A\n\u{0085}\n B", "A\n\u{0085}\n B", "A\n\u{0085}\nB"),
+            (
+                "\u{0085}\n Value\n\u{0085}",
+                "\u{0085}\n Value\n\u{0085}",
+                "\u{0085}\nValue\n\u{0085}",
+            ),
+            ("\u{feff}\n Value\n\u{feff}", "Value", "Value"),
+        ] {
+            let raw = format!("accDescr{{{payload}}}");
+            let source = format!("{raw}\n");
+            let parsed = parse_langium_common(&source, 0).unwrap();
+            let start = source.find(value_source).unwrap();
+
+            assert_eq!(parsed.fact.value, expected, "source: {source:?}");
+            assert_eq!(parsed.fact.raw_span, SourceSpan::new(0, raw.len()));
+            assert_eq!(
+                parsed.fact.value_span,
+                SourceSpan::new(start, start + value_source.len())
+            );
+            assert_eq!(parsed.consumed, source.len());
             assert!(parsed.diagnostic.is_none());
         }
     }
@@ -923,6 +1146,75 @@ mod tests {
                 let selected = &source[descr.selection.start..descr.selection.end];
                 assert!(selected.starts_with("First"), "family: {}", case.id);
                 assert!(selected.contains("Second\t\tline"), "family: {}", case.id);
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "all-diagrams", feature = "compat-json"))]
+    fn importing_families_keep_common_comments_and_ecmascript_boundary_values() {
+        let comment = "%% first %% \"unclosed ' %% final";
+        for case in family_cases() {
+            for boundary in ["", "\u{0085}", "\u{feff}"] {
+                let expected_boundary = if boundary == "\u{0085}" { boundary } else { "" };
+                let title = format!("{expected_boundary}Value{expected_boundary}");
+                let acc_title = format!("{expected_boundary}Accessible{expected_boundary}");
+                #[cfg(feature = "editor-facts")]
+                let scalar = format!("{expected_boundary}Scalar{expected_boundary}");
+                let descr = format!(
+                    "{expected_boundary}Help %% \"literal %%\u{2028}Next{expected_boundary}"
+                );
+                #[cfg(feature = "editor-facts")]
+                let descr_source = format!(
+                    "{expected_boundary}Help %% \"literal %%\u{2028}  Next{expected_boundary}"
+                );
+                let source = format!(
+                    "{}\r\n  title {boundary}Value{boundary} {comment}\r\n  accTitle: {boundary}Accessible{boundary} {comment}\r\n  accDescr: {boundary}Scalar{boundary} {comment}\r\n \t\r\n  {comment}\r\n  accDescr\u{feff}{{ {boundary}Help %% \"literal %%\u{2028}  Next{boundary} }} {comment}\r\n{}",
+                    case.header, case.tail
+                );
+                let meta = metadata(case.id);
+                let model = (case.parser)(&source, &meta)
+                    .unwrap_or_else(|error| panic!("{} common parse failed: {error}", case.id));
+
+                if case.retains_title {
+                    assert_eq!(model["title"], title, "family: {}", case.id);
+                } else {
+                    assert!(model.get("title").is_none(), "family: {}", case.id);
+                }
+                if case.id == "info" {
+                    assert!(model.get("accTitle").is_none());
+                    assert!(model.get("accDescr").is_none());
+                } else {
+                    assert_eq!(model["accTitle"], acc_title, "family: {}", case.id);
+                    assert_eq!(model["accDescr"], descr, "family: {}", case.id);
+                }
+
+                #[cfg(feature = "editor-facts")]
+                {
+                    let editor =
+                        crate::family::test_support::editor_facts(case.combined, &source, &meta);
+                    assert_eq!(editor.completeness, EditorSemanticCompleteness::Complete);
+                    assert!(editor.diagnostics.is_empty(), "family: {}", case.id);
+                    for (expected, payload_source) in [
+                        (&title, title.as_str()),
+                        (&acc_title, acc_title.as_str()),
+                        (&scalar, scalar.as_str()),
+                        (&descr, descr_source.as_str()),
+                    ] {
+                        let start = source.find(payload_source).unwrap();
+                        let symbol = editor
+                            .symbols
+                            .iter()
+                            .find(|symbol| &symbol.name == expected)
+                            .unwrap_or_else(|| panic!("{} missing {expected:?}", case.id));
+                        assert_eq!(
+                            symbol.selection,
+                            SourceSpan::new(start, start + payload_source.len()),
+                            "family: {}",
+                            case.id
+                        );
+                    }
+                }
             }
         }
     }

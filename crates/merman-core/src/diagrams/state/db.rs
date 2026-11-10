@@ -1,5 +1,6 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
+use crate::diagrams::scan::is_ecmascript_whitespace;
 use crate::sanitize::{sanitize_text, sanitize_text_or_array};
 use crate::{
     Error, MermaidConfig, OperationCancelled, OperationControl, OperationControlResult, Result,
@@ -117,11 +118,11 @@ impl StateDb {
     }
 
     fn translate_state_ref(parent_id: &str, s: &mut StateStatementState, first: bool) {
-        if s.id.trim() == "[*]" {
+        if s.id.trim_matches(is_ecmascript_whitespace) == "[*]" {
             s.id = format!("{}_{}", parent_id, if first { "start" } else { "end" });
             s.start = Some(first);
         } else {
-            s.id = s.id.trim().to_string();
+            s.id = s.id.trim_matches(is_ecmascript_whitespace).to_string();
         }
     }
 
@@ -230,7 +231,10 @@ impl StateDb {
                 StateStatement::Style { ids, styles } => self.handle_style_def(ids, styles),
                 StateStatement::Direction(dir) => self.direction = Some(dir.clone()),
                 StateStatement::AccTitle(t) => self.acc_title = Some(t.clone()),
-                StateStatement::AccDescr(d) => self.acc_descr = Some(normalize_multiline_ws(d)),
+                StateStatement::AccDescr(d) => {
+                    // Grammar trims first; commonDb sanitizes before folding newline whitespace.
+                    self.acc_descr = Some(d.trim_matches(is_ecmascript_whitespace).to_string());
+                }
                 StateStatement::Click(c) => self.add_link(&c.id, &c.url, &c.tooltip),
                 StateStatement::Noop => {}
             }
@@ -251,7 +255,7 @@ impl StateDb {
     }
 
     fn ensure_state(&mut self, id: &str) -> &mut StateDbRecord {
-        let id = id.trim().to_string();
+        let id = id.trim_matches(is_ecmascript_whitespace).to_string();
         match self.states.entry(id.clone()) {
             Entry::Occupied(entry) => entry.into_mut(),
             Entry::Vacant(entry) => {
@@ -271,7 +275,11 @@ impl StateDb {
     }
 
     fn add_description(&mut self, id: &str, descr: &str) {
-        let clean = descr.trim().trim_start_matches(':').trim().to_string();
+        let clean = descr
+            .trim_matches(is_ecmascript_whitespace)
+            .trim_start_matches(':')
+            .trim_matches(is_ecmascript_whitespace)
+            .to_string();
         if clean.is_empty() {
             return;
         }
@@ -279,7 +287,7 @@ impl StateDb {
     }
 
     fn add_state(&mut self, state: &StateStatementState) {
-        let id = state.id.trim();
+        let id = state.id.trim_matches(is_ecmascript_whitespace);
         let st = self.ensure_state(id);
         if st.ty == "default" && state.ty != "default" {
             st.ty = state.ty.clone();
@@ -314,14 +322,14 @@ impl StateDb {
         s2: &StateStatementState,
         title: Option<&str>,
     ) {
-        let id1 = s1.id.trim();
-        let id2 = s2.id.trim();
+        let id1 = s1.id.trim_matches(is_ecmascript_whitespace);
+        let id2 = s2.id.trim_matches(is_ecmascript_whitespace);
 
         self.add_state(s1);
         self.add_state(s2);
 
         let relation_title = title
-            .map(|t| t.trim().to_string())
+            .map(|t| t.trim_matches(is_ecmascript_whitespace).to_string())
             .filter(|s| !s.is_empty());
 
         // Mermaid `@11.12.2` self-loops are special-cased during rendering/layout (fixed
@@ -347,9 +355,9 @@ impl StateDb {
     fn add_style_class(&mut self, id: &str, style_attributes: &str) {
         let entry = self
             .style_classes
-            .entry(id.trim().to_string())
+            .entry(id.trim_matches(is_ecmascript_whitespace).to_string())
             .or_insert_with(|| StyleClass {
-                id: id.trim().to_string(),
+                id: id.trim_matches(is_ecmascript_whitespace).to_string(),
                 styles: Vec::new(),
                 text_styles: Vec::new(),
             });
@@ -359,7 +367,7 @@ impl StateDb {
                 .split_once(';')
                 .map(|(a, _)| a)
                 .unwrap_or(attrib)
-                .trim()
+                .trim_matches(is_ecmascript_whitespace)
                 .to_string();
             if fixed.is_empty() {
                 continue;
@@ -375,36 +383,46 @@ impl StateDb {
 
     fn set_css_class(&mut self, item_ids: &str, css_class_name: &str) {
         for id in item_ids.split(',') {
-            let trimmed = id.trim();
+            let trimmed = id.trim_matches(is_ecmascript_whitespace);
             if trimmed.is_empty() {
                 continue;
             }
-            self.ensure_state(trimmed)
-                .classes
-                .push(css_class_name.trim().to_string());
+            self.ensure_state(trimmed).classes.push(
+                css_class_name
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string(),
+            );
         }
     }
 
     fn set_style(&mut self, item_id: &str, style_text: &str) {
-        self.ensure_state(item_id)
-            .styles
-            .push(style_text.trim().to_string());
+        self.ensure_state(item_id).styles.push(
+            style_text
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string(),
+        );
     }
 
     fn set_text_style(&mut self, item_id: &str, style_text: &str) {
-        self.ensure_state(item_id)
-            .text_styles
-            .push(style_text.trim().to_string());
+        self.ensure_state(item_id).text_styles.push(
+            style_text
+                .trim_matches(is_ecmascript_whitespace)
+                .to_string(),
+        );
     }
 
     fn handle_style_def(&mut self, ids: &str, styles: &str) {
         let styles_vec: Vec<String> = styles
             .split(',')
-            .map(|s| s.replace(';', "").trim().to_string())
+            .map(|s| {
+                s.replace(';', "")
+                    .trim_matches(is_ecmascript_whitespace)
+                    .to_string()
+            })
             .filter(|s| !s.is_empty())
             .collect();
         for id in ids.split(',') {
-            let trimmed = id.trim();
+            let trimmed = id.trim_matches(is_ecmascript_whitespace);
             if trimmed.is_empty() {
                 continue;
             }
@@ -710,7 +728,11 @@ fn apply_state_descriptions(
     let mut descriptions = primary_description
         .into_iter()
         .chain(additional_descriptions.iter().map(String::as_str))
-        .filter(|description| !description.trim().is_empty())
+        .filter(|description| {
+            !description
+                .trim_matches(is_ecmascript_whitespace)
+                .is_empty()
+        })
         .peekable();
     if descriptions.peek().is_none() {
         return;
@@ -1037,7 +1059,8 @@ fn build_state_graph(
         let class_str = db_state.map(|s| s.classes.join(" ")).unwrap_or_default();
         let styles = db_state.map(|s| s.styles.clone()).unwrap_or_default();
         #[cfg(feature = "presentation")]
-        let user_styled = !class_str.trim().is_empty() || !styles.is_empty();
+        let user_styled =
+            !class_str.trim_matches(is_ecmascript_whitespace).is_empty() || !styles.is_empty();
         #[cfg(feature = "presentation")]
         let (wrapping_width, min_width) = if ctx.collect_presentation {
             (
@@ -1054,8 +1077,8 @@ fn build_state_graph(
 
         let entry = ctx.node_db.entry(item_id.clone()).or_insert_with(|| {
             let mut css_classes = String::new();
-            if !class_str.trim().is_empty() {
-                css_classes.push_str(class_str.trim());
+            if !class_str.trim_matches(is_ecmascript_whitespace).is_empty() {
+                css_classes.push_str(class_str.trim_matches(is_ecmascript_whitespace));
                 css_classes.push(' ');
             }
             css_classes.push_str(CSS_DIAGRAM_STATE);
@@ -1387,24 +1410,6 @@ fn build_state_graph(
         #[cfg(feature = "presentation")]
         presentation,
     })
-}
-
-fn normalize_multiline_ws(input: &str) -> String {
-    let trimmed = input.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
-    let mut out = String::with_capacity(trimmed.len());
-    let mut chars = trimmed.chars().peekable();
-    while let Some(ch) = chars.next() {
-        out.push(ch);
-        if ch == '\n' {
-            while chars
-                .peek()
-                .is_some_and(|c| crate::diagrams::scan::is_ecmascript_whitespace(*c))
-            {
-                chars.next();
-            }
-        }
-    }
-    out
 }
 
 #[cfg(all(test, feature = "compat-json"))]

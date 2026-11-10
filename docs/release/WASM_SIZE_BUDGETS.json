@@ -1,44 +1,14 @@
 {
   "schema_version": 2,
-  "updated": "2026-11-09",
+  "updated": "2026-11-10",
   "compression_source": "stripped",
-  "notes": "Each ceiling uses measured bytes plus 3%, rounded upward to 1,000 bytes. Web measures final assembled npm WASM with wasm-tools strip --all; Typst retains release wasm-opt -Oz and strip. Compression uses stripped bytes. The 2026-11-09 follow-up changes only web-full raw and stripped ceilings using frozen PR head bf6d9aa31 and CI run 42548444488; the other 22 ceilings, capabilities, production recipes, compression and functional gates remain unchanged. Exact source/package identities, main controls, measurements, attribution and Web decisions are maintained in docs/performance/binding_wasm_budget_2026-11-01.md. Earlier boundary and Typst decisions remain in docs/performance/semantic_wasm_budget_2026-10-25.md, docs/performance/typst_theme_budget_2026-11-05.md and docs/performance/dependency_wasm_budget_2026-11-06.md. Budget acceptance does not establish equal-capability savings, latency or memory results.",
+  "notes": "Typst publication retains its existing raw, optimized/stripped, gzip and Brotli ceilings. Compression uses the final stripped artifact. Web and Playground artifact sizes are reported without ceilings. Historical Web measurements and retired budget decisions remain in docs/performance/binding_wasm_budget_2026-11-01.md; Typst decisions remain in docs/performance/typst_theme_budget_2026-11-05.md and docs/performance/dependency_wasm_budget_2026-11-06.md.",
   "artifact_profiles": {
     "typst-wasm": {
       "max_raw_bytes": 26285000,
       "max_stripped_bytes": 13178000,
       "max_gzip_bytes": 4996000,
       "max_brotli_bytes": 3697000
-    },
-    "web-analysis": {
-      "max_raw_bytes": 4156000,
-      "max_stripped_bytes": 4155000,
-      "max_gzip_bytes": 1586000,
-      "max_brotli_bytes": 1211000
-    },
-    "web-ascii": {
-      "max_raw_bytes": 5861000,
-      "max_stripped_bytes": 5861000,
-      "max_gzip_bytes": 2161000,
-      "max_brotli_bytes": 1630000
-    },
-    "web-editor": {
-      "max_raw_bytes": 4272000,
-      "max_stripped_bytes": 4272000,
-      "max_gzip_bytes": 1632000,
-      "max_brotli_bytes": 1242000
-    },
-    "web-full": {
-      "max_raw_bytes": 18271000,
-      "max_stripped_bytes": 18270000,
-      "max_gzip_bytes": 6775000,
-      "max_brotli_bytes": 4987000
-    },
-    "web-render": {
-      "max_raw_bytes": 16165000,
-      "max_stripped_bytes": 16164000,
-      "max_gzip_bytes": 6056000,
-      "max_brotli_bytes": 4431000
     }
   }
 }

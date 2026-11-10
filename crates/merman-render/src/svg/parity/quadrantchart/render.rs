@@ -92,23 +92,19 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     effective_config: &serde_json::Value,
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
-    if point_theme.point_count() != layout.points.len() {
+    if point_theme.point_count() != layout.points.len() || model.points.len() != layout.points.len()
+    {
         return Err(crate::Error::InvalidModel {
             message: "Quadrant Chart point theme plan does not match the terminal layout"
                 .to_string(),
         });
     }
     let diagram_id = options.diagram_id_or("quadrantchart");
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|title| !title.is_empty());
     let acc_descr = model
         .acc_descr
         .as_deref()
-        .map(|description| description.trim_end_matches('\n'))
-        .filter(|description| !description.trim().is_empty());
+        .filter(|description| !description.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let use_max_width = crate::quadrantchart::QuadrantChartConfigView::new(effective_config)
@@ -245,19 +241,28 @@ pub(crate) fn render_quadrantchart_diagram_svg(
     for (point_index, point) in layout.points.iter().enumerate() {
         out.push_str(r#"<g class="data-point">"#);
         out.checkpoint()?;
+        let source_point = &model.points[point_index];
+        let mut number_buffer = ryu_js::Buffer::new();
         let themed_radius_token = point_theme.radius_override_token(point_index);
         let fallback_radius_token;
         let radius_token = if let Some(token) = themed_radius_token {
             token
         } else {
-            fallback_radius_token = fmt(point.radius).to_string();
+            fallback_radius_token = number_buffer.format(point.radius).to_string();
             fallback_radius_token.as_str()
         };
+        out.push_str("<circle");
+        // D3's unknown scale value is undefined, so attr() removes that coordinate.
+        // Numeric overflow inside interpolation remains NaN and keeps the attribute.
+        if !source_point.x.is_nan() {
+            let _ = write!(&mut out, r#" cx="{}""#, number_buffer.format(point.x));
+        }
+        if !source_point.y.is_nan() {
+            let _ = write!(&mut out, r#" cy="{}""#, number_buffer.format(point.y));
+        }
         let _ = write!(
             &mut out,
-            r#"<circle cx="{cx}" cy="{cy}" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#,
-            cx = fmt(point.x),
-            cy = fmt(point.y),
+            r#" r="{r}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}"/>"#,
             r = radius_token,
             fill = escape_xml(&point.fill),
             stroke = escape_xml(&point.stroke_color),
@@ -271,6 +276,13 @@ pub(crate) fn render_quadrantchart_diagram_svg(
                 &point.fill,
             );
         }
+        let text_x = if source_point.x.is_nan() {
+            "undefined".to_string()
+        } else {
+            number_buffer.format(point.text.x).to_string()
+        };
+        // Adding text padding to an undefined y-coordinate produces numeric NaN.
+        let text_y = number_buffer.format(point.text.y);
         let _ = write!(
             &mut out,
             r#"<text x="0" y="0" fill="{fill}" font-size="{font_size}" dominant-baseline="{dom}" text-anchor="{anchor}" transform="{transform}">{text}</text>"#,
@@ -278,10 +290,9 @@ pub(crate) fn render_quadrantchart_diagram_svg(
             font_size = fmt(point.text.font_size),
             dom = quadrantchart_dominant_baseline(&point.text.horizontal_pos),
             anchor = quadrantchart_text_anchor(&point.text.vertical_pos),
-            transform = escape_xml(&quadrantchart_transform(
-                point.text.x,
-                point.text.y,
-                point.text.rotation
+            transform = escape_xml(&format!(
+                "translate({text_x}, {text_y}) rotate({})",
+                fmt(point.text.rotation)
             )),
             text = escape_xml(&point.text.text),
         );

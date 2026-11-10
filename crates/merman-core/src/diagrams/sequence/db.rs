@@ -1,4 +1,5 @@
 use crate::{OperationControl, OperationControlResult};
+use merman_model::text::is_ecmascript_whitespace;
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -215,17 +216,17 @@ impl SequenceDb {
     }
 
     fn parse_message(&self, raw: &str) -> ParsedText {
-        let trimmed = raw.trim();
+        let trimmed = raw.trim_matches(is_ecmascript_whitespace);
         let (wrap, cleaned) = if let Some(rest) = trimmed
             .strip_prefix(":wrap:")
             .or_else(|| trimmed.strip_prefix("wrap:"))
         {
-            (Some(true), rest.trim())
+            (Some(true), rest.trim_matches(is_ecmascript_whitespace))
         } else if let Some(rest) = trimmed
             .strip_prefix(":nowrap:")
             .or_else(|| trimmed.strip_prefix("nowrap:"))
         {
-            (Some(false), rest.trim())
+            (Some(false), rest.trim_matches(is_ecmascript_whitespace))
         } else {
             (None, trimmed)
         };
@@ -368,15 +369,15 @@ impl SequenceDb {
     ) -> std::result::Result<(), String> {
         match action {
             Action::SetTitle(t) => {
-                self.title = Some(t.trim().to_string());
+                self.title = Some(t);
                 Ok(())
             }
             Action::SetAccTitle(t) => {
-                self.acc_title = Some(t.trim().to_string());
+                self.acc_title = Some(t);
                 Ok(())
             }
             Action::SetAccDescr(t) => {
-                self.acc_descr = Some(t.trim().to_string());
+                self.acc_descr = Some(t);
                 Ok(())
             }
 
@@ -565,29 +566,8 @@ impl SequenceDb {
     }
 
     fn parse_box_data(&self, raw: &str) -> BoxData {
-        let trimmed = raw.trim();
-        if trimmed.is_empty() {
-            return BoxData {
-                text: None,
-                color: "transparent".to_string(),
-                wrap: None,
-            };
-        }
-
-        let (color_candidate, title_candidate) = split_box_color_and_title(trimmed);
-        let mut color = if color_candidate.trim().is_empty() {
-            "transparent".to_string()
-        } else {
-            color_candidate.trim().to_string()
-        };
-        let mut title = title_candidate.trim().to_string();
-
-        if !is_css_color_value(&color) {
-            color = "transparent".to_string();
-            title = trimmed.to_string();
-        }
-
-        let parsed_title = self.parse_message(&title);
+        let (color, title) = box_color_and_title(raw);
+        let parsed_title = self.parse_message(title);
         let text = if parsed_title.text.is_empty() {
             None
         } else {
@@ -596,13 +576,14 @@ impl SequenceDb {
 
         BoxData {
             text,
-            color,
+            color: color.to_string(),
             wrap: parsed_title.wrap,
         }
     }
 
     fn add_links(&mut self, actor: &str, raw_text: &str) {
-        let s = unescape_entities(raw_text);
+        let text = self.parse_message(raw_text);
+        let s = unescape_entities(&text.text);
         let Ok(v) = serde_json::from_str::<Value>(&s) else {
             return;
         };
@@ -620,13 +601,19 @@ impl SequenceDb {
     }
 
     fn add_link(&mut self, actor: &str, raw_text: &str) {
-        let s = unescape_entities(raw_text);
+        let text = self.parse_message(raw_text);
+        let s = unescape_entities(&text.text);
         let Some(idx) = s.find('@') else {
             return;
         };
         let (left, right) = s.split_at(idx);
-        let label = left.strip_suffix(' ').unwrap_or(left).trim();
-        let url = right.trim_start_matches('@').trim();
+        let label = left
+            .strip_suffix(' ')
+            .unwrap_or(left)
+            .trim_matches(is_ecmascript_whitespace);
+        let url = right
+            .trim_start_matches('@')
+            .trim_matches(is_ecmascript_whitespace);
         if label.is_empty() || url.is_empty() {
             return;
         }
@@ -638,7 +625,8 @@ impl SequenceDb {
     }
 
     fn add_properties(&mut self, actor: &str, raw_text: &str) {
-        let s = unescape_entities(raw_text);
+        let text = self.parse_message(raw_text);
+        let s = unescape_entities(&text.text);
         let Ok(v) = serde_json::from_str::<Value>(&s) else {
             return;
         };
@@ -752,15 +740,32 @@ fn unescape_entities(input: &str) -> String {
     input.replace("&equals;", "=").replace("&amp;", "&")
 }
 
-pub(super) fn split_box_color_and_title(input: &str) -> (&str, &str) {
-    let lower = input.to_ascii_lowercase();
+pub(super) fn box_color_and_title(input: &str) -> (&str, &str) {
+    let input = input.trim_matches(is_ecmascript_whitespace);
+    let (color, title) = split_box_color_and_title(input);
+    if color.is_empty() || is_css_color_value(color) {
+        (
+            if color.is_empty() {
+                "transparent"
+            } else {
+                color
+            },
+            title.trim_matches(is_ecmascript_whitespace),
+        )
+    } else {
+        ("transparent", input)
+    }
+}
+
+fn split_box_color_and_title(input: &str) -> (&str, &str) {
     for prefix in ["rgba", "rgb", "hsla", "hsl"] {
-        if lower.starts_with(prefix)
-            && let Some(end) = input.find(')')
+        // Unlike the case-insensitive lexer, SequenceDB's color extraction regex is case-sensitive.
+        if input.starts_with(prefix)
+            && let Some(end) = input.rfind(')')
         {
             let color = &input[..=end];
             let rest = &input[end + 1..];
-            return (color.trim(), rest);
+            return (color, rest);
         }
     }
 
@@ -775,12 +780,11 @@ pub(super) fn split_box_color_and_title(input: &str) -> (&str, &str) {
     (&input[..end], &input[end..])
 }
 
-pub(super) fn is_css_color_value(input: &str) -> bool {
-    let t = input.trim();
-    if t.is_empty() {
+fn is_css_color_value(input: &str) -> bool {
+    if input.is_empty() {
         return false;
     }
-    let lower = t.to_ascii_lowercase();
+    let lower = input.to_ascii_lowercase();
     if lower == "transparent" {
         return true;
     }
@@ -790,164 +794,17 @@ pub(super) fn is_css_color_value(input: &str) -> bool {
         || lower.starts_with("hsla("))
         && lower.ends_with(')')
     {
-        return true;
+        // The selected regex greedily captures through the final ')'. A second
+        // top-level CSS value invalidates that capture, rather than its first function.
+        let mut parser = cssparser::Parser::new(input);
+        return matches!(parser.next(), Ok(cssparser::Token::Function(_)))
+            && parser.expect_exhausted().is_ok();
     }
     if !lower.chars().all(|c| c.is_ascii_alphabetic()) {
         return false;
     }
-    CSS_COLOR_KEYWORDS.binary_search(&lower.as_str()).is_ok()
+    cssparser::color::parse_named_color(&lower).is_ok()
 }
-
-static CSS_COLOR_KEYWORDS: &[&str] = &[
-    "aliceblue",
-    "antiquewhite",
-    "aqua",
-    "aquamarine",
-    "azure",
-    "beige",
-    "bisque",
-    "black",
-    "blanchedalmond",
-    "blue",
-    "blueviolet",
-    "brown",
-    "burlywood",
-    "cadetblue",
-    "chartreuse",
-    "chocolate",
-    "coral",
-    "cornflowerblue",
-    "cornsilk",
-    "crimson",
-    "cyan",
-    "darkblue",
-    "darkcyan",
-    "darkgoldenrod",
-    "darkgray",
-    "darkgreen",
-    "darkgrey",
-    "darkkhaki",
-    "darkmagenta",
-    "darkolivegreen",
-    "darkorange",
-    "darkorchid",
-    "darkred",
-    "darksalmon",
-    "darkseagreen",
-    "darkslateblue",
-    "darkslategray",
-    "darkslategrey",
-    "darkturquoise",
-    "darkviolet",
-    "deeppink",
-    "deepskyblue",
-    "dimgray",
-    "dimgrey",
-    "dodgerblue",
-    "firebrick",
-    "floralwhite",
-    "forestgreen",
-    "fuchsia",
-    "gainsboro",
-    "ghostwhite",
-    "gold",
-    "goldenrod",
-    "gray",
-    "green",
-    "greenyellow",
-    "grey",
-    "honeydew",
-    "hotpink",
-    "indianred",
-    "indigo",
-    "ivory",
-    "khaki",
-    "lavender",
-    "lavenderblush",
-    "lawngreen",
-    "lemonchiffon",
-    "lightblue",
-    "lightcoral",
-    "lightcyan",
-    "lightgoldenrodyellow",
-    "lightgray",
-    "lightgreen",
-    "lightgrey",
-    "lightpink",
-    "lightsalmon",
-    "lightseagreen",
-    "lightskyblue",
-    "lightslategray",
-    "lightslategrey",
-    "lightsteelblue",
-    "lightyellow",
-    "lime",
-    "limegreen",
-    "linen",
-    "magenta",
-    "maroon",
-    "mediumaquamarine",
-    "mediumblue",
-    "mediumorchid",
-    "mediumpurple",
-    "mediumseagreen",
-    "mediumslateblue",
-    "mediumspringgreen",
-    "mediumturquoise",
-    "mediumvioletred",
-    "midnightblue",
-    "mintcream",
-    "mistyrose",
-    "moccasin",
-    "navajowhite",
-    "navy",
-    "oldlace",
-    "olive",
-    "olivedrab",
-    "orange",
-    "orangered",
-    "orchid",
-    "palegoldenrod",
-    "palegreen",
-    "paleturquoise",
-    "palevioletred",
-    "papayawhip",
-    "peachpuff",
-    "peru",
-    "pink",
-    "plum",
-    "powderblue",
-    "purple",
-    "rebeccapurple",
-    "red",
-    "rosybrown",
-    "royalblue",
-    "saddlebrown",
-    "salmon",
-    "sandybrown",
-    "seagreen",
-    "seashell",
-    "sienna",
-    "silver",
-    "skyblue",
-    "slateblue",
-    "slategray",
-    "slategrey",
-    "snow",
-    "springgreen",
-    "steelblue",
-    "tan",
-    "teal",
-    "thistle",
-    "tomato",
-    "turquoise",
-    "violet",
-    "wheat",
-    "white",
-    "whitesmoke",
-    "yellow",
-    "yellowgreen",
-];
 
 #[cfg(test)]
 mod tests {

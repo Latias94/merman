@@ -117,20 +117,22 @@ Statement: StateStatement = {
   }),
 
   <descr:StateDescr> "as" <l:@L> <id:Id> <doc:OptBlock> => {
-    let trimmed = descr.trim().to_string();
+    let trimmed = descr.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace).to_string();
     let mut state_id = id;
     let mut id_span = Some(SourceSpan::new(l, l + state_id.len()));
     let description = trimmed;
     let mut descriptions: Vec<String> = Vec::new();
     // Only the plain alias production splits a colon; a composite keeps its literal ID.
-    if doc.is_none() && let Some((a, b)) = state_id
-      .split_once(':')
-      .map(|(a, b)| (a.to_string(), b.to_string())) {
-      id_span = Some(SourceSpan::new(l, l + a.len()));
-      state_id = a;
-      let extra = b.trim();
-      if !extra.is_empty() {
-        descriptions.push(extra.to_string());
+    if doc.is_none() {
+      let mut parts = state_id.split(':');
+      let alias_id = parts.next().unwrap_or_default();
+      if let Some(extra) = parts.next() {
+        id_span = Some(SourceSpan::new(l, l + alias_id.len()));
+        let extra = extra.trim_matches(crate::diagrams::scan::is_ecmascript_whitespace);
+        if !extra.is_empty() {
+          descriptions.push(extra.to_string());
+        }
+        state_id = alias_id.to_string();
       }
     }
     StateStatement::State(StateStatementState {

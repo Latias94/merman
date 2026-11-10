@@ -288,7 +288,7 @@ pub(crate) fn layout_journey_diagram_typed_with_resolved_typography(
 
         let center_x = x + cfg.cell_width / 2.0;
         let max_height = JOURNEY_FACE_BASE_Y_PX + 5.0 * JOURNEY_FACE_SCORE_STEP_Y_PX;
-        let score_is_nan = task.score_is_nan || !task.score.is_finite();
+        let score_is_nan = task.score_is_nan || task.score.is_nan();
         let face_cy = if score_is_nan {
             None
         } else {
@@ -589,8 +589,18 @@ mod tests {
             (0.0, false, Some(450.0), JourneyMouthKind::Sad),
             (4.0, true, None, JourneyMouthKind::Ambivalent),
             (f64::NAN, false, None, JourneyMouthKind::Ambivalent),
-            (f64::INFINITY, false, None, JourneyMouthKind::Ambivalent),
-            (f64::NEG_INFINITY, false, None, JourneyMouthKind::Ambivalent),
+            (
+                f64::INFINITY,
+                false,
+                Some(f64::NEG_INFINITY),
+                JourneyMouthKind::Smile,
+            ),
+            (
+                f64::NEG_INFINITY,
+                false,
+                Some(f64::INFINITY),
+                JourneyMouthKind::Sad,
+            ),
         ] {
             let model = JourneyDiagramModel {
                 tasks: vec![JourneyTask {
@@ -617,6 +627,9 @@ mod tests {
                 assert_eq!(task.score, score);
             }
             match (task.face_cy, expected_y) {
+                (Some(actual), Some(expected)) if expected.is_infinite() => {
+                    assert_eq!(actual, expected);
+                }
                 (Some(actual), Some(expected)) => assert!((actual - expected).abs() < 1e-9),
                 (None, None) => {}
                 other => panic!("unexpected face geometry for score {score:?}: {other:?}"),

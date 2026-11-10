@@ -18,8 +18,32 @@ pub fn project(
     out.insert("accTitle".to_string(), json!(&model.acc_title));
     out.insert("accDescr".to_string(), json!(&model.acc_descr));
     out.insert("axes".to_string(), json!(&model.axes));
-    out.insert("curves".to_string(), json!(&model.curves));
-    out.insert("options".to_string(), json!(&model.options));
+    out.insert(
+        "curves".to_string(),
+        Value::Array(
+            model
+                .curves
+                .iter()
+                .map(|curve| {
+                    json!({
+                        "name": &curve.name,
+                        "label": &curve.label,
+                        "entries": curve.entries.iter().copied().map(crate::json::number_value).collect::<Vec<_>>(),
+                    })
+                })
+                .collect(),
+        ),
+    );
+    out.insert(
+        "options".to_string(),
+        json!({
+            "showLegend": model.options.show_legend,
+            "ticks": crate::json::number_value(model.options.ticks),
+            "max": model.options.max.map(crate::json::number_value),
+            "min": crate::json::number_value(model.options.min),
+            "graticule": &model.options.graticule,
+        }),
+    );
     out.insert(
         "config".to_string(),
         crate::json::clone_value_nonrecursive(config.as_value()),

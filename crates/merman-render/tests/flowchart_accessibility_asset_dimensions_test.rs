@@ -77,4 +77,44 @@ fn flowchart_asset_frame_ignores_numeric_zero_but_accepts_string_zero() {
     let retained = frame_path("w: 96, h: 96");
     assert_eq!(frame_path("w: 0, h: 0"), retained);
     assert_ne!(frame_path("w: \"0\", h: \"0\""), retained);
+    let resized = frame_path("w: 48, h: 48");
+    assert_ne!(resized, retained);
+    for update in [
+        "w: \"0x30\", h: \"0x30\"",
+        "w: \"0b110000\", h: \"0b110000\"",
+        "w: \"0o60\", h: \"0o60\"",
+        "w: \"\\uFEFF48\\uFEFF\", h: \"\\uFEFF48\\uFEFF\"",
+    ] {
+        assert_eq!(frame_path(update), resized, "{update}");
+    }
+}
+
+#[test]
+fn flowchart_visual_metadata_updates_preserve_restored_visible_labels() {
+    for html_labels in [false, true] {
+        for visual in [
+            r#"icon: "fa:home""#,
+            r#"img: "https://example.com/image.png""#,
+        ] {
+            let source = format!(
+                "---\nconfig:\n  layout: dagre\n  look: classic\n  htmlLabels: {html_labels}\n---\nflowchart LR\nA@{{ {visual} }}\nA[\"A\"]\nA@{{ w: 96 }}\n"
+            );
+            let svg = render_flowchart(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("data-id") == Some("A")
+                        && node.attribute("data-et") == Some("node")
+                })
+                .unwrap();
+            assert!(
+                node.descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .any(|text| text.trim() == "A"),
+                "{source}\n{svg}"
+            );
+        }
+    }
 }

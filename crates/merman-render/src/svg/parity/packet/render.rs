@@ -189,7 +189,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                 crate::packet::PacketBitOrder::Ascending => (b.start, b.end),
                 crate::packet::PacketBitOrder::Descending => (b.end, b.start),
             };
-            let is_single_block = b.start == b.end;
+            let is_single_block = b.end - b.start + 1.0 == 1.0;
             let bit_number_y = b.y - 2.0;
             let start_x = if is_single_block {
                 b.x + b.width / 2.0
@@ -204,7 +204,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                 y = fmt(bit_number_y),
                 class = byte_start_role.class_attribute(),
                 anchor = start_anchor,
-                text = leading_bit
+                text = ryu_js::Buffer::new().format(leading_bit)
             );
             if !is_single_block {
                 let _ = write!(
@@ -213,7 +213,7 @@ pub(crate) fn render_packet_diagram_svg_model(
                     x = fmt(b.x + b.width),
                     y = fmt(bit_number_y),
                     class = byte_end_role.class_attribute(),
-                    text = trailing_bit
+                    text = ryu_js::Buffer::new().format(trailing_bit)
                 );
             }
             out.checkpoint()?;

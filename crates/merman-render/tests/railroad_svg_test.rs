@@ -2062,3 +2062,39 @@ fn railroad_dialect_combinations_preserve_source_branches_in_actual_reference_sv
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn railroad_svg_preserves_db_accessibility_text() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "railroad-beta\naccTitle: {title}\naccDescr {{\n{description}\n}}\nentry = terminal(\"x\") ;\n"
+        );
+        let (_, rendered) = try_render_railroad_source_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new(),
+            &portable_railroad_environment(),
+            "railroad-a11y",
+        )
+        .unwrap();
+        let svg = rendered.svg();
+        common::assert_svg_accessibility(svg, expected_title, expected_description);
+    }
+}

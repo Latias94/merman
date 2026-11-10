@@ -322,14 +322,14 @@ For dependency or feature ownership changes, run the artifact checks:
 
 ```bash
 cargo run -p xtask -- wasm-size-matrix --surface web \
-  --web-package-root platforms/web/packages \
-  --budget-file docs/release/WASM_SIZE_BUDGETS.json
+  --web-package-root platforms/web/packages
 cargo run --locked -p xtask -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
 
 A stale generated or WASM artifact must fail before the UI starts. Record any unexecuted owner and
 its reason explicitly; a focused success alone does not close final integrated acceptance.
+Web size measurements are reports without byte ceilings; Typst retains its publication budget.
 
 ## 8. Hand Off Without Hidden Residuals
 

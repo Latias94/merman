@@ -20,10 +20,39 @@ pub fn project_controlled(
     control: &OperationControl,
 ) -> OperationControlResult<Result<Value, CompatProjectionError>> {
     control.checkpoint()?;
-    let nodes = serialize_wardley_items_controlled(&model.nodes, control)?;
+    let mut nodes = Vec::with_capacity(model.nodes.len());
+    for (index, node) in model.nodes.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        let mut value = json!(node);
+        for (field, offset) in [
+            ("labelOffsetX", node.label_offset_x),
+            ("labelOffsetY", node.label_offset_y),
+        ] {
+            if let Some(offset) = offset {
+                value[field] = crate::json::number_value(offset);
+            }
+        }
+        nodes.push(value);
+    }
     let links = serialize_wardley_items_controlled(&model.links, control)?;
     let trends = serialize_wardley_items_controlled(&model.trends, control)?;
-    let annotations = serialize_wardley_items_controlled(&model.annotations, control)?;
+    let mut annotations = Vec::with_capacity(model.annotations.len());
+    for (index, annotation) in model.annotations.iter().enumerate() {
+        if index % 128 == 0 {
+            control.checkpoint()?;
+        }
+        // Canonical JSON retains nonfinite numbers; Mermaid follows JSON.stringify instead.
+        let mut value = json!({
+            "number": crate::json::number_value(annotation.number),
+            "coordinates": &annotation.coordinates,
+        });
+        if let Some(text) = &annotation.text {
+            value["text"] = Value::String(text.clone());
+        }
+        annotations.push(value);
+    }
     let notes = serialize_wardley_items_controlled(&model.notes, control)?;
     let accelerators = serialize_wardley_items_controlled(&model.accelerators, control)?;
     let deaccelerators = serialize_wardley_items_controlled(&model.deaccelerators, control)?;

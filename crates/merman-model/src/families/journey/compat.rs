@@ -23,9 +23,16 @@ pub fn project(
             task.remove("sectionIndex");
             // Retain the historical integer wire shape without truncating fractional scores.
             let score = source.score;
-            let value = if !score.is_finite() {
+            if source.score_is_nan || score.is_nan() {
                 task.insert("scoreIsNaN".to_string(), json!(true));
+            } else {
+                task.remove("scoreIsNaN");
+            }
+            let value = if score.is_nan() {
                 json!(0)
+            } else if score.is_infinite() {
+                // JSON.stringify emits null for infinities without making them NaN scores.
+                Value::Null
             } else if score.fract() == 0.0 && score >= i64::MIN as f64 && score < -(i64::MIN as f64)
             {
                 json!(score as i64)
@@ -61,8 +68,8 @@ mod tests {
             (0.0, true, json!(0), true),
             (4.0, true, json!(4), true),
             (f64::NAN, false, json!(0), true),
-            (f64::INFINITY, false, json!(0), true),
-            (f64::NEG_INFINITY, false, json!(0), true),
+            (f64::INFINITY, false, Value::Null, false),
+            (f64::NEG_INFINITY, false, Value::Null, false),
             // The first f64 at the positive i64 boundary must not saturate to i64::MAX.
             (-(i64::MIN as f64), false, json!(-(i64::MIN as f64)), false),
         ] {

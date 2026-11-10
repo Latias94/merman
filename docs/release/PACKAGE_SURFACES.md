@@ -386,21 +386,20 @@ library-size evidence.
 | Flutter | The extracted frozen thin facade contains its generated target manifest and no native payloads; a relocated macOS app fetches only its selected target and executes. Every pinned native asset is read back before pub.dev OIDC publication, then public package members are reconciled. |
 | VS Code extension | Descriptor-owned LSP and CLI artifacts pass extension tests, binary preparation, target-specific VSIX packaging, and package-content verification. |
 | Browser artifact evidence | The selected Web artifact profiles have current raw, stripped, gzip, and Brotli measurements; do not substitute a legacy feature-profile name. |
-| Browser/Typst size evidence | The owner-specific Web and Typst size commands share one budget catalog and together cover every admitted artifact exactly once. |
+| Browser/Typst size evidence | Web reports each admitted artifact's size without ceilings; Typst publication checks its own artifact budget. |
 | Typst transport | The sole `publish` package profile consumes the canonical `typst-wasm` artifact recipe and proves plugin ABI 3, dependency closure, size, provenance, package contents, and examples. Its admitted `json5`, `html5ever`, and `url` dependencies remain measured pure-Rust parts of invariant Mermaid semantics. |
 | Node npm alpha package group | The selected N-API recipe, explicit Node-targeted WASM recipe, generated wire contract, runtime catalog, package contracts, exact-version optional dependencies, glibc-baseline build receipts, nine packed tarballs, seven native root-package install/render smokes, and one WASM install/render smoke agree. |
 
 ## WASM Size Matrix
 
-Use the owner-specific size gates before changing an artifact profile:
+Use the owner-specific size measurements before changing an artifact profile:
 
 ```bash
 npm ci --prefix platforms/web
 npm run build --prefix platforms/web
 npm run smoke --prefix platforms/web
 cargo run -p xtask -- wasm-size-matrix --surface web \
-  --web-package-root platforms/web/packages \
-  --budget-file docs/release/WASM_SIZE_BUDGETS.json
+  --web-package-root platforms/web/packages
 cargo run --locked -p xtask -- build-typst-package --profile publish \
   --budget-file docs/release/WASM_SIZE_BUDGETS.json
 ```
@@ -410,13 +409,14 @@ the preceding smoke proves their provenance and package closure. It must not reb
 Cargo-only size artifact. The Typst package producer builds its descriptor-owned `wasm-size`
 artifact once, optimizes with Binaryen 133 `wasm-opt -Oz`, and strips with `wasm-tools strip --all`.
 Its optional `--budget-file` consumer checks those same frozen bytes before package staging,
-without producing another WASM. Both gates report raw, stripped, gzip, and Brotli bytes with the exact Cargo
-profile, target, feature set, runtime IDs, capabilities, and output IDs. The schema-2 budget file
-must cover every exact Web and Typst artifact profile once, with no legacy feature-profile entries
-or stale profiles. Compare only artifacts with the same profile and target; browser and Typst
+without producing another WASM. Both commands report raw, stripped, gzip, and Brotli bytes with the exact Cargo
+profile, target, feature set, runtime IDs, capabilities, and output IDs. Web and Playground have no
+byte ceilings, and `wasm-size-matrix` does not accept `--budget-file`. The schema-2 budget file
+must cover every exact Typst artifact profile once, with no Web, legacy or stale profiles.
+Compare only artifacts with the same profile and target; browser and Typst
 transports deliberately have different closures.
 
-The metrics in `WASM_SIZE_BUDGETS.json` retain these definitions and unchanged limits:
+The Web report and Typst budget use these metric definitions:
 
 | Metric | Web | Typst |
 | --- | --- | --- |
@@ -439,13 +439,13 @@ reuse belongs only to real `typst-package-smoke --skip-wasm-build`, with current
 The producer's raw and optimized files and manifest remain private, and only the final WASM
 enters the package. A schema-3 artifact requires one fresh production pass.
 
-The latest main-line math-inclusive Web measurements and budget rationale belong to
+The recorded math-inclusive Web measurements and historical budget rationale belong to
 [the 2026-11-01 binding WASM report](../performance/binding_wasm_budget_2026-11-01.md).
-Use final package bytes from the same source and toolchain when changing current ceilings.
+Compare final package bytes from the same source and toolchain when investigating size changes.
 
 The following table is historical evidence from the 2026-08-03 complete-SVG admission refresh,
 which measured the then-final `web-render` npm WASM against the capability-superset `web-full`
-artifact produced by the same wasm-pack toolchain. It is not the current math-inclusive budget:
+artifact produced by the same wasm-pack toolchain. It predates the current math-inclusive recipes:
 
 | Artifact profile | Raw | Stripped | Gzip | Brotli |
 | --- | ---: | ---: | ---: | ---: |

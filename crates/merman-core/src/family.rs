@@ -14,12 +14,14 @@ use crate::{EditorFamilySemantics, EditorSemanticFacts, EditorSemanticKind};
 use crate::{Error, OperationControl, OperationControlResult, Result};
 #[cfg(feature = "presentation")]
 use crate::{MermaidConfig, SourcePresentationMetadata};
+#[cfg(any(test, feature = "presentation", feature = "editor-facts"))]
+use merman_model::family::diagram_type_family_id;
 #[cfg(test)]
 use merman_model::family::diagram_type_metadata_id;
 use merman_model::family::{
     DiagramFamilyDefinition, DiagramTypeId, FAMILY_CATALOG, FamilyVariantIdentity,
 };
-use merman_model::family::{DiagramFamilyId, DiagramHeaderFact, diagram_type_family_id};
+use merman_model::family::{DiagramFamilyId, DiagramHeaderFact};
 #[cfg(feature = "compat-json")]
 use merman_model::presentation::compat::CompatProjectionError;
 use serde::Serialize;

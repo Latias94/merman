@@ -717,28 +717,104 @@ fn completion_recognizes_partial_and_complete_interaction_actions() {
 
 #[test]
 fn class_interaction_actions_replace_only_the_action_token() {
-    for (name, action, end_character) in [("partial", "c", 12), ("complete", "call", 15)] {
-        let source = format!("classDiagram\nclass User\nclick User {action}");
-        let harness = SnapshotHarness::new();
-        let snapshot = harness
+    for (label, actions, snippet) in [
+        (
+            "callback action",
+            &["c", "ca", "cal", "call"][..],
+            "call ${1:callback}(${2:arg})",
+        ),
+        (
+            "href link action",
+            &["h", "hr", "hre", "href"][..],
+            "href \"${1:https://example.com}\" \"${2:Tooltip}\" ${3|_blank,_self|}",
+        ),
+    ] {
+        for action in actions {
+            let source = format!("classDiagram\nclass User\nclick User {action}");
+            let harness = SnapshotHarness::new();
+            let snapshot = harness
+                .analyze(
+                    format!("file:///tmp/class-action-{action}.mmd"),
+                    1,
+                    source,
+                    DocumentKind::Diagram,
+                )
+                .expect("class interaction source should be accepted");
+            let end_character = 11 + action.len();
+            let list = completion_for_snapshot(&snapshot, Position::new(2, end_character));
+            let item = list
+                .items
+                .iter()
+                .find(|item| item.label == label)
+                .expect("interaction action completion");
+            let edit = item
+                .text_edit
+                .as_ref()
+                .expect("interaction action text edit");
+
+            assert_eq!(edit.range.start, Position::new(2, 11), "{action}");
+            assert_eq!(edit.range.end, Position::new(2, end_character), "{action}");
+            assert_eq!(edit.new_text, snippet, "{action}");
+        }
+    }
+}
+
+#[test]
+fn class_interaction_actions_do_not_split_unterminated_quoted_targets() {
+    for target in ["`User h", "Prefix `User h", "`用户😀 h"] {
+        let source = format!("classDiagram\nclick {target}");
+        let snapshot = SnapshotHarness::new()
             .analyze(
-                format!("file:///tmp/class-call-{name}.mmd"),
+                "file:///tmp/class-quoted-target.mmd",
                 1,
-                source,
+                source.as_str(),
                 DocumentKind::Diagram,
             )
-            .expect("class interaction source should be accepted");
-        let list = completion_for_snapshot(&snapshot, Position::new(2, end_character));
-        let item = list
-            .items
-            .iter()
-            .find(|item| item.label == "callback action")
-            .expect("callback action completion");
-        let edit = item.text_edit.as_ref().expect("callback action text edit");
+            .unwrap();
+        let cursor = snapshot.source_map().utf16_position(source.len()).unwrap();
+        let list = completion_for_snapshot(&snapshot, Position::new(cursor.line, cursor.character));
+        assert!(
+            list.items.iter().all(|item| {
+                !matches!(item.label.as_str(), "callback action" | "href link action")
+            }),
+            "{source:?}"
+        );
+    }
+}
 
-        assert_eq!(edit.range.start, Position::new(2, 11), "{name}");
-        assert_eq!(edit.range.end, Position::new(2, end_character), "{name}");
-        assert_eq!(edit.new_text, "call ${1:callback}(${2:arg})", "{name}");
+#[test]
+fn er_unfinished_style_edits_precede_consumed_blank_lines() {
+    for newline in ["\n", "\r\n", "\r"] {
+        for (statement, label) in [
+            ("style ", "CUSTOMER"),
+            ("style CUSTOMER ", "fill/stroke style"),
+            ("classDef accent ", "fill/stroke style"),
+        ] {
+            let source =
+                format!("erDiagram{newline}CUSTOMER{newline}{statement}{newline}\t {newline}");
+            let snapshot = SnapshotHarness::new()
+                .analyze(
+                    "file:///tmp/er-unfinished-style.mmd",
+                    1,
+                    source.as_str(),
+                    DocumentKind::Diagram,
+                )
+                .expect("unfinished ER source retains its snapshot");
+            let cursor = Position::new(2, statement.len());
+            let list = completion_for_snapshot(&snapshot, cursor);
+            assert_eq!(
+                list.fact_source,
+                Some(FenceTextIndexSource::ParserRecovered)
+            );
+            let item = list
+                .items
+                .iter()
+                .find(|item| item.label == label)
+                .expect("unfinished style retains its typed completion");
+            let edit = item.text_edit.as_ref().expect("typed completion edit");
+            assert_eq!(edit.range.start, cursor, "{source:?}");
+            assert_eq!(edit.range.end, cursor, "{source:?}");
+        }
     }
 }
 

@@ -85,8 +85,8 @@
             "width": 23.0,
             "y": 0.0
           },
-          "offset_x": 90.0,
-          "offset_y": 60.0,
+          "offset_x": "90",
+          "offset_y": "60",
           "rel_type": "rel",
           "start_point": {
             "x": 542.237,
@@ -116,7 +116,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -40.0,
+          "offset_y": "-40",
           "rel_type": "rel",
           "start_point": {
             "x": 530.725,
@@ -146,7 +146,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -30.0,
+          "offset_y": "-30",
           "rel_type": "rel",
           "start_point": {
             "x": 582.134,
@@ -169,7 +169,7 @@
             "width": 40.0,
             "y": 0.0
           },
-          "offset_x": 130.0,
+          "offset_x": "130",
           "offset_y": null,
           "rel_type": "rel",
           "start_point": {
@@ -283,7 +283,7 @@
             "width": 82.0,
             "y": 0.0
           },
-          "offset_x": -45.0,
+          "offset_x": "-45",
           "offset_y": null,
           "rel_type": "rel",
           "start_point": {
@@ -308,7 +308,7 @@
             "y": 0.0
           },
           "offset_x": null,
-          "offset_y": -60.0,
+          "offset_y": "-60",
           "rel_type": "rel",
           "start_point": {
             "x": 305.046,
@@ -337,8 +337,8 @@
             "width": 23.0,
             "y": 0.0
           },
-          "offset_x": -140.0,
-          "offset_y": -50.0,
+          "offset_x": "-140",
+          "offset_y": "-50",
           "rel_type": "rel",
           "start_point": {
             "x": 303.937,

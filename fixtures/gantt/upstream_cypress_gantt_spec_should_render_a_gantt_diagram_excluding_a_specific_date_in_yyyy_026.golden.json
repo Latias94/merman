@@ -14,7 +14,7 @@
     "inclusiveEndDates": false,
     "links": {},
     "sections": [
-      "Section"
+      "    Section"
     ],
     "tasks": [
       {
@@ -40,10 +40,10 @@
           }
         },
         "renderEndTime": "2025-07-08T10:30:30.000",
-        "section": "Section",
+        "section": "    Section",
         "startTime": "2025-07-04T20:30:30.000",
         "task": "A task      ",
-        "type": "Section",
+        "type": "    Section",
         "vert": false
       },
       {
@@ -69,10 +69,10 @@
           }
         },
         "renderEndTime": null,
-        "section": "Section",
+        "section": "    Section",
         "startTime": "2025-07-09T10:30:30.000",
         "task": "Another task",
-        "type": "Section",
+        "type": "    Section",
         "vert": false
       }
     ],

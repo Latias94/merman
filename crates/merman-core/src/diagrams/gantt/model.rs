@@ -1,5 +1,6 @@
 use super::*;
 use crate::{OperationControl, OperationControlResult};
+use merman_model::text::is_ecmascript_whitespace;
 
 pub(crate) fn sanitize_common_db_fields<Task>(
     model: &mut GanttDiagramModel<Task>,
@@ -176,7 +177,6 @@ impl GanttDb {
 
     pub(super) fn set_class(&mut self, ids: &str, class_name: &str) {
         for id in ids.split(',') {
-            let id = id.trim();
             let Some(task) = self.find_task_by_id_mut(id) else {
                 continue;
             };
@@ -190,7 +190,6 @@ impl GanttDb {
             link_str = utils::sanitize_url(&link_str);
         }
         for id in ids.split(',') {
-            let id = id.trim();
             if self.find_task_by_id(id).is_some() {
                 self.links.insert(id.to_string(), link_str.clone());
             }
@@ -206,7 +205,6 @@ impl GanttDb {
     ) {
         if self.security_level == "loose" {
             for id in ids.split(',') {
-                let id = id.trim();
                 if self.find_task_by_id(id).is_some() {
                     let args = parse_callback_args(function_args).unwrap_or_default();
                     let args = if args.is_empty() {
@@ -412,7 +410,7 @@ fn parse_callback_args(raw: Option<&str>) -> Option<Vec<String>> {
     let out: Vec<String> = out
         .into_iter()
         .map(|s| {
-            let mut item = s.trim().to_string();
+            let mut item = s.trim_matches(is_ecmascript_whitespace).to_string();
             if item.starts_with('"') && item.ends_with('"') && item.len() >= 2 {
                 item = item[1..item.len() - 1].to_string();
             }
@@ -437,7 +435,7 @@ pub(super) struct TaskInfo {
 
 fn split_list_lower(txt: &str) -> Vec<String> {
     txt.to_lowercase()
-        .split(|c: char| c.is_whitespace() || c == ',')
+        .split(|c| is_ecmascript_whitespace(c) || c == ',')
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .collect()
@@ -465,7 +463,10 @@ fn parse_task_data(task_cnt: &mut i64, fields: &[&str]) -> TaskInfo {
     while match_found && !data.is_empty() {
         match_found = false;
         for tag in tags {
-            if data.first().is_some_and(|s| s.trim() == tag) {
+            if data
+                .first()
+                .is_some_and(|s| s.trim_matches(is_ecmascript_whitespace) == tag)
+            {
                 match tag {
                     "active" => active = true,
                     "done" => done = true,
@@ -482,7 +483,7 @@ fn parse_task_data(task_cnt: &mut i64, fields: &[&str]) -> TaskInfo {
     }
 
     for d in &mut data {
-        *d = d.trim().to_string();
+        *d = d.trim_matches(is_ecmascript_whitespace).to_string();
     }
 
     let mut next_id = |id_str: Option<&str>| -> String {

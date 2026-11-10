@@ -180,7 +180,7 @@
           ],
           "score": 5.0,
           "section": "Darkoob",
-          "task": "        Make preBuilt",
+          "task": "Make preBuilt",
           "width": 150.0,
           "x": 500.56,
           "y": 110.0
@@ -213,7 +213,7 @@
           ],
           "score": 5.0,
           "section": "Darkoob",
-          "task": "        register slug ",
+          "task": "register slug ",
           "width": 150.0,
           "x": 700.56,
           "y": 110.0
@@ -246,7 +246,7 @@
           ],
           "score": 5.0,
           "section": "Darkoob",
-          "task": "        Map slug to a Prebuilt Job",
+          "task": "Map slug to a Prebuilt Job",
           "width": 150.0,
           "x": 900.56,
           "y": 110.0
@@ -279,7 +279,7 @@
           ],
           "score": 5.0,
           "section": "External Service",
-          "task": "        set Darkoob slug as hook for an Event ",
+          "task": "set Darkoob slug as hook for an Event ",
           "width": 150.0,
           "x": 1100.56,
           "y": 110.0
@@ -312,7 +312,7 @@
           ],
           "score": 5.0,
           "section": "External Service",
-          "task": "        listen to the events ",
+          "task": "listen to the events ",
           "width": 150.0,
           "x": 1300.56,
           "y": 110.0
@@ -345,7 +345,7 @@
           ],
           "score": 5.0,
           "section": "External Service",
-          "task": "        call darkoob endpoint ",
+          "task": "call darkoob endpoint ",
           "width": 150.0,
           "x": 1500.56,
           "y": 110.0
@@ -378,7 +378,7 @@
           ],
           "score": 5.0,
           "section": "Darkoob",
-          "task": "        check for inputs ",
+          "task": "check for inputs ",
           "width": 150.0,
           "x": 1700.56,
           "y": 110.0
@@ -411,7 +411,7 @@
           ],
           "score": 5.0,
           "section": "Darkoob",
-          "task": "        run the prebuilt job ",
+          "task": "run the prebuilt job ",
           "width": 150.0,
           "x": 1900.56,
           "y": 110.0

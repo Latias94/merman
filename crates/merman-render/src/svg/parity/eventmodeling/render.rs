@@ -11,16 +11,11 @@ pub(crate) fn render_eventmodeling_diagram_svg_with_text_theme(
     options: &SvgExecution<'_>,
 ) -> Result<root_svg::RootedSvg> {
     let diagram_id = options.diagram_id_or("eventmodeling");
-    let acc_title = model
-        .acc_title
-        .as_deref()
-        .map(str::trim)
-        .filter(|title| !title.is_empty());
+    let acc_title = model.acc_title.as_deref().filter(|title| !title.is_empty());
     let acc_descr = model
         .acc_descr
         .as_deref()
-        .map(|description| description.trim_end_matches('\n'))
-        .filter(|description| !description.trim().is_empty());
+        .filter(|description| !description.is_empty());
     let aria_labelledby = acc_title.map(|_| format!("chart-title-{diagram_id}"));
     let aria_describedby = acc_descr.map(|_| format!("chart-desc-{diagram_id}"));
     let theme = text_theme.css_binding();

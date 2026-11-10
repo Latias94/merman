@@ -2809,3 +2809,28 @@ fn repair_u7_architecture_source_stroke_keeps_other_property_residuals() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn architecture_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "architecture-beta\naccTitle: {title}\naccDescr {{\n{description}\n}}\nservice app(server)[App]\n"
+        );
+        let svg = render_architecture_text_with_options(&source, &SvgRenderOptions::default());
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

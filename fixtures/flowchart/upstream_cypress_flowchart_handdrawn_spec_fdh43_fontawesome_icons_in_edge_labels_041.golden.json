@@ -30,6 +30,30 @@
         "pos": null,
         "shape": null,
         "styles": []
+      },
+      {
+        "assetHeight": null,
+        "assetWidth": null,
+        "classes": [],
+        "constraint": null,
+        "form": null,
+        "haveCallback": false,
+        "icon": null,
+        "id": "bar",
+        "img": null,
+        "label": "bar",
+        "labelType": "text",
+        "layoutShape": "squareRect",
+        "link": null,
+        "linkTarget": null,
+        "pos": null,
+        "shape": null,
+        "styles": [
+          "fill:#999",
+          "stroke-width:10px",
+          "stroke:#0F0",
+          "color:blue"
+        ]
       }
     ],
     "subgraphs": [
@@ -50,6 +74,19 @@
     "vertexCalls": [
       "F",
       "bar"
+    ],
+    "warningFacts": [
+      {
+        "message": "Style applied to unknown node \"bar\". This may indicate a typo. The node will be created automatically.",
+        "ruleId": "merman.semantic.flowchart.unknown_style_target",
+        "span": {
+          "end": 52,
+          "start": 49
+        }
+      }
+    ],
+    "warnings": [
+      "Style applied to unknown node \"bar\". This may indicate a typo. The node will be created automatically."
     ]
   }
 }

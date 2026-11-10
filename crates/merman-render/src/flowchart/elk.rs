@@ -1290,6 +1290,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         if subgraph_ids.contains(node.id.as_str()) || !inserted_ids.insert(node.id.as_str()) {
             continue;
         }
+        super::validate_flowchart_node_asset_dimensions(node)?;
         let owner_index = node_owner_indices
             .and_then(|indices| indices.get(node_index).copied())
             .unwrap_or(node_index);

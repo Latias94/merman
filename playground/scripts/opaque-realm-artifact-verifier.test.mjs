@@ -62,15 +62,28 @@ test("prepared verifier rejects stale generated browser projection", async (t) =
   );
 });
 
-test("prepared verifier rejects an oversized engine artifact", async (t) => {
+test("prepared verifier accepts artifacts above 256 KiB and still verifies byte length", async (t) => {
+  const padding = "x".repeat(256 * 1024);
+  const bootstrapSource = `(()=>{const padding = "${padding}";})();\n`;
   const root = await createPreparedFixture(
     t,
-    {},
-    { "benchmark-merman": "x".repeat(256 * 1024 + 1) },
+    {
+      "compare-mermaid": bootstrapSource,
+      "benchmark-mermaid": bootstrapSource,
+    },
+    {
+      "benchmark-merman": `export const benchmarkEngineAdapter = "${padding}";\n`,
+    },
   );
+  await verifyPreparedOpaqueRealmArtifacts(root, OPAQUE_REALM_ARTIFACT_PLAN);
+
+  const manifestFile = path.join(root, ".runtime", "opaque-compare-bootstrap.json");
+  const manifest = JSON.parse(await readFile(manifestFile, "utf8"));
+  manifest.bytes -= 1;
+  await writeFile(manifestFile, `${JSON.stringify(manifest)}\n`);
   await assert.rejects(
     verifyPreparedOpaqueRealmArtifacts(root, OPAQUE_REALM_ARTIFACT_PLAN),
-    /benchmark-merman engine exceeds its byte budget/u,
+    /Expected values to be strictly equal/u,
   );
 });
 

@@ -15,7 +15,6 @@ on:
       - "THIRD_PARTY_NOTICES.md"
       - "THIRD_PARTY_LICENSES/**"
       - "crates/**"
-      - "docs/release/WASM_SIZE_BUDGETS.json"
       - "platforms/web/**"
       - "playground/**"
       - "distribution/tree-sitter-mermaid/tree-sitter-mermaid.wasm"

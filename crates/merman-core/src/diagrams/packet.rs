@@ -13,12 +13,14 @@ use crate::diagrams::langium_common::{
 use crate::family::EditorFactsDemand;
 #[cfg(feature = "editor-facts")]
 use crate::source_span::recovery_fallback_span;
+use crate::utils::format_js_number;
 #[cfg(feature = "editor-facts")]
 use crate::{
     EditorExpectedSyntax, EditorExpectedSyntaxKind, EditorSemanticFacts, EditorSemanticKind,
     EditorSemanticSymbol, editor::ensure_editor_recovery_from_error,
 };
 use crate::{Error, MermaidConfig, Result, SourceSpan, family};
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 
 const MAX_PACKET_SIZE: usize = 10_000;
@@ -53,9 +55,9 @@ pub(crate) fn render_model_to_compat_json(
 
 #[derive(Debug, Clone)]
 struct ParsedPacketBlock {
-    start: Option<i64>,
-    end: Option<i64>,
-    bits: Option<i64>,
+    start: Option<f64>,
+    end: Option<f64>,
+    bits: Option<f64>,
     label: String,
     numeric_span: SourceSpan,
 }
@@ -356,8 +358,7 @@ fn construct_packet_semantic_source_controlled(
         first_error.get_or_insert_with(|| Error::diagram_parse_fallback(diagram_type, diagnostic));
     }
 
-    let packet_result = match validate_packet_bits_per_row(config_i64(config, "packet.bitsPerRow"))
-    {
+    let packet_result = match validate_packet_bits_per_row(config_bits_per_row(config)) {
         Ok(bits_per_row) => populate_packet_controlled(blocks, bits_per_row, control)?,
         Err(error) => Err(Error::diagram_parse_fallback(
             diagram_type,
@@ -437,13 +438,13 @@ fn push_packet_block_editor_fact(facts: &mut EditorSemanticFacts, block: &Packet
 
 fn populate_packet_controlled(
     blocks: Vec<ParsedPacketBlock>,
-    bits_per_row: i64,
+    bits_per_row: f64,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<Result<Vec<PacketWord>>> {
     let mut packet: Vec<PacketWord> = Vec::new();
-    let mut last_bit: i64 = -1;
+    let mut last_bit = -1.0;
     let mut word: PacketWord = Vec::new();
-    let mut row: i128 = 1;
+    let mut row = 1.0;
 
     for (block_index, mut block) in blocks.into_iter().enumerate() {
         if block_index % 128 == 0 {
@@ -454,73 +455,48 @@ fn populate_packet_controlled(
         {
             return Ok(Err(Error::diagram_parse_exact(
                 "packet".to_string(),
-                format!("Packet block {start} - {end} is invalid. End must be greater than start."),
+                format!(
+                    "Packet block {} - {} is invalid. End must be greater than start.",
+                    format_js_number(start),
+                    format_js_number(end),
+                ),
                 block.numeric_span,
             )));
         }
 
-        let expected_start = match last_bit.checked_add(1) {
-            Some(start) => start,
-            None => {
-                return Ok(Err(Error::diagram_parse_exact(
-                    "packet".to_string(),
-                    "Packet bit range exceeds the supported integer range.".to_string(),
-                    block.numeric_span,
-                )));
-            }
-        };
+        let expected_start = last_bit + 1.0;
         let start = block.start.unwrap_or(expected_start);
         let end_for_msg = block.end.unwrap_or(start);
         if start != expected_start {
             return Ok(Err(Error::diagram_parse_exact(
                 "packet".to_string(),
                 format!(
-                    "Packet block {start} - {end_for_msg} is not contiguous. It should start from {}.",
-                    expected_start
+                    "Packet block {} - {} is not contiguous. It should start from {}.",
+                    format_js_number(start),
+                    format_js_number(end_for_msg),
+                    format_js_number(expected_start),
                 ),
                 block.numeric_span,
             )));
         }
 
-        if block.bits == Some(0) {
+        if block.bits == Some(0.0) {
             return Ok(Err(Error::diagram_parse_exact(
                 "packet".to_string(),
-                format!("Packet block {start} is invalid. Cannot have a zero bit field."),
+                format!(
+                    "Packet block {} is invalid. Cannot have a zero bit field.",
+                    format_js_number(start),
+                ),
                 block.numeric_span,
             )));
         }
 
-        let end = match block.end {
-            Some(end) => end,
-            None => {
-                let bits = block.bits.unwrap_or(1);
-                let Some(width) = bits.checked_sub(1) else {
-                    return Ok(Err(Error::diagram_parse_exact(
-                        "packet".to_string(),
-                        "Packet block width must be positive.".to_string(),
-                        block.numeric_span,
-                    )));
-                };
-                let Some(end) = start.checked_add(width) else {
-                    return Ok(Err(Error::diagram_parse_exact(
-                        "packet".to_string(),
-                        "Packet bit range exceeds the supported integer range.".to_string(),
-                        block.numeric_span,
-                    )));
-                };
-                end
-            }
-        };
-        let Some(bits) = end
-            .checked_sub(start)
-            .and_then(|value| value.checked_add(1))
-        else {
-            return Ok(Err(Error::diagram_parse_exact(
-                "packet".to_string(),
-                "Packet bit range arithmetic overflowed.".to_string(),
-                block.numeric_span,
-            )));
-        };
+        // Keep the source's left-associative Number operations and its explicit relative width.
+        // `start + bits - 1` differs from `start + (bits - 1)` at binary64 boundaries.
+        let end = block
+            .end
+            .unwrap_or_else(|| start + block.bits.unwrap_or(1.0) - 1.0);
+        let bits = block.bits.unwrap_or(end - start + 1.0);
         last_bit = end;
 
         let mut cur = PacketBlock {
@@ -536,38 +512,24 @@ fn populate_packet_controlled(
                 control.checkpoint()?;
             }
             split_count = split_count.saturating_add(1);
-            let (fitting, next) = match get_next_fitting_block(cur, row, bits_per_row) {
-                Ok(next) => next,
-                Err(error) => return Ok(Err(error)),
-            };
-            let Some(row_boundary) = row.checked_mul(i128::from(bits_per_row)) else {
-                return Ok(Err(Error::diagram_parse_exact(
-                    "packet".to_string(),
-                    "Packet row arithmetic exceeds the supported integer range.".to_string(),
+            if packet.len() >= MAX_PACKET_SIZE {
+                return Ok(Err(packet_expansion_error(
+                    format!("Packet exceeds the {MAX_PACKET_SIZE}-row safety limit."),
+                    "merman.packet.row_limit",
                     block.numeric_span,
                 )));
-            };
-            let reached_row_end = i128::from(fitting.end) + 1 == row_boundary;
+            }
+            let (fitting, next) =
+                match get_next_fitting_block(cur, row, bits_per_row, block.numeric_span) {
+                    Ok(next) => next,
+                    Err(error) => return Ok(Err(error)),
+                };
+            let reached_row_end = fitting.end + 1.0 == row * bits_per_row;
             word.push(fitting);
             if reached_row_end {
-                if !word.is_empty() {
-                    if packet.len() >= MAX_PACKET_SIZE {
-                        return Ok(Err(Error::diagram_parse_exact(
-                            "packet".to_string(),
-                            format!("Packet exceeds the {MAX_PACKET_SIZE}-row safety limit."),
-                            block.numeric_span,
-                        )));
-                    }
-                    packet.push(std::mem::take(&mut word));
-                }
-                let Some(next_row) = row.checked_add(1) else {
-                    return Ok(Err(Error::diagram_parse_exact(
-                        "packet".to_string(),
-                        "Packet row arithmetic exceeds the supported integer range.".to_string(),
-                        block.numeric_span,
-                    )));
-                };
-                row = next_row;
+                packet.push(std::mem::take(&mut word));
+                // The materialized row budget bounds this counter, independently of bit values.
+                row += 1.0;
             }
             let Some(next) = next else {
                 break;
@@ -586,81 +548,61 @@ fn populate_packet_controlled(
 
 fn get_next_fitting_block(
     block: PacketBlock,
-    row: i128,
-    bits_per_row: i64,
+    row: f64,
+    bits_per_row: f64,
+    numeric_span: SourceSpan,
 ) -> Result<(PacketBlock, Option<PacketBlock>)> {
     if block.start > block.end {
-        return Err(Error::diagram_parse_fallback(
+        return Err(Error::diagram_parse_exact(
             "packet".to_string(),
             format!(
                 "Block start {} is greater than block end {}.",
-                block.start, block.end
+                format_js_number(block.start),
+                format_js_number(block.end),
             ),
+            numeric_span,
         ));
     }
 
-    let row_start = row.checked_mul(i128::from(bits_per_row)).ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "packet".to_string(),
-            "Packet row arithmetic exceeds the supported integer range.".to_string(),
-        )
-    })?;
+    let row_start = row * bits_per_row;
 
-    if i128::from(block.end) < row_start {
+    if block.end + 1.0 <= row_start {
         return Ok((block, None));
     }
 
-    let row_end = row_start.checked_sub(1).ok_or_else(|| {
-        Error::diagram_parse_fallback(
-            "packet".to_string(),
-            "Packet row arithmetic underflowed.".to_string(),
-        )
-    })?;
-    let row_end = i64::try_from(row_end).map_err(|_| {
-        Error::diagram_parse_fallback(
-            "packet".to_string(),
-            "Packet row boundary exceeds the supported integer range.".to_string(),
-        )
-    })?;
-    let row_start = i64::try_from(row_start).map_err(|_| {
-        Error::diagram_parse_fallback(
-            "packet".to_string(),
-            "Packet row boundary exceeds the supported integer range.".to_string(),
-        )
-    })?;
-    let first_bits = row_end
-        .checked_sub(block.start)
-        .and_then(|value| value.checked_add(1))
-        .ok_or_else(|| {
-            Error::diagram_parse_fallback(
-                "packet".to_string(),
-                "Packet block width arithmetic overflowed.".to_string(),
-            )
-        })?;
-    let second_bits = block
-        .end
-        .checked_sub(row_start)
-        .and_then(|value| value.checked_add(1))
-        .ok_or_else(|| {
-            Error::diagram_parse_fallback(
-                "packet".to_string(),
-                "Packet block width arithmetic overflowed.".to_string(),
-            )
-        })?;
+    let row_end = row_start - 1.0;
+    // Without this equality the upstream loop keeps the same row and repeatedly emits the same
+    // remainder. Detect that Number-rounding stall before allocating any repeated fragments.
+    if row_end + 1.0 != row_start {
+        return Err(packet_expansion_error(
+            "Packet row splitting cannot make progress with JavaScript Number arithmetic.",
+            "merman.packet.nonprogress",
+            numeric_span,
+        ));
+    }
     Ok((
         PacketBlock {
             start: block.start,
             end: row_end,
             label: block.label.clone(),
-            bits: first_bits,
+            bits: row_end - block.start,
         },
         Some(PacketBlock {
             start: row_start,
             end: block.end,
             label: block.label,
-            bits: second_bits,
+            bits: block.end - row_start,
         }),
     ))
+}
+
+fn packet_expansion_error(message: impl Into<String>, code: &str, span: SourceSpan) -> Error {
+    Error::diagram_parse_diagnostic(
+        "packet",
+        crate::ParseDiagnostic::new(message)
+            .with_code(code)
+            .with_span(span, crate::ParseDiagnosticSpanKind::Exact),
+    )
 }
 
 fn parse_packet_block_controlled(
@@ -720,7 +662,7 @@ fn parse_packet_block_controlled(
     }))
 }
 
-fn parse_packet_integer(token: &str) -> Option<i64> {
+fn parse_packet_integer(token: &str) -> Option<f64> {
     if token.len() > 1 && token.starts_with('0') {
         return None;
     }
@@ -839,7 +781,7 @@ impl<'a> PacketCursor<'a> {
         Ok(())
     }
 
-    fn integer(&mut self) -> crate::OperationControlResult<Option<(i64, SourceSpan)>> {
+    fn integer(&mut self) -> crate::OperationControlResult<Option<(f64, SourceSpan)>> {
         let start = self.offset;
         while self.peek().is_some_and(|ch| ch.is_ascii_digit()) {
             self.advance()?;
@@ -957,17 +899,8 @@ fn packet_body_start_controlled(
     }
 }
 
-fn config_i64(config: &MermaidConfig, dotted_path: &str) -> Option<i64> {
-    let mut cur = config.as_value();
-    for segment in dotted_path.split('.') {
-        cur = cur.as_object()?.get(segment)?;
-    }
-    match cur {
-        Value::Number(n) => n
-            .as_i64()
-            .or_else(|| n.as_u64().and_then(|v| i64::try_from(v).ok())),
-        _ => None,
-    }
+fn config_bits_per_row(config: &MermaidConfig) -> Option<f64> {
+    config.as_value().get("packet")?.get("bitsPerRow")?.as_f64()
 }
 
 #[derive(Debug, Clone)]
@@ -1013,10 +946,10 @@ mod semantic_tests {
                 assert_eq!(model.packet[0].len(), 2);
                 let first = &model.packet[0][0];
                 assert_eq!(first.label, expected);
-                assert_eq!((first.start, first.end, first.bits), (0, 7, 8));
+                assert_eq!((first.start, first.end, first.bits), (0.0, 7.0, 8.0));
                 let next = &model.packet[0][1];
                 assert_eq!(next.label, "next");
-                assert_eq!((next.start, next.end, next.bits), (8, 8, 1));
+                assert_eq!((next.start, next.end, next.bits), (8.0, 8.0, 1.0));
                 #[cfg(feature = "editor-facts")]
                 assert_eq!(crate::editor::test_work::read(), Default::default());
             }
@@ -1030,7 +963,7 @@ mod semantic_tests {
                 let source = format!("{header}0: {quote}A\nB{quote}");
                 let model = parse_raw_packet(&source);
                 assert_eq!(model.packet[0][0].label, "A\nB");
-                assert_eq!(model.packet[0][0].bits, 1);
+                assert_eq!(model.packet[0][0].bits, 1.0);
             }
         }
     }
@@ -1277,9 +1210,18 @@ mod semantic_tests {
         .unwrap();
         assert_eq!(model.title.as_deref(), Some("Header"));
         assert_eq!(model.packet.len(), 2);
-        assert_eq!((model.packet[0][0].start, model.packet[0][0].end), (0, 7));
-        assert_eq!((model.packet[1][0].start, model.packet[1][0].end), (8, 11));
-        assert_eq!((model.packet[1][1].start, model.packet[1][1].end), (12, 12));
+        assert_eq!(
+            (model.packet[0][0].start, model.packet[0][0].end),
+            (0.0, 7.0)
+        );
+        assert_eq!(
+            (model.packet[1][0].start, model.packet[1][0].end),
+            (8.0, 11.0)
+        );
+        assert_eq!(
+            (model.packet[1][1].start, model.packet[1][1].end),
+            (12.0, 12.0)
+        );
         assert_eq!(model.packet[1][1].label, "flag");
         assert_eq!(
             crate::diagrams::langium_common::family_syntax_construction_count("packet"),
@@ -1334,6 +1276,20 @@ mod semantic_tests {
                 .parse_diagram_controlled_sync("packet\n+1: \"bit\"", &control)
                 .is_err()
         );
+    }
+
+    #[test]
+    fn packet_row_expansion_checks_cancellation_inside_a_single_large_field() {
+        let control = crate::OperationControl::new();
+        control.cancel_after_checkpoints(3);
+        let blocks = vec![ParsedPacketBlock {
+            start: Some(0.0),
+            end: Some(319_999.0),
+            bits: None,
+            label: "bounded expansion".to_string(),
+            numeric_span: SourceSpan::new(0, 8),
+        }];
+        assert!(populate_packet_controlled(blocks, 32.0, &control).is_err());
     }
 }
 
@@ -1487,19 +1443,19 @@ packet
 
         assert_eq!(
             error,
-            "packet.bitsPerRow must be an integer greater than or equal to 1; received 0"
+            "packet.bitsPerRow must be a finite number greater than or equal to 1; received 0"
         );
     }
 
     #[test]
-    fn packet_rejects_extreme_ranges_without_integer_overflow() {
+    fn packet_limits_extreme_range_expansion_independently_of_number_acceptance() {
         let error = parse_err(
             r#"packet
 0-9223372036854775807: "too wide"
 "#,
         );
 
-        assert_eq!(error, "Packet bit range arithmetic overflowed.");
+        assert_eq!(error, "Packet exceeds the 10000-row safety limit.");
     }
 
     #[test]
@@ -1769,7 +1725,7 @@ accDescr: Packet accDescription
                   "start": 0
                 },
                 {
-                  "bits": 21,
+                  "bits": 20,
                   "end": 31,
                   "label": "multiple",
                   "start": 11
@@ -1777,7 +1733,7 @@ accDescr: Packet accDescription
               ],
               [
                 {
-                  "bits": 32,
+                  "bits": 31,
                   "end": 63,
                   "label": "multiple",
                   "start": 32
@@ -1785,7 +1741,7 @@ accDescr: Packet accDescription
               ],
               [
                 {
-                  "bits": 27,
+                  "bits": 26,
                   "end": 90,
                   "label": "multiple",
                   "start": 64
@@ -1814,7 +1770,7 @@ accDescr: Packet accDescription
                   "start": 0
                 },
                 {
-                  "bits": 15,
+                  "bits": 14,
                   "end": 31,
                   "label": "multiple",
                   "start": 17
@@ -1822,7 +1778,7 @@ accDescr: Packet accDescription
               ],
               [
                 {
-                  "bits": 32,
+                  "bits": 31,
                   "end": 63,
                   "label": "multiple",
                   "start": 32

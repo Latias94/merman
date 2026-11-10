@@ -88,10 +88,15 @@ returns typed errors for invalid data, including these family requirements:
 
 - Class, State, and ER containment must stay acyclic after parent normalization and mapping to
   layout identities. Display labels do not identify parents.
-- Each reachable Block child record has one parent. Column-span totals must fit the model's
-  integer range; separate records may retain equal authored IDs or labels.
-- Packet fields must already be split at the configured `bitsPerRow` boundaries. Each block has
-  nonnegative, ordered, representable inclusive endpoints and fits within its row.
+- Each reachable Block child record has one parent; separate records may retain equal authored
+  IDs or labels. Counts and spans follow JavaScript Number arithmetic, including zero spans.
+  Nonempty composites require finite, nonzero integer column counts; nonfinite drawing bounds
+  fail SVG root admission.
+- Packet fields must already be grouped at the configured `bitsPerRow` boundaries. Preserve the
+  DB's redundant `bits` separately from the inclusive extent `end - start + 1.0`. SVG requires
+  finite, nonnegative endpoints and extent, while fractional splitting can retain `end < start`
+  and remainder drift. ASCII reports the retained DB fields. See the
+  [numeric model migration](mermaid-12-3.md#rust-source-changes).
 - Kanban presentation data lists each section immediately before its visible cards, whose
   `parent_id` matches that section. Repeated section IDs retain their own expanded card occurrences;
   do not regroup an already-expanded sequence by ID. Non-group entries before the first section

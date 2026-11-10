@@ -279,12 +279,8 @@ struct WardleyPositionedNodeAst {
 
 #[derive(Debug, Clone)]
 struct WardleyLabelAst {
-    offset_x: i64,
-    #[cfg(feature = "editor-facts")]
-    offset_x_span: SourceSpan,
-    offset_y: i64,
-    #[cfg(feature = "editor-facts")]
-    offset_y_span: SourceSpan,
+    offset_x: SpannedNumber,
+    offset_y: SpannedNumber,
 }
 
 #[derive(Debug, Clone)]
@@ -343,9 +339,7 @@ struct WardleyAnnotationsBoxAst {
 
 #[derive(Debug, Clone)]
 struct WardleyAnnotationAst {
-    number: u64,
-    #[cfg(feature = "editor-facts")]
-    number_span: SourceSpan,
+    number: SpannedNumber,
     x: SpannedNumber,
     y: SpannedNumber,
     text: SpannedText,
@@ -382,8 +376,8 @@ struct PendingWardleyNode {
     x: f64,
     y: f64,
     class_name: Option<String>,
-    label_offset_x: Option<i64>,
-    label_offset_y: Option<i64>,
+    label_offset_x: Option<f64>,
+    label_offset_y: Option<f64>,
     in_pipeline: bool,
     is_pipeline_parent: bool,
     inertia: Option<bool>,
@@ -906,12 +900,7 @@ fn parse_wardley_statement(
         let annotation = parse_annotation(body, body_start(statement, statement_start, body))?;
         #[cfg(feature = "editor-facts")]
         if editor_demand.captures_rich() {
-            push_integer_fact(
-                editor_facts,
-                annotation.number,
-                annotation.number_span,
-                "wardley annotation number",
-            );
+            push_number_fact(editor_facts, annotation.number, "wardley annotation number");
             push_number_fact(editor_facts, annotation.x, "wardley annotation visibility");
             push_number_fact(editor_facts, annotation.y, "wardley annotation evolution");
             push_payload_fact(editor_facts, &annotation.text, "wardley annotation text");
@@ -1251,7 +1240,7 @@ impl<'input> WardleyCursor<'input> {
     fn take_signed_integer(
         &mut self,
         context: &str,
-    ) -> std::result::Result<(i64, SourceSpan), WardleyParseProblem> {
+    ) -> std::result::Result<SpannedNumber, WardleyParseProblem> {
         self.skip_ws();
         let start = self.absolute();
         let negative = self.remaining().starts_with('-');
@@ -1259,11 +1248,14 @@ impl<'input> WardleyCursor<'input> {
             self.pos += 1;
         }
         let number = self.take_number(WardleyNumberKind::Integer, context)?;
-        let magnitude = number.value as i64;
-        Ok((
-            if negative { -magnitude } else { magnitude },
-            SourceSpan::new(start, number.span.end),
-        ))
+        Ok(SpannedNumber {
+            value: if negative {
+                -number.value
+            } else {
+                number.value
+            },
+            span: SourceSpan::new(start, number.span.end),
+        })
     }
 
     fn expect_end(&mut self, context: &str) -> std::result::Result<(), WardleyParseProblem> {
@@ -1463,18 +1455,11 @@ fn parse_optional_label(
     };
     cursor.pos += cursor.remaining().len() - rest.len();
     cursor.consume_char('[', "after wardley label")?;
-    let (offset_x, _offset_x_span) = cursor.take_signed_integer("wardley label X offset")?;
+    let offset_x = cursor.take_signed_integer("wardley label X offset")?;
     cursor.consume_char(',', "between wardley label offsets")?;
-    let (offset_y, _offset_y_span) = cursor.take_signed_integer("wardley label Y offset")?;
+    let offset_y = cursor.take_signed_integer("wardley label Y offset")?;
     cursor.consume_char(']', "after wardley label offsets")?;
-    Ok(Some(WardleyLabelAst {
-        offset_x,
-        #[cfg(feature = "editor-facts")]
-        offset_x_span: _offset_x_span,
-        offset_y,
-        #[cfg(feature = "editor-facts")]
-        offset_y_span: _offset_y_span,
-    }))
+    Ok(Some(WardleyLabelAst { offset_x, offset_y }))
 }
 
 fn parse_optional_strategy(
@@ -1647,14 +1632,7 @@ fn parse_annotation(
     )?;
     cursor.pos += consumed;
     cursor.expect_end("wardley annotation")?;
-    Ok(WardleyAnnotationAst {
-        number: number.value as u64,
-        #[cfg(feature = "editor-facts")]
-        number_span: number.span,
-        x,
-        y,
-        text,
-    })
+    Ok(WardleyAnnotationAst { number, x, y, text })
 }
 
 fn parse_force(
@@ -2240,8 +2218,8 @@ fn build_wardley_model_controlled(
             x: point.x,
             y: point.y,
             class_name: Some("component".to_string()),
-            label_offset_x: component.label.as_ref().map(|label| label.offset_x),
-            label_offset_y: component.label.as_ref().map(|label| label.offset_y),
+            label_offset_x: component.label.as_ref().map(|label| label.offset_x.value),
+            label_offset_y: component.label.as_ref().map(|label| label.offset_y.value),
             in_pipeline: false,
             is_pipeline_parent: false,
             inertia: Some(component.inertia),
@@ -2294,8 +2272,8 @@ fn build_wardley_model_controlled(
                 x,
                 y: parent_y,
                 class_name: Some("pipeline-component".to_string()),
-                label_offset_x: component.label.as_ref().map(|label| label.offset_x),
-                label_offset_y: component.label.as_ref().map(|label| label.offset_y),
+                label_offset_x: component.label.as_ref().map(|label| label.offset_x.value),
+                label_offset_y: component.label.as_ref().map(|label| label.offset_y.value),
                 in_pipeline: false,
                 is_pipeline_parent: false,
                 inertia: None,
@@ -2371,10 +2349,13 @@ fn build_wardley_model_controlled(
         let point = wardley_try!(to_coordinates(
             annotation.x,
             annotation.y,
-            &format!("Annotation {}", annotation.number),
+            &format!(
+                "Annotation {}",
+                crate::utils::format_js_number(annotation.number.value)
+            ),
         ));
         builder.annotations.push(WardleyAnnotation {
-            number: annotation.number,
+            number: annotation.number.value,
             coordinates: vec![point],
             text: Some(annotation.text.text.clone()),
         });
@@ -2438,7 +2419,7 @@ fn to_percent(
         return Err(WardleyParseProblem::new(
             format!(
                 "{context} must be between 0-1 (decimal) or 0-100 (percentage). Received: {}",
-                value.value
+                crate::utils::format_js_number(value.value)
             ),
             value.span,
         ));
@@ -2561,46 +2542,11 @@ fn push_number_fact(facts: &mut EditorSemanticFacts, value: SpannedNumber, detai
         value.span,
     ));
     facts.push_symbol(EditorSemanticSymbol::payload(
-        value.value.to_string(),
+        crate::utils::format_js_number(value.value),
         Some(detail.to_string()),
         EditorSemanticKind::Property,
         value.span,
         value.span,
-    ));
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_integer_fact(facts: &mut EditorSemanticFacts, value: u64, span: SourceSpan, detail: &str) {
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        span,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value.to_string(),
-        Some(detail.to_string()),
-        EditorSemanticKind::Property,
-        span,
-        span,
-    ));
-}
-
-#[cfg(feature = "editor-facts")]
-fn push_signed_integer_fact(
-    facts: &mut EditorSemanticFacts,
-    value: i64,
-    span: SourceSpan,
-    detail: &str,
-) {
-    facts.push_expected_syntax(EditorExpectedSyntax::new(
-        EditorExpectedSyntaxKind::Payload,
-        span,
-    ));
-    facts.push_symbol(EditorSemanticSymbol::payload(
-        value.to_string(),
-        Some(detail.to_string()),
-        EditorSemanticKind::Property,
-        span,
-        span,
     ));
 }
 
@@ -2623,18 +2569,8 @@ fn push_component_facts(
     );
     if let Some(label) = &component.label {
         facts.push_directive_prefix("label");
-        push_signed_integer_fact(
-            facts,
-            label.offset_x,
-            label.offset_x_span,
-            "wardley label X offset",
-        );
-        push_signed_integer_fact(
-            facts,
-            label.offset_y,
-            label.offset_y_span,
-            "wardley label Y offset",
-        );
+        push_number_fact(facts, label.offset_x, "wardley label X offset");
+        push_number_fact(facts, label.offset_y, "wardley label Y offset");
     }
     if let (Some(strategy), Some(span)) =
         (component.source_strategy, component.source_strategy_span)
@@ -2670,18 +2606,8 @@ fn push_pipeline_component_facts(
     );
     if let Some(label) = &component.label {
         facts.push_directive_prefix("label");
-        push_signed_integer_fact(
-            facts,
-            label.offset_x,
-            label.offset_x_span,
-            "wardley label X offset",
-        );
-        push_signed_integer_fact(
-            facts,
-            label.offset_y,
-            label.offset_y_span,
-            "wardley label Y offset",
-        );
+        push_number_fact(facts, label.offset_x, "wardley label X offset");
+        push_number_fact(facts, label.offset_y, "wardley label Y offset");
     }
 }
 
@@ -2906,7 +2832,7 @@ deaccelerator "Legacy Data" [0.45, 0.35]
         assert_eq!((file_system.x, file_system.y), (25.0, 50.0));
         assert_eq!(
             (file_system.label_offset_x, file_system.label_offset_y),
-            (Some(-40), Some(20))
+            (Some(-40.0), Some(20.0))
         );
         assert_eq!(
             model.pipelines[0].component_ids,
@@ -3000,7 +2926,7 @@ batch-loader->end-user
         assert_eq!(batch.id, "real-time processing_batch-loader");
         assert_eq!(
             (batch.label_offset_x, batch.label_offset_y),
-            (Some(-40), Some(20))
+            (Some(-40.0), Some(20.0))
         );
         assert_eq!(model.links[0].source, "real-time processing");
         assert_eq!(model.links[0].target, "end-user");

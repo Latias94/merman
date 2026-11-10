@@ -109,13 +109,13 @@ fn block_render_node_to_value_shallow(
     }
 
     if let Some(v) = block.width {
-        obj.insert("width".to_string(), json!(v));
+        obj.insert("width".to_string(), crate::json::number_value(v));
     }
     if let Some(v) = block.columns {
-        obj.insert("columns".to_string(), json!(v));
+        obj.insert("columns".to_string(), crate::json::number_value(v));
     }
     if let Some(v) = block.width_in_columns {
-        obj.insert("widthInColumns".to_string(), json!(v));
+        obj.insert("widthInColumns".to_string(), crate::json::number_value(v));
     }
     if compatibility
         .directions

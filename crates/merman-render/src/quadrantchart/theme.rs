@@ -452,8 +452,7 @@ impl QuadrantChartPointThemePlan {
             radius: point
                 .styles
                 .radius
-                .map(|value| value as f64)
-                .or_else(|| class_styles.and_then(|style| style.radius.map(|value| value as f64)))
+                .or_else(|| class_styles.and_then(|style| style.radius))
                 .or_else(|| {
                     expectation.and_then(|expectation| {
                         expectation.radius.as_ref().map(|radius| radius.value_px)

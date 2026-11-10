@@ -3162,6 +3162,47 @@ fn render_gantt_svg_from_text(text: &str) -> String {
     render_gantt_svg_from_text_with_engine(MermaidEngine::new(), text)
 }
 
+#[test]
+fn gantt_tasks_after_directives_reach_layout_and_svg_in_source_order() {
+    let same_line = concat!(
+        "gantt\r\n",
+        "dateFormat YYYY-MM-DD;Build:build,2026-01-01,1d\r\n",
+        "axisFormat %d#Ship:ship,after build,1d\r\n",
+        "todayMarker off;Close:close,after ship,1d\r\n",
+    );
+    let cross_line = concat!(
+        "gantt\r\n",
+        "dateFormat\r\nYYYY-MM-DD;Build:build,2026-01-01,1d\r\n",
+        "\u{feff}axisFormat\r\n%d#Ship:ship,after build,1d\r\n",
+        "todayMarker\r\noff;Close:close,after ship,1d\r\n",
+    );
+    for source in [same_line, cross_line] {
+        let layout = layout_gantt_from_text(source);
+        assert_eq!(layout.tasks.len(), 3);
+        let svg = render_gantt_svg_from_text(source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let labels: Vec<_> = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node
+                        .attribute("class")
+                        .is_some_and(|class| class.starts_with("taskText"))
+            })
+            .filter_map(|node| node.text())
+            .collect();
+        assert_eq!(labels, [";Build", "#Ship", ";Close"]);
+        for id in ["build", "ship", "close"] {
+            let terminal_id = format!("gantt-config-{id}");
+            assert!(
+                document.descendants().any(|node| node.has_tag_name("rect")
+                    && node.attribute("id") == Some(terminal_id.as_str())),
+                "{id}"
+            );
+        }
+    }
+}
+
 fn render_gantt_svg_from_text_with_engine(engine: MermaidEngine, text: &str) -> String {
     let session = RenderEnvironment::deterministic()
         .with_runtime_policy(
@@ -4067,3 +4108,29 @@ fn gantt_filtered_minute_config_and_body_precedence_reach_both_axes() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn gantt_svg_preserves_db_accessibility_text() {
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            Some("Accessible "),
+            Some("First\n"),
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            Some("\u{0085}"),
+            Some("\u{0085}"),
+        ),
+        ("\u{0085}", "\u{0085}", Some("\u{0085}"), Some("\u{0085}")),
+        ("<!--a11y-->", "<!--a11y-->", None, None),
+    ] {
+        let source = format!(
+            "gantt\naccTitle: {title}\naccDescr {{\n{description}\n}}\ndateFormat YYYY-MM-DD\nTask: task,2026-01-01,1d\n"
+        );
+        let svg = render_gantt_svg_from_text(&source);
+        common::assert_svg_accessibility(&svg, expected_title, expected_description);
+    }
+}

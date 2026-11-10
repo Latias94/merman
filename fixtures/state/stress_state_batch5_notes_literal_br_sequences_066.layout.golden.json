@@ -17,10 +17,10 @@
           "offset_y": 0.0,
           "padding": 16.0,
           "requested_dir": null,
-          "title": "literal <br> should be treated as text\nline2\\\\nline3 (escaped)",
+          "title": "literal <br> should be treated as text\n    line2\\\\nline3 (escaped)",
           "title_label": {
             "height": 63.0,
-            "width": 147.42,
+            "width": 148.54,
             "x": 165.0,
             "y": 43.5
           },

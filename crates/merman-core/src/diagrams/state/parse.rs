@@ -1,4 +1,6 @@
 #[cfg(feature = "editor-facts")]
+use crate::diagrams::scan::is_ecmascript_whitespace;
+#[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::family::SemanticConstruction;
 #[cfg(feature = "editor-facts")]
@@ -407,6 +409,8 @@ pub(super) fn assign_divider_ids(
 #[cfg(feature = "editor-facts")]
 enum StateTokenContext {
     Default,
+    StateAliasAs,
+    StateAliasId,
     ClickTarget,
     ClickAfterTarget,
     ClickAfterHref,
@@ -420,6 +424,7 @@ struct StatePendingEntity {
     selection: SourceSpan,
     detail: &'static str,
     kind: EditorSemanticKind,
+    is_alias: bool,
 }
 
 #[cfg(feature = "editor-facts")]
@@ -503,7 +508,20 @@ impl StateTokenFactCollector<'_> {
     ) -> OperationControlResult<()> {
         match token {
             Tok::Newline => self.finish_statement(line_content_end(self.code, start), facts),
-            Tok::StructStart | Tok::StructStop => self.reset_statement(facts),
+            Tok::StructStart => {
+                if let Some(entity) = self.pending_entity.as_mut()
+                    && entity.is_alias
+                {
+                    entity.is_alias = false;
+                    push_state_expected_syntax(
+                        facts,
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        entity.selection,
+                    );
+                }
+                self.reset_statement(facts);
+            }
+            Tok::StructStop => self.reset_statement(facts),
             Tok::Arrow => {
                 self.flush_pending_entity_for_relation(facts);
                 self.relation_label_pending = true;
@@ -599,6 +617,10 @@ impl StateTokenFactCollector<'_> {
                     "state display label",
                     EditorSemanticKind::String,
                 );
+                self.context = StateTokenContext::StateAliasAs;
+            }
+            Tok::As if self.context == StateTokenContext::StateAliasAs => {
+                self.context = StateTokenContext::StateAliasId;
             }
             Tok::Descr(text) => {
                 self.flush_pending_entity(facts);
@@ -683,7 +705,7 @@ impl StateTokenFactCollector<'_> {
                 self.expect_after_separator(EditorExpectedSyntaxKind::ClassName, end);
             }
             Tok::ClassDefId(id) => {
-                if !id.trim().is_empty() {
+                if !id.trim_matches(is_ecmascript_whitespace).is_empty() {
                     push_state_expected_syntax(
                         facts,
                         EditorExpectedSyntaxKind::ClassName,
@@ -722,7 +744,7 @@ impl StateTokenFactCollector<'_> {
                 self.expect_after_separator(EditorExpectedSyntaxKind::IdList, end);
             }
             Tok::ClassEntityIds(ids) => {
-                let has_targets = !ids.trim().is_empty();
+                let has_targets = !ids.trim_matches(is_ecmascript_whitespace).is_empty();
                 push_state_reference_id_list_facts(
                     facts,
                     self.code,
@@ -737,7 +759,7 @@ impl StateTokenFactCollector<'_> {
                 }
             }
             Tok::StyleClass(class_id) => {
-                if !class_id.trim().is_empty() {
+                if !class_id.trim_matches(is_ecmascript_whitespace).is_empty() {
                     self.pending_directive_slot = None;
                 }
                 push_state_payload_fact_from_token_as(
@@ -757,7 +779,7 @@ impl StateTokenFactCollector<'_> {
                 self.expect_after_separator(EditorExpectedSyntaxKind::IdList, end);
             }
             Tok::StyleIds(ids) => {
-                let has_targets = !ids.trim().is_empty();
+                let has_targets = !ids.trim_matches(is_ecmascript_whitespace).is_empty();
                 push_state_reference_id_list_facts(
                     facts,
                     self.code,
@@ -873,19 +895,59 @@ impl StateTokenFactCollector<'_> {
         facts: &mut EditorSemanticFacts,
     ) {
         self.flush_pending_entity(facts);
-        let Some(entity) = state_pending_entity(id, start, end, detail) else {
+        let is_alias = self.context == StateTokenContext::StateAliasId;
+        if is_alias {
+            self.context = StateTokenContext::Default;
+        }
+        let Some(mut entity) = state_pending_entity(id, start, end, detail) else {
             return;
         };
-        push_state_expected_syntax(
-            facts,
-            EditorExpectedSyntaxKind::NodeIdentifier,
-            entity.selection,
-        );
+        entity.is_alias = is_alias;
+        if !is_alias {
+            push_state_expected_syntax(
+                facts,
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                entity.selection,
+            );
+        }
         self.pending_entity = Some(entity);
     }
 
+    fn take_pending_entity(
+        &mut self,
+        facts: &mut EditorSemanticFacts,
+    ) -> Option<StatePendingEntity> {
+        let mut entity = self.pending_entity.take()?;
+        if entity.is_alias {
+            if let Some(separator) = entity.name.find(':') {
+                entity.name.truncate(separator);
+            }
+            let trimmed = entity.name.trim_matches(is_ecmascript_whitespace);
+            let leading = entity.name.len()
+                - entity
+                    .name
+                    .trim_start_matches(is_ecmascript_whitespace)
+                    .len();
+            entity.selection.start += leading;
+            entity.selection.end = entity
+                .selection
+                .end
+                .min(entity.selection.start + trimmed.len());
+            entity.name = trimmed.to_string();
+            push_state_expected_syntax(
+                facts,
+                EditorExpectedSyntaxKind::NodeIdentifier,
+                entity.selection,
+            );
+            if !is_editor_visible_state_name(&entity.name) {
+                return None;
+            }
+        }
+        Some(entity)
+    }
+
     fn flush_pending_entity(&mut self, facts: &mut EditorSemanticFacts) {
-        if let Some(entity) = self.pending_entity.take() {
+        if let Some(entity) = self.take_pending_entity(facts) {
             self.declared_entities.insert(entity.name.clone());
             facts.push_symbol(EditorSemanticSymbol::new(
                 entity.name,
@@ -898,7 +960,7 @@ impl StateTokenFactCollector<'_> {
     }
 
     fn flush_pending_entity_for_relation(&mut self, facts: &mut EditorSemanticFacts) {
-        if let Some(entity) = self.pending_entity.take() {
+        if let Some(entity) = self.take_pending_entity(facts) {
             self.push_state_relation_occurrence_with_selection(
                 entity.name,
                 entity.selection,
@@ -1025,6 +1087,7 @@ fn state_pending_entity(
         selection,
         detail,
         kind: EditorSemanticKind::Class,
+        is_alias: false,
     })
 }
 
@@ -1083,7 +1146,7 @@ fn push_state_class_definition_fact(
     detail: &'static str,
     kind: EditorSemanticKind,
 ) {
-    if name.trim().is_empty() {
+    if name.trim_matches(is_ecmascript_whitespace).is_empty() {
         return;
     }
 
@@ -1127,7 +1190,7 @@ fn push_state_reference_id_list_facts(
             if index.is_multiple_of(128) {
                 control.checkpoint()?;
             }
-            let id = raw_id.trim();
+            let id = raw_id.trim_matches(is_ecmascript_whitespace);
             if !id.is_empty() {
                 push_state_reference_fact_with_selection(facts, id.to_string(), span, detail);
             }
@@ -1147,8 +1210,10 @@ fn push_state_reference_id_list_facts(
             .map(|offset| cursor + offset)
             .unwrap_or(slice.len());
         let part = &slice[cursor..next_comma];
-        let leading = part.len().saturating_sub(part.trim_start().len());
-        let trailing = part.trim_end().len();
+        let leading = part
+            .len()
+            .saturating_sub(part.trim_start_matches(is_ecmascript_whitespace).len());
+        let trailing = part.trim_end_matches(is_ecmascript_whitespace).len();
         if leading < trailing {
             let id_start = cursor + leading;
             let id_end = cursor + trailing;
@@ -1199,7 +1264,7 @@ fn push_state_payload_fact_from_token_as(
     kind: EditorSemanticKind,
     expected_kind: EditorExpectedSyntaxKind,
 ) {
-    let value = value.trim();
+    let value = value.trim_matches(is_ecmascript_whitespace);
     if value.is_empty() {
         return;
     }
@@ -1246,7 +1311,8 @@ fn push_state_string_payload_fact(
 
 #[cfg(feature = "editor-facts")]
 fn is_editor_visible_state_name(id: &str) -> bool {
-    !id.trim().is_empty() && id.trim() != "[*]"
+    let id = id.trim_matches(is_ecmascript_whitespace);
+    !id.is_empty() && id != "[*]"
 }
 
 #[cfg(all(test, feature = "editor-facts"))]

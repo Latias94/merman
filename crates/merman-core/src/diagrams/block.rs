@@ -25,10 +25,10 @@ use std::collections::HashSet;
 use std::cell::Cell;
 
 // Block spacing is materialized as one semantic placeholder per occupied column to match Mermaid.
-// Bound that expansion before allocation; larger bounded product profiles allow at most this many
+// Bound total space expansion before allocation; larger bounded product profiles allow at most this many
 // model items, and an unbounded profile must still not turn a tiny source into an effectively
 // infinite allocation.
-const MAX_BLOCK_SPACE_EXPANSION_ITEMS: i64 = 200_000;
+const MAX_BLOCK_SPACE_EXPANSION_ITEMS: usize = 200_000;
 
 #[cfg(test)]
 thread_local! {
@@ -70,9 +70,9 @@ struct Block {
     thickness: BlockEdgeThickness,
     pattern: BlockEdgePattern,
 
-    width: Option<i64>,
-    columns: Option<i64>,
-    width_in_columns: Option<i64>,
+    width: Option<f64>,
+    columns: Option<f64>,
+    width_in_columns: Option<f64>,
     directions: Option<Vec<String>>,
 
     classes: Vec<String>,
@@ -113,7 +113,7 @@ impl BlockDb {
         self.insert_block(Block {
             id: self.root_id.clone(),
             block_type: "composite".to_string(),
-            columns: Some(-1),
+            columns: Some(-1.0),
             label: Some(String::new()),
             ..Default::default()
         });
@@ -220,7 +220,7 @@ impl BlockDb {
             let Some(mut block) = records[index].take() else {
                 continue;
             };
-            if col > 0
+            if col > 0.0
                 && block.block_type != "column-setting"
                 && block.width_in_columns.is_some_and(|width| width > col)
             {
@@ -229,8 +229,8 @@ impl BlockDb {
                     format!(
                         "Block {} width {} exceeds configured column width {}",
                         block.id,
-                        block.width_in_columns.unwrap_or(1),
-                        col
+                        crate::utils::format_js_number(block.width_in_columns.unwrap_or(1.0)),
+                        crate::utils::format_js_number(col)
                     ),
                 ));
             }
@@ -277,7 +277,8 @@ impl BlockDb {
             let children = std::mem::take(&mut block.children);
             let existed = self.block_ids.get(&block.id).copied();
             let is_space = block.block_type == "space";
-            let space_width = block.width.unwrap_or(1).max(0);
+            // Authored space widths have already passed finite, bounded expansion admission.
+            let space_width = block.width.unwrap_or(1.0) as usize;
             let block_index = if let Some(index) = existed {
                 let existing = &mut self.blocks[index];
                 // Mermaid only updates type and an explicit label on repeated declarations.
@@ -332,7 +333,7 @@ impl BlockDb {
 struct PopulateFrame {
     parent: Option<usize>,
     blocks: std::vec::IntoIter<usize>,
-    col: i64,
+    col: f64,
     child_ids: Vec<usize>,
 }
 
@@ -343,7 +344,7 @@ impl PopulateFrame {
             .filter_map(|&index| records[index].as_ref())
             .find(|block| block.block_type == "column-setting")
             .and_then(|block| block.columns)
-            .unwrap_or(-1);
+            .unwrap_or(-1.0);
         Self {
             parent,
             blocks: blocks.into_iter(),
@@ -803,8 +804,8 @@ enum BlockNodeOccurrence {
     RelationEndpoint,
 }
 
-fn validate_block_space_width(width: i64, span: SourceSpan) -> Result<()> {
-    if width > MAX_BLOCK_SPACE_EXPANSION_ITEMS {
+fn validate_block_space_width(width: f64, span: SourceSpan) -> Result<()> {
+    if width > MAX_BLOCK_SPACE_EXPANSION_ITEMS as f64 {
         return Err(Error::diagram_parse_exact(
             "block",
             format!(
@@ -1185,6 +1186,7 @@ struct Parser<'input, 'control> {
     control: &'control OperationControl,
     pos: usize,
     gen_counter: i64,
+    space_expansion_items: usize,
     records: Vec<Block>,
     #[cfg(feature = "editor-facts")]
     declared_entities: HashSet<String>,
@@ -1208,6 +1210,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             control,
             pos: 0,
             gen_counter: 0,
+            space_expansion_items: 0,
             records: Vec::new(),
             #[cfg(feature = "editor-facts")]
             declared_entities: HashSet::new(),
@@ -1350,33 +1353,6 @@ impl<'input, 'control> Parser<'input, 'control> {
         true
     }
 
-    fn consume_keyword_same_line(&mut self, kw: &str) -> bool {
-        // Like `consume_keyword`, but does not skip newlines/comments. This is used for
-        // statement-local infix tokens (e.g. `id1 space id2`), where treating the next line's
-        // `space` statement as an infix separator would be incorrect.
-        self.skip_inline_whitespace();
-        if self.starts_with("%%") {
-            return false;
-        }
-        if !self.starts_with(kw) {
-            return false;
-        }
-        if kw.ends_with(':') {
-            self.pos += kw.len();
-            return true;
-        }
-        let after = &self.input[self.pos + kw.len()..];
-        if after
-            .chars()
-            .next()
-            .is_none_or(|c| c.is_whitespace() || c == ':')
-        {
-            self.pos += kw.len();
-            return true;
-        }
-        false
-    }
-
     fn consume_exact(&mut self, s: &str) -> bool {
         self.skip_ws_and_comments();
         if !self.starts_with(s) {
@@ -1425,12 +1401,14 @@ impl<'input, 'control> Parser<'input, 'control> {
             }
 
             let statement_start = self.pos;
+            let space_expansion_items = self.space_expansion_items;
 
             let result = self.parse_document_statement(&mut frames, stop_on_end);
             match result {
                 Ok(true) => break,
                 Ok(false) => continue,
                 Err(error) => {
+                    self.space_expansion_items = space_expansion_items;
                     let fallback = self.statement_span(statement_start);
                     let (error, _span) = block_error_with_fallback_span(error, fallback);
                     if first_failure.is_none() {
@@ -1519,13 +1497,13 @@ impl<'input, 'control> Parser<'input, 'control> {
             return Ok(false);
         }
 
-        if self.peek_keyword("columns") {
-            let block = self.parse_columns_statement()?;
+        if let Some(value_start) = self.columns_value_start() {
+            let block = self.parse_columns_statement(value_start)?;
             let index = self.insert_record(block);
             push_document_child(frames, index)?;
             return Ok(false);
         }
-        if self.peek_keyword("space") {
+        if self.starts_with("space") {
             let block = self.parse_space_statement()?;
             let index = self.insert_record(block);
             push_document_child(frames, index)?;
@@ -1578,19 +1556,31 @@ impl<'input, 'control> Parser<'input, 'control> {
         index
     }
 
-    fn parse_columns_statement(&mut self) -> Result<Block> {
-        self.skip_ws_and_comments();
-        if !self.consume_keyword("columns") {
-            return Err(Error::diagram_parse_fallback(
-                "block".to_string(),
-                "expected columns".to_string(),
-            ));
+    fn columns_value_start(&self) -> Option<usize> {
+        let rest = self.input[self.pos..].strip_prefix("columns")?;
+        let whitespace = rest
+            .chars()
+            .take_while(|&ch| merman_model::text::is_ecmascript_whitespace(ch))
+            .map(char::len_utf8)
+            .sum::<usize>();
+        if whitespace == 0 {
+            return None;
         }
-        self.skip_ws_and_comments();
-        let value = if self.consume_keyword("auto") {
-            -1
+        let start = self.pos + "columns".len() + whitespace;
+        let value = &self.input[start..];
+        (value.starts_with("auto") || value.as_bytes().first().is_some_and(u8::is_ascii_digit))
+            .then_some(start)
+    }
+
+    fn parse_columns_statement(&mut self, value_start: usize) -> Result<Block> {
+        // Jison owns the whole `columns\s+(auto|\d+)` token. Other suffixes leave `columns`
+        // available as a node identifier; comments do not join its keyword and value.
+        self.pos = value_start;
+        let value = if self.starts_with("auto") {
+            self.pos += "auto".len();
+            -1.0
         } else {
-            let (value, _value_fact) = self.parse_int()?;
+            let (value, _value_fact) = self.parse_int_token()?;
             #[cfg(feature = "editor-facts")]
             if self.editor_demand == EditorFactsDemand::Capture {
                 push_block_payload(
@@ -1614,17 +1604,13 @@ impl<'input, 'control> Parser<'input, 'control> {
 
     fn parse_space_statement(&mut self) -> Result<Block> {
         self.skip_ws_and_comments();
-        if !self.consume_keyword("space") {
-            return Err(Error::diagram_parse_fallback(
-                "block".to_string(),
-                "expected space".to_string(),
-            ));
-        }
-        let mut width = 1;
-        self.skip_ws_and_comments();
-        if self.consume_exact(":") {
-            let (value, value_fact) = self.parse_int()?;
-            validate_block_space_width(value, value_fact.span)?;
+        let start = self.pos;
+        self.pos += "space".len();
+        let mut width = 1.0;
+        if self.peek_char() == Some(':') {
+            self.bump();
+            let (value, value_fact) = self.parse_int_token()?;
+            self.admit_space_width(value, value_fact.span)?;
             #[cfg(feature = "editor-facts")]
             if self.editor_demand == EditorFactsDemand::Capture {
                 push_block_payload(
@@ -1635,12 +1621,31 @@ impl<'input, 'control> Parser<'input, 'control> {
                 );
             }
             width = value;
+        } else {
+            self.admit_space_width(width, SourceSpan::new(start, self.pos))?;
         }
         let mut b = Block::new(self.generate_id());
         b.block_type = "space".to_string();
         b.label = Some("".to_string());
         b.width = Some(width);
         Ok(b)
+    }
+
+    fn admit_space_width(&mut self, width: f64, span: SourceSpan) -> Result<()> {
+        validate_block_space_width(width, span)?;
+        let total = self.space_expansion_items + width as usize;
+        if total > MAX_BLOCK_SPACE_EXPANSION_ITEMS {
+            return Err(Error::diagram_parse_exact(
+                "block",
+                format!(
+                    "total block space width {total} exceeds the materialization limit of \
+                     {MAX_BLOCK_SPACE_EXPANSION_ITEMS}"
+                ),
+                span,
+            ));
+        }
+        self.space_expansion_items = total;
+        Ok(())
     }
 
     fn parse_classdef_statement(&mut self) -> Result<Block> {
@@ -1871,95 +1876,6 @@ impl<'input, 'control> Parser<'input, 'control> {
             #[cfg(feature = "editor-facts")]
             kind,
         )?;
-        if self.consume_keyword_same_line("space") {
-            let mut width = 1;
-            self.skip_inline_whitespace();
-            if self.peek_char() == Some(':') {
-                self.bump();
-                self.skip_inline_whitespace();
-                let start = self.pos;
-                while self.peek_char().is_some_and(|c| c.is_ascii_digit()) {
-                    self.bump();
-                }
-                if self.pos == start {
-                    return Err(Error::diagram_parse_fallback(
-                        "block".to_string(),
-                        "expected integer width after space:".to_string(),
-                    ));
-                }
-                let text = self.input[start..self.pos].to_string();
-                width = text.parse::<i64>().map_err(|_| {
-                    Error::diagram_parse_exact(
-                        "block",
-                        "block space width is outside the supported integer range",
-                        SourceSpan::new(start, self.pos),
-                    )
-                })?;
-                validate_block_space_width(width, SourceSpan::new(start, self.pos))?;
-                #[cfg(feature = "editor-facts")]
-                if self.editor_demand == EditorFactsDemand::Capture {
-                    push_block_payload(
-                        &mut self.editor_facts,
-                        BlockSpannedText {
-                            text,
-                            span: SourceSpan::new(start, self.pos),
-                        },
-                        "block space width",
-                        EditorSemanticKind::Property,
-                    );
-                }
-            }
-            let mut space = Block::new(self.generate_id());
-            space.block_type = "space".to_string();
-            space.label = Some("".to_string());
-            space.width = Some(width);
-
-            left.block.width_in_columns.get_or_insert(1);
-            self.skip_inline_whitespace();
-            if self.starts_with("%%") || matches!(self.peek_char(), None | Some('\n' | '\r')) {
-                #[cfg(feature = "editor-facts")]
-                if !left.definition_emitted {
-                    #[cfg(feature = "editor-facts")]
-                    self.push_block_node_occurrence(
-                        &left.id,
-                        detail,
-                        kind,
-                        BlockNodeOccurrence::Definition,
-                    );
-                }
-                return Ok(vec![left.block, space]);
-            }
-
-            #[cfg(feature = "editor-facts")]
-            if !left.definition_emitted {
-                #[cfg(feature = "editor-facts")]
-                self.push_block_node_occurrence(
-                    &left.id,
-                    detail,
-                    kind,
-                    BlockNodeOccurrence::Definition,
-                );
-            }
-            let mut right = self.parse_node(
-                #[cfg(feature = "editor-facts")]
-                "block node",
-                #[cfg(feature = "editor-facts")]
-                EditorSemanticKind::Object,
-            )?;
-            right.block.width_in_columns.get_or_insert(1);
-            #[cfg(feature = "editor-facts")]
-            if !right.definition_emitted {
-                #[cfg(feature = "editor-facts")]
-                self.push_block_node_occurrence(
-                    &right.id,
-                    "block node",
-                    EditorSemanticKind::Object,
-                    BlockNodeOccurrence::Definition,
-                );
-            }
-            return Ok(vec![left.block, space, right.block]);
-        }
-
         self.skip_ws_and_comments();
         let link = match self.parse_link() {
             Ok(link) => link,
@@ -2044,14 +1960,14 @@ impl<'input, 'control> Parser<'input, 'control> {
                     BlockNodeOccurrence::RelationEndpoint,
                 );
             }
-            left.block.width_in_columns.get_or_insert(1);
-            right.block.width_in_columns.get_or_insert(1);
+            left.block.width_in_columns.get_or_insert(1.0);
+            right.block.width_in_columns.get_or_insert(1.0);
             return Ok(vec![left.block, edge, right.block]);
         }
 
         self.skip_ws_and_comments();
         if self.consume_exact(":") {
-            let (w, _width_fact) = self.parse_int()?;
+            let (w, _width_fact) = self.parse_int_token()?;
             #[cfg(feature = "editor-facts")]
             if self.editor_demand == EditorFactsDemand::Capture {
                 push_block_payload(
@@ -2063,7 +1979,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             }
             left.block.width_in_columns = Some(w);
         } else {
-            left.block.width_in_columns.get_or_insert(1);
+            left.block.width_in_columns.get_or_insert(1.0);
         }
 
         #[cfg(feature = "editor-facts")]
@@ -2225,7 +2141,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             b.label = Some(label.text);
             b.block_type = "block_arrow".to_string();
             b.directions = Some(dirs);
-            b.width_in_columns = Some(1);
+            b.width_in_columns = Some(1.0);
             return Ok(ParsedBlockNode {
                 block: b,
                 #[cfg(feature = "editor-facts")]
@@ -2278,7 +2194,7 @@ impl<'input, 'control> Parser<'input, 'control> {
             let type_str = format!("{start_delim}{end_delim}");
             b.label = Some(label.text);
             b.block_type = type_str_to_type(&type_str);
-            b.width_in_columns = Some(1);
+            b.width_in_columns = Some(1.0);
             return Ok(ParsedBlockNode {
                 block: b,
                 #[cfg(feature = "editor-facts")]
@@ -2482,8 +2398,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         })
     }
 
-    fn parse_int(&mut self) -> Result<(i64, BlockSpannedText)> {
-        self.skip_ws_and_comments();
+    fn parse_int_token(&mut self) -> Result<(f64, BlockSpannedText)> {
         let start = self.pos;
         while self.peek_char().is_some_and(|c| c.is_ascii_digit()) {
             self.bump();
@@ -2496,7 +2411,7 @@ impl<'input, 'control> Parser<'input, 'control> {
         }
         let text = self.input[start..self.pos].to_string();
         let value = text
-            .parse::<i64>()
+            .parse::<f64>()
             .map_err(|e| Error::diagram_parse_fallback("block".to_string(), e.to_string()))?;
         Ok((
             value,
@@ -2730,7 +2645,7 @@ mod tests {
         let mut space = Block::new("space".to_string());
         space.block_type = "space".to_string();
         space.label = Some(String::new());
-        space.width = Some(1_024);
+        space.width = Some(1_024.0);
         let control = OperationControl::new();
         control.cancel_after_checkpoints(3);
         let mut db = BlockDb::default();
@@ -2774,6 +2689,36 @@ mod tests {
                     .message()
                     .contains("exceeds the materialization limit")
             );
+        }
+    }
+
+    #[test]
+    fn block_space_expansion_budget_covers_standalone_and_inline_statements() {
+        for (first, second) in [
+            ("space:100000", "space:100001"),
+            ("A space:100000 B", "C space:100001 D"),
+            ("space:100000", "A space:100001 B"),
+        ] {
+            let source = format!("block\n{first}\n{second}\n");
+            let control = OperationControl::new();
+            let mut parser = Parser::new(
+                &source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                false,
+                &control,
+            );
+            parser.parse_header().unwrap();
+            // Inspect syntax before the accepted first statement materializes any placeholders.
+            let document = parser.parse_document(false).unwrap().unwrap();
+            let failure = document.failure.expect("total expansion exceeds admission");
+            let Error::DiagramParse { diagnostic, .. } = failure.error else {
+                panic!("expected bounded expansion diagnostic")
+            };
+            let start = source.find("100001").unwrap();
+            assert_eq!(diagnostic.span(), Some(SourceSpan::new(start, start + 6)));
+            assert!(diagnostic.message().contains("total block space width"));
+            assert!(document.records.len() <= 4);
         }
     }
 
@@ -3130,7 +3075,7 @@ C<["Route"]>(left,down)
         let child = typed.block(group.children[0]).unwrap();
         assert_eq!(child.label, "new");
         assert_eq!(child.block_type, "circle");
-        assert_eq!(child.width_in_columns, Some(1));
+        assert_eq!(child.width_in_columns, Some(1.0));
         assert_eq!(child.directions, ["down"]);
     }
 
@@ -3150,7 +3095,7 @@ C<["Route"]>(left,down)
         assert_eq!(ids, ["root", "G", "A", "B"]);
         let group = typed.block(typed.root().unwrap().children[0]).unwrap();
         assert_eq!(group.id, "G");
-        assert_eq!(group.columns, Some(2));
+        assert_eq!(group.columns, Some(2.0));
         assert_eq!(group.children.len(), 1);
         assert_eq!(typed.block(group.children[0]).unwrap().id, "A");
         assert_eq!(value["blocks"].as_array().unwrap().len(), 1);
@@ -3816,14 +3761,14 @@ A --> turn
         assert!(output.visuals.color_indices.is_empty());
         let model = output.semantic;
         let root = model.root().unwrap();
-        assert_eq!(root.columns, Some(1));
+        assert_eq!(root.columns, Some(1.0));
         let alpha = model
             .blocks_flat
             .iter()
             .find(|node| node.id == "A")
             .unwrap();
         assert_eq!(alpha.label, "Alpha");
-        assert_eq!(alpha.width_in_columns, Some(2));
+        assert_eq!(alpha.width_in_columns, Some(2.0));
         assert_eq!(alpha.classes, ["hot"]);
         let turn = model
             .blocks_flat

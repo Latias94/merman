@@ -72,8 +72,9 @@ fn journey_direct_scores_preserve_fractions_integer_text_and_nan_controls() {
         (4.0, false, "4"),
         (4.0, true, "NaN"),
         (f64::NAN, false, "NaN"),
-        (f64::INFINITY, false, "NaN"),
-        (f64::NEG_INFINITY, false, "NaN"),
+        (f64::INFINITY, false, "Infinity"),
+        (f64::NEG_INFINITY, false, "-Infinity"),
+        (f64::INFINITY, true, "NaN"),
     ] {
         let model = JourneyDiagramModel {
             tasks: vec![JourneyTask {
@@ -88,6 +89,24 @@ fn journey_direct_scores_preserve_fractions_integer_text_and_nan_controls() {
             ..Default::default()
         };
         let rendered = render(RenderSemanticModel::Journey(model));
+        assert!(
+            rendered.contains(&format!("score={expected}")),
+            "{rendered}"
+        );
+    }
+}
+
+#[test]
+fn journey_source_scores_keep_signed_infinity_in_terminal_text() {
+    for (token, expected) in [
+        ("Infinity", "Infinity"),
+        ("-Infinity", "-Infinity"),
+        ("1e309", "Infinity"),
+        ("-1e309", "-Infinity"),
+        ("invalid", "NaN"),
+    ] {
+        let source = format!("journey\nsection Checkout\nPay: {token}: Customer\n");
+        let rendered = render_parsed(&source);
         assert!(
             rendered.contains(&format!("score={expected}")),
             "{rendered}"

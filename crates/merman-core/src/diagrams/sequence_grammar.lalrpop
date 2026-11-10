@@ -149,7 +149,6 @@ AccDescrStatement: String = {
 
 ActorId: String = {
   <a:Actor> => a,
-  <n:Num> => n.to_string(),
 };
 
 ParticipantDecl: (String, Option<String>, String, Option<String>) = {

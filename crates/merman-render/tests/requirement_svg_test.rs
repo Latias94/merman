@@ -286,6 +286,37 @@ fn render_requirement_without_theme_and_engine(
 }
 
 #[test]
+fn requirement_multiline_accessibility_reaches_svg_and_keeps_suffix_nodes() {
+    for newline in ["\n", "\r\n"] {
+        for (title, description) in [("\u{85}Accessible;#\u{85}", "Help"), ("\u{85}", "\u{85}")] {
+            let source = format!(
+                "requirementDiagram{newline}accTitle{newline}%% Removed before parsing{newline}\u{feff}:{newline}{title}{newline}accDescr{newline}{{{newline}{description}{newline}}}requirement Feature {{{newline} id: 1{newline} text: \"Body\"{newline}}}{newline}"
+            );
+            let rendered = render_requirement_without_theme(&source);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let root = document.root_element();
+            for (attribute, tag, expected) in [
+                ("aria-labelledby", "title", title),
+                ("aria-describedby", "desc", description),
+            ] {
+                let id = root.attribute(attribute).unwrap();
+                let target = root
+                    .children()
+                    .find(|node| node.attribute("id") == Some(id))
+                    .unwrap();
+                assert!(target.has_tag_name(tag));
+                assert_eq!(target.text(), Some(expected));
+            }
+            for expected in ["Feature", "Body"] {
+                assert!(document.descendants().any(|node| {
+                    node.is_text() && node.text().is_some_and(|text| text.contains(expected))
+                }));
+            }
+        }
+    }
+}
+
+#[test]
 fn requirement_root_width_uses_the_state_config_owner() {
     for (config, responsive) in [
         (serde_json::json!({}), true),

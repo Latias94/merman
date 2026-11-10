@@ -12,6 +12,7 @@ use crate::{
     Error, MermaidConfig, OperationControl, OperationControlResult, Result, SourceSpan,
     family::CombinedSemanticFailure,
 };
+use merman_model::text::is_ecmascript_whitespace;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(all(test, feature = "compat-json"))]
@@ -137,24 +138,22 @@ fn parse_styles(styles: &[String]) -> Result<QuadrantChartStyles> {
         if style.is_empty() {
             continue;
         }
-        let (key, value) = style.split_once(':').ok_or_else(|| {
-            Error::diagram_parse_fallback(
-                "quadrantChart".to_string(),
-                format!("style named {style} is not supported."),
-            )
-        })?;
-        let key = key.trim();
-        let value = value.trim();
+        // Mermaid destructures the first two components of split(/\s*:\s*/).
+        let mut components = style.split(':');
+        let key = components.next().unwrap_or_default().trim();
+        let value = components.next().map(str::trim).unwrap_or("undefined");
 
         match key {
             "radius" => {
-                if !value.chars().all(|c| c.is_ascii_digit()) {
+                if value.is_empty() || !value.chars().all(|c| c.is_ascii_digit()) {
                     return Err(Error::diagram_parse_fallback(
                         "quadrantChart".to_string(),
                         format!("value for {key} {value} is invalid, please use a valid number"),
                     ));
                 }
-                out.radius = Some(value.parse::<i64>().map_err(|e| {
+                // The lexer/validator admits only decimal digits, so parsing directly as
+                // binary64 has the same rounding and overflow as JavaScript parseInt.
+                out.radius = Some(value.parse::<f64>().map_err(|e| {
                     Error::diagram_parse_fallback("quadrantChart".to_string(), e.to_string())
                 })?);
             }
@@ -262,12 +261,29 @@ impl<'source> SourceSlice<'source> {
         Self::new(text, self.end().saturating_sub(text.len()))
     }
 
+    fn trim_ecmascript_start(self) -> Self {
+        let text = self.text.trim_start_matches(is_ecmascript_whitespace);
+        Self::new(text, self.end().saturating_sub(text.len()))
+    }
+
     fn trim_end(self) -> Self {
         Self::new(self.text.trim_end(), self.start)
     }
 
+    fn trim_ecmascript_end(self) -> Self {
+        Self::new(
+            self.text.trim_end_matches(is_ecmascript_whitespace),
+            self.start,
+        )
+    }
+
     fn trim(self) -> Self {
         self.trim_start().trim_end()
+    }
+
+    fn trim_ascii(self) -> Self {
+        let leading = self.text.len() - self.text.trim_ascii_start().len();
+        Self::new(self.text.trim_ascii(), self.start + leading)
     }
 
     fn subslice(self, start: usize, end: usize) -> Self {
@@ -446,49 +462,144 @@ fn parse_axis_text(input: SourceSlice<'_>) -> Result<ParsedAxis<'_>> {
     })
 }
 
-fn parse_unit_interval_token(raw: &str) -> Result<f64> {
-    let s = raw.trim();
-    if s == "1" {
-        return Ok(1.0);
+fn point_coordinate_token_len(input: &str) -> Option<usize> {
+    match input.as_bytes().first()? {
+        b'1' => Some(1),
+        b'0' => {
+            // quadrant.jison uses (1)|(0(.\d+)?). Its dot matches one UTF-16
+            // code unit, not just a decimal point, and the optional suffix is greedy.
+            let Some(wildcard) = input[1..].chars().next() else {
+                return Some(1);
+            };
+            if wildcard.len_utf16() != 1
+                || matches!(wildcard, '\r' | '\n' | '\u{2028}' | '\u{2029}')
+            {
+                return Some(1);
+            }
+            let digits_start = 1 + wildcard.len_utf8();
+            let digits = input[digits_start..]
+                .bytes()
+                .take_while(u8::is_ascii_digit)
+                .count();
+            Some(if digits == 0 {
+                1
+            } else {
+                digits_start + digits
+            })
+        }
+        _ => None,
     }
-    if s == "0" {
-        return Ok(0.0);
-    }
-    if let Some(rest) = s.strip_prefix("0.")
-        && !rest.is_empty()
-        && rest.chars().all(|c| c.is_ascii_digit())
-    {
-        return s.parse::<f64>().map_err(|e| {
-            Error::diagram_parse_fallback("quadrantChart".to_string(), e.to_string())
-        });
-    }
-    Err(Error::diagram_parse_fallback(
-        "quadrantChart".to_string(),
-        "invalid point coordinate".to_string(),
-    ))
+}
+
+struct PointCoordinates<'source> {
+    x: SourceSlice<'source>,
+    y: SourceSlice<'source>,
+    after: SourceSlice<'source>,
+}
+
+fn point_coordinates(input: SourceSlice<'_>) -> Option<PointCoordinates<'_>> {
+    input.text.strip_prefix('[')?;
+    let x_input = input.subslice(1, input.text.len()).trim_ecmascript_start();
+    let x_len = point_coordinate_token_len(x_input.text)?;
+    let x = x_input.subslice(0, x_len);
+    let separator = x_input
+        .subslice(x_len, x_input.text.len())
+        .trim_ecmascript_start();
+    separator.text.strip_prefix(',')?;
+    let y_input = separator
+        .subslice(1, separator.text.len())
+        .trim_ecmascript_start();
+    let y_len = point_coordinate_token_len(y_input.text)?;
+    let y = y_input.subslice(0, y_len);
+    let close = y_input
+        .subslice(y_len, y_input.text.len())
+        .trim_ecmascript_start();
+    close.text.strip_prefix(']')?;
+    Some(PointCoordinates {
+        x,
+        y,
+        after: close.subslice(1, close.text.len()),
+    })
 }
 
 struct ParsedStyleList<'source> {
     items: Vec<SourceSlice<'source>>,
 }
 
-fn split_style_slices(input: SourceSlice<'_>) -> ParsedStyleList<'_> {
+fn split_style_slices(input: SourceSlice<'_>) -> Result<ParsedStyleList<'_>> {
+    // UNICODE_TEXT and punctuation outside styleComponent remain lexer errors,
+    // including in components that the DB subsequently ignores.
+    if !input.text.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+            || matches!(byte, b':' | b'#' | b'-' | b',' | b' ' | b'\t' | 0x0b | 0x0c)
+    }) {
+        return Err(Error::diagram_parse_fallback(
+            "quadrantChart".to_string(),
+            "invalid character in style".to_string(),
+        ));
+    }
+    let mut cursor = 0;
+    while cursor < input.text.len() {
+        let rest = &input.text[cursor..];
+        let first = rest.as_bytes()[0];
+        let token_len = if first.is_ascii_alphabetic() {
+            rest.bytes().take_while(u8::is_ascii_alphabetic).count()
+        } else if first.is_ascii_digit() {
+            rest.bytes().take_while(u8::is_ascii_digit).count()
+        } else {
+            1
+        };
+        let reserved = rest.starts_with(":::")
+            || [
+                "title",
+                "x-axis",
+                "y-axis",
+                "quadrant-1",
+                "quadrant-2",
+                "quadrant-3",
+                "quadrant-4",
+                "classDef",
+                "quadrantChart",
+            ]
+            .iter()
+            .any(|keyword| {
+                keyword.len() >= token_len
+                    && rest
+                        .get(..keyword.len())
+                        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+            })
+            || ["accTitle", "accDescr"].iter().any(|keyword| {
+                rest.get(..keyword.len())
+                    .is_some_and(|prefix| prefix.eq_ignore_ascii_case(keyword))
+                    && rest[keyword.len()..]
+                        .trim_start_matches(|ch: char| ch.is_ascii_whitespace())
+                        .starts_with(':')
+            });
+        if reserved {
+            return Err(Error::diagram_parse_fallback(
+                "quadrantChart".to_string(),
+                "reserved token in style".to_string(),
+            ));
+        }
+        // A longer ALPHA token wins over a keyword prefix; equal lengths keep rule order.
+        cursor += token_len;
+    }
     let mut styles = Vec::new();
     let mut start = 0usize;
     for (index, ch) in input.text.char_indices() {
         if ch == ',' {
-            let style = input.subslice(start, index).trim();
+            let style = input.subslice(start, index).trim_ascii();
             if !style.text.is_empty() {
                 styles.push(style);
             }
             start = index + ch.len_utf8();
         }
     }
-    let style = input.subslice(start, input.text.len()).trim();
+    let style = input.subslice(start, input.text.len()).trim_ascii();
     if !style.text.is_empty() {
         styles.push(style);
     }
-    ParsedStyleList { items: styles }
+    Ok(ParsedStyleList { items: styles })
 }
 
 fn find_point_colon(s: &str) -> Option<usize> {
@@ -509,7 +620,7 @@ fn find_point_colon(s: &str) -> Option<usize> {
                 let Some(c2) = next_char_at(s, j) else {
                     break;
                 };
-                if c2.is_whitespace() {
+                if is_ecmascript_whitespace(c2) {
                     j += c2.len_utf8();
                     continue;
                 }
@@ -558,10 +669,10 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
     let Some(colon_idx) = find_point_colon(statement.text) else {
         return Ok(None);
     };
-    let head = statement.subslice(0, colon_idx).trim_end();
+    let head = statement.subslice(0, colon_idx).trim_ecmascript_end();
     let tail = statement
         .subslice(colon_idx + 1, statement.text.len())
-        .trim_start();
+        .trim_ecmascript_start();
 
     let (class_name, _class_marker, label_input) =
         if let Some(marker) = find_class_marker(head.text) {
@@ -593,33 +704,16 @@ fn parse_point_statement(statement: SourceSlice<'_>) -> Result<Option<ParsedPoin
             "expected '[' after ':'".to_string(),
         ));
     }
-    let after_bracket = tail.subslice(1, tail.text.len());
-    let Some(close_rel) = after_bracket.text.find(']') else {
-        return Err(Error::diagram_parse_fallback(
-            "quadrantChart".to_string(),
-            "unterminated point coordinate; missing ']'".to_string(),
-        ));
-    };
-    let inside = after_bracket.subslice(0, close_rel);
-    let after = after_bracket.subslice(close_rel + 1, after_bracket.text.len());
-    let Some(comma_rel) = inside.text.find(',') else {
+    let Some(coordinates) = point_coordinates(tail) else {
         return Err(Error::diagram_parse_fallback(
             "quadrantChart".to_string(),
             "invalid point coordinate".to_string(),
         ));
     };
-    if inside.text[comma_rel + 1..].contains(',') {
-        return Err(Error::diagram_parse_fallback(
-            "quadrantChart".to_string(),
-            "invalid point coordinate".to_string(),
-        ));
-    }
-    let x_token = inside.subslice(0, comma_rel).trim();
-    let y_token = inside.subslice(comma_rel + 1, inside.text.len()).trim();
-    let x = parse_unit_interval_token(x_token.text)?;
-    let y = parse_unit_interval_token(y_token.text)?;
-
-    let styles = split_style_slices(after);
+    // D3 scaleLinear coerces these raw lexer strings with Number, rather than parseFloat.
+    let x = crate::utils::parse_js_number(coordinates.x.text).unwrap_or(f64::NAN);
+    let y = crate::utils::parse_js_number(coordinates.y.text).unwrap_or(f64::NAN);
+    let styles = split_style_slices(coordinates.after)?;
     Ok(Some(ParsedPoint {
         label,
         class_name,
@@ -673,6 +767,7 @@ struct QuadrantStatement<'source> {
 #[derive(Clone, Copy)]
 enum QuadrantTerminal {
     Statement,
+    Point,
     RawLine,
     DescriptionBlock,
 }
@@ -732,11 +827,29 @@ impl<'source> QuadrantStatements<'source> {
                 return Ok(match ch {
                     ':' => QuadrantTerminal::RawLine,
                     '{' if keyword == "accDescr" => QuadrantTerminal::DescriptionBlock,
-                    _ => QuadrantTerminal::Statement,
+                    _ => QuadrantTerminal::Point,
                 });
             }
         }
-        Ok(QuadrantTerminal::Statement)
+        // Directives own their payload; only point statements enter coordinate lexer states.
+        let input = SourceSlice::new(rest, self.offset);
+        if [
+            "quadrantChart",
+            "x-axis",
+            "y-axis",
+            "quadrant-1",
+            "quadrant-2",
+            "quadrant-3",
+            "quadrant-4",
+            "classDef",
+        ]
+        .iter()
+        .any(|keyword| parse_keyword_rest_ci(input, keyword).is_some())
+        {
+            Ok(QuadrantTerminal::Statement)
+        } else {
+            Ok(QuadrantTerminal::Point)
+        }
     }
 
     fn next_statement(
@@ -778,6 +891,37 @@ impl<'source> QuadrantStatements<'source> {
                     source: SourceSlice::new(&self.source[start..end], start),
                 }));
             } else if !matches!(terminal, QuadrantTerminal::RawLine) {
+                if matches!(terminal, QuadrantTerminal::Point)
+                    && (ch == ':' || is_ecmascript_whitespace(ch))
+                {
+                    let input = SourceSlice::new(&self.source[self.offset..], self.offset);
+                    let prefix = input.trim_ecmascript_start();
+                    if prefix.text.starts_with(':') {
+                        let coordinate_input = prefix
+                            .subslice(1, prefix.text.len())
+                            .trim_ecmascript_start();
+                        if let Some(coordinates) = point_coordinates(coordinate_input) {
+                            // point_start owns its leading whitespace, including newlines when
+                            // matching starts before CR/LF. A bare CR/LF ends the statement above.
+                            self.advance(coordinates.after.start - self.offset, control)?;
+                            continue;
+                        }
+                    }
+                    if is_ecmascript_whitespace(ch) {
+                        // Do not retry the same whitespace suffix at every byte, or skip a
+                        // newline when no complete coordinate token follows the prefix.
+                        let inline_bytes = input
+                            .text
+                            .chars()
+                            .take_while(|ch| {
+                                is_ecmascript_whitespace(*ch) && !matches!(*ch, '\r' | '\n')
+                            })
+                            .map(char::len_utf8)
+                            .sum();
+                        self.advance(inline_bytes, control)?;
+                        continue;
+                    }
+                }
                 if ch == '"' {
                     in_quotes = true;
                 } else if ch == '{'
@@ -1284,7 +1428,7 @@ fn parse_quadrant_chart_semantic_source(
             continue;
         }
 
-        if let Some(directive) = parse_keyword_rest_ci(statement_trimmed, "classDef") {
+        if let Some(directive) = parse_keyword_rest_ci(statement, "classDef") {
             let rest = directive.rest;
             let name_end = rest
                 .text
@@ -1302,8 +1446,16 @@ fn parse_quadrant_chart_semantic_source(
                 });
                 continue;
             }
-            let style_text = rest.subslice(name_end, rest.text.len()).trim();
-            let styles = split_style_slices(style_text);
+            let style_text = rest.subslice(name_end, rest.text.len()).trim_ascii();
+            let styles = match split_style_slices(style_text) {
+                Ok(styles) => styles,
+                Err(error) => {
+                    first_error.get_or_insert_with(|| {
+                        quadrant_error_at(error, diagram_type, statement_span)
+                    });
+                    continue;
+                }
+            };
             #[cfg(feature = "editor-facts")]
             push_quadrant_class_fact(
                 editor_facts
@@ -1324,7 +1476,7 @@ fn parse_quadrant_chart_semantic_source(
             continue;
         }
 
-        match parse_point_statement(statement_trimmed) {
+        match parse_point_statement(statement) {
             Ok(Some(point)) => {
                 #[cfg(feature = "editor-facts")]
                 push_quadrant_point_facts(
@@ -1843,7 +1995,7 @@ Project A:::priority : [0.2, 0.8]
                 assert_eq!(model.points.len(), 1);
                 assert_eq!(model.points[0].text, "Project A");
                 assert_eq!(model.points[0].class_name.as_deref(), Some("priority"));
-                assert_eq!(model.classes["priority"].radius, Some(10));
+                assert_eq!(model.classes["priority"].radius, Some(10.0));
             }
             other => panic!("quadrantChart render parse should return typed model, got {other:?}"),
         }
@@ -1877,7 +2029,7 @@ Project A:::priority : [0.2, 0.8]
             "stroke-width: 10px".to_string(),
         ];
         let obj = parse_styles(&styles).unwrap();
-        assert_eq!(obj.radius, Some(10));
+        assert_eq!(obj.radius, Some(10.0));
         assert_eq!(obj.color.as_deref(), Some("#ff0000"));
         assert_eq!(obj.stroke_color.as_deref(), Some("#ff00ff"));
         assert_eq!(obj.stroke_width.as_deref(), Some("10px"));
@@ -1961,6 +2113,30 @@ Project A:::priority : [0.2, 0.8]
         assert!(combined_json["config"].is_object());
         assert_eq!(combined_json["accDescr"], Value::Null);
 
+        let compat_classes: std::collections::BTreeMap<String, QuadrantChartStyles> =
+            serde_json::from_value(combined_json["classes"].clone())
+                .expect("Quadrant compatibility classes deserialize into typed styles");
+        assert_eq!(typed.classes.len(), compat_classes.len());
+        for (name, styles) in &typed.classes {
+            let compat = compat_classes
+                .get(name)
+                .expect("every typed Quadrant class remains in compatibility JSON");
+            assert_eq!(
+                (
+                    styles.radius,
+                    styles.color.as_deref(),
+                    styles.stroke_color.as_deref(),
+                    styles.stroke_width.as_deref(),
+                ),
+                (
+                    compat.radius,
+                    compat.color.as_deref(),
+                    compat.stroke_color.as_deref(),
+                    compat.stroke_width.as_deref(),
+                ),
+                "Quadrant class {name} drift",
+            );
+        }
         let typed = serde_json::to_value(typed).expect("Quadrant typed model serializes");
         for field in [
             "title",
@@ -1969,7 +2145,6 @@ Project A:::priority : [0.2, 0.8]
             "quadrants",
             "axes",
             "points",
-            "classes",
         ] {
             assert_eq!(typed[field], combined_json[field], "Quadrant {field} drift");
         }
@@ -2393,7 +2568,7 @@ mod semantic_tests {
         assert_eq!(model.points[0].text, "Idea");
         assert_eq!((model.points[0].x, model.points[0].y), (0.25, 0.75));
         assert_eq!(model.points[0].class_name.as_deref(), Some("priority"));
-        assert_eq!(model.classes["priority"].radius, Some(10));
+        assert_eq!(model.classes["priority"].radius, Some(10.0));
         assert_eq!(quadrant_syntax_construction_count(), 1);
         #[cfg(feature = "editor-facts")]
         assert_eq!(

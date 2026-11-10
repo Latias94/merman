@@ -152,6 +152,39 @@ fn eventmodeling_core_paints_reach_all_real_frame_kinds_lanes_and_relations() {
 }
 
 #[test]
+fn eventmodeling_svg_preserves_raw_metadata_tokens() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for (title, description, expected_title, expected_description) in [
+        (
+            "Accessible <!--a11y-->",
+            "First\n<!--a11y-->",
+            "accTitle: Accessible ",
+            " accDescr {\nFirst\n}",
+        ),
+        (
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "<!--a11y-->\u{0085}<!--a11y-->",
+            "accTitle: \u{0085}",
+            " accDescr {\n\u{0085}\n}",
+        ),
+        ("", "", "accTitle: ", " accDescr {\n}"),
+    ] {
+        let source = format!(
+            "eventmodeling accDescr {{\n{description}\n}} accTitle: {title}\ntf 01 event Start\n"
+        );
+        let rendered = render_eventmodeling_with_theme(&source, &theme, MermaidEngine::new())
+            .expect("selected same-line metadata syntax");
+        common::assert_svg_accessibility(
+            rendered.svg(),
+            Some(expected_title),
+            Some(expected_description),
+        );
+    }
+}
+
+#[test]
 fn eventmodeling_config_colors_override_only_the_matching_role_and_property() {
     let theme = eventmodeling_core_paint_theme(false, false);
     let engine = MermaidEngine::new().with_site_config(
@@ -1797,11 +1830,9 @@ data ItemAddedData {
 
 #[test]
 fn eventmodeling_svg_wires_accessibility_metadata_to_the_root() {
-    let input = r#"eventmodeling
-accTitle: Accessible event model
-accDescr {
+    let input = r#"eventmodeling accDescr {
   Event model description
-}
+} accTitle: Accessible event model
 tf 01 event Start
 "#;
     let parsed = MermaidEngine::new()
@@ -1825,14 +1856,12 @@ tf 01 event Start
 
     assert!(svg.contains(r#"aria-labelledby="chart-title-eventmodeling-a11y""#));
     assert!(svg.contains(r#"aria-describedby="chart-desc-eventmodeling-a11y""#));
-    assert!(
-        svg.contains(
-            r#"<title id="chart-title-eventmodeling-a11y">Accessible event model</title>"#
-        )
-    );
-    assert!(
-        svg.contains(r#"<desc id="chart-desc-eventmodeling-a11y">Event model description</desc>"#)
-    );
+    assert!(svg.contains(
+        r#"<title id="chart-title-eventmodeling-a11y">accTitle: Accessible event model</title>"#
+    ));
+    assert!(svg.contains(
+        "<desc id=\"chart-desc-eventmodeling-a11y\"> accDescr {\nEvent model description\n}</desc>"
+    ));
 }
 
 #[test]

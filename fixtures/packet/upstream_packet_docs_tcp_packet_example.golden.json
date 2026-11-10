@@ -114,7 +114,7 @@
       ],
       [
         {
-          "bits": 32,
+          "bits": 31,
           "end": 223,
           "label": "Data (variable length)",
           "start": 192
@@ -122,7 +122,7 @@
       ],
       [
         {
-          "bits": 32,
+          "bits": 31,
           "end": 255,
           "label": "Data (variable length)",
           "start": 224

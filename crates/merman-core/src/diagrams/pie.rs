@@ -340,7 +340,8 @@ fn construct_pie_semantic_source_controlled(
             {
                 let message = format!(
                     "\"{}\" has invalid value: {}. Negative values are not allowed in pie charts. All slice values must be >= 0.",
-                    section.label, section.value
+                    section.label,
+                    crate::utils::format_js_number(section.value)
                 );
                 #[cfg(feature = "editor-facts")]
                 if let Some(facts) = &mut editor_facts {
@@ -424,7 +425,7 @@ fn parse_pie_statement(code: &str, offset: usize) -> PieStatement {
 
     let (line, next_offset) = physical_line(code, offset);
     let visible = strip_inline_comment(line);
-    let trimmed = visible.trim();
+    let trimmed = visible.trim_matches(is_horizontal_whitespace);
     if trimmed.is_empty() {
         return PieStatement::Empty { next_offset };
     }
@@ -456,7 +457,7 @@ fn parse_pie_section(code: &str, statement_start: usize) -> Option<(PieParsedSec
     let (rest, rest_start) = trim_start_with_offset(visible, parsed_label.raw_span.end);
     let rest = rest.strip_prefix(':')?;
     let (number_and_trailing, number_start) = trim_start_with_offset(rest, rest_start + 1);
-    let number = number_and_trailing.trim_end();
+    let number = number_and_trailing.trim_end_matches(is_horizontal_whitespace);
     let value = parse_number_pie(number)?;
     let value_span = SourceSpan::new(number_start, number_start + number.len());
 
@@ -499,8 +500,12 @@ fn parse_number_pie(input: &str) -> Option<f64> {
 }
 
 fn trim_start_with_offset(input: &str, input_start: usize) -> (&str, usize) {
-    let trimmed = input.trim_start();
+    let trimmed = input.trim_start_matches(is_horizontal_whitespace);
     (trimmed, input_start + input.len() - trimmed.len())
+}
+
+fn is_horizontal_whitespace(ch: char) -> bool {
+    matches!(ch, ' ' | '\t')
 }
 
 #[cfg(feature = "editor-facts")]
@@ -553,8 +558,8 @@ fn pie_body_start_controlled(
         control.checkpoint()?;
         let (line, next_offset) = physical_line(code, offset);
         let visible = strip_inline_comment(line);
-        let trimmed = visible.trim_start();
-        if trimmed.trim().is_empty() {
+        let trimmed = visible.trim_start_matches(is_horizontal_whitespace);
+        if trimmed.is_empty() {
             offset = next_offset;
             continue;
         }
@@ -667,6 +672,172 @@ mod tests {
             effective_config: crate::presentation::SourcePresentationConfig::default(),
             title: None,
         }
+    }
+
+    fn parse_semantic_model(source: &str) -> crate::Result<PieDiagramModel> {
+        parse_pie_semantic_model_controlled(
+            source,
+            "pie",
+            &MermaidConfig::default(),
+            #[cfg(feature = "editor-facts")]
+            EditorFactsDemand::Omit,
+            &crate::OperationControl::new(),
+        )
+        .unwrap()
+        .model
+    }
+
+    #[test]
+    fn pie_rejects_non_horizontal_structural_whitespace() {
+        for whitespace in [
+            '\u{000b}', '\u{000c}', '\u{0085}', '\u{00a0}', '\u{2028}', '\u{2029}',
+        ] {
+            for source in [
+                format!("{whitespace}pie\n\"A\": 1\n"),
+                format!("pie{whitespace}\n\"A\": 1\n"),
+                format!("pie\n{whitespace}\n\"A\": 1\n"),
+                format!("pie\n{whitespace}\"A\": 1\n"),
+                format!("pie\n\"A\"{whitespace}: 1\n"),
+                format!("pie\n\"A\":{whitespace}1\n"),
+                format!("pie\n\"A\": 1{whitespace}\n"),
+            ] {
+                assert!(
+                    parse_semantic_model(&source).is_err(),
+                    "unexpectedly accepted structural whitespace in {source:?}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pie_preserves_horizontal_trivia_and_terminal_owned_whitespace() {
+        for newline in ["\n", "\r\n"] {
+            let source = concat!(
+                " \t\npie \tshowData\n",
+                "\ttitle Summary\u{00a0}label\n",
+                "\taccTitle: Accessible\u{00a0}chart\n",
+                "\taccDescr\u{00a0}\n{\n",
+                "  First\u{00a0}line %% is payload\n",
+                " \t\n  Second\t\tline\n}\n",
+                "\t\"First\u{00a0}\nSecond\" \t:\t 1 \t%% trailing comment\n",
+            )
+            .replace('\n', newline);
+            let model = parse_semantic_model(&source).unwrap();
+
+            assert!(model.show_data);
+            assert_eq!(model.title.as_deref(), Some("Summary\u{00a0}label"));
+            assert_eq!(model.acc_title.as_deref(), Some("Accessible\u{00a0}chart"));
+            assert_eq!(
+                model.acc_descr.as_deref(),
+                Some("First\u{00a0}line %% is payload\nSecond line")
+            );
+            assert_eq!(model.sections.len(), 1);
+            assert_eq!(
+                model.sections[0].label,
+                format!("First\u{00a0}{newline}Second")
+            );
+            assert_eq!(model.sections[0].value, 1.0);
+        }
+    }
+
+    #[test]
+    fn pie_common_tokens_do_not_consume_following_line_payloads() {
+        let source = concat!(
+            "pie\ntitle\n\"After title\": 1\n",
+            "accTitle:\n\"After accessibility title\": 2\n",
+            "accDescr:\n\"After accessibility description\": 3\n",
+        );
+        let model = parse_semantic_model(source).unwrap();
+
+        assert!(model.title.is_none());
+        assert!(model.acc_title.is_none());
+        assert!(model.acc_descr.is_none());
+        assert_eq!(
+            model
+                .sections
+                .iter()
+                .map(|section| (section.label.as_str(), section.value))
+                .collect::<Vec<_>>(),
+            [
+                ("After title", 1.0),
+                ("After accessibility title", 2.0),
+                ("After accessibility description", 3.0),
+            ]
+        );
+    }
+
+    #[test]
+    fn pie_blank_common_values_replace_prior_assignments() {
+        for block in ["{}", "{ }", "{\n \t\n}"] {
+            let source = format!(
+                "pie\ntitle Previous\naccTitle: Previous\naccDescr: Previous\ntitle\naccTitle: \t%% blank\naccDescr {block}\n\"A\": 1\n"
+            );
+            let model = parse_semantic_model(&source).unwrap();
+
+            assert!(model.title.is_none());
+            assert!(model.acc_title.is_none());
+            assert!(model.acc_descr.is_none());
+            assert_eq!(model.sections.len(), 1);
+        }
+    }
+
+    #[test]
+    fn pie_common_tokens_reject_cross_line_colons_and_unclosed_blocks() {
+        for source in [
+            "pie\ntitle\ncontinued\n",
+            "pie\naccTitle\n: continued\n",
+            "pie\naccDescr\n: continued\n",
+            "pie\naccDescr { text } \"A\": 1\n",
+            "pie\naccDescr {\n  incomplete",
+        ] {
+            assert!(parse_semantic_model(source).is_err(), "accepted {source:?}");
+        }
+    }
+
+    #[cfg(feature = "editor-facts")]
+    #[test]
+    fn pie_structural_whitespace_recovery_preserves_original_offsets() {
+        let source = "pie\r\n  \"α\": 1\r\n\u{00a0}\"invalid\": 2\r\n\t\"Later 雪\": 3\r\n";
+        crate::diagrams::langium_common::reset_family_syntax_construction_count("pie");
+        let Err(failure) = construct_pie_semantic_source_controlled(
+            source,
+            "pie",
+            EditorFactsDemand::Capture,
+            &crate::OperationControl::new(),
+        )
+        .unwrap() else {
+            panic!("non-horizontal structural whitespace must fail");
+        };
+        let (_error, facts) = failure.into_parts();
+        let invalid_start = source.find('\u{00a0}').unwrap();
+        let invalid_end = source.find("\r\n\t\"Later").unwrap();
+        let label_start = source.find("Later 雪").unwrap();
+        let number_start = source.find('3').unwrap();
+
+        assert_eq!(
+            crate::diagrams::langium_common::family_syntax_construction_count("pie"),
+            1
+        );
+        assert_eq!(
+            facts.completeness,
+            crate::EditorSemanticCompleteness::Recovered
+        );
+        assert!(facts.diagnostics.iter().any(|diagnostic| {
+            diagnostic.span == Some(SourceSpan::new(invalid_start, invalid_end))
+        }));
+        assert_eq!(
+            facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.name == "Later 雪")
+                .unwrap()
+                .selection,
+            SourceSpan::new(label_start, label_start + "Later 雪".len())
+        );
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Payload
+                && expected.span == SourceSpan::new(number_start, number_start + 1)
+        }));
     }
 
     #[test]

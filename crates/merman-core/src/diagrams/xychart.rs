@@ -1,6 +1,5 @@
 #[cfg(feature = "presentation")]
 use crate::SourcePresentationMetadata;
-use crate::diagrams::scan::leading_whitespace_len;
 #[cfg(feature = "editor-facts")]
 use crate::family::EditorFactsDemand;
 use crate::sanitize::sanitize_text;
@@ -10,6 +9,7 @@ use crate::{
     EditorSemanticSymbol,
 };
 use crate::{Error, MermaidConfig, Result, SourceSpan, family::CombinedSemanticFailure};
+use merman_model::text::is_ecmascript_whitespace;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
 #[cfg(test)]
@@ -175,7 +175,7 @@ impl XyChartState {
     }
 
     fn set_x_axis_title(&mut self, title: &str, config: &MermaidConfig) {
-        let t = sanitize_text(title.trim(), config);
+        let t = sanitize_text(title.trim_matches(is_ecmascript_whitespace), config);
         match &mut self.x_axis {
             AxisData::Band { title, .. } => *title = t,
             AxisData::Linear { title, .. } => *title = t,
@@ -183,7 +183,7 @@ impl XyChartState {
     }
 
     fn set_y_axis_title(&mut self, title: &str, config: &MermaidConfig) {
-        let t = sanitize_text(title.trim(), config);
+        let t = sanitize_text(title.trim_matches(is_ecmascript_whitespace), config);
         match &mut self.y_axis {
             AxisData::Linear { title, .. } => *title = t,
             AxisData::Band { title, .. } => *title = t,
@@ -206,7 +206,7 @@ impl XyChartState {
         };
         let categories = categories
             .into_iter()
-            .map(|c| sanitize_text(c.trim(), config))
+            .map(|c| sanitize_text(c.trim_matches(is_ecmascript_whitespace), config))
             .collect::<Vec<_>>();
         self.x_axis = AxisData::Band { title, categories };
         self.has_set_x_axis = true;
@@ -272,13 +272,16 @@ impl XyChartState {
                 .collect(),
             AxisData::Linear { min, max, .. } => {
                 if data.len() == 1 {
-                    vec![(format!("{min}"), data.first().copied())]
+                    vec![(crate::utils::format_js_number(*min), data.first().copied())]
                 } else {
                     let step = (*max - *min) / ((data.len() as f64) - 1.0);
                     data.iter()
                         .enumerate()
                         .map(|(index, datum)| {
-                            (format!("{}", *min + (index as f64) * step), Some(*datum))
+                            (
+                                crate::utils::format_js_number(*min + (index as f64) * step),
+                                Some(*datum),
+                            )
                         })
                         .collect()
                 }
@@ -300,7 +303,7 @@ impl XyChartState {
                 if point.label.is_empty() {
                     String::new()
                 } else {
-                    sanitize_text(point.label.trim(), config)
+                    sanitize_text(point.label.trim_matches(is_ecmascript_whitespace), config)
                 }
             })
             .collect::<Vec<_>>();
@@ -518,10 +521,12 @@ fn construct_xychart_semantic_source_controlled(
     XYCHART_SYNTAX_CONSTRUCTION_COUNT.set(XYCHART_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
     let syntax = split_statements_spanned_controlled(code, control)?;
-    let mut statements = syntax
-        .statements
-        .into_iter()
-        .filter(|statement| !statement.text.trim().is_empty());
+    let mut statements = syntax.statements.into_iter().filter(|statement| {
+        !statement
+            .text
+            .trim_matches(is_ecmascript_whitespace)
+            .is_empty()
+    });
     let Some(header) = statements.next() else {
         return Ok(XyChartParseOutcome {
             source: XyChartSemanticSource {
@@ -546,7 +551,7 @@ fn construct_xychart_semantic_source_controlled(
     };
     let mut first_error = None;
     let mut state = XyChartState::new(config);
-    let header_trimmed = header.text.trim();
+    let header_trimmed = header.text.trim_matches(is_ecmascript_whitespace);
     let header_start = header.trimmed_start();
     let header_span = SourceSpan::new(header_start, header_start + header_trimmed.len());
     if let Err(error) = parse_header(&header.text, header_start, &mut state) {
@@ -572,7 +577,7 @@ fn construct_xychart_semantic_source_controlled(
             control.checkpoint()?;
         }
         let statement_start = statement.trimmed_start();
-        let statement_text = statement.text.trim();
+        let statement_text = statement.text.trim_matches(is_ecmascript_whitespace);
         if statement_text.is_empty() {
             continue;
         }
@@ -605,7 +610,12 @@ fn construct_xychart_semantic_source_controlled(
                         EditorSemanticKind::String,
                     );
                 }
-                title = Some(value.text.trim().to_string());
+                title = Some(
+                    value
+                        .text
+                        .trim_matches(is_ecmascript_whitespace)
+                        .to_string(),
+                );
             }
             ParsedXyChartStatement::AccessibilityTitle(value) => {
                 #[cfg(feature = "editor-facts")]
@@ -845,7 +855,7 @@ pub(crate) fn render_model_to_compat_json(
 }
 
 fn plot_title_value(title: &str, config: &MermaidConfig) -> Option<String> {
-    let title = sanitize_text(title.trim(), config);
+    let title = sanitize_text(title.trim_matches(is_ecmascript_whitespace), config);
     (!title.is_empty()).then_some(title)
 }
 
@@ -861,7 +871,7 @@ fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisModel {
 }
 
 fn parse_header(stmt: &str, statement_start: usize, state: &mut XyChartState) -> Result<()> {
-    let t = stmt.trim();
+    let t = stmt.trim_matches(is_ecmascript_whitespace);
     let trimmed_start = statement_start;
     let lower = t.to_ascii_lowercase();
     let (prefix, rest) = if lower.starts_with("xychart-beta") {
@@ -874,11 +884,11 @@ fn parse_header(stmt: &str, statement_start: usize, state: &mut XyChartState) ->
             "expected xychart".to_string(),
         ));
     };
-    let rem = rest.trim();
+    let rem = rest.trim_matches(is_ecmascript_whitespace);
     if rem.is_empty() {
         return Ok(());
     }
-    if !rest.starts_with(char::is_whitespace) {
+    if !rest.starts_with(is_ecmascript_whitespace) {
         let rem_start = trimmed_start + prefix.len();
         return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
@@ -902,7 +912,7 @@ fn parse_header(stmt: &str, statement_start: usize, state: &mut XyChartState) ->
 
 #[cfg(feature = "editor-facts")]
 fn header_token_len_and_rest(stmt: &str) -> Option<(usize, &str)> {
-    let t = stmt.trim_start();
+    let t = stmt.trim_start_matches(is_ecmascript_whitespace);
     let lower = t.to_ascii_lowercase();
     if lower.starts_with("xychart-beta") {
         return Some(("xychart-beta".len(), &t["xychart-beta".len()..]));
@@ -945,7 +955,7 @@ fn xychart_word(input: &str) -> (Option<XyChartKeyword>, usize) {
             continue;
         }
         if matches!(keyword, XyChartKeyword::AccTitle | XyChartKeyword::AccDescr) {
-            let tail = input[word.len()..].trim_start();
+            let tail = input[word.len()..].trim_start_matches(is_ecmascript_whitespace);
             if !tail.starts_with(':')
                 && !(keyword == XyChartKeyword::AccDescr && tail.starts_with('{'))
             {
@@ -1040,9 +1050,12 @@ impl<'a> SpannedSlice<'a> {
     }
 
     fn trim(self) -> Self {
-        let leading = self.text.len().saturating_sub(self.text.trim_start().len());
+        let leading = self
+            .text
+            .len()
+            .saturating_sub(self.text.trim_start_matches(is_ecmascript_whitespace).len());
         let text = &self.text[leading..];
-        let trimmed_len = text.trim_end().len();
+        let trimmed_len = text.trim_end_matches(is_ecmascript_whitespace).len();
         Self {
             text: &text[..trimmed_len],
             start: self.start + leading,
@@ -1078,9 +1091,8 @@ fn parse_text_prefix_source<'a>(
     input: &'a str,
     input_start: usize,
 ) -> Result<(SpannedText, SpannedSlice<'a>)> {
-    let leading = leading_whitespace_len(input);
-    let text = &input[leading..];
-    let text_start = input_start + leading;
+    let text = input.trim_start_matches(is_ecmascript_whitespace);
+    let text_start = input_start + input.len() - text.len();
     if text.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
             "xychart".to_string(),
@@ -1150,7 +1162,7 @@ fn parse_text_prefix_source<'a>(
             || text[..*offset]
                 .chars()
                 .next_back()
-                .is_some_and(char::is_whitespace)
+                .is_some_and(is_ecmascript_whitespace)
     });
     let tail_rel = [bracket_start, range_start, arrow_start]
         .into_iter()
@@ -1158,7 +1170,7 @@ fn parse_text_prefix_source<'a>(
         .min()
         .unwrap_or(text.len());
     let raw_value = &text[..tail_rel];
-    let value_len = raw_value.trim_end().len();
+    let value_len = raw_value.trim_end_matches(is_ecmascript_whitespace).len();
     let raw_value = &raw_value[..value_len];
     if raw_value.is_empty() {
         return Err(Error::diagram_parse_insertion_point(
@@ -1193,7 +1205,7 @@ fn parse_text_prefix_source<'a>(
             continue;
         }
         offset += ch.len_utf8();
-        if ch.is_whitespace() {
+        if is_ecmascript_whitespace(ch) {
             continue;
         }
         if !is_text_token_char(ch) {
@@ -1238,12 +1250,14 @@ fn range_suffix_start(input: &str) -> Option<usize> {
             || !input[..offset]
                 .chars()
                 .next_back()
-                .is_some_and(char::is_whitespace)
+                .is_some_and(is_ecmascript_whitespace)
         {
             return None;
         }
         let (_, tail) = take_number_token(&input[offset..])?;
-        tail.trim_start().starts_with("-->").then_some(offset)
+        tail.trim_start_matches(is_ecmascript_whitespace)
+            .starts_with("-->")
+            .then_some(offset)
     })
 }
 
@@ -1300,7 +1314,7 @@ fn parse_acc_descr_source(input: &str, input_start: usize) -> Result<SpannedText
 }
 
 fn parse_number(s: &str) -> Option<f64> {
-    let t = s.trim();
+    let t = s.trim_matches(is_ecmascript_whitespace);
     if t.is_empty() {
         return None;
     }
@@ -1533,7 +1547,7 @@ fn try_parse_range_source(
         }
         let token_len = second_input
             .text
-            .find(char::is_whitespace)
+            .find(is_ecmascript_whitespace)
             .unwrap_or(second_input.text.len());
         return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
@@ -1616,9 +1630,8 @@ fn parse_data_point_list_in_brackets_spanned(
     input: &str,
     input_start: usize,
 ) -> Result<(Vec<ParsedDataPoint>, SourceSpan)> {
-    let leading = input.len().saturating_sub(input.trim_start().len());
-    let t = input.trim_start();
-    let t_start = input_start + leading;
+    let t = input.trim_start_matches(is_ecmascript_whitespace);
+    let t_start = input_start + input.len() - t.len();
     let (inner, inner_start) = extract_bracket_inner_spanned(t, t_start)?;
     let source = SpannedSlice::new(inner, inner_start, inner_start + inner.len()).trim();
     if source.text.is_empty() {
@@ -1705,8 +1718,10 @@ fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<Spa
         ));
     };
     let rest = &body[end + 1..];
-    if !rest.trim().is_empty() {
-        let leading = rest.len().saturating_sub(rest.trim_start().len());
+    if !rest.trim_matches(is_ecmascript_whitespace).is_empty() {
+        let leading = rest
+            .len()
+            .saturating_sub(rest.trim_start_matches(is_ecmascript_whitespace).len());
         return Err(Error::diagram_parse_exact(
             "xychart".to_string(),
             "unexpected trailing tokens after data label".to_string(),
@@ -1726,7 +1741,7 @@ fn parse_data_point_label_spanned(input: &str, input_start: usize) -> Result<Spa
 }
 
 fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&str, usize)> {
-    let t = input.trim_start();
+    let t = input.trim_start_matches(is_ecmascript_whitespace);
     let t_start = input_start + input.len().saturating_sub(t.len());
     if !t.starts_with('[') {
         return Err(Error::diagram_parse_insertion_point(
@@ -1777,9 +1792,11 @@ fn extract_bracket_inner_spanned(input: &str, input_start: usize) -> Result<(&st
         if ch == ']' {
             let inner = &t[1..idx];
             let rest = &t[idx + 1..];
-            if !rest.trim().is_empty() {
-                let trailing_start = rest.len().saturating_sub(rest.trim_start().len());
-                let trailing = rest.trim();
+            if !rest.trim_matches(is_ecmascript_whitespace).is_empty() {
+                let trailing_start = rest
+                    .len()
+                    .saturating_sub(rest.trim_start_matches(is_ecmascript_whitespace).len());
+                let trailing = rest.trim_matches(is_ecmascript_whitespace);
                 let start = t_start + idx + 1 + trailing_start;
                 return Err(Error::diagram_parse_exact(
                     "xychart".to_string(),
@@ -1866,7 +1883,11 @@ struct XyChartSyntaxFragments {
 
 impl SpannedStatement {
     fn trimmed_start(&self) -> usize {
-        self.start + self.text.len().saturating_sub(self.text.trim_start().len())
+        self.start
+            + self
+                .text
+                .len()
+                .saturating_sub(self.text.trim_start_matches(is_ecmascript_whitespace).len())
     }
 }
 
@@ -1974,7 +1995,7 @@ fn split_statements_spanned_controlled(
                     break;
                 }
             }
-            if !cur.trim().is_empty() {
+            if !cur.trim_matches(is_ecmascript_whitespace).is_empty() {
                 out.push(SpannedStatement {
                     text: std::mem::take(&mut cur),
                     start: cur_start,
@@ -1997,7 +2018,7 @@ fn split_statements_spanned_controlled(
             if bracket_depth == 0
                 && let Some(keyword) = keyword
             {
-                if !cur.trim().is_empty() {
+                if !cur.trim_matches(is_ecmascript_whitespace).is_empty() {
                     out.push(SpannedStatement {
                         text: std::mem::take(&mut cur),
                         start: cur_start,
@@ -2008,7 +2029,9 @@ fn split_statements_spanned_controlled(
                 cur_start = idx;
                 in_accessibility_line = keyword == XyChartKeyword::AccTitle
                     || (keyword == XyChartKeyword::AccDescr
-                        && input[word_end..].trim_start().starts_with(':'));
+                        && input[word_end..]
+                            .trim_start_matches(is_ecmascript_whitespace)
+                            .starts_with(':'));
             }
             cur.push(ch);
             continue;
@@ -2047,13 +2070,13 @@ fn split_statements_spanned_controlled(
 }
 
 fn is_xychart_accessibility_block_prefix(statement: &str) -> bool {
-    let statement = statement.trim_start();
+    let statement = statement.trim_start_matches(is_ecmascript_whitespace);
     statement
         .get(.."accDescr".len())
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case("accDescr"))
         && statement["accDescr".len()..]
             .chars()
-            .all(char::is_whitespace)
+            .all(is_ecmascript_whitespace)
 }
 
 #[cfg(all(test, feature = "compat-json"))]

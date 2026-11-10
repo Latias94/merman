@@ -17,10 +17,10 @@
           "offset_y": 0.0,
           "padding": 16.0,
           "requested_dir": null,
-          "title": "Important information! You\ncan write\nnotes with multiple lines...\nHere is another line...\nAnd another line...",
+          "title": "Important information! You\ncan write\n      notes with multiple lines...\n      Here is another line...\n      And another line...",
           "title_label": {
             "height": 105.0,
-            "width": 162.26,
+            "width": 182.98,
             "x": 111.0,
             "y": 172.5
           },

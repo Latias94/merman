@@ -1,10 +1,12 @@
 use crate::snapshot::{DocumentSnapshot, FenceSnapshot};
 use crate::types::{DocumentUri, Position, Range};
 use merman_analysis::{ByteSpan, FenceTextIndexSource, SourceMap};
-use merman_core::{EditorRenamePolicy, EditorSemanticKind, EditorSemanticSymbol};
+use merman_core::{
+    EditorExpectedSyntaxKind, EditorRenamePolicy, EditorSemanticKind, EditorSemanticSymbol,
+};
 use merman_model::SourceSpan;
 use merman_model::family::{DiagramFamilyId, diagram_type_family_id};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -373,11 +375,60 @@ fn rename_edits(
     new_name: &str,
 ) -> Option<EditorWorkspaceEdit> {
     let spans = fence.text_index().reference_spans_for_item(item);
-    let class_name = item.kind == EditorSemanticKind::Class
-        && fence.diagram_type().and_then(diagram_type_family_id) == Some(DiagramFamilyId::CLASS);
+    let family = fence.diagram_type().and_then(diagram_type_family_id);
+    let class_name =
+        item.kind == EditorSemanticKind::Class && family == Some(DiagramFamilyId::CLASS);
+    let er_name = item.kind == EditorSemanticKind::Struct && family == Some(DiagramFamilyId::ER);
+    let er_boundaries = er_name.then(|| {
+        fence
+            .text_index()
+            .semantic_items()
+            .iter()
+            .filter(|candidate| {
+                candidate.kind == item.kind && candidate.role.contributes_references()
+            })
+            .map(|candidate| (candidate.selection.start, candidate.selection.end))
+            .unzip::<_, _, HashSet<_>, HashSet<_>>()
+    });
+    let er_quoted = er_name.then(|| {
+        fence
+            .text_index()
+            .semantic_items()
+            .iter()
+            .filter(|candidate| {
+                candidate.kind == item.kind
+                    && candidate.role.contributes_references()
+                    && candidate.span != candidate.selection
+            })
+            .map(|candidate| candidate.selection.start)
+            .collect::<HashSet<_>>()
+    });
+    let mut er_id_lists = if er_name {
+        fence
+            .text_index()
+            .expected_syntax()
+            .iter()
+            .filter(|expected| expected.kind == EditorExpectedSyntaxKind::IdList)
+            .map(|expected| expected.span)
+            .collect::<Vec<_>>()
+    } else {
+        Vec::new()
+    };
+    er_id_lists.sort_unstable_by_key(|span| span.end);
+    let numeric_er_name = er_name && new_name.as_bytes().first().is_some_and(u8::is_ascii_digit);
     let mut edits = spans
         .into_iter()
         .filter_map(|span| {
+            let adjacent_er_name = er_boundaries.as_ref().is_some_and(|(starts, ends)| {
+                ends.contains(&span.start) || starts.contains(&span.end)
+            });
+            let in_id_list = er_id_lists
+                .get(er_id_lists.partition_point(|list| list.end < span.end))
+                .is_some_and(|list| list.start <= span.start && span.end <= list.end);
+            let needs_quotes = (adjacent_er_name || numeric_er_name && !in_id_list)
+                && !er_quoted
+                    .as_ref()
+                    .is_some_and(|quoted| quoted.contains(&span.start));
             let span = absolute_span(fence, span);
             let range = range_from_span(snapshot.source_map(), span)?;
             // Keep the parser's token boundary when an adjacent word could join the new name.
@@ -390,7 +441,9 @@ fn rename_edits(
             Some(EditorTextEdit {
                 fact_source: fence.text_index().source(),
                 range,
-                new_text: if needs_separator {
+                new_text: if needs_quotes {
+                    format!("\"{new_name}\"")
+                } else if needs_separator {
                     format!("{new_name} ")
                 } else {
                     new_name.to_string()

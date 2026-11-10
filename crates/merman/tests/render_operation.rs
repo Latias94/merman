@@ -1421,7 +1421,7 @@ fn portable_svg_data_matches_the_result_for_a_scene_without_font_dependencies() 
     let renderer = Renderer::new();
     let output = renderer
         .render(RenderRequest::svg(
-            "classDiagram\n",
+            "classDiagram\ndirection TB\n",
             OperationControl::new(),
             request.clone(),
         ))
@@ -1435,7 +1435,7 @@ fn portable_svg_data_matches_the_result_for_a_scene_without_font_dependencies() 
     );
     let data = renderer
         .render_svg_data(RenderRequest::svg(
-            "classDiagram\n",
+            "classDiagram\ndirection TB\n",
             OperationControl::new(),
             request,
         ))

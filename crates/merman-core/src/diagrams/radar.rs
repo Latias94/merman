@@ -18,6 +18,7 @@ use crate::{
     EditorSemanticSymbol, editor::ensure_editor_recovery_from_error,
 };
 use crate::{Error, Result, SourceSpan, family};
+#[cfg(feature = "compat-json")]
 use serde_json::Value;
 
 const MAX_TICKS: i64 = 32;
@@ -45,7 +46,7 @@ struct CurveAst {
 #[derive(Debug, Clone)]
 enum OptionValueAst {
     Bool(bool),
-    Number(Value),
+    Number(f64),
     Graticule(String),
 }
 
@@ -59,7 +60,7 @@ struct OptionAst {
 
 #[derive(Debug, Clone)]
 struct SpannedRadarValue {
-    value: Value,
+    value: f64,
     #[cfg(feature = "editor-facts")]
     span: SourceSpan,
 }
@@ -172,17 +173,18 @@ impl RadarDb {
             self.options.show_legend = *v;
         }
         if let Some(OptionValueAst::Number(v)) = last.get("ticks") {
-            self.options.ticks = if v.as_f64().is_some_and(|ticks| ticks > MAX_TICKS as f64) {
-                Value::from(MAX_TICKS)
+            // Upstream clamps the last Number, including positive infinity.
+            self.options.ticks = if *v > MAX_TICKS as f64 {
+                MAX_TICKS as f64
             } else {
-                v.clone()
+                *v
             };
         }
         if let Some(OptionValueAst::Number(v)) = last.get("max") {
-            self.options.max = Some(v.clone());
+            self.options.max = Some(*v);
         }
         if let Some(OptionValueAst::Number(v)) = last.get("min") {
-            self.options.min = v.clone();
+            self.options.min = *v;
         }
         if let Some(OptionValueAst::Graticule(v)) = last.get("graticule") {
             self.options.graticule = v.clone();
@@ -268,11 +270,8 @@ fn push_radar_payload(
 }
 
 #[cfg(feature = "editor-facts")]
-fn value_text(v: &Value) -> String {
-    match v {
-        Value::String(s) => s.clone(),
-        _ => v.to_string(),
-    }
+fn value_text(v: f64) -> String {
+    crate::utils::format_js_number(v)
 }
 
 enum RadarStatementEvent {
@@ -283,59 +282,84 @@ enum RadarStatementEvent {
 
 struct RadarParsedStatement {
     event: RadarStatementEvent,
+    consumed: usize,
+}
+
+struct RadarParsedStatements {
+    events: Vec<RadarStatementEvent>,
+    consumed: usize,
 }
 
 fn parse_radar_statement(
     stmt: &str,
     stmt_start: usize,
     control: &crate::OperationControl,
+) -> crate::OperationControlResult<std::result::Result<RadarParsedStatements, String>> {
+    let mut events = Vec::new();
+    let mut consumed = 0;
+    while consumed < stmt.len() {
+        control.checkpoint()?;
+        if !events.is_empty() && parse_langium_common(stmt, consumed).is_some() {
+            break;
+        }
+        match parse_radar_statement_prefix(&stmt[consumed..], stmt_start + consumed, control)? {
+            Ok(parsed) => {
+                consumed += parsed.consumed;
+                events.push(parsed.event);
+            }
+            // Retain preceding statements; the main loop can then collect a following
+            // multiline curve or recover the next invalid statement at its own offset.
+            Err(_) if !events.is_empty() => break,
+            Err(error) => return Ok(Err(error)),
+        }
+    }
+    Ok(Ok(RadarParsedStatements { events, consumed }))
+}
+
+fn parse_radar_statement_prefix(
+    stmt: &str,
+    stmt_start: usize,
+    control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<RadarParsedStatement, String>> {
     control.checkpoint()?;
-    let (trimmed, trimmed_start) = trim_start_with_source_offset(stmt, stmt_start);
-    if let Some(rest) = trimmed.strip_prefix("axis") {
-        let (rest, rest_start) = trim_start_with_source_offset(rest, trimmed_start + "axis".len());
-        if rest.is_empty() {
+    let mut p = TokenParser::new(stmt, stmt_start);
+    p.skip_ws();
+    if p.try_keyword("axis") {
+        p.skip_ws();
+        if p.eof() {
             return Ok(Err(
                 "axis statement must include at least one axis".to_string()
             ));
         }
-        let axes = match parse_axes_list(rest, rest_start, control)? {
+        let axes = match parse_axes_list(&mut p, control)? {
             Ok(axes) => axes,
             Err(error) => return Ok(Err(error)),
         };
         return Ok(Ok(RadarParsedStatement {
             event: RadarStatementEvent::Axes(axes),
+            consumed: p.pos,
         }));
     }
 
-    if trimmed.starts_with("curve") {
-        let curves = match parse_curves_stmt(trimmed, trimmed_start, control)? {
+    if p.try_keyword("curve") {
+        let curves = match parse_curves_stmt(&mut p, control)? {
             Ok(curves) => curves,
             Err(error) => return Ok(Err(error)),
         };
         return Ok(Ok(RadarParsedStatement {
             event: RadarStatementEvent::Curves(curves),
+            consumed: p.pos,
         }));
     }
 
-    let options = match parse_option_list_stmt(trimmed, trimmed_start, control)? {
+    let options = match parse_option_list_stmt(&mut p, control)? {
         Ok(options) => options,
         Err(error) => return Ok(Err(error)),
     };
     if let Some(options) = options {
         return Ok(Ok(RadarParsedStatement {
             event: RadarStatementEvent::Options(options),
-        }));
-    }
-
-    let option = match parse_option_stmt(trimmed, trimmed_start) {
-        Ok(option) => option,
-        Err(error) => return Ok(Err(error)),
-    };
-    if let Some(option) = option {
-        control.checkpoint()?;
-        return Ok(Ok(RadarParsedStatement {
-            event: RadarStatementEvent::Options(vec![option]),
+            consumed: p.pos,
         }));
     }
 
@@ -402,7 +426,7 @@ fn push_radar_statement_facts(
                     push_radar_payload(
                         facts,
                         SpannedText {
-                            text: value_text(&entry.value.value),
+                            text: value_text(entry.value.value),
                             span: entry.value.span,
                         },
                         "radar curve entry",
@@ -416,7 +440,7 @@ fn push_radar_statement_facts(
                 control.checkpoint()?;
                 let token = match &option.value {
                     OptionValueAst::Bool(value) => value.to_string(),
-                    OptionValueAst::Number(value) => value_text(value),
+                    OptionValueAst::Number(value) => value_text(*value),
                     OptionValueAst::Graticule(value) => value.clone(),
                 };
                 push_radar_payload(
@@ -468,7 +492,7 @@ fn compute_curve_entries_controlled(
     axes: &[RadarAxis],
     entries: &[EntryAst],
     control: &crate::OperationControl,
-) -> crate::OperationControlResult<Result<Vec<Value>>> {
+) -> crate::OperationControlResult<Result<Vec<f64>>> {
     control.checkpoint()?;
     if entries.is_empty() {
         return Ok(Ok(Vec::new()));
@@ -478,7 +502,7 @@ fn compute_curve_entries_controlled(
         let mut values = Vec::with_capacity(entries.len());
         for entry in entries {
             control.checkpoint()?;
-            values.push(entry.value.value.clone());
+            values.push(entry.value.value);
         }
         return Ok(Ok(values));
     }
@@ -507,7 +531,7 @@ fn compute_curve_entries_controlled(
                 format!("Missing entry for axis {}", axis.label),
             )));
         };
-        values.push(found.value.value.clone());
+        values.push(found.value.value);
     }
     Ok(Ok(values))
 }
@@ -760,20 +784,25 @@ fn construct_radar_semantic_source_controlled(
 
         match parse_radar_statement(&statement, statement_start, control)? {
             Ok(parsed) => {
-                #[cfg(feature = "editor-facts")]
-                if let Some(facts) = editor_facts
-                    .as_mut()
-                    .filter(|_| editor_demand.captures_rich())
-                {
-                    push_radar_statement_facts(facts, &parsed.event, control)?;
+                // The entry grammar repeats statements without requiring a newline.
+                // Continue at the next token, retaining the original source offsets.
+                offset = statement_start + parsed.consumed;
+                for event in parsed.events {
+                    #[cfg(feature = "editor-facts")]
+                    if let Some(facts) = editor_facts
+                        .as_mut()
+                        .filter(|_| editor_demand.captures_rich())
+                    {
+                        push_radar_statement_facts(facts, &event, control)?;
+                    }
+                    apply_radar_statement_controlled(
+                        event,
+                        &mut axes,
+                        &mut curves,
+                        &mut options,
+                        control,
+                    )?;
                 }
-                apply_radar_statement_controlled(
-                    parsed.event,
-                    &mut axes,
-                    &mut curves,
-                    &mut options,
-                    control,
-                )?;
             }
             Err(message) => {
                 #[cfg(feature = "editor-facts")]
@@ -1039,17 +1068,15 @@ impl RadarBraceBalance {
 }
 
 fn parse_axes_list(
-    input: &str,
-    input_start: usize,
+    p: &mut TokenParser<'_>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<Vec<AxisAst>, String>> {
-    let mut p = TokenParser::new(input, input_start);
     let mut out = Vec::new();
     loop {
         control.checkpoint()?;
         p.skip_ws();
-        if p.eof() {
-            break;
+        if p.eof() || p.at_statement_start() {
+            return Ok(Err("expected axis id".to_string()));
         }
         let Some(name) = p.parse_id() else {
             return Ok(Err("expected axis id".to_string()));
@@ -1078,7 +1105,7 @@ fn parse_axes_list(
             }
             continue;
         }
-        if p.eof() {
+        if p.eof() || p.at_statement_start() {
             break;
         }
         return Ok(Err("expected ',' or end of axis list".to_string()));
@@ -1087,46 +1114,46 @@ fn parse_axes_list(
 }
 
 fn parse_curves_stmt(
-    input: &str,
-    input_start: usize,
+    p: &mut TokenParser<'_>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<Vec<CurveAst>, String>> {
     control.checkpoint()?;
-    let (input, input_start) = trim_start_with_source_offset(input, input_start);
-    let Some(rest) = input.strip_prefix("curve") else {
-        return Ok(Err("expected curve".to_string()));
-    };
-    let (rest, rest_start) = trim_start_with_source_offset(rest, input_start + "curve".len());
-    if rest.trim().is_empty() {
+    p.skip_ws();
+    if p.eof() {
         return Ok(Err("expected curve id".to_string()));
     }
 
-    let chunks = split_top_level(rest, ',', control)?;
     let mut curves = Vec::new();
-    for (chunk_offset, chunk) in chunks {
+    loop {
         control.checkpoint()?;
-        let (chunk, chunk_start) = trim_start_with_source_offset(chunk, rest_start + chunk_offset);
-        let chunk = chunk.trim_end();
-        if chunk.is_empty() {
-            return Ok(Err("expected curve after ','".to_string()));
-        }
-        match parse_curve(chunk, chunk_start, control)? {
+        match parse_curve(p, control)? {
             Ok(curve) => curves.push(curve),
             Err(error) => return Ok(Err(error)),
         }
+        p.skip_ws();
+        if p.try_consume(',') {
+            p.skip_ws();
+            if p.eof() {
+                return Ok(Err("expected curve after ','".to_string()));
+            }
+            continue;
+        }
+        if p.eof() || p.at_statement_start() {
+            break;
+        }
+        return Ok(Err("unexpected trailing tokens after curve".to_string()));
     }
     Ok(Ok(curves))
 }
 
 fn parse_curve(
-    input: &str,
-    input_start: usize,
+    p: &mut TokenParser<'_>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<CurveAst, String>> {
     control.checkpoint()?;
+    p.skip_ws();
+    let curve_start = p.pos;
     let (name, label, entries_str, entries_start) = {
-        let mut p = TokenParser::new(input, input_start);
-        p.skip_ws();
         let Some(name) = p.parse_id() else {
             return Ok(Err("expected curve id".to_string()));
         };
@@ -1155,10 +1182,6 @@ fn parse_curve(
             Err(error) => return Ok(Err(error)),
         };
 
-        p.skip_ws();
-        if !p.eof() {
-            return Ok(Err("unexpected trailing tokens after curve".to_string()));
-        }
         (name, label, entries_str, entries_start)
     };
     let entries = match parse_entries(entries_str, entries_start, control)? {
@@ -1178,7 +1201,7 @@ fn parse_curve(
         name,
         label,
         entries,
-        span: SourceSpan::new(input_start, input_start + input.len()),
+        span: SourceSpan::new(p.base_offset + curve_start, p.base_offset + p.pos),
     }))
 }
 
@@ -1235,11 +1258,7 @@ fn parse_entries(
     Ok(Ok(out))
 }
 
-fn parse_option_stmt(
-    input: &str,
-    input_start: usize,
-) -> std::result::Result<Option<OptionAst>, String> {
-    let mut p = TokenParser::new(input, input_start);
+fn parse_option_stmt(p: &mut TokenParser<'_>) -> std::result::Result<Option<OptionAst>, String> {
     p.skip_ws();
     let parsed_name = match p.parse_id() {
         Some(name) => name,
@@ -1260,10 +1279,6 @@ fn parse_option_stmt(
         let (value, _value_span) = p
             .parse_bool()
             .ok_or_else(|| "expected boolean".to_string())?;
-        p.skip_ws();
-        if !p.eof() {
-            return Err("unexpected trailing tokens after option".to_string());
-        }
         return Ok(Some(OptionAst {
             name,
             value: OptionValueAst::Bool(value),
@@ -1279,10 +1294,6 @@ fn parse_option_stmt(
         if value.text != "circle" && value.text != "polygon" {
             return Err("expected graticule".to_string());
         }
-        p.skip_ws();
-        if !p.eof() {
-            return Err("unexpected trailing tokens after option".to_string());
-        }
         return Ok(Some(OptionAst {
             name,
             value: OptionValueAst::Graticule(value.text),
@@ -1294,10 +1305,6 @@ fn parse_option_stmt(
     let value = p
         .parse_number_value()
         .ok_or_else(|| "expected number".to_string())?;
-    p.skip_ws();
-    if !p.eof() {
-        return Err("unexpected trailing tokens after option".to_string());
-    }
     Ok(Some(OptionAst {
         name,
         value: OptionValueAst::Number(value.value),
@@ -1307,33 +1314,38 @@ fn parse_option_stmt(
 }
 
 fn parse_option_list_stmt(
-    input: &str,
-    input_start: usize,
+    p: &mut TokenParser<'_>,
     control: &crate::OperationControl,
 ) -> crate::OperationControlResult<std::result::Result<Option<Vec<OptionAst>>, String>> {
-    let chunks = split_top_level(input, ',', control)?;
-    if chunks.len() == 1 {
-        return Ok(Ok(None));
-    }
     let mut out = Vec::new();
-    for (chunk_offset, chunk) in chunks {
+    loop {
         control.checkpoint()?;
-        let (chunk, chunk_start) = trim_start_with_source_offset(chunk, input_start + chunk_offset);
-        let chunk = chunk.trim_end();
-        if chunk.is_empty() {
-            return Ok(Err("expected option after ','".to_string()));
-        }
-        let opt = match parse_option_stmt(chunk, chunk_start) {
+        let opt = match parse_option_stmt(p) {
             Ok(opt) => opt,
             Err(error) => return Ok(Err(error)),
         };
         let Some(opt) = opt else {
-            return Ok(Ok(None));
+            return if out.is_empty() {
+                Ok(Ok(None))
+            } else {
+                Ok(Err("unexpected trailing tokens after option".to_string()))
+            };
         };
         out.push(opt);
-    }
-    if out.is_empty() {
-        return Ok(Ok(None));
+        p.skip_ws();
+        if p.eof() {
+            break;
+        }
+        // Radar repeats Option groups without requiring commas or newlines. NUMBER
+        // may end immediately before the next keyword, as in `ticks 1.5min 2`.
+        if p.try_consume(',') {
+            p.skip_ws();
+            if p.eof() {
+                return Ok(Err("expected option after ','".to_string()));
+            }
+        } else if p.at_statement_start() {
+            break;
+        }
     }
     Ok(Ok(Some(out)))
 }
@@ -1443,6 +1455,40 @@ impl<'input> TokenParser<'input> {
         }
     }
 
+    fn at_keyword(&self, keyword: &str) -> bool {
+        self.input[self.pos..]
+            .strip_prefix(keyword)
+            .is_some_and(|rest| {
+                !rest
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
+            })
+    }
+
+    fn try_keyword(&mut self, keyword: &str) -> bool {
+        if !self.at_keyword(keyword) {
+            return false;
+        }
+        self.pos += keyword.len();
+        true
+    }
+
+    fn at_statement_start(&self) -> bool {
+        [
+            "axis",
+            "curve",
+            "showLegend",
+            "ticks",
+            "max",
+            "min",
+            "graticule",
+        ]
+        .into_iter()
+        .any(|keyword| self.at_keyword(keyword))
+            || parse_langium_common(self.input, self.pos).is_some()
+    }
+
     fn parse_id(&mut self) -> Option<SpannedText> {
         #[cfg(feature = "editor-facts")]
         let start = self.pos;
@@ -1515,31 +1561,19 @@ impl<'input> TokenParser<'input> {
         }
         let token = &s[..idx];
 
-        if saw_dot {
-            if token.ends_with('.') {
-                return None;
-            }
-            let v: f64 = token.parse().ok()?;
-            self.pos += idx;
-            let n = serde_json::Number::from_f64(v)?;
-            #[cfg(feature = "editor-facts")]
-            let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
-            return Some(SpannedRadarValue {
-                value: Value::Number(n),
-                #[cfg(feature = "editor-facts")]
-                span,
-            });
-        }
-
-        if token.len() > 1 && token.starts_with('0') {
+        if (saw_dot && token.ends_with('.'))
+            || (!saw_dot && token.len() > 1 && token.starts_with('0'))
+        {
             return None;
         }
-        let v: i64 = token.parse().ok()?;
+        // common.langium NUMBER uses Number(input) for both FLOAT and INT. Keep the
+        // binary64 rounding and overflow until database options have been applied.
+        let value: f64 = token.parse().ok()?;
         self.pos += idx;
         #[cfg(feature = "editor-facts")]
         let span = SourceSpan::new(self.base_offset + start, self.base_offset + self.pos);
         Some(SpannedRadarValue {
-            value: Value::Number(serde_json::Number::from(v)),
+            value,
             #[cfg(feature = "editor-facts")]
             span,
         })
@@ -1678,7 +1712,7 @@ mod tests {
                     span: SourceSpan::new(index, index + 1),
                 }),
                 value: SpannedRadarValue {
-                    value: json!(index),
+                    value: index as f64,
                     #[cfg(feature = "editor-facts")]
                     span: SourceSpan::new(index, index + 1),
                 },
@@ -1721,7 +1755,7 @@ mod tests {
                 span: SourceSpan::new(0, 1),
             }),
             value: SpannedRadarValue {
-                value: json!(value),
+                value: f64::from(value),
                 #[cfg(feature = "editor-facts")]
                 span: SourceSpan::new(0, 1),
             },
@@ -1731,7 +1765,7 @@ mod tests {
             compute_curve_entries_controlled(&axes, &entries, &crate::OperationControl::new())
                 .unwrap()
                 .unwrap(),
-            vec![json!(1)]
+            vec![1.0]
         );
     }
 
@@ -2248,10 +2282,10 @@ mod semantic_tests {
         assert_eq!(model.axes[0].name, "Cost");
         assert_eq!(model.axes[0].label, "Cost label");
         assert_eq!(model.curves[0].name, "Current");
-        assert_eq!(model.curves[0].entries, [Value::from(2), Value::from(3)]);
-        assert_eq!(model.options.ticks, Value::from(MAX_TICKS));
-        assert_eq!(model.options.min, Value::from(1));
-        assert_eq!(model.options.max, Some(Value::from(9)));
+        assert_eq!(model.curves[0].entries, [2.0, 3.0]);
+        assert_eq!(model.options.ticks, MAX_TICKS as f64);
+        assert_eq!(model.options.min, 1.0);
+        assert_eq!(model.options.max, Some(9.0));
         assert_eq!(model.options.graticule, "polygon");
         assert!(!model.options.show_legend);
         assert_eq!(
@@ -2279,7 +2313,7 @@ mod semantic_tests {
         .unwrap();
         assert!(model.axes.is_empty());
         assert!(model.curves.is_empty());
-        assert_eq!(model.options.ticks, Value::from(5));
+        assert_eq!(model.options.ticks, 5.0);
         assert!(model.options.show_legend);
     }
 

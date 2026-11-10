@@ -139,7 +139,7 @@ fn state_semantic_graph_matches_full_model_without_presentation_materialization(
 fn state_semantic_graph_preserves_validation_and_cancellation() {
     for source in [
         "stateDiagram-v2\nstate Group {\nChild\n}\nGroup: first\nGroup: second\n",
-        "stateDiagram-v2\nnote right of A : note\nstate A----note-0\n",
+        "stateDiagram-v2\nnote right of A : note\nstate \"Collision\" as A----note-0\n",
     ] {
         let semantic = parse::parse_state_semantic_model_controlled(
             source,

@@ -47,6 +47,106 @@ fn render(source: &str, layout: &str) -> (FlowchartLayout, String) {
     (layout, svg.svg().to_owned())
 }
 
+#[test]
+fn nonfinite_asset_dimensions_fail_before_layout_for_each_shared_consumer() {
+    for layout_mode in LAYOUTS {
+        for keyword in std::iter::once("flowchart")
+            .chain(cfg!(feature = "diagram-swimlane").then_some("swimlane-beta"))
+        {
+            for asset in ASSETS {
+                for property in ["w", "h"] {
+                    for value in [r#""bad""#, r#""Infinity""#, "[1, 2]"] {
+                        let source = format!(
+                            "{keyword} LR\nA@{{ {asset} }}\nA@{{ {property}: {value} }}\nA --> B\n"
+                        );
+                        let parsed = MermaidEngine::new()
+                            .with_site_config(
+                                merman_core::presentation::SourcePresentationConfig::from_value(
+                                    serde_json::json!({"layout": layout_mode}),
+                                ),
+                            )
+                            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                            .expect("invalid dimensions remain valid source")
+                            .expect("detect diagram")
+                            .into_presentation();
+                        let error = family::prepare(
+                            &parsed,
+                            &LayoutOptions::default(),
+                            RenderEnvironment::deterministic().begin_session().unwrap(),
+                        )
+                        .err()
+                        .expect("non-finite asset geometry cannot reach a layout provider");
+                        let merman_render::Error::InvalidModel { message } = error else {
+                            panic!("unexpected error {error}: {source}");
+                        };
+                        let dimension = if property == "w" { "width" } else { "height" };
+                        assert_eq!(
+                            message,
+                            format!("Flowchart node A has non-finite asset {dimension}"),
+                            "{source}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn unused_or_replaced_nonfinite_asset_dimensions_do_not_block_ordinary_geometry() {
+    for layout_mode in LAYOUTS {
+        for source in [
+            "flowchart LR\nA@{ w: \"bad\", h: \"Infinity\" } --> B\n",
+            "flowchart LR\nA@{ icon: \"fa:bell\", w: \"bad\", h: \"Infinity\" }\nA@{ w: 48, h: 48 } --> B\n",
+        ] {
+            let (_, svg) = render(source, layout_mode);
+            assert!(!svg.contains("NaN"), "{source}");
+            assert!(!svg.contains("Infinity"), "{source}");
+            roxmltree::Document::parse(&svg).expect("well-formed SVG");
+        }
+    }
+}
+
+#[test]
+fn hidden_or_group_replaced_assets_do_not_validate_unused_dimensions() {
+    for layout_mode in LAYOUTS {
+        let source = "flowchart LR\nsubgraph G\nA@{ icon: \"fa:bell\", w: \"bad\" }\nend\nG@{ view: collapsed }\n";
+        let (layout, svg) = render(source, layout_mode);
+        assert!(!layout.nodes.iter().any(|node| node.id == "A"));
+        assert!(!svg.contains("NaN"));
+        roxmltree::Document::parse(&svg).unwrap();
+        for keyword in std::iter::once("flowchart")
+            .chain(cfg!(feature = "diagram-swimlane").then_some("swimlane-beta"))
+        {
+            let source = format!(
+                "{keyword} LR\nG@{{ icon: \"fa:bell\", w: \"bad\" }}\nsubgraph G\nA\nend\n"
+            );
+            let parsed = MermaidEngine::new()
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"layout": layout_mode}),
+                    ),
+                )
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let artifact = family::prepare(
+                &parsed,
+                &LayoutOptions::default(),
+                RenderEnvironment::deterministic().begin_session().unwrap(),
+            )
+            .unwrap();
+            let svg = artifact
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                .unwrap();
+            assert!(!svg.svg().contains("NaN"), "{source}");
+            assert!(!svg.svg().contains("Infinity"), "{source}");
+            roxmltree::Document::parse(svg.svg()).unwrap();
+        }
+    }
+}
+
 fn source_node<'a>(document: &'a roxmltree::Document<'_>) -> roxmltree::Node<'a, 'a> {
     document
         .descendants()

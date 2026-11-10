@@ -14,12 +14,12 @@ pub(super) fn write_class_svg_document(
         .model()
         .acc_title
         .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
+        .is_some_and(|s| !s.is_empty());
     let has_acc_descr = model
         .model()
         .acc_descr
         .as_deref()
-        .is_some_and(|s| !s.trim().is_empty());
+        .is_some_and(|s| !s.is_empty());
 
     let aria_labelledby = has_acc_title.then(|| format!("chart-title-{diagram_id}"));
     let aria_describedby = has_acc_descr.then(|| format!("chart-desc-{diagram_id}"));

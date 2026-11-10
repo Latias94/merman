@@ -825,9 +825,15 @@ fn journey_scores_select_fractional_faces_and_preserve_integer_and_nan_controls(
         ("2.75", "367.5", "path", Some("374.5")),
         ("3", "360", "line", None),
         ("4", "330", "path", Some("332")),
+        ("0x4", "330", "path", Some("332")),
+        ("0b11", "360", "line", None),
+        ("0o5", "300", "path", Some("302")),
+        ("\u{feff}3.5\u{feff}", "345", "path", Some("347")),
+        ("\u{0085}3.5\u{0085}", "NaN", "line", None),
         ("bad", "NaN", "line", None),
         ("NaN", "NaN", "line", None),
-        ("Infinity", "NaN", "line", None),
+        ("Infinity", "-Infinity", "path", Some("-Infinity")),
+        ("-Infinity", "Infinity", "path", Some("Infinity")),
     ] {
         let source = format!("journey\nPay: {literal}: Customer\n");
         let rendered =
@@ -1328,6 +1334,53 @@ fn journey_accessibility_dom_links_complete_punctuation_payloads() {
                 .unwrap();
             assert!(node.has_tag_name(tag));
             assert_eq!(node.text(), Some(expected));
+        }
+    }
+}
+
+#[test]
+fn journey_unicode_structural_whitespace_reaches_accessible_and_visible_svg_text() {
+    let same_line = concat!(
+        "journey\r\n",
+        "\u{feff}title\u{feff}Checkout\r\n",
+        "\u{feff}accTitle\u{feff}:\u{feff}\u{0085}Accessible\u{0085}\u{feff}\r\n",
+        "\u{feff}accDescr\u{feff}{\u{feff}Help\u{feff}}\u{feff}Pay: 4: Customer\r\n",
+        "\u{feff}section\u{feff}Delivery\r\n",
+        "\u{feff}Ship: 5: Customer\r\n",
+    );
+    let cross_line = concat!(
+        "journey\r\n",
+        "\u{feff}title\r\nCheckout\r\n",
+        "accTitle\r\n\u{feff}:\r\n\u{feff}\u{0085}Accessible\u{0085}\u{feff}\r\n",
+        "accDescr\r\n\u{feff}{\r\n\u{feff}Help\r\n}\u{feff}Pay: 4: Customer\r\n",
+        "section\r\nDelivery\r\n",
+        "\u{feff}Ship: 5: Customer\r\n",
+    );
+    for source in [same_line, cross_line] {
+        let rendered =
+            render_journey_text_rules(source, ThemeRuleSet::default(), serde_json::json!({}))
+                .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let root = document.root_element();
+        for (aria, tag, expected) in [
+            ("aria-labelledby", "title", "\u{0085}Accessible\u{0085}"),
+            ("aria-describedby", "desc", "Help"),
+        ] {
+            let id = root.attribute(aria).unwrap();
+            let target = root
+                .children()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap();
+            assert!(target.has_tag_name(tag));
+            assert_eq!(target.text(), Some(expected));
+        }
+        for text in ["Checkout", "Delivery", "Pay", "Ship"] {
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some(text)),
+                "{text}"
+            );
         }
     }
 }
@@ -1952,10 +2005,9 @@ fn journey_text_paint_preserves_labels_lines_and_title_local_ownership() {
                     })
                 }));
 
-                for (class, expected_label) in [
-                    ("task", "    Ship release"),
-                    ("journey-section", "Delivery"),
-                ] {
+                for (class, expected_label) in
+                    [("task", "Ship release"), ("journey-section", "Delivery")]
+                {
                     let text = document
                         .descendants()
                         .find(|node| {

@@ -35,10 +35,7 @@ fn visible_pie_sections(model: &PieDiagramModel) -> (f64, Vec<&PieSection>) {
 
 pub(crate) fn pie_legend_text(label: &str, value: f64, show_data: bool) -> String {
     if show_data {
-        format!(
-            "{label} [{}]",
-            crate::number_format::canonical_number(value)
-        )
+        format!("{label} [{}]", ryu_js::Buffer::new().format(value))
     } else {
         label.to_owned()
     }
@@ -49,29 +46,6 @@ fn polar_xy(radius: f64, angle: f64) -> (f64, f64) {
     let x = radius * angle.sin();
     let y = -radius * angle.cos();
     (x, y)
-}
-
-fn fmt_number(v: f64) -> String {
-    if !v.is_finite() {
-        return "0".to_string();
-    }
-    if v.abs() < 0.0005 {
-        return "0".to_string();
-    }
-    let mut r = (v * 1000.0).round() / 1000.0;
-    if r.abs() < 0.0005 {
-        r = 0.0;
-    }
-    let mut s = format!("{r:.3}");
-    if s.contains('.') {
-        while s.ends_with('0') {
-            s.pop();
-        }
-        if s.ends_with('.') {
-            s.pop();
-        }
-    }
-    if s == "-0" { "0".to_string() } else { s }
 }
 
 #[cfg(test)]
@@ -200,13 +174,7 @@ pub(crate) fn layout_pie_diagram_typed_with_paint_plan(
     let title_style = paint_plan.css_binding().title_measurement_style();
     let mut max_legend_width: f64 = 0.0;
     for sec in &model.sections {
-        let label = if paint_plan.text_measurement_requested() {
-            pie_legend_text(&sec.label, sec.value, model.show_data)
-        } else if model.show_data {
-            format!("{} [{}]", sec.label, fmt_number(sec.value))
-        } else {
-            sec.label.clone()
-        };
+        let label = pie_legend_text(&sec.label, sec.value, model.show_data);
         let trimmed = label.trim_end();
         // Mermaid 11.16 measures pie legend text via a single SVG `<text>` node's
         // `getBoundingClientRect().width`.

@@ -317,7 +317,7 @@
         "domId": "state-if_state----parent-4",
         "id": "if_state----parent",
         "isGroup": true,
-        "label": "Decision point.\nMultiple lines.",
+        "label": "Decision point.\n    Multiple lines.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": null,
@@ -335,7 +335,7 @@
         "domId": "state-if_state----note-4",
         "id": "if_state----note-4",
         "isGroup": false,
-        "label": "Decision point.\nMultiple lines.",
+        "label": "Decision point.\n    Multiple lines.",
         "labelStyle": "",
         "look": "neo",
         "minWidth": 120,
@@ -600,7 +600,7 @@
         "id": "if_state",
         "note": {
           "position": "right of",
-          "text": "Decision point.\nMultiple lines."
+          "text": "Decision point.\n    Multiple lines."
         },
         "start": null,
         "styles": [],
