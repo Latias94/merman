@@ -525,5 +525,105 @@
     "license_expression": "MIT OR Apache-2.0",
     "required_attribution": null,
     "export_kind": "design"
+  },
+  {
+    "id": "paper-cut",
+    "display_name": "Paper Cut",
+    "supported_appearances": ["light"],
+    "default_appearance": "light",
+    "appearances": [
+      {
+        "appearance": "light",
+        "concrete_preset_id": "paper-cut",
+        "available": true,
+        "availability_reason_ids": [],
+        "family_designs": [
+          {"family_id": "class", "treatment": "dedicated"},
+          {"family_id": "er", "treatment": "dedicated"},
+          {"family_id": "flowchart", "treatment": "dedicated"},
+          {"family_id": "mindmap", "treatment": "dedicated"},
+          {"family_id": "pie", "treatment": "dedicated"},
+          {"family_id": "sequence", "treatment": "dedicated"},
+          {"family_id": "state", "treatment": "dedicated"},
+          {"family_id": "xychart", "treatment": "dedicated"}
+        ],
+        "preview_colors": ["#FBF8F0", "#E9F2E9", "#243E4A", "#EB9C88", "#7EB4AA"],
+        "application_notes": [],
+        "qualified_cells": []
+      }
+    ],
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
+  },
+  {
+    "id": "carbon-copy",
+    "display_name": "Carbon Copy",
+    "supported_appearances": ["light"],
+    "default_appearance": "light",
+    "appearances": [
+      {
+        "appearance": "light",
+        "concrete_preset_id": "carbon-copy",
+        "available": true,
+        "availability_reason_ids": [],
+        "family_designs": [
+          {"family_id": "class", "treatment": "dedicated"},
+          {"family_id": "er", "treatment": "dedicated"},
+          {"family_id": "flowchart", "treatment": "dedicated"},
+          {"family_id": "kanban", "treatment": "dedicated"},
+          {"family_id": "mindmap", "treatment": "dedicated"},
+          {"family_id": "pie", "treatment": "dedicated"},
+          {"family_id": "sequence", "treatment": "dedicated"},
+          {"family_id": "state", "treatment": "dedicated"},
+          {"family_id": "xychart", "treatment": "dedicated"}
+        ],
+        "preview_colors": ["#F2EDDF", "#FFFCF1", "#4B2C63", "#76508E", "#A53B32"],
+        "application_notes": [],
+        "qualified_cells": []
+      }
+    ],
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
+  },
+  {
+    "id": "pop-art",
+    "display_name": "Pop Art",
+    "supported_appearances": ["light"],
+    "default_appearance": "light",
+    "appearances": [
+      {
+        "appearance": "light",
+        "concrete_preset_id": "pop-art",
+        "available": true,
+        "availability_reason_ids": [],
+        "family_designs": [
+          {"family_id": "class", "treatment": "dedicated"},
+          {"family_id": "er", "treatment": "dedicated"},
+          {"family_id": "flowchart", "treatment": "dedicated"},
+          {"family_id": "mindmap", "treatment": "dedicated"},
+          {"family_id": "pie", "treatment": "dedicated"},
+          {"family_id": "sequence", "treatment": "dedicated"},
+          {"family_id": "state", "treatment": "dedicated"},
+          {"family_id": "xychart", "treatment": "dedicated"}
+        ],
+        "preview_colors": ["#FFF9E8", "#191620", "#FFE500", "#F32888", "#31D5E8"],
+        "application_notes": [],
+        "qualified_cells": []
+      }
+    ],
+    "maturity": "alpha",
+    "available": true,
+    "availability_reason_ids": [],
+    "license_expression": "MIT OR Apache-2.0",
+    "required_attribution": null,
+    "export_kind": "design"
   }
 ]

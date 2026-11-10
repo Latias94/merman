@@ -18,6 +18,7 @@ import { ThemeDesignCard } from "./ThemeDesignCard";
 import { ThemeShowcaseDetail, type ThemeShowcasePreviewState } from "./ThemeShowcaseDetail";
 import { ThemeShowcaseFilters } from "./ThemeShowcaseFilters";
 import { createThemeShowcaseUseState } from "./ThemeShowcaseUse";
+import { explorationThemeChoice, selectedExplorationTheme } from "./theme-selection";
 
 export interface ThemeShowcaseProps {
   readonly open: boolean;
@@ -45,6 +46,11 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
   const browseFocus = useRef<BrowseFocus | null>(null);
   const searchSelection = useRef<{ start: number | null; end: number | null } | null>(null);
   const facade = useMermanRuntime(selectMermanFacade);
+  const { catalog, error: catalogError } = useMemo(() => {
+    if (!facade) return { catalog: null, error: null };
+    try { return { catalog: facade.themeCatalog(), error: null }; }
+    catch (cause) { return { catalog: null, error: projectError(cause).summary }; }
+  }, [facade]);
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
   const hostAppearance = useAppStore((state) => state.resolvedTheme);
   const [detailId, setDetailId] = useState<string | null>(initialThemeId ?? null);
@@ -54,7 +60,10 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
   const [previewState, setPreviewState] = useState<ThemeShowcasePreviewState>({ mode: "sample", showSource: false });
   const [adoptionState, setAdoptionState] = useState(createThemeShowcaseUseState);
   const detail = EXPLORATION_THEMES.find((theme) => theme.id === detailId);
-  const selected = EXPLORATION_THEMES.find((theme) => theme.recipeJson === workspace.themeRecipeJson);
+  const selected = selectedExplorationTheme(workspace, EXPLORATION_THEMES, catalog);
+  const detailChoice = detail ? explorationThemeChoice(detail, catalog, detailPreference) : null;
+  const availabilityError = detail?.presetId && !detailChoice
+    ? catalogError ?? (catalog ? t("appearance.unavailableChoice") : null) : null;
   const themes = filterThemeLibrary(EXPLORATION_THEMES, filters, (theme) =>
     `${t(`themeGallery.themes.${theme.id}`)} ${t(`themeShowcase.mechanisms.${theme.id}`)} ${theme.families.map((family) => `${family} ${t(`themeGallery.samples.${family}`)}`).join(" ")}`,
   i18n.resolvedLanguage);
@@ -114,13 +123,11 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
     requestAnimationFrame(restoreBrowse);
   }
 
-  function apply(theme: ExplorationTheme) {
+  function apply() {
     try {
-      if (!facade) return;
-      inspectThemeRecipe(facade, theme.recipeJson);
-      useAppStore.getState().selectTheme({ kind: "recipe", recipeJson: theme.recipeJson,
-        appearance: theme.appearances ? detailPreference : "default",
-        label: { name: theme.name, source: "exploration" } });
+      if (!facade || !detailChoice) return;
+      if (detailChoice.kind === "recipe") inspectThemeRecipe(facade, detailChoice.recipeJson);
+      useAppStore.getState().selectTheme(detailChoice);
       setActionError(null);
       onOpenChange(false);
     } catch (error) { setActionError(projectError(error).summary); }
@@ -192,7 +199,7 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
         onScroll={(event) => { detailScroll.current = event.currentTarget.scrollTop; }}>
         <ThemeShowcaseDetail key={detail.id} theme={detail} selected={selected?.id === detail.id} selection={detailSelection} sampleId={themeSampleFor(detail, sampleId ?? filters.familyId, initialSampleId)}
           onSampleChange={setSampleId} onAppearanceChange={setDetailPreference} workspace={workspace} currentFamilyId={currentFamilyId}
-          onBack={back} onApply={() => apply(detail)} canApply={facade !== null} actionError={actionError} headingRef={heading} active={open}
+          onBack={back} onApply={apply} canApply={facade !== null && detailChoice !== null} actionError={actionError ?? availabilityError} headingRef={heading} active={open}
           previewState={previewState} onPreviewChange={setPreviewState} adoptionState={adoptionState} onAdoptionChange={setAdoptionState} />
       </div>}
     </DialogContent>

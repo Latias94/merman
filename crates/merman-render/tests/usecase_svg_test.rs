@@ -3358,15 +3358,50 @@ Data -- Login
     }
 
     #[test]
-    fn usecase_compiled_all_eleven_presets_account_every_mechanism() {
+    fn usecase_compiled_all_presets_account_authored_roles_and_residuals() {
         let presets = theme_preset_descriptors();
-        assert_eq!(presets.len(), 11);
         for descriptor in presets {
-            let theme = DiagramThemeCompiler::new()
-                .compile_preset(descriptor.preset())
+            let compiler = DiagramThemeCompiler::new();
+            let theme = compiler.compile_preset(descriptor.preset()).unwrap();
+            let recipe =
+                serde_json::to_value(compiler.export_preset(descriptor.preset()).unwrap()).unwrap();
+            let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+            let materialized =
+                merman_render::diagram_theme::materialize_theme_design(&design).unwrap();
+            let baseline_theme = compiler
+                .compile_spec_wire(merman_render::diagram_theme::DiagramThemeSpecWireV1 {
+                    mermaid: materialized.mermaid.clone(),
+                    ..Default::default()
+                })
                 .unwrap();
+            let spec = serde_json::to_value(materialized).unwrap();
+            let paint = |target: &str, facet: &str| {
+                spec["styles"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .rev()
+                    .find_map(|rule| {
+                        (rule["kind"] == "rule"
+                            && rule["target"] == target
+                            && rule.get("family").is_none_or(|family| family == "usecase")
+                            && rule.get("variant").is_none()
+                            && rule.get("ordinal").is_none())
+                        .then(|| rule.pointer(facet))
+                        .flatten()
+                    })
+                    .map(|paint| {
+                        ThemeColorValue::parse(
+                            paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                        )
+                        .unwrap()
+                        .as_css()
+                    })
+            };
             let rendered = render_theme(ALL_ROLES, &theme, true);
+            let baseline = render_theme(ALL_ROLES, &baseline_theme, true);
             let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
             assert!(
                 document
                     .descendants()
@@ -3378,23 +3413,90 @@ Data -- Login
                     node.has_tag_name("path") && node.attribute("data-id") == Some("access")
                 })
                 .unwrap();
-            let line = property(edge, "stroke").expect("preset connector paint");
+            let line = paint("edge", "/style/stroke/paint");
+            assert_eq!(
+                property(edge, "stroke"),
+                line.clone()
+                    .or_else(|| property(owner(&baseline_document, "access"), "stroke")),
+                "{} connector",
+                descriptor.id()
+            );
             let marker = end_marker(&document, "access");
             let shape = marker.children().find(roxmltree::Node::is_element).unwrap();
+            let baseline_shape = end_marker(&baseline_document, "access")
+                .children()
+                .find(roxmltree::Node::is_element)
+                .unwrap();
+            for (property_name, facet) in
+                [("fill", "/style/fill"), ("stroke", "/style/stroke/paint")]
+            {
+                assert_eq!(
+                    property(shape, property_name),
+                    paint("marker", facet).or_else(|| property(baseline_shape, property_name)),
+                    "{} marker {property_name}",
+                    descriptor.id()
+                );
+                assert_eq!(
+                    property(shell(&document, "Login"), property_name),
+                    paint("node", facet)
+                        .or_else(|| property(shell(&baseline_document, "Login"), property_name)),
+                    "{} node {property_name}",
+                    descriptor.id()
+                );
+            }
+            let stack = spec
+                .pointer("/typography/families/usecase/font_stack")
+                .or_else(|| spec.pointer("/typography/default/font_stack"))
+                .unwrap()
+                .as_array()
+                .unwrap();
+            let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+                .unwrap()
+                .as_css();
+            for (label, role) in [
+                ("Signin", "node-label"),
+                ("Customer", "actor-label"),
+                ("Access", "edge-label"),
+                ("Theme title", "title"),
+            ] {
+                assert_eq!(
+                    label_property(&document, label, "color"),
+                    paint(role, "/style/fill").or_else(|| paint("text", "/style/fill")),
+                    "{}: {label}",
+                    descriptor.id()
+                );
+                assert_eq!(
+                    label_property(&document, label, "font-family").as_deref(),
+                    Some(font.as_str()),
+                    "{}: {label}",
+                    descriptor.id()
+                );
+            }
+            // The inherited SVG font and marker CSS keep their Mermaid owners; the typed theme
+            // reaches actual label/connector terminals through the scoped styles above.
             assert_eq!(
-                property(shape, "fill").as_deref(),
-                Some(line.as_str()),
-                "{} marker fill",
+                stylesheet_property(&document, "#usecase-test", "font-family"),
+                stylesheet_property(&baseline_document, "#usecase-test", "font-family"),
+                "{}",
                 descriptor.id()
             );
-            assert_eq!(
-                property(shape, "stroke").as_deref(),
-                Some(line.as_str()),
-                "{} marker stroke",
-                descriptor.id()
-            );
-            let evidence =
-                merman_render::__private::family_evidence(rendered.into_completion().report());
+            for key in ["fill", "stroke"] {
+                assert_eq!(
+                    stylesheet_property(&document, "#usecase-test .marker", key),
+                    stylesheet_property(&baseline_document, "#usecase-test .marker", key),
+                    "{} marker CSS {key}",
+                    descriptor.id()
+                );
+            }
+            // Node palettes have no Usecase adapter. The old templates shadow this mechanism
+            // with a Node fill; the scoped art recipes leave this existing limitation visible.
+            let palette_residual =
+                paint("node", "/style/fill").is_none()
+                    && spec["styles"].as_array().unwrap().iter().any(|entry| {
+                        entry["kind"] == "ordinal-palette" && entry["target"] == "node"
+                    });
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
             assert_eq!(
                 evidence.accounted_count(),
                 evidence.required_count(),
@@ -3412,10 +3514,43 @@ Data -- Login
             );
             assert_eq!(
                 evidence.theme_residual_count(),
-                0,
+                usize::from(palette_residual),
                 "{}: {evidence:?}",
                 descriptor.id()
             );
+            assert_eq!(
+                completion
+                    .report()
+                    .theme_diagnostics()
+                    .iter()
+                    .filter(
+                        |diagnostic| diagnostic.code() == "unsupported-ordinal-palette"
+                            && diagnostic.target() == Some(ThemeTarget::Node)
+                    )
+                    .count(),
+                usize::from(palette_residual),
+                "{}",
+                descriptor.id()
+            );
+            assert!(
+                completion
+                    .report()
+                    .theme_diagnostics()
+                    .iter()
+                    .all(|diagnostic| diagnostic.code() == "compatibility-unverified"
+                        || (palette_residual
+                            && diagnostic.code() == "unsupported-ordinal-palette"
+                            && diagnostic.target() == Some(ThemeTarget::Node))),
+                "{}: {:?}",
+                descriptor.id(),
+                completion.report().theme_diagnostics()
+            );
+            if palette_residual || evidence.mermaid_compatibility_residual_count() > 0 {
+                assert_eq!(
+                    evidence.status(),
+                    merman_render::__private::FamilyEvidenceStatus::Unverified
+                );
+            }
         }
     }
 

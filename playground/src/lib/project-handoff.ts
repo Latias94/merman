@@ -79,20 +79,23 @@ export function captureProjectHandoff(input: ProjectHandoffInput): ProjectHandof
     (!versions || (versions.merman === candidate.versions.merman && versions.mermaid === candidate.versions.mermaid))
     ? candidate : null;
   const presetId = workspace.themePresetId?.trim();
-  const selection = operation ? Object.freeze({
+  const resolvedSelection = operation ? {
     preference: operation.themeAppearancePreference,
     appearance: operation.resolvedThemeAppearance,
     mermaidTheme: operation.mermaidTheme,
     followsApp: operation.themeAppearancePreference === "follow",
     supported_appearances: operation.supportedThemeAppearances,
     default_appearance: operation.defaultThemeAppearance,
-  }) : resolveThemeSelection(workspace, input.hostAppearance ?? "light", input.themeCatalog, input.themeRecipeInspection);
+  } : resolveThemeSelection(workspace, input.hostAppearance ?? "light", input.themeCatalog, input.themeRecipeInspection);
+  const selection = Object.freeze({ ...resolvedSelection,
+    supported_appearances: Object.freeze([...resolvedSelection.supported_appearances]),
+  });
   const presets = input.themeCatalog ? input.themeCatalog.presets.flatMap((preset) => [
     { id: preset.id, available: preset.available },
     ...preset.appearances.map((entry) => ({ id: entry.concrete_preset_id, available: preset.available })),
   ]) : input.presets;
   const presetAvailable = Boolean(presetId && (
-    presets?.find((preset) => preset.id === presetId)?.available ||
+    presets ? presets.find((preset) => preset.id === presetId)?.available :
     (operation?.unavailableThemePresetId === null && operation.bindingOptions.theme &&
       "preset" in operation.bindingOptions.theme && operation.bindingOptions.theme.preset === presetId)
   ));
@@ -271,14 +274,18 @@ function themeExampleOperation(snapshot: ProjectHandoffSnapshot, example?: Proje
     viewport: null,
     themeRecipeInspection: snapshot.selection,
   });
-  return native ? Object.freeze({
+  return Object.freeze({
     ...operation,
-    themeAppearancePreference: snapshot.selection.appearance ?? "default",
+    themeAppearancePreference: native ? snapshot.selection.appearance ?? "default" : operation.themeAppearancePreference,
     resolvedThemeAppearance: snapshot.selection.appearance,
     supportedThemeAppearances: snapshot.selection.supported_appearances,
     defaultThemeAppearance: snapshot.selection.default_appearance,
-  }) : operation;
+  });
 }
+
+const RUST_CURATED_PRESETS = new Map([
+  ["paper-cut", "PaperCut"], ["carbon-copy", "CarbonCopy"], ["pop-art", "PopArt"],
+]);
 
 function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<string, string>>, assets: "files" | "inline"): string {
   const recipe = files["theme.json"] !== undefined;
@@ -290,12 +297,16 @@ function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<s
     .filter(([filename]) => files[filename] !== undefined)
     .map(([filename, name]) => `\nconst ${name}: &str = ${rustRawString(files[filename])};\n`).join("") : "";
   const appearance = operation.resolvedThemeAppearance;
+  // These concrete enum presets compile the canonical light appearance.
+  const concretePreset = preset && (appearance === null || appearance === "light")
+    ? RUST_CURATED_PRESETS.get(preset) : undefined;
   const selector = appearance ? `Some(ThemeAppearance::${appearance === "dark" ? "Dark" : "Light"})` : "None";
-  const appearanceImport = appearance ? ", ThemeAppearance" : "";
+  const appearanceImport = appearance && !concretePreset ? ", ThemeAppearance" : "";
   const imports = recipe ? `use merman::diagram_theme::{DiagramThemeCompiler, ThemeRecipeV1${appearanceImport}};\n`
-    : preset ? `use merman::diagram_theme::{DiagramThemeCompiler${appearanceImport}};\n` : "";
+    : preset ? `use merman::diagram_theme::{DiagramThemeCompiler${concretePreset ? ", ThemePreset" : appearanceImport}};\n` : "";
   const theme = recipe
     ? `    let recipe: ThemeRecipeV1 = serde_json::from_str(${input("theme.json")})?;\n    let theme = DiagramThemeCompiler::new().compile_document(recipe, ${selector})?;\n`
+    : concretePreset ? `    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::${concretePreset})?;\n`
     : preset ? `    let theme = DiagramThemeCompiler::new().compile_preset_selection(${JSON.stringify(preset)}, ${selector})?;\n` : "";
   const site = files["site-config.json"]
     ? `MermaidEngine::new().with_site_config(SourcePresentationConfig::from_value(serde_json::from_str(${input("site-config.json")})?))`

@@ -1750,33 +1750,24 @@ fn cynefin_empty_compiled_theme_keeps_plain_svg_bytes() {
 }
 
 #[test]
-fn cynefin_all_presets_consume_title_surface_border_text_and_line() {
+fn cynefin_all_presets_apply_authored_roles_and_preserve_family_defaults() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     for preset in presets {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset.preset())
-            .unwrap();
-        let recipe = serde_json::to_value(
-            DiagramThemeCompiler::new()
-                .export_preset(preset.preset())
-                .unwrap(),
-        )
-        .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(preset.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
         let design = serde_json::from_value(recipe["design"].clone()).unwrap();
-        let spec = serde_json::to_value(
-            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
-        )
-        .unwrap();
-        let expected = |id: &str| {
-            let (target, facet) = match id {
-                "text" => ("text", "/style/fill"),
-                "surface" => ("node", "/style/fill"),
-                "border" => ("node", "/style/stroke/paint"),
-                "line" => ("edge", "/style/stroke/paint"),
-                _ => unreachable!(),
-            };
-            let paint = spec["styles"]
+        let materialized = merman_render::diagram_theme::materialize_theme_design(&design).unwrap();
+        let baseline_theme = compiler
+            .compile_spec_wire(merman_render::diagram_theme::DiagramThemeSpecWireV1 {
+                mermaid: materialized.mermaid.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        let spec = serde_json::to_value(materialized).unwrap();
+        let expected = |target: &str, facet: &str| {
+            spec["styles"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -1790,10 +1781,23 @@ fn cynefin_all_presets_consume_title_surface_border_text_and_line() {
                     .then(|| rule.pointer(facet))
                     .flatten()
                 })
-                .expect("preset has a concrete core paint consumer");
-            ThemeColorValue::parse(paint.as_str().or_else(|| paint["color"].as_str()).unwrap())
-                .unwrap()
-                .as_css()
+                .or_else(|| {
+                    (target == "node" && facet == "/style/fill")
+                        .then(|| {
+                            spec["styles"].as_array().unwrap().iter().find_map(|rule| {
+                                (rule["kind"] == "ordinal-palette" && rule["target"] == target)
+                                    .then(|| &rule["colors"][0])
+                            })
+                        })
+                        .flatten()
+                })
+                .map(|paint| {
+                    ThemeColorValue::parse(
+                        paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                    )
+                    .unwrap()
+                    .as_css()
+                })
         };
         let source = "---\ntitle: Preset title\n---\ncynefin-beta\nclear\n\"Runbook\"\nclear --> complex : \"Probe\"\n";
         let (_, rendered) = try_render_cynefin_with_theme(
@@ -1804,47 +1808,118 @@ fn cynefin_all_presets_consume_title_surface_border_text_and_line() {
             "cynefin-preset",
         )
         .unwrap();
+        let (_, baseline) = try_render_cynefin_with_theme(
+            source,
+            &baseline_theme,
+            MermaidEngine::new(),
+            &RenderEnvironment::deterministic(),
+            "cynefin-preset",
+        )
+        .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
-        assert_eq!(
-            cynefin_inline_property(cynefin_element(&document, "cynefinTitle"), "fill"),
-            Some(expected("text").as_str()),
-            "{}",
-            preset.id()
-        );
-        let domain = cynefin_element(&document, "cynefinDomain");
-        assert_eq!(
-            cynefin_inline_property(domain, "fill"),
-            Some(expected("surface").as_str()),
-            "{}",
-            preset.id()
-        );
-        assert_eq!(
-            cynefin_inline_property(domain, "stroke"),
-            Some(expected("border").as_str()),
-            "{}",
-            preset.id()
-        );
-        assert_eq!(
-            cynefin_inline_property(cynefin_element(&document, "cynefinArrowLine"), "stroke"),
-            Some(expected("line").as_str()),
-            "{}",
-            preset.id()
-        );
-        for class in ["cynefinItemText", "cynefinDomainLabel", "cynefinSubtitle"] {
+        let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
+        // Title/domain labels have their own roles. Text fills the item/subtitle CSS instead.
+        for (class, property, target, facet) in [
+            ("cynefinTitle", "fill", "title", "/style/fill"),
+            ("cynefinDomain", "fill", "node", "/style/fill"),
+            ("cynefinDomain", "stroke", "node", "/style/stroke/paint"),
+            ("cynefinArrowLine", "stroke", "edge", "/style/stroke/paint"),
+            ("cynefinItemText", "fill", "node-label", "/style/fill"),
+            ("cynefinDomainLabel", "fill", "node-label", "/style/fill"),
+            ("cynefinSubtitle", "fill", "node-label", "/style/fill"),
+        ] {
+            let paint = expected(target, facet);
             assert_eq!(
-                cynefin_inline_property(cynefin_element(&document, class), "fill"),
-                Some(expected("text").as_str()),
-                "{}: {class}",
+                cynefin_inline_property(cynefin_element(&document, class), property),
+                paint.as_deref().or_else(|| cynefin_inline_property(
+                    cynefin_element(&baseline_document, class),
+                    property
+                )),
+                "{}: {class}.{property}",
                 preset.id()
             );
         }
+        let marker_fill =
+            expected("marker", "/style/fill").or_else(|| expected("edge", "/style/stroke/paint"));
         assert_eq!(
             cynefin_inline_property(cynefin_element(&document, "cynefinArrowHead"), "fill"),
-            Some(expected("line").as_str()),
+            marker_fill.as_deref().or_else(|| cynefin_inline_property(
+                cynefin_element(&baseline_document, "cynefinArrowHead"),
+                "fill"
+            )),
+            "{}",
+            preset.id()
+        );
+        let stylesheet = cynefin_stylesheet(rendered.svg());
+        for selector in [".cynefinItemText", ".cynefinSubtitle", ".cynefinArrowLabel"] {
+            assert!(
+                cynefin_rule_body(&stylesheet, "cynefin-preset", selector).contains(&format!(
+                    "fill:{};",
+                    expected("text", "/style/fill").unwrap()
+                )),
+                "{}: {selector}",
+                preset.id()
+            );
+        }
+        // Unowned body attributes and the title/domain CSS retain the selected Mermaid baseline.
+        for (class, property) in [("cynefinDomain", "fill"), ("cynefinDomain", "stroke")] {
+            assert_eq!(
+                cynefin_element(&document, class).attribute(property),
+                cynefin_element(&baseline_document, class).attribute(property),
+                "{}: {property}",
+                preset.id()
+            );
+        }
+        let baseline_css = cynefin_stylesheet(baseline.svg());
+        for selector in [".cynefinTitle", ".cynefinDomainLabel"] {
+            let fill = |css: &str| {
+                cynefin_rule_body(css, "cynefin-preset", selector)
+                    .split(';')
+                    .find_map(|declaration| declaration.strip_prefix("fill:"))
+                    .unwrap()
+                    .to_owned()
+            };
+            assert_eq!(
+                fill(&stylesheet),
+                fill(&baseline_css),
+                "{}: {selector}",
+                preset.id()
+            );
+        }
+        let stack = spec
+            .pointer("/typography/families/cynefin/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        assert!(
+            stylesheet.contains(&format!("#cynefin-preset{{font-family:{font};")),
             "{}",
             preset.id()
         );
         let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
         assert!(
             completion
                 .report()

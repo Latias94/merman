@@ -5,8 +5,9 @@ Use this index to choose an upgrade path by the version you have installed. Stab
 ## Current development source
 
 Current source adds optional Light/Dark appearances within one version-1 theme recipe and
-groups the built-in catalog into 8 design identities with 11 concrete appearances. The Playground
-library has 16 designs, including the paired Reading example. See the
+groups the built-in catalog into 11 design identities with 14 concrete appearances, including
+Paper Cut, Carbon Copy and Pop Art. The Playground library has 20 designs, including the paired
+Reading and Prism examples. See the
 [theme guide](../rendering/custom-diagram-themes.md#choose-an-appearance) for complete-document
 export, concrete selection, and host-resolved Follow. Native CLI discovery advances to contract 7;
 use matching source-built bindings, editor adapters, and runtimes.

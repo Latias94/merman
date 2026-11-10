@@ -129,8 +129,11 @@ embeds the raw inputs in `main.rs`; use its listed Cargo dependencies. **Project
 `Cargo.toml` and `src/main.rs`; `include_str!("../theme.json")` resolves from `src/main.rs`, with
 theme, source, and site configuration at the project root. Keep those paths when copying files.
 Generated sample projects already consume their example configuration; applying it again is
-unnecessary. Web `options.json` already contains its recipe.
+unnecessary. Registered, unedited presets use their existing IDs instead of carrying a redundant
+recipe file. Keep the full JSON view/export/customize path available; edited recipes retain their
+authored document. Web `options.json` already contains the selected recipe or preset.
 
 The [theme guide](../../../../docs/rendering/custom-diagram-themes.md) owns current API and
-precedence details. A library name is display metadata, not a registered preset ID. The JSON must
+precedence details. Check runtime catalog registration before generating preset code; a library
+name alone is display metadata. The JSON must
 remain usable independently of this skill, a private generator, or the saved preview SVG.

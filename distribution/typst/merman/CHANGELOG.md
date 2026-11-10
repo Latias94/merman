@@ -2,12 +2,14 @@
 
 The Typst package has its own version axis; its bundled Merman version is recorded separately.
 
-## Unreleased theme branch
+## Unreleased
 
 - Advance the local plugin to ABI 3 and render options to schema 3 for compiled themes, catalog discovery, and theme authoring. Pair the source wrapper with its matching local plugin build.
 - Keep new theme schemas, recipes, and catalogs at version 1. These additions are absent from the independently submitted ABI 2 package `0.5.0`; the source package metadata remains a local development value until the next release is selected.
+- Select a preset or editable recipe with `theme-preset`, `theme-recipe`, and `theme-appearance`; combine it with default typography or document context. Paper Cut, Carbon Copy, and Pop Art are included in the source preset catalog, and exported JSON remains editable.
+- Allow an explicit finite `resources.limits.max_layout_work_units` override for larger diagrams while retaining the 125,000 default and other resource ceilings. Use raw options directly or through a reusable profile. This fix requires the matching development plugin and is not available in the published `0.5.0` package. [Issue #300](https://github.com/Latias94/merman/issues/300)
 
-The dated `0.5.0` entry below records the main submission checkpoint before these unmerged theme additions.
+The dated `0.5.0` entry below records the submitted package before these development additions.
 
 ## [0.5.0] - 2026-10-13
 

@@ -96,10 +96,10 @@ and terminal output. Start with the [capability guide] for feature selection or 
 
 ## Optional themes
 
-**Built-in presets** such as Brutalist, Spotless, Cyberpunk, and Ghibli are selected by their
-runtime preset IDs. The standalone explorations in the [Playground theme designs]
-are editable JSON recipes, including the designs below and coordinated light/dark
-designs. Browse by diagram type and style, then copy a recipe to use it through Rust, CLI, Web, or Node.
+**Built-in presets** such as Brutalist, Ghibli, Paper Cut, Carbon Copy, and Pop Art are selected by
+their runtime preset IDs. The [Playground theme designs] include editable recipes and coordinated
+light/dark designs. Browse by diagram type and style, then use a preset or copy a recipe through
+Rust, CLI, Web, Node, or Typst.
 
 <details>
 <summary>Explore custom themes</summary>

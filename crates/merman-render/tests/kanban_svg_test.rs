@@ -2043,19 +2043,55 @@ fn kanban_title_fill_is_not_applicable_without_a_diagram_title_terminal() {
 }
 
 #[test]
-fn kanban_all_presets_keep_metadata_titles_nonvisual_and_fully_accounted() {
+fn kanban_all_presets_keep_metadata_titles_nonvisual_and_account_actual_roles() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     let source =
         "---\ntitle: Nonvisual metadata title\n---\nkanban\n  todo[Todo]\n    task[Task]\n";
     for preset in presets {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset.preset())
-            .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(preset.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
+        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+        let spec = serde_json::to_value(
+            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
+        )
+        .unwrap();
+        let rules = spec["styles"].as_array().unwrap();
+        // This fixture has one card: ordinal one uses offset zero in the authored cycles.
+        let paint = |target: &str, facet: &str| {
+            rules
+                .iter()
+                .rev()
+                .find_map(|rule| {
+                    (rule["kind"] == "rule"
+                        && rule["target"] == target
+                        && rule.get("family").is_none_or(|family| family == "kanban")
+                        && rule.get("variant").is_none()
+                        && (rule.get("ordinal").is_none()
+                            || rule
+                                .pointer("/ordinal/cycle/offset")
+                                .and_then(serde_json::Value::as_u64)
+                                == Some(0)))
+                    .then(|| rule.pointer(facet))
+                    .flatten()
+                })
+                .map(|paint| {
+                    ThemeColorValue::parse(
+                        paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                    )
+                    .unwrap()
+                    .as_css()
+                })
+        };
         let rendered = render_kanban_with_theme_and_engine(
             source,
             &theme,
-            MermaidEngine::new(),
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"darkMode": false}),
+                ),
+            ),
             ThemePortabilityRequirement::BestEffort,
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -2071,15 +2107,119 @@ fn kanban_all_presets_keep_metadata_titles_nonvisual_and_fully_accounted() {
                 .descendants()
                 .any(|node| { node.is_text() && node.text() == Some("Nonvisual metadata title") })
         );
+        let property = |style: &str, name: &str| {
+            style
+                .split(';')
+                .filter_map(|declaration| declaration.split_once(':'))
+                .find_map(|(key, value)| (key.trim() == name).then(|| value.trim().to_owned()))
+        };
+        let label_style = kanban_task_label_style(&document, "kanban-palette-task");
+        let label_fill = paint("task-label", "/style/fill");
+        for key in ["color", "fill"] {
+            assert_eq!(
+                property(label_style, key),
+                label_fill,
+                "{}: {key}",
+                preset.id()
+            );
+        }
+        let task_fill = paint("task", "/style/fill").or_else(|| {
+            rules
+                .iter()
+                .find(|rule| rule["kind"] == "ordinal-palette" && rule["target"] == "task")
+                .map(|rule| {
+                    let color = rule["colors"][0].as_str().unwrap();
+                    merman_markup::theme_color::lighten(color, 10.0).unwrap()
+                })
+        });
+        let task_style = kanban_task_rect_style(&document, "kanban-palette-task");
+        assert_eq!(property(task_style, "fill"), task_fill, "{}", preset.id());
+        assert_eq!(
+            property(task_style, "stroke"),
+            paint("task", "/style/stroke/paint"),
+            "{}",
+            preset.id()
+        );
+        let stylesheet = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .filter_map(|node| node.text())
+            .collect::<String>();
+        let stack = spec
+            .pointer("/typography/families/kanban/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        assert!(
+            stylesheet.contains(&format!("#kanban-palette{{font-family:{font};")),
+            "{}",
+            preset.id()
+        );
+        assert!(
+            stylesheet.contains(&format!("fill:{};", paint("text", "/style/fill").unwrap())),
+            "{}",
+            preset.id()
+        );
+        // Shared paint is usable outside the catalog's curated design scope.
+        if matches!(preset.id(), "paper-cut" | "carbon-copy" | "pop-art") {
+            let metadata = preset.describe(&compiler);
+            let appearance = metadata
+                .appearances
+                .iter()
+                .find(|appearance| appearance.concrete_preset_id == preset.id())
+                .unwrap();
+            assert_eq!(
+                appearance
+                    .family_designs
+                    .iter()
+                    .any(|design| design.family_id == "kanban" && design.treatment == "dedicated"),
+                preset.id() == "carbon-copy"
+            );
+            for family in [
+                "cynefin", "gitgraph", "journey", "timeline", "usecase", "wardley",
+            ] {
+                assert!(
+                    !appearance
+                        .family_designs
+                        .iter()
+                        .any(|design| design.family_id == family),
+                    "{}: {family}",
+                    preset.id()
+                );
+            }
+        }
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
-        assert!(evidence.not_applicable_count() > 0, "{}", preset.id());
+        if rules.iter().any(|rule| {
+            rule["kind"] == "rule"
+                && rule["target"] == "title"
+                && rule.get("family").is_none_or(|family| family == "kanban")
+        }) {
+            assert!(evidence.not_applicable_count() > 0, "{}", preset.id());
+        }
+        assert!(evidence.applied_count() > 0, "{}", preset.id());
         assert_eq!(
             evidence.accounted_count(),
             evidence.required_count(),
             "{}",
             preset.id()
         );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
         assert!(
             completion
                 .report()

@@ -1,9 +1,10 @@
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
-    OrdinalSelector, Specified, ThemeGeometryPatch, ThemePortabilityRequirement, ThemeRule,
-    ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant, TypographySpec,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
+    OrdinalSelector, Specified, ThemeColorValue, ThemeGeometryPatch, ThemePortabilityRequirement,
+    ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeTextStyle, ThemeVariant,
+    TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -1755,13 +1756,41 @@ fn journey_title_selectors_account_visibility_and_property_winners() {
 }
 
 #[test]
-fn journey_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
+fn journey_all_presets_preserve_title_role_ownership() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     for preset in presets {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset.preset())
-            .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(preset.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
+        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+        let spec = serde_json::to_value(
+            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
+        )
+        .unwrap();
+        let fill = |target: &str| {
+            spec["styles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|rule| {
+                    (rule["kind"] == "rule"
+                        && rule["target"] == target
+                        && rule.get("family").is_none_or(|family| family == "journey")
+                        && rule.get("variant").is_none()
+                        && rule.get("ordinal").is_none())
+                    .then(|| rule.pointer("/style/fill"))
+                    .flatten()
+                    .map(|paint| {
+                        ThemeColorValue::parse(
+                            paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                        )
+                        .unwrap()
+                        .as_css()
+                    })
+                })
+        };
         let rendered = render_journey_with_theme_requirement(
             "journey\n  title Release\n  section Delivery\n  Ship: 5: Actor\n",
             &theme,
@@ -1774,8 +1803,47 @@ fn journey_all_presets_consume_title_fill_without_unsupported_title_diagnostics(
             .descendants()
             .find(|node| node.has_tag_name("text") && node.text() == Some("Release"))
             .unwrap();
+        // Journey retains its empty baseline attribute when no Title fill is authored.
+        assert_eq!(
+            title.attribute("fill"),
+            Some(fill("title").as_deref().unwrap_or("")),
+            "{}",
+            preset.id()
+        );
+        let stylesheet = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .filter_map(|node| node.text())
+            .collect::<String>();
         assert!(
-            !title.attribute("fill").unwrap().is_empty(),
+            stylesheet.contains(&format!(" .legend{{fill:{};", fill("text").unwrap())),
+            "{}",
+            preset.id()
+        );
+        let task = document
+            .descendants()
+            .find(|node| node.has_tag_name("text") && node.attribute("class") == Some("task"))
+            .unwrap();
+        assert!(
+            task.attribute("style").unwrap().contains(&format!(
+                "fill: {};",
+                fill("task-label").or_else(|| fill("text")).unwrap()
+            )),
+            "{}",
+            preset.id()
+        );
+        let stack = spec
+            .pointer("/typography/families/journey/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        let root_id = document.root_element().attribute("id").unwrap();
+        assert!(
+            stylesheet.contains(&format!("#{root_id}{{font-family:{font};")),
             "{}",
             preset.id()
         );
@@ -1788,6 +1856,18 @@ fn journey_all_presets_consume_title_fill_without_unsupported_title_diagnostics(
             "{}",
             preset.id()
         );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
         assert!(
             completion
                 .report()

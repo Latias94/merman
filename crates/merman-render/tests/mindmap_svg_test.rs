@@ -972,11 +972,17 @@ fn mindmap_label_fill_keeps_mixed_geometry_and_ordinal_paint_residuals() {
 }
 
 #[test]
-fn mindmap_all_presets_apply_their_real_label_colors_without_text_paint_residuals() {
+fn mindmap_all_presets_apply_their_real_label_colors_and_account_owners() {
     for descriptor in merman_render::diagram_theme::theme_preset_descriptors() {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(descriptor.preset())
-            .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(descriptor.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(descriptor.preset()).unwrap()).unwrap();
+        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+        let spec = serde_json::to_value(
+            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
+        )
+        .unwrap();
         let rendered = render_mindmap_with_theme_and_engine(
             "mindmap\n  Root\n    First\n    Second\n",
             &theme,
@@ -985,13 +991,94 @@ fn mindmap_all_presets_apply_their_real_label_colors_without_text_paint_residual
             ThemePortabilityRequirement::BestEffort,
         );
         let css = mindmap_stylesheet(rendered.svg());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
         for index in 0..3 {
-            assert!(
-                mindmap_scoped_label_fill(&css, "mindmap-preset-label", index).is_some(),
-                "preset={} node={index}",
-                descriptor.preset().id()
-            );
+            let variant = if index == 0 { "primary" } else { "default" };
+            let expected = spec["styles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|rule| {
+                    (rule["kind"] == "rule"
+                        && matches!(rule["target"].as_str(), Some("text" | "node-label"))
+                        && rule.get("family").is_none_or(|family| family == "mindmap")
+                        && rule.get("variant").is_none_or(|value| value == variant)
+                        && rule.get("ordinal").is_none())
+                    .then(|| rule.pointer("/style/fill"))
+                    .flatten()
+                })
+                .unwrap();
+            let expected = ThemeColorValue::parse(
+                expected
+                    .as_str()
+                    .or_else(|| expected["color"].as_str())
+                    .unwrap(),
+            )
+            .unwrap()
+            .as_css();
+            // Classic root/section CSS owns labels when the recipe authors these raw roles.
+            // Carbon Copy intentionally uses that path instead of a per-node typed override.
+            let role = if index == 0 {
+                "gitBranchLabel0".to_owned()
+            } else {
+                format!("cScaleLabel{index}")
+            };
+            let raw_fill = spec["mermaid"]["variables"]
+                .get(&role)
+                .and_then(serde_json::Value::as_str);
+            let scoped_fill = mindmap_scoped_label_fill(&css, "mindmap-preset-label", index);
+            if let Some(raw_fill) = raw_fill {
+                assert_eq!(scoped_fill, None, "{}: {role}", descriptor.id());
+                let section = if index == 0 {
+                    "section-root".to_owned()
+                } else {
+                    format!("section-{}", index - 1)
+                };
+                let node_id = format!("mindmap-preset-label-node_{index}");
+                let node = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(node_id.as_str()))
+                    .unwrap();
+                assert!(
+                    node.attribute("class")
+                        .unwrap()
+                        .split_whitespace()
+                        .any(|class| class == section)
+                );
+                for (terminal, property) in [("text", "fill"), ("span", "color")] {
+                    assert!(
+                        css.contains(&format!(
+                            "#mindmap-preset-label .{section} {terminal}{{{property}:{raw_fill};}}"
+                        )),
+                        "{}: {role}/{terminal}",
+                        descriptor.id()
+                    );
+                }
+                assert_eq!(raw_fill, expected, "{}: {role}", descriptor.id());
+            } else {
+                assert_eq!(
+                    scoped_fill.as_deref(),
+                    Some(expected.as_str()),
+                    "preset={} node={index}",
+                    descriptor.id()
+                );
+            }
         }
+        let stack = spec
+            .pointer("/typography/families/mindmap/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        assert!(
+            css.contains(&format!("#mindmap-preset-label{{font-family:{font};")),
+            "{}",
+            descriptor.id()
+        );
         let completion = rendered.into_completion();
         assert!(
             completion
@@ -1011,6 +1098,18 @@ fn mindmap_all_presets_apply_their_real_label_colors_without_text_paint_residual
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert!(evidence.applied_count() > 0);
         assert_eq!(evidence.required_count(), evidence.accounted_count());
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            descriptor.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
     }
 }
 

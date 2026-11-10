@@ -8116,7 +8116,6 @@ fn sequence_title_fill_keeps_source_ownership_and_unsupported_siblings_property_
 #[test]
 fn sequence_all_presets_consume_visible_title_fill_without_title_residuals() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     let source = "---\ntitle: Paint title\n---\nsequenceDiagram\nA->>B: Message\n";
     for preset in presets {
         let theme = DiagramThemeCompiler::new()

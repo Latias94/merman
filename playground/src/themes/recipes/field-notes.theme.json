@@ -55,8 +55,8 @@
             "kind": "linear-gradient",
             "angle_degrees": 0,
             "stops": [
-              { "offset": 0, "color": { "ref": "outline" }, "opacity": 0.14 },
-              { "offset": 0.027083333333333334, "color": { "ref": "outline" }, "opacity": 0.14 },
+              { "offset": 0, "color": { "ref": "outline" }, "opacity": 0.08 },
+              { "offset": 0.027083333333333334, "color": { "ref": "outline" }, "opacity": 0.08 },
               { "offset": 0.027083333333333334, "color": { "ref": "outline" }, "opacity": 0 },
               { "offset": 1, "color": { "ref": "outline" }, "opacity": 0 }
             ],

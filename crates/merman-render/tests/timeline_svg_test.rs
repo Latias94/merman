@@ -969,13 +969,41 @@ fn timeline_title_selectors_keep_only_real_unsupported_winners_residual() {
 }
 
 #[test]
-fn timeline_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
+fn timeline_all_presets_preserve_title_role_ownership() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     for preset in presets {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset.preset())
-            .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(preset.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
+        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+        let spec = serde_json::to_value(
+            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
+        )
+        .unwrap();
+        let fill = |target: &str| {
+            spec["styles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|rule| {
+                    (rule["kind"] == "rule"
+                        && rule["target"] == target
+                        && rule.get("family").is_none_or(|family| family == "timeline")
+                        && rule.get("variant").is_none()
+                        && rule.get("ordinal").is_none())
+                    .then(|| rule.pointer("/style/fill"))
+                    .flatten()
+                    .map(|paint| {
+                        ThemeColorValue::parse(
+                            paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                        )
+                        .unwrap()
+                        .as_css()
+                    })
+                })
+        };
         let rendered = try_render_timeline_with_theme_requirement(
             "timeline\n    title Coverage title\n    section Release\n    Plan : Ship\n",
             &theme,
@@ -987,7 +1015,44 @@ fn timeline_all_presets_consume_title_fill_without_unsupported_title_diagnostics
             .descendants()
             .find(|node| node.has_tag_name("text") && node.text() == Some("Coverage title"))
             .unwrap();
-        assert!(title.attribute("fill").is_some(), "{}", preset.id());
+        assert_eq!(
+            title.attribute("fill"),
+            fill("title").as_deref(),
+            "{}",
+            preset.id()
+        );
+        let stylesheet = document
+            .descendants()
+            .filter(|node| node.has_tag_name("style"))
+            .filter_map(|node| node.text())
+            .collect::<String>();
+        let root_id = document.root_element().attribute("id").unwrap();
+        let root_rule = stylesheet
+            .split_once(&format!("#{root_id}{{"))
+            .unwrap()
+            .1
+            .split_once('}')
+            .unwrap()
+            .0;
+        assert!(
+            root_rule.contains(&format!("fill:{};", fill("text").unwrap())),
+            "{}",
+            preset.id()
+        );
+        let stack = spec
+            .pointer("/typography/families/timeline/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        assert!(
+            root_rule.contains(&format!("font-family:{font};")),
+            "{}",
+            preset.id()
+        );
         let completion = rendered.into_completion();
         let evidence = merman_render::__private::family_evidence(completion.report());
         assert!(evidence.applied_count() > 0, "{}", preset.id());
@@ -997,6 +1062,18 @@ fn timeline_all_presets_consume_title_fill_without_unsupported_title_diagnostics
             "{}",
             preset.id()
         );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
         assert!(
             completion
                 .report()

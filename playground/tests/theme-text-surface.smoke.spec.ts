@@ -109,8 +109,10 @@ test("observes State dark native Note text after an immediate Appearance choice 
 test("centers the measured Pop Art composite title inside its native header", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const [code, mermaidConfig, themeRecipeJson] = await Promise.all([
-    "samples/state.mmd", "samples/state.config.json", "recipes/pop-art.theme.json",
-  ].map((name) => readFile(new URL(`../src/themes/${name}`, import.meta.url), "utf8")));
+    "../src/themes/samples/state.mmd",
+    "../src/themes/samples/state.config.json",
+    "../../crates/merman-render/assets/themes/pop-art.theme.json",
+  ].map((name) => readFile(new URL(name, import.meta.url), "utf8")));
   await page.goto(`./${encodeShareHash({
     ...DEFAULT_WORKSPACE_SNAPSHOT, code, mermaidConfig, themeRecipeJson,
     diagramFont: "inherit", diagramTheme: "auto", themePresetId: null,

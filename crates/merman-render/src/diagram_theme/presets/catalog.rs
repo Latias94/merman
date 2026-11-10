@@ -23,8 +23,41 @@ const README_STYLE_DESIGNS: &[(&str, &str)] = &[
     ("xychart", "dedicated"),
 ];
 const GHIBLI_DESIGNS: &[(&str, &str)] = &[("pie", "dedicated")];
+const ART_DESIGNS: &[(&str, &str)] = &[
+    ("class", "dedicated"),
+    ("er", "dedicated"),
+    ("flowchart", "dedicated"),
+    ("mindmap", "dedicated"),
+    ("pie", "dedicated"),
+    ("sequence", "dedicated"),
+    ("state", "dedicated"),
+    ("xychart", "dedicated"),
+];
+const CARBON_COPY_DESIGNS: &[(&str, &str)] = &[
+    ("class", "dedicated"),
+    ("er", "dedicated"),
+    ("flowchart", "dedicated"),
+    ("kanban", "dedicated"),
+    ("mindmap", "dedicated"),
+    ("pie", "dedicated"),
+    ("sequence", "dedicated"),
+    ("state", "dedicated"),
+    ("xychart", "dedicated"),
+];
 const NO_IDS: &[&str] = &[];
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
+
+#[derive(Clone, Copy)]
+enum PresetRecipeSource {
+    Generated {
+        builder: PresetRecipeBuilder,
+        palette: &'static PresetPalette,
+    },
+    Document {
+        json: &'static str,
+        preview_tokens: &'static [&'static str],
+    },
+}
 
 #[derive(Clone, Copy)]
 pub(super) struct PresetPalette {
@@ -74,8 +107,7 @@ pub(super) struct PresetCatalogEntry {
     dark_mode: bool,
     profile: PresetRecipeProfile,
     maturity: &'static str,
-    recipe_builder: PresetRecipeBuilder,
-    palette: PresetPalette,
+    recipe_source: PresetRecipeSource,
     family_designs: &'static [(&'static str, &'static str)],
     qualified_cells: &'static [ThemePresetQualifiedCell],
     export_kind: &'static str,
@@ -113,10 +145,25 @@ impl PresetCatalogEntry {
     }
 
     pub(super) fn preview_colors(&self) -> Vec<String> {
+        let palette = match &self.recipe_source {
+            PresetRecipeSource::Generated { palette, .. } => palette,
+            PresetRecipeSource::Document { preview_tokens, .. } => {
+                let design = self.recipe();
+                return preview_tokens
+                    .iter()
+                    .map(|id| match &design.tokens[*id].value {
+                        ThemeDesignTokenValueV1::Color(ThemeValueV1::Literal(color)) => {
+                            color.clone()
+                        }
+                        _ => unreachable!("bundled preset preview tokens must be literal colors"),
+                    })
+                    .collect();
+            }
+        };
         let mut colors = Vec::new();
-        for color in [self.palette.canvas, self.palette.surface, self.palette.text]
+        for color in [palette.canvas, palette.surface, palette.text]
             .into_iter()
-            .chain(self.palette.series.iter().take(5).copied())
+            .chain(palette.series.iter().take(5).copied())
         {
             if !colors.iter().any(|value| value == color) {
                 colors.push(color.to_owned());
@@ -162,8 +209,11 @@ impl PresetCatalogEntry {
     }
 
     #[cfg(test)]
-    pub(super) const fn palette(&self) -> PresetPalette {
-        self.palette
+    pub(super) const fn palette(&self) -> Option<PresetPalette> {
+        match self.recipe_source {
+            PresetRecipeSource::Generated { palette, .. } => Some(*palette),
+            PresetRecipeSource::Document { .. } => None,
+        }
     }
 
     #[cfg(test)]
@@ -187,7 +237,21 @@ impl PresetCatalogEntry {
     }
 
     fn recipe(&self) -> ThemeDesignV1 {
-        (self.recipe_builder)(self.palette)
+        match self.recipe_source {
+            PresetRecipeSource::Generated { builder, palette } => {
+                let mut design = builder(*palette);
+                super::backgrounds::apply_gantt_backgrounds(&mut design, *palette);
+                design
+            }
+            PresetRecipeSource::Document { json, .. } => {
+                let ThemeRecipeV1::Design { design } =
+                    serde_json::from_str(json).expect("bundled preset recipe must be valid")
+                else {
+                    unreachable!("bundled presets must retain editable designs")
+                };
+                design
+            }
+        }
     }
 }
 
@@ -197,7 +261,62 @@ const fn entry(
     display_name: &'static str,
     dark_mode: bool,
     profile: PresetRecipeProfile,
-    palette: PresetPalette,
+    palette: &'static PresetPalette,
+) -> PresetCatalogEntry {
+    catalog_entry(
+        preset,
+        id,
+        display_name,
+        dark_mode,
+        profile,
+        PresetRecipeSource::Generated {
+            builder: match preset {
+                ThemePreset::Brutalist => super::brutalist::build_recipe,
+                ThemePreset::Spotless => super::spotless::build_recipe,
+                ThemePreset::Cyberpunk => super::cyberpunk::build_recipe,
+                ThemePreset::Ghibli => super::ghibli::build_recipe,
+                _ => build_cross_family_recipe,
+            },
+            palette,
+        },
+        match preset {
+            ThemePreset::Brutalist | ThemePreset::Spotless => README_STYLE_DESIGNS,
+            ThemePreset::Ghibli => GHIBLI_DESIGNS,
+            _ => SHARED_PALETTE_DESIGNS,
+        },
+    )
+}
+
+const fn document_entry(
+    preset: ThemePreset,
+    id: &'static str,
+    display_name: &'static str,
+    json: &'static str,
+    preview_tokens: &'static [&'static str],
+    family_designs: &'static [(&'static str, &'static str)],
+) -> PresetCatalogEntry {
+    catalog_entry(
+        preset,
+        id,
+        display_name,
+        false,
+        PresetRecipeProfile::Native,
+        PresetRecipeSource::Document {
+            json,
+            preview_tokens,
+        },
+        family_designs,
+    )
+}
+
+const fn catalog_entry(
+    preset: ThemePreset,
+    id: &'static str,
+    display_name: &'static str,
+    dark_mode: bool,
+    profile: PresetRecipeProfile,
+    recipe_source: PresetRecipeSource,
+    family_designs: &'static [(&'static str, &'static str)],
 ) -> PresetCatalogEntry {
     PresetCatalogEntry {
         preset,
@@ -206,19 +325,8 @@ const fn entry(
         dark_mode,
         profile,
         maturity: ALPHA,
-        recipe_builder: match preset {
-            ThemePreset::Brutalist => super::brutalist::build_recipe,
-            ThemePreset::Spotless => super::spotless::build_recipe,
-            ThemePreset::Cyberpunk => super::cyberpunk::build_recipe,
-            ThemePreset::Ghibli => super::ghibli::build_recipe,
-            _ => build_cross_family_recipe,
-        },
-        palette,
-        family_designs: match preset {
-            ThemePreset::Brutalist | ThemePreset::Spotless => README_STYLE_DESIGNS,
-            ThemePreset::Ghibli => GHIBLI_DESIGNS,
-            _ => SHARED_PALETTE_DESIGNS,
-        },
+        recipe_source,
+        family_designs,
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "design",
         required_feature_ids: NO_IDS,
@@ -230,14 +338,14 @@ const fn entry(
     }
 }
 
-const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
+const PRESET_CATALOG: [PresetCatalogEntry; 14] = [
     entry(
         ThemePreset::EditorLight,
         "editor-light",
         "Editor Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#ffffff",
             surface: "#f8fafc",
             surface_alt: "#e2e8f0",
@@ -283,7 +391,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Editor Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#0f172a",
             surface: "#111827",
             surface_alt: "#1f2937",
@@ -329,7 +437,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "One Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#282c34",
             surface: "#21252b",
             surface_alt: "#2c313a",
@@ -378,7 +486,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Gruvbox Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#fbf1c7",
             surface: "#f2e5bc",
             surface_alt: "#ebdbb2",
@@ -424,7 +532,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Gruvbox Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#282828",
             surface: "#3c3836",
             surface_alt: "#504945",
@@ -473,7 +581,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Ayu Light",
         false,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#fcfcfc",
             surface: "#f3f4f5",
             surface_alt: "#e6e8eb",
@@ -519,7 +627,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Ayu Dark",
         true,
         PresetRecipeProfile::RetainedMermaidCompatibility,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#0b0e14",
             surface: "#11151c",
             surface_alt: "#1f2430",
@@ -565,7 +673,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Brutalist",
         false,
         PresetRecipeProfile::Native,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#f6f3e9",
             surface: "#ffffff",
             surface_alt: "#FFE66D",
@@ -614,7 +722,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Spotless",
         false,
         PresetRecipeProfile::Native,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#EDE8DC",
             surface: "#F5F1E8",
             surface_alt: "#eeeae0",
@@ -660,7 +768,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Cyberpunk",
         true,
         PresetRecipeProfile::Native,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#051423",
             surface: "#051423",
             surface_alt: "#051423",
@@ -706,7 +814,7 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
         "Ghibli",
         false,
         PresetRecipeProfile::Native,
-        PresetPalette {
+        &PresetPalette {
             canvas: "#FDF6E3",
             surface: "#FFFFFF",
             surface_alt: "#FFF3E0",
@@ -742,6 +850,30 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             pie_text: "#3A2E2C",
             kanban_task_labels: &["#000000"; 5],
         },
+    ),
+    document_entry(
+        ThemePreset::PaperCut,
+        "paper-cut",
+        "Paper Cut",
+        include_str!("../../../assets/themes/paper-cut.theme.json"),
+        &["paper", "surface", "ink", "coral", "teal"],
+        ART_DESIGNS,
+    ),
+    document_entry(
+        ThemePreset::CarbonCopy,
+        "carbon-copy",
+        "Carbon Copy",
+        include_str!("../../../assets/themes/carbon-copy.theme.json"),
+        &["paper", "surface", "ink", "carbon", "stamp"],
+        CARBON_COPY_DESIGNS,
+    ),
+    document_entry(
+        ThemePreset::PopArt,
+        "pop-art",
+        "Pop Art",
+        include_str!("../../../assets/themes/pop-art.theme.json"),
+        &["paper", "ink", "yellow", "magenta", "cyan"],
+        ART_DESIGNS,
     ),
 ];
 
@@ -798,7 +930,6 @@ pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
         "unqualified alpha presets must not inherit qualification residual allowances"
     );
     let mut design = entry.recipe();
-    super::backgrounds::apply_gantt_backgrounds(&mut design, entry.palette);
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
         // Choose a fallback without claiming derived variables that would shadow typed paint.
         design.mermaid = Some(MermaidThemeCompatibilityWireV1 {

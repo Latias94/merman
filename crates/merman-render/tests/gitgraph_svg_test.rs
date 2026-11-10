@@ -2391,14 +2391,42 @@ fn gitgraph_title_fill_keeps_source_ownership_and_unsupported_siblings_property_
 }
 
 #[test]
-fn gitgraph_all_presets_consume_visible_title_fill_without_title_residuals() {
+fn gitgraph_all_presets_preserve_title_role_ownership() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     let source = "---\ntitle: Paint title\n---\ngitGraph\n  commit id: \"1\"\n";
     for preset in presets {
-        let theme = DiagramThemeCompiler::new()
-            .compile_preset(preset.preset())
-            .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let theme = compiler.compile_preset(preset.preset()).unwrap();
+        let recipe =
+            serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
+        let design = serde_json::from_value(recipe["design"].clone()).unwrap();
+        let spec = serde_json::to_value(
+            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
+        )
+        .unwrap();
+        let fill = |target: &str| {
+            spec["styles"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .rev()
+                .find_map(|rule| {
+                    (rule["kind"] == "rule"
+                        && rule["target"] == target
+                        && rule.get("family").is_none_or(|family| family == "gitgraph")
+                        && rule.get("variant").is_none()
+                        && rule.get("ordinal").is_none())
+                    .then(|| rule.pointer("/style/fill"))
+                    .flatten()
+                    .map(|paint| {
+                        ThemeColorValue::parse(
+                            paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                        )
+                        .unwrap()
+                        .as_css()
+                    })
+                })
+        };
         let rendered = try_render_gitgraph_with_theme_engine_and_requirement(
             source,
             &theme,
@@ -2414,10 +2442,36 @@ fn gitgraph_all_presets_consume_visible_title_fill_without_title_residuals() {
                 node.has_tag_name("text") && node.attribute("class") == Some("gitTitleText")
             })
             .unwrap();
-        assert!(
+        // A Title rule adds an inline override; otherwise the title inherits the Text CSS.
+        assert_eq!(
             title
                 .attribute("style")
-                .is_some_and(|style| style.starts_with("fill:")),
+                .and_then(|style| css_property(style, "fill")),
+            fill("title").as_deref(),
+            "{}",
+            preset.id()
+        );
+        let stylesheet = gitgraph_stylesheet(rendered.svg());
+        let title_rule = gitgraph_css_rule(&stylesheet, "#git-title .gitTitleText");
+        assert_eq!(
+            css_property(&title_rule, "fill"),
+            fill("text").as_deref(),
+            "{}",
+            preset.id()
+        );
+        let stack = spec
+            .pointer("/typography/families/gitgraph/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        let root_rule = gitgraph_css_rule(&stylesheet, "#git-title");
+        assert_eq!(
+            css_property(&root_rule, "font-family"),
+            Some(font.as_str()),
             "{}",
             preset.id()
         );
@@ -2430,6 +2484,18 @@ fn gitgraph_all_presets_consume_visible_title_fill_without_title_residuals() {
             "{}",
             preset.id()
         );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
         assert!(
             completion
                 .report()

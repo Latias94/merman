@@ -30,6 +30,27 @@ designs and a base palette adaptation for Class. The catalog records each preset
 unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,
 effect or export format. Review the actual preview outcome for your diagram.
 
+Paper Cut, Carbon Copy and Pop Art are also built-in presets (`paper-cut`, `carbon-copy`,
+`pop-art`). They share their editable JSON with the Playground library. Each has dedicated
+Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap treatments; Carbon Copy also
+includes Kanban. Choose the preset for direct use, or export its complete recipe to customize it:
+
+```rust
+use merman::diagram_theme::{DiagramThemeCompiler, ThemePreset};
+
+let compiler = DiagramThemeCompiler::new();
+let theme = compiler.compile_preset(ThemePreset::PaperCut)?;
+let editable = compiler.export_preset(ThemePreset::PaperCut)?;
+let json = serde_json::to_string_pretty(&editable)?;
+```
+
+The CLI accepts `--theme-preset paper-cut`. Web and Node render options accept
+`theme: { preset: "paper-cut" }`; Typst accepts `theme-preset: "paper-cut"`. Use a runtime
+built from matching source: the package version alone does not establish these new IDs.
+Playground's **Customize** opens the selected preset's full JSON, with copy and download actions.
+Applying edits creates a custom recipe. The original preset stays available, and generated project
+examples use its ID until the user chooses an edited recipe.
+
 Playground presents these sources in one theme collection. Select a theme to apply it immediately
 to the current diagram; its name and source stay visible after selection and sharing. The selected
 preset shows reviewed families and application notes. Advanced settings retain the independent
@@ -282,14 +303,19 @@ A light label that works on a dark canvas can disappear on a bright sector. Chec
 and background layers: Pie normally paints sectors at 0.7 opacity while its percentage text and
 legend swatches remain separate opaque elements.
 
-Merman's native presets author a separate twelve-color `pie-series` palette and `pie-text` ink.
+The generated native presets author a separate twelve-color `pie-series` palette and `pie-text` ink.
 Titles and legend labels keep their canvas-facing roles. Ghibli uses muted botanical colors for
 its sectors while retaining its paper and text treatment. Editing a Pie token does not recolor a
 line chart or a Mindmap branch. Saved artistic recipes keep their own finite capacities: Reading,
-Atlas, and Nightfall use eight categories; most others use six, while Riso intentionally retains
-two chart inks. Monograph's grayscale remains a limited categorical distinction.
+Atlas, and Nightfall use eight categories; most others, including Paper Cut, Carbon Copy and
+Pop Art, use six. Monograph's grayscale remains a limited categorical distinction.
 
-Native presets also keep opaque `category-fills` and `category-text` independent of Pie opacity
+Riso uses four chart inks and repeats from the fifth series. XY Chart follows Mermaid's bounded
+legend layout: if the complete legend does not fit the reserved chart region, it is omitted.
+Increasing the chart height can make a larger legend visible. A longer palette does not change
+that layout rule or prevent small Pie percentage labels from becoming crowded.
+
+These generated presets also keep opaque `category-fills` and `category-text` independent of Pie opacity
 and chart strokes. Mindmap's primary root has its own fill/text pair; branch labels follow the
 branch category rather than the node's visit order. Journey's `task-label`, Timeline's
 `node-label`, and Git Graph's branch `cluster-label` address text on colored surfaces, while
@@ -599,10 +625,12 @@ two fingers to pinch-zoom on a touch screen. **Zoom in** and **Zoom out** also w
 depends on the diagram and viewport. **Reset view** restores 100% and centers the diagram.
 Showing source and returning to the inline diagram preserves its zoom and position.
 Browsing does not change the workspace. **Apply to my diagram**
-uses the recipe on the current source and configuration, with an explicit appearance choice.
-These are not core preset IDs: use their downloaded recipe
-with CLI `--theme-file`, Rust `compile_document`, or Web `theme: {recipe, appearance}`. Their names and source
-labels are display metadata, not claims of runtime availability or family support.
+uses the selected design on the current source and configuration, with an explicit appearance choice.
+Paper Cut, Carbon Copy and Pop Art select their built-in IDs when the runtime catalog provides them.
+Their project examples use the preset directly; the JSON tab still exposes the complete editable
+configuration. Other designs and edited recipes use CLI `--theme-file`, Rust `compile_document`,
+or Web `theme: {recipe, appearance}`. Names and source labels remain display metadata; use the
+runtime catalog and render evidence for availability and family support.
 
 Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's preview and integration examples without changing the current workspace. Theme library adoption requires Merman v0.10.0-alpha.2 or newer.
 
@@ -640,8 +668,10 @@ a separate tab with the source and configuration, leaving the current work intac
 Standard gallery previews use their saved example scenes; current-diagram previews remain isolated from the workspace.
 Fixed thumbnails, including Reading and Prism's separate Light/Dark assets, use saved SVGs and
 lazy image loading. Expanding an example or previewing the current diagram uses the active runtime.
-The recipes, shared samples, configurations, and SVGs live in
-[`playground/src/themes`](../../playground/src/themes/). The sample inventory covers 19 families;
+The shared samples, configurations, gallery recipes and SVGs live in
+[`playground/src/themes`](../../playground/src/themes/). Paper Cut, Carbon Copy and Pop Art use
+canonical recipes in [`crates/merman-render/assets/themes`](../../crates/merman-render/assets/themes/),
+imported directly by the Playground and embedded by the core catalog. The sample inventory covers 19 families;
 each catalog entry declares its own dedicated design scope. Monograph uses a grayscale design;
 Prism keeps category identity across its two appearances. These design intentions do not certify
 black-and-white printing, accessibility, or output portability. Other families and targets need
@@ -878,8 +908,8 @@ interfaces. Every child of a grouped design shares the complete-document availab
 One passing appearance cannot make an invalid pair available. Inspect the matching appearance's
 swatches and family notes when explaining a selection.
 
-The current catalog advertises dedicated design scope for Brutalist, Spotless and Ghibli, but it does
-not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
+The catalog records dedicated design scope for Brutalist, Spotless, Ghibli, Paper Cut, Carbon Copy
+and Pop Art. It does not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
 labels, complete effects, or PNG/PDF portability. Cyberpunk carries a layered canvas and scoped
 effects with bounded Flowchart, Sequence and XY Chart SVG/PNG/PDF observations. Larger scenes may
 exceed native export budgets. Brutalist now provides bold borders, ordinal accents and hard shape

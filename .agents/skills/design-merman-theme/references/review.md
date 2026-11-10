@@ -29,15 +29,16 @@ beside the [theme guide's examples](../../../../docs/rendering/custom-diagram-th
 
 When extending the Playground collection, compare the candidate and its closest existing designs
 on the same ordinary scenes at full size and at gallery thumbnail size. Hide names and material
-descriptions for one pass. Describe the visible difference in surfaces, contours, connection
-hierarchy, typography, or effects; a material name does not establish a new rendering mechanism.
-An attractive palette variation can be useful for a requested reading context, but does not by
-itself establish a distinct artistic addition to an already populated collection.
+descriptions for one pass. Judge the visible composition: attractive color relationships, clear
+hierarchy, balanced typography, restrained texture, and readable labels. A mature palette
+configuration can earn a built-in preset without introducing a new effect or serving a separate
+functional role. Shared shadows, materials, or typography do not disqualify two attractive designs.
 
 Start with a small representative prototype before rendering every declared family. If the
-candidate's differences disappear at the intended scale or depend on sample-specific content,
-refine an existing design or keep the candidate under ignored `target/` instead of adding a
-catalog entry. When the user permits declining additions, no new theme is a valid design outcome.
+candidate becomes noisy, loses readable hierarchy, or relies on sample-specific content at the
+intended scale, refine it before expanding scope. Distinguish aesthetic selection from runtime
+and output qualification; neither one substitutes for the other. When the user permits declining
+additions, no new theme is a valid design outcome.
 
 ## Representative scenes
 

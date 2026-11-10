@@ -32,6 +32,63 @@
 #assert(not "presentation" in preset-config.binding_options)
 #assert(not "host_theme" in preset-config.binding_options)
 
+#let recipe = (schema_version: 1, kind: "design", design: (:))
+#let paired-profile = mermaid-profile(theme-preset: "editor", theme-appearance: "dark")
+#assert.eq(
+  render-config(profile: paired-profile).binding_options.theme,
+  (preset: "editor", appearance: "dark"),
+)
+#assert.eq(
+  render-config(profile: paired-profile, theme-appearance: "light").binding_options.theme,
+  (preset: "editor", appearance: "light"),
+  message: "an appearance-only override should retain the profile source",
+)
+#assert.eq(
+  render-config(profile: paired-profile, theme-recipe: recipe).binding_options.theme,
+  (recipe: recipe),
+  message: "a direct recipe should replace the profile source and its appearance",
+)
+#assert.eq(
+  render-config(profile: paired-profile, theme-preset: "paper-cut").binding_options.theme,
+  (preset: "paper-cut"),
+  message: "a direct preset should use its own default appearance",
+)
+#assert.eq(
+  render-config(profile: paired-profile, diagram-theme: (:)).binding_options.theme,
+  (spec: (:)),
+  message: "a direct complete spec should discard the profile appearance",
+)
+#assert.eq(
+  render-config(
+    profile: mermaid-profile(theme-recipe: recipe, theme-appearance: "light"),
+    theme-preset: "editor",
+    theme-appearance: "dark",
+  ).binding_options.theme,
+  (preset: "editor", appearance: "dark"),
+)
+#assert.eq(
+  render-config(profile: (theme_recipe: recipe, theme_appearance: "light")).binding_options.theme,
+  (recipe: recipe, appearance: "light"),
+  message: "handwritten profiles should retain binding-style aliases",
+)
+#assert(not "theme" in default-options, message: "unselected rendering should keep its defaults")
+
+#let opaque = (version: 3, theme: (preset: "editor-dark"))
+#for arguments in (
+  (options: opaque),
+  (profile: mermaid-profile(options: opaque)),
+) {
+  let config = render-config(
+    ..arguments,
+    theme-preset: "ignored",
+    theme-recipe: recipe,
+    theme-appearance: "ignored",
+    typography: (font: "Ignored Sans"),
+  )
+  assert.eq(config.binding_options, opaque, message: "raw options must bypass all theme shorthands")
+  assert.eq(config.typography_overlay, none)
+}
+
 #let typography-config = render-config(
   typography: (font: "Document Sans", size: 12pt),
 )
