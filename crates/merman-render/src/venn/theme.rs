@@ -26,7 +26,6 @@ pub(crate) struct VennTypographyThemePlan {
     inherited_font_stack: InheritedFontStackPlan,
     text_fill: Option<crate::family::DirectStaticPaint>,
     text_fill_routes: Box<[(FamilyThemeMechanismKey, usize)]>,
-    config_owns_text_fill: bool,
     core_paints: [StaticSurfacePaint; 2],
     terminal_receipt: OnceLock<VennTypographyThemeReceipt>,
 }
@@ -74,23 +73,50 @@ impl VennTypographyThemePlan {
                     .into_boxed_slice()
             })
             .unwrap_or_default();
-        // Use the same selected role as CSS: Default can retain a `vennSetTextColor` snapshot,
-        // while a missing role falls back to the primary/shared text color.
-        let config_owns_text_fill = theme.is_some()
-            && VennCssBinding::set_text_color_source(effective_config.as_value()).is_some_and(
-                |(path, _)| effective_config.config_paint_overrides_typed_default(path),
-            );
         let mut css_binding = VennCssBinding::resolve(
             effective_config.as_value(),
             model,
             layout,
             title_theme.fill_css(),
-            (!config_owns_text_fill)
-                .then_some(text_fill.as_ref())
-                .flatten()
-                .map(crate::family::DirectStaticPaint::css),
             work_meter,
         )?;
+        if let Some(fill) = &text_fill {
+            let mut intersection_fill_applied = false;
+            for area in &mut css_binding.areas {
+                if let VennAreaPaintBinding::Intersection {
+                    text,
+                    source_text_owned,
+                    config_text_role,
+                    typed_text_fill,
+                    ..
+                } = area
+                    && !*source_text_owned
+                    && !config_text_role.is_some_and(|path| {
+                        effective_config.config_paint_overrides_typed_default(path)
+                    })
+                {
+                    *text = Some(fill.css().to_owned());
+                    *typed_text_fill = true;
+                    intersection_fill_applied = true;
+                }
+            }
+            // A cleared label can inherit a separately owned root fill. Do not let a shared
+            // stylesheet declaration recolor it while another intersection uses the typed fill.
+            if intersection_fill_applied
+                && css_binding.areas.iter().all(|area| {
+                    !matches!(area, VennAreaPaintBinding::Intersection { text: None, .. })
+                })
+            {
+                css_binding.set_text_color = Some(fill.css().to_owned());
+            }
+            if !css_binding
+                .text_node_config_role
+                .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path))
+            {
+                css_binding.text_node_color = Some(fill.css().to_owned());
+                css_binding.typed_text_node_fill = true;
+            }
+        }
         let core_paints = if theme.is_some() {
             let circles = css_binding
                 .areas
@@ -153,6 +179,7 @@ impl VennTypographyThemePlan {
                 &vec![false; visible_label_sources.len()],
                 work_meter,
             )?;
+            let dark_background = css_binding.dark_background;
             for (index, circle) in css_binding
                 .areas
                 .iter_mut()
@@ -165,7 +192,7 @@ impl VennTypographyThemePlan {
                 if !source_fill[index]
                     && let Some(fill) = &node.fill
                 {
-                    circle.fill = fill.css().to_owned();
+                    circle.apply_theme_fill(fill.css(), dark_background)?;
                 }
                 if !source_stroke[index]
                     && let Some(stroke) = &node.stroke
@@ -190,7 +217,6 @@ impl VennTypographyThemePlan {
             ),
             text_fill,
             text_fill_routes,
-            config_owns_text_fill,
             core_paints,
             terminal_receipt: OnceLock::new(),
         })
@@ -212,20 +238,31 @@ impl VennTypographyThemePlan {
         }
     }
 
-    pub(crate) fn stylesheet(
-        &self,
-        diagram_id: &str,
-        title_fill: &str,
-        set_text_color: &str,
-    ) -> String {
+    pub(crate) fn stylesheet(&self, diagram_id: &str) -> String {
         let id = crate::svg::escape_css_identifier(diagram_id);
         let mut css = String::new();
+        if let Some(fill) = &self.css_binding.inherited_text_fill {
+            let _ = write!(css, "#{id}{{fill:{fill};}}");
+        }
+        let set_text_fill = self
+            .css_binding
+            .set_text_color
+            .as_ref()
+            .map(|color| format!("fill:{color};"))
+            .unwrap_or_default();
+        let text_node_color = self
+            .css_binding
+            .text_node_color
+            .as_ref()
+            .map(|color| format!("color:{color};"))
+            .unwrap_or_default();
+        let title_fill = &self.css_binding.title_color;
         let _ = write!(
             css,
             "#{id} .{title_class}{{font-size:32px;fill:{title_fill};font-family:{font_family};}}\
 #{id} .{circle_class} text{{font-size:48px;font-family:{font_family};}}\
-#{id} .{intersection_class} text{{font-size:48px;fill:{set_text_color};font-family:{font_family};}}\
-#{id} .{text_node_class}{{font-family:{font_family};color:{set_text_color};}}",
+#{id} .{intersection_class} text{{font-size:48px;{set_text_fill}font-family:{font_family};}}\
+#{id} .{text_node_class}{{font-family:{font_family};{text_node_color}}}",
             title_class = super::VENN_TITLE_CLASS,
             circle_class = super::VENN_CIRCLE_CLASS,
             intersection_class = super::VENN_INTERSECTION_CLASS,
@@ -248,12 +285,7 @@ impl VennTypographyThemePlan {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             }
             for (key, _) in &self.text_fill_routes {
-                if self.config_owns_text_fill {
-                    evidence.mark_not_applicable(key.clone());
-                } else {
-                    evidence
-                        .mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
-                }
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
             }
             return;
         };
@@ -277,10 +309,6 @@ impl VennTypographyThemePlan {
             evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
         }
         for (key, rule_index) in &self.text_fill_routes {
-            if self.config_owns_text_fill {
-                evidence.mark_not_applicable(key.clone());
-                continue;
-            }
             let Some(fill) = self
                 .text_fill
                 .as_ref()
@@ -322,24 +350,24 @@ impl VennTypographyThemeReceipt {
         _parent: &str,
         _class: &str,
         text: &str,
-        source_owns_fill: bool,
+        typed_fill: bool,
         _fill: &str,
     ) {
-        self.record_text_node("", text, source_owns_fill, "");
+        self.record_text_node("", text, typed_fill, "");
     }
 
     pub(crate) fn record_text_node(
         &mut self,
         _class: &str,
         text: &str,
-        source_owns_fill: bool,
+        typed_fill: bool,
         _fill: &str,
     ) {
         if !self.requested || text.trim().is_empty() {
             return;
         }
         self.visible_text = true;
-        self.text_fill_terminal |= !source_owns_fill;
+        self.text_fill_terminal |= typed_fill;
     }
 }
 

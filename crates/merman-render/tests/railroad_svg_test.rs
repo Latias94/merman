@@ -499,6 +499,8 @@ impl RailroadTypographyProbeMeasurer {
             Some(self.expected_font_family.as_str())
         );
         assert_eq!(style.font_size, self.expected_font_size);
+        assert_eq!(style.font_weight, None);
+        assert_eq!(style.font_style, None);
     }
 
     fn width(text: &str) -> f64 {
@@ -521,9 +523,13 @@ impl TextMeasurer for RailroadTypographyProbeMeasurer {
         Self::width(text)
     }
 
-    fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
+    fn measure_svg_raw_text_bbox_height_px(&self, _text: &str, style: &TextStyle) -> f64 {
         self.assert_style(style);
         self.expected_font_size * 2.0
+    }
+
+    fn measure_svg_simple_text_bbox_height_px(&self, _text: &str, _style: &TextStyle) -> f64 {
+        panic!("Railroad measures direct SVG text, not drawSimpleText tspans");
     }
 }
 
@@ -761,10 +767,18 @@ fn railroad_typed_font_stack_and_size_drive_layout_css_and_terminal_text_receipt
         .iter()
         .find(|element| element.kind == "nonterminal" && element.label == "term")
         .expect("typed Railroad nonterminal layout");
+    let special = rule
+        .elements
+        .iter()
+        .find(|element| element.kind == "special" && element.label == "? guard ?")
+        .expect("typed Railroad special layout");
     assert_eq!(terminal.width, 30.0);
     assert_eq!(nonterminal.width, 60.0);
+    assert_eq!(special.width, 110.0);
     assert_eq!(terminal.height, 68.0);
     assert_eq!(nonterminal.height, 68.0);
+    assert_eq!(special.height, 68.0);
+    assert_eq!(rule.name_width, 80.0);
 
     let style = railroad_style(rendered.svg());
     for selector in [
@@ -815,6 +829,79 @@ fn railroad_typed_font_stack_and_size_drive_layout_css_and_terminal_text_receipt
     assert_eq!(evidence.not_applicable_count(), 0);
     assert_eq!(evidence.theme_residual_count(), 0);
     assert_eq!(evidence.mermaid_compatibility_residual_count(), 0);
+}
+
+#[test]
+fn railroad_blank_and_sanitized_labels_keep_zero_text_height_in_every_dialect() {
+    let theme = railroad_typography_theme(FontStack::single("Cousine").unwrap(), 24.0);
+    for source in [
+        r#"railroad-beta
+empty = terminal("") ;
+spaces = terminal("   ") ;
+stripped = terminal("<script>discarded</script>") ;
+"#,
+        r#"railroad-ebnf-beta
+empty = "" ;
+spaces = "   " ;
+stripped = "<script>discarded</script>" ;
+"#,
+        r#"railroad-abnf-beta
+empty = "" ;
+spaces = "   " ;
+stripped = "<script>discarded</script>" ;
+"#,
+        r#"railroad-peg-beta
+empty <- "" ;
+spaces <- "   " ;
+stripped <- "<script>discarded</script>" ;
+"#,
+    ] {
+        for html_labels in [false, true] {
+            let (layout, rendered) = try_render_railroad_source_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "htmlLabels": html_labels
+                    })),
+                ),
+                &portable_railroad_environment(),
+                "railroad-blank-text",
+            )
+            .expect("render blank Railroad labels with typed typography");
+
+            assert_eq!(layout.rules.len(), 3);
+            for rule in &layout.rules {
+                assert_eq!(rule.elements.len(), 1);
+                let terminal = &rule.elements[0];
+                assert_eq!(terminal.kind, "terminal");
+                assert!(terminal.label.trim().is_empty());
+                assert_eq!(terminal.width, 20.0);
+                assert_eq!(terminal.height, 20.0);
+                assert_eq!(rule.baseline_y, 20.0);
+                assert_eq!(rule.height, 50.0);
+            }
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let boxes = document
+                .descendants()
+                .filter(|node| node.has_tag_name("rect"))
+                .collect::<Vec<_>>();
+            assert_eq!(boxes.len(), 3);
+            for rect in boxes {
+                assert_eq!(rect.attribute("width"), Some("20"));
+                assert_eq!(rect.attribute("height"), Some("20"));
+            }
+            assert!(!rendered.svg().contains("discarded"));
+            assert!(!rendered.svg().contains("<foreignObject"));
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.applied_count(), 2);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
 }
 
 #[test]

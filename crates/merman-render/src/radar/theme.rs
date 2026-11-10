@@ -82,7 +82,13 @@ impl RadarFontSizeBinding {
     }
 
     fn has_visible_size(&self) -> bool {
-        !crate::mermaid_style::css_font_size_is_zero(&self.css)
+        super::css_binding::RadarTextVisibility::root(&self.css)
+            == super::css_binding::RadarTextVisibility::Visible
+    }
+
+    fn has_unknown_size(&self) -> bool {
+        super::css_binding::RadarTextVisibility::root(&self.css)
+            == super::css_binding::RadarTextVisibility::Unknown
     }
 }
 
@@ -163,12 +169,13 @@ impl RadarTypographyThemePlan {
                 evidence,
                 receipt.has_visible_title
                     || receipt.has_visible_axis_label
-                    || receipt.has_visible_legend_label,
+                    || receipt.has_visible_legend_label
+                    || receipt.has_unknown_text,
             );
         let has_visible_typography = receipt.has_visible_title
             || receipt.has_visible_axis_label
             || receipt.has_visible_legend_label;
-        if !has_visible_typography {
+        if !has_visible_typography && !receipt.has_unknown_text {
             for (property, requested) in [
                 (
                     ThemeTypographyProperty::FontStack,
@@ -187,7 +194,12 @@ impl RadarTypographyThemePlan {
         }
         let font_stack_applied =
             self.inherited_font_stack.typed_font_stack_active() && has_visible_typography;
-        let font_size_applied = self.font_size.typed_active && receipt.has_visible_title;
+        let font_size_applied = self.font_size.typed_active
+            && (receipt.has_visible_title
+                || (receipt.has_visible_axis_label
+                    && self.css_binding.axis_label_font_size.inherits_root())
+                || (receipt.has_visible_legend_label
+                    && self.css_binding.legend_font_size.inherits_root()));
         for (property, requested, applied) in [
             (
                 ThemeTypographyProperty::FontStack,
@@ -206,6 +218,11 @@ impl RadarTypographyThemePlan {
             let key = FamilyThemeMechanismKey::Typography(property);
             if applied {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else if receipt.has_unknown_text
+                && property == ThemeTypographyProperty::FontStack
+                && self.inherited_font_stack.typed_font_stack_active()
+            {
+                evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
             } else {
                 evidence.mark_not_applicable(key);
             }
@@ -221,6 +238,7 @@ impl RadarTypographyThemePlan {
 #[derive(Debug)]
 pub(crate) struct RadarTitleThemePlan {
     title_has_visible_size: bool,
+    title_size_unknown: bool,
     fill_css: Option<Box<str>>,
     typed_fill_capability: Option<ThemeCapability>,
     evidence: FamilyThemeOutcomes,
@@ -239,10 +257,11 @@ impl RadarTitleThemePlan {
         let Some(theme) = theme else {
             return Ok(Self::baseline());
         };
-        let title_has_visible_size =
-            RadarFontSizeBinding::resolve(Some(theme), effective_config).has_visible_size();
-        let title_present =
-            title_has_visible_size && title.is_some_and(|title| !title.trim().is_empty());
+        let title_size = RadarFontSizeBinding::resolve(Some(theme), effective_config);
+        let title_has_visible_size = title_size.has_visible_size();
+        let title_size_unknown = title_size.has_unknown_size();
+        let title_present = (title_has_visible_size || title_size_unknown)
+            && title.is_some_and(|title| !title.trim().is_empty());
 
         let title_count = usize::from(title_present);
         let config_owns_fill =
@@ -306,6 +325,10 @@ impl RadarTitleThemePlan {
             if config_owns_fill && matches!(facet, FamilyThemeRuleFacet::Fill(_)) {
                 continue;
             }
+            if title_size_unknown {
+                observation.residual = Some(FamilyThemeResidualReason::UnsupportedTypography);
+                continue;
+            }
             match (route.disposition(), selector, facet) {
                 (
                     FamilyThemeDisposition::TypedAdapter,
@@ -359,6 +382,7 @@ impl RadarTitleThemePlan {
 
         Ok(Self {
             title_has_visible_size,
+            title_size_unknown,
             fill_css,
             typed_fill_capability,
             evidence,
@@ -371,6 +395,7 @@ impl RadarTitleThemePlan {
     pub(crate) fn baseline() -> Self {
         Self {
             title_has_visible_size: true,
+            title_size_unknown: false,
             fill_css: None,
             typed_fill_capability: None,
             evidence: FamilyThemeOutcomes::default(),
@@ -386,6 +411,10 @@ impl RadarTitleThemePlan {
 
     pub(super) fn title_has_visible_size(&self) -> bool {
         self.title_has_visible_size
+    }
+
+    pub(super) fn title_size_unknown(&self) -> bool {
+        self.title_size_unknown
     }
 
     pub(crate) fn begin_terminal_receipt(&self) -> Option<RadarTitleThemeReceipt> {
@@ -518,6 +547,9 @@ pub(crate) struct RadarTypographyThemeReceipt<'a> {
     title_has_visible_size: bool,
     axis_has_visible_size: bool,
     legend_has_visible_size: bool,
+    title_size_unknown: bool,
+    axis_size_unknown: bool,
+    legend_size_unknown: bool,
     css_emitted: bool,
     next_axis_index: usize,
     next_legend_index: usize,
@@ -525,6 +557,7 @@ pub(crate) struct RadarTypographyThemeReceipt<'a> {
     has_visible_title: bool,
     has_visible_axis_label: bool,
     has_visible_legend_label: bool,
+    has_unknown_text: bool,
     valid: bool,
 }
 
@@ -533,6 +566,7 @@ struct RadarTypographyTerminalSeal {
     has_visible_title: bool,
     has_visible_axis_label: bool,
     has_visible_legend_label: bool,
+    has_unknown_text: bool,
 }
 
 impl<'a> RadarTypographyThemeReceipt<'a> {
@@ -549,6 +583,9 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
             title_has_visible_size: plan.font_size.has_visible_size(),
             axis_has_visible_size: plan.css_binding.axis_label_font_size.has_visible_ink(),
             legend_has_visible_size: plan.css_binding.legend_font_size.has_visible_ink(),
+            title_size_unknown: plan.font_size.has_unknown_size(),
+            axis_size_unknown: plan.css_binding.axis_label_font_size.is_unknown(),
+            legend_size_unknown: plan.css_binding.legend_font_size.is_unknown(),
             css_emitted: false,
             next_axis_index: 0,
             next_legend_index: 0,
@@ -556,6 +593,7 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
             has_visible_title: false,
             has_visible_axis_label: false,
             has_visible_legend_label: false,
+            has_unknown_text: false,
             valid: true,
         }
     }
@@ -582,6 +620,7 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
             && axis_index < self.expected_axis_count;
         self.next_axis_index = self.next_axis_index.saturating_add(1);
         self.has_visible_axis_label |= self.axis_has_visible_size && !label.trim().is_empty();
+        self.has_unknown_text |= self.axis_size_unknown && !label.trim().is_empty();
     }
 
     pub(crate) fn record_legend_label(&mut self, legend_index: usize, label: &str) {
@@ -592,6 +631,7 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
             && legend_index < self.expected_legend_count;
         self.next_legend_index = self.next_legend_index.saturating_add(1);
         self.has_visible_legend_label |= self.legend_has_visible_size && !label.trim().is_empty();
+        self.has_unknown_text |= self.legend_size_unknown && !label.trim().is_empty();
     }
 
     pub(crate) fn record_title(&mut self, nonempty: bool) {
@@ -601,6 +641,7 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
             && self.next_legend_index == self.expected_legend_count;
         self.title_emitted = true;
         self.has_visible_title = self.title_has_visible_size && nonempty;
+        self.has_unknown_text |= self.title_size_unknown && nonempty;
     }
 
     fn seal(self) -> Option<RadarTypographyTerminalSeal> {
@@ -613,6 +654,7 @@ impl<'a> RadarTypographyThemeReceipt<'a> {
                 has_visible_title: self.has_visible_title,
                 has_visible_axis_label: self.has_visible_axis_label,
                 has_visible_legend_label: self.has_visible_legend_label,
+                has_unknown_text: self.has_unknown_text,
             })
     }
 }
@@ -709,6 +751,7 @@ impl RadarSeriesPaintPlan {
                 &style,
                 [owned, owned],
                 [paint.fill.as_ref(), paint.stroke.as_ref()],
+                true,
                 work_meter,
             )?;
             palette_fallback[index] = !owned
@@ -1220,9 +1263,9 @@ mod tests {
             );
             plan.font_size.css = "0px".into();
             plan.css_binding.axis_label_font_size =
-                super::super::css_binding::RadarNumericFontSize::resolve(0.0, "0px");
+                super::super::css_binding::RadarRoleFontSize::resolve(0.0, "0px");
             plan.css_binding.legend_font_size =
-                super::super::css_binding::RadarNumericFontSize::resolve(0.0, "0px");
+                super::super::css_binding::RadarRoleFontSize::resolve(0.0, "0px");
             let mut receipt = plan.begin_terminal_receipt(1, 1).unwrap();
             receipt.record_css_emission(expected_typography_css_emission(&plan));
             if axis_recorded {

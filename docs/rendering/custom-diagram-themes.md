@@ -148,9 +148,13 @@ over a typed base size. Family-specific numeric settings keep their own configur
 Pie title, percentage and legend sizes and Tree View label sizes also resolve absolute CSS
 lengths for measurement. Equivalent `24pt` and `32px` values reserve the same text geometry.
 Tree View resolves parent-relative sizes against an explicit SVG root context; values that
-still need the receiving document or host CSS remain unverified. Ishikawa keeps Mermaid's
+still need the receiving document or host CSS remain unverified for fonts and text paint.
+Relative or inherited sizes under a zero-sized root do not certify visible text. Edges,
+icons and highlight backgrounds retain their independent paint consumers. Ishikawa keeps Mermaid's
 root-size spacing separate from final text size: its text bounds and label boxes use the
 displayed font, while bone spacing and multiline steps retain the root configuration.
+Its ordinary head label uses 14px and weight 600. Invalid shared sizes inherit the standard
+16px ancestor; a valid `!important` shared size can also override the head's independent size.
 
 Raw HTML labels can also contain relative CSS sizes: `em` follows the
 parent font, while `rem` depends on the receiving document's root font. Class, Requirement and
@@ -189,9 +193,48 @@ disappearing. Parity SVG keeps the authored spelling. Positive host-dependent le
 expressions retain their existing measurement and portability limits.
 
 Packet preserves the configured root size for relative role sizes such as `1em`; its absolute
-role defaults and fixed field geometry remain independent. XY Chart ignores negative title and
-axis sizes when selecting a supported theme override, while a valid zero keeps those labels hidden.
-Its legend retains its separate 1px minimum and configuration priority.
+role defaults and fixed field geometry remain independent. Invalid role declarations inherit
+that root. A size whose visibility depends on host CSS or loses its numeric magnitude remains
+unverified; it cannot certify a theme font or text paint as applied. Best-effort SVG retains
+admitted CSS, while strict theme validation rejects unresolved requested styling.
+
+Radar appends `px` to its axis and legend size options, following Mermaid. Use a number such as
+`24`, not a CSS length string such as `"24pt"`. An invalid declaration inherits the root size;
+labels inheriting a known positive root can consume a typed base size even without a title.
+
+Cynefin also follows Mermaid's numeric role expressions. Use JSON numbers for
+`themeVariables.cynefin.domainFontSize` and `itemFontSize`: `24` produces a 26px title, while
+the string `"24"` produces 242px through Mermaid's string concatenation. Subtitle and transition
+sizes subtract one from the item size. Zero stays hidden; a negative or otherwise invalid
+final declaration inherits the prepared root instead of being clamped to 1px.
+Cynefin's fixed role positions do not expand to fit larger fonts; inspect description and
+transition-label bounds after increasing sizes.
+
+XY Chart title and axis sizes accept absolute CSS lengths, including `24pt` and zero lengths.
+Ignored values inherit the prepared root unless a supported theme rule supplies the size;
+omitted options keep the role's default size. A `null` chart-title size keeps its 20px default,
+while nested axis sizes set to `null` inherit. These SVG attributes do not accept declaration
+syntax such as `24px !important` or `24px;`. Unresolved sizes preserve their CSS and retain
+unverified theme evidence instead of treating an approximate measurement as proof of visible
+text. Its legend retains its separate numeric layout contract, 1px minimum and configuration priority.
+
+Wardley uses the same accepted explicit font for annotation measurement and SVG inheritance,
+including when no custom typography is requested. Empty or invalid font attributes leave a
+supported theme stack available. Its configurable axis and node-label sizes stay separate
+from fixed 10px and 11px annotation roles; unknown receiving-host sizes retain residuals.
+
+Railroad measures direct SVG text in all four grammar dialects. Empty, whitespace-only or
+sanitized-empty literals reserve their box padding without an extra font-size height.
+
+Timeline keeps the root `fontSize` layout offset separate from the displayed theme-variable
+size. Rejected display sizes inherit the ordinary text ancestor; valid unknown host sizes
+retain their CSS and unverified typography or text-paint evidence. Architecture also preserves
+unknown inherited text sizes without changing its independent Cytoscape layout font.
+
+C4 element font settings follow Mermaid's CSSOM assignment: numeric sizes use pixels, while
+string sizes retain their CSS units. Empty or rejected element sizes expose the inherited
+root; they do not restore the initialized 14px default. Element names, type/description rows,
+boundary annotations and relationship labels keep their separate sizing rules.
 
 Block label measurement follows its effective `classDef` typography, including the default class,
 and direct node styles. Class rules and direct declarations retain their CSS priority rather than
@@ -299,8 +342,21 @@ Root colors supply missing roles; an unused fallback does not suppress compiled 
 Ownership follows the value the renderer actually accepts, so ignored configuration values
 do not disable a supported theme override.
 
+Venn derives a circle's default stroke and contrasting label color from its final fill,
+including a compiled Node fill. Explicit source stroke or label colors and independent
+compiled stroke or NodeLabel rules keep their own priority.
+Intersection SVG labels and HTML data text select colors independently: clearing an SVG
+fill can expose its inherited root fill, while an empty HTML color declaration inherits
+the receiving text color. Ownership follows each selected declaration; a rejected value
+does not claim an unused primary-color fallback.
+Mermaid centers an intersection label and its nested data text independently, so using both
+in a small intersection can overlap. Theme verification does not certify collision-free layout.
+
 Fonts, sizes, Quadrant point radii and Tree View line widths follow the same rule. An ignored
 value does not own the property, and an unused fallback does not own the selected value.
+Font lists are admitted before normalization, so a rejected list cannot become valid by
+dropping empty entries or hide an accepted lower-priority font. Quoted font names and safe
+host-dependent values retain their distinct spelling and portability requirements.
 Family configuration determines its accepted units, font-array handling and numeric bounds. Pie
 title, percentage and legend sizes remain independent; C4 element sizes and ER relationship
 label sizes also retain their own configuration rather than inheriting every base-size change.
@@ -1316,8 +1372,9 @@ fill. Axis-title/axis-label styles do not paint axis lines or ticks. Legend text
 `text` paint independently of its marker, which uses the series style. Point labels retain
 their separate paint behavior.
 
-Source or site role-specific font-size configuration owns that size without suppressing
-a theme's weight or fill. Clearing a role's size restores its configured baseline; clearing
+Valid source or site role-specific font-size configuration owns that size without suppressing
+a theme's weight or fill. Ignored values leave a supported theme size override available.
+Clearing a role's size restores its configured baseline; clearing
 its weight removes the explicit weight. Explicit default values such as 16px are still
 requests. Generic `text` / `axis` typography, ordinal role typography, and unimplemented
 properties retain residuals when they win on visible text. An absent or hidden role does

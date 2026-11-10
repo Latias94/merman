@@ -3133,6 +3133,14 @@ fn xychart_title_font_metrics_and_output_share_the_typed_winner() {
         (serde_json::json!(-1), 18.0, "18"),
         (serde_json::json!(0), 0.0, "0"),
         (serde_json::json!("23px"), 23.0, "23"),
+        (serde_json::json!("24pt"), 32.0, "32"),
+        (serde_json::json!("0pt"), 0.0, "0"),
+        (serde_json::json!(-1e-50), 18.0, "18"),
+        (serde_json::json!("-1e-50px"), 18.0, "18"),
+        (serde_json::json!("-1e-50pt"), 18.0, "18"),
+        (serde_json::json!(1e-50), 0.0, "0"),
+        (serde_json::json!("1e-50px"), 0.0, "0"),
+        (serde_json::json!("1e-50pt"), 0.0, "0"),
     ] {
         let probe = Arc::new(TitleProbe {
             size: expected_size,
@@ -3174,6 +3182,91 @@ fn xychart_title_font_metrics_and_output_share_the_typed_winner() {
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.required_count(), evidence.accounted_count());
         assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn xychart_absolute_title_and_axis_sizes_share_geometry_and_visible_consumers() {
+    let theme = xychart_role_recipe(serde_json::json!([
+        {"kind":"rule","target":"title","style":{"fill":"#ff0000","typography":{"font_size_px":18,"font_weight":700}}},
+        {"kind":"rule","target":"axis-title","style":{"fill":"#00ff00","typography":{"font_size_px":13,"font_weight":600}}},
+        {"kind":"rule","target":"axis-label","style":{"fill":"#0000ff","typography":{"font_size_px":11,"font_weight":500}}}
+    ]));
+    for orientation in ["", " horizontal"] {
+        let source = format!(
+            "xychart{orientation}\ntitle Revenue\nx-axis Months [A, B]\ny-axis Amount 0 --> 10\nbar [3, 7]\n"
+        );
+        for (absolute, px, visible) in [
+            ("24pt", "32px", true),
+            ("2pc", "32px", true),
+            ("0.3333333333333333in", "32px", true),
+            ("0pt", "0px", false),
+        ] {
+            let render = |size: &str| {
+                let config = serde_json::json!({"xyChart":{
+                    "titleFontSize": size,
+                    "showLegend": false,
+                    "xAxis": {"titleFontSize": size, "labelFontSize": size},
+                    "yAxis": {"titleFontSize": size, "labelFontSize": size}
+                }});
+                try_render_xychart_with_theme(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                    &RenderEnvironment::deterministic().with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    ),
+                    "chart",
+                )
+                .unwrap()
+            };
+            let (absolute_layout, absolute_render) = render(absolute);
+            let (px_layout, px_render) = render(px);
+            assert_eq!(
+                serde_json::to_value(&absolute_layout).unwrap(),
+                serde_json::to_value(&px_layout).unwrap(),
+                "{orientation}: {absolute}"
+            );
+            assert_eq!(absolute_render.svg(), px_render.svg(), "{absolute}");
+            let document = roxmltree::Document::parse(absolute_render.svg()).unwrap();
+            for text in ["Revenue", "Months", "Amount", "A", "0"] {
+                let label = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                    .unwrap();
+                assert_eq!(
+                    label.attribute("font-size"),
+                    Some(if visible { "32" } else { "0" }),
+                    "{absolute}: {text}"
+                );
+                assert_eq!(
+                    label.attribute("font-weight"),
+                    Some(match text {
+                        "Revenue" => "700",
+                        "Months" | "Amount" => "600",
+                        _ => "500",
+                    })
+                );
+            }
+            let evidence = merman_render::__private::family_evidence(
+                absolute_render.into_completion().report(),
+            );
+            assert_eq!(evidence.required_count(), 3, "{absolute}");
+            assert_eq!(evidence.accounted_count(), 3, "{absolute}");
+            assert_eq!(
+                evidence.applied_count(),
+                if visible { 3 } else { 0 },
+                "{absolute}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                if visible { 0 } else { 3 },
+                "{absolute}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 0, "{absolute}");
+        }
     }
 }
 
@@ -3272,6 +3365,267 @@ fn xychart_negative_source_size_uses_the_emitted_root_for_metrics_and_visibility
             evidence.not_applicable_count(),
             if used == 0.0 { 2 } else { 0 }
         );
+    }
+}
+
+#[test]
+fn xychart_invalid_title_sizes_inherit_but_unset_sizes_keep_the_role_default() {
+    struct TitleProbe {
+        size: f64,
+        calls: std::sync::atomic::AtomicUsize,
+    }
+    impl TextMeasurer for TitleProbe {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            if text == "Revenue" {
+                assert_eq!(style.font_size, self.size);
+                assert_eq!(style.font_weight.as_deref(), Some("700"));
+                self.calls
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            }
+            TextMetrics {
+                width: text.len() as f64 * style.font_size,
+                height: style.font_size,
+                line_count: 1,
+            }
+        }
+    }
+    let recipe = serde_json::from_value(serde_json::json!({
+        "schema_version":1,"kind":"complete_spec","complete_spec":{
+            "typography":{"families":{"xychart":{"font_stack":["XYInherited"]}}},
+            "styles":[{"kind":"rule","target":"title","style":{
+                "fill":"#123456","typography":{"font_weight":700}
+            }}]
+        }
+    }))
+    .unwrap();
+    let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+    let source = "xychart\ntitle Revenue\nx-axis [A]\ny-axis 0 --> 1\nline [1]\n";
+    for (root, root_px) in [("0px", 0.0), ("24pt", 32.0)] {
+        for value in [
+            None,
+            Some(serde_json::json!("potato")),
+            Some(serde_json::json!("auto")),
+            Some(serde_json::json!("-2pt")),
+            Some(serde_json::json!(true)),
+            Some(serde_json::Value::Null),
+            Some(serde_json::json!([24])),
+            Some(serde_json::json!("0px !important")),
+            Some(serde_json::json!("24px !important")),
+            Some(serde_json::json!("24pt !important")),
+            Some(serde_json::json!("24px;")),
+            Some(serde_json::json!(-1e-50)),
+            Some(serde_json::json!("-1e-50px")),
+            Some(serde_json::json!("-1e-50pt")),
+        ] {
+            let defaulted = value
+                .as_ref()
+                .is_none_or(|value| value.is_null() || value.is_array());
+            let used = if defaulted { 20.0 } else { root_px };
+            let probe = Arc::new(TitleProbe {
+                size: used,
+                calls: std::sync::atomic::AtomicUsize::new(0),
+            });
+            let environment = RenderEnvironment::deterministic()
+                .with_text_measurement_policy(TextMeasurementPolicy::uniform(
+                    TextMeasurementProfile::new(
+                        TextMeasurementProfileIdentity::new(
+                            MeasurementProfileId::new("xy-invalid-size").unwrap(),
+                            "1",
+                        )
+                        .unwrap(),
+                        probe.clone(),
+                    ),
+                ))
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable);
+            let mut config = serde_json::json!({"themeVariables":{"fontSize":root},"xyChart":{
+                "showLegend":false,
+                "xAxis":{"showLabel":false,"showTitle":false},
+                "yAxis":{"showLabel":false,"showTitle":false}
+            }});
+            if let Some(value) = &value {
+                config["xyChart"]["titleFontSize"] = value.clone();
+            }
+            let (layout, rendered) = try_render_xychart_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+                &environment,
+                "chart",
+            )
+            .unwrap();
+            assert!(probe.calls.load(std::sync::atomic::Ordering::Relaxed) > 0);
+            assert!(layout.drawables.iter().any(|drawable| matches!(drawable,
+                XyChartDrawableElem::Text {data, ..} if data.iter().any(|label| label.text == "Revenue" && label.font_size == used))));
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let label = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some("Revenue"))
+                .unwrap();
+            assert_eq!(
+                label.attribute("font-size"),
+                Some(if defaulted { "20" } else { "inherit" })
+            );
+            assert_eq!(label.attribute("font-weight"), Some("700"));
+            assert_eq!(label.attribute("fill"), Some("#123456"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "{root}: {value:?}");
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), if used > 0.0 { 2 } else { 0 });
+            assert_eq!(
+                evidence.not_applicable_count(),
+                if used > 0.0 { 0 } else { 2 }
+            );
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn xychart_axis_attribute_sizes_keep_null_suffixes_and_negative_signs_separate_from_defaults() {
+    let source = "xychart\nx-axis [A]\ny-axis 0 --> 1\nline [1]\n";
+    for typed_size in [false, true] {
+        let mut style = serde_json::json!({"fill":"#123456","typography":{"font_weight":700}});
+        if typed_size {
+            style["typography"]["font_size_px"] = serde_json::json!(29);
+        }
+        let recipe = serde_json::from_value(
+            serde_json::json!({"schema_version":1,"kind":"complete_spec","complete_spec":{
+                "typography":{"families":{"xychart":{"font_stack":["XYAxis"]}}},
+                "styles":[{"kind":"rule","target":"axis-label","style":style}]
+            }}),
+        )
+        .unwrap();
+        let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+        for (root, root_px) in [("0px", 0.0), ("32px", 32.0)] {
+            for value in [
+                serde_json::Value::Null,
+                serde_json::json!("0px !important"),
+                serde_json::json!("24px !important"),
+                serde_json::json!("24pt !important"),
+                serde_json::json!("24px;"),
+                serde_json::json!(-1e-50),
+                serde_json::json!("-1e-50px"),
+                serde_json::json!("-1e-50pt"),
+            ] {
+                let used = if typed_size { 29.0 } else { root_px };
+                let config = serde_json::json!({"themeVariables":{"fontSize":root},"xyChart":{
+                    "showTitle":false,"showLegend":false,
+                    "xAxis":{"showLabel":true,"showTitle":false,"labelFontSize":value},
+                    "yAxis":{"showLabel":false,"showTitle":false}
+                }});
+                let (layout, rendered) = try_render_xychart_with_theme(
+                    source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(config),
+                    ),
+                    &RenderEnvironment::deterministic().with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    ),
+                    "chart",
+                )
+                .unwrap();
+                assert!(layout.drawables.iter().any(|drawable| matches!(drawable, XyChartDrawableElem::Text {data,..} if data.iter().any(|text| text.text == "A" && text.font_size == used))));
+                let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = xml
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("A"))
+                    .unwrap();
+                assert_eq!(
+                    label.attribute("font-size"),
+                    Some(if typed_size { "29" } else { "inherit" }),
+                    "{root}: {value}"
+                );
+                assert_eq!(label.attribute("font-weight"), Some("700"));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), if used > 0.0 { 2 } else { 0 });
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if used > 0.0 { 0 } else { 2 }
+                );
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn xychart_unknown_role_sizes_keep_css_and_cannot_borrow_known_visible_text() {
+    let recipe = serde_json::from_value(serde_json::json!({
+        "schema_version":1,"kind":"complete_spec","complete_spec":{
+            "typography":{"families":{"xychart":{"font_stack":["XYUncertain"]}}},
+            "styles":[{"kind":"rule","target":"title","style":{
+                "fill":"#123456","typography":{"font_size_px":29,"font_weight":700}
+            }}]
+        }
+    }))
+    .unwrap();
+    let theme = DiagramThemeCompiler::new().compile_recipe(recipe).unwrap();
+    let source = "xychart\ntitle Revenue\nx-axis [A]\ny-axis 0 --> 1\nline [1]\n";
+    for root in ["0px", "32px"] {
+        for css in [
+            "var(--xy-size, 0px)",
+            "calc(0px + 1vw)",
+            "1e-400px",
+            "1e999",
+        ] {
+            for other_visible_text in [false, true] {
+                let config = serde_json::json!({"themeVariables":{"fontSize":root},"xyChart":{
+                    "titleFontSize":css,"showLegend":false,
+                    "xAxis":{"showLabel":other_visible_text,"showTitle":false},
+                    "yAxis":{"showLabel":false,"showTitle":false}
+                }});
+                let engine = MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                );
+                let (_, rendered) = try_render_xychart_with_theme(
+                    source,
+                    &theme,
+                    engine.clone(),
+                    &RenderEnvironment::deterministic(),
+                    "chart",
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let label = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("text") && node.text() == Some("Revenue"))
+                    .unwrap();
+                assert_eq!(label.attribute("font-size"), Some(css));
+                assert_eq!(label.attribute("font-weight"), Some("700"));
+                assert_eq!(label.attribute("fill"), Some("#123456"));
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2, "{root}: {css}");
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 2);
+                let strict = try_render_xychart_with_theme(
+                    source,
+                    &theme,
+                    engine,
+                    &RenderEnvironment::deterministic().with_theme_portability_requirement(
+                        ThemePortabilityRequirement::RequirePortable,
+                    ),
+                    "chart",
+                );
+                let error = match strict {
+                    Ok(_) => panic!("unresolved role size must not be portable"),
+                    Err(error) => error,
+                };
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((DiagramFamilyId::XY_CHART, 2))
+                );
+            }
+        }
     }
 }
 

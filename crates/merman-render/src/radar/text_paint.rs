@@ -31,6 +31,9 @@ pub(crate) struct RadarTextPaintPlan {
     axis_has_visible_size: bool,
     legend_has_visible_size: bool,
     title_has_visible_size: bool,
+    axis_size_unknown: bool,
+    legend_size_unknown: bool,
+    title_size_unknown: bool,
     paint: Option<DirectStaticPaint>,
     pending_rule: Option<usize>,
     title_fallback_rule: Option<usize>,
@@ -76,6 +79,9 @@ impl RadarTextPaintPlan {
             axis_has_visible_size: binding.axis_label_font_size.has_visible_ink(),
             legend_has_visible_size: binding.legend_font_size.has_visible_ink(),
             title_has_visible_size: true,
+            axis_size_unknown: binding.axis_label_font_size.is_unknown(),
+            legend_size_unknown: binding.legend_font_size.is_unknown(),
+            title_size_unknown: false,
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,
@@ -103,6 +109,7 @@ impl RadarTextPaintPlan {
         work_meter.charge(layout.axes.len().saturating_add(layout.legend_items.len()))?;
         let mut plan = Self::baseline_with_binding(binding, layout, model, title);
         plan.title_has_visible_size = title_plan.title_has_visible_size();
+        plan.title_size_unknown = title_plan.title_size_unknown();
         let Some(theme) = theme else { return Ok(plan) };
         plan.evidence = FamilyThemeOutcomes::default();
         let owns_text = super::RadarCssBinding::config_owns_color(config, "textColor");
@@ -143,11 +150,12 @@ impl RadarTextPaintPlan {
         let mut text_owners = plan
             .axis_nonempty
             .iter()
-            .filter(|nonempty| plan.axis_has_visible_size && **nonempty)
+            .filter(|nonempty| (plan.axis_has_visible_size || plan.axis_size_unknown) && **nonempty)
             .map(|_| owns_text)
             .collect::<Vec<_>>();
+        let mut text_unknown = vec![plan.axis_size_unknown; text_owners.len()];
         for (index, nonempty) in plan.legend_nonempty.iter().copied().enumerate() {
-            if !plan.legend_has_visible_size || !nonempty {
+            if !(plan.legend_has_visible_size || plan.legend_size_unknown) || !nonempty {
                 continue;
             }
             legend_occurrences.push((index + 1, ThemeVariant::Default));
@@ -170,19 +178,24 @@ impl RadarTextPaintPlan {
                 &style,
                 [owns_text, false],
                 [plan.legend_paints[index].as_ref(), None],
+                !plan.legend_size_unknown,
                 work_meter,
             )?;
             let role_owns_fill = style.fill_resolution().winner().is_some();
             text_owners.push(owns_text || role_owns_fill);
+            text_unknown.push(plan.legend_size_unknown);
             // A winning Text fill already paints unclaimed legend labels. It does not
             // consume a dedicated Legend palette or an independent effect request.
             legend_fill_owned[index] |= !role_owns_fill && plan.paint.is_some();
         }
         plan.legend_rules = legend_rules.finish(&mut plan.evidence);
         let base_count = text_owners.len();
-        let visible_count = base_count.saturating_add(usize::from(plan.title_is_visible()));
-        if plan.title_is_visible() {
+        let title_possible =
+            plan.title_nonempty && (plan.title_has_visible_size || plan.title_size_unknown);
+        let visible_count = base_count.saturating_add(usize::from(title_possible));
+        if title_possible {
             text_owners.push(owns_title);
+            text_unknown.push(plan.title_size_unknown);
         }
         let routes = theme
             .family_mechanism_routes()
@@ -214,7 +227,7 @@ impl RadarTextPaintPlan {
             )
         });
         for (index, source_owns_fill) in text_owners.iter().copied().enumerate() {
-            let is_title = plan.title_is_visible() && index == base_count;
+            let is_title = title_possible && index == base_count;
             let ordinal_style;
             let style = if has_ordinal {
                 ordinal_style = theme.style_with_work_meter(
@@ -247,6 +260,10 @@ impl RadarTextPaintPlan {
                 let observation = observations
                     .get_mut(&rule_index)
                     .expect("registered Radar text rule");
+                if text_unknown[index] {
+                    observation.residual = Some(FamilyThemeResidualReason::UnsupportedTypography);
+                    continue;
+                }
                 match route.disposition() {
                     FamilyThemeDisposition::Unsupported => {
                         observation
@@ -372,6 +389,7 @@ pub(crate) struct RadarTextPaintReceipt {
     expected_text: Box<str>,
     expected_title: Box<str>,
     expected_size_visibility: [bool; 3],
+    expected_size_unknown: [bool; 3],
     base_css: bool,
     title_css: bool,
     axes: Vec<bool>,
@@ -390,6 +408,11 @@ impl RadarTextPaintReceipt {
                 plan.axis_has_visible_size,
                 plan.legend_has_visible_size,
                 plan.title_has_visible_size,
+            ],
+            expected_size_unknown: [
+                plan.axis_size_unknown,
+                plan.legend_size_unknown,
+                plan.title_size_unknown,
             ],
             base_css: false,
             title_css: false,
@@ -463,6 +486,12 @@ impl RadarTextPaintReceipt {
                     plan.title_has_visible_size,
                 ]
             && self.axes.as_slice() == plan.axis_nonempty.as_ref()
+            && self.expected_size_unknown
+                == [
+                    plan.axis_size_unknown,
+                    plan.legend_size_unknown,
+                    plan.title_size_unknown,
+                ]
             && self.legends.as_slice() == plan.legend_nonempty.as_ref()
             && self
                 .legend_fills
@@ -489,6 +518,9 @@ mod tests {
             axis_has_visible_size: true,
             legend_has_visible_size: true,
             title_has_visible_size: true,
+            axis_size_unknown: false,
+            legend_size_unknown: false,
+            title_size_unknown: false,
             paint: None,
             pending_rule: None,
             title_fallback_rule: None,

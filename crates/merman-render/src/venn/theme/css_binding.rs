@@ -19,14 +19,120 @@ pub(crate) struct VennCirclePaintBinding {
     pub(super) fill_config_role: Option<usize>,
 }
 
+impl VennCirclePaintBinding {
+    pub(super) fn apply_theme_fill(&mut self, fill: &str, dark: bool) -> crate::Result<()> {
+        self.fill = fill.to_owned();
+        // Mermaid derives these defaults from the final circle fill. Explicit source values
+        // remain independent, and compiled stroke/label paints are applied afterward.
+        if !self.source_stroke_owned {
+            self.stroke.clone_from(&self.fill);
+        }
+        if !self.source_text_owned {
+            self.text = circle_text_color(fill, dark)?;
+        }
+        Ok(())
+    }
+}
+
+fn circle_text_color(fill: &str, dark: bool) -> crate::Result<String> {
+    Ok(if dark {
+        lighten(fill, 30.0)?
+    } else {
+        darken(fill, 30.0)?
+    })
+}
+
 #[derive(Debug)]
 pub(crate) enum VennAreaPaintBinding {
     Circle(VennCirclePaintBinding),
     Intersection {
         fill: Option<String>,
-        text: String,
+        text: Option<String>,
         source_text_owned: bool,
+        config_text_role: Option<&'static str>,
+        typed_text_fill: bool,
     },
+}
+
+struct VennColorDeclaration {
+    css: String,
+    inline: Option<String>,
+    important: bool,
+}
+
+fn color_declaration(value: &str, svg_fill: bool) -> Option<VennColorDeclaration> {
+    let property = if svg_fill { "fill" } else { "color" };
+    let source = format!("{property}:{value}");
+    let declaration = crate::mermaid_style::parse_style_declaration(&source)?;
+    if !crate::mermaid_style::is_safe_browser_css_color_value(declaration.value())
+        && !(svg_fill && declaration.value().eq_ignore_ascii_case("none"))
+    {
+        return None;
+    }
+    Some(VennColorDeclaration {
+        css: declaration.source_value().to_owned(),
+        // D3 uses setProperty with an empty priority; declaration syntax is not a value.
+        inline: (!declaration.important() && !value.trim_end().ends_with(';'))
+            .then(|| declaration.value().to_owned()),
+        important: declaration.important(),
+    })
+}
+
+fn intersection_text(
+    config: &serde_json::Value,
+    source: Option<&str>,
+    stylesheet: Option<&VennColorDeclaration>,
+    root_color: Option<&VennColorDeclaration>,
+) -> (Option<String>, bool, Option<&'static str>) {
+    // Nullish selection precedes CSS admission. A non-string value must not reveal an unused
+    // primaryTextColor fallback: D3's rejected assignment retains venn.js's initial #444.
+    let selected = ["vennSetTextColor", "primaryTextColor", "textColor"]
+        .into_iter()
+        .find_map(|key| {
+            config
+                .get("themeVariables")?
+                .get(key)
+                .filter(|value| !value.is_null())
+                .map(|value| (key, value))
+        });
+    let raw = source.or_else(|| selected.and_then(|(_, value)| value.as_str()));
+    let admitted = raw.and_then(|value| color_declaration(value, true));
+    let inline = if raw == Some("") || (source.is_none() && selected.is_none()) {
+        None
+    } else {
+        Some(
+            admitted
+                .as_ref()
+                .and_then(|color| color.inline.clone())
+                .unwrap_or_else(|| "#444".into()),
+        )
+    };
+    if stylesheet.is_some_and(|color| color.important) {
+        return (inline, false, Some("themeVariables.vennSetTextColor"));
+    }
+    if admitted
+        .as_ref()
+        .is_some_and(|color| color.inline.is_some())
+    {
+        let role = if source.is_some() {
+            None
+        } else {
+            selected.map(|(key, _)| match key {
+                "vennSetTextColor" => "themeVariables.vennSetTextColor",
+                "primaryTextColor" => "themeVariables.primaryTextColor",
+                _ => "themeVariables.textColor",
+            })
+        };
+        return (inline, source.is_some(), role);
+    }
+    let role = inline.is_none().then(|| {
+        if stylesheet.is_some() {
+            Some("themeVariables.vennSetTextColor")
+        } else {
+            root_color.map(|_| "themeVariables.textColor")
+        }
+    });
+    (inline, false, role.flatten())
 }
 
 #[cfg(test)]
@@ -53,6 +159,47 @@ mod tests {
     }
 
     #[test]
+    fn color_admission_keeps_svg_none_and_declaration_priority_distinct() {
+        assert!(color_declaration("none", true).is_some());
+        assert!(color_declaration("none", false).is_none());
+        let important = color_declaration("#123456 !important", true).unwrap();
+        assert!(important.important);
+        assert!(important.inline.is_none());
+        for value in [
+            "#123456; stroke:red",
+            "url(javascript:alert(1))",
+            "var(--color); color:red",
+        ] {
+            assert!(color_declaration(value, true).is_none(), "{value}");
+            assert!(color_declaration(value, false).is_none(), "{value}");
+        }
+    }
+
+    #[test]
+    fn only_a_nullish_role_selects_the_primary_intersection_fallback() {
+        for (value, fill, role) in [
+            (json!(false), Some("#444"), None),
+            (json!(7), Some("#444"), None),
+            (json!(" "), Some("#444"), None),
+            (json!(""), None, None),
+            (
+                json!(null),
+                Some("#abcdef"),
+                Some("themeVariables.primaryTextColor"),
+            ),
+        ] {
+            let config = json!({"themeVariables": {
+                "vennSetTextColor": value, "primaryTextColor": "#abcdef"
+            }});
+            let (actual_fill, source_owned, actual_role) =
+                intersection_text(&config, None, None, None);
+            assert_eq!(actual_fill.as_deref(), fill, "{value}");
+            assert_eq!(actual_role, role, "{value}");
+            assert!(!source_owned);
+        }
+    }
+
+    #[test]
     fn source_color_wins_and_avoids_unnecessary_color_interpretation() {
         let mut model = model();
         model.style_entries.push(VennStyleEntryModel {
@@ -71,18 +218,17 @@ mod tests {
         )
         .unwrap();
         let binding = VennCssBinding::resolve(
-            &json!({}),
+            &json!({"themeVariables": {"vennSetTextColor": "transparent"}}),
             &model,
             &layout,
             Some("#123456"),
-            Some("transparent"),
             &work_meter(),
         )
         .unwrap();
         assert_eq!(binding.circle(0).fill, "var(--circle)");
         assert_eq!(binding.circle(0).text, "currentColor");
         assert_eq!(binding.title_color, "#123456");
-        assert_eq!(binding.set_text_color, "transparent");
+        assert_eq!(binding.set_text_color.as_deref(), Some("transparent"));
     }
 
     #[test]
@@ -102,7 +248,6 @@ mod tests {
             &model,
             &layout,
             None,
-            None,
             &work_meter(),
         )
         .unwrap();
@@ -114,7 +259,6 @@ mod tests {
                 }}),
                 &model,
                 &layout,
-                None,
                 None,
                 &work_meter(),
             ),
@@ -154,12 +298,12 @@ mod tests {
         intersection.sets = vec!["A".into(), "B".into()];
         layout.areas.insert(0, intersection);
         let binding =
-            VennCssBinding::resolve(&config, &model, &layout, None, None, &work_meter()).unwrap();
+            VennCssBinding::resolve(&config, &model, &layout, None, &work_meter()).unwrap();
         assert_eq!(binding.areas.len(), layout.areas.len());
         assert!(
             matches!(&binding.areas[0], VennAreaPaintBinding::Intersection {
-            fill: None, text, source_text_owned: true,
-        } if text == "var(--label)")
+            fill: None, text, source_text_owned: true, ..
+        } if text.as_deref() == Some("var(--label)"))
         );
         assert_eq!(binding.circle(0).stroke_width, "calc(1px + 2px)");
         assert_eq!(binding.circle(0).stroke, "currentColor");
@@ -169,7 +313,7 @@ mod tests {
 
         model.style_entries.clear();
         let defaults =
-            VennCssBinding::resolve(&config, &model, &layout, None, None, &work_meter()).unwrap();
+            VennCssBinding::resolve(&config, &model, &layout, None, &work_meter()).unwrap();
         assert_eq!(defaults.circle(0).stroke_width, "3.75");
     }
 
@@ -195,26 +339,23 @@ mod tests {
             &model,
             &layout,
             None,
-            None,
             &work_meter(),
         )
         .unwrap();
         assert_eq!(binding.title_color, "#f43f5e");
-        assert_eq!(binding.set_text_color, "#22c55e");
+        assert_eq!(binding.set_text_color.as_deref(), Some("#22c55e"));
         assert_eq!(binding.circle(0).fill, "#123456");
 
         let defaults =
-            VennCssBinding::resolve(&json!({}), &model, &layout, None, None, &work_meter())
-                .unwrap();
+            VennCssBinding::resolve(&json!({}), &model, &layout, None, &work_meter()).unwrap();
         assert_eq!(defaults.title_color, "#333");
-        assert_eq!(defaults.set_text_color, "#333");
+        assert_eq!(defaults.set_text_color, None);
         assert_eq!(defaults.circle(0).fill, "#ECECFF");
 
         let contrast = VennCssBinding::resolve(
             &json!({"themeVariables": {"primaryColor": "#abc"}}),
             &model,
             &layout,
-            None,
             None,
             &work_meter(),
         )
@@ -231,7 +372,6 @@ mod tests {
             }}),
             &model,
             &palette_layout,
-            None,
             None,
             &work_meter(),
         )
@@ -257,11 +397,16 @@ mod tests {
 #[derive(Debug)]
 pub(crate) struct VennCssBinding {
     pub(crate) title_color: String,
-    pub(crate) set_text_color: String,
+    pub(crate) set_text_color: Option<String>,
+    pub(crate) text_node_color: Option<String>,
+    pub(crate) inherited_text_fill: Option<String>,
+    pub(super) text_node_config_role: Option<&'static str>,
+    pub(crate) typed_text_node_fill: bool,
     pub(crate) areas: Box<[VennAreaPaintBinding]>,
     pub(crate) text_node_colors: HashMap<String, String>,
     pub(crate) is_hand_drawn: bool,
     pub(crate) hand_drawn_seed: Option<f64>,
+    pub(super) dark_background: bool,
 }
 
 impl VennCssBinding {
@@ -273,20 +418,6 @@ impl VennCssBinding {
                 config_string(config, &["themeVariables", "titleColor"])
                     .map(|color| ("themeVariables.titleColor", color))
             })
-    }
-
-    pub(super) fn set_text_color_source(
-        config: &serde_json::Value,
-    ) -> Option<(&'static str, String)> {
-        [
-            ("vennSetTextColor", "themeVariables.vennSetTextColor"),
-            ("primaryTextColor", "themeVariables.primaryTextColor"),
-            ("textColor", "themeVariables.textColor"),
-        ]
-        .into_iter()
-        .find_map(|(key, path)| {
-            config_string(config, &["themeVariables", key]).map(|color| (path, color))
-        })
     }
 
     #[cfg(test)]
@@ -306,7 +437,6 @@ impl VennCssBinding {
         model: &VennDiagramModel,
         layout: &VennDiagramLayout,
         title_fill: Option<&str>,
-        text_fill: Option<&str>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let option = |key: &str| config_string(config, &["themeVariables", key]);
@@ -327,10 +457,16 @@ impl VennCssBinding {
                 .or_default()
                 .extend(entry.styles.clone());
         }
-        let set_text_color = text_fill
-            .map(str::to_owned)
-            .or_else(|| Self::set_text_color_source(config).map(|(_, color)| color))
-            .unwrap_or_else(|| "#333".into());
+        let local_text = option("vennSetTextColor");
+        let set_text_color = local_text
+            .as_deref()
+            .and_then(|color| color_declaration(color, true));
+        let text_node_color = local_text
+            .as_deref()
+            .and_then(|color| color_declaration(color, false));
+        let root_color = option("textColor")
+            .as_deref()
+            .and_then(|color| color_declaration(color, true));
         let mut circle_index = 0usize;
         let areas = layout
             .areas
@@ -344,11 +480,19 @@ impl VennCssBinding {
                         .cloned()
                 };
                 if area.sets.len() != 1 {
-                    let source_text = value("color");
+                    let source_text = source.and_then(|style| style.get("color"));
+                    let (text, source_text_owned, config_text_role) = intersection_text(
+                        config,
+                        source_text.map(String::as_str),
+                        set_text_color.as_ref(),
+                        root_color.as_ref(),
+                    );
                     return Ok(VennAreaPaintBinding::Intersection {
                         fill: value("fill"),
-                        source_text_owned: source_text.is_some(),
-                        text: source_text.unwrap_or_else(|| set_text_color.clone()),
+                        source_text_owned,
+                        config_text_role,
+                        text,
+                        typed_text_fill: false,
                     });
                 }
                 work_meter.charge(1)?;
@@ -360,8 +504,7 @@ impl VennCssBinding {
                 });
                 let text = match value("color") {
                     Some(text) => text,
-                    None if dark => lighten(&fill, 30.0)?,
-                    None => darken(&fill, 30.0)?,
+                    None => circle_text_color(&fill, dark)?,
                 };
                 let fill_config_role = palette
                     .get(circle_index % palette.len().max(1))
@@ -390,22 +533,39 @@ impl VennCssBinding {
                 styles
                     .get(&node.id)
                     .and_then(|style| style.get("color"))
-                    .filter(|color| !color.trim().is_empty())
-                    .map(|color| (node.id.clone(), color.clone()))
+                    .and_then(|color| color_declaration(color, false))
+                    .and_then(|color| color.inline)
+                    .map(|color| (node.id.clone(), color))
             })
             .collect();
+        let needs_inherited_fill = set_text_color.is_none()
+            || areas.iter().any(|area| match area {
+                VennAreaPaintBinding::Intersection { text, .. } => text
+                    .as_deref()
+                    .is_none_or(|color| !crate::mermaid_style::is_supported_css_color_value(color)),
+                VennAreaPaintBinding::Circle(_) => false,
+            });
         Ok(Self {
             title_color: title_fill
                 .map(str::to_owned)
                 .or_else(|| Self::title_color_source(config).map(|(_, color)| color))
                 .unwrap_or_else(|| "#333".into()),
-            set_text_color,
+            set_text_color: set_text_color.map(|color| color.css),
+            inherited_text_fill: needs_inherited_fill
+                .then(|| root_color.map(|color| color.css))
+                .flatten(),
+            text_node_config_role: text_node_color
+                .as_ref()
+                .map(|_| "themeVariables.vennSetTextColor"),
+            text_node_color: text_node_color.map(|color| color.css),
+            typed_text_node_fill: false,
             areas,
             text_node_colors,
             is_hand_drawn: crate::config::config_diagram_look(config).as_str() == "handDrawn",
             hand_drawn_seed: config
                 .get("handDrawnSeed")
                 .and_then(serde_json::Value::as_f64),
+            dark_background: dark,
         })
     }
 }

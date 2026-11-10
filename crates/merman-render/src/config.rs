@@ -156,10 +156,10 @@ pub(crate) fn mermaid_config_diagram_look(
 }
 
 pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
-    let s = font_family.trim().trim_end_matches(';').trim();
-    if s.is_empty() {
+    let Some(parsed) = crate::mermaid_style::parse_css_font_family_value(font_family) else {
         return String::new();
-    }
+    };
+    let s = parsed.value;
 
     // Mermaid serializes generated CSS with comma-separated font-family lists and no extra
     // whitespace around commas. Keep that spelling stable for SVG parity.
@@ -187,8 +187,11 @@ pub(crate) fn normalize_css_font_family(font_family: &str) -> String {
         parts.push(part);
     }
 
-    let normalized = parts.join(",");
+    let mut normalized = parts.join(",");
     if crate::mermaid_style::is_safe_css_font_family_value(&normalized) {
+        if parsed.important {
+            normalized.push_str(" !important");
+        }
         normalized
     } else {
         String::new()
@@ -207,15 +210,16 @@ fn configured_font_family_with(
     cfg: &Value,
     read: fn(&Value) -> Option<&str>,
 ) -> Option<(String, &'static str)> {
-    let (font, path) = value_at(cfg, &["themeVariables", "fontFamily"])
+    value_at(cfg, &["themeVariables", "fontFamily"])
         .and_then(read)
+        .and_then(normalized_config_font_family)
         .map(|font| (font, "themeVariables.fontFamily"))
         .or_else(|| {
             value_at(cfg, &["fontFamily"])
                 .and_then(read)
+                .and_then(normalized_config_font_family)
                 .map(|font| (font, "fontFamily"))
-        })?;
-    normalized_config_font_family(font).map(|font| (font, path))
+        })
 }
 
 pub(crate) fn config_font_family_css(cfg: &Value) -> String {
@@ -250,7 +254,7 @@ fn json_str_or_first_array_ref(value: &Value) -> Option<&str> {
         .or_else(|| value.as_array().and_then(|values| values.first()?.as_str()))
 }
 
-fn normalized_config_font_family(font_family: &str) -> Option<String> {
+pub(crate) fn normalized_config_font_family(font_family: &str) -> Option<String> {
     if matches!(
         font_family,
         MERMAID_DEFAULT_FONT_FAMILY_CONFIG | MERMAID_DEFAULT_ROOT_FONT_FAMILY_CONFIG
@@ -352,14 +356,29 @@ pub(crate) fn config_f64_css_px(cfg: &Value, path: &[&str]) -> Option<f64> {
 }
 
 /// Extends the legacy numeric/px configuration subset with context-free CSS length units.
-/// Relative lengths, keywords, and expressions retain their existing family-specific owners.
+/// Literal zero lengths need no host context. Other relative lengths, keywords, and expressions
+/// retain their existing family-specific owners.
 pub(crate) fn config_f64_css_absolute_px(cfg: &Value, path: &[&str]) -> Option<f64> {
     value_at(cfg, path).and_then(|value| {
-        json_f64_css_px(value).or_else(|| {
-            value
-                .as_str()
-                .and_then(crate::mermaid_style::resolve_mermaid_absolute_font_size_px)
-        })
+        json_f64_css_px(value)
+            .filter(|number| {
+                *number != 0.0
+                    || value.as_str().is_none_or(|raw| {
+                        // The legacy parser already admitted this spelling. Inspect its
+                        // coefficient without imposing stricter CSS syntax on genuine zeros.
+                        !raw.trim()
+                            .bytes()
+                            .take_while(|byte| {
+                                byte.is_ascii_digit() || matches!(byte, b'+' | b'-' | b'.')
+                            })
+                            .any(|byte| byte.is_ascii_digit() && byte != b'0')
+                    })
+            })
+            .or_else(|| {
+                let css = value.as_str()?;
+                crate::mermaid_style::resolve_mermaid_absolute_font_size_px(css)
+                    .or_else(|| crate::mermaid_style::css_font_size_is_zero(css).then_some(0.0))
+            })
     })
 }
 
@@ -575,6 +594,67 @@ mod tests {
     }
 
     #[test]
+    fn configured_theme_font_sizes_preserve_context_free_relative_zero() {
+        for value in [
+            "0em",
+            "0rem",
+            "0%",
+            "-0ex",
+            "0vw",
+            r"0e\6d",
+            "0em !important",
+        ] {
+            let config = json!({"fontSize": 29, "themeVariables": {"fontSize": value}});
+            assert_eq!(
+                configured_theme_or_root_font_size_px(&config),
+                Some((0.0, "themeVariables.fontSize")),
+                "{value}"
+            );
+            assert_eq!(
+                configured_theme_font_size_css_or_root_number_px(&config),
+                Some((0.0, "themeVariables.fontSize")),
+                "{value}"
+            );
+        }
+        for value in [
+            "1em",
+            "1rem",
+            "1e-999em",
+            "1e-999px",
+            "-1e-999px",
+            "1e-999",
+            "calc(0px)",
+            "var(--size, 0px)",
+            "0unknown",
+        ] {
+            assert_eq!(
+                config_f64_css_absolute_px(&json!({"size": value}), &["size"]),
+                None,
+                "{value} must retain its family-local context"
+            );
+        }
+        for value in [
+            json!(0),
+            json!("0e-999px"),
+            json!("-0e-999px"),
+            json!("0e-999"),
+            json!("0."),
+            json!("0px;;"),
+        ] {
+            assert_eq!(
+                config_f64_css_absolute_px(&json!({"size":value}), &["size"]),
+                Some(0.0)
+            );
+            assert_eq!(
+                configured_theme_or_root_font_size_px(
+                    &json!({"themeVariables":{"fontSize":value},"fontSize":29})
+                ),
+                Some((0.0, "themeVariables.fontSize"))
+            );
+        }
+    }
+
+    #[test]
     fn json_f64_explicit_css_absolute_px_accepts_only_absolute_length_strings() {
         assert_eq!(json_f64_explicit_css_absolute_px(&json!(24)), None);
         assert_eq!(json_f64_explicit_css_absolute_px(&json!("24")), None);
@@ -705,6 +785,81 @@ mod tests {
     }
 
     #[test]
+    fn configured_font_family_skips_css_rejected_candidates_before_normalizing() {
+        for invalid in [
+            "24px",
+            "serif,,monospace",
+            ",serif",
+            "serif,",
+            "default",
+            "serif inherit",
+            "var(--font),,serif",
+            "var(--font),",
+            ",var(--font)",
+            "serif !important !important",
+            "serif !important)",
+            "",
+            "   ",
+        ] {
+            let config = json!({
+                "fontFamily": "Cousine",
+                "themeVariables": {"fontFamily": invalid}
+            });
+            assert_eq!(
+                configured_font_family(&config),
+                Some(("Cousine".to_owned(), "fontFamily")),
+                "{invalid:?} must not hide the accepted legacy candidate"
+            );
+            assert_eq!(
+                configured_font_family(&json!({"themeVariables": {"fontFamily": invalid}})),
+                None,
+                "{invalid:?} must not claim an initialized or typed font"
+            );
+            assert_eq!(
+                configured_font_family_or_first_array(&json!({
+                    "fontFamily": ["Cousine"],
+                    "themeVariables": {"fontFamily": [invalid]}
+                })),
+                Some(("Cousine".to_owned(), "fontFamily")),
+                "array candidate {invalid:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn configured_font_family_retains_literal_names_and_host_values() {
+        for (authored, expected) in [
+            (r#""", serif"#, r#""",serif"#),
+            (r#""A<B", serif"#, r#""A<B",serif"#),
+            (r#""A: B", serif"#, r#""A: B",serif"#),
+            (r#""A;B", serif"#, r#""A;B",serif"#),
+            (r#""A<B", serif !important"#, r#""A<B",serif !important"#),
+            (r#""A: B", serif !important"#, r#""A: B",serif !important"#),
+            (r#""A;B", serif !important"#, r#""A;B",serif !important"#),
+            (r"Open\, Sans, monospace", r"Open\, Sans,monospace"),
+            (r"Open\;", r"Open\;"),
+            (r"Open\!important", r"Open\!important"),
+            ("Cousine !important", "Cousine !important"),
+            ("Cousine ! IMPORTANT;;", "Cousine !important"),
+            ("inherit", "inherit"),
+            ("initial", "initial"),
+            ("var(--font, serif)", "var(--font, serif)"),
+            ("var(--font)!important", "var(--font) !important"),
+            ("var(--font);", "var(--font)"),
+            ("env(host-font)!important", "env(host-font) !important"),
+            ("var(--font) !important", "var(--font) !important"),
+            ("env(host-font, serif)", "env(host-font, serif)"),
+            ("future-host-font(--font)", "future-host-font(--font)"),
+        ] {
+            assert_eq!(
+                configured_font_family(&json!({"themeVariables": {"fontFamily": authored}})),
+                Some((expected.to_owned(), "themeVariables.fontFamily")),
+                "{authored}"
+            );
+        }
+    }
+
+    #[test]
     fn config_font_family_helpers_accept_exact_builtin_default_spellings() {
         assert_eq!(
             config_font_family_css(&json!({
@@ -795,7 +950,7 @@ mod tests {
     }
 
     #[test]
-    fn configured_font_candidates_keep_only_the_selected_normalized_source() {
+    fn configured_font_candidates_keep_the_first_accepted_normalized_source() {
         for (config, expected) in [
             (
                 json!({"themeVariables":{"fontFamily":["Georgia"]},"fontFamily":"Arial"}),
@@ -807,7 +962,7 @@ mod tests {
             ),
             (
                 json!({"themeVariables":{"fontFamily":[""]},"fontFamily":"Arial"}),
-                None,
+                Some(("Arial", "fontFamily")),
             ),
             (
                 json!({"themeVariables":{"fontFamily":[]},"fontFamily":"Arial"}),

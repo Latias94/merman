@@ -1,3 +1,4 @@
+mod font_binding;
 mod theme;
 
 pub(crate) use theme::{CynefinSurfaceReceipt, CynefinTextRole, CynefinTypographyThemePlan};
@@ -65,8 +66,7 @@ pub(crate) struct CynefinTheme {
     pub chaotic_bg: String,
     pub clear_bg: String,
     pub confusion_bg: String,
-    pub domain_font_size: f64,
-    pub item_font_size: f64,
+    pub font_binding: font_binding::CynefinFontBinding,
     pub boundary_color: String,
     pub boundary_width: f64,
     pub cliff_color: String,
@@ -177,8 +177,7 @@ pub(crate) fn cynefin_theme(effective_config: &serde_json::Value) -> CynefinThem
         chaotic_bg: color(effective_config, "chaoticBg", "#FBE9E7"),
         clear_bg: color(effective_config, "clearBg", "#FFF8E1"),
         confusion_bg: color(effective_config, "confusionBg", "#F3E5F5"),
-        domain_font_size: number(effective_config, "domainFontSize", 16.0),
-        item_font_size: number(effective_config, "itemFontSize", 12.0),
+        font_binding: font_binding::CynefinFontBinding::new(effective_config),
         boundary_color,
         boundary_width: number(effective_config, "boundaryWidth", 2.0),
         cliff_color: color(effective_config, "cliffColor", "#8B0000"),
@@ -488,7 +487,7 @@ fn layout_items(
 ) -> Vec<CynefinItemLayout> {
     let style = TextStyle {
         font_family: Some(font_family_css.to_string()),
-        font_size: theme.item_font_size,
+        font_size: theme.font_binding.measurement_px(CynefinTextRole::Item),
         ..Default::default()
     };
     let mut out = Vec::new();
