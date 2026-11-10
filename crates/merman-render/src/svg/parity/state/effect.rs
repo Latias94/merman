@@ -4,7 +4,7 @@ use crate::diagram_theme::{MaterializedShadowEffect, SvgShadowEffect};
 struct StateNodeShadow<'a> {
     node: &'a StateSvgNode,
     layout: &'a LayoutNode,
-    style: &'a crate::state::StateNodeStylePlan,
+    body: StateRectBody<'a>,
     effect: &'a SvgShadowEffect,
     materialized: MaterializedShadowEffect,
 }
@@ -38,10 +38,11 @@ fn prepare_state_node_shadows<'a>(
         {
             continue;
         }
+        let body = StateRectBody::new(layout, Some(style), ctx.style_plan.compatibility());
         let Some((effect, materialized)) = ctx.style_plan.effect_plan().materialize_classic_rect(
             binding.effect_id(),
-            layout.width.max(1.0),
-            layout.height.max(1.0),
+            body.width,
+            body.height,
             style.classic_stroke_paint_width().unwrap_or(0.0),
         )?
         else {
@@ -51,7 +52,7 @@ fn prepare_state_node_shadows<'a>(
         shadows.push(StateNodeShadow {
             node,
             layout,
-            style,
+            body,
             effect,
             materialized,
         });
@@ -67,10 +68,6 @@ pub(super) fn render_state_node_shadows(
     effect_outsets: &mut crate::diagram_theme::EffectOutsets,
 ) -> Result<()> {
     let shadows = prepare_state_node_shadows(ctx, root)?;
-    if shadows.is_empty() {
-        return Ok(());
-    }
-    out.push_str(r#"<g class="state-node-shadows" aria-hidden="true" pointer-events="none">"#);
     for shadow in shadows {
         out.checkpoint()?;
         let node = shadow.node;
@@ -80,38 +77,22 @@ pub(super) fn render_state_node_shadows(
         let region = shadow.materialized.region();
         let filter_url =
             write_theme_shadow_depth_application(out, &scoped_filter_id, shadow.effect, region);
-        let rect_style = state_rect_style(
-            shadow.style.shape_style_attr(),
-            shadow.style.radius_override(),
-        );
-        let radius = shadow
-            .style
-            .radius_override()
-            .unwrap_or(ctx.style_plan.compatibility().rect_radius)
-            .max(0.0);
         // Match body CSS and SourceAlpha without duplicating IDs, links, labels or hit targets.
         let _ = write!(
             out,
-            r#"<g class="node {}" data-look="{}" data-state-shadow-for="{}" transform="translate({}, {})"><rect class="basic label-container" style="{}" filter="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/></g>"#,
-            escape_attr(node.css_classes.trim()),
+            r#"<g class="{}" data-look="{}" data-state-shadow-for="{}" aria-hidden="true" pointer-events="none" transform="translate({}, {})">"#,
+            escape_attr(&state_node_class(node)),
             escape_attr(state_data_look(ctx)),
             node_dom_id.attr(),
             fmt_display(layout.x - origin.0),
             fmt_display(layout.y - origin.1),
-            escape_attr(&rect_style),
-            escape_attr(&filter_url),
-            fmt_display(radius),
-            fmt_display(radius),
-            fmt_display(-layout.width.max(1.0) / 2.0),
-            fmt_display(-layout.height.max(1.0) / 2.0),
-            fmt_display(layout.width.max(1.0)),
-            fmt_display(layout.height.max(1.0)),
         );
+        shadow.body.write(out, Some(&filter_url));
+        out.push_str("</g>");
         out.checkpoint()?;
         effect_outsets.include(shadow.materialized.outsets());
         ctx.effect_evidence
             .record_depth_application(shadow.effect, &scoped_filter_id, region);
     }
-    out.push_str("</g>");
     out.checkpoint()
 }

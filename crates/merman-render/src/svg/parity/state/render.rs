@@ -1,5 +1,12 @@
 use super::*;
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum StateRenderPass {
+    Complete,
+    Depth,
+    Foreground,
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
@@ -374,16 +381,26 @@ fn render_state_diagram_svg_with_plan(
     let bounds_scan_start = out.len();
     let mut detail = StateRenderDetails::default();
     let mut effect_outsets = crate::diagram_theme::EffectOutsets::default();
-    render_state_root(
-        &mut out,
-        &ctx,
-        None,
-        (origin_x, origin_y),
-        options,
-        timing,
-        &mut detail,
-        &mut effect_outsets,
-    )?;
+    // Unthemed/Clear output keeps Mermaid's single hierarchy. Body effects split the entire
+    // hierarchy, rather than just each local root, to keep nested depth behind outer labels.
+    let passes: &[_] = if ctx.has_node_shadows {
+        &[StateRenderPass::Depth, StateRenderPass::Foreground]
+    } else {
+        &[StateRenderPass::Complete]
+    };
+    for &pass in passes {
+        render_state_root(
+            &mut out,
+            &ctx,
+            None,
+            (origin_x, origin_y),
+            options,
+            timing,
+            &mut detail,
+            &mut effect_outsets,
+            pass,
+        )?;
+    }
     let bounds_scan_end = out.len();
 
     out.push_str("</g>");
@@ -607,6 +624,7 @@ fn render_state_root(
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
     effect_outsets: &mut crate::diagram_theme::EffectOutsets,
+    pass: StateRenderPass,
 ) -> Result<()> {
     details.root_calls += 1;
     options.checkpoint_emit()?;
@@ -645,13 +663,17 @@ fn render_state_root(
         (parent_origin_x, parent_origin_y, String::new())
     };
 
-    let _ = write!(out, r#"<g class="root"{}>"#, transform_attr);
+    let _ = write!(out, r#"<g class="root"{}"#, transform_attr);
+    if pass == StateRenderPass::Depth {
+        out.push_str(r#" data-state-depth="true""#);
+    }
+    out.push('>');
 
     // clusters
     let _g_clusters = detail_guard(timing, &mut details.clusters);
     out.push_str(r#"<g class="clusters">"#);
     if let Some(root_id) = root {
-        render_state_cluster(out, ctx, root_id, origin_x, origin_y);
+        render_state_cluster(out, ctx, root_id, origin_x, origin_y, pass);
         out.checkpoint()?;
     }
 
@@ -677,134 +699,139 @@ fn render_state_root(
         if state_insertion_context(ctx, cluster_id) != root {
             continue;
         }
-        render_state_cluster(out, ctx, cluster_id, origin_x, origin_y);
+        render_state_cluster(out, ctx, cluster_id, origin_x, origin_y, pass);
         out.checkpoint()?;
     }
 
-    for &cluster_id in &ctx.node_order {
-        if !ctx.layout_clusters_by_id.contains_key(cluster_id) {
-            continue;
-        }
-        let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
-            continue;
-        };
-        if state_is_hidden(ctx, cluster_id) {
-            continue;
-        }
-        let Some(node) = ctx.nodes_by_id.get(cluster_id).copied() else {
-            continue;
-        };
-        if node.shape != "noteGroup" {
-            continue;
-        }
-        let note_owner = state_note_owner_id(cluster_id);
-        if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
-            continue;
-        }
-        let has_position = ctx
-            .states
-            .get(note_owner)
-            .and_then(|s| s.note.as_ref())
-            .and_then(|n| n.position.as_ref())
-            .is_some();
-        if !has_position {
-            continue;
-        }
+    if pass != StateRenderPass::Foreground {
+        for &cluster_id in &ctx.node_order {
+            if !ctx.layout_clusters_by_id.contains_key(cluster_id) {
+                continue;
+            }
+            let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
+                continue;
+            };
+            if state_is_hidden(ctx, cluster_id) {
+                continue;
+            }
+            let Some(node) = ctx.nodes_by_id.get(cluster_id).copied() else {
+                continue;
+            };
+            if node.shape != "noteGroup" {
+                continue;
+            }
+            let note_owner = state_note_owner_id(cluster_id);
+            if ctx.hidden_prefixes.iter().any(|p| p == note_owner) {
+                continue;
+            }
+            let has_position = ctx
+                .states
+                .get(note_owner)
+                .and_then(|s| s.note.as_ref())
+                .and_then(|n| n.position.as_ref())
+                .is_some();
+            if !has_position {
+                continue;
+            }
 
-        let target_root = state_insertion_context(ctx, note_owner);
-        if target_root != root {
-            continue;
-        }
+            let target_root = state_insertion_context(ctx, note_owner);
+            if target_root != root {
+                continue;
+            }
 
-        let left = cluster.x - cluster.width / 2.0;
-        let top = cluster.y - cluster.height / 2.0;
-        let x = left - origin_x;
-        let y = top - origin_y;
-        let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
-        let _ = write!(
-            out,
-            r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
-            dom_id.attr(),
-            fmt_display(x),
-            fmt_display(y),
-            fmt_display(cluster.width.max(1.0)),
-            fmt_display(cluster.height.max(1.0))
-        );
-        out.checkpoint()?;
-    }
-    out.push_str("</g>");
-    drop(_g_clusters);
-
-    render_state_node_shadows(out, ctx, root, (origin_x, origin_y), effect_outsets)?;
-
-    // edge paths
-    let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
-    out.push_str(if ctx.uses_elk_adapter_dom {
-        r#"<g class="edges edgePaths">"#
-    } else {
-        r#"<g class="edgePaths">"#
-    });
-    if ctx.include_edges {
-        for edge in ctx.edges {
-            if state_is_hidden(ctx, edge.start.as_str())
-                || state_is_hidden(ctx, edge.end.as_str())
-                || state_is_hidden(ctx, edge.id.as_str())
-            {
-                continue;
-            }
-            if state_edge_context(ctx, edge) != root {
-                continue;
-            }
-            if state_is_shadowed_self_loop_edge(ctx, edge) {
-                continue;
-            }
-            if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
-                let original_path_work = ctx
-                    .elk_edge_paths
-                    .get(&layout_edge.id)
-                    .map_or(layout_edge.points.len(), Vec::len);
-                options.work_meter().charge(original_path_work)?;
-            }
-            render_state_edge_path(out, ctx, edge, origin_x, origin_y, options.work_meter())?;
-            options.checkpoint_emit()?;
-        }
-    }
-    out.push_str("</g>");
-    drop(_g_edge_paths);
-
-    // edge labels
-    let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
-    out.push_str(r#"<g class="edgeLabels">"#);
-    if ctx.include_edges {
-        for edge in ctx.edges {
-            if state_is_hidden(ctx, edge.start.as_str())
-                || state_is_hidden(ctx, edge.end.as_str())
-                || state_is_hidden(ctx, edge.id.as_str())
-            {
-                continue;
-            }
-            if state_edge_context(ctx, edge) != root {
-                continue;
-            }
-            if state_is_shadowed_self_loop_edge(ctx, edge) {
-                continue;
-            }
-            if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
-                let original_path_work = ctx
-                    .elk_edge_paths
-                    .get(&layout_edge.id)
-                    .map_or(layout_edge.points.len(), Vec::len);
-                options.work_meter().charge(original_path_work)?;
-            }
-            render_state_edge_label(out, ctx, edge, origin_x, origin_y);
+            let left = cluster.x - cluster.width / 2.0;
+            let top = cluster.y - cluster.height / 2.0;
+            let x = left - origin_x;
+            let y = top - origin_y;
+            let dom_id = state_node_scoped_dom_id(ctx, cluster_id);
+            let _ = write!(
+                out,
+                r#"<g id="{}" class="note-cluster"><rect x="{}" y="{}" width="{}" height="{}" fill="none"/></g>"#,
+                dom_id.attr(),
+                fmt_display(x),
+                fmt_display(y),
+                fmt_display(cluster.width.max(1.0)),
+                fmt_display(cluster.height.max(1.0))
+            );
             out.checkpoint()?;
         }
     }
     out.push_str("</g>");
-    drop(_g_edge_labels);
+    drop(_g_clusters);
 
-    // nodes (leaf nodes + nested roots)
+    if pass != StateRenderPass::Depth {
+        // edge paths
+        let _g_edge_paths = detail_guard(timing, &mut details.edge_paths);
+        out.push_str(if ctx.uses_elk_adapter_dom {
+            r#"<g class="edges edgePaths">"#
+        } else {
+            r#"<g class="edgePaths">"#
+        });
+        if ctx.include_edges {
+            for edge in ctx.edges {
+                if state_is_hidden(ctx, edge.start.as_str())
+                    || state_is_hidden(ctx, edge.end.as_str())
+                    || state_is_hidden(ctx, edge.id.as_str())
+                {
+                    continue;
+                }
+                if state_edge_context(ctx, edge) != root {
+                    continue;
+                }
+                if state_is_shadowed_self_loop_edge(ctx, edge) {
+                    continue;
+                }
+                if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                    let original_path_work = ctx
+                        .elk_edge_paths
+                        .get(&layout_edge.id)
+                        .map_or(layout_edge.points.len(), Vec::len);
+                    options.work_meter().charge(original_path_work)?;
+                }
+                render_state_edge_path(out, ctx, edge, origin_x, origin_y, options.work_meter())?;
+                options.checkpoint_emit()?;
+            }
+        }
+        out.push_str("</g>");
+        drop(_g_edge_paths);
+
+        // edge labels
+        let _g_edge_labels = detail_guard(timing, &mut details.edge_labels);
+        out.push_str(r#"<g class="edgeLabels">"#);
+        if ctx.include_edges {
+            for edge in ctx.edges {
+                if state_is_hidden(ctx, edge.start.as_str())
+                    || state_is_hidden(ctx, edge.end.as_str())
+                    || state_is_hidden(ctx, edge.id.as_str())
+                {
+                    continue;
+                }
+                if state_edge_context(ctx, edge) != root {
+                    continue;
+                }
+                if state_is_shadowed_self_loop_edge(ctx, edge) {
+                    continue;
+                }
+                if let Some(layout_edge) = ctx.layout_edges_by_id.get(edge.id.as_str()) {
+                    let original_path_work = ctx
+                        .elk_edge_paths
+                        .get(&layout_edge.id)
+                        .map_or(layout_edge.points.len(), Vec::len);
+                    options.work_meter().charge(original_path_work)?;
+                }
+                render_state_edge_label(out, ctx, edge, origin_x, origin_y);
+                out.checkpoint()?;
+            }
+        }
+        out.push_str("</g>");
+        drop(_g_edge_labels);
+    }
+
+    // Keep the same structural CSS ancestry in both passes, including nested .nodes owners.
     out.push_str(r#"<g class="nodes">"#);
+    if pass == StateRenderPass::Depth {
+        render_state_node_shadows(out, ctx, root, (origin_x, origin_y), effect_outsets)?;
+    }
     let mut nested: Vec<&str> = Vec::new();
     for &id in &ctx.node_order {
         let Some(n) = ctx.nodes_by_id.get(id).copied() else {
@@ -822,7 +849,7 @@ fn render_state_root(
         }
     }
 
-    if ctx.include_nodes {
+    if ctx.include_nodes && pass != StateRenderPass::Depth {
         let leaf_start = timing.start();
         for &id in &ctx.node_order {
             let Some(n) = ctx.layout_nodes_by_id.get(id).copied() else {
@@ -856,6 +883,7 @@ fn render_state_root(
             timing,
             details,
             effect_outsets,
+            pass,
         )?;
         out.checkpoint()?;
         if let Some(s) = nested_start {
@@ -864,7 +892,7 @@ fn render_state_root(
     }
 
     // Dagre adds dummy edgeLabel nodes for self loops; ELK retains the original edges.
-    if ctx.include_edges && !ctx.uses_elk_adapter_dom {
+    if ctx.include_edges && !ctx.uses_elk_adapter_dom && pass != StateRenderPass::Depth {
         let _g_placeholders = detail_guard(timing, &mut details.self_loop_placeholders);
         for edge in ctx.edges {
             if state_is_hidden(ctx, edge.start.as_str())
@@ -957,6 +985,7 @@ fn render_state_cluster(
     cluster_id: &str,
     origin_x: f64,
     origin_y: f64,
+    pass: StateRenderPass,
 ) {
     let Some(cluster) = ctx.layout_clusters_by_id.get(cluster_id).copied() else {
         return;
@@ -971,6 +1000,9 @@ fn render_state_cluster(
         .copied()
         .map(|n| n.shape.as_str())
         .unwrap_or("");
+    if shape == "divider" && pass == StateRenderPass::Foreground {
+        return;
+    }
 
     let class = ctx
         .nodes_by_id
@@ -1045,14 +1077,14 @@ fn render_state_cluster(
         })
         .unwrap_or_default();
 
-    let _ = write!(
-        out,
-        r#"<g class="{}" id="{}""#,
-        escape_attr(class),
-        dom_id.attr()
-    );
-    if shape != "divider" {
-        let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
+    let _ = write!(out, r#"<g class="{}""#, escape_attr(class));
+    if pass == StateRenderPass::Depth && shape != "divider" {
+        out.push_str(r#" data-state-depth="cluster""#);
+    } else {
+        let _ = write!(out, r#" id="{}""#, dom_id.attr());
+        if shape != "divider" {
+            let _ = write!(out, r#" data-id="{}""#, escape_attr(cluster_id));
+        }
     }
     let _ = write!(out, r#" data-look="{}""#, escape_attr(data_look));
     if ctx.palette_size > 0
@@ -1140,7 +1172,9 @@ fn render_state_cluster(
     let title_height = cluster.title_label.height.max(0.0);
     let inner_y = y + title_height + 2.0;
     let inner_height = (cluster.height - title_height - 6.0).max(1.0);
-    let (outer_shape, inner_shape) = if effective_look == "handDrawn" {
+    let (outer_shape, inner_shape) = if pass == StateRenderPass::Foreground {
+        (String::new(), String::new())
+    } else if effective_look == "handDrawn" {
         let compatibility = ctx.style_plan.compatibility();
         let body_surface = cluster_node
             .and_then(|node| {
@@ -1242,6 +1276,15 @@ fn render_state_cluster(
         )
     };
 
+    if pass != StateRenderPass::Foreground {
+        let _ = write!(out, "<g>{outer_shape}</g>");
+    }
+    if pass == StateRenderPass::Depth {
+        out.push_str(&inner_shape);
+        out.push_str("</g>");
+        return;
+    }
+
     if ctx.html_labels {
         let label_div_style = format!(
             "{}display: table-cell; white-space: nowrap; line-height: 1.5;",
@@ -1249,8 +1292,7 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g>{}</g><g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>{}</g>"#,
-            outer_shape,
+            r#"<g class="cluster-label" style="{}" transform="translate({}, {})"><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g>"#,
             escape_attr(title_style),
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(y + 1.0),
@@ -1258,7 +1300,6 @@ fn render_state_cluster(
             fmt(title_height),
             escape_attr(&label_div_style),
             state_node_label_plain_html(&title),
-            inner_shape
         );
     } else {
         let title_dom = state_native_svg_text_label(
@@ -1269,8 +1310,7 @@ fn render_state_cluster(
         );
         let _ = write!(
             out,
-            r#"<g>{}</g><g class="cluster-label" transform="translate({}, {})">{}</g>{}</g>"#,
-            outer_shape,
+            r#"<g class="cluster-label" transform="translate({}, {})">{}</g>"#,
             fmt(x + (cluster.width.max(1.0) - cluster.title_label.width.max(0.0)) / 2.0),
             fmt(if measured_title.is_some() {
                 y + 1.0
@@ -1278,9 +1318,10 @@ fn render_state_cluster(
                 y - 2.0
             }),
             title_dom,
-            inner_shape
         );
     }
+    out.push_str(&inner_shape);
+    out.push_str("</g>");
 }
 
 #[cfg(test)]

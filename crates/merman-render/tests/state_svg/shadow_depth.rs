@@ -102,6 +102,16 @@ fn final_inputs<'a>(filter: roxmltree::Node<'a, '_>) -> Vec<&'a str> {
         .collect()
 }
 
+fn scene_ancestry<'a>(node: roxmltree::Node<'a, '_>) -> Vec<(&'a str, Option<&'a str>)> {
+    node.ancestors()
+        .skip(1)
+        .filter_map(|ancestor| {
+            let class = ancestor.attribute("class")?;
+            matches!(class, "root" | "nodes").then_some((class, ancestor.attribute("transform")))
+        })
+        .collect()
+}
+
 #[test]
 fn shadows_stay_below_arrows_and_bodies_without_changing_routes() {
     let source = "stateDiagram-v2\n[*] --> Checking\nChecking --> Decision: checks complete\nDecision --> Checking: needs detail\nstyle Checking fill:#ffe500,fill-opacity:0.5,opacity:0.75,stroke-width:2.6px\n";
@@ -145,8 +155,39 @@ fn shadows_stay_below_arrows_and_bodies_without_changing_routes() {
                 let doc = roxmltree::Document::parse(&svg).unwrap();
                 let root = doc
                     .descendants()
-                    .find(|n| n.attribute("class") == Some("root"))
+                    .find(|n| {
+                        n.attribute("class") == Some("root")
+                            && n.children().any(|child| {
+                                matches!(
+                                    child.attribute("class"),
+                                    Some("edgePaths" | "edges edgePaths")
+                                )
+                            })
+                    })
                     .unwrap();
+                let depth = doc
+                    .descendants()
+                    .find(|n| n.attribute("data-state-depth") == Some("true"))
+                    .unwrap();
+                let context = format!("{layout}/{html}/{offset}");
+                assert_eq!(depth.parent(), root.parent(), "{context}");
+                assert_eq!(depth.next_sibling_element(), Some(root), "{context}");
+                // roxmltree ranges are half-open; adjacent scene groups share this boundary.
+                assert_eq!(depth.range().end, root.range().start, "{context}");
+                let last_shadow = depth
+                    .descendants()
+                    .filter(|node| node.attribute("data-state-shadow-for").is_some())
+                    .map(|node| node.range().end)
+                    .max()
+                    .unwrap();
+                assert_eq!(
+                    depth
+                        .children()
+                        .filter(roxmltree::Node::is_element)
+                        .map(|n| n.attribute("class").unwrap())
+                        .collect::<Vec<_>>(),
+                    ["clusters", "nodes"]
+                );
                 let groups: Vec<_> = root
                     .children()
                     .filter(roxmltree::Node::is_element)
@@ -156,7 +197,6 @@ fn shadows_stay_below_arrows_and_bodies_without_changing_routes() {
                     groups,
                     [
                         "clusters",
-                        "state-node-shadows",
                         if layout == "elk" {
                             "edges edgePaths"
                         } else {
@@ -177,6 +217,7 @@ fn shadows_stay_below_arrows_and_bodies_without_changing_routes() {
                                 && n.attribute("data-id") == before.attribute("data-id")
                         })
                         .unwrap();
+                    assert!(last_shadow < after.range().start, "{context}");
                     for attr in ["d", "data-points", "marker-end", "style"] {
                         assert_eq!(
                             after.attribute(attr),
@@ -193,6 +234,7 @@ fn shadows_stay_below_arrows_and_bodies_without_changing_routes() {
                     .children()
                     .filter(|n| n.attribute("class") == Some("node statediagram-state"))
                 {
+                    assert!(last_shadow < body.range().start, "{context}");
                     let id = body.attribute("id").unwrap();
                     let shadow = doc
                         .descendants()
@@ -223,6 +265,241 @@ fn shadows_stay_below_arrows_and_bodies_without_changing_routes() {
                     );
                 }
                 assert_eq!(state_effect_filter_regions(&svg).len(), 2);
+            }
+        }
+    }
+}
+
+#[test]
+fn structural_ancestor_opacity_reaches_body_and_depth_in_the_same_source_context() {
+    let theme = state_hard_shadow_theme_with(DiagramThemeCompiler::new(), 5.0, 6.0, None);
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html in [false, true] {
+            for nested in [false, true] {
+                for declarations in [
+                    "opacity:0",
+                    "opacity:0.4,fill-opacity:0.5,stroke-opacity:0.25",
+                ] {
+                    let graph = if nested {
+                        "state Container {\nA --> B\n}\nC --> D\n"
+                    } else {
+                        "A --> B\nC --> D\n"
+                    };
+                    let source = format!(
+                        "stateDiagram-v2\n{graph}classDef root fill-opacity:0.75\nclassDef nodes {declarations}\nclassDef painted fill-opacity:0.25\nclass A painted\nstyle A fill:#ffe500,opacity:0.75,stroke-width:2.6px,rx:7px\n"
+                    );
+                    let (svg, _) = render_depth(
+                        &source,
+                        config(layout, html),
+                        Some(&theme),
+                        &SvgDebugOptions::default(),
+                        RenderResourcePolicy::default(),
+                    )
+                    .unwrap();
+                    let context = format!("{layout}/{html}/{nested}/{declarations}");
+                    let selector = if html { ".nodes>*{" } else { ".nodes rect{" };
+                    let opacity = declarations.split(',').next().unwrap();
+                    assert!(
+                        svg.contains(&format!("{selector}{opacity}!important;")),
+                        "{context}"
+                    );
+                    let doc = roxmltree::Document::parse(&svg).unwrap();
+                    if html && nested && layout == "dagre" {
+                        // .nodes>* composites the entire nested root. Keep the source
+                        // scene unchanged rather than asserting ancestry of split groups.
+                        let (baseline, _) = render_depth(
+                            &source,
+                            config(layout, html),
+                            None,
+                            &SvgDebugOptions::default(),
+                            RenderResourcePolicy::default(),
+                        )
+                        .unwrap();
+                        assert_eq!(svg, baseline, "{context}");
+                        assert!(!svg.contains("data-state-shadow-for="), "{context}");
+                        continue;
+                    }
+                    for id in ["A", "B", "C", "D"] {
+                        let body = doc
+                            .descendants()
+                            .find(|node| {
+                                node.has_tag_name("g")
+                                    && node.attribute("id").is_some_and(|dom_id| {
+                                        dom_id.contains(&format!("state-{id}-"))
+                                    })
+                            })
+                            .unwrap();
+                        let shadow = doc
+                            .descendants()
+                            .find(|node| {
+                                node.attribute("data-state-shadow-for") == body.attribute("id")
+                            })
+                            .unwrap();
+                        assert_eq!(
+                            shadow.attribute("class"),
+                            body.attribute("class"),
+                            "{id}: {context}"
+                        );
+                        assert_eq!(
+                            shadow.attribute("transform"),
+                            body.attribute("transform"),
+                            "{id}: {context}"
+                        );
+                        // Native .nodes rect and HTML .nodes>* must reach the same terminal
+                        // or compositing group, including each enclosing nested root.
+                        assert_eq!(
+                            shadow.parent().unwrap().attribute("class"),
+                            Some("nodes"),
+                            "{id}: {context}"
+                        );
+                        assert_eq!(
+                            body.parent().unwrap().attribute("class"),
+                            Some("nodes"),
+                            "{id}: {context}"
+                        );
+                        let ancestors = scene_ancestry(body);
+                        assert_eq!(scene_ancestry(shadow), ancestors, "{id}: {context}");
+                        let expected_owners =
+                            if layout == "dagre" && nested && matches!(id, "A" | "B") {
+                                2
+                            } else {
+                                1
+                            };
+                        for class in ["root", "nodes"] {
+                            assert_eq!(
+                                ancestors
+                                    .iter()
+                                    .filter(|(owner, _)| *owner == class)
+                                    .count(),
+                                expected_owners,
+                                "{id}/{class}: {context}"
+                            );
+                        }
+                        let face = body
+                            .children()
+                            .find(|node| node.has_tag_name("rect"))
+                            .unwrap();
+                        let mask = shadow
+                            .children()
+                            .find(|node| node.has_tag_name("rect"))
+                            .unwrap();
+                        for attribute in ["class", "style", "x", "y", "width", "height", "rx", "ry"]
+                        {
+                            assert_eq!(
+                                mask.attribute(attribute),
+                                face.attribute(attribute),
+                                "{id}/{attribute}: {context}"
+                            );
+                        }
+                        assert!(face.attribute("filter").is_none(), "{id}: {context}");
+                        assert!(mask.attribute("filter").is_some(), "{id}: {context}");
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn negative_child_depth_stays_behind_composite_labels_across_nested_roots() {
+    let theme = state_hard_shadow_theme_with(DiagramThemeCompiler::new(), 0.0, -40.0, None);
+    for layout in ["dagre", "elk"] {
+        if layout == "elk" && !cfg!(feature = "layout-elk") {
+            continue;
+        }
+        for html in [false, true] {
+            for source in [
+                "stateDiagram-v2\nstate Review {\nA --> B\n}\n",
+                "stateDiagram-v2\nstate Review {\nstate Inner {\nA --> B\n}\n}\nReview --> Done: finished\n",
+            ] {
+                let (baseline, _) = render_depth(
+                    source,
+                    config(layout, html),
+                    None,
+                    &SvgDebugOptions::default(),
+                    RenderResourcePolicy::default(),
+                )
+                .unwrap();
+                let (svg, _) = render_depth(
+                    source,
+                    config(layout, html),
+                    Some(&theme),
+                    &SvgDebugOptions::default(),
+                    RenderResourcePolicy::default(),
+                )
+                .unwrap();
+                let context = format!("{layout}/{html}/{source}");
+                let baseline_doc = roxmltree::Document::parse(&baseline).unwrap();
+                let doc = roxmltree::Document::parse(&svg).unwrap();
+                let last_depth = doc
+                    .descendants()
+                    .filter(|node| node.attribute("data-state-shadow-for").is_some())
+                    .map(|node| node.range().end)
+                    .max()
+                    .unwrap();
+                assert!(
+                    doc.descendants()
+                        .any(|node| node.has_tag_name("feOffset")
+                            && node.attribute("dy") == Some("-40")),
+                    "{context}"
+                );
+                let labels: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("cluster-label"))
+                    .collect();
+                assert_eq!(
+                    labels.len(),
+                    if source.contains("Inner") { 2 } else { 1 },
+                    "{context}"
+                );
+                // The -40px shadow crosses Review's/Inner's title band. Every composite
+                // label must paint after all depth, not only the depth in its own root.
+                for label in labels {
+                    assert!(last_depth < label.range().start, "{context}");
+                    let owner = label.parent().unwrap().attribute("id").unwrap();
+                    let before = baseline_doc
+                        .descendants()
+                        .find(|node| {
+                            node.attribute("class") == Some("cluster-label")
+                                && node.parent().and_then(|parent| parent.attribute("id"))
+                                    == Some(owner)
+                        })
+                        .unwrap();
+                    assert_eq!(&svg[label.range()], &baseline[before.range()], "{context}");
+                }
+                for edge in doc
+                    .descendants()
+                    .filter(|node| node.attribute("data-edge") == Some("true"))
+                {
+                    assert!(last_depth < edge.range().start, "{context}");
+                }
+                let surfaces: Vec<_> = doc
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("rect")
+                            && matches!(node.attribute("class"), Some("outer" | "inner"))
+                    })
+                    .collect();
+                assert_eq!(
+                    surfaces.len(),
+                    if source.contains("Inner") { 4 } else { 2 },
+                    "{context}"
+                );
+                for surface in surfaces {
+                    assert!(
+                        surface
+                            .ancestors()
+                            .any(|node| node.attribute("data-state-depth") == Some("true")),
+                        "{context}"
+                    );
+                }
+                let mut ids = std::collections::BTreeSet::new();
+                for id in doc.descendants().filter_map(|node| node.attribute("id")) {
+                    assert!(ids.insert(id), "duplicate {id}: {context}");
+                }
             }
         }
     }
@@ -303,10 +580,7 @@ fn shadow_visibility_follows_nodes_hidden_prefixes_and_nested_roots() {
                         .descendants()
                         .find(|n| n.attribute("id") == Some(id))
                         .unwrap();
-                    assert_eq!(
-                        shadow.parent().unwrap().parent(),
-                        body.parent().unwrap().parent()
-                    );
+                    assert_eq!(scene_ancestry(shadow), scene_ancestry(body));
                 }
             }
         }
@@ -379,24 +653,53 @@ fn absent_cleared_and_unsupported_effects_do_not_add_depth_layers() {
         if layout == "elk" && !cfg!(feature = "layout-elk") {
             continue;
         }
-        let (baseline, _) = render_depth(
-            source,
-            config(layout, false),
-            None,
-            &SvgDebugOptions::default(),
-            RenderResourcePolicy::default(),
-        )
-        .unwrap();
-        let (cleared, _) = render_depth(
-            source,
-            config(layout, false),
-            Some(&clear),
-            &SvgDebugOptions::default(),
-            RenderResourcePolicy::default(),
-        )
-        .unwrap();
-        assert_eq!(baseline, cleared);
-        assert!(!cleared.contains("state-node-shadows"));
+        for html in [false, true] {
+            for graph in [
+                source,
+                "stateDiagram-v2\nstate Review {\nstate Inner {\nA --> B\n}\n}\nReview --> Done\nstyle A filter:url(#source-filter)\n",
+            ] {
+                let (baseline, _) = render_depth(
+                    graph,
+                    config(layout, html),
+                    None,
+                    &SvgDebugOptions::default(),
+                    RenderResourcePolicy::default(),
+                )
+                .unwrap();
+                let (cleared, _) = render_depth(
+                    graph,
+                    config(layout, html),
+                    Some(&clear),
+                    &SvgDebugOptions::default(),
+                    RenderResourcePolicy::default(),
+                )
+                .unwrap();
+                assert_eq!(baseline, cleared, "{layout}/{html}/{graph}");
+                assert!(!cleared.contains("data-state-depth="));
+                let doc = roxmltree::Document::parse(&cleared).unwrap();
+                for root in doc
+                    .descendants()
+                    .filter(|node| node.attribute("class") == Some("root"))
+                {
+                    assert_eq!(
+                        root.children()
+                            .filter(roxmltree::Node::is_element)
+                            .map(|node| node.attribute("class").unwrap())
+                            .collect::<Vec<_>>(),
+                        [
+                            "clusters",
+                            if layout == "elk" {
+                                "edges edgePaths"
+                            } else {
+                                "edgePaths"
+                            },
+                            "edgeLabels",
+                            "nodes"
+                        ],
+                    );
+                }
+            }
+        }
     }
     let theme = depth_theme(
         EffectComposition::Cascade,
@@ -451,7 +754,7 @@ fn absent_cleared_and_unsupported_effects_do_not_add_depth_layers() {
             RenderResourcePolicy::default(),
         )
         .unwrap();
-        assert!(!svg.contains("state-node-shadows"));
+        assert!(!svg.contains("data-state-depth="));
         assert!(!svg.contains("theme-effect-body-depth"));
     }
 }

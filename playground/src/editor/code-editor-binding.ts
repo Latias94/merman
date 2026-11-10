@@ -43,6 +43,8 @@ export function bindCodeEditor(
       while (storeValue !== next) {
         storeValue = next;
         if (value !== next) {
+          // Keep external replacements separate from the user's current typing group.
+          instance.pushUndoStop();
           instance.executeEdits("", [{
             range: model.getFullModelRange(), text: next, forceMoveMarkers: true,
           }]);

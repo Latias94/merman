@@ -128,12 +128,19 @@ Number rounding, signed zero, and overflow; their editor ranges include an autho
 and intervening whitespace. SVG label coordinates use JavaScript Number text, including
 nonfinite values, while the map's root viewport retains its ordinary finite dimensions.
 
-These Block, Packet, Radar, and Wardley canonical numeric fields retain finite integer JSON
-shapes where representable, preserve negative zero, and encode nonfinite values as exactly
-`"Infinity"`, `"-Infinity"`, or `"NaN"`. Canonical decoders accept numbers and those strings;
+These Block, Packet, Radar, Wardley, Quadrant, C4 layout, and XY Chart canonical numeric fields
+retain finite integer JSON shapes where representable, preserve negative zero, and encode nonfinite
+values as exactly `"Infinity"`, `"-Infinity"`, or `"NaN"`. Canonical decoders accept numbers and those strings;
 optional fields additionally accept `null` as absence. Compatibility JSON uses numeric
 values and projects nonfinite values as `null`, following `JSON.stringify`. Source grammars
 retain their own numeric token rules; the canonical strings do not introduce source syntax.
+
+C4 relation offsets retain their existing finite-number and literal-string JSON forms. Nonfinite
+numeric offsets use `{"number":"NaN"}`, `{"number":"Infinity"}`, or `{"number":"-Infinity"}`.
+This keeps a numeric NaN distinct from the authored string `"NaN"`, which the renderer coerces
+differently. Compatibility output continues to project nonfinite numeric offsets as `null` and
+preserves literal strings. Regenerate stored canonical data from Mermaid source if an earlier
+export erased a nonfinite value as `null`.
 
 Struct-literal consumers of `FlowEdge` add `step: None` when no step is authored.
 `FlowchartModel` carries `dropped_subgraph_members` for shared-member provenance;

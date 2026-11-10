@@ -213,17 +213,15 @@ test("the unified catalog fits a narrow viewport and closing retains the selecte
 });
 
 for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phosphor", "field-notes", "blueprint", "pop-art", "lacquer", "paper-cut", "aurora", "metro", "carbon-copy", "signal", "porcelain", "chalk"]) {
-  test(`${id} renders all eight samples with the browser runtime`, async ({ page }) => {
-    const errors = monitorBrowserErrors(page);
-    await page.addInitScript(() => {
-      if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
-    });
-    const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
-    for (const sample of CORE_THEME_SAMPLE_IDS) {
+  for (const sample of CORE_THEME_SAMPLE_IDS) {
+    test(`${id} renders the ${sample} sample with the browser runtime`, async ({ page }) => {
+      const errors = monitorBrowserErrors(page);
+      await page.addInitScript(() => {
+        if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
+      });
+      const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
       const source = await readFile(new URL(`../src/themes/samples/${sample}.mmd`, import.meta.url), "utf8");
       const config = await readFile(new URL(`../src/themes/samples/${sample}.config.json`, import.meta.url), "utf8");
-      // Share hydration runs at startup; a fragment-only navigation keeps the previous document.
-      await page.goto("about:blank");
       await page.goto(`./${encodeShareHash({
         ...DEFAULT_WORKSPACE_SNAPSHOT, code: source, mermaidConfig: config,
         diagramTheme: "auto", themeRecipeJson: recipe,
@@ -263,7 +261,7 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phospho
         expect(labels.map((label) => label.text).sort()).toEqual(["Revise", "Yes"]);
         expect(labels.map((label) => label.fill)).toEqual([expectedInk[id], expectedInk[id]]);
       }
-    }
-    errors.assertNone();
-  });
+      errors.assertNone();
+    });
+  }
 }
