@@ -743,6 +743,10 @@ impl WardleyTypedFontProbeMeasurer {
             Some(self.expected_font_family.as_str()),
             "Wardley annotation measurement must use the inherited writer's resolved winner"
         );
+        assert_eq!(
+            style.font_size, 11.0,
+            "annotation text has a fixed upstream size"
+        );
     }
 }
 
@@ -924,6 +928,300 @@ fn wardley_explicit_site_and_source_font_paths_outrank_the_typed_stack() {
         assert_eq!(evidence.applied_count(), 0);
         assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn wardley_explicit_root_font_reaches_unthemed_svg_and_annotation_measurement() {
+    let source = "wardley-beta\nannotations [0.1, 0.2]\nannotation 1,[0.7, 0.6] \"Font winner\"\n";
+    let config = serde_json::json!({"themeVariables": {"fontFamily": "Cousine, monospace"}});
+    let plain = render_wardley(source, config.clone(), "wardley-explicit-root-font");
+    let document = roxmltree::Document::parse(&plain).unwrap();
+    assert_eq!(
+        element_with_class(&document, "g", "wardley-map").attribute("font-family"),
+        Some("Cousine,monospace")
+    );
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let environment = portable_wardley_environment().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.wardley-explicit-root-font").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(WardleyTypedFontProbeMeasurer {
+                expected_font_family: "Cousine,monospace".to_owned(),
+            }),
+        )),
+    );
+    let (layout, rendered) = try_render_wardley_with_theme(
+        source,
+        &empty_theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        ),
+        &environment,
+        "wardley-explicit-root-font",
+    )
+    .unwrap();
+    assert_eq!(layout["annotations_box"]["max_text_width"], 123.0);
+    assert_eq!(layout["annotations_box"]["max_text_height"], 17.0);
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    assert_eq!(
+        element_with_class(&document, "g", "wardley-map").attribute("font-family"),
+        Some("Cousine,monospace")
+    );
+}
+
+#[test]
+fn wardley_invalid_font_attributes_do_not_own_the_typed_stack_or_measurement() {
+    let stack = FontStack::single("TypedWardleyFont").unwrap();
+    let expected_font = stack.as_css();
+    let theme = wardley_typography_theme(ThemeTextStyle::default().with_font_stack(stack));
+    let environment = portable_wardley_environment().with_text_measurement_policy(
+        TextMeasurementPolicy::uniform(TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.wardley-invalid-font").unwrap(),
+                "test",
+            )
+            .unwrap(),
+            Arc::new(WardleyTypedFontProbeMeasurer {
+                expected_font_family: expected_font.clone(),
+            }),
+        )),
+    );
+    let diagram = "wardley-beta\nannotations [0.1, 0.2]\nannotation 1,[0.7, 0.6] \"Font winner\"\n";
+    for invalid in ["", "   ", "serif,,monospace", "24px", "serif !important"] {
+        for nested in [false, true] {
+            for from_source in [false, true] {
+                let variables = if nested {
+                    serde_json::json!({"wardley": {"fontFamily": invalid}})
+                } else {
+                    serde_json::json!({"fontFamily": invalid})
+                };
+                let config = serde_json::json!({"themeVariables": variables});
+                let source = if from_source {
+                    format!("---\nconfig: {config}\n---\n{diagram}")
+                } else {
+                    diagram.to_owned()
+                };
+                let (_, rendered) = try_render_wardley_with_theme(
+                    &source,
+                    &theme,
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            if from_source {
+                                serde_json::json!({})
+                            } else {
+                                config
+                            },
+                        ),
+                    ),
+                    &environment,
+                    "wardley-invalid-font",
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    element_with_class(&document, "g", "wardley-map").attribute("font-family"),
+                    Some(expected_font.as_str()),
+                    "{invalid}, nested={nested}, source={from_source}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn wardley_zero_size_text_does_not_prove_title_node_or_link_label_paint() {
+    let source = "wardley-beta\ntitle Hidden title\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI -> DB; Hidden link\n";
+    for (target, class) in [
+        (ThemeTarget::Title, "wardley-title"),
+        (ThemeTarget::NodeLabel, "wardley-node-label"),
+        (ThemeTarget::EdgeLabel, "wardley-link-label"),
+    ] {
+        let theme = wardley_paint_theme(ThemeRuleSet::default().with_rule(ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )));
+        for size in [0.0, 1e-50] {
+            let (layout, rendered) = try_render_wardley_with_theme(
+                source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "wardley-beta": {"axisFontSize": size, "labelFontSize": size}
+                        }),
+                    ),
+                ),
+                &portable_wardley_environment(),
+                "wardley-zero-text",
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                element_with_class(&document, "text", class).attribute("font-size"),
+                Some("0")
+            );
+            assert_eq!(layout["nodes"][0]["label_layout"]["font_size"], 0.0);
+            assert_eq!(layout["title"]["font_size"], 0.0);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0, "{target:?}, {size}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn wardley_unknown_role_sizes_preserve_attributes_and_fail_closed_for_font_and_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_family_style(
+                        DiagramFamilyId::WARDLEY,
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap()),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    let source = "wardley-beta\ncomponent API [0.7, 0.4]\n";
+    for (size, expected) in [
+        (serde_json::json!(-1), "-1"),
+        (
+            serde_json::json!("var(--wardley-size)"),
+            "var(--wardley-size)",
+        ),
+        (serde_json::json!("invalid"), "invalid"),
+        (serde_json::json!("0px !important"), "0px !important"),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "wardley-beta": {"labelFontSize": size}
+            })),
+        );
+        let (_, rendered) = try_render_wardley_with_theme(
+            source,
+            &theme,
+            engine.clone(),
+            &RenderEnvironment::deterministic(),
+            "wardley-unknown-text",
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert_eq!(
+            element_with_class(&document, "text", "wardley-node-label").attribute("font-size"),
+            Some(expected)
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 2);
+        assert_eq!(evidence.applied_count(), 0, "{size}");
+        assert_eq!(evidence.theme_residual_count(), 2, "{size}");
+        let error = try_render_wardley_with_theme(
+            source,
+            &theme,
+            engine,
+            &portable_wardley_environment(),
+            "wardley-unknown-text",
+        )
+        .err()
+        .expect("unknown host size must not certify font or text paint");
+        assert_eq!(
+            error.unverified_family_theme(),
+            Some((DiagramFamilyId::WARDLEY, 2))
+        );
+    }
+}
+
+#[test]
+fn wardley_role_sizes_keep_source_priority_units_arithmetic_and_fixed_annotations() {
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let diagram = "wardley-beta\ntitle Role sizes\ncomponent API [0.7, 0.4]\nannotations [0.1, 0.2]\nannotation 1,[0.7, 0.4] \"Fixed annotation\"\nnote \"Fixed note\" [0.4, 0.6]\naccelerator \"Faster\" [0.2, 0.8]\n";
+    for (size, title, axis, stage, label, used_px) in [
+        (
+            serde_json::json!(24),
+            "25.200000000000003",
+            "24",
+            "22",
+            "24",
+            24.0,
+        ),
+        (
+            serde_json::json!("24pt"),
+            "NaN",
+            "24pt",
+            "NaN",
+            "24pt",
+            32.0,
+        ),
+    ] {
+        for root in ["0px", "32px"] {
+            let config = serde_json::json!({
+                "themeVariables": {"fontSize": root},
+                "wardley-beta": {"axisFontSize": size, "labelFontSize": size}
+            });
+            let source = format!("---\nconfig: {config}\n---\n{diagram}");
+            let (layout, rendered) = try_render_wardley_with_theme(
+                &source,
+                &empty_theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({
+                            "wardley-beta": {"axisFontSize": 18, "labelFontSize": 16}
+                        }),
+                    ),
+                ),
+                &portable_wardley_environment(),
+                "wardley-role-sizes",
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            for (class, expected) in [
+                ("wardley-title", title),
+                ("wardley-axis-label", axis),
+                ("wardley-stage-label", stage),
+                ("wardley-node-label", label),
+            ] {
+                assert_eq!(
+                    element_with_class(&document, "text", class).attribute("font-size"),
+                    Some(expected)
+                );
+            }
+            assert_eq!(layout["axes"]["x_label"]["font_size"], used_px);
+            assert_eq!(layout["nodes"][0]["label_layout"]["font_size"], used_px);
+            for (class, expected) in [
+                ("wardley-annotation", "10"),
+                ("wardley-annotations-box", "11"),
+                ("wardley-notes", "11"),
+                ("wardley-accelerators", "10"),
+            ] {
+                let group = element_with_class(&document, "g", class);
+                let label = group
+                    .children()
+                    .find(|node| node.has_tag_name("text"))
+                    .unwrap();
+                assert_eq!(label.attribute("font-size"), Some(expected));
+            }
+        }
     }
 }
 

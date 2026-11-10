@@ -181,6 +181,7 @@ struct TimelineTextPaintEmissionState<'a> {
     neo_gradient: bool,
     event_stroke: Option<&'a str>,
     text_can_be_visible: bool,
+    text_font_size_known: bool,
     outcome: Option<crate::timeline::TimelineTextPaintOutcome>,
 }
 
@@ -203,6 +204,7 @@ impl TimelineTextPaintEmissionState<'_> {
             shape_fill,
             label_fill,
             self.text_can_be_visible && node.label_lines.iter().any(|line| !line.trim().is_empty()),
+            self.text_font_size_known,
         );
     }
 
@@ -300,14 +302,13 @@ impl<'a> TimelineTypographyEmissionState<'a> {
 
     fn record_base_text_run(&mut self, text: &str) {
         if let Some(outcome) = &mut self.outcome {
-            outcome
-                .record_base_text_run(text, self.plan.layout_settings().node_text_style.font_size);
+            outcome.record_base_text_run(text, self.plan.used_font_size_px());
         }
     }
 
     fn record_title(&mut self, text: &str) {
         if let Some(outcome) = &mut self.outcome {
-            outcome.record_title(text, self.plan.layout_settings().text_style.font_size);
+            outcome.record_title(text, self.plan.used_font_size_px());
         }
     }
 
@@ -721,7 +722,10 @@ pub(crate) fn render_timeline_diagram_svg_model(
         neo_gradient: use_neo_gradient,
         event_stroke: event_theme.stroke_for_redux(),
         outcome: text_paint.begin_emission(),
-        text_can_be_visible: typography_theme.layout_settings().node_text_style.font_size > 0.0,
+        text_can_be_visible: typography_theme
+            .used_font_size_px()
+            .is_none_or(|size| size > 0.0),
+        text_font_size_known: typography_theme.used_font_size_px().is_some(),
     };
     options.checkpoint_emit()?;
     out.push_str("<style>");
@@ -876,7 +880,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         if text_emission.text_can_be_visible
             && let Some(outcome) = &mut text_emission.outcome
         {
-            outcome.record_title(fill.is_none());
+            outcome.record_title(fill.is_none(), text_emission.text_font_size_known);
         }
     }
 

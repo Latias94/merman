@@ -1431,6 +1431,139 @@ fn tree_view_zero_sized_labels_do_not_certify_text_fill_or_font_stack() {
 }
 
 #[test]
+fn tree_view_inherited_zero_sizes_retire_only_text_consumers() {
+    for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_typography(
+                        TypographySpec::default().with_family_style(
+                            DiagramFamilyId::TREE_VIEW,
+                            ThemeTextStyle::default()
+                                .with_font_stack(FontStack::single("monospace").unwrap()),
+                        ),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default().with_rule(ThemeRule::new(
+                            target,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        )),
+                    ),
+            )
+            .unwrap();
+        for size in [
+            "inherit", "unset", "1em", "100%", "smaller", "-1px", "potato",
+        ] {
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {
+                        "fontSize": "0px", "treeView": {"labelFontSize": size}
+                    }}),
+                ),
+            );
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                "treeView-beta\nRoot/\n    file.txt ## description\n",
+                &theme,
+                engine,
+                ThemePortabilityRequirement::RequirePortable,
+                &RenderEnvironment::deterministic(),
+                "tree-inherited-zero",
+            )
+            .unwrap();
+            assert_eq!(layout.label_font_size, 0.0, "{target:?}/{size}");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| { node.attribute("class") == Some("treeView-node-description") })
+            );
+            assert!(
+                document
+                    .descendants()
+                    .any(|node| { node.attribute("class") == Some("treeView-node-line") })
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "{target:?}/{size}");
+            assert_eq!(evidence.accounted_count(), 2, "{target:?}/{size}");
+            assert_eq!(evidence.applied_count(), 0, "{target:?}/{size}");
+            assert_eq!(evidence.not_applicable_count(), 2, "{target:?}/{size}");
+            assert_eq!(evidence.theme_residual_count(), 0, "{target:?}/{size}");
+        }
+    }
+}
+
+#[test]
+fn tree_view_unknown_label_sizes_do_not_certify_text_paint() {
+    for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
+        let theme = tree_view_rules_theme([
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+            ),
+            ThemeRule::new(
+                ThemeTarget::Edge,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#654321").unwrap()),
+            ),
+        ]);
+        for (size, root) in [
+            ("calc(0px)", "32px"),
+            ("var(--tree-size, 0px)", "32px"),
+            ("1em", "calc(0px)"),
+            ("1rem", "32px"),
+        ] {
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"themeVariables": {
+                            "fontSize": root, "treeView": {"labelFontSize": size}
+                        }}),
+                    ),
+                )
+            };
+            let source = "treeView-beta\nRoot/\n    file.txt\n";
+            let (_, rendered) = try_render_tree_view_with_theme_and_environment(
+                source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::BestEffort,
+                &RenderEnvironment::deterministic(),
+                "tree-unknown-text-paint",
+            )
+            .unwrap();
+            assert!(tree_view_stylesheet(rendered.svg()).contains(&format!("font-size: {size};")));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 2, "{target:?}/{size}/{root}");
+            assert_eq!(evidence.accounted_count(), 2, "{target:?}/{size}/{root}");
+            assert_eq!(evidence.applied_count(), 1, "{target:?}/{size}/{root}");
+            assert_eq!(
+                evidence.not_applicable_count(),
+                0,
+                "{target:?}/{size}/{root}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                1,
+                "{target:?}/{size}/{root}"
+            );
+            assert!(
+                try_render_tree_view_with_theme_and_environment(
+                    source,
+                    &theme,
+                    engine(),
+                    ThemePortabilityRequirement::RequirePortable,
+                    &RenderEnvironment::deterministic(),
+                    "tree-unknown-text-paint",
+                )
+                .is_err()
+            );
+        }
+    }
+}
+
+#[test]
 fn tree_view_zero_sized_text_keeps_geometry_residuals_but_retires_fill_winners() {
     for target in [ThemeTarget::Text, ThemeTarget::NodeLabel] {
         for (ordinal, clear) in [(false, false), (true, false), (false, true)] {

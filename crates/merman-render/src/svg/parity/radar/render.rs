@@ -70,9 +70,9 @@ where
     }
     let _ = write!(
         out,
-        r#"#{} .radarAxisLabel{{font-size:{}px;color:{};}}"#,
+        r#"#{} .radarAxisLabel{{font-size:{};color:{};}}"#,
         diagram_id,
-        fmt(theme.axis_label_font_size.css_px()),
+        theme.axis_label_font_size.css(),
         axis_paint.axis_color()
     );
     out.checkpoint()?;
@@ -91,9 +91,9 @@ where
     out.checkpoint()?;
     let _ = write!(
         out,
-        r#"#{} .radarLegendText{{text-anchor:start;font-size:{}px;dominant-baseline:hanging;}}"#,
+        r#"#{} .radarLegendText{{text-anchor:start;font-size:{};dominant-baseline:hanging;}}"#,
         diagram_id,
-        fmt(theme.legend_font_size.css_px())
+        theme.legend_font_size.css()
     );
     out.checkpoint()?;
 

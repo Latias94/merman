@@ -101,6 +101,7 @@ impl PaintRules {
         style: &ResolvedThemeStyle,
         source_owned: [bool; 2],
         paints: [Option<&DirectPaintExpectation>; 2],
+        visibility_known: bool,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         work_meter.charge(self.facets.len())?;
@@ -120,6 +121,10 @@ impl PaintRules {
                 .observations
                 .get_mut(&origin.rule_index())
                 .expect("registered Radar rule");
+            if !visibility_known {
+                observation.residual = Some(FamilyThemeResidualReason::UnsupportedTypography);
+                continue;
+            }
             if let Some(paint) = paint_index.and_then(|index| paints[index])
                 && paint.rule_index() == origin.rule_index()
             {

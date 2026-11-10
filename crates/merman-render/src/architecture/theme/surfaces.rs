@@ -105,6 +105,7 @@ impl ArchitectureSurfaceThemePlan {
         &self,
         evidence: &mut FamilyThemeOutcomes,
         emission: Option<&ArchitectureSurfaceRenderState>,
+        font_size_known: bool,
     ) {
         // The Cytoscape SVG writer emits service/group labels, but never model.title or a
         // frontmatter diagram title. Those labels retain their own semantic paint targets.
@@ -112,7 +113,7 @@ impl ArchitectureSurfaceThemePlan {
             evidence.mark_not_applicable(key.clone());
         }
         if let Some(emission) = emission {
-            emission.apply_to_evidence(evidence);
+            emission.apply_to_evidence(evidence, font_size_known);
         }
     }
 }

@@ -2,7 +2,6 @@ use std::sync::OnceLock;
 
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::config_theme_or_root_font_size_px_opt;
 use crate::diagram_theme::{
     FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey, ResolvedDiagramTheme,
     ThemeCapability, ThemeTypographyProperty,
@@ -16,6 +15,7 @@ pub(crate) struct TimelineTypographyThemePlan {
     common_css: crate::svg::PreparedCommonCss,
     layout_settings: super::config::TimelineLayoutSettings,
     inherited_font_stack: InheritedFontStackPlan,
+    used_font_size_px: Option<f64>,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     terminal: OnceLock<TimelineTypographyOutcome>,
@@ -25,6 +25,8 @@ pub(crate) struct TimelineTypographyThemePlan {
 pub(crate) struct TimelineTypographyOutcome {
     has_visible_node_text: bool,
     has_visible_title: bool,
+    has_unverified_node_text: bool,
+    has_unverified_title: bool,
 }
 
 impl TimelineTypographyThemePlan {
@@ -52,33 +54,27 @@ impl TimelineTypographyThemePlan {
         });
         // Root `fontSize` remains Timeline's independent layout-offset owner. Only an explicit
         // theme-variable value shadows the typed base-size route itself.
+        let configured_font_size =
+            super::TimelineConfigView::new(effective_config.as_value()).configured_font_size();
         let config_owns_font_size = typed_font_size_requested
-            && crate::config::config_f64_css_absolute_px(
-                effective_config.as_value(),
-                &["themeVariables", "fontSize"],
-            )
-            .filter(|size| *size >= 0.0)
-            .is_some()
+            && configured_font_size.is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
-        let (font_size_px, font_size_css) = match theme {
+        let font_size = match theme {
             Some(theme) if typed_font_size_active => {
                 let font_size_px = theme.typography().font_size_px();
-                (f64::from(font_size_px), format!("{font_size_px}px"))
+                super::config::TimelineFontSize {
+                    css: format!("{font_size_px}px"),
+                    used_px: Some(f64::from(font_size_px)),
+                }
             }
-            _ => {
-                let font_size_px =
-                    config_theme_or_root_font_size_px_opt(effective_config.as_value())
-                        .filter(|size| *size >= 0.0)
-                        .unwrap_or(16.0);
-                (font_size_px, format!("{font_size_px}px"))
-            }
+            _ => configured_font_size.unwrap_or_default(),
         };
 
         let mut common_css = crate::svg::PreparedCommonCss::with_resolved_typography(
             effective_config.as_value(),
             inherited_font_stack.font_family_css().to_owned(),
-            font_size_css,
+            font_size.css,
         );
         if let Some(fill) = text_fill {
             common_css = common_css.with_text_color(fill);
@@ -86,13 +82,14 @@ impl TimelineTypographyThemePlan {
         let layout_settings = super::TimelineConfigView::new(effective_config.as_value())
             .layout_settings_with_resolved_typography(
                 Some(inherited_font_stack.font_family_css()),
-                Some(font_size_px),
+                Some(font_size.used_px.unwrap_or(16.0)),
             );
         Self {
             css_binding: super::TimelineCssBinding::resolve(effective_config.as_value()),
             common_css,
             layout_settings,
             inherited_font_stack,
+            used_font_size_px: font_size.used_px,
             typed_font_size_requested,
             typed_font_size_active,
             terminal: OnceLock::new(),
@@ -109,6 +106,10 @@ impl TimelineTypographyThemePlan {
 
     pub(crate) fn layout_settings(&self) -> &super::config::TimelineLayoutSettings {
         &self.layout_settings
+    }
+
+    pub(crate) const fn used_font_size_px(&self) -> Option<f64> {
+        self.used_font_size_px
     }
 
     pub(crate) fn typography_requested(&self) -> bool {
@@ -136,8 +137,15 @@ impl TimelineTypographyThemePlan {
         {
             let has_visible_consumer = outcome.is_none_or(|outcome| match property {
                 // The title owns its bold weight independently of inherited node typography.
-                ThemeTypographyProperty::FontWeight => outcome.has_visible_node_text,
-                _ => outcome.has_visible_node_text || outcome.has_visible_title,
+                ThemeTypographyProperty::FontWeight => {
+                    outcome.has_visible_node_text || outcome.has_unverified_node_text
+                }
+                _ => {
+                    outcome.has_visible_node_text
+                        || outcome.has_visible_title
+                        || outcome.has_unverified_node_text
+                        || outcome.has_unverified_title
+                }
             });
             let key = FamilyThemeMechanismKey::Typography(property);
             if has_visible_consumer {
@@ -172,12 +180,13 @@ impl TimelineTypographyThemePlan {
             return;
         };
 
-        for (property, requested, active, has_visible_consumer) in [
+        for (property, requested, active, has_visible_consumer, has_unverified_consumer) in [
             (
                 ThemeTypographyProperty::FontStack,
                 self.inherited_font_stack.typed_font_stack_requested(),
                 self.inherited_font_stack.typed_font_stack_active(),
                 outcome.has_visible_node_text || outcome.has_visible_title,
+                outcome.has_unverified_node_text || outcome.has_unverified_title,
             ),
             (
                 ThemeTypographyProperty::FontSize,
@@ -185,32 +194,42 @@ impl TimelineTypographyThemePlan {
                 self.typed_font_size_active,
                 // The title's explicit 4ex size is not an inherited font-size declaration.
                 outcome.has_visible_node_text,
+                outcome.has_unverified_node_text,
             ),
         ] {
             if !requested {
                 continue;
             }
             let key = FamilyThemeMechanismKey::Typography(property);
-            if !has_visible_consumer || !active {
+            if !active {
                 evidence.mark_not_applicable(key);
-            } else if outcome.has_visible_node_text
-                && !self.css_binding.section_font_weight_is_measurable()
+            } else if has_unverified_consumer
+                || (outcome.has_visible_node_text
+                    && !self.css_binding.section_font_weight_is_measurable())
             {
                 evidence.mark_residual(key, FamilyThemeResidualReason::UnsupportedTypography);
-            } else {
+            } else if has_visible_consumer {
                 evidence.mark_applied_with_capabilities(key, [ThemeCapability::Typography]);
+            } else {
+                evidence.mark_not_applicable(key);
             }
         }
     }
 }
 
 impl TimelineTypographyOutcome {
-    pub(crate) fn record_base_text_run(&mut self, text: &str, font_size_px: f64) {
-        self.has_visible_node_text |= font_size_px > 0.0 && !text.trim().is_empty();
+    pub(crate) fn record_base_text_run(&mut self, text: &str, font_size_px: Option<f64>) {
+        if !text.trim().is_empty() {
+            self.has_visible_node_text |= font_size_px.is_some_and(|size| size > 0.0);
+            self.has_unverified_node_text |= font_size_px.is_none();
+        }
     }
 
-    pub(crate) fn record_title(&mut self, text: &str, parent_font_size_px: f64) {
-        self.has_visible_title |= parent_font_size_px > 0.0 && !text.trim().is_empty();
+    pub(crate) fn record_title(&mut self, text: &str, parent_font_size_px: Option<f64>) {
+        if !text.trim().is_empty() {
+            self.has_visible_title |= parent_font_size_px.is_some_and(|size| size > 0.0);
+            self.has_unverified_title |= parent_font_size_px.is_none();
+        }
     }
 }
 

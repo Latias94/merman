@@ -1280,6 +1280,64 @@ fn architecture_zero_root_size_keeps_icon_box_and_visible_descendant_family() {
 }
 
 #[test]
+fn architecture_unknown_root_size_keeps_independent_icon_text_font_stack() {
+    let theme = architecture_typography_theme(
+        ThemeTextStyle::default().with_font_stack(FontStack::single("Cousine").unwrap()),
+    );
+    for (fragment, applied, residuals) in [
+        ("<span style='font-size:12px'>X</span>", 1, 0),
+        ("<span style='font-size:0px'>X</span>", 0, 0),
+        ("<span style='font-size:1em'>X</span>", 0, 1),
+        ("X", 0, 1),
+    ] {
+        for from_source in [false, true] {
+            let body = format!("architecture-beta\nservice api \"{fragment}\"\n");
+            let config = json!({"themeVariables":{"fontSize":"calc(0px)"}});
+            let (source, mut site) = if from_source {
+                (format!("---\nconfig: {config}\n---\n{body}"), json!({}))
+            } else {
+                (body, config)
+            };
+            site["architecture"] = json!({"numIter":1,"randomize":false});
+            let (parsed, options, session) = prepare_architecture_with_theme_and_environment(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                RenderEnvironment::deterministic(),
+            );
+            let rendered = family::prepare(&parsed, &options, session)
+                .unwrap()
+                .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default());
+            if residuals != 0 {
+                assert_eq!(
+                    rendered
+                        .err()
+                        .expect("unknown visibility remains residual")
+                        .unverified_family_theme(),
+                    Some((DiagramFamilyId::ARCHITECTURE, residuals)),
+                    "{fragment}: source={from_source}"
+                );
+                continue;
+            }
+            let rendered = rendered.expect("fixed child visibility proves inherited font stack");
+            assert!(architecture_stylesheet(rendered.svg()).contains("font-size:calc(0px);"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(
+                evidence.applied_count(),
+                applied,
+                "{fragment}: source={from_source}"
+            );
+            assert_eq!(evidence.not_applicable_count(), 1 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn architecture_svg_honors_mermaid_11_15_style_theme_variables() {
     let engine = MermaidEngine::new().with_site_config(merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
         "secure": ["secure", "securityLevel", "startOnLoad", "maxTextSize", "suppressErrorRendering", "maxEdges"]
@@ -1662,6 +1720,7 @@ fn architecture_ignored_base_size_leaves_typed_svg_size_available() {
     for (value, expected) in [
         (json!(false), 29.0),
         (json!("bad"), 29.0),
+        (json!("calc(24px);fill:red"), 29.0),
         (serde_json::Value::Null, 29.0),
         (json!({}), 29.0),
         (json!([]), 29.0),
@@ -1669,6 +1728,9 @@ fn architecture_ignored_base_size_leaves_typed_svg_size_available() {
         (json!("-2px"), 29.0),
         (json!(0), 0.0),
         (json!("0px"), 0.0),
+        (json!("0em"), 0.0),
+        (json!("0%"), 0.0),
+        (json!("0rem"), 0.0),
         (json!(0.5), 0.5),
         (json!("0.5px"), 0.5),
         (json!(23), 23.0),
@@ -1725,6 +1787,86 @@ fn architecture_ignored_theme_size_does_not_promote_the_root_fallback_to_owner()
     let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
     assert_eq!(evidence.applied_count(), 1);
     assert_eq!(evidence.not_applicable_count(), 0);
+}
+
+#[test]
+fn architecture_host_root_sizes_preserve_css_without_certifying_estimates() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap())
+                            .with_font_size_px(29.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Text,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    let body = "architecture-beta\nservice api(server)[API]\n";
+    for size in [
+        "1em",
+        "100%",
+        "1rem",
+        "calc(24px)",
+        "var(--audit-size, 24px)",
+        "calc(24px);",
+        "1em;",
+        "100%;",
+    ] {
+        for from_source in [false, true] {
+            if from_source && (size.starts_with("var(") || size.ends_with(';')) {
+                // Source admission excludes host substitutions and declaration terminators.
+                continue;
+            }
+            let config = json!({"themeVariables":{"fontSize":size}});
+            let (source, mut site) = if from_source {
+                (format!("---\nconfig: {config}\n---\n{body}"), json!({}))
+            } else {
+                (body.to_owned(), config)
+            };
+            site["architecture"] = json!({"numIter":1, "randomize":false, "fontSize":19});
+            let parsed = common::install_parse_compatibility(
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+            )
+            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+            let host = Arc::new(CountingArchitectureHost::default());
+            let session = counting_architecture_environment(Arc::clone(&host))
+                .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            assert!(
+                architecture_stylesheet(rendered.svg()).contains(&format!("font-size:{size};"))
+            );
+            assert!(!architecture_stylesheet(rendered.svg()).contains("font-size:29px;"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0, "{size}: source={from_source}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 2);
+            let styles = host.styles.lock().unwrap();
+            assert!(styles.iter().any(|style| {
+                style.font_family.as_deref() == Some("Helvetica Neue,Helvetica,sans-serif")
+                    && style.font_size == 19.0
+            }));
+        }
+    }
 }
 
 #[test]

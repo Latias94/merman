@@ -354,6 +354,26 @@ fn gantt_font_ownership_follows_the_consumed_configuration_value() {
                 1,
             ),
             (
+                serde_json::json!({"gantt": {"fontFamily": "24px"}}),
+                "\"Courier New\"",
+                1,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": "serif,,monospace"}}),
+                "\"Courier New\"",
+                1,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": "var(--font),,serif"}}),
+                "\"Courier New\"",
+                1,
+            ),
+            (
+                serde_json::json!({"gantt": {"fontFamily": "24px"}, "themeVariables": {"fontFamily": "Georgia"}}),
+                "Georgia",
+                0,
+            ),
+            (
                 serde_json::json!({"gantt": {"fontFamily": "Georgia"}, "themeVariables": {"fontFamily": "Verdana"}, "fontFamily": "Arial"}),
                 "Georgia",
                 0,

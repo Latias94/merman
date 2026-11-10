@@ -11,6 +11,7 @@ use merman_model::families::wardley::WardleyDiagramModel;
 struct WardleyPaintContext<'a> {
     plan: TerminalPaintPlan<'a>,
     base: &'a crate::wardley::WardleyPaintBinding,
+    typography: &'a crate::wardley::WardleyTypographyThemePlan,
     text_ordinals: std::collections::BTreeMap<ThemeTarget, usize>,
 }
 
@@ -18,6 +19,7 @@ impl WardleyPaintContext<'_> {
     fn text_fill(
         &mut self,
         role: crate::wardley::WardleyTextRole,
+        can_be_visible: bool,
     ) -> Result<Option<TerminalPaint>> {
         use crate::wardley::WardleyTextRole as Role;
         let shared_paths: &[&str] = &[self.base.axis_text_color_source];
@@ -61,6 +63,9 @@ impl WardleyPaintContext<'_> {
         let ordinal = self.text_ordinals.entry(target).or_default();
         *ordinal += 1;
         let ordinal = *ordinal;
+        if !can_be_visible {
+            return Ok(None);
+        }
         let style = self.plan.style(target, ordinal, true)?;
         let fill = self.plan.paint(
             target,
@@ -167,10 +172,20 @@ fn write_text(
     surface_receipt: &mut crate::wardley::WardleySurfaceReceipt,
     paint_context: &mut WardleyPaintContext<'_>,
 ) -> Result<()> {
+    let fallback_size;
+    let font_size = match paint_context.typography.font_size(role) {
+        Some(size) => size,
+        None => {
+            fallback_size = crate::wardley::WardleyFontSize::numeric(text.font_size);
+            &fallback_size
+        }
+    };
+    let used_font_size = font_size.used_px;
+    let font_size_css = font_size.css.clone();
     let typed_fill = if text.text.trim().is_empty() {
         None
     } else {
-        paint_context.text_fill(role)?
+        paint_context.text_fill(role, used_font_size != Some(0.0))?
     };
     if typed_fill.is_some() {
         surface_receipt.paint_overridden_text_roles.insert(role);
@@ -186,7 +201,7 @@ fn write_text(
         ryu_js::Buffer::new().format(text.x),
         ryu_js::Buffer::new().format(text.y),
         escape_attr_display(fill),
-        fmt(text.font_size)
+        escape_attr_display(&font_size_css)
     );
     if style.include_font_weight {
         let _ = write!(out, r#" font-weight="{}""#, font_weight(text.font_weight));
@@ -210,8 +225,10 @@ fn write_text(
     }
     let _ = write!(out, ">{}</text>", escape_xml_display(&text.text));
     out.checkpoint()?;
-    surface_receipt.record_text(role, style.class, &text.text, fill);
-    paint_context.plan.record(typed_fill.as_ref(), fill);
+    surface_receipt.record_text(role, &text.text, fill, used_font_size);
+    if used_font_size.is_some_and(|size| size > 0.0) {
+        paint_context.plan.record(typed_fill.as_ref(), fill);
+    }
     Ok(())
 }
 
@@ -1208,6 +1225,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
             options.work_meter(),
         )?,
         base: typography_theme.base_paint_binding(),
+        typography: typography_theme,
         text_ordinals: std::collections::BTreeMap::new(),
     };
 
@@ -1231,6 +1249,7 @@ pub(crate) fn render_wardley_diagram_svg_model(
             escape_attr_display(typography_theme.font_family_css())
         );
         out.checkpoint()?;
+        surface_receipt.record_font_family(typography_theme.font_family_css());
     } else {
         out.push_str(r#"<g class="wardley-map">"#);
         out.checkpoint()?;
@@ -1393,6 +1412,7 @@ mod tests {
             )
             .unwrap(),
             base: typography.base_paint_binding(),
+            typography: &typography,
             text_ordinals: std::collections::BTreeMap::new(),
         };
         write_nodes(

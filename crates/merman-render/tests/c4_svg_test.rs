@@ -1997,6 +1997,7 @@ fn c4_ignored_base_size_leaves_typed_title_size_available() {
     for (value, expected) in [
         (serde_json::json!(false), "29"),
         (serde_json::json!("bad"), "29"),
+        (serde_json::json!("calc(24px);fill:red"), "29"),
         (serde_json::Value::Null, "29"),
         (serde_json::json!({}), "29"),
         (serde_json::json!([]), "29"),
@@ -2006,6 +2007,9 @@ fn c4_ignored_base_size_leaves_typed_title_size_available() {
         (serde_json::json!("23px"), "23"),
         (serde_json::json!(0), "0"),
         (serde_json::json!("0px"), "0"),
+        (serde_json::json!("0em"), "0"),
+        (serde_json::json!("0%"), "0"),
+        (serde_json::json!("0rem"), "0"),
         (serde_json::json!(0.5), "0.5"),
         (serde_json::json!("0.5px"), "0.5"),
         (serde_json::json!(1e-7), "0.0000001"),
@@ -2268,8 +2272,13 @@ fn c4_host_measurement_resolves_inherited_fonts_without_rewriting_css() {
                 }),
                 "legacy dual-font probes may use sans-serif, never unresolved inheritance"
             );
+            let family_css = if family.is_empty() {
+                String::new()
+            } else {
+                format!("font-family:{family};")
+            };
             assert!(rendered.svg().contains(&format!(
-                ".c4-shape.c4-system .label{{font-family:{family};font-size:20px;font-weight:600;}}"
+                ".c4-shape.c4-system .label{{{family_css}font-size:20px;font-weight:600;}}"
             )));
             assert!(rendered.svg().contains(&format!("font-family: {family};")));
             let evidence =
@@ -2607,6 +2616,306 @@ fn c4_unknown_font_owners_remain_property_local_residuals() {
             assert_eq!(evidence.applied_count(), usize::from(has_title));
             assert_eq!(evidence.not_applicable_count(), usize::from(!has_title));
             assert_eq!(evidence.theme_residual_count(), 1, "{family}, {source}");
+        }
+    }
+}
+
+#[test]
+fn c4_element_css_sizes_keep_source_units_inheritance_and_evidence() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    let body = "C4Context\nSystem(a, \"NodeName\", \"NodeDescription\")\n";
+    for (raw, used, css, inherits) in [
+        (serde_json::json!(""), 29.0, None, true),
+        (serde_json::json!(false), 29.0, None, true),
+        (serde_json::json!("bad"), 29.0, None, true),
+        (serde_json::json!("24"), 29.0, None, true),
+        (serde_json::json!("24pt"), 32.0, Some("24pt"), false),
+        (serde_json::json!("150%"), 43.5, Some("150%"), false),
+        (serde_json::json!("0em"), 0.0, Some("0em"), false),
+        (serde_json::json!("0rem"), 0.0, Some("0rem"), false),
+        (serde_json::json!("inherit"), 29.0, Some("inherit"), true),
+        (serde_json::json!("unset"), 29.0, Some("unset"), true),
+    ] {
+        for from_source in [false, true] {
+            let config = serde_json::json!({"c4": {
+                "wrap":false, "systemFontFamily":"inherit", "systemFontSize":raw,
+                "systemFontWeight":600
+            }});
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config)
+            };
+            let (rendered, probes, _) = render_c4_with_font_host(&source, site, &theme);
+            let stylesheet = roxmltree::Document::parse(rendered.svg())
+                .unwrap()
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .unwrap()
+                .text()
+                .unwrap()
+                .to_owned();
+            let rule = stylesheet
+                .split(".c4-shape.c4-system .label{")
+                .nth(1)
+                .unwrap()
+                .split('}')
+                .next()
+                .unwrap();
+            match css {
+                Some(css) => assert!(rule.contains(&format!("font-size:{css};")), "{raw}: {rule}"),
+                None => assert!(!rule.contains("font-size:"), "{raw}: {rule}"),
+            }
+            for (text, size, weight) in [
+                ("NodeName", used, "bold"),
+                ("[Software System]", used * 0.75, "600"),
+                ("NodeDescription", used * 0.82, "600"),
+            ] {
+                if used > 0.0 {
+                    assert!(
+                        probes.iter().any(|(actual, operation, style)| {
+                            actual == text
+                                && *operation == TextMeasurementOperation::BBoxX
+                                && (style.font_size - size).abs() < 1e-9
+                                && style.font_family.as_deref() == Some("Cousine")
+                                && style.font_weight.as_deref() == Some(weight)
+                        }),
+                        "{raw}, {text}: {probes:?}"
+                    );
+                }
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let applied = usize::from(used > 0.0) * (1 + usize::from(inherits));
+            assert_eq!(
+                evidence.applied_count(),
+                applied,
+                "{raw}: source={from_source}"
+            );
+            assert_eq!(evidence.not_applicable_count(), 2 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn c4_element_cssom_rejects_literal_priority_before_normalizing_fonts() {
+    let theme = c4_typography_theme(FontStack::single("Cousine").unwrap(), 29.0);
+    let source = "C4Context\nSystem(a, \"NodeName\", \"NodeDescription\")\n";
+    for (family, size, family_css, size_css, used, inherits_family, inherits_size) in [
+        (
+            "serif !important",
+            "24px !important",
+            None,
+            None,
+            29.0,
+            true,
+            true,
+        ),
+        (
+            r#""A: B", serif !important"#,
+            "0em !important",
+            None,
+            None,
+            29.0,
+            true,
+            true,
+        ),
+        ("serif;", "24pt !IMPORTANT", None, None, 29.0, true, true),
+        ("inherit", "24px;", Some("inherit"), None, 29.0, true, true),
+        (
+            "inherit",
+            "calc(24px);",
+            Some("inherit"),
+            None,
+            29.0,
+            true,
+            true,
+        ),
+        (
+            r#""A: !important", serif"#,
+            "24pt",
+            Some(r#""A: !important",serif"#),
+            Some("24pt"),
+            32.0,
+            false,
+            false,
+        ),
+        (
+            "inherit !IMPORTANT",
+            "unset !important",
+            Some("inherit !important"),
+            Some("unset !important"),
+            29.0,
+            true,
+            true,
+        ),
+    ] {
+        // Source presentation filtering rejects unquoted priority before the family adapter.
+        // Site input exercises the actual raw CSSOM boundary retained by Mermaid's C4 stylesheet.
+        let config = serde_json::json!({"c4": {"wrap":false,
+            "systemFontFamily":family,"systemFontSize":size,"systemFontWeight":600}});
+        let (rendered, probes, _) = render_c4_with_font_host(source, config, &theme);
+        let stylesheet = roxmltree::Document::parse(rendered.svg())
+            .unwrap()
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .unwrap()
+            .text()
+            .unwrap()
+            .to_owned();
+        let rule = stylesheet
+            .split(".c4-shape.c4-system .label{")
+            .nth(1)
+            .unwrap()
+            .split('}')
+            .next()
+            .unwrap();
+        for (property, value) in [("font-family", family_css), ("font-size", size_css)] {
+            match value {
+                Some(value) => assert!(
+                    rule.contains(&format!("{property}:{value};")),
+                    "{family}/{size}: {rule}"
+                ),
+                None => assert!(
+                    !rule.contains(&format!("{property}:")),
+                    "{family}/{size}: {rule}"
+                ),
+            }
+        }
+        let expected_family = if inherits_family {
+            "Cousine"
+        } else {
+            r#""A: !important",serif"#
+        };
+        assert!(
+            probes.iter().any(|(text, operation, style)| {
+                text == "NodeName"
+                    && *operation == TextMeasurementOperation::BBoxX
+                    && style.font_size == used
+                    && style.font_family.as_deref() == Some(expected_family)
+            }),
+            "{family}/{size}: {probes:?}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        let applied = usize::from(inherits_family) + usize::from(inherits_size);
+        assert_eq!(evidence.applied_count(), applied, "{family}/{size}");
+        assert_eq!(evidence.not_applicable_count(), 2 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn c4_unknown_element_sizes_do_not_certify_typography_or_label_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap())
+                            .with_font_size_px(29.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    for size in ["1rem", "calc(24px)", "var(--audit-size, 24px)"] {
+        for zero_root in [false, true] {
+            let mut config = serde_json::json!({"c4": {
+                "wrap":false, "systemFontFamily":"inherit", "systemFontSize":size
+            }});
+            if zero_root {
+                config["themeVariables"] = serde_json::json!({"fontSize":"0px"});
+            }
+            let rendered = try_render_c4_rendered_with_engine_requirement(
+                "C4Context\nSystem(a, \"API\")\n",
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config),
+                ),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert!(rendered.svg().contains(&format!("font-size:{size};")));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0, "{size}: zero_root={zero_root}");
+            assert_eq!(evidence.not_applicable_count(), usize::from(zero_root));
+            assert_eq!(evidence.theme_residual_count(), 3 - usize::from(zero_root));
+        }
+    }
+}
+
+#[test]
+fn c4_unknown_root_sizes_preserve_css_and_keep_independent_element_sizes() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new()
+                .with_typography(
+                    TypographySpec::default().with_default(
+                        ThemeTextStyle::default()
+                            .with_font_stack(FontStack::single("Cousine").unwrap())
+                            .with_font_size_px(29.0)
+                            .unwrap(),
+                    ),
+                )
+                .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Title,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+                ))),
+        )
+        .unwrap();
+    let body = "C4Context\ntitle Root Size\nSystem(a, \"API\")\n";
+    for size in [
+        "1em",
+        "100%",
+        "1rem",
+        "calc(24px)",
+        "var(--audit-size, 24px)",
+        "calc(24px);",
+        "1em;",
+        "100%;",
+    ] {
+        for from_source in [false, true] {
+            if from_source && (size.starts_with("var(") || size.ends_with(';')) {
+                continue;
+            }
+            let config = serde_json::json!({"themeVariables":{"fontSize":size}});
+            let (source, site) = if from_source {
+                (
+                    format!("---\nconfig: {config}\n---\n{body}"),
+                    serde_json::json!({}),
+                )
+            } else {
+                (body.to_owned(), config)
+            };
+            let rendered = try_render_c4_rendered_with_engine_requirement(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(site),
+                ),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert!(rendered.svg().contains(&format!("font-size:{size};")));
+            assert!(rendered.svg().contains(
+                ".c4-shape.c4-system .label{font-family:\"Open Sans\",sans-serif;font-size:14px;"
+            ));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 0, "{size}: source={from_source}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 2);
         }
     }
 }

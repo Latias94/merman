@@ -23,6 +23,7 @@ struct Node {
     attrs: Vec<(&'static str, String)>,
     text: Option<String>,
     visible_text: bool,
+    uncertain_text: bool,
     children: Vec<usize>,
     series_terminal: Option<SeriesTerminal>,
     paint_terminal: Option<crate::xychart::XyChartPaintTerminalId>,
@@ -93,6 +94,7 @@ fn node(tag: &'static str) -> Node {
         attrs: Vec::with_capacity(6),
         text: None,
         visible_text: false,
+        uncertain_text: false,
         children: Vec::with_capacity(2),
         series_terminal: None,
         paint_terminal: None,
@@ -638,9 +640,9 @@ pub(crate) fn render_xychart_diagram_svg(
                         &layout.chart_orientation,
                     );
                     let raw_size = role
-                        .map(|role| typography_theme.svg_font_size(role))
-                        .unwrap_or(t.font_size);
-                    n.attr("font-size", fmt_string(raw_size));
+                        .map(|role| typography_theme.svg_font_size(role).to_owned())
+                        .unwrap_or_else(|| fmt_string(t.font_size));
+                    n.attr("font-size", escape_xml(&raw_size));
                     if let Some(weight) = role.and_then(|role| typography_theme.font_weight(role)) {
                         n.attr("font-weight", weight);
                     }
@@ -656,7 +658,10 @@ pub(crate) fn render_xychart_diagram_svg(
                             fmt_xy(rot)
                         ),
                     );
-                    n.visible_text = crate::xychart::text_is_visible(&t.text, t.font_size);
+                    let size_known = role.is_none_or(|role| typography_theme.font_size_known(role));
+                    n.visible_text =
+                        size_known && crate::xychart::text_is_visible(&t.text, t.font_size);
+                    n.uncertain_text = !size_known && !t.text.trim().is_empty();
                     n.text = Some(escape_xml(&t.text));
                     n.paint_terminal =
                         paint_theme.terminal_id(crate::xychart::XyChartPaintTerminalId::Text {
@@ -796,6 +801,11 @@ pub(crate) fn render_xychart_diagram_svg(
             && let Some(receipt) = typography_receipt.as_mut()
         {
             receipt.record_visible_text();
+        }
+        if emitted.uncertain_text
+            && let Some(receipt) = typography_receipt.as_mut()
+        {
+            receipt.record_uncertain_text();
         }
         if let Some(receipt) = series_paint_receipt.as_mut() {
             emitted.observe_series_paint(series_paint, receipt);

@@ -2201,9 +2201,12 @@ fn packet_zero_root_font_size_accounts_for_relative_and_absolute_roles() {
         (json!("-1px"), 0),
         (json!(24), 0),
         (json!("24"), 0),
+        (json!("potato"), 0),
+        (json!("auto"), 0),
+        (json!("24furlong"), 0),
+        (json!("-5e-324%"), 0),
         (json!("1ex"), 0),
         (json!("1ch"), 0),
-        (json!("1rem"), 2),
         (json!("12px"), 2),
     ] {
         let engine = MermaidEngine::new().with_site_config(
@@ -2228,6 +2231,123 @@ fn packet_zero_root_font_size_accounts_for_relative_and_absolute_roles() {
         assert_eq!(evidence.applied_count(), applied, "{label_size}");
         assert_eq!(evidence.not_applicable_count(), 4 - applied, "{label_size}");
         assert_eq!(evidence.theme_residual_count(), 0, "{label_size}");
+    }
+}
+
+#[test]
+fn packet_unresolved_role_sizes_do_not_certify_fonts_or_text_paint() {
+    let theme = packet_direct_text_theme_with_mermaid(MermaidThemeCompatibility::default());
+    let body = "packet\n0-7: \"Header\"\n";
+    for (root_size, show_bits) in [("0px", false), ("32px", false), ("0px", true)] {
+        for size in [
+            "1rem",
+            "var(--packet-size)",
+            "calc(1em + 2px)",
+            "1e-50px",
+            "1e-50px !important",
+            "1e-400px",
+            "5e-324%",
+        ] {
+            let config = serde_json::json!({
+                "packet": {"showBits": show_bits},
+                "themeVariables": {
+                    "fontSize": root_size,
+                    "packet": {"labelFontSize": size}
+                }
+            });
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(config.clone()),
+                )
+            };
+            let rendered = try_render_packet_source_with_theme_requirement(
+                body,
+                &theme,
+                engine(),
+                "packet-unresolved-size",
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .expect("best-effort output retains the host-owned role size");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(packet_stylesheet(&document).contains(&format!("font-size:{size};")));
+            drop(document);
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 4, "{root_size}/{size}");
+            assert_eq!(
+                evidence.applied_count(),
+                usize::from(show_bits),
+                "{root_size}/{size}"
+            );
+            assert_eq!(
+                evidence.not_applicable_count(),
+                2 - usize::from(show_bits),
+                "{root_size}/{size}"
+            );
+            assert_eq!(evidence.theme_residual_count(), 2, "{root_size}/{size}");
+            let error = try_render_packet_source_with_theme_and_engine(
+                body,
+                &theme,
+                engine(),
+                "packet-unresolved-strict",
+            )
+            .err()
+            .expect("strict portability cannot prove unknown text visibility");
+            assert_eq!(
+                error.unverified_family_theme(),
+                Some((DiagramFamilyId::PACKET, 2))
+            );
+        }
+    }
+}
+
+#[test]
+fn packet_relative_sizes_cannot_restore_an_unrepresentable_parent() {
+    let theme = packet_direct_text_theme_with_mermaid(MermaidThemeCompatibility::default());
+    for (root_size, role_size, applied, not_applicable, residual) in [
+        ("1e-50px", "1e30em", 0, 2, 2),
+        ("1e-50px", "1e32%", 0, 2, 2),
+        ("1e-300px", "1e-30em", 0, 2, 2),
+        ("1e-30px", "1e-30em", 0, 2, 2),
+        ("1e-50px", "12px", 2, 2, 0),
+        ("1e-50px", "medium", 2, 2, 0),
+        ("0px", "1em", 0, 4, 0),
+        ("32px", "-1e-50px", 2, 2, 0),
+    ] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "packet": {"showBits": false},
+                "themeVariables": {
+                    "fontSize": root_size,
+                    "packet": {"labelFontSize": role_size}
+                }
+            })),
+        );
+        let rendered = try_render_packet_source_with_theme_requirement(
+            "packet\n0-7: \"Header\"\n",
+            &theme,
+            engine,
+            "packet-parent-precision",
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(packet_stylesheet(&document).contains(&format!("font-size:{role_size};")));
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 4);
+        assert_eq!(evidence.applied_count(), applied, "{root_size}/{role_size}");
+        assert_eq!(
+            evidence.not_applicable_count(),
+            not_applicable,
+            "{root_size}/{role_size}"
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            residual,
+            "{root_size}/{role_size}"
+        );
     }
 }
 

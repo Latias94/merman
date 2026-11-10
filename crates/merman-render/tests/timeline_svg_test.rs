@@ -197,18 +197,21 @@ fn timeline_zero_size_keeps_labels_and_event_shapes_without_text_evidence() {
                 ),
         )
         .unwrap();
-    for direction in ["LR", "TD"] {
+    for (direction, size) in ["LR", "TD"]
+        .into_iter()
+        .flat_map(|direction| ["0px", "0em", "0rem", "0%"].map(|size| (direction, size)))
+    {
         let rendered = try_render_timeline_with_theme_and_engine(
             &format!("timeline {direction}\ntitle Release\nsection Work\nToday : Ship\n"),
             &theme,
             MermaidEngine::new().with_site_config(
                 merman_core::presentation::SourcePresentationConfig::from_value(
-                    serde_json::json!({"themeVariables": {"fontSize": "0px"}}),
+                    serde_json::json!({"fontSize": 32, "themeVariables": {"fontSize": size}}),
                 ),
             ),
         )
         .unwrap();
-        assert!(rendered.svg().contains("font-size:0px;"));
+        assert!(rendered.svg().contains(&format!("font-size:{size};")));
         assert!(rendered.svg().contains("Ship"));
         assert!(rendered.svg().contains("#654321"));
         let evidence =
@@ -2081,6 +2084,106 @@ impl HostTextMeasurer for RecordingTimelineHost {
 }
 
 #[test]
+fn timeline_invalid_display_size_keeps_ancestor_measurement_and_visible_font_evidence() {
+    let theme = timeline_typography_theme_with_font_size(
+        FontStack::single("TimelineInherited").unwrap(),
+        None,
+    );
+    for mermaid_theme in ["default", "redux"] {
+        for direction in ["LR", "TD"] {
+            for root_size in [0, 32] {
+                for source_owned in [false, true] {
+                    let render = |size: &str| {
+                        let config = serde_json::json!({
+                            "theme": mermaid_theme,
+                            "fontSize": root_size,
+                            "themeVariables": {"fontSize": size}
+                        });
+                        let body = format!(
+                            "timeline {direction}\ntitle Release\nsection Plan\nTask : Event\n"
+                        );
+                        let (source, engine) = if source_owned {
+                            (
+                                format!("---\nconfig: {config}\n---\n{body}"),
+                                MermaidEngine::new(),
+                            )
+                        } else {
+                            (
+                                body,
+                                MermaidEngine::new().with_site_config(
+                                    merman_core::presentation::SourcePresentationConfig::from_value(
+                                        config,
+                                    ),
+                                ),
+                            )
+                        };
+                        let parsed = common::install_parse_compatibility(&theme, engine)
+                            .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                            .unwrap()
+                            .unwrap()
+                            .into_presentation();
+                        let host = Arc::new(RecordingTimelineHost::default());
+                        let identity = TextMeasurementProfileIdentity::new(
+                            MeasurementProfileId::new("test.timeline-ancestor-size").unwrap(),
+                            "1",
+                        )
+                        .unwrap();
+                        let session = RenderEnvironment::deterministic()
+                            .with_text_measurement_policy(TextMeasurementPolicy::host_display(
+                                identity,
+                                host.clone(),
+                                TextMeasurementPhase::ALL,
+                            ))
+                            .with_theme_portability_requirement(
+                                ThemePortabilityRequirement::RequirePortable,
+                            )
+                            .begin_session_with_theme(&theme)
+                            .unwrap();
+                        let artifact = family::prepare(
+                            &parsed,
+                            &LayoutOptions::headless_svg_defaults(),
+                            session,
+                        )
+                        .unwrap();
+                        let rendered = artifact
+                            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                            .unwrap();
+                        (rendered, host.snapshot())
+                    };
+                    let (expected, _) = render("16px");
+                    for size in ["-1px", "", "bogus"] {
+                        let (rendered, requests) = render(size);
+                        assert_eq!(
+                            rendered.svg(),
+                            expected.svg(),
+                            "{mermaid_theme}/{direction}/{root_size}/{source_owned}/{size:?}"
+                        );
+                        for label in ["Plan", "Task", "Event"] {
+                            let measurements = requests
+                                .iter()
+                                .filter(|request| request.text == label)
+                                .collect::<Vec<_>>();
+                            assert!(!measurements.is_empty(), "missing {label} measurement");
+                            assert!(measurements.iter().all(|request| {
+                                request.font_size_bits == 16.0_f64.to_bits()
+                                    && request.font_family.as_deref() == Some("TimelineInherited")
+                            }));
+                        }
+                        let evidence = merman_render::__private::family_evidence(
+                            rendered.into_completion().report(),
+                        );
+                        assert_eq!(evidence.required_count(), 1);
+                        assert_eq!(evidence.applied_count(), 1);
+                        assert_eq!(evidence.not_applicable_count(), 0);
+                        assert_eq!(evidence.theme_residual_count(), 0);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn timeline_unresolved_section_weight_cannot_certify_typed_typography() {
     let theme = timeline_typography_theme_with_font_size(
         FontStack::single("TimelineWeight").unwrap(),
@@ -2300,19 +2403,20 @@ fn timeline_font_size_ownership_requires_a_consumed_config_value() {
         FontStack::single("sans-serif").unwrap(),
         Some(24.0),
     );
-    for (value, expected_size, config_owned) in [
-        (serde_json::json!(true), 24, false),
-        (serde_json::json!(""), 24, false),
-        (serde_json::json!("auto"), 24, false),
-        (serde_json::json!("24em"), 24, false),
-        (serde_json::json!("NaN"), 24, false),
-        (serde_json::json!("Infinity"), 24, false),
-        (serde_json::json!("30px"), 30, true),
-        (serde_json::json!(30), 30, true),
-        (serde_json::json!(0), 0, true),
-        (serde_json::json!(-2), 24, false),
-        (serde_json::json!("-2px"), 24, false),
-        (serde_json::json!("-2pt"), 24, false),
+    for (value, expected_css, config_owned) in [
+        (serde_json::json!(true), "24px", false),
+        (serde_json::json!(""), "24px", false),
+        (serde_json::json!("auto"), "24px", false),
+        (serde_json::json!("NaN"), "24px", false),
+        (serde_json::json!("Infinity"), "24px", false),
+        (serde_json::json!("30px"), "30px", true),
+        (serde_json::json!("24pt"), "24pt", true),
+        (serde_json::json!(".5px"), ".5px", true),
+        (serde_json::json!(30), "30px", true),
+        (serde_json::json!(0), "0px", true),
+        (serde_json::json!(-2), "24px", false),
+        (serde_json::json!("-2px"), "24px", false),
+        (serde_json::json!("-2pt"), "24px", false),
     ] {
         let config = serde_json::json!({"themeVariables": {"fontSize": value}});
         for source_owned in [false, true] {
@@ -2336,14 +2440,14 @@ fn timeline_font_size_ownership_requires_a_consumed_config_value() {
                 try_render_timeline_with_theme_and_engine(&source, &theme, engine).unwrap();
             assert!(
                 rendered.svg().contains(&format!(
-                    "#merman{{font-family:sans-serif;font-size:{expected_size}px;"
+                    "#merman{{font-family:sans-serif;font-size:{expected_css};"
                 )),
                 "font size {value}, source-owned={source_owned}"
             );
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.required_count(), 2);
-            let applied = if expected_size == 0 {
+            let applied = if expected_css == "0px" {
                 0
             } else if config_owned {
                 1
@@ -2353,6 +2457,235 @@ fn timeline_font_size_ownership_requires_a_consumed_config_value() {
             assert_eq!(evidence.applied_count(), applied);
             assert_eq!(evidence.not_applicable_count(), 2 - applied);
             assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn timeline_unknown_shared_size_keeps_css_ownership_without_certifying_fonts() {
+    for typed_size in [None, Some(29.0)] {
+        let theme = timeline_typography_theme_with_font_size(
+            FontStack::single("TimelineUnknown").unwrap(),
+            typed_size,
+        );
+        for direction in ["LR", "TD"] {
+            for title_only in [false, true] {
+                for source_owned in [false, true] {
+                    for size in [
+                        "var(--font,0px)",
+                        "1em",
+                        "24em",
+                        "1rem",
+                        "/* host */var(--font,0px)",
+                        "1e-999px",
+                    ] {
+                        // Source presentation rejects host substitution before this adapter.
+                        if source_owned && size.contains("var(") {
+                            continue;
+                        }
+                        let config = serde_json::json!({
+                            "fontSize": 32, "themeVariables": {"fontSize": size}
+                        });
+                        let body = format!(
+                            "timeline {direction}\ntitle Unknown size\n{}",
+                            if title_only { "" } else { "Task : Event\n" }
+                        );
+                        let (source, engine) = if source_owned {
+                            (
+                                format!("---\nconfig: {config}\n---\n{body}"),
+                                MermaidEngine::new(),
+                            )
+                        } else {
+                            (
+                                body,
+                                MermaidEngine::new().with_site_config(
+                                    merman_core::presentation::SourcePresentationConfig::from_value(
+                                        config,
+                                    ),
+                                ),
+                            )
+                        };
+                        let rendered = try_render_timeline_with_theme_engine_requirement(
+                            &source,
+                            &theme,
+                            engine.clone(),
+                            ThemePortabilityRequirement::BestEffort,
+                        )
+                        .unwrap();
+                        assert!(
+                            rendered.svg().contains(&format!(
+                                "#merman{{font-family:TimelineUnknown;font-size:{size};"
+                            )),
+                            "typed={typed_size:?}, direction={direction}, title_only={title_only}, source={source_owned}, size={size:?}: {}",
+                            rendered.svg()
+                        );
+                        let evidence = merman_render::__private::family_evidence(
+                            rendered.into_completion().report(),
+                        );
+                        assert_eq!(
+                            evidence.required_count(),
+                            1 + usize::from(typed_size.is_some())
+                        );
+                        assert_eq!(evidence.applied_count(), 0);
+                        assert_eq!(
+                            evidence.not_applicable_count(),
+                            usize::from(typed_size.is_some())
+                        );
+                        assert_eq!(evidence.theme_residual_count(), 1);
+                        assert!(
+                            try_render_timeline_with_theme_and_engine(&source, &theme, engine)
+                                .is_err()
+                        );
+                    }
+                }
+            }
+        }
+        let rendered = try_render_timeline_with_theme_and_engine(
+            "timeline\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"themeVariables": {"fontSize": "var(--font,0px)"}}),
+                ),
+            ),
+        )
+        .unwrap();
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(
+            evidence.not_applicable_count(),
+            1 + usize::from(typed_size.is_some())
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn timeline_filtered_source_host_size_does_not_own_typed_typography() {
+    for typed_size in [None, Some(29.0)] {
+        let theme = timeline_typography_theme_with_font_size(
+            FontStack::single("TimelineUnknown").unwrap(),
+            typed_size,
+        );
+        for raw in ["var(--font,0px)", "/* host */var(--font,0px)"] {
+            let source = format!(
+                "---\nconfig: {}\n---\ntimeline\nTask : Event\n",
+                serde_json::json!({"fontSize": 32, "themeVariables": {"fontSize": raw}})
+            );
+            let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let config = &parsed.metadata().effective_config;
+            assert_eq!(config.get_str("themeVariables.fontSize"), Some("16px"));
+            assert!(!config.config_path_overrides_typed_default("themeVariables.fontSize"));
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .unwrap();
+            let expected = typed_size.unwrap_or(16.0);
+            assert!(rendered.svg().contains(&format!(
+                "#merman{{font-family:TimelineUnknown;font-size:{expected}px;"
+            )));
+            assert!(!rendered.svg().contains("var(--font"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(
+                evidence.applied_count(),
+                1 + usize::from(typed_size.is_some())
+            );
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn timeline_site_root_size_accepts_a_stylesheet_terminator() {
+    let theme = timeline_typography_theme_with_font_size(
+        FontStack::single("TimelineUnknown").unwrap(),
+        Some(29.0),
+    );
+    for (raw, expected, unknown) in [
+        ("1em;", "1em", true),
+        ("calc(24px);", "calc(24px)", true),
+        ("24px;", "24px", false),
+        ("bogus;", "29px", false),
+    ] {
+        let rendered = try_render_timeline_with_theme_engine_requirement(
+            "timeline\nTask : Event\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"fontSize": 32, "themeVariables": {"fontSize": raw}}),
+                ),
+            ),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        assert!(
+            rendered.svg().contains(&format!(
+                "#merman{{font-family:TimelineUnknown;font-size:{expected};"
+            )),
+            "{raw}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), usize::from(unknown));
+        assert_eq!(
+            evidence.applied_count(),
+            if unknown {
+                0
+            } else if raw == "bogus;" {
+                2
+            } else {
+                1
+            }
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(raw != "bogus;")
+        );
+    }
+}
+
+#[test]
+fn timeline_unknown_title_visibility_keeps_title_and_text_paint_unverified() {
+    for target in [ThemeTarget::Title, ThemeTarget::Text] {
+        let theme = timeline_event_rules_theme([ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123456").unwrap()),
+        )]);
+        for size in ["var(--font,0px)", "1em"] {
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"fontSize": 32, "themeVariables": {"fontSize": size}}),
+                ),
+            );
+            let source = "timeline TD\ntitle Unknown size\n";
+            let rendered = try_render_timeline_with_theme_engine_requirement(
+                source,
+                &theme,
+                engine.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert!(rendered.svg().contains(&format!("font-size:{size};")));
+            assert!(rendered.svg().contains("#123456"));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 1);
+            assert!(try_render_timeline_with_theme_and_engine(source, &theme, engine).is_err());
         }
     }
 }

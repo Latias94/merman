@@ -142,36 +142,52 @@ const fn target_index(target: ThemeTarget) -> Option<usize> {
     }
 }
 
-fn packet_font_size_is_zero_at_parent(size: &str, parent_px: f64) -> bool {
+fn packet_text_visibility(size: &str, parent_px: f64) -> Option<bool> {
     let source = format!("font-size:{size}");
-    let Some(declaration) = crate::mermaid_style::parse_style_declaration(&source) else {
-        return false;
-    };
-    if declaration.font_size_is_literal_zero()
-        || (parent_px == 0.0 && declaration.font_size_is_negative_literal())
-        || declaration.resolve_font_size_px(crate::mermaid_style::CssFontSizeContext::new(
-            parent_px, 16.0,
-        )) == Some(0.0)
+    let declaration = crate::mermaid_style::parse_style_declaration(&source)?;
+    if crate::mermaid_style::css_font_size_override(&source).is_some()
+        && !declaration.font_size_is_literal_zero()
     {
-        return true;
+        let mut parser = cssparser::Parser::new(declaration.value());
+        let numeric_token = match parser.next() {
+            Ok(
+                cssparser::Token::Dimension { value, .. } | cssparser::Token::Number { value, .. },
+            ) => Some(*value),
+            Ok(cssparser::Token::Percentage { unit_value, .. }) => Some(*unit_value),
+            _ => None,
+        };
+        // The scalar resolver preserves f64 source precision. A CSS numeric token that
+        // already loses its magnitude in f32 cannot certify visible text in the host.
+        if numeric_token.is_some_and(|value| !value.is_finite() || value == 0.0) {
+            return None;
+        }
+    }
+    // Relative sizes cannot recover a parent magnitude the host has already lost. Passing
+    // an unknown parent still lets the shared resolver admit independent absolute sizes.
+    let host_parent = parent_px as f32;
+    let parent =
+        (host_parent.is_finite() && (parent_px == 0.0 || host_parent != 0.0)).then_some(parent_px);
+    if let Some(size) = crate::text::visible_text_font_size_after_style(parent, &source) {
+        // Relative arithmetic can lose a nonzero magnitude after token parsing too.
+        let host_size = size as f32;
+        return (host_size.is_finite() && (size == 0.0 || host_size != 0.0)).then_some(size != 0.0);
     }
     if parent_px != 0.0 {
-        return false;
+        return None;
     }
     let mut parser = cssparser::Parser::new(declaration.value());
     let inherits_zero = match parser.next() {
-        // Nonzero unitless numbers are invalid CSS and inherit the zero parent.
-        Ok(cssparser::Token::Number { .. }) => true,
         // A zero parent supplies zero font metrics; rem keeps its document-root owner.
         Ok(cssparser::Token::Dimension { value, unit, .. }) => {
-            *value >= 0.0
+            value.is_finite()
+                && *value > 0.0
                 && ["ex", "ch", "cap", "ic"]
                     .iter()
                     .any(|candidate| unit.eq_ignore_ascii_case(candidate))
         }
         _ => false,
     };
-    inherits_zero && parser.is_exhausted()
+    (inherits_zero && parser.is_exhausted()).then_some(false)
 }
 
 /// Actual text decisions accumulated by the requested-theme SVG writer.
@@ -180,7 +196,7 @@ pub(crate) struct PacketTextOutput<'a> {
     selection: &'a PacketThemeSelection,
     occurrences: [usize; 3],
     emitted_roles: u8,
-    visible_font_sizes: [bool; 3],
+    text_visibility: [Option<bool>; 3],
     winners: BTreeSet<(usize, ResolvedStyleProperty)>,
 }
 
@@ -194,12 +210,12 @@ impl<'a> PacketTextOutput<'a> {
             selection,
             occurrences: [0; 3],
             emitted_roles: 0,
-            visible_font_sizes: [
+            text_visibility: [
                 css.byte_font_size.as_ref(),
                 css.label_font_size.as_ref(),
                 css.title_font_size.as_ref(),
             ]
-            .map(|size| !packet_font_size_is_zero_at_parent(size, root_font_size_px)),
+            .map(|size| packet_text_visibility(size, root_font_size_px)),
             winners: BTreeSet::new(),
         }
     }
@@ -226,7 +242,7 @@ impl<'a> PacketTextOutput<'a> {
         self.occurrences[index] = self.occurrences[index].saturating_add(1);
         let first_role = self.emitted_roles & (1 << role as u8) == 0;
         self.emitted_roles |= 1 << role as u8;
-        let visible = self.visible_font_sizes[index];
+        let visible = self.text_visibility[index] != Some(false);
         let fill_owned = self.selection.text_color_ownership.owns(role);
         // Zero-sized text retains its ordinal and geometry winners, but cannot prove paint/fonts.
         let property_applicable =
@@ -271,16 +287,29 @@ impl<'a> PacketTextOutput<'a> {
         target_index(target).map_or(0, |index| self.occurrences[index])
     }
 
-    pub(super) fn has_visible_text(&self) -> bool {
+    pub(super) fn has_potential_text(&self) -> bool {
         self.occurrences
             .iter()
-            .zip(self.visible_font_sizes)
-            .any(|(count, visible)| *count != 0 && visible)
+            .zip(self.text_visibility)
+            .any(|(count, visible)| *count != 0 && visible != Some(false))
+    }
+
+    pub(super) fn has_unverified_text(&self) -> bool {
+        self.occurrences
+            .iter()
+            .zip(self.text_visibility)
+            .any(|(count, visible)| *count != 0 && visible.is_none())
+    }
+
+    pub(super) fn target_has_unverified_text(&self, target: ThemeTarget) -> bool {
+        target_index(target).is_some_and(|index| {
+            self.occurrences[index] != 0 && self.text_visibility[index].is_none()
+        })
     }
 
     pub(super) fn has_typed_fill(&self, target: ThemeTarget) -> bool {
         target_index(target).is_some_and(|index| {
-            self.visible_font_sizes[index]
+            self.text_visibility[index] != Some(false)
                 && PacketTextRole::for_target(target).iter().any(|role| {
                     self.emitted_roles & (1 << *role as u8) != 0
                         && !self.selection.text_color_ownership.owns(*role)

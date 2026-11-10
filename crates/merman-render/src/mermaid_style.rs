@@ -137,9 +137,19 @@ pub(crate) fn is_safe_css_font_family_value(value: &str) -> bool {
         || literal_css_font_family_list_is_valid(value)
 }
 
-fn literal_css_font_family_list_is_valid(value: &str) -> bool {
+#[derive(Debug)]
+pub(crate) struct ParsedCssFontFamilyValue<'a> {
+    pub(crate) value: &'a str,
+    pub(crate) important: bool,
+    literal_family_list: bool,
+}
+
+/// Checks the outer list and priority without evaluating host-dependent font functions.
+/// Emission safety remains separate, including for opaque function bodies.
+pub(crate) fn parse_css_font_family_value(value: &str) -> Option<ParsedCssFontFamilyValue<'_>> {
+    let value = value.trim();
     if value.chars().any(char::is_control) {
-        return false;
+        return None;
     }
 
     #[derive(Clone, Copy, PartialEq, Eq)]
@@ -147,27 +157,43 @@ fn literal_css_font_family_list_is_valid(value: &str) -> bool {
         Missing,
         Identifiers,
         Quoted,
+        Host,
+        WideKeyword,
     }
 
     let mut parser = Parser::new(value);
+    let value_start = parser.position();
     let mut family = FamilyName::Missing;
+    let mut family_count = 0usize;
+    let mut literal_family_list = true;
     loop {
+        let state = parser.state();
         let start = parser.position();
         match parser.next_including_whitespace_and_comments() {
             Ok(Token::WhiteSpace(_)) => {}
-            Ok(Token::Ident(name)) if family != FamilyName::Quoted => {
-                if crate::diagram_theme::is_css_wide_keyword(name)
-                    || name.eq_ignore_ascii_case("default")
-                {
-                    return false;
+            Ok(Token::Ident(name))
+                if !matches!(family, FamilyName::Quoted | FamilyName::WideKeyword) =>
+            {
+                if name.eq_ignore_ascii_case("default") {
+                    return None;
                 }
-                family = FamilyName::Identifiers;
+                if crate::diagram_theme::is_css_wide_keyword(name) {
+                    if family != FamilyName::Missing || family_count != 0 {
+                        return None;
+                    }
+                    family = FamilyName::WideKeyword;
+                    literal_family_list = false;
+                } else if family != FamilyName::Host {
+                    family = FamilyName::Identifiers;
+                }
             }
-            Ok(Token::QuotedString(_)) if family == FamilyName::Missing => {
+            Ok(Token::QuotedString(_))
+                if matches!(family, FamilyName::Missing | FamilyName::Host) =>
+            {
                 // cssparser recovers a string at EOF, so also require its actual closing quote.
                 let raw = parser.slice(start..parser.position());
                 if raw.len() < 2 || raw.as_bytes().first() != raw.as_bytes().last() {
-                    return false;
+                    return None;
                 }
                 let trailing_backslashes = raw[..raw.len() - 1]
                     .bytes()
@@ -175,17 +201,62 @@ fn literal_css_font_family_list_is_valid(value: &str) -> bool {
                     .take_while(|byte| *byte == b'\\')
                     .count();
                 if !trailing_backslashes.is_multiple_of(2) {
-                    return false;
+                    return None;
                 }
-                family = FamilyName::Quoted;
+                if family != FamilyName::Host {
+                    family = FamilyName::Quoted;
+                }
             }
-            Ok(Token::Comma) if family != FamilyName::Missing => family = FamilyName::Missing,
+            Ok(Token::Function(_)) if family != FamilyName::WideKeyword => {
+                // Consume cssparser's pending nested block before recording the next token's
+                // start. Adjacent priority or terminators must not include the function body.
+                parser.skip_whitespace();
+                // A host function may supply a name or list, but cannot repair an outer item.
+                family = FamilyName::Host;
+                literal_family_list = false;
+            }
+            Ok(Token::Comma)
+                if !matches!(family, FamilyName::Missing | FamilyName::WideKeyword) =>
+            {
+                family_count += 1;
+                family = FamilyName::Missing;
+            }
+            Ok(Token::Delim('!') | Token::Semicolon) if family != FamilyName::Missing => {
+                let important = parser.slice(start..parser.position()) == "!";
+                if important {
+                    parser.reset(&state);
+                    parser.try_parse(cssparser::parse_important).ok()?;
+                }
+                loop {
+                    match parser.next_including_whitespace_and_comments() {
+                        Ok(Token::WhiteSpace(_) | Token::Semicolon) => {}
+                        Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
+                            break;
+                        }
+                        _ => return None,
+                    }
+                }
+                return Some(ParsedCssFontFamilyValue {
+                    value: parser.slice(value_start..start).trim(),
+                    important,
+                    literal_family_list,
+                });
+            }
             Err(error) if matches!(error.kind, BasicParseErrorKind::EndOfInput) => {
-                return family != FamilyName::Missing;
+                return (family != FamilyName::Missing).then_some(ParsedCssFontFamilyValue {
+                    value,
+                    important: false,
+                    literal_family_list,
+                });
             }
-            _ => return false,
+            _ => return None,
         }
     }
+}
+
+fn literal_css_font_family_list_is_valid(value: &str) -> bool {
+    parse_css_font_family_value(value)
+        .is_some_and(|parsed| parsed.literal_family_list && !parsed.important)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
