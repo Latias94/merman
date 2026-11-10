@@ -1183,6 +1183,14 @@ fn unmarked_monospace_font(remove_os2: bool) -> Vec<u8> {
     bytes
 }
 
+fn last_resort_font(mut bytes: Vec<u8>) -> Vec<u8> {
+    let (_, head) = sfnt_table(&bytes, b"head");
+    let offset = head.offset as usize + 16;
+    let flags = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) | (1 << 14);
+    bytes[offset..offset + 2].copy_from_slice(&flags.to_be_bytes());
+    bytes
+}
+
 #[test]
 fn implicit_monospace_uses_fixed_latin_metrics_without_monospace_metadata() {
     let sans = include_bytes!("fonts/NotoSans-Latin-subset.ttf").to_vec();
@@ -1359,5 +1367,120 @@ fn fixed_latin_metrics_do_not_make_symbolic_faces_implicit_text_fonts() {
                 BTreeSet::from(["Cousine-Regular".to_owned()])
             );
         }
+    }
+}
+
+#[test]
+fn last_resort_faces_cannot_become_implicit_fonts_through_fixed_latin_metrics() {
+    let sans = include_bytes!("fonts/NotoSans-Latin-subset.ttf").to_vec();
+    for remove_os2 in [false, true] {
+        let last_resort = last_resort_font(unmarked_monospace_font(remove_os2));
+        for last_resort_first in [false, true] {
+            let sources = if last_resort_first {
+                [last_resort.clone(), sans.clone()]
+            } else {
+                [sans.clone(), last_resort.clone()]
+            };
+            let context = NativeFontContext::from_font_bytes(
+                sources,
+                Default::default(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            for family in ["serif", "sans-serif", "monospace", "__missing__"] {
+                assert_eq!(
+                    painted_families(&context, family, "V"),
+                    BTreeSet::from(["NotoSans-Regular".to_owned()]),
+                    "{family}, remove_os2={remove_os2}, last_resort_first={last_resort_first}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn last_resort_glyph_fallback_preserves_readable_text_and_declines_missing_coverage() {
+    let last_resort = last_resort_font(include_bytes!("fonts/Cousine-Regular.ttf").to_vec());
+    // Cousine covers all of Aam, which would replace the whole Latin run in usvg.
+    // It covers only the missing a in 中a, exercising partial glyph replacement too.
+    for (bytes, family, expected, plain, missing) in [
+        (
+            include_bytes!("fonts/NotoSans-Latin-subset.ttf").as_slice(),
+            "Noto Sans",
+            "NotoSans-Regular",
+            "A",
+            "Aam",
+        ),
+        (
+            include_bytes!("fonts/NotoSansSC-subset.ttf").as_slice(),
+            "Noto Sans SC",
+            "NotoSansSC-Thin",
+            "中",
+            "中a",
+        ),
+    ] {
+        for last_resort_first in [false, true] {
+            let sources = if last_resort_first {
+                [last_resort.clone(), bytes.to_vec()]
+            } else {
+                [bytes.to_vec(), last_resort.clone()]
+            };
+            let context = NativeFontContext::from_font_bytes(
+                sources,
+                Default::default(),
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let text_style = TextStyle {
+                font_family: Some(family.to_owned()),
+                ..style("400", "normal")
+            };
+            assert!(measure(&context, plain, &text_style).unwrap().is_some());
+            for label in [plain, missing] {
+                assert_eq!(
+                    painted_families(&context, family, label),
+                    BTreeSet::from([expected.to_owned()]),
+                    "{label}, last_resort_first={last_resort_first}"
+                );
+            }
+            assert!(
+                measure(&context, missing, &text_style).unwrap().is_none(),
+                "{missing}, last_resort_first={last_resort_first}"
+            );
+            context.check().unwrap();
+        }
+    }
+}
+
+#[test]
+fn named_last_resort_faces_remain_available_without_an_implicit_text_face() {
+    for remove_os2 in [false, true] {
+        let context = NativeFontContext::from_font_bytes(
+            [last_resort_font(unmarked_monospace_font(remove_os2))],
+            Default::default(),
+            &OperationControl::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            painted_families(&context, "Cousine", "Aam"),
+            BTreeSet::from(["Cousine-Regular".to_owned()])
+        );
+        assert!(
+            measure(&context, "Aam", &style("400", "normal"))
+                .unwrap()
+                .is_some()
+        );
+        for implicit in ["serif", "sans-serif", "monospace", "__missing__"] {
+            assert!(
+                painted_families(&context, implicit, "Aam").is_empty(),
+                "{implicit} must remain unresolved, remove_os2={remove_os2}"
+            );
+            let text_style = TextStyle {
+                font_family: Some(implicit.to_owned()),
+                ..style("400", "normal")
+            };
+            assert!(measure(&context, "Aam", &text_style).unwrap().is_none());
+        }
+        context.check().unwrap();
     }
 }
