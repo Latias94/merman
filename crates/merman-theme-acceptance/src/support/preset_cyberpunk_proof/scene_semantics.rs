@@ -153,6 +153,15 @@ fn glow(
     terminal: &SvgElementObservation,
     shadows: &[(f64, &str)],
 ) -> C6ProofResult<()> {
+    check_glow(receipt, terminal, shadows, false)
+}
+
+fn check_glow(
+    receipt: &SvgArtifactObservation,
+    terminal: &SvgElementObservation,
+    shadows: &[(f64, &str)],
+    depth_only: bool,
+) -> C6ProofResult<()> {
     let binding = terminal.attribute("filter");
     c6_ensure!(
         "cyberpunk-filter",
@@ -166,7 +175,12 @@ fn glow(
     let nodes = receipt.descendants_of(filter.index()).collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-filter",
-        nodes.len() == shadows.len() * 6,
+        nodes.len()
+            == if depth_only {
+                shadows.len() * 7 - 2
+            } else {
+                shadows.len() * 6
+            },
         "unexpected composed filter structure"
     );
     let results = nodes
@@ -184,9 +198,13 @@ fn glow(
                 == results.len(),
         "ambiguous filter result bindings"
     );
-    for (index, (block, &(sigma, color))) in
-        nodes.as_chunks::<6>().0.iter().zip(shadows).enumerate()
-    {
+    let mut offset = 0;
+    let mut previous_result = "SourceGraphic";
+    for (index, &(sigma, color)) in shadows.iter().enumerate() {
+        let last_depth_stage = depth_only && index + 1 == shadows.len();
+        let block_len = if last_depth_stage { 3 } else { 6 };
+        let block = &nodes[offset..offset + block_len];
+        offset += block_len;
         c6_ensure!(
             "cyberpunk-filter",
             block.iter().map(|node| node.tag_name()).eq([
@@ -196,19 +214,15 @@ fn glow(
                 "feMerge",
                 "feMergeNode",
                 "feMergeNode"
-            ]),
+            ][..block_len]
+                .iter()
+                .copied()),
             "unexpected filter primitive order"
         );
-        let input = if index == 0 {
-            "SourceGraphic"
-        } else {
-            filter_result(nodes[(index - 1) * 6 + 3])?
-        };
         let blur = filter_result(block[0])?;
         let flood = filter_result(block[1])?;
         let shadow = filter_result(block[2])?;
-        filter_result(block[3])?;
-        props(block[0], &[("in", input)])?;
+        props(block[0], &[("in", previous_result)])?;
         number(block[0], "stdDeviation", sigma)?;
         props(block[1], &[("flood-color", color)])?;
         if block[1].attribute("flood-opacity").is_some() {
@@ -218,10 +232,92 @@ fn glow(
             block[2],
             &[("in", flood), ("in2", blur), ("operator", "in")],
         )?;
-        props(block[4], &[("in", shadow)])?;
-        props(block[5], &[("in", input)])?;
+        if !last_depth_stage {
+            props(block[4], &[("in", shadow)])?;
+            props(block[5], &[("in", previous_result)])?;
+            previous_result = filter_result(block[3])?;
+        }
+    }
+    if depth_only {
+        let merge = nodes[offset];
+        c6_ensure!(
+            "cyberpunk-filter",
+            merge.tag_name() == "feMerge",
+            "missing final depth merge"
+        );
+        filter_result(merge)?;
+        let shadows = nodes
+            .iter()
+            .filter(|node| node.tag_name() == "feComposite")
+            .rev();
+        for (node, shadow) in nodes[offset + 1..].iter().zip(shadows) {
+            c6_ensure!(
+                "cyberpunk-filter",
+                node.tag_name() == "feMergeNode" && node.parent_index() == Some(merge.index()),
+                "unexpected final depth input"
+            );
+            props(node, &[("in", filter_result(shadow)?)])?;
+        }
     }
     Ok(())
+}
+
+fn body_depth(
+    receipt: &SvgArtifactObservation,
+    face: &SvgElementObservation,
+    depth: &SvgElementObservation,
+) -> C6ProofResult<()> {
+    c6_ensure!(
+        "cyberpunk-depth",
+        face.attribute("filter").is_none()
+            && face
+                .style_value("filter")
+                .is_none_or(|value| value == "none"),
+        "the foreground body must not repaint depth"
+    );
+    c6_ensure!(
+        "cyberpunk-depth",
+        face.tag_name() == depth.tag_name()
+            && [
+                "x",
+                "y",
+                "width",
+                "height",
+                "rx",
+                "ry",
+                "points",
+                "d",
+                "transform"
+            ]
+            .iter()
+            .all(|attribute| face.attribute(attribute) == depth.attribute(attribute)),
+        "depth must reuse its body's geometry"
+    );
+    for property in ["fill", "stroke", "stroke-width", "rx", "ry"] {
+        c6_ensure!(
+            "cyberpunk-depth",
+            face.style_value(property) == depth.style_value(property),
+            "depth must reuse its body's {property}"
+        );
+    }
+    let owner = depth
+        .parent_index()
+        .and_then(|index| receipt.element(index))
+        .ok_or_else(|| C6ProofError::new("cyberpunk-depth", "missing depth owner"))?;
+    props(
+        owner,
+        &[("aria-hidden", "true"), ("pointer-events", "none")],
+    )?;
+    c6_ensure!(
+        "cyberpunk-depth",
+        !receipt.descendants_of(owner.index()).any(|node| {
+            matches!(node.tag_name(), "text" | "foreignObject" | "use")
+                || node.id().is_some()
+                || node.attribute("name").is_some()
+        }),
+        "depth must contain only the body silhouette"
+    );
+    check_glow(receipt, depth, SHAPE, true)
 }
 
 fn filter_result(node: &SvgElementObservation) -> C6ProofResult<&str> {
@@ -352,6 +448,9 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             value,
         )?;
     }
+    let depths = select(receipt, 4, "node depth", |node| {
+        node.attribute("data-merman-theme-depth") == Some("node")
+    })?;
     for (id, text, tag) in [
         ("Browse", "Browse Products", "rect"),
         ("Stock", "Item in Stock?", "polygon"),
@@ -375,7 +474,14 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             number(shape, "rx", 10.0)?;
             number(shape, "ry", 10.0)?;
         }
-        glow(receipt, shape, SHAPE)?;
+        let depth_owner = depths
+            .iter()
+            .find(|depth| depth.attribute("transform") == owner.attribute("transform"))
+            .ok_or_else(|| C6ProofError::new("cyberpunk-depth", "missing matching node depth"))?;
+        let depth = select(receipt, 1, "node silhouette", |node| {
+            node.parent_index() == Some(depth_owner.index()) && node.has_class("label-container")
+        })?[0];
+        body_depth(receipt, shape, depth)?;
         let label = receipt
             .descendants_of(owner.index())
             .find(|node| node.tag_name() == "text" && node.text() == text)
@@ -387,9 +493,21 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             && node.attribute("data-id") == Some("Checkout")
     })?[0];
     let surface = select(receipt, 1, "cluster surface", |node| {
-        node.parent_index() == Some(cluster.index()) && node.tag_name() == "rect"
+        node.tag_name() == "rect"
+            && node
+                .parent_index()
+                .and_then(|index| receipt.element(index))
+                .is_some_and(|parent| {
+                    parent.has_class("cluster")
+                        && parent.attribute("data-merman-theme-depth") == Some("container")
+                })
     })?[0];
     props(surface, &[("fill", NAVY), ("stroke", CYAN)])?;
+    c6_ensure!(
+        "cyberpunk-depth-order",
+        surface.index() < cluster.index(),
+        "cluster paint must precede its title"
+    );
     by_class(receipt, "rect", "background", 2)?;
     // The frozen Dagre profile emits one label owner per edge, including the unlabelled edge.
     for (id, label) in [
@@ -410,6 +528,11 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
         );
     }
     for edge in by_class(receipt, "path", "flowchart-link", 3)? {
+        c6_ensure!(
+            "cyberpunk-depth-order",
+            depths.iter().all(|depth| depth.index() < edge.index()),
+            "all node depth must precede connections"
+        );
         props(edge, &[("stroke", CYAN)])?;
         number(edge, "stroke-width", 2.0)?;
         glow(receipt, edge, EDGE)?;
@@ -508,17 +631,37 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     ] {
         require_exact_writer_declaration(receipt, &selector, property, value)?;
     }
-    for actor in by_class(receipt, "rect", "actor", 4)? {
+    let depths = by_class(receipt, "rect", "actor-depth", 4)?;
+    for actor in select(receipt, 4, "actor faces", |node| {
+        node.tag_name() == "rect" && node.has_class("actor") && !node.has_class("actor-depth")
+    })? {
         no_inline_conflicts(actor, &[("fill", NAVY), ("stroke", CYAN)])?;
         number(actor, "stroke-width", 3.0)?;
         number(actor, "rx", 10.0)?;
         number(actor, "ry", 10.0)?;
-        glow(receipt, actor, SHAPE)?;
+        let depth = depths
+            .iter()
+            .find(|depth| depth.bounds() == actor.bounds())
+            .ok_or_else(|| C6ProofError::new("cyberpunk-depth", "missing matching actor depth"))?;
+        c6_ensure!(
+            "cyberpunk-depth",
+            depth
+                .parent_index()
+                .and_then(|index| receipt.element(index))
+                .is_some_and(|parent| parent.attribute("data-merman-theme-depth") == Some("actor")),
+            "missing actor depth owner"
+        );
+        body_depth(receipt, actor, depth)?;
     }
     for actor in by_class(receipt, "text", "actor", 4)? {
         glow(receipt, actor, SHAPE)?;
     }
     for lifeline in by_class(receipt, "line", "actor-line", 2)? {
+        c6_ensure!(
+            "cyberpunk-depth-order",
+            depths.iter().all(|depth| depth.index() < lifeline.index()),
+            "all actor depth must precede lifelines"
+        );
         no_inline_conflicts(lifeline, &[("stroke", CYAN), ("stroke-width", "2px")])?;
         glow(receipt, lifeline, EDGE)?;
     }

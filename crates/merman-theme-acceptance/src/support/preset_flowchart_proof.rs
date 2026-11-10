@@ -121,10 +121,28 @@ fn check_svg(receipt: &SvgArtifactObservation, palette: Palette) -> C6ProofResul
                 && e.attribute("data-id") == Some("phase")
         })
         .ok_or_else(|| C6ProofError::new("preset-flowchart-cluster", "missing phase cluster"))?;
-    let cluster_rect = receipt
-        .descendants_of(cluster.index())
-        .find(|e| e.tag_name() == "rect" && e.attribute("class").is_none() && e.bounds().is_some())
-        .ok_or_else(|| C6ProofError::new("preset-flowchart-cluster", "missing cluster surface"))?;
+    let cluster_rects = receipt
+        .elements()
+        .iter()
+        .filter(|e| {
+            e.tag_name() == "rect"
+                && e.attribute("class").is_none()
+                && e.bounds().is_some()
+                && e.parent_index()
+                    .and_then(|index| receipt.element(index))
+                    .is_some_and(|parent| {
+                        parent.index() == cluster.index()
+                            || parent.has_class("cluster")
+                                && parent.attribute("data-merman-theme-depth") == Some("container")
+                    })
+        })
+        .collect::<Vec<_>>();
+    c6_ensure!(
+        "preset-flowchart-cluster",
+        cluster_rects.len() == 1,
+        "expected one cluster surface"
+    );
+    let cluster_rect = cluster_rects[0];
     let cluster_bounds = cluster_rect.bounds().unwrap();
     c6_ensure!(
         "preset-flowchart-cluster",

@@ -64,7 +64,11 @@ part of this profile.
 The private runner observes its actual immutable SVG and checks canvas paint, gradient/grid geometry and compositing;
 family-specific surfaces, borders, typography, series order, markers and label ownership; and
 the bound glow primitives, colors and composition chain. Internal filter-result names may change
-when their connections remain equivalent. These are fixed writer/scenario checks, not a general
+when their connections remain equivalent. Flowchart node and Sequence actor depth must match the
+foreground body geometry and appear below connections. Their final filter merge emits only shadows;
+intermediate cascade results may include the source, while the separate foreground body remains
+unfiltered. Missing depth, mismatched silhouettes, changed layer order and source paint in the final
+depth merge are rejected. These are fixed writer/scenario checks, not a general
 CSS cascade or arbitrary-source validator.
 
 The runner also checks actual PNG contributions by independently removing 34 labels, 62 effects,
