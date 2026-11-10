@@ -840,6 +840,20 @@ impl ErEditorFactCollector {
     }
 
     fn finish_line(&mut self, code: &str, line_end: usize, facts: &mut EditorSemanticFacts) {
+        // The exclusive style whitespace rule can consume physical line endings. Keep an
+        // unfinished target/value slot on its authored line without changing strict lexing.
+        let line_end = if self.style_payload_pending {
+            self.style_payload_anchor_end
+                .or(self.directive_start)
+                .and_then(|anchor_end| {
+                    code.get(anchor_end..line_end)?
+                        .find(['\r', '\n'])
+                        .map(|offset| anchor_end + offset)
+                })
+                .unwrap_or(line_end)
+        } else {
+            line_end
+        };
         if let Some(start) = self.directive_start {
             facts.push_expected_syntax(EditorExpectedSyntax::new(
                 EditorExpectedSyntaxKind::Directive,
@@ -2958,6 +2972,39 @@ mod semantic_tests {
                 }
             );
             assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn er_incomplete_style_slots_do_not_relax_required_targets_or_payloads() {
+        for newline in ["\n", "\r\n", "\r"] {
+            for (statement, kind) in [
+                ("style ", EditorExpectedSyntaxKind::IdList),
+                ("style A ", EditorExpectedSyntaxKind::StyleValue),
+                ("classDef accent ", EditorExpectedSyntaxKind::StyleValue),
+            ] {
+                let source =
+                    format!("erDiagram{newline}A{newline}{statement}{newline}\t {newline}");
+                let parsed = parse_er_semantic_model_controlled(
+                    &source,
+                    &metadata(),
+                    EditorFactsDemand::Capture,
+                    &OperationControl::new(),
+                )
+                .unwrap();
+                assert!(parsed.model.is_err(), "{source:?}");
+                let facts = parsed.editor_facts.expect("same-pass ER recovery facts");
+                assert_eq!(
+                    facts.completeness,
+                    crate::EditorSemanticCompleteness::Recovered
+                );
+                let slot = source.find(statement).unwrap() + statement.len();
+                assert!(facts.expected_syntax.contains(&EditorExpectedSyntax::new(
+                    kind,
+                    SourceSpan::new(slot, slot),
+                )));
+            }
         }
     }
 

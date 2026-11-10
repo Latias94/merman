@@ -41,6 +41,8 @@ use super::lexer::{ClassLexicalEvent, Lexer};
 #[cfg(test)]
 thread_local! {
     static CLASS_SYNTAX_CONSTRUCTION_COUNT: Cell<usize> = const { Cell::new(0) };
+    #[cfg(feature = "editor-facts")]
+    static CLASS_ACTION_RECOVERY_INSPECTIONS: Cell<usize> = const { Cell::new(0) };
 }
 
 #[cfg(test)]
@@ -664,6 +666,27 @@ impl<'a> ClassEditorFactCollector<'a> {
             }
             Tok::Name(name) => {
                 if self.interaction == Some(ClassInteractionKind::Click)
+                    && self.expected_name.is_some_and(|expected| {
+                        matches!(expected.kind, ExpectedClassName::ClickTarget)
+                    })
+                    && let Some((target, action_span)) =
+                        self.recover_interaction_action(name, SourceSpan::new(start, end))
+                {
+                    self.expected_name = None;
+                    self.interaction_target_end = Some(target.span.end);
+                    facts.push_expected_syntax(EditorExpectedSyntax::new(
+                        EditorExpectedSyntaxKind::NodeIdentifier,
+                        target.span,
+                    ));
+                    self.push_symbol(facts, target, ExpectedClassName::ClickTarget);
+                    self.push_interaction_expected_syntax(
+                        facts,
+                        action_span.start,
+                        action_span.end,
+                    );
+                    return;
+                }
+                if self.interaction == Some(ClassInteractionKind::Click)
                     && self.expected_name.is_none()
                     && !self.interaction_action_seen
                     && self
@@ -1020,6 +1043,49 @@ impl<'a> ClassEditorFactCollector<'a> {
             EditorExpectedSyntaxKind::InteractionAction,
             SourceSpan::new(start, end),
         ));
+    }
+
+    fn recover_interaction_action(
+        &self,
+        name: &str,
+        span: SourceSpan,
+    ) -> Option<(ClassTokenSymbol, SourceSpan)> {
+        let source = self.code.get(span.start..span.end)?;
+        // Quoted and generic terminals complete className rather than prefixing a bare action.
+        // Incomplete literals retain that ownership through EOF.
+        if source.contains(['`', '~']) {
+            return None;
+        }
+        let separator = source.rfind(|ch: char| ch.is_ascii_whitespace())?;
+        let action = &source[separator + 1..];
+        if !is_class_interaction_action_prefix(action)
+            || !self.code[span.end..]
+                .chars()
+                .take_while(|ch| !matches!(ch, '\r' | '\n'))
+                .all(|ch| {
+                    #[cfg(test)]
+                    CLASS_ACTION_RECOVERY_INSPECTIONS.update(|count| count + 1);
+                    is_ecmascript_whitespace(ch)
+                })
+        {
+            return None;
+        }
+        // className concatenates adjacent terminals, including a partially typed action.
+        // Recover only a bare final action prefix; completed interactions keep that grammar rule.
+        let target_name = name.strip_suffix(action)?;
+        let target_len = source[..separator]
+            .trim_end_matches(|ch: char| ch.is_ascii_whitespace())
+            .len();
+        if target_name.is_empty() || target_len == 0 {
+            return None;
+        }
+        Some((
+            ClassTokenSymbol {
+                name: target_name.to_string(),
+                span: SourceSpan::new(span.start, span.start + target_len),
+            },
+            SourceSpan::new(span.start + separator + 1, span.end),
+        ))
     }
 
     fn push_interaction_payload_expected_syntax(
@@ -1647,6 +1713,8 @@ mod semantic_tests {
         for (source, valid) in [
             ("classDiagram\nclass Service\n", true),
             ("classDiagram\nclass Service {\n+field\n", false),
+            ("classDiagram\nclass Service\nclick Service h", false),
+            ("classDiagram\nclass Service\nclick Service c", false),
         ] {
             reset_class_syntax_construction_count();
             #[cfg(feature = "editor-facts")]
@@ -1673,6 +1741,98 @@ mod semantic_tests {
                 }
             );
             assert_eq!(facts.diagnostics.is_empty(), valid);
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn class_interaction_recovery_preserves_completed_composite_targets() {
+        for (target, id) in [
+            ("User c", "Userc"),
+            ("User h", "Userh"),
+            ("User `c`", "Userc"),
+            ("`User h`", "User h"),
+        ] {
+            let source = format!(
+                "classDiagram\nclass {target}\nclick {target} href \"https://example.com\"\n"
+            );
+            let parsed = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            let model = parsed.model.expect("completed composite target parses");
+            assert!(model.classes.contains_key(id), "{target}");
+            let facts = parsed.editor_facts.expect("same-pass Class facts");
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("class interaction target"))
+                .expect("completed interaction retains its target");
+            let start = source.rfind(target).unwrap();
+            let target_span = SourceSpan::new(start, start + target.len());
+            assert_eq!(symbol.name, id, "{target}");
+            assert_eq!(symbol.span, target_span, "{target}");
+            assert!(facts.expected_syntax.iter().all(|expected| {
+                expected.kind != EditorExpectedSyntaxKind::InteractionAction
+                    || expected.span.start >= target_span.end
+            }));
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn class_interaction_recovery_retains_unterminated_literal_targets() {
+        for (target, id) in [("`User h", "User h"), ("Prefix `User h", "PrefixUser h")] {
+            let source = format!("classDiagram\nclick {target}");
+            let parsed = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(parsed.model.is_err());
+            let facts = parsed.editor_facts.unwrap();
+            let symbol = facts
+                .symbols
+                .iter()
+                .find(|symbol| symbol.detail.as_deref() == Some("class interaction target"))
+                .unwrap();
+            assert_eq!(symbol.name, id, "{target}");
+            assert_eq!(
+                symbol.span,
+                SourceSpan::new("classDiagram\nclick ".len(), source.len())
+            );
+            assert!(
+                facts.expected_syntax.iter().all(|expected| {
+                    expected.kind != EditorExpectedSyntaxKind::InteractionAction
+                })
+            );
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "editor-facts")]
+    fn class_interaction_recovery_bounds_adjacent_suffix_inspection() {
+        for count in [256, 2048] {
+            let source = format!("classDiagram\n{}", "click A h ".repeat(count));
+            CLASS_ACTION_RECOVERY_INSPECTIONS.set(0);
+            let parsed = parse_class_semantic_model_controlled(
+                &source,
+                &metadata(),
+                EditorFactsDemand::Capture,
+                &OperationControl::new(),
+            )
+            .unwrap();
+            assert!(parsed.model.is_err());
+            let inspected = CLASS_ACTION_RECOVERY_INSPECTIONS.get();
+            assert!(
+                inspected > 0 && inspected <= count * 2,
+                "{count}: {inspected}"
+            );
         }
     }
 
