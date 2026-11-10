@@ -70,9 +70,9 @@ fn journey_duplicate_sections_preserve_parser_occurrence_ownership() {
             "title(bytes=16)=\"Repeated journey\"\n",
             "actors=[bytes=5 \"Alice\", bytes=3 \"Bob\"]\n",
             "section(bytes=8)=\"Repeated\"\n",
-            "  - task(bytes=7)=\"  First\" score=5 people=[bytes=5 \"Alice\"]\n",
+            "  - task(bytes=5)=\"First\" score=5 people=[bytes=5 \"Alice\"]\n",
             "section(bytes=8)=\"Repeated\"\n",
-            "  - task(bytes=8)=\"  Second\" score=3 people=[bytes=3 \"Bob\"]",
+            "  - task(bytes=6)=\"Second\" score=3 people=[bytes=3 \"Bob\"]",
         )
     );
 }
