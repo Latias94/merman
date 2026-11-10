@@ -3,7 +3,7 @@ use crate::svg::PreparedCommonCss;
 
 use super::font_size::GanttFontSize;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct GanttCssBinding {
     pub(crate) common: PreparedCommonCss,
     pub(crate) task_font_size: GanttFontSize,

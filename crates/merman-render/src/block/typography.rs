@@ -257,7 +257,11 @@ impl BlockLabelTypography {
         let inline = classes.map_or_else(Vec::new, |classes| {
             super::node_binding::source_font_styles(styles, classes, definitions)
         });
-        let root_size = base.font_size;
+        let root_size = if xhtml.is_some() {
+            super::HTML_DOCUMENT_ROOT_FONT_SIZE_PX
+        } else {
+            base.font_size
+        };
         let mut font = FontState::new(base)
             .element(&stylesheet_fonts(definitions, &["block"], work)?, root_size);
         // Block's .label rule sets the base family directly on the label g.
@@ -476,6 +480,51 @@ mod tests {
     use super::*;
     use crate::resources::RenderResourcePolicy;
     use std::sync::Arc;
+
+    #[test]
+    fn prepared_html_rem_fonts_use_document_root_and_keep_portability_unverified() {
+        for font_size in [14.0, 24.0] {
+            for html in [false, true] {
+                for node in [false, true] {
+                    let work = Arc::new(OperationWorkMeter::new(
+                        RenderResourcePolicy::unbounded_for_trusted_input(),
+                    ));
+                    let base = TextStyle {
+                        font_size,
+                        ..TextStyle::default()
+                    };
+                    let mut definitions = IndexMap::new();
+                    let styles = if node {
+                        vec!["font-size:2rem".to_owned()]
+                    } else {
+                        let mut definition = BlockClassDef::default();
+                        definition.id = "edgeLabel".to_owned();
+                        definition.styles = vec!["font-size:2rem".to_owned()];
+                        definitions.insert(definition.id.clone(), definition);
+                        Vec::new()
+                    };
+                    let prepared = BlockLabelTypography::resolve(
+                        &styles,
+                        node.then_some([].as_slice()),
+                        &definitions,
+                        &base,
+                        html.then_some("<p>Alpha</p>"),
+                        "Alpha",
+                        1,
+                        &work,
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        prepared.style.font_size,
+                        if html { 32.0 } else { font_size * 2.0 },
+                        "diagram font {font_size}, HTML {html}, node {node}"
+                    );
+                    assert!(prepared.participation.visible);
+                    assert!(prepared.participation.unverified);
+                }
+            }
+        }
+    }
 
     #[test]
     fn unchanged_deep_font_states_share_the_retained_long_family() {

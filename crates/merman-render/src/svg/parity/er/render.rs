@@ -654,6 +654,34 @@ pub(crate) fn render_er_diagram_svg_model(
         }
     }
     let mut entity_theme_receipt = entity_theme.begin_terminal_receipt();
+    let relationship_background = entity_theme.relationship_background();
+    let background_occurrences = edges.iter().filter_map(|edge| {
+        if !relationship_background.requested() || !options.debug.include_edges {
+            return None;
+        }
+        let index = er_rel_idx_from_edge_id(&edge.id)?;
+        let relationship = model.relationships.get(index)?;
+        if relationship.role_a.is_empty() && (is_elk_layout || is_swimlane_layout) {
+            return None;
+        }
+        edge.label
+            .as_ref()
+            .filter(|label| label.width > 0.0 && label.height > 0.0)?;
+        if !edge_html_labels && !is_swimlane_layout {
+            layout
+                .prepared_labels
+                .relationship(index)?
+                .svg()?
+                .background_bounds
+                .as_ref()?;
+        }
+        Some((edge.id.clone(), index + 1))
+    });
+    let mut background_receipt = relationship_background.begin_terminal_receipt(
+        background_occurrences,
+        edge_html_labels,
+        options.work_meter(),
+    )?;
     for rule_index in marker_conflicts {
         entity_theme_receipt.record_marker_conflict(rule_index);
     }
@@ -1197,6 +1225,10 @@ pub(crate) fn render_er_diagram_svg_model(
             if rel_text_raw.is_empty() && (is_elk_layout || is_swimlane_layout) {
                 continue;
             }
+            let background_paints = background_receipt
+                .as_ref()
+                .map(|receipt| receipt.paints(&e.id))
+                .unwrap_or([None, None]);
             if is_swimlane_layout {
                 if let Some((index, _)) = rel_idx {
                     swimlane::render_relationship_label(
@@ -1207,7 +1239,17 @@ pub(crate) fn render_er_diagram_svg_model(
                         layout,
                         subgraph_context,
                         &mut entity_theme_receipt,
+                        background_paints
+                            .each_ref()
+                            .map(|paint| paint.as_ref().map(|paint| paint.css())),
                     )?;
+                    if e.label
+                        .as_ref()
+                        .is_some_and(|label| label.width > 0.0 && label.height > 0.0)
+                        && let Some(receipt) = background_receipt.as_mut()
+                    {
+                        receipt.record(&e.id, background_paints.each_ref().map(Option::as_ref));
+                    }
                 }
                 continue;
             }
@@ -1320,8 +1362,18 @@ pub(crate) fn render_er_diagram_svg_model(
                     if constrained {
                         let _ = write!(&mut out, " width: {}px;", fmt(max_width));
                     }
+                    if let Some(paint) = &background_paints[0] {
+                        let _ = write!(&mut out, " background-color:{};", escape_attr(paint.css()));
+                    }
                     out.push_str(r#""><span class="edgeLabel""#);
-                    if let Some(visual) = relation_visual {
+                    if let Some(paint) = &background_paints[1] {
+                        let _ = write!(
+                            &mut out,
+                            r#" style="{};background-color:{};""#,
+                            escape_attr(relation_label_terminal_style),
+                            escape_attr(paint.css()),
+                        );
+                    } else if let Some(visual) = relation_visual {
                         out.push_str(&visual.inline_attr);
                     }
                     out.push('>');
@@ -1347,7 +1399,14 @@ pub(crate) fn render_er_diagram_svg_model(
                     if let Some(background) = &svg_label.background_bounds {
                         let _ = write!(
                             &mut out,
-                            r#"<rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                            r#"<rect class="background" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                            background_paints[1]
+                                .as_ref()
+                                .map(|paint| format!(
+                                    "fill:{} !important",
+                                    escape_attr(paint.css())
+                                ))
+                                .unwrap_or_default(),
                             fmt(background.min_x),
                             fmt(background.min_y),
                             fmt(background.max_x - background.min_x),
@@ -1363,6 +1422,13 @@ pub(crate) fn render_er_diagram_svg_model(
                         crate::text::SvgTextEntityMode::CreateTextSource,
                     );
                     out.push_str("</g></g></g>");
+                }
+                if (edge_html_labels
+                    || svg_relationship.is_some_and(|label| label.background_bounds.is_some()))
+                    && let Some(receipt) = background_receipt.as_mut()
+                {
+                    out.checkpoint()?;
+                    receipt.record(&e.id, background_paints.each_ref().map(Option::as_ref));
                 }
                 if entity_theme_receipt.records_text_terminals()
                     && let Some(relationship_index) = relationship_index
@@ -2166,6 +2232,11 @@ pub(crate) fn render_er_diagram_svg_model(
 
     out.push_str("</svg>\n");
     let rooted_svg = root_document.complete(out.finish()?)?;
+    if !relationship_background.record_terminal(background_receipt) {
+        return Err(Error::InvalidModel {
+            message: "ER relationship background terminal evidence could not be sealed".to_owned(),
+        });
+    }
     if !entity_theme.record_terminal(entity_theme_receipt) {
         return Err(Error::InvalidModel {
             message: "ER theme terminal evidence could not be sealed".to_string(),

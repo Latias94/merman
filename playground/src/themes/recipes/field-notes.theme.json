@@ -17,7 +17,7 @@
       "record-font": { "type": "font-stack", "label": "Record and reference text", "group": "Typography", "description": "Monospaced card labels and reference labels suggest catalogued records without adding content to the diagram.", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
       "journal-font": { "type": "font-stack", "label": "Field journal charts", "group": "Typography", "value": ["Georgia", "Times New Roman", "Noto Serif CJK SC", "serif"] },
       "series": { "type": "palette", "label": "Observation inks", "group": "Palettes", "value": [{ "ref": "ink" }, { "ref": "accent" }, "#9A7428", "#536D88", "#6B7040", "#87647A"] },
-      "pie-series": { "type": "palette", "label": "Paper specimen tabs", "group": "Palettes", "description": "Independent light swatches keep forest-ink percentage labels readable.", "value": ["#BFCDAE", "#E4B6A4", { "ref": "note" }, "#BED0D5", "#D6D3A8", "#D6BED1"] },
+      "pie-series": { "type": "palette", "label": "Paper specimen tabs", "group": "Palettes", "description": "Six specimen tabs share category paint across Pie, Mindmap, and Timeline sections. The annotation slip remains an explicit reference; Timeline event cards retain their paper-fill rule.", "value": ["#BFCDAE", "#E4A58F", { "ref": "note" }, "#97BDDA", "#C2D27E", "#D4A6D1"] },
       "card-lift": {
         "type": "effect",
         "label": "Mounted record card",

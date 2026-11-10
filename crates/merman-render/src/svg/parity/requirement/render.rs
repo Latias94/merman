@@ -142,10 +142,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .map(|c| format!(r#" class="{c}""#))
             .unwrap_or_default();
         let span_style_attr = span_style
-            .map(|s| format!(r#" style="{}""#, escape_xml(s)))
+            .map(|s| format!(r#" style="{}""#, escape_attr(s)))
             .unwrap_or_default();
         let div_style_prefix = div_style_prefix.unwrap_or("");
-        let constrained_width = max_width_px > 0 && (width - max_width_px as f64).abs() <= 1.0e-6;
+        // A table can grow past its requested width to fit an unbreakable word. That
+        // min-content expansion retains createText's constrained wrapping mode.
+        let constrained_width = max_width_px > 0 && width >= max_width_px as f64;
         let (display, white_space, width_style) = if constrained_width {
             (
                 "table",
@@ -163,7 +165,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
             div_class_attr = div_class_attr,
             span_class = escape_xml(span_class),
             span_style_attr = span_style_attr,
-            div_style_prefix = escape_xml(div_style_prefix),
+            // CSS is an attribute value: Mermaid's text entity decoder would turn
+            // numeric colors such as `#051423;` into a Unicode scalar.
+            div_style_prefix = escape_attr(div_style_prefix),
             display = display,
             white_space = white_space,
             max_width = max_width_px,
@@ -412,11 +416,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         content_bounds.max_y = content_bounds.max_y.max(y + descent);
         (title, x, y)
     });
-    let viewport_padding = render_settings.viewport_padding;
-    let vb_x = content_bounds.min_x - viewport_padding;
-    let vb_y = content_bounds.min_y - viewport_padding;
-    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
@@ -449,26 +448,37 @@ pub(crate) fn render_requirement_diagram_svg_model(
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::REQUIREMENT, diagram_id)
-            .write_open(
-                &mut out,
-                root_svg::RootViewportSpec::mermaid(
-                    root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-                    render_settings.use_max_width,
-                )
-                .with_max_width(root_svg::RootMaxWidth::Precision {
-                    value: vb_w,
-                    significant_digits: 6,
-                }),
-                root_chrome,
-            )?;
+    let root_context =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::REQUIREMENT, diagram_id);
+    let root_document = root_context.begin_document(
+        &mut out,
+        root_svg::DeferredRootSpec::mermaid(render_settings.use_max_width),
+        root_chrome,
+    )?;
 
     out.push_str(&a11y_nodes);
 
     let relation_paint = paint_theme.relation_paint();
     let mut relation_receipt =
         relation_paint.and_then(|plan| plan.begin_terminal_receipt(layout.edges.len()));
+    let relationship_background = paint_theme.relationship_background();
+    let background_occurrences = layout.edges.iter().filter_map(|edge| {
+        if !relationship_background.requested() {
+            return None;
+        }
+        let label = prepared_edges
+            .get(&edge_identity(edge))
+            .filter(|label| label.has_label)?;
+        edge.label
+            .as_ref()
+            .filter(|label| label.width > 0.0 && label.height > 0.0)?;
+        Some((label.rendered_id.clone(), label.relationship_index + 1))
+    });
+    let mut background_receipt = relationship_background.begin_terminal_receipt(
+        background_occurrences,
+        render_settings.edge_html_labels,
+        options.work_meter(),
+    )?;
     let mut expected_text_terminals = Vec::new();
     if paint_theme.text_paint().requested() {
         for edge in &layout.edges {
@@ -734,6 +744,10 @@ pub(crate) fn render_requirement_diagram_svg_model(
             );
         }
         let mut text_facts = None;
+        let background_paints = background_receipt
+            .as_ref()
+            .map(|receipt| receipt.paints(&prepared_label.rendered_id))
+            .unwrap_or([None, None]);
         if render_settings.edge_html_labels {
             let label_html = mermaid_markdown_to_html(label_text, sanitize_config);
             if (text_paint_receipt.is_some() || paint_theme_receipt.is_some())
@@ -747,6 +761,12 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     ),
                 );
             }
+            let outer_background_style = background_paints[0]
+                .as_ref()
+                .map(|paint| format!("background-color:{};", paint.css()));
+            let inner_background_style = background_paints[1]
+                .as_ref()
+                .map(|paint| format!("background-color:{};", paint.css()));
             mk_label_foreign_object(
                 &mut out,
                 LabelForeignObject {
@@ -754,9 +774,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
                     width: w,
                     height: h,
                     span_class: "edgeLabel",
-                    span_style: None,
+                    span_style: inner_background_style.as_deref(),
                     div_class: Some("labelBkg"),
-                    div_style_prefix: None,
+                    div_style_prefix: outer_background_style.as_deref(),
                     max_width_px: 200,
                     text_align: "center",
                 },
@@ -777,7 +797,11 @@ pub(crate) fn render_requirement_diagram_svg_model(
             if prepared_label.has_label {
                 let _ = write!(
                     &mut out,
-                    r#"<rect class="background" style="" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    r#"<rect class="background" style="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+                    background_paints[1]
+                        .as_ref()
+                        .map(|paint| format!("fill:{} !important", escape_attr(paint.css())))
+                        .unwrap_or_default(),
                     fmt(-w / 2.0),
                     fmt(svg_text_y - 2.0),
                     fmt(w),
@@ -797,6 +821,17 @@ pub(crate) fn render_requirement_diagram_svg_model(
             out.push_str("</g>");
         }
         out.push_str("</g></g>");
+        if prepared_label.has_label
+            && w > 0.0
+            && h > 0.0
+            && let Some(receipt) = background_receipt.as_mut()
+        {
+            out.checkpoint()?;
+            receipt.record(
+                &prepared_label.rendered_id,
+                background_paints.each_ref().map(Option::as_ref),
+            );
+        }
         if prepared_label.has_label
             && let Some(receipt) = paint_theme_receipt.as_mut()
             && let Some(facts) = &text_facts
@@ -1019,6 +1054,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x + padding / 2.0
             };
             let label_y = y + line.y_offset - metrics.height / 2.0 + padding;
+            // Requirement labels can extend above their node after upstream's centering step.
+            // Reuse the final render measurement and the coordinates written below; SVG's extra
+            // six pixels belong to stacking, while bbox_y retains createText's font-specific top.
+            let label_top = cy + label_y + metrics.bbox_y;
+            let label_height = if render_settings.html_labels {
+                metrics.height
+            } else {
+                (metrics.height - 6.0).max(0.0)
+            };
+            content_bounds.min_x = content_bounds.min_x.min(cx + label_x);
+            content_bounds.max_x = content_bounds.max_x.max(cx + label_x + metrics.width);
+            content_bounds.min_y = content_bounds.min_y.min(label_top);
+            content_bounds.max_y = content_bounds.max_y.max(label_top + label_height);
             let style = if line.bold {
                 format!("{label_styles}; font-weight: bold;")
             } else {
@@ -1301,7 +1349,30 @@ pub(crate) fn render_requirement_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
+    let viewport_padding = render_settings.viewport_padding;
+    let vb_x = content_bounds.min_x - viewport_padding;
+    let vb_y = content_bounds.min_y - viewport_padding;
+    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+    let root_document = root_context.finish_document(
+        &mut out,
+        root_document,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+            render_settings.use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::Precision {
+            value: vb_w,
+            significant_digits: 6,
+        }),
+    )?;
     let rooted_svg = root_document.complete(out.finish()?)?;
+    if !relationship_background.record_terminal(background_receipt) {
+        return Err(Error::InvalidModel {
+            message: "Requirement relationship background terminal evidence could not be sealed"
+                .to_owned(),
+        });
+    }
     if let Some(receipt) = relation_receipt
         && !relation_paint
             .expect("relation receipt requires a plan")

@@ -2121,7 +2121,9 @@ pub(crate) fn class_html_measure_note_metrics(
     mermaid_config: &merman_model::presentation::PresentationConfig,
 ) -> crate::text::TextMetrics {
     let html = class_note_html_fragment(note_src, mermaid_config);
-    crate::text::measure_html_with_inline_styles(measurer, &html, style, None, WrapMode::HtmlLike)
+    // Like the other Class XHTML labels, rem resolves against the host document,
+    // independently of the diagram's inherited font size.
+    crate::text::measure_unwrapped_xhtml_label_fragment(measurer, &html, style, 16.0)
 }
 
 pub(crate) fn analyze_class_svg_markdown(text: &str) -> MermaidMarkdownAnalysis {
@@ -2596,7 +2598,7 @@ fn note_dimensions(
     } else {
         ClassSvgNoteLabel::new(&label).metrics(measurer, text_style)
     };
-    (m.width + p, m.height + p, m)
+    (m.width + p * 2.0, m.height + p * 2.0, m)
 }
 
 fn label_metrics(
@@ -2907,7 +2909,7 @@ fn measure_class_diagram(
                 measurer,
                 text_style,
                 wrap_mode_note,
-                class_padding,
+                settings.note_padding,
                 note_html_config,
                 math_renderer,
             );
@@ -5775,8 +5777,8 @@ mod tests {
 
         assert_eq!(metrics.width, 123.0);
         assert_eq!(metrics.height, 37.0);
-        assert_eq!(width, 131.0);
-        assert_eq!(height, 45.0);
+        assert_eq!(width, 139.0);
+        assert_eq!(height, 53.0);
     }
 }
 

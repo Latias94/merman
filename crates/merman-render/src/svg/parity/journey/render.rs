@@ -27,6 +27,7 @@ struct JourneyTextStyle<'a> {
     task_font_size: f64,
     task_font_family: &'a str,
     section_colour: Option<&'a str>,
+    typed_fill: Option<&'a str>,
 }
 
 fn write_text_candidate(
@@ -48,6 +49,7 @@ fn write_text_candidate(
         task_font_size,
         task_font_family,
         section_colour,
+        typed_fill,
     } = style;
     let content_esc = escape_xml(content);
     let class_esc = escape_attr(class);
@@ -57,9 +59,15 @@ fn write_text_candidate(
     let cy = y + height / 2.0;
 
     if placement == JourneyTextPlacement::Old {
+        let fill_style = typed_fill
+            .map(|fill| {
+                let fill = escape_attr(fill);
+                format!(" fill: {fill}; color: {fill};")
+            })
+            .unwrap_or_default();
         let _ = write!(
             out,
-            r#"<text x="{x}" y="{y}" class="{class}" style="text-anchor: middle;">{text}</text>"#,
+            r#"<text x="{x}" y="{y}" class="{class}" style="text-anchor: middle;{fill_style}">{text}</text>"#,
             x = fmt(cx),
             y = fmt(cy + 5.0),
             class = class_esc,
@@ -70,6 +78,12 @@ fn write_text_candidate(
     }
 
     if placement == JourneyTextPlacement::Fo {
+        let fill_style = typed_fill
+            .map(|fill| {
+                let fill = escape_attr(fill);
+                format!(" color: {fill}; fill: {fill};")
+            })
+            .unwrap_or_default();
         out.push_str("<switch>");
         let _ = write!(
             out,
@@ -81,7 +95,7 @@ fn write_text_candidate(
         );
         let _ = write!(
             out,
-            r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;">{text}</div></div>"#,
+            r#"<div class="{class}" xmlns="http://www.w3.org/1999/xhtml" style="display: table; height: 100%; width: 100%;"><div class="label" style="display: table-cell; text-align: center; vertical-align: middle;{fill_style}">{text}</div></div>"#,
             class = class_esc,
             text = content_esc
         );
@@ -116,7 +130,14 @@ fn write_text_candidate(
             let _ = write!(out, " font-size: {}px;", fmt(task_font_size));
         }
         let _ = write!(out, " font-family: {font_family_esc};");
-        if placement == JourneyTextPlacement::Fo {
+        if let Some(fill) = typed_fill {
+            let _ = write!(
+                out,
+                " fill: {}; color: {};",
+                escape_attr(fill),
+                escape_attr(fill)
+            );
+        } else if placement == JourneyTextPlacement::Fo {
             let _ = write!(out, " fill: {fill_esc};");
         }
         let _ = write!(
@@ -607,6 +628,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                     task_font_size,
                     task_font_family,
                     section_colour,
+                    typed_fill: text_paint.surface_fill_css(),
                 },
                 &theme.text_color,
             )?;
@@ -616,10 +638,10 @@ pub(crate) fn render_journey_diagram_svg_model(
             out.push_str("</g>");
             out.checkpoint()?;
             if let Some(receipt) = text_receipt.as_mut() {
-                receipt.record_label(
+                receipt.record_surface_label(
                     crate::journey::JourneyTextPaintRole::Section,
-                    (render_settings.text_placement == JourneyTextPlacement::Fo)
-                        .then_some(theme.text_color.as_str()),
+                    text_paint.surface_fill_css(),
+                    has_visible_text,
                 );
             }
             if let Some(receipt) = task_theme_receipt.as_mut() {
@@ -750,6 +772,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                 task_font_size,
                 task_font_family,
                 section_colour,
+                typed_fill: text_paint.surface_fill_css(),
             },
             &theme.text_color,
         )?;
@@ -760,10 +783,10 @@ pub(crate) fn render_journey_diagram_svg_model(
         out.push_str("</g>");
         out.checkpoint()?;
         if let Some(receipt) = text_receipt.as_mut() {
-            receipt.record_label(
+            receipt.record_surface_label(
                 crate::journey::JourneyTextPaintRole::Task,
-                (render_settings.text_placement == JourneyTextPlacement::Fo)
-                    .then_some(theme.text_color.as_str()),
+                text_paint.surface_fill_css(),
+                has_visible_text,
             );
         }
         if let Some(receipt) = task_theme_receipt.as_mut() {

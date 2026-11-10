@@ -9,6 +9,51 @@ use crate::diagram_theme::ThemeTarget;
 
 pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = build_cross_family_recipe(palette);
+    // Paper swatches are labeled surfaces. Fine chart marks need their own darker pigments.
+    let chart_inks = [
+        "#556F50", "#3E7183", "#97603F", "#825C7A", "#876E24", "#4E6C69",
+    ];
+    for (index, color) in chart_inks.iter().enumerate() {
+        let id = format!("chart-ink.{index}");
+        color_token(
+            &mut design,
+            &id,
+            &format!("Chart ink {}", index + 1),
+            "Chart inks",
+            "Botanical pigment for fine chart marks, independent of pale category surfaces.",
+            color,
+        );
+        // Sankey labels sit outside their narrow nodes. Preserve its distinct node/link domain.
+        let mut entry = rule(
+            Some(DiagramFamilyId::SANKEY),
+            ThemeTarget::Node,
+            None,
+            style(Some(&id), None),
+        );
+        entry.ordinal = Some(ThemeOrdinalSelectorWireV1::Cycle {
+            cycle: ThemeOrdinalCycleWireV1 {
+                period: chart_inks.len() as u32,
+                offset: index as u32,
+            },
+        });
+        design.rules.push(entry);
+    }
+    token(
+        &mut design,
+        "chart-inks",
+        "Chart inks",
+        "Chart inks",
+        "Ordered colors for chart strokes and swatches; repeating after the authored six pigments.",
+        ThemeDesignTokenValueV1::Palette(literal(
+            (0..chart_inks.len())
+                .map(|index| reference(&format!("chart-ink.{index}")))
+                .collect(),
+        )),
+    );
+    design.palettes.insert(
+        ThemeTarget::ChartSeries.id().to_owned(),
+        reference("chart-inks"),
+    );
     color_token(
         &mut design,
         "paper-texture",

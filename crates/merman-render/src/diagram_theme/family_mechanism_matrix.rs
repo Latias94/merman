@@ -1318,7 +1318,11 @@ pub(super) fn classify_rule_facet(
     }
     if matches!(
         family,
-        DiagramFamilyId::BLOCK | DiagramFamilyId::FLOWCHART | DiagramFamilyId::SWIMLANE
+        DiagramFamilyId::BLOCK
+            | DiagramFamilyId::FLOWCHART
+            | DiagramFamilyId::SWIMLANE
+            | DiagramFamilyId::ER
+            | DiagramFamilyId::REQUIREMENT
     ) && target == ThemeTarget::EdgeLabelBackground
         && matches!(
             selector,
@@ -1678,7 +1682,7 @@ pub(super) fn classify_rule_facet(
         && matches!(
             (target, facet),
             (
-                ThemeTarget::Edge | ThemeTarget::Node | ThemeTarget::Cluster,
+                ThemeTarget::Edge | ThemeTarget::Node | ThemeTarget::Cluster | ThemeTarget::Note,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 ) | FamilyThemeRuleFacet::Stroke(
@@ -1689,10 +1693,45 @@ pub(super) fn classify_rule_facet(
                     | ThemeTarget::Title
                     | ThemeTarget::Text
                     | ThemeTarget::EdgeLabel
-                    | ThemeTarget::EdgeLabelBackground,
+                    | ThemeTarget::EdgeLabelBackground
+                    | ThemeTarget::NoteLabel,
                 FamilyThemeRuleFacet::Fill(
                     FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
                 )
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::MINDMAP
+        && matches!(target, ThemeTarget::Node | ThemeTarget::NodeLabel)
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: Some(ThemeVariant::Primary)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
+            )
+        )
+    {
+        return FamilyThemeDisposition::TypedAdapter;
+    }
+    if family == DiagramFamilyId::JOURNEY
+        && target == ThemeTarget::TaskLabel
+        && matches!(
+            selector,
+            FamilyThemeSelectorShape::Static {
+                variant: None | Some(ThemeVariant::Default)
+            }
+        )
+        && matches!(
+            facet,
+            FamilyThemeRuleFacet::Fill(
+                FamilyThemePaintKind::Transparent | FamilyThemePaintKind::Solid
             )
         )
     {
@@ -1751,6 +1790,7 @@ pub(super) fn classify_rule_facet(
                 | ThemeTarget::EdgeLabelBackground
                 | ThemeTarget::NodeLabel
                 | ThemeTarget::EdgeLabel
+                | ThemeTarget::ClusterLabel
         )
         && matches!(
             facet,
@@ -1866,7 +1906,7 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::GANTT
-        && target == ThemeTarget::Title
+        && matches!(target, ThemeTarget::Title | ThemeTarget::ExcludedPeriod)
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {
@@ -1942,7 +1982,10 @@ pub(super) fn classify_rule_facet(
         return FamilyThemeDisposition::TypedAdapter;
     }
     if family == DiagramFamilyId::TIMELINE
-        && matches!(target, ThemeTarget::TimelineEvent | ThemeTarget::Text)
+        && matches!(
+            target,
+            ThemeTarget::TimelineEvent | ThemeTarget::Text | ThemeTarget::NodeLabel
+        )
         && matches!(
             selector,
             FamilyThemeSelectorShape::Static {

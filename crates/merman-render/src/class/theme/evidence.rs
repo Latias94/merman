@@ -74,6 +74,33 @@ impl ClassThemeEvidenceRecorder {
         let background_count =
             receipt.and_then(ClassThemeOutcomeSummary::edge_label_background_count);
         let mut background_winners = BTreeSet::new();
+        let note_count = receipt
+            .map(ClassThemeOutcomeSummary::note_count)
+            .unwrap_or(self.expected_note_paths);
+        let mut note_winners = BTreeSet::new();
+        let has_note_ordinals = theme
+            .family_rules()
+            .any(|(_, rule)| rule.target() == ThemeTarget::Note && rule.ordinal().is_some());
+        for ordinal in 1..=if has_note_ordinals {
+            note_count
+        } else {
+            usize::from(note_count > 0)
+        } {
+            let style = theme.style_with_work_meter(
+                ThemeTarget::Note,
+                ThemeVariant::Default,
+                has_note_ordinals.then_some(ordinal),
+                work_meter,
+            )?;
+            note_winners.extend(
+                style
+                    .winner_rule_properties()
+                    .filter_map(|(property, origin)| {
+                        (!plan.note_plan.property_overridden(property))
+                            .then_some((origin.rule_index(), property))
+                    }),
+            );
+        }
         if let Some(count) = background_count.filter(|count| *count > 0) {
             let has_ordinals = theme.family_rules().any(|(_, rule)| {
                 rule.target() == ThemeTarget::EdgeLabelBackground && rule.ordinal().is_some()
@@ -108,6 +135,7 @@ impl ClassThemeEvidenceRecorder {
                         | ThemeTarget::Node
                         | ThemeTarget::NodeLabel
                         | ThemeTarget::Cluster
+                        | ThemeTarget::Note
                         | ThemeTarget::Title
                         | ThemeTarget::EdgeLabelBackground
                 ) =>
@@ -115,6 +143,7 @@ impl ClassThemeEvidenceRecorder {
                     let observation = rules.entry((rule_index, target)).or_default();
                     let property = resolved_style_property_for_facet(facet);
                     let route_applies = match target {
+                        ThemeTarget::Note => note_winners.contains(&(rule_index, property)),
                         ThemeTarget::EdgeLabelBackground => {
                             if background_count.is_none() {
                                 observation.applicable = true;
@@ -172,6 +201,7 @@ impl ClassThemeEvidenceRecorder {
                     if matches!(
                         target,
                         ThemeTarget::Cluster
+                            | ThemeTarget::Note
                             | ThemeTarget::Title
                             | ThemeTarget::EdgeLabelBackground
                     ) {
@@ -186,7 +216,9 @@ impl ClassThemeEvidenceRecorder {
                                 ),
                             ) => {
                                 if receipt.is_some_and(|receipt| {
-                                    if target == ThemeTarget::EdgeLabelBackground {
+                                    if target == ThemeTarget::Note {
+                                        receipt.applied_note_paint(rule_index, property)
+                                    } else if target == ThemeTarget::EdgeLabelBackground {
                                         property == ResolvedStyleProperty::Fill
                                             && receipt.applied_edge_label_background(rule_index)
                                     } else if target == ThemeTarget::Title {
@@ -359,7 +391,14 @@ impl ClassThemeEvidenceRecorder {
             }
         }
 
-        let mut unsupported_domains = Vec::with_capacity(8);
+        let mut unsupported_domains = Vec::with_capacity(9);
+        unsupported_domains.push(
+            UnsupportedTerminalDomain::fallbacks_only(
+                ThemeTarget::Note,
+                TerminalVariantDomain::uniform(note_count, ThemeVariant::Default),
+            )
+            .with_fill_fully_overridden(plan.note_plan.fill.config_owned()),
+        );
         unsupported_domains.push(
             UnsupportedTerminalDomain::fallbacks_only(
                 ThemeTarget::Cluster,

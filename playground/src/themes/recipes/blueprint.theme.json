@@ -15,8 +15,8 @@
       "active-surface": { "type": "color", "label": "Translucent inspection interval", "group": "Drafting sheet", "value": "#7AE6EC30" },
       "drafting-font": { "type": "font-stack", "label": "Monospaced drafting labels", "group": "Typography", "description": "A restrained monospaced face keeps labels and measurements distinct from decorative effects.", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
       "plot-font": { "type": "font-stack", "label": "Condensed technical chart lettering", "group": "Typography", "description": "Narrow technical lettering keeps titles, scale labels, and compact legends readable beside the fine drawing lines.", "value": ["Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
-      "series": { "type": "palette", "label": "Survey and reference inks", "group": "Palettes", "value": [{ "ref": "ink" }, { "ref": "accent" }, "#A6C5F2", "#D6D5FB", "#CBE7D8", "#E8DEBA"] },
-      "pie-series": { "type": "palette", "label": "Cyanotype exposure steps", "group": "Palettes", "description": "Dark blue exposures retain contrast with the white percentage lettering; the crisp pale borders separate adjacent sectors.", "value": ["#214C77", "#225B71", "#354A80", "#1D3C63", "#32566A", "#454C76"] }
+      "series": { "type": "palette", "label": "Survey and reference inks", "group": "Palettes", "value": [{ "ref": "ink" }, { "ref": "accent" }, "#8EACED", "#C6ADFA", "#B7E0B4", "#F2CC8C"] },
+      "pie-series": { "type": "palette", "label": "Cyanotype exposure steps", "group": "Palettes", "description": "Six cyanotype layers use distinct blue, cyan, violet, deep navy, mineral green, and mauve exposures. Pale percentages remain readable at the default Pie opacity, including over the grid.", "value": ["#214C77", "#126B8A", "#493287", "#0A2542", "#2D6248", "#77577F"] }
     },
     "canvas": {
       "base": { "kind": "solid", "color": { "ref": "paper" } },
@@ -123,7 +123,7 @@
       { "family": "xychart", "target": "axis-title", "style": { "fill": { "kind": "solid", "color": { "ref": "secondary" } }, "typography": { "font_size_px": 12 }, "effect": null } },
       { "family": "xychart", "target": "axis-label", "style": { "fill": { "kind": "solid", "color": { "ref": "secondary" } }, "typography": { "font_size_px": 11 }, "effect": null } },
       { "family": "xychart", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 }, "effect": null } },
-      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "fill": "transparent", "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1.2 }, "effect": null } },
+      { "family": "xychart", "target": "chart-series", "variant": "bar", "style": { "fill": "transparent", "stroke": { "width": 1.2 }, "effect": null } },
       { "family": "xychart", "target": "chart-series", "variant": "line", "style": { "stroke": { "width": 1.7 }, "effect": null } },
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14, "font_weight": 500 } } },

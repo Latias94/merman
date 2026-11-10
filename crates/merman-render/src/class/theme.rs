@@ -13,6 +13,7 @@ mod cluster;
 mod css_binding;
 mod evidence;
 mod node;
+mod note;
 mod outcomes;
 mod paint;
 mod relation_width;
@@ -24,6 +25,7 @@ pub(crate) use css_binding::ClassCssThemeBinding;
 pub(crate) use evidence::ClassThemeEvidenceRecorder;
 pub(crate) use node::ClassNodePaintBinding;
 use node::ClassNodeThemePlan;
+pub(crate) use note::ClassNoteThemePlan;
 pub(crate) use outcomes::ClassThemeOutcomeSummary;
 pub(crate) use outcomes::{
     ClassMarkerPaintBinding, ClassNodePaintOutcomes, ClassRelationPaintOutcome, ClassThemeOutcomes,
@@ -45,6 +47,7 @@ pub(crate) struct ClassRelationThemePlan {
     static_winner_rules: BTreeMap<ResolvedStyleProperty, usize>,
     ordinal_winner_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     node_plan: ClassNodeThemePlan,
+    note_plan: ClassNoteThemePlan,
     cluster_plan: ClassClusterThemePlan,
     namespace_title_plan: ClassTitleThemePlan,
     diagram_title_plan: ClassTitleThemePlan,
@@ -74,6 +77,7 @@ impl ClassRelationThemePlan {
         );
         let mermaid_owns_stroke = stroke_binding.config_owned();
         let mut node_plan = ClassNodeThemePlan::from_config(effective_config);
+        let note_plan = ClassNoteThemePlan::resolve(theme, effective_config, work_meter)?;
         let diagram_title_plan =
             ClassTitleThemePlan::resolve_diagram_title(theme, effective_config, work_meter)?;
         let Some(theme) = theme else {
@@ -81,6 +85,7 @@ impl ClassRelationThemePlan {
                 stroke_binding,
                 stroke_width,
                 node_plan,
+                note_plan,
                 diagram_title_plan,
                 ..Self::default()
             });
@@ -231,6 +236,7 @@ impl ClassRelationThemePlan {
             static_winner_rules,
             ordinal_winner_rules,
             node_plan,
+            note_plan,
             cluster_plan: ClassClusterThemePlan::default(),
             namespace_title_plan: ClassTitleThemePlan::default(),
             diagram_title_plan,
@@ -334,6 +340,10 @@ impl ClassRelationThemePlan {
 
     pub(crate) fn node_paint(&self, ordinal: usize) -> &ClassNodePaintBinding {
         self.node_plan.paint(ordinal)
+    }
+
+    pub(crate) fn note_paint(&self) -> &ClassNoteThemePlan {
+        &self.note_plan
     }
 
     fn route_won(

@@ -50,10 +50,15 @@ pub(super) struct PresetPalette {
     pub(super) sequence_number_text: &'static str,
     pub(super) packet_field_label_text: &'static str,
     pub(super) series: &'static [&'static str],
+    pub(super) pie_series: &'static [&'static str],
+    pub(super) pie_text: &'static str,
     pub(super) kanban_task_labels: &'static [&'static str],
     pub(super) gantt_active_text: &'static str,
     pub(super) gantt_critical: &'static str,
     pub(super) gantt_critical_text: &'static str,
+    pub(super) gantt_excluded_period: &'static str,
+    pub(super) gantt_text: Option<&'static str>,
+    pub(super) treemap_text: Option<&'static str>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -257,10 +262,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#ffffff",
             gantt_critical: "#be123c",
             gantt_critical_text: "#ffffff",
+            gantt_excluded_period: "#e2e8f0",
+            gantt_text: None,
+            treemap_text: None,
             series: &[
                 "#2563eb", "#059669", "#d97706", "#7c3aed", "#0891b2", "#be123c", "#a16207",
                 "#65a30d",
             ],
+            pie_series: &[
+                "#60a5fa", "#34d399", "#fb923c", "#c084fc", "#22d3ee", "#fb7185", "#eab308",
+                "#a3e635", "#e879f9", "#94a3b8", "#f9a8d4", "#818cf8",
+            ],
+            pie_text: "#0f172a",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -295,10 +308,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#0f172a",
             gantt_critical: "#fb7185",
             gantt_critical_text: "#0f172a",
+            gantt_excluded_period: "#334155",
+            gantt_text: None,
+            treemap_text: Some("#000000"),
             series: &[
                 "#60a5fa", "#34d399", "#f59e0b", "#c084fc", "#22d3ee", "#fb7185", "#facc15",
                 "#a3e635",
             ],
+            pie_series: &[
+                "#93c5fd", "#6ee7b7", "#fcd34d", "#d8b4fe", "#67e8f9", "#fda4af", "#fde68a",
+                "#bef264", "#f0abfc", "#cbd5e1", "#fdba74", "#a5b4fc",
+            ],
+            pie_text: "#0f172a",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -333,10 +354,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#21252b",
             gantt_critical: "#e06c75",
             gantt_critical_text: "#21252b",
+            gantt_excluded_period: "#11151c",
+            gantt_text: Some("#d8dee9"),
+            treemap_text: Some("#000000"),
             series: &[
                 "#61afef", "#98c379", "#e5c07b", "#c678dd", "#56b6c2", "#e06c75", "#d19a66",
                 "#be5046",
             ],
+            pie_series: &[
+                "#8ec5ef", "#b5d58c", "#edd49b", "#d9a8e6", "#83cdd1", "#efa2a8", "#e4b58c",
+                "#bbd9b1", "#b2b6e5", "#f0bc9e", "#a6d7c4", "#d6c1ab",
+            ],
+            pie_text: "#1b1e24",
             kanban_task_labels: &[
                 "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
                 "#000000",
@@ -374,10 +403,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#ffffff",
             gantt_critical: "#cc241d",
             gantt_critical_text: "#ffffff",
+            gantt_excluded_period: "#ebdbb2",
+            gantt_text: None,
+            treemap_text: None,
             series: &[
                 "#458588", "#98971a", "#d79921", "#b16286", "#689d6a", "#cc241d", "#d65d0e",
                 "#427b58",
             ],
+            pie_series: &[
+                "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb7b63", "#fea34f",
+                "#a6bba7", "#b8a1c5", "#dfbd85", "#a5c9bc", "#d5c4a1",
+            ],
+            pie_text: "#282828",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -412,10 +449,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#282828",
             gantt_critical: "#fb4934",
             gantt_critical_text: "#282828",
+            gantt_excluded_period: "#403b39",
+            gantt_text: None,
+            treemap_text: Some("#000000"),
             series: &[
                 "#83a598", "#b8bb26", "#fabd2f", "#d3869b", "#8ec07c", "#fb4934", "#fe8019",
                 "#689d6a",
             ],
+            pie_series: &[
+                "#9fc1b5", "#c7cb65", "#fbd477", "#e3aabb", "#add2a0", "#fc9b80", "#ffbb74",
+                "#bbc9a3", "#c6b0dc", "#ebc197", "#b6d6c5", "#d5c4a1",
+            ],
+            pie_text: "#1d2021",
             kanban_task_labels: &[
                 "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
                 "#000000",
@@ -453,10 +498,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#11151c",
             gantt_critical: "#f07171",
             gantt_critical_text: "#11151c",
+            gantt_excluded_period: "#e6e8eb",
+            gantt_text: None,
+            treemap_text: None,
             series: &[
                 "#55b4d4", "#86b300", "#ffaa33", "#a37acc", "#4cbf99", "#f07171", "#f2ae49",
                 "#399ee6",
             ],
+            pie_series: &[
+                "#55b4d4", "#86b300", "#ffaa33", "#ba9cde", "#4cbf99", "#f49999", "#d4b87a",
+                "#6fb9ee", "#dd99ca", "#99acb8", "#c3cf84", "#b3a0c7",
+            ],
+            pie_text: "#30363d",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -491,10 +544,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#0b0e14",
             gantt_critical: "#f07178",
             gantt_critical_text: "#0b0e14",
+            gantt_excluded_period: "#1f2430",
+            gantt_text: None,
+            treemap_text: None,
             series: &[
                 "#59c2ff", "#aad94c", "#ffb454", "#d2a6ff", "#95e6cb", "#f07178", "#ff8f40",
                 "#e6b673",
             ],
+            pie_series: &[
+                "#8bd4ff", "#b9e57e", "#ffca86", "#dfc3ff", "#aae7d0", "#ffb0b5", "#ffc58c",
+                "#ead493", "#c5c9fa", "#a9d5df", "#edb7dc", "#b8c5ce",
+            ],
+            pie_text: "#0b0e14",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -529,10 +590,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#000000",
             gantt_critical: "#d00000",
             gantt_critical_text: "#ffffff",
+            gantt_excluded_period: "#FFE66D",
+            gantt_text: None,
+            treemap_text: None,
             series: &[
                 "#FF6B35", "#4ECDC4", "#FFE66D", "#8338ec", "#3a86ff", "#d00000", "#2a9d8f",
                 "#6a4c93",
             ],
+            pie_series: &[
+                "#FF6B35", "#4ECDC4", "#FFE66D", "#b88af5", "#6aa6ff", "#f5847a", "#72c9b5",
+                "#b896d4", "#f8a7cd", "#a1bd58", "#a1b4cb", "#dfaf76",
+            ],
+            pie_text: "#000000",
             kanban_task_labels: &[
                 "#000000", "#000000", "#000000", "#000000", "#000000", "#000000", "#000000",
                 "#ffffff",
@@ -570,10 +639,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#ffffff",
             gantt_critical: "#b2604b",
             gantt_critical_text: "#ffffff",
+            gantt_excluded_period: "#d8d0c0",
+            gantt_text: None,
+            treemap_text: None,
             series: &[
                 "#8b5e34", "#557a46", "#9a6aa8", "#b2604b", "#4f748d", "#987b2f", "#6f6a91",
                 "#5c7c76",
             ],
+            pie_series: &[
+                "#bf956f", "#89ac7c", "#bda0c6", "#cd9a89", "#8faebc", "#c4b174", "#aba6c4",
+                "#8eb8ac", "#d2a1b2", "#aaba88", "#c9a983", "#9eb5ba",
+            ],
+            pie_text: "#1a1a1a",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -608,10 +685,18 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#051423",
             gantt_critical: "#fb7185",
             gantt_critical_text: "#051423",
+            gantt_excluded_period: "#14324a",
+            gantt_text: None,
+            treemap_text: Some("#000000"),
             series: &[
                 "#22d3ee", "#f472b6", "#a3e635", "#facc15", "#c084fc", "#38bdf8", "#fb7185",
                 "#2dd4bf",
             ],
+            pie_series: &[
+                "#67e8f9", "#f9a8d4", "#bef264", "#fde047", "#d8b4fe", "#7dd3fc", "#fda4af",
+                "#5eead4", "#c4b5fd", "#fdba74", "#a7f3d0", "#e9b8ff",
+            ],
+            pie_text: "#051423",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -646,7 +731,15 @@ const PRESET_CATALOG: [PresetCatalogEntry; 11] = [
             gantt_active_text: "#3A2E2C",
             gantt_critical: "#FFDFAD",
             gantt_critical_text: "#3A2E2C",
+            gantt_excluded_period: "#FFDFAD",
+            gantt_text: None,
+            treemap_text: None,
             series: &["#FFFFFF", "#FFF3E0", "#E8F5E9", "#E6E6E6", "#FFDFAD"],
+            pie_series: &[
+                "#9bc5a1", "#efbc88", "#a9bfdf", "#e2a5b1", "#c8b7dd", "#e2d77f", "#91c8bf",
+                "#d9ad88", "#b5cd91", "#a5c9d2", "#d7b6a1", "#c9bd94",
+            ],
+            pie_text: "#3A2E2C",
             kanban_task_labels: &["#000000"; 5],
         },
     ),
@@ -705,6 +798,7 @@ pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
         "unqualified alpha presets must not inherit qualification residual allowances"
     );
     let mut design = entry.recipe();
+    super::backgrounds::apply_gantt_backgrounds(&mut design, entry.palette);
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
         // Choose a fallback without claiming derived variables that would shadow typed paint.
         design.mermaid = Some(MermaidThemeCompatibilityWireV1 {
@@ -864,27 +958,50 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             value,
         );
     }
-    for (index, color) in palette.series.iter().enumerate() {
-        color_token(
-            &mut design,
-            &format!("series.{index}"),
-            &format!("Series {}", index + 1),
+    for (id, label, description, colors) in [
+        (
+            "series",
             "Series palette",
-            "One color in the shared ordinal palette; dedicated chart rules may override it.",
-            color,
+            "Ordered colors shared by diagram categories and series.",
+            palette.series,
+        ),
+        (
+            "pie-series",
+            "Pie categories",
+            "Ordered Pie sector and legend colors, repeating after the last entry. Independent of line-series accents and node fills.",
+            palette.pie_series,
+        ),
+    ] {
+        for (index, color) in colors.iter().enumerate() {
+            color_token(
+                &mut design,
+                &format!("{id}.{index}"),
+                &format!("{label} {}", index + 1),
+                label,
+                description,
+                color,
+            );
+        }
+        token(
+            &mut design,
+            id,
+            label,
+            label,
+            description,
+            ThemeDesignTokenValueV1::Palette(literal(
+                (0..colors.len())
+                    .map(|index| reference(&format!("{id}.{index}")))
+                    .collect(),
+            )),
         );
     }
-    token(
+    color_token(
         &mut design,
-        "series",
-        "Series palette",
-        "Series palette",
-        "Ordered colors shared by diagram categories and series.",
-        ThemeDesignTokenValueV1::Palette(literal(
-            (0..palette.series.len())
-                .map(|index| reference(&format!("series.{index}")))
-                .collect(),
-        )),
+        "pie-text",
+        "Pie percentage text",
+        "Pie categories",
+        "Percentage ink on the composited sector fill, independent of title and legend ink on the canvas.",
+        palette.pie_text,
     );
     token(
         &mut design,
@@ -974,6 +1091,12 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
     }
     // Text is a fallback for every label. Role paints must follow it in authored order,
     // independent of the target-name ordering used by the defaults map.
+    design.rules.push(rule(
+        Some(DiagramFamilyId::PIE),
+        ThemeTarget::Text,
+        None,
+        style(Some("pie-text"), None),
+    ));
     for (target, fill, stroke) in [
         (ThemeTarget::Title, Some("text"), None),
         (ThemeTarget::ActorLabel, Some("actor-text"), None),
@@ -1003,18 +1126,41 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
     }
     design.rules.extend([
         rule(
+            Some(DiagramFamilyId::STATE),
+            ThemeTarget::SpecialState,
+            Some(ThemeVariant::Start),
+            style(Some("line"), Some("line")),
+        ),
+        rule(
+            Some(DiagramFamilyId::STATE),
+            ThemeTarget::SpecialState,
+            Some(ThemeVariant::End),
+            style(Some("canvas"), Some("line")),
+        ),
+        rule(
             None,
             ThemeTarget::SpecialState,
             Some(ThemeVariant::Special),
-            style(Some("accent"), Some("accent")),
+            style(Some("accent"), Some("line")),
         ),
         rule(
             None,
             ThemeTarget::SpecialStateInner,
             Some(ThemeVariant::End),
-            style(Some("canvas"), Some("canvas")),
+            style(Some("line"), Some("line")),
         ),
     ]);
+    for (variant, fill) in [
+        (ThemeVariant::Odd, "surface"),
+        (ThemeVariant::Even, "surface-alt"),
+    ] {
+        design.rules.push(rule(
+            Some(DiagramFamilyId::ER),
+            ThemeTarget::Table,
+            Some(variant),
+            style(Some(fill), None),
+        ));
+    }
 
     for (target, fill, stroke) in [
         (ThemeTarget::Loop, None, Some("border")),
@@ -1027,7 +1173,7 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             style(fill, stroke),
         ));
     }
-    // Mindmap consumes the ordinal palette; a cross-family Node fill would suppress it.
+    // Mindmap and Treemap consume category palettes; a static Node fill would suppress them.
     for family in [
         DiagramFamilyId::FLOWCHART,
         DiagramFamilyId::C4,
@@ -1044,7 +1190,6 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         DiagramFamilyId::PACKET,
         DiagramFamilyId::CYNEFIN,
         DiagramFamilyId::WARDLEY,
-        DiagramFamilyId::TREEMAP,
     ] {
         design.rules.push(rule(
             Some(family),
@@ -1059,6 +1204,7 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         DiagramFamilyId::EVENT_MODELING,
         DiagramFamilyId::CYNEFIN,
         DiagramFamilyId::WARDLEY,
+        DiagramFamilyId::ARCHITECTURE,
     ] {
         design.rules.push(rule(
             Some(family),
@@ -1132,13 +1278,19 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             DiagramFamilyId::REQUIREMENT,
             ThemeTarget::Requirement,
             Some("surface"),
+            Some("border"),
+        ),
+        (
+            DiagramFamilyId::REQUIREMENT,
+            ThemeTarget::Relation,
             None,
+            Some("line"),
         ),
         (
             DiagramFamilyId::PIE,
             ThemeTarget::PieSlice,
             None,
-            Some("border"),
+            Some("pie-text"),
         ),
         (
             DiagramFamilyId::QUADRANT_CHART,
@@ -1161,9 +1313,32 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             id,
             id,
             "Gantt",
-            "Authored Gantt task-state paint.",
+            "Authored Gantt text or task-state paint.",
             value,
         );
+    }
+    token(
+        &mut design,
+        "gantt-text",
+        "Calendar text",
+        "Gantt",
+        "Text over the canvas and translucent section overlays; linked to text unless independently authored.",
+        ThemeDesignTokenValueV1::Color(
+            palette
+                .gantt_text
+                .map(|color| literal(color.to_owned()))
+                .unwrap_or_else(|| reference("text")),
+        ),
+    );
+    // Outside labels and section titles can lie over translucent calendar overlays.
+    // Author this before task-state labels so their independent foregrounds retain priority.
+    for target in [ThemeTarget::Text, ThemeTarget::Title] {
+        design.rules.push(rule(
+            Some(DiagramFamilyId::GANTT),
+            target,
+            None,
+            style(Some("gantt-text"), None),
+        ));
     }
     for (variant, fill, stroke, label) in [
         (ThemeVariant::Default, "surface", "border", "text"),
@@ -1194,18 +1369,15 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             style(Some(label), None),
         ));
     }
-    for target in [
-        ThemeTarget::Node,
-        ThemeTarget::PieSlice,
-        ThemeTarget::Task,
-        ThemeTarget::ChartSeries,
-        ThemeTarget::TimelineEvent,
-        ThemeTarget::JourneyTask,
-    ] {
+    for target in [ThemeTarget::Task, ThemeTarget::ChartSeries] {
         design
             .palettes
             .insert(target.id().to_owned(), reference("series"));
     }
+    design.palettes.insert(
+        ThemeTarget::PieSlice.id().to_owned(),
+        reference("pie-series"),
+    );
     assert_eq!(
         palette.kanban_task_labels.len(),
         palette.series.len(),
@@ -1242,5 +1414,6 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
         });
         design.rules.push(entry);
     }
+    super::categorical::append_categorical_adaptations(&mut design, palette);
     design
 }

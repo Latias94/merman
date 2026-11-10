@@ -36,6 +36,7 @@ struct ClassNodeRootOffsets {
 #[derive(Default)]
 struct ClassNodeRenderOutcome {
     theme_emission: Option<crate::class::ClassNodePaintOutcomes>,
+    note_emission: Option<(Option<usize>, Option<usize>)>,
     typography: crate::class::ClassTextTerminalFacts,
 }
 
@@ -60,6 +61,7 @@ pub(super) struct ClassNodesRenderContext<'a> {
     pub(super) math_renderer: Option<&'a (dyn crate::math::MathRenderer + Send + Sync)>,
     pub(super) node_visual_plan: &'a crate::class::ClassNodeVisualPlan,
     pub(super) typography_theme: &'a crate::class::ClassTextThemePlan,
+    pub(super) relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub(super) content_tx: f64,
     pub(super) content_ty: f64,
     pub(super) timing: RenderTiming,
@@ -286,10 +288,13 @@ pub(super) fn render_class_render_tree<O: SvgOutput>(
         };
         out.checkpoint()?;
         if let (Some(receipt), Some(id)) = (typography_receipt.as_mut(), typography_node_id) {
-            receipt.record_node(id, outcome.typography);
+            receipt.record_node(id, outcome.typography, ctx.emit.work_meter)?;
         }
         if let Some(emission) = outcome.theme_emission {
             theme_receipt.record_node(emission);
+        }
+        if let Some((fill, stroke)) = outcome.note_emission {
+            theme_receipt.record_note(fill, stroke);
         }
     }
     Ok(())
@@ -411,10 +416,13 @@ pub(super) fn render_class_elk_adapter_dom<O: SvgOutput>(
         )?;
         out.checkpoint()?;
         if let Some(receipt) = typography_receipt.as_mut() {
-            receipt.record_node(id, outcome.typography);
+            receipt.record_node(id, outcome.typography, ctx.emit.work_meter)?;
         }
         if let Some(emission) = outcome.theme_emission {
             theme_receipt.record_node(emission);
+        }
+        if let Some((fill, stroke)) = outcome.note_emission {
+            theme_receipt.record_note(fill, stroke);
         }
     }
     out.push_str("</g>");
@@ -729,7 +737,7 @@ fn render_class_node_id<O: SvgOutput>(
                 use_html_labels,
                 mermaid_config: ctx.mermaid_config,
                 text_paint: ctx.typography_theme.note_paint(use_html_labels),
-                css_binding: ctx.typography_theme.css_binding(),
+                relation_theme: ctx.relation_theme,
                 math_renderer: ctx.math_renderer,
                 look: settings.look.as_str(),
                 hand_drawn_seed: ctx.hand_drawn_seed.clone(),
@@ -742,6 +750,7 @@ fn render_class_node_id<O: SvgOutput>(
         detail.path_bounds_calls += stats.path_bounds_calls;
         return Ok(ClassNodeRenderOutcome {
             theme_emission: None,
+            note_emission: Some((stats.fill_rule, stats.stroke_rule)),
             typography: stats.typography,
         });
     }
@@ -772,6 +781,7 @@ fn render_class_node_id<O: SvgOutput>(
         return Ok(ClassNodeRenderOutcome {
             theme_emission: Some(result.theme_emission),
             typography: result.typography,
+            ..ClassNodeRenderOutcome::default()
         });
     }
 
@@ -914,5 +924,6 @@ fn render_class_node_id<O: SvgOutput>(
     Ok(ClassNodeRenderOutcome {
         theme_emission: Some(binding.emission),
         typography: binding.typography,
+        ..ClassNodeRenderOutcome::default()
     })
 }

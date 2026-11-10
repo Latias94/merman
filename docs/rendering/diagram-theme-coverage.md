@@ -45,6 +45,26 @@ labels and cardinalities in SVG and HTML output. It leaves node and note labels 
 Text and local fills follow authored order; explicit configuration and visible HTML colors retain
 their ownership. Unsupported selectors, paints and label effects remain residuals when applicable.
 
+Class notes consume `note` fill/stroke and `note-label` fill in both SVG and HTML labels. ER and
+Requirement consume `edge-label-background` fill on the actual HTML wrapper and nested span or
+SVG background rectangle, retaining each layer's explicit configuration owner. These paint
+consumers admit static solid/transparent values with no variant or `default`; they do not
+establish support for gradients, ordinal selectors, or sibling effects.
+
+Mindmap's `node` and `node-label` primary fills address the root independently of branch
+palettes. Existing unqualified and `default` label rules still reach the root; property winners
+retain author order when combined with `primary` label rules. Journey's `task-label` fill
+addresses section and task surfaces in each text placement;
+explicit `sectionColours` retains its Tspan-specific ownership. Timeline's `node-label` fill
+addresses section, period, and event surface text. Git Graph's `cluster-label` fill addresses
+branch names independently of tag `node-label` and commit `edge-label` ink. Timeline and Git
+Graph preserve their supported category CSS domains; color-generated Neo/Redux routes can
+remain residuals. Static label support does not imply ordinal label or effect support.
+
+Gantt's `excluded-period` fill addresses excluded calendar bands independently of task and
+section backgrounds. Explicit `excludeBkgColor` retains ownership. Static solid/transparent
+fill has a terminal consumer only when an excluded-date rectangle is emitted.
+
 Block label colors target the ordinary paragraph in its prepared HTML label. Source colors still
 own visible HTML blocks that inherit them; custom HTML outside that paragraph remains an unsupported
 paint request when the writer cannot prove that the visible text consumed the theme color.

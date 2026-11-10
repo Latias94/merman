@@ -471,8 +471,10 @@ pub(crate) fn measure_state_markdown_label(
                 natural
             }
         }
+        // Adopted XHTML uses the host document's root size for rem, independently
+        // of the diagram's inherited font size, as in the other prepared HTML labels.
         None => {
-            measure_html_with_inline_styles(measurer, &fragment, style, width, WrapMode::HtmlLike)
+            crate::text::measure_html_with_document_root(measurer, &fragment, style, width, 16.0)
         }
     };
 

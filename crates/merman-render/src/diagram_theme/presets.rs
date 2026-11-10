@@ -2,8 +2,10 @@ use merman_theme_contract::{ThemePresetMetadataV1, ThemePresetQualifiedCellV1};
 
 use super::{DiagramThemeCompiler, FontCatalogError, ThemeCompileError, ThemeDesignCompileError};
 
+mod backgrounds;
 mod brutalist;
 mod catalog;
+mod categorical;
 mod cyberpunk;
 mod design;
 mod ghibli;
@@ -347,6 +349,22 @@ mod tests {
         let foreground = relative_luminance(foreground);
         let background = relative_luminance(background);
         (foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
+    }
+
+    fn composite_color(fill: &str, opacity: f64, canvas: &str) -> String {
+        let foreground = merman_markup::theme_color::ThemeColor::parse(fill)
+            .unwrap()
+            .rgba_channels();
+        let background = merman_markup::theme_color::ThemeColor::parse(canvas)
+            .unwrap()
+            .rgba_channels();
+        let channel = |front, back| front * opacity + back * (1.0 - opacity);
+        format!(
+            "rgb({}, {}, {})",
+            channel(foreground.red, background.red),
+            channel(foreground.green, background.green),
+            channel(foreground.blue, background.blue)
+        )
     }
 
     fn is_native_candidate(preset: ThemePreset) -> bool {
@@ -1393,7 +1411,11 @@ mod tests {
                     .series_color(ThemeTarget::ChartSeries, 1)
                     .map(ThemeColorValue::as_css)
                     .as_deref(),
-                Some(first_series)
+                Some(if preset == ThemePreset::Ghibli {
+                    "#556F50"
+                } else {
+                    first_series
+                })
             );
             let mindmap = theme.resolve(DiagramFamilyId::MINDMAP);
             assert_eq!(
@@ -1401,7 +1423,7 @@ mod tests {
                     .series_color(ThemeTarget::Node, 1)
                     .map(ThemeColorValue::as_css)
                     .as_deref(),
-                Some(first_series)
+                preset_palette(preset).pie_series.first().copied()
             );
             let kanban = theme.resolve(DiagramFamilyId::KANBAN);
             assert_eq!(
@@ -1560,14 +1582,14 @@ mod tests {
                 DiagramFamilyId::REQUIREMENT,
                 ThemeTarget::Requirement,
                 Some(palette.surface),
-                None,
+                Some(palette.border),
             );
             assert_style(
                 &theme,
                 DiagramFamilyId::PIE,
                 ThemeTarget::PieSlice,
                 None,
-                Some(palette.border),
+                Some(palette.pie_text),
             );
             assert_style(
                 &theme,
@@ -1652,9 +1674,80 @@ mod tests {
                         .series_color(target, 1)
                         .map(ThemeColorValue::as_css)
                         .as_deref(),
-                    palette.series.first().copied(),
+                    if matches!(
+                        target,
+                        ThemeTarget::PieSlice
+                            | ThemeTarget::Node
+                            | ThemeTarget::JourneyTask
+                            | ThemeTarget::TimelineEvent
+                    ) {
+                        palette.pie_series.first().copied()
+                    } else if preset == ThemePreset::Ghibli && target == ThemeTarget::ChartSeries {
+                        Some("#556F50")
+                    } else {
+                        palette.series.first().copied()
+                    },
                     "{family} {target:?} palette"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn built_in_pie_presets_keep_percentage_ink_readable_across_the_entire_palette() {
+        const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
+
+        for preset in all_presets() {
+            let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+            let pie = theme.resolve(DiagramFamilyId::PIE);
+            let ink = resolved_solid_fill(&pie, ThemeTarget::Text);
+            let canvas = solid_color(theme.spec().canvas().base()).unwrap();
+            let colors = theme
+                .spec()
+                .styles()
+                .ordinal_palettes()
+                .iter()
+                .find_map(|(target, palette)| {
+                    (*target == ThemeTarget::PieSlice).then_some(palette.colors())
+                })
+                .expect("built-in presets own a Pie palette");
+            for (index, color) in colors.iter().enumerate() {
+                let fill = color.as_css();
+                for opacity in [0.7, 1.0] {
+                    let composited = composite_color(&fill, opacity, &canvas);
+                    let ratio = contrast_ratio(&ink, &composited);
+                    assert!(
+                        ratio >= MINIMUM_TEXT_CONTRAST,
+                        "{} Pie slot {} opacity={opacity} contrast {ratio:.2}:1 is below {MINIMUM_TEXT_CONTRAST}:1 ({ink} on {composited})",
+                        preset.id(),
+                        index + 1,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn built_in_treemap_presets_keep_category_ink_readable_on_translucent_sections() {
+        for preset in all_presets() {
+            let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
+            let treemap = theme.resolve(DiagramFamilyId::TREEMAP);
+            let ink = resolved_solid_fill(&treemap, ThemeTarget::NodeLabel);
+            let canvas = solid_color(theme.spec().canvas().base()).unwrap();
+            for ordinal in 1..=preset_palette(preset).pie_series.len() {
+                let fill = treemap
+                    .series_color(ThemeTarget::Node, ordinal)
+                    .unwrap()
+                    .as_css();
+                let section = composite_color(&fill, 0.6, &canvas);
+                for background in [&section, &composite_color(&fill, 0.3, &section)] {
+                    let ratio = contrast_ratio(&ink, background);
+                    assert!(
+                        ratio >= 4.5,
+                        "{} Treemap category {ordinal}: {ratio:.2}:1 ({ink} on {background})",
+                        preset.id()
+                    );
+                }
             }
         }
     }

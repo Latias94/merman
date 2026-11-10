@@ -17,6 +17,13 @@ const NOTE_TEXT_GLOW: &str = "note-text-glow";
 
 pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = build_cross_family_recipe(palette);
+    // Git tags keep Mermaid's pale tag backing; branch and commit labels have other surfaces.
+    design.rules.push(rule(
+        Some(DiagramFamilyId::GIT_GRAPH),
+        ThemeTarget::NodeLabel,
+        None,
+        style(Some("category-text"), None),
+    ));
     color_token(
         &mut design,
         "neon-cyan",

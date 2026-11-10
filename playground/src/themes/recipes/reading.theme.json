@@ -157,8 +157,8 @@
           "accent-surface": {"type": "paint", "value": "#DDE9FA"},
           "note-surface": {"type": "paint", "value": "#F4E9CE", "description": "Annotation fill remains independent from annotation ink and accent."},
           "note-ink": {"type": "paint", "value": "#634914"},
-          "series": {"type": "palette", "value": ["#486CB0", "#2F7E73", "#8A62A7", "#A96C31"]},
-          "pie-series": {"type": "palette", "value": ["#B9CCE9", "#B3D7CD", "#D5C6E3", "#E6CEAA"]}
+          "series": {"type": "palette", "value": ["#486CB0", "#247B69", "#8755AA", "#AE6D1C", "#B64868", "#697F21", "#137D9B", "#7F5D48"], "description": "Eight ordered reading categories in both appearances: blue, teal, violet, ochre, rose, olive, cyan, and umber. Colors repeat after eight; emphasis remains independent."},
+          "pie-series": {"type": "palette", "value": ["#B9CCE9", "#74C6A2", "#B78CDF", "#E6B54B", "#ED88AD", "#B4CE56", "#67B9E0", "#C39977"], "description": "Eight labeled category surfaces follow the same hue order in both appearances. Pie and Mindmap share paint; the root git0 remains an independent scalar."}
         },
         "mermaid": {"variables": {"git0": "#B9CCE9", "erEdgeLabelBackground": "#F6F7F9"}}
       },
@@ -175,8 +175,8 @@
           "accent-surface": {"type": "paint", "value": "#263F61"},
           "note-surface": {"type": "paint", "value": "#403623", "description": "Annotation fill remains independent from annotation ink and accent."},
           "note-ink": {"type": "paint", "value": "#E9CF92"},
-          "series": {"type": "palette", "value": ["#91AEDC", "#76BDAE", "#B5A0D4", "#D6AD79"]},
-          "pie-series": {"type": "palette", "value": ["#304D73", "#2E594F", "#55436C", "#655131"]}
+          "series": {"type": "palette", "value": ["#91AEDC", "#66C8A1", "#BD98E5", "#E2B567", "#E98DAD", "#B8CD6F", "#69CBE5", "#CEAD94"], "description": "Eight ordered reading categories in both appearances: blue, teal, violet, ochre, rose, olive, cyan, and umber. Colors repeat after eight; emphasis remains independent."},
+          "pie-series": {"type": "palette", "value": ["#304D73", "#196A4A", "#604080", "#7B551C", "#853653", "#536525", "#136C95", "#846149"], "description": "Eight labeled category surfaces follow the same hue order in both appearances. Pie and Mindmap share paint; the root git0 remains an independent scalar."}
         },
         "mermaid": {"variables": {"git0": "#304D73", "erEdgeLabelBackground": "#171C24"}}
       }

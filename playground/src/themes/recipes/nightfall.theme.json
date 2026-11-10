@@ -16,8 +16,8 @@
       "note-ink": { "type": "paint", "value": "#E8D4AC" },
       "number-ink": { "type": "paint", "value": { "ref": "canvas" } },
       "body-font": { "type": "font-stack", "value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans CJK SC", "sans-serif"] },
-      "series": { "type": "palette", "value": [{ "ref": "accent" }, "#93BCAF", "#D4B486", "#B6A1CB", "#CB9EAA", "#AABF8B"] },
-      "pie-series": { "type": "palette", "value": ["#3D5B78", "#3D635B", "#735B3A", "#605076", "#754D5B", "#53633D"] },
+      "series": { "type": "palette", "value": ["#96B9D8", "#71C6A3", "#E1B66B", "#BC9AE2", "#E28FAD", "#B2C76C", "#EC9B77", "#D7D6C9"], "description": "Eight finite night-reading categories: blue, jade, gold, violet, rose, olive, terracotta, and neutral. Series repeat after eight." },
+      "pie-series": { "type": "palette", "value": ["#3D5B78", "#1F7054", "#826022", "#62418B", "#8B3B5D", "#596C28", "#8E4C32", "#434750"], "description": "Eight shaded category surfaces retain light percentage and branch lettering. The neutral is deliberately dark; the Mindmap root remains independent." },
       "table-row": {"type": "paint", "label": "Alternate table row", "group": "Surfaces", "description": "A lifted slate stripe keeps ER attributes distinct on the dark surface.", "value": "#2E3B4F"}
     },
     "canvas": { "base": { "ref": "canvas" } },

@@ -67,8 +67,10 @@ in every declared appearance. Record the actual fonts and measurement mode. Nati
 previews use checked font files; browser previews use the existing host measurement path.
 Keep each SVG and report from the same execution. Inspect those exact SVGs and distinguish
 runtime evidence from visual findings. Check Class compartments, XY legends, Sequence full
-canvas, label contrast, and effect scope. Preserve unsupported or no-consumer probes under
-your temporary directory; describe any design compromise rather than hiding a failure.
+canvas, label contrast, and effect scope. Follow review.md's cross-family trace for shared-color
+changes and its required overflow matrix for categorical scope. Preserve unsupported or
+no-consumer probes under your temporary directory; describe any design compromise rather than
+hiding a failure.
 
 Return: changed paths; final recipe/input/runtime identity and exact invocations; reports;
 assigned-family screenshots and visual findings; fonts; actual limits; preview colors and light/
@@ -111,9 +113,12 @@ recipes, and any matching runtime; the worker returns findings for central revie
 ```text
 Use $design-merman-theme to audit FAMILY at FIXED_BASE for the supplied light/dark reading pair.
 Read current theme ownership docs and the relevant authoring/runtime/review references. Preserve
-source/config ownership, content, look, and layout. Use one ordinary scene; add a dense case only
-for a concrete concern. Check labels, surfaces, connectors, categories/legends, backgrounds,
-and one relevant override conflict. Reuse the supplied runtime, helper, and same-render reports.
+source/config ownership, content, look, and layout. Use one ordinary scene. Follow review.md's
+cross-family trace for shared-color changes and its required overflow matrix for categorical
+scope. Add other dense cases only for a concrete concern. Return affected owners outside the
+assignment for coordinator review. Check labels, surfaces,
+connectors, categories/legends, backgrounds, and one relevant override conflict.
+Reuse the supplied runtime, helper, and same-render reports.
 If no matching runtime exists, retain source findings and mark render/visual checks pending.
 
 For Mermaid parity, cite the selected upstream source/runtime as authoritative proof. For

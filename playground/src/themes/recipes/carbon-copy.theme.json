@@ -14,8 +14,8 @@
       "stamp-paper": { "type": "color", "label": "Pink review slip", "group": "Archive stock", "value": "#F3DED2" },
       "record-font": { "type": "font-stack", "label": "Monospaced record lettering", "group": "Typography", "description": "Menlo produces the typewritten form character. Install a matching fallback when sharing the recipe; fonts are not embedded.", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
       "chart-font": { "type": "font-stack", "label": "Compact ledger captions", "group": "Typography", "description": "Narrow ledger captions keep the fixed-width chart legend inside its reserved area; diagram records and class signatures remain monospaced.", "value": ["Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
-      "series": { "type": "palette", "label": "Duplicate and review series", "group": "Palettes", "value": ["#B49BC9", { "ref": "stamp" }, "#8F79AD", "#B99A68", "#817B9D", "#BE897C"] },
-      "pie-series": { "type": "palette", "label": "Filed copy swatches", "group": "Palettes", "description": "Light archival swatches keep the deep violet percentage labels legible. Pie requests paint and typography only.", "value": ["#D8C6E5", "#E9C8B9", "#C8C0DA", "#DDD7B7", "#C0CED1", "#D4BAC8"] },
+      "series": { "type": "palette", "label": "Duplicate and review series", "group": "Palettes", "value": ["#7D509C", { "ref": "stamp" }, "#554078", "#886316", "#426987", "#A54F62"], "description": "Six independent data inks keep fine chart marks readable on archive paper. The stamp color retains its explicit binding; paper surfaces and carbon-transfer effects keep their separate owners." },
+      "pie-series": { "type": "palette", "label": "Filed copy swatches", "group": "Palettes", "description": "Six archival category papers separate Pie sectors and Mindmap branches while retaining dark violet lettering. Kanban column scales are separate literal compatibility values. Column backgrounds use six repeated archival colors with independent dark section-label compatibility values.", "value": ["#D8C6E5", "#EBA88E", "#ABBDE0", "#E4CE8A", "#9CCAC1", "#D198B0"] },
       "carbon-edge": {
         "type": "effect",
         "label": "One-sided carbon backing",
@@ -166,21 +166,35 @@
       "node": {"ref": "pie-series"}
     },
     "mermaid": {
+      "dark_mode": false,
       "variables": {
         "git0": "#D8C6E5",
         "erEdgeLabelBackground": "#F2EDDF",
         "cScale0": "#E6DAEE",
-        "cScale1": "#D8C6E5",
-        "cScale2": "#E9C8B9",
-        "cScale3": "#C8C0DA",
-        "cScale4": "#DDD7B7",
-        "cScale5": "#C0CED1",
-        "cScale6": "#D4BAC8",
-        "cScale7": "#D8C6E5",
-        "cScale8": "#E9C8B9",
-        "cScale9": "#C8C0DA",
-        "cScale10": "#DDD7B7",
-        "cScale11": "#C0CED1"
+        "cScale1": "#C6A8D8",
+        "cScale2": "#DE8D69",
+        "cScale3": "#8FAADC",
+        "cScale4": "#D4B55F",
+        "cScale5": "#74B5A6",
+        "cScale6": "#C17B99",
+        "cScale7": "#C6A8D8",
+        "cScale8": "#DE8D69",
+        "cScale9": "#8FAADC",
+        "cScale10": "#D4B55F",
+        "cScale11": "#74B5A6",
+        "cScaleLabel0": "#4B2C63",
+        "cScaleLabel1": "#4B2C63",
+        "cScaleLabel2": "#4B2C63",
+        "cScaleLabel3": "#4B2C63",
+        "cScaleLabel4": "#4B2C63",
+        "cScaleLabel5": "#4B2C63",
+        "cScaleLabel6": "#4B2C63",
+        "cScaleLabel7": "#4B2C63",
+        "cScaleLabel8": "#4B2C63",
+        "cScaleLabel9": "#4B2C63",
+        "cScaleLabel10": "#4B2C63",
+        "cScaleLabel11": "#4B2C63",
+        "gitBranchLabel0": "#4B2C63"
       }
     }
   }

@@ -2963,7 +2963,7 @@ mod tests {
             (
                 "docs/plans/2026-10-11-release-checklist.final.md",
                 200.0,
-                vec!["docs/plans/2026-10-11-", "release-", "checklist.final.md"],
+                vec!["docs/plans/2026-10-", "11-release-", "checklist.final.md"],
             ),
             (
                 "src/components/navigation/sidebar-tree.tsx",
@@ -3174,6 +3174,36 @@ mod tests {
             metrics.width, 60.0,
             "min-content must include the visible hyphen"
         );
+    }
+
+    #[test]
+    fn foreign_object_overlay_and_measurement_share_numeric_identifier_breaks() {
+        use crate::text::{TextStyle, WrapMode};
+        let measurer = DeterministicTextMeasurer::default()
+            .with_width_callback(|text, _| text.chars().count() as f64 * 10.0);
+        for (label, expected) in [
+            ("ID: DOC-12345", vec!["ID: ", "DOC-", "12345"]),
+            ("ID: -12345", vec!["ID: ", "-12345"]),
+        ] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><foreignObject width="60" height="72"><div style="white-space:break-spaces;width:40px">{label}</div></foreignObject></svg>"#
+            );
+            let output = render_fallback(&svg, measurer.as_ref());
+            let document = crate::xml_dom::Document::parse(&output).unwrap();
+            let rows: Vec<_> = document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| node.text().unwrap_or(""))
+                .collect();
+            assert_eq!(rows, expected, "native conversion: {label}");
+            let metrics = measurer.measure_wrapped(
+                label,
+                &TextStyle::default(),
+                Some(40.0),
+                WrapMode::HtmlLike,
+            );
+            assert_eq!(metrics.line_count, expected.len(), "measurement: {label}");
+        }
     }
 
     #[test]

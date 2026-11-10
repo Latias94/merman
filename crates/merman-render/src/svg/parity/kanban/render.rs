@@ -419,20 +419,12 @@ pub(crate) fn render_kanban_diagram_svg(
         let title_geometry = prepared_item.title.geometry;
         let ticket_geometry = prepared_item.ticket.geometry;
         let assigned_geometry = prepared_item.assigned.geometry;
-        let height_adj = ticket_geometry
-            .content_height
-            .max(assigned_geometry.content_height)
-            / 2.0;
-
-        let left_x = rect_x + item_label_inset_x;
-        let right_x = if assigned_geometry.foreign_object_width > 0.0 {
-            n.width / 2.0 - item_label_inset_x - assigned_geometry.foreign_object_width
-        } else {
-            n.width / 2.0 - item_label_inset_x
-        };
-
-        let title_y = -height_adj - title_geometry.content_height / 2.0;
-        let details_y = -height_adj + title_geometry.content_height / 2.0;
+        let crate::kanban::KanbanItemLabelPositions {
+            left_x,
+            right_x,
+            title_y,
+            details_y,
+        } = prepared_item.label_positions(n);
 
         let _ = write!(
             &mut out,

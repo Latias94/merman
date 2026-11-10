@@ -22,8 +22,8 @@
       "body-font": { "type": "font-stack", "label": "Soft geometric lettering", "group": "Typography", "value": ["Avenir", "Segoe UI", "Arial", "Noto Sans CJK SC", "sans-serif"] },
       "code-font": { "type": "font-stack", "label": "Clear class signatures", "group": "Typography", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
       "chart-font": { "type": "font-stack", "label": "Compact chart lettering", "group": "Typography", "description": "A narrow geometric face gives compact chart legends breathing room without changing the shared diagram configuration.", "value": ["Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
-      "series": { "type": "palette", "label": "Aurora chart signals", "group": "Palettes", "value": [{ "ref": "mint" }, { "ref": "violet" }, { "ref": "cyan" }, "#F0ACCF", "#A8D9B4", "#AAB7F3"] },
-      "pie-series": { "type": "palette", "label": "Deep aurora sectors", "group": "Palettes", "description": "Independent dark colors preserve light percentage contrast; mint separators distinguish neighboring sectors.", "value": ["#215760", "#4B3C79", "#215C4C", "#563D6B", "#30486B", "#5B405B"] },
+      "series": { "type": "palette", "label": "Aurora chart signals", "group": "Palettes", "value": [{ "ref": "mint" }, { "ref": "violet" }, { "ref": "cyan" }, "#F295BB", "#DDE58C", "#8BA9F1"] },
+      "pie-series": { "type": "palette", "label": "Deep aurora sectors", "group": "Palettes", "description": "Six deep cyan, violet, green, rose, blue, and gold sectors separate categories while retaining light percentage and branch labels over the aurora canvas.", "value": ["#215760", "#65408B", "#176343", "#85395F", "#28509B", "#766020"] },
       "panel-halo": {
         "type": "effect",
         "label": "Two tone atmospheric panel lift",

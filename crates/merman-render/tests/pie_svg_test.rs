@@ -1242,6 +1242,97 @@ fn pie_typed_palette_is_verified_from_every_terminal_slice_and_legend_swatch() {
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
+#[test]
+fn pie_palette_cycles_keep_category_slots_shared_with_legends_and_hidden_sectors() {
+    let colors = ["#a1b2c3", "#d4e5f6", "#123456"];
+    let theme = pie_slice_palette_theme(&colors);
+    for count in [2, 3, 4, 13, 20] {
+        let mut source = "pie\n".to_owned();
+        for index in 0..count {
+            let value = usize::from(index != 1);
+            source.push_str(&format!("  \"Category {index}\" : {value}\n"));
+        }
+        let rendered = render_pie_with_theme(&source, &theme);
+        let (slices, legends) = pie_terminal_fills(rendered.svg());
+        let expected_slices = (0..count)
+            .filter(|index| *index != 1)
+            .map(|index| colors[index % colors.len()].to_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(slices, expected_slices, "{count} categories");
+        assert_eq!(legends.len(), count);
+        for (index, style) in legends.iter().enumerate() {
+            let color = merman_markup::theme_color::ThemeColor::parse(colors[index % colors.len()])
+                .unwrap()
+                .rgba_channels();
+            let css = format!("rgb({}, {}, {})", color.red, color.green, color.blue);
+            assert_eq!(style, &format!("fill: {css}; stroke: {css};"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_builtin_palettes_keep_percentages_separate_from_canvas_text_after_wraparound() {
+    for descriptor in merman_render::diagram_theme::theme_preset_descriptors() {
+        let theme = DiagramThemeCompiler::new()
+            .compile_preset(descriptor.preset())
+            .unwrap();
+        let mut baseline_source = "pie title Category coverage\n".to_owned();
+        for index in 0..12 {
+            baseline_source.push_str(&format!("  \"Category {index}\" : 1\n"));
+        }
+        let baseline = render_pie_with_theme(&baseline_source, &theme);
+        let (baseline_slices, baseline_legends) = pie_terminal_fills(baseline.svg());
+        for count in [11, 12, 13, 20] {
+            let mut source = "pie title Category coverage\n".to_owned();
+            for index in 0..count {
+                source.push_str(&format!("  \"Category {index}\" : 1\n"));
+            }
+            let rendered = render_pie_with_theme(&source, &theme);
+            let (slices, legends) = pie_terminal_fills(rendered.svg());
+            assert_eq!(slices.len(), count);
+            assert_eq!(legends.len(), count);
+            for (index, fill) in slices.iter().enumerate() {
+                assert_eq!(fill, &baseline_slices[index % baseline_slices.len()],);
+                assert_eq!(
+                    &legends[index],
+                    &baseline_legends[index % baseline_legends.len()]
+                );
+            }
+            for (target, selector) in [
+                (ThemeTarget::Text, "#merman .slice"),
+                (ThemeTarget::Title, "#merman .pieTitleText"),
+                (ThemeTarget::Legend, "#merman .legend text"),
+            ] {
+                assert_eq!(
+                    pie_stylesheet_property_values(rendered.svg(), selector, "fill"),
+                    pie_stylesheet_property_values(baseline.svg(), selector, "fill"),
+                    "{} {target:?}",
+                    descriptor.id(),
+                );
+            }
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), "#merman .pieCircle", "opacity"),
+                ["0.7"],
+            );
+            if count > 12 {
+                assert_eq!(slices[0], slices[12]);
+            }
+        }
+        if descriptor.preset().is_dark() {
+            assert_ne!(
+                pie_stylesheet_property_values(baseline.svg(), "#merman .slice", "fill"),
+                pie_stylesheet_property_values(baseline.svg(), "#merman .pieTitleText", "fill"),
+                "{} must keep sector ink separate from title ink",
+                descriptor.id(),
+            );
+        }
+    }
+}
+
 fn try_render_pie_svg_with_resource_policy(
     text: &str,
     resource_policy: RenderResourcePolicy,

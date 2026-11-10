@@ -21,12 +21,20 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug)]
 pub(crate) struct JourneyTextPaintPlan {
     fill: Option<DirectStaticPaint>,
+    surface_fill: Option<DirectStaticPaint>,
     title_fill: Option<DirectStaticPaint>,
     title: Option<Box<str>>,
     source_title_color: Box<str>,
+    surface_font_visible: bool,
     evidence: FamilyThemeOutcomes,
     pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
-    terminal: OnceLock<()>,
+    surface_pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
+    terminal: OnceLock<JourneyTextPaintTerminalSeal>,
+}
+
+#[derive(Debug)]
+struct JourneyTextPaintTerminalSeal {
+    has_visible_surface_text: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -43,6 +51,7 @@ pub(crate) enum JourneyTextPaintRole {
 #[derive(Debug)]
 pub(crate) struct JourneyTextPaintReceipt<'a> {
     expected_fill: Option<&'a str>,
+    expected_surface_fill: Option<&'a str>,
     expected_title: Option<&'a str>,
     expected_title_fill: &'a str,
     expected_labels: [usize; 6],
@@ -50,6 +59,8 @@ pub(crate) struct JourneyTextPaintReceipt<'a> {
     expected_lines: usize,
     lines: usize,
     css_declarations: usize,
+    surface_font_visible: bool,
+    has_visible_surface_text: bool,
     valid: bool,
 }
 
@@ -61,8 +72,16 @@ impl JourneyTextPaintPlan {
         typography: &super::JourneyTypographyThemePlan,
         work: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
+        // Use the same size owners as Journey typography, including inherited negative sizes.
+        let render_settings = &typography.css_binding().render;
+        let surface_font_size = if render_settings.label_inherits_font_size() {
+            typography.font_size_px()
+        } else {
+            render_settings.task_text_style.font_size
+        };
         let mut plan = Self {
             fill: None,
+            surface_fill: None,
             title_fill: None,
             title: diagram_title
                 .map(str::trim)
@@ -72,8 +91,10 @@ impl JourneyTextPaintPlan {
                 .render_settings()
                 .title_color
                 .into_boxed_str(),
+            surface_font_visible: surface_font_size > 0.0,
             evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
+            surface_pending: Vec::new(),
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
@@ -112,6 +133,94 @@ impl JourneyTextPaintPlan {
                 &[ThemeTarget::Text],
                 DirectStaticSelectorDomain::Default,
             );
+        }
+        // TaskLabel is the foreground for the section/task surfaces sharing JourneyTask paint.
+        // Keep the author-ordered Text/TaskLabel winner chain; a later Text rule still wins.
+        let surface_owned = config_owned
+            || (super::config::JourneyConfigView::new(config.as_value())
+                .render_settings()
+                .text_placement
+                == super::JourneyTextPlacement::Tspan
+                && config.config_path_overrides_typed_default("journey.sectionColours"));
+        let surface_style = theme.text_style_with_work_meter(
+            ThemeTarget::TaskLabel,
+            ThemeVariant::Default,
+            None,
+            work,
+        )?;
+        let surface_winners = surface_style
+            .winner_rule_properties()
+            .map(|(property, origin)| (origin.rule_index(), property))
+            .collect::<BTreeSet<_>>();
+        let has_surface_fill = theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::TaskLabel,
+                    selector: FamilyThemeSelectorShape::Static {
+                        variant: None | Some(ThemeVariant::Default)
+                    },
+                    facet: FamilyThemeRuleFacet::Fill(_),
+                    ..
+                }
+            )
+        });
+        if has_surface_fill && !surface_owned {
+            plan.surface_fill = resolve_direct_static_fill(
+                theme,
+                &surface_style,
+                &[ThemeTarget::Text, ThemeTarget::TaskLabel],
+                DirectStaticSelectorDomain::Default,
+            );
+        }
+        let mut surface_observations = BTreeMap::new();
+        for route in theme.family_mechanism_routes() {
+            let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::TaskLabel,
+                facet,
+                selector,
+            } = route.mechanism()
+            else {
+                continue;
+            };
+            work.charge(1)?;
+            let entry = surface_observations
+                .entry(theme.family_mechanism_key(*route))
+                .or_insert((false, None));
+            let property = resolved_style_property_for_facet(facet);
+            let unproved_ordinal = matches!(
+                selector,
+                FamilyThemeSelectorShape::Ordinal {
+                    variant: None | Some(ThemeVariant::Default),
+                    ..
+                }
+            ) && !surface_winners.iter().any(|(winner, winner_property)| {
+                *winner_property == property && *winner > rule_index
+            });
+            if (!surface_winners.contains(&(rule_index, property)) && !unproved_ordinal)
+                || (property == ResolvedStyleProperty::Fill && surface_owned)
+            {
+                continue;
+            }
+            if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                && matches!(facet, FamilyThemeRuleFacet::Fill(_))
+                && plan
+                    .surface_fill
+                    .as_ref()
+                    .is_some_and(|fill| fill.rule_index() == rule_index)
+            {
+                entry.0 = true;
+            } else {
+                entry.1.get_or_insert(unsupported_residual_for_facet(facet));
+            }
+        }
+        for (key, (pending, residual)) in surface_observations {
+            if pending || residual.is_some() {
+                plan.surface_pending.push((key, residual));
+            } else {
+                plan.evidence.mark_not_applicable(key);
+            }
         }
         // Aggregate all facets before certifying a Rule key. A fill does not prove typography.
         let mut observations = BTreeMap::new();
@@ -219,13 +328,17 @@ impl JourneyTextPaintPlan {
         self.title_fill.as_ref().map(DirectStaticPaint::css)
     }
 
+    pub(crate) fn surface_fill_css(&self) -> Option<&str> {
+        self.surface_fill.as_ref().map(DirectStaticPaint::css)
+    }
+
     pub(crate) fn begin_terminal_receipt<'a>(
         &'a self,
         layout: &JourneyDiagramLayout,
         has_title: bool,
         work: &OperationWorkMeter,
     ) -> Result<Option<JourneyTextPaintReceipt<'a>>, OperationWorkError> {
-        if self.pending.is_empty() && self.title_fill.is_none() {
+        if self.pending.is_empty() && self.title_fill.is_none() && self.surface_pending.is_empty() {
             return Ok(None);
         }
         let mut legend_count = 0;
@@ -243,6 +356,7 @@ impl JourneyTextPaintPlan {
         }
         Ok(Some(JourneyTextPaintReceipt {
             expected_fill: self.fill_css(),
+            expected_surface_fill: self.surface_fill_css(),
             expected_title: self.title.as_deref(),
             expected_title_fill: self.title_fill_css().unwrap_or(&self.source_title_color),
             expected_labels: [
@@ -258,16 +372,43 @@ impl JourneyTextPaintPlan {
             expected_lines: layout.tasks.len() + 1,
             lines: 0,
             css_declarations: 0,
+            surface_font_visible: self.surface_font_visible,
+            has_visible_surface_text: false,
             valid: has_title == self.title.is_some(),
         }))
     }
 
     pub(crate) fn record_terminal(&self, receipt: JourneyTextPaintReceipt<'_>) -> bool {
-        receipt.is_complete() && self.terminal.set(()).is_ok()
+        receipt.is_complete()
+            && self
+                .terminal
+                .set(JourneyTextPaintTerminalSeal {
+                    has_visible_surface_text: receipt.has_visible_surface_text,
+                })
+                .is_ok()
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        for (key, residual) in &self.surface_pending {
+            if self
+                .terminal
+                .get()
+                .is_some_and(|seal| !seal.has_visible_surface_text)
+            {
+                evidence.mark_not_applicable(key.clone());
+            } else if let Some(reason) = residual {
+                evidence.mark_residual(key.clone(), *reason);
+            } else if let Some(fill) = self
+                .surface_fill
+                .as_ref()
+                .filter(|_| self.terminal.get().is_some())
+            {
+                evidence.mark_applied_with_capabilities(key.clone(), [fill.capability()]);
+            } else {
+                evidence.mark_residual(key.clone(), FamilyThemeResidualReason::UnsupportedPaint);
+            }
+        }
         if self.terminal.get().is_some()
             && let Some(fill) = &self.title_fill
         {
@@ -307,9 +448,32 @@ impl JourneyTextPaintReceipt<'_> {
 
     pub(crate) fn record_label(&mut self, role: JourneyTextPaintRole, inline_fill: Option<&str>) {
         self.valid &= !matches!(role, JourneyTextPaintRole::Title);
-        self.valid &=
-            inline_fill.is_none_or(|emitted| self.expected_fill.is_none_or(|fill| fill == emitted));
+        if matches!(
+            role,
+            JourneyTextPaintRole::Section | JourneyTextPaintRole::Task
+        ) {
+            self.valid &= self
+                .expected_surface_fill
+                .is_none_or(|expected| inline_fill == Some(expected));
+        } else {
+            self.valid &= inline_fill
+                .is_none_or(|emitted| self.expected_fill.is_none_or(|fill| fill == emitted));
+        }
         self.labels[role as usize] += 1;
+    }
+
+    pub(crate) fn record_surface_label(
+        &mut self,
+        role: JourneyTextPaintRole,
+        inline_fill: Option<&str>,
+        has_visible_text: bool,
+    ) {
+        self.valid &= matches!(
+            role,
+            JourneyTextPaintRole::Section | JourneyTextPaintRole::Task
+        );
+        self.record_label(role, inline_fill);
+        self.has_visible_surface_text |= self.surface_font_visible && has_visible_text;
     }
 
     pub(crate) fn record_title(&mut self, title: &str, fill: &str) {
@@ -329,6 +493,7 @@ mod tests {
     fn complete_receipt() -> JourneyTextPaintReceipt<'static> {
         JourneyTextPaintReceipt {
             expected_fill: Some("#123456"),
+            expected_surface_fill: Some("#123456"),
             expected_title: Some("Title"),
             expected_title_fill: "#987654",
             expected_labels: [1; 6],
@@ -336,6 +501,8 @@ mod tests {
             expected_lines: 2,
             lines: 2,
             css_declarations: 6,
+            surface_font_visible: true,
+            has_visible_surface_text: true,
             valid: true,
         }
     }

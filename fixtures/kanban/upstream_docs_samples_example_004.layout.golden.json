@@ -3,7 +3,7 @@
   "layout": {
     "KanbanDiagram": {
       "bounds": {
-        "max_x": 720.0,
+        "max_x": 724.4,
         "max_y": 8.0,
         "min_x": 90.0,
         "min_y": -310.0
@@ -136,7 +136,7 @@
           "id": "style n2 stroke:#AA00FF,fill:#E1BEE7",
           "index": 3.0,
           "label": "style n2 stroke:#AA00FF,fill:#E1BEE7",
-          "label_width": 200.0,
+          "label_width": 208.8,
           "rect_height": 73.0,
           "rect_y": -300.0,
           "rx": 5.0,

@@ -216,4 +216,19 @@ impl MindmapCssBinding {
         };
         config.config_paint_overrides_typed_default(&role)
     }
+
+    pub(super) fn root_fill_owned(
+        &self,
+        config: &PresentationConfig,
+        node: &merman_model::families::mindmap::MindmapDiagramRenderNode,
+    ) -> bool {
+        let role = if self.model_look(&node.look) == "neo"
+            && (self.use_gradient || self.theme.contains("redux"))
+        {
+            "themeVariables.mainBkg"
+        } else {
+            "themeVariables.git0"
+        };
+        config.config_paint_overrides_typed_default(role)
+    }
 }

@@ -17,8 +17,8 @@
       "body-font": { "type": "font-stack", "label": "Clear supporting text", "group": "Typography", "value": ["Avenir", "Segoe UI", "Arial", "Noto Sans CJK SC", "sans-serif"] },
       "display-font": { "type": "font-stack", "label": "Editorial serif lettering", "group": "Typography", "value": ["Georgia", "Times New Roman", "Noto Serif CJK SC", "serif"] },
       "code-font": { "type": "font-stack", "label": "Class signatures", "group": "Typography", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
-      "series": { "type": "palette", "label": "Lacquer chart accents", "group": "Palettes", "value": [{ "ref": "vermilion" }, { "ref": "gold" }, "#9CA99C", "#B19CB9", "#A0B5BC", "#C19C71"] },
-      "pie-series": { "type": "palette", "label": "Lacquer compartments", "group": "Palettes", "description": "Independent dark swatches retain ivory percentage contrast; pale gold separators distinguish adjacent compartments.", "value": ["#6E2E40", "#3E4442", "#654F31", "#473649", "#2E4A4C", "#48402D"] },
+      "series": { "type": "palette", "label": "Lacquer chart accents", "group": "Palettes", "value": [{ "ref": "vermilion" }, { "ref": "gold" }, "#86B48D", "#BB8FCA", "#75AEBF", "#C08052"] },
+      "pie-series": { "type": "palette", "label": "Lacquer compartments", "group": "Palettes", "description": "Six distinct dark lacquer compartments retain ivory percentage and branch lettering. Gold separators remain independent; category paint does not recolor the material or its reflections.", "value": ["#6E2E40", "#2D6548", "#80621E", "#633D7D", "#1B6570", "#844D2E"] },
       "gold-rim": {
         "type": "effect",
         "label": "Asymmetric inlaid rim",

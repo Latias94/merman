@@ -5176,7 +5176,9 @@ fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
                 .unwrap();
             let label_left = svg_translate_values(label.attribute("transform").unwrap())[0];
             let context = format!("htmlLabels={html_labels}, wrappingWidth={wrapping_width}");
-            assert!((rect_width - frame.width).abs() < 1e-3, "{context}");
+            if !html_labels {
+                assert!((rect_width - frame.width).abs() < 1e-3, "{context}");
+            }
             assert!(
                 (rect_width - 200.0).abs() > 1.0,
                 "{context}: exercise a non-default paint width"
@@ -5209,10 +5211,14 @@ fn flowchart_elk_markdown_group_titles_paint_at_the_final_frame_width() {
                         })
                     })
                     .unwrap();
-                assert!((max_width - rect_width).abs() < 1e-3, "{context}: {style}");
+                assert!((max_width - frame.width).abs() < 1e-3, "{context}: {style}");
                 assert!(
-                    (width - rect_width).abs() < 1e-3,
+                    (width - frame.width).abs() < 1e-3,
                     "{context}: wrapped HTML width"
+                );
+                assert!(
+                    (rect_width - frame.width.max(width + frame.padding)).abs() < 1e-3,
+                    "{context}: final HTML frame includes the measured title and node padding"
                 );
                 assert!(height > 24.0, "{context}: long title must remain wrapped");
                 assert!(

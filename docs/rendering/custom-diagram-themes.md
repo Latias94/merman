@@ -157,10 +157,30 @@ Its ordinary head label uses 14px and weight 600. Invalid shared sizes inherit t
 16px ancestor; a valid `!important` shared size can also override the head's independent size.
 
 Raw HTML labels can also contain relative CSS sizes: `em` follows the
-parent font, while `rem` depends on the receiving document's root font. Class, Requirement and
-Kanban HTML label measurement uses the ordinary 16px document-root baseline; a page with a different
-root size or a standalone SVG document can resolve `rem` differently. Prefer pixel or parent-relative
-sizes when the same source must travel between hosts.
+parent font, while `rem` depends on the receiving document's root font. Class labels and notes,
+Requirement, Kanban, State, Block, ER, Mindmap, and Usecase use the ordinary 16px document-root baseline for HTML
+measurement. A page with a different root size or a standalone SVG document can resolve `rem` differently. Prefer
+pixel or parent-relative sizes when the same source must travel between hosts.
+
+Class notes apply `class.padding` to each side of the measured label in Dagre and ELK. An omitted
+setting retains the note-specific default of 6px per side; Class bodies and namespaces retain their
+own defaults.
+
+Unbreakable words can expand an HTML label beyond its CSS wrap width. Requirement and Flowchart
+ELK cluster labels retain wrapping for the surrounding words. Kanban preserves the expanded
+label container and export canvas while keeping its configured column and card widths; very long
+words can therefore extend beyond a card or into a neighboring column, as in Mermaid.
+Flowchart's exported canvas also includes explicit pixel or numeric cluster widths and heights
+applied by source styles; the rectangle retains its original attribute position.
+Requirement preserves Mermaid's node-label positioning while including text that extends beyond
+the frame in the export canvas, including large multiline stereotype labels.
+Git Graph also includes large commit and tag text in the export canvas when the selected measurer
+provides direct-text baseline bounds, including rotated labels. Measurement profiles without those
+bounds retain their established approximation. Stacked tags share a background width while each
+caption keeps its own horizontal center.
+HTML wrapping also keeps browser break opportunities inside ASCII identifiers such as `DOC-12345`,
+so a narrow label reserves the rows needed after the hyphen; a leading negative sign stays with
+its number.
 
 HTML emphasis also affects font selection: `strong` and `b` request a weight bolder than their
 parent, including each nested level; `em`, `i`, `cite`, `dfn` and `var` request italic. `code`,
@@ -248,6 +268,65 @@ Use representative Latin, CJK and symbol labels when the content needs them. A f
 does not imply glyph coverage, and a successful theme status does not certify either one. The
 [host measurement guide](../bindings/HOST_TEXT_MEASUREMENT.md) describes callback preparation,
 native contexts and per-request fallback evidence.
+
+## Categorical colors and repeated entries
+
+An ordinal palette is a finite, ordered list. A category after its last entry reuses the first
+color; the renderer does not invent additional colors or combine data into an `Other` category.
+Category identity, the family's ordering rules, and legend associations remain intact. A correct
+cycle does not guarantee that a dense chart is easy to read.
+
+Keep line-series inks, labeled category surfaces, and emphasis colors independent when they need
+different contrast. A pale paper color can work behind dark text and disappear as a thin line.
+A light label that works on a dark canvas can disappear on a bright sector. Check actual opacity
+and background layers: Pie normally paints sectors at 0.7 opacity while its percentage text and
+legend swatches remain separate opaque elements.
+
+Merman's native presets author a separate twelve-color `pie-series` palette and `pie-text` ink.
+Titles and legend labels keep their canvas-facing roles. Ghibli uses muted botanical colors for
+its sectors while retaining its paper and text treatment. Editing a Pie token does not recolor a
+line chart or a Mindmap branch. Saved artistic recipes keep their own finite capacities: Reading,
+Atlas, and Nightfall use eight categories; most others use six, while Riso intentionally retains
+two chart inks. Monograph's grayscale remains a limited categorical distinction.
+
+Native presets also keep opaque `category-fills` and `category-text` independent of Pie opacity
+and chart strokes. Mindmap's primary root has its own fill/text pair; branch labels follow the
+branch category rather than the node's visit order. Journey's `task-label`, Timeline's
+`node-label`, and Git Graph's branch `cluster-label` address text on colored surfaces, while
+titles, outside labels, Git tags, and commit labels retain their separate roles. Explicit
+family scale and label colors still own their slots. These fallback adaptations do not expand
+the preset catalog's declared design scope.
+
+Ghibli uses six darker botanical chart inks for thin chart marks and Sankey nodes/links, separate
+from its pale labeled surfaces. Native Treemap sections use the category palette without a
+uniform body fill hiding it. Gantt excluded calendar bands and text over section overlays have
+independent roles; task-state label colors retain their own priority.
+
+The family's color domain can impose another ring before palette lookup:
+
+| Family | Color domain |
+| --- | --- |
+| Pie | Original section-label order, including entries whose percentages round to `0%`; those entries retain their legend slot. Mermaid's default uses twelve `pieN` values. A typed `pie-slice` palette uses its own length. |
+| XY Chart | Plot/series declaration order across bars and lines, independently of the number of x-axis values. |
+| Mindmap | Eleven branch/depth section slots; the root has a separate paint owner. |
+| Git Graph | Classic branch colors wrap through eight Mermaid slots; tag and commit labels have independent paint owners. Color-generated themes have their own bounded adapter conditions. |
+| Kanban | Task occurrences wrap through twelve family slots before selecting an authored palette entry. |
+| Timeline | Section/task slots follow the configured family color ring. |
+| Journey | Section runs follow `journey.sectionFills`' ring; actors have a separate palette. |
+| Radar | The typed palette adapter currently supports twelve indexed slots; a thirteenth dependent series retains an unsupported-palette result. |
+| Sankey | Layout-node order; source/target/gradient links follow the effective node colors. Labels normally sit outside nodes. |
+| Treemap | First-seen section or immediate-parent category; sibling leaves intentionally share a category color. Section and leaf opacity affect the final text background. |
+
+Review the first repeat as well as ordinary samples. With `k + 1` visible Pie sectors and a
+`k`-color cycle, the last and first sectors share a color and touch at the circular boundary.
+Separators and labels help preserve boundaries, but do not create an unlimited supply of unique
+category identities. Inspect long legends, small values, and both appearances before choosing a
+recipe for more categories. Source-owned colors and opacity remain deliberate user overrides.
+
+These custom-preset changes leave official Mermaid palette behavior intact. Alpha presets remain
+subject to their declared family scope and [qualification](preset-qualification.md); attractive
+samples, successful compilation, and shared fallback styling do not grant additional qualified
+cells or automatically promote a saved recipe into the native catalog.
 
 ## Family configuration and compiled rules
 
@@ -583,15 +662,19 @@ facets; they do not add ordinal geometry, effects, or label typography support.
 To refresh a library SVG, render its saved source, configuration, and recipe together, for example:
 
 ```console
-merman-cli render playground/src/themes/samples/xychart.mmd --config-file playground/src/themes/samples/xychart.config.json --theme-file playground/src/themes/recipes/atlas.theme.json --svg-id atlas-xychart --svg-pipeline parity --font-measurement deterministic --font-system off -o playground/src/themes/previews/atlas-xychart.svg
+merman-cli render playground/src/themes/samples/xychart.mmd --config-file playground/src/themes/samples/xychart.config.json --theme-file playground/src/themes/recipes/atlas.theme.json --svg-id atlas-xychart --svg-pipeline parity --font-measurement native --font-file /path/to/segoeui.ttf --font-file /path/to/seguisb.ttf --font-system off -o playground/src/themes/previews/atlas-xychart.svg
 ```
 
 Class compartments and chart legends need actual font measurement. Browser previews use the
-Playground's host measurer and available browser fonts. For native Class regeneration, replace
-deterministic measurement with checked files matching the recipe's actual font roles, using
-repeatable `--font-file` arguments and `--font-system off`. Record that measurement condition
-alongside the same-render report. Fonts are not embedded; another host font requires a fresh
-label-bounds review. Native SVG text alone does not establish native font measurement.
+Playground's host measurer and available browser fonts. The categorical readability refresh uses
+native measurement with explicitly loaded Windows font files for 54 affected saved SVGs; unchanged
+examples retain their earlier exports. The Atlas example above uses Segoe UI regular and semibold.
+For other recipes, supply checked files matching their actual font roles and weights with repeatable
+`--font-file` arguments and `--font-system off`. Match the faces selected by the viewer, including
+user-installed fonts such as Menlo, rather than assuming the first loaded fallback is displayed.
+Record that measurement condition alongside the
+same-render report. Fonts are not embedded; another host font requires a fresh label-bounds review.
+Native SVG text alone does not establish native font measurement.
 
 Riso's small opposing shadows suggest ink registration offsets on supported bodies; they do not
 simulate physical ink mixing or paper noise. Phosphor scopes glow to connections, activations,
@@ -803,7 +886,7 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
-Ghibli adds a warm, textured canvas and a five-color muted Pie palette with typed title,
+Ghibli adds a warm, textured canvas and a twelve-color muted Pie palette with typed title,
 percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
 uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
 

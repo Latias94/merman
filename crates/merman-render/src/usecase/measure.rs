@@ -2,7 +2,8 @@ use super::*;
 use crate::Error;
 use crate::layout_work::OperationLayoutWorkControl;
 use crate::text::{
-    WrapMode, measure_wrapped_markdown_with_inline_styles, measure_xhtml_label_fragment,
+    WrapMode, measure_wrapped_markdown_with_inline_styles,
+    measure_xhtml_label_fragment_with_terminal_fonts,
 };
 use merman_model::families::usecase::{
     UsecaseArrowType, UsecaseJsonInfinity, UsecaseJsonNode, UsecaseNodeKind,
@@ -289,12 +290,13 @@ fn label(
         })
         .unwrap_or_else(|| {
             if let Some(content) = html_content.as_deref() {
-                measure_xhtml_label_fragment(
+                measure_xhtml_label_fragment_with_terminal_fonts(
                     context.measurer,
                     content,
                     &terminal_style,
                     measurement_width,
-                    WrapMode::HtmlLike,
+                    // HTML rem uses the document root independently of the role font.
+                    16.0,
                 )
             } else if label_type == UsecaseLabelType::Markdown {
                 measure_wrapped_markdown_with_inline_styles(
@@ -471,7 +473,11 @@ pub(super) fn measure(
         .get("htmlLabels")
         .and_then(Value::as_bool)
         .unwrap_or(true);
-    let root_font_size = css_binding.root_font.font_size;
+    let root_font_size = if html {
+        16.0
+    } else {
+        css_binding.root_font.font_size
+    };
     let mut nodes = Vec::new();
     for actor in [true, false] {
         for node in model

@@ -89,6 +89,8 @@ impl<'a> ClassConfigView<'a> {
             class_padding: self.class_compat_f64("padding").unwrap_or(12.0),
             // ClassDB.getData uses class.padding ?? 16 for namespace containers.
             namespace_padding: self.class_compat_f64("padding").unwrap_or(16.0),
+            // ClassDB gives notes their own per-side padding, consumed twice by note.ts.
+            note_padding: self.class_compat_f64("padding").unwrap_or(6.0),
             hide_empty_members_box: self.class_bool("hideEmptyMembersBox").unwrap_or(false),
             text_style,
             html_calc_text_style,
@@ -278,6 +280,7 @@ pub(super) struct ClassLayoutSettings {
     pub(super) wrap_mode_note: WrapMode,
     pub(super) class_padding: f64,
     pub(super) namespace_padding: f64,
+    pub(super) note_padding: f64,
     pub(super) hide_empty_members_box: bool,
     pub(super) text_style: TextStyle,
     pub(super) html_calc_text_style: TextStyle,
@@ -333,6 +336,7 @@ mod tests {
         assert_eq!(config.wrap_probe_font_size(), 18.0);
         assert_eq!(config.layout_settings().class_padding, 30.0);
         assert_eq!(config.layout_settings().namespace_padding, 30.0);
+        assert_eq!(config.layout_settings().note_padding, 30.0);
         assert_eq!(config.class_padding, 12.0);
         assert_eq!(config.viewport_padding, 8.0);
         assert!(config.use_max_width);

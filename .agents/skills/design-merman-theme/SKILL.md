@@ -1,6 +1,6 @@
 ---
 name: design-merman-theme
-description: Create or refine Merman diagram themes from a visual brief, reference, recipe, or preset, including reading/editor themes and paired light/dark appearances. Use for role colors, typography, optional materials and effects, editable JSON, and previews with separate runtime and visual evidence.
+description: Create, audit, or refine Merman diagram themes from a visual brief, reference, recipe, or preset. Use for reading/editor themes, categorical palettes and overflow, paired light/dark appearances, typography, optional materials and effects, editable JSON, and previews with separate runtime and visual evidence.
 ---
 
 # Design Merman Themes
@@ -42,6 +42,10 @@ actual preset from the selected engine. For a new design,
 [starter.theme.json](assets/starter.theme.json) is a complete, small Flowchart seed, not a claim of
 cross-family treatment. Preserve an imported recipe's unrelated settings, ordered rules, assets,
 and explicit references.
+
+For shared token/palette edits, category-count changes, categorical content, or an existing-theme
+audit, follow [color and overflow review](references/review.md#color-roles-and-categorical-overflow) before
+choosing colors and on the saved renders.
 
 Give intentional shared values stable IDs and bind their consumers. Edit those bindings or explicit
 local consumers; equal color literals do not establish a shared relationship. Keep the editable
@@ -86,6 +90,7 @@ is unavailable, deliver the files with that review explicitly pending.
 Revise the same recipe, rerender affected scenes, and review the new outputs. Preserve an
 unsupported-effect reproduction rather than silently changing look, removing the request, or
 loosening limits to make evidence green. Explain any intentional design compromise.
+Apply the [completion criterion](references/review.md#completion-and-admission) before handoff.
 
 Deliver the standalone recipe or pair, previews with source/configuration, selected appearance and
 viewer backing, tested runtime and font conditions, runtime outcomes, visual findings, and remaining

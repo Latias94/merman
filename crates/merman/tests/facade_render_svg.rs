@@ -219,7 +219,7 @@ flowchart TD
             .any(|node| node.has_tag_name("foreignObject"))
     );
     for expected_rows in [
-        vec!["docs/plans/2026-10-11-", "release-", "checklist.final.md"],
+        vec!["docs/plans/2026-10-", "11-release-", "checklist.final.md"],
         vec!["Short"],
         vec!["src/components/navigation/sidebar-", "tree.tsx"],
     ] {

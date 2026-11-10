@@ -562,6 +562,79 @@ fn er_html_inline_fonts_use_the_shared_terminal_font_consumer() {
     );
 }
 
+fn html_text_box(svg: &str, text: &str) -> (f64, f64) {
+    let document = roxmltree::Document::parse(svg).unwrap();
+    let foreign = document
+        .descendants()
+        .find(|node| {
+            node.has_tag_name("foreignObject")
+                && node
+                    .descendants()
+                    .any(|child| child.is_text() && child.text() == Some(text))
+        })
+        .unwrap();
+    (
+        foreign.attribute("width").unwrap().parse().unwrap(),
+        foreign.attribute("height").unwrap().parse().unwrap(),
+    )
+}
+
+#[test]
+fn er_html_rem_uses_the_document_root_across_entities_relationships_and_groups() {
+    for layout in layouts().chain(["swimlane"]) {
+        for body in [
+            "E[\"LABEL\"]",
+            "E[\"LABEL\"] {\n string id\n}",
+            "E {\n string id \"LABEL\"\n}",
+            "A ||--|| B : \"LABEL\"",
+            "subgraph G [\"LABEL\"]\n E\nend",
+            "subgraph Outer\n subgraph G [\"LABEL\"]\n E\n end\nend",
+        ] {
+            // The typed diagram font is 24px; HTML rem still resolves against 16px.
+            // Parent-relative em follows the entity's 24px or the relationship's 14px.
+            let label = "<span style='font-size:2rem'>WideText</span>";
+            let source = format!("erDiagram\n{}\n", body.replace("LABEL", label));
+            let (rem_svg, _) = render(&source, true, layout);
+            let (px_svg, _) = render(&source.replace("2rem", "32px"), true, layout);
+            let rem_box = html_text_box(&rem_svg, "WideText");
+            assert_eq!(
+                rem_box,
+                html_text_box(&px_svg, "WideText"),
+                "document-relative HTML geometry: {layout}: {body}"
+            );
+            assert_eq!(rem_box.1, 48.0, "HTML line box: {layout}: {body}");
+        }
+    }
+}
+
+#[test]
+fn er_html_source_rem_matches_pixels_without_compounding_across_label_layers() {
+    for layout in layouts().chain(["swimlane"]) {
+        for body in ["E[WideText]", "E[WideText] {\n string id\n}"] {
+            for source_style in [
+                "style E font-size:2rem",
+                "classDef local font-size:2rem\nclass E local",
+            ] {
+                let source = format!("erDiagram\n{body}\n{source_style}\n");
+                let (rem_svg, calls) = render(&source, true, layout);
+                let (px_svg, _) = render(&source.replace("2rem", "32px"), true, layout);
+                assert!(
+                    calls
+                        .iter()
+                        .filter(|call| call.operation != "budget")
+                        .all(|call| call.style.font_size == 32.0),
+                    "source rem must stay at 32px on every HTML label layer: {source}"
+                );
+                assert_eq!(
+                    html_text_box(&rem_svg, "WideText"),
+                    html_text_box(&px_svg, "WideText"),
+                    "source-relative geometry: {layout}: {source}"
+                );
+            }
+        }
+    }
+}
+
 #[test]
 fn er_generic_html_text_content_removes_the_span_and_its_relative_font_layer() {
     for source_label in ["A~T~B", "A&lt;T&gt;B"] {

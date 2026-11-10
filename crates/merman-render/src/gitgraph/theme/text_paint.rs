@@ -27,10 +27,11 @@ const SOURCES: [&str; 3] = [
     "themeVariables.commitLabelColor",
 ];
 
-const LABEL_TARGETS: [ThemeTarget; 3] = [
+const LABEL_TARGETS: [ThemeTarget; 4] = [
     ThemeTarget::Text,
     ThemeTarget::NodeLabel,
     ThemeTarget::EdgeLabel,
+    ThemeTarget::ClusterLabel,
 ];
 
 fn source_mask(target: ThemeTarget) -> u8 {
@@ -38,6 +39,7 @@ fn source_mask(target: ThemeTarget) -> u8 {
         ThemeTarget::Text => 0b111,
         ThemeTarget::NodeLabel => 0b010,
         ThemeTarget::EdgeLabel => 0b100,
+        ThemeTarget::ClusterLabel => 0b1000,
         _ => 0,
     }
 }
@@ -48,12 +50,14 @@ struct TextObservation {
     unsupported_fill: u8,
     fill_reason: Option<FamilyThemeResidualReason>,
     typography: u8,
-    other: [Option<FamilyThemeResidualReason>; 3],
+    other: [Option<FamilyThemeResidualReason>; 4],
 }
 
 #[derive(Debug)]
 pub(crate) struct GitGraphTextPaintPlan {
-    fills: [Option<DirectStaticPaint>; 3],
+    fills: [Option<DirectStaticPaint>; 4],
+    branch_label_owned: [bool; super::GITGRAPH_PALETTE_SLOT_COUNT],
+    redux_branch_label_owned: bool,
     observations: BTreeMap<FamilyThemeMechanismKey, TextObservation>,
     title: Option<Box<str>>,
     title_fill: SingleTitleFillPlan,
@@ -63,7 +67,7 @@ pub(crate) struct GitGraphTextPaintPlan {
 
 #[derive(Debug, Default)]
 struct TextTerminalFacts {
-    sources: [usize; 3],
+    sources: [usize; 4],
     // Root title/branch text, tag text, and commit text, independent of fill ownership.
     text_visible: u8,
     unverified_text: u8,
@@ -92,6 +96,8 @@ impl GitGraphTextPaintPlan {
     pub(crate) fn baseline() -> Self {
         Self {
             fills: std::array::from_fn(|_| None),
+            branch_label_owned: [false; super::GITGRAPH_PALETTE_SLOT_COUNT],
+            redux_branch_label_owned: false,
             observations: BTreeMap::new(),
             title: None,
             title_fill: SingleTitleFillPlan::default(),
@@ -140,12 +146,21 @@ impl GitGraphTextPaintPlan {
             if matches!(
                 route.mechanism(),
                 FamilyThemeMechanism::RuleFacet {
-                    target: ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
+                    target: ThemeTarget::Text
+                        | ThemeTarget::NodeLabel
+                        | ThemeTarget::EdgeLabel
+                        | ThemeTarget::ClusterLabel,
                     ..
                 } | FamilyThemeMechanism::OrdinalPalette {
-                    target: ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel
+                    target: ThemeTarget::Text
+                        | ThemeTarget::NodeLabel
+                        | ThemeTarget::EdgeLabel
+                        | ThemeTarget::ClusterLabel
                 } | FamilyThemeMechanism::EffectBinding {
-                    target: ThemeTarget::Text | ThemeTarget::NodeLabel | ThemeTarget::EdgeLabel,
+                    target: ThemeTarget::Text
+                        | ThemeTarget::NodeLabel
+                        | ThemeTarget::EdgeLabel
+                        | ThemeTarget::ClusterLabel,
                     ..
                 }
             ) {
@@ -176,20 +191,48 @@ impl GitGraphTextPaintPlan {
                 None,
                 work,
             )?,
+            // Branch names are a category surface role, independent of root Text and tags.
+            theme.style_with_work_meter(
+                ThemeTarget::ClusterLabel,
+                ThemeVariant::Default,
+                None,
+                work,
+            )?,
         ];
         let color_gen = config
             .get_str("theme")
             .is_some_and(crate::gitgraph::gitgraph_theme_uses_color_gen);
-        let owned: [bool; 3] = std::array::from_fn(|i| {
-            config.config_paint_overrides_typed_default(SOURCES[i]) || (i == 2 && color_gen)
+        let redux = config
+            .get_str("theme")
+            .is_some_and(crate::gitgraph::gitgraph_theme_is_redux_geometry);
+        plan.redux_branch_label_owned =
+            redux && config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
+        let owned: [bool; 4] = std::array::from_fn(|i| {
+            SOURCES.get(i).is_some_and(|source| {
+                config.config_paint_overrides_typed_default(source) || (i == 2 && color_gen)
+            })
+        });
+        plan.branch_label_owned = std::array::from_fn(|slot| {
+            if redux {
+                plan.redux_branch_label_owned
+            } else {
+                config.config_paint_overrides_typed_default(&format!(
+                    "themeVariables.gitBranchLabel{slot}"
+                ))
+            }
         });
         plan.fills = std::array::from_fn(|i| {
-            (!owned[i])
+            let text_targets = [ThemeTarget::Text, LABEL_TARGETS[i]];
+            (!owned[i] && (i != 3 || !color_gen))
                 .then(|| {
                     resolve_direct_static_fill(
                         theme,
                         &styles[i],
-                        &[ThemeTarget::Text, LABEL_TARGETS[i]],
+                        if i == 3 {
+                            &LABEL_TARGETS[3..]
+                        } else {
+                            &text_targets
+                        },
                         DirectStaticSelectorDomain::Default,
                     )
                 })
@@ -334,6 +377,13 @@ impl GitGraphTextPaintPlan {
         std::array::from_fn(|i| self.fills[i].as_ref().map(DirectStaticPaint::css))
     }
 
+    pub(crate) fn branch_label_fill_css(&self, slot: Option<usize>) -> Option<&str> {
+        let slot = slot?;
+        (!self.branch_label_owned.get(slot).copied().unwrap_or(true))
+            .then(|| self.fills[3].as_ref().map(DirectStaticPaint::css))
+            .flatten()
+    }
+
     pub(crate) fn begin_terminal_receipt<'a>(
         &'a self,
         layout: &'a GitGraphDiagramLayout,
@@ -466,6 +516,7 @@ impl GitGraphTextPaintReceipt<'_> {
         name: &str,
         root_inherited: bool,
         text_root_inherited: bool,
+        emitted_label_fill: Option<&str>,
     ) {
         self.valid &= self.layout.show_branches && index == self.next_branch;
         self.valid &= self.layout.branches.get(index).is_some_and(|branch| {
@@ -477,10 +528,13 @@ impl GitGraphTextPaintReceipt<'_> {
             .copied()
             .unwrap_or(fallback[0])
             == root_inherited;
-        self.valid &= slot
+        let expected_label_fill = self.plan.branch_label_fill_css(slot);
+        self.valid &= emitted_label_fill == expected_label_fill;
+        self.valid &= (slot
             .and_then(|slot| self.root_geometry[3].get(slot))
             .copied()
             .unwrap_or(fallback[1])
+            && expected_label_fill.is_none())
             == text_root_inherited;
         self.facts.sources[0] += usize::from(root_inherited);
         self.facts.record_text(
@@ -488,6 +542,17 @@ impl GitGraphTextPaintReceipt<'_> {
             text_root_inherited,
             &self.typography.branch_label_text_facts(name),
         );
+        let owned = if self.binding.use_redux_geometry {
+            // Redux's common ink also owns generated slots beyond the eight named Git colors.
+            self.plan.redux_branch_label_owned
+                && slot.is_some_and(|slot| slot < self.binding.theme_color_limit)
+        } else {
+            slot.and_then(|slot| self.plan.branch_label_owned.get(slot))
+                .copied()
+                .unwrap_or(false)
+        };
+        self.facts
+            .record_text(3, !owned, &self.typography.branch_label_text_facts(name));
         self.next_branch += 1;
     }
 

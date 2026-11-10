@@ -46,6 +46,17 @@ pub(crate) fn measure_xhtml_label_fragment_with_terminal_fonts(
     {
         return measurer.measure_wrapped(&plain, style, max_width, WrapMode::HtmlLike);
     }
+    measure_html_with_document_root(measurer, fragment, style, max_width, root_font_size)
+}
+
+/// Preserves structured HTML whitespace and measurement requests with an explicit root size.
+pub(crate) fn measure_html_with_document_root(
+    measurer: &dyn TextMeasurer,
+    fragment: &str,
+    style: &TextStyle,
+    max_width: Option<f64>,
+    root_font_size: f64,
+) -> TextMetrics {
     let carrier = measurer
         .builtin_operation_carrier(TextMeasurementOperation::WrappedWithRawWidth)
         .and_then(BuiltinTextMeasurementOperationCarrier::into_inline_html)
@@ -59,6 +70,54 @@ pub(crate) fn measure_xhtml_label_fragment_with_terminal_fonts(
         WrapMode::HtmlLike,
         Some(xhtml_fonts::TerminalFonts::new(style, root_font_size)),
     )
+}
+
+#[test]
+fn html_document_root_context_preserves_plain_label_host_requests() {
+    use std::sync::Mutex;
+
+    #[derive(Default)]
+    struct Requests(Mutex<Vec<(&'static str, String)>>);
+
+    impl TextMeasurer for Requests {
+        fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+            self.0.lock().unwrap().push(("measure", text.to_owned()));
+            super::DeterministicTextMeasurer::default().measure(text, style)
+        }
+
+        fn measure_html_line_width_px(&self, text: &str, style: &TextStyle) -> f64 {
+            self.0.lock().unwrap().push(("html-width", text.to_owned()));
+            super::DeterministicTextMeasurer::default().measure_html_line_width_px(text, style)
+        }
+    }
+
+    let style = TextStyle {
+        font_size: 16.0,
+        ..Default::default()
+    };
+    for html in ["<p>A  B</p>", "<p>A<br/>B</p>", "<p>A&nbsp;B</p>"] {
+        let previous = Requests::default();
+        let explicit_root = Requests::default();
+        let expected = measure_html_with_inline_styles(
+            &previous,
+            html,
+            &style,
+            Some(27.0),
+            WrapMode::HtmlLike,
+        );
+        let actual =
+            measure_html_with_document_root(&explicit_root, html, &style, Some(27.0), 16.0);
+        assert_eq!(
+            (actual.width, actual.height, actual.line_count),
+            (expected.width, expected.height, expected.line_count),
+            "{html}"
+        );
+        assert_eq!(
+            *explicit_root.0.lock().unwrap(),
+            *previous.0.lock().unwrap(),
+            "{html}"
+        );
+    }
 }
 
 // This input has already passed through the lightweight HTML parser. Do not use the generic text
@@ -78,22 +137,6 @@ fn normalized_preparsed_html_text_lines(text: &str) -> Vec<String> {
         vec![String::new()]
     } else {
         out
-    }
-}
-
-pub(crate) fn measure_xhtml_label_fragment(
-    measurer: &dyn TextMeasurer,
-    fragment: &str,
-    style: &TextStyle,
-    max_width: Option<f64>,
-    wrap_mode: WrapMode,
-) -> TextMetrics {
-    if let Some(plain_text) = mermaid_xhtml_label_plain_text(fragment)
-        && !plain_text.contains('<')
-    {
-        measurer.measure_wrapped(&plain_text, style, max_width, wrap_mode)
-    } else {
-        measure_html_with_inline_styles(measurer, fragment, style, max_width, wrap_mode)
     }
 }
 
@@ -5347,12 +5390,25 @@ pub(crate) fn measure_svg_markdown_word_lines(
     style: &TextStyle,
     entity_mode: super::SvgTextEntityMode,
 ) -> TextMetrics {
+    measure_svg_markdown_word_lines_with_origin(measurer, lines, style, entity_mode).0
+}
+
+/// Retains the origin found during the same word measurements, without replaying host requests.
+pub(crate) fn measure_svg_markdown_word_lines_with_origin(
+    measurer: &dyn TextMeasurer,
+    lines: &[Vec<(String, MermaidMarkdownWordType)>],
+    style: &TextStyle,
+    entity_mode: super::SvgTextEntityMode,
+) -> (TextMetrics, f64) {
     if lines.iter().all(Vec::is_empty) {
-        return TextMetrics {
-            width: 0.0,
-            height: 0.0,
-            line_count: 0,
-        };
+        return (
+            TextMetrics {
+                width: 0.0,
+                height: 0.0,
+                line_count: 0,
+            },
+            0.0,
+        );
     }
     let mut width = 0.0_f64;
     let mut ink: Option<(f64, f64)> = None;
@@ -5386,11 +5442,14 @@ pub(crate) fn measure_svg_markdown_word_lines(
             }
         }
     }
-    TextMetrics {
-        width: round_to_1_64_px(width),
-        height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
-        line_count: lines.len(),
-    }
+    (
+        TextMetrics {
+            width: round_to_1_64_px(width),
+            height: ink.map_or(0.0, |(top, bottom)| (bottom - top).max(0.0)),
+            line_count: lines.len(),
+        },
+        ink.map_or(0.0, |(top, _)| top),
+    )
 }
 
 fn html_markdown_paragraph_gap_lines(markdown: &str) -> usize {

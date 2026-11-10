@@ -533,6 +533,60 @@ fn merge_markup_tags_are_literal_escaped_text_and_commit_tags_stay_sanitized() {
 }
 
 #[test]
+fn wider_sibling_tags_do_not_move_each_tags_own_horizontal_center() {
+    let history = concat!(
+        "gitGraph\ncommit id:\"root\"\nbranch feature\ncommit id:\"F\"\n",
+        "checkout main\nmerge feature id:\"M\" tag:\"short\"",
+    );
+    for theme in ["default", "redux"] {
+        for font_size in ["10px", "24px", "150%"] {
+            let config = json!({
+                "theme": theme,
+                "themeVariables": {
+                    "fontFamily": "monospace", "tagLabelFontSize": font_size
+                }
+            });
+            let (_, _, single) = inspect(&configured(config.clone(), &format!("{history}\n")));
+            let (_, _, stacked) = inspect(&configured(
+                config,
+                &format!("{history} tag:\"a much wider release label\"\n"),
+            ));
+            let single_document = roxmltree::Document::parse(&single).unwrap();
+            let stacked_document = roxmltree::Document::parse(&stacked).unwrap();
+            let single_tag = single_document
+                .descendants()
+                .find(|node| has_class(*node, "tag-label"))
+                .unwrap();
+            let stacked_tags = stacked_document
+                .descendants()
+                .filter(|node| has_class(*node, "tag-label"))
+                .collect::<Vec<_>>();
+            assert_eq!(stacked_tags.len(), 2);
+            assert_eq!(stacked_tags[0].text(), Some("a much wider release label"));
+            assert_eq!(stacked_tags[1].text(), Some("short"));
+            // drawCommitTags centers each text using its own getBBox().width. Only the
+            // shared tag polygons use the widest sibling's width.
+            assert_eq!(
+                stacked_tags[1].attribute("x"),
+                single_tag.attribute("x"),
+                "{theme}/{font_size}"
+            );
+            let long_x = stacked_tags[0]
+                .attribute("x")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap();
+            let short_x = stacked_tags[1]
+                .attribute("x")
+                .unwrap()
+                .parse::<f64>()
+                .unwrap();
+            assert!(long_x < short_x, "{theme}/{font_size}");
+        }
+    }
+}
+
+#[test]
 fn nbsp_is_payload_text_but_cannot_separate_command_tokens() {
     let engine = MermaidEngine::new();
     for source in [

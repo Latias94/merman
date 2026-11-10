@@ -2507,13 +2507,6 @@ gitGraph
                 ThemeStylePatch::default().with_stroke(solid()),
             ),
         ),
-        (
-            "cluster-label-fill",
-            ThemeRule::new(
-                ThemeTarget::ClusterLabel,
-                ThemeStylePatch::default().with_fill(solid()),
-            ),
-        ),
     ];
 
     for (case, rule) in absent_cases {

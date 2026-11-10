@@ -31,9 +31,13 @@ pub(in crate::svg::parity::flowchart) fn advance_rough_geometry(
         return Ok(());
     }
     let terminal = ctx.prepared_nodes.cluster(cluster.id.as_str())?;
-    let left = cluster.x - cluster.width / 2.0 + ctx.tx - origin_x;
+    let frame_width = ctx
+        .elk_cluster_geometry
+        .get(cluster.id.as_str())
+        .map_or(cluster.width, |geometry| geometry.width);
+    let width = frame_width.max(1.0);
+    let left = cluster.x - frame_width / 2.0 + ctx.tx - origin_x;
     let top = cluster.y - cluster.height / 2.0 + ctx.ty - origin_y;
-    let width = cluster.width.max(1.0);
     let height = cluster.height.max(1.0);
     let agentflow = ctx.diagram_type == "agentflow";
     if agentflow && (!terminal.theme.requests_shape_style() || terminal.fill == "none") {
@@ -403,9 +407,11 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     let label_style = compiled_styles.label_style.trim();
     let classes = ctx.model.effective_subgraph_css(subgraph_index, sg).0;
 
-    let left = (cluster.x - cluster.width / 2.0) + ctx.tx - origin_x;
+    let elk_geometry = ctx.elk_cluster_geometry.get(cluster.id.as_str());
+    let frame_width = elk_geometry.map_or(cluster.width, |geometry| geometry.width);
+    let rect_w = frame_width.max(1.0);
+    let left = (cluster.x - frame_width / 2.0) + ctx.tx - origin_x;
     let top = (cluster.y - cluster.height / 2.0) + ctx.ty - origin_y;
-    let rect_w = cluster.width.max(1.0);
     let rect_h = cluster.height.max(1.0);
     let label_top = top + cluster.title_margin_top.max(0.0);
     let Some(cluster_dom_id) = ctx.document_ids().cluster(cluster.id.as_str()) else {
@@ -432,23 +438,25 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
     // ELK paints Markdown after the final frame is known. clusters.js passes node.width to
     // createText, so these paint metrics differ from the wrapped pre-layout placeholder.
     let markdown_wrap_width = if ctx.uses_elk_adapter_dom {
-        rect_w
+        cluster.width.max(1.0)
     } else {
         FLOWCHART_FIXED_LABEL_WRAP_WIDTH
     };
-    let painted_markdown = (ctx.uses_elk_adapter_dom && label_type == "markdown").then(|| {
-        crate::flowchart::flowchart_label_metrics_for_layout(
-            crate::flowchart::FlowchartLabelMetricsRequest {
-                measurer: ctx.measurer,
-                raw_label: render_title,
-                label_type,
-                style: title_text_style,
-                max_width_px: Some(rect_w),
-                wrap_mode: ctx.edge_wrap_mode,
-                config: ctx.config,
-                math_renderer: ctx.math_renderer,
-            },
-        )
+    let painted_markdown = elk_geometry.map(|geometry| geometry.label).or_else(|| {
+        (ctx.uses_elk_adapter_dom && label_type == "markdown").then(|| {
+            crate::flowchart::flowchart_label_metrics_for_layout(
+                crate::flowchart::FlowchartLabelMetricsRequest {
+                    measurer: ctx.measurer,
+                    raw_label: render_title,
+                    label_type,
+                    style: title_text_style,
+                    max_width_px: Some(markdown_wrap_width),
+                    wrap_mode: ctx.edge_wrap_mode,
+                    config: ctx.config,
+                    math_renderer: ctx.math_renderer,
+                },
+            )
+        })
     });
     let label_w = painted_markdown
         .map_or(cluster.title_label.width, |metrics| metrics.width)
@@ -619,11 +627,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_cluster_pass(
         prepared_label,
     );
     let span_style_attr = OptionalStyleXmlAttr(label_style);
-    let markdown_uses_wrapped_box = if ctx.uses_elk_adapter_dom {
-        (label_w - markdown_wrap_width).abs() < 1e-3
-    } else {
-        label_w >= markdown_wrap_width - 1e-3
-    };
+    // The first constrained measurement selected wrapping. A later min-content
+    // expansion must not restore nowrap merely because its width exceeds the cap.
+    let markdown_uses_wrapped_box = label_w >= markdown_wrap_width - 1e-3;
     let div_style = if label_type != "markdown" {
         "display: table-cell; white-space: nowrap; line-height: 1.5;".to_string()
     } else if markdown_uses_wrapped_box {

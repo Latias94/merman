@@ -422,6 +422,66 @@ fn host_and_fallback_callback_traces_survive_flowchart_prepare_and_render() {
     }
 }
 
+#[cfg(feature = "layout-elk")]
+#[test]
+fn elk_html_cluster_measurements_follow_writer_order_on_each_render() {
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  layout: elk\n  htmlLabels: true\n  flowchart:\n    wrappingWidth: 80\n---\nflowchart TD\nsubgraph Z[\"`Zulu WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW suffix`\"]\nA[A]\nend\nsubgraph G[\"`Alpha WWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWWW suffix`\"]\nB[B]\nend\nA --> B\n",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let host = Arc::new(RecordingFlowchartHost::new(HostOutcome::Success));
+    let identity = TextMeasurementProfileIdentity::new(
+        MeasurementProfileId::new("test.elk-html-cluster-order").unwrap(),
+        "1",
+    )
+    .unwrap();
+    let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+        TextMeasurementPolicy::host_display(identity, host.clone(), TextMeasurementPhase::ALL),
+    );
+    for _ in 0..2 {
+        let artifact = family::prepare(
+            &parsed,
+            &LayoutOptions::default(),
+            environment.begin_session().unwrap(),
+        )
+        .unwrap();
+        let before = host.snapshot().len();
+        let rendered = artifact
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let after = host.snapshot();
+        let requests = &after[before..];
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let writer_order = document
+            .descendants()
+            .filter(|node| node.attribute("class") == Some("cluster-label"))
+            .map(|node| {
+                let text = node
+                    .descendants()
+                    .filter(|node| node.is_text())
+                    .filter_map(|node| node.text())
+                    .collect::<String>();
+                text.split_whitespace().next().unwrap().to_owned()
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(writer_order.len(), 2);
+        let first_requests = writer_order
+            .iter()
+            .map(|title| {
+                requests
+                    .iter()
+                    .position(|request| request.text.contains(title))
+                    .expect("every render must retain opaque host title measurements")
+            })
+            .collect::<Vec<_>>();
+        assert!(first_requests[0] < first_requests[1]);
+    }
+}
+
 #[test]
 fn host_trace_survives_self_loop_and_swimlane_family_paths() {
     let cases = [

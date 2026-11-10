@@ -244,6 +244,7 @@ pub(in crate::svg::parity) fn render_class_diagram_svg_model_with_config(
         math_renderer: options.math_renderer(),
         node_visual_plan,
         typography_theme,
+        relation_theme,
         content_tx,
         content_ty,
         timing,

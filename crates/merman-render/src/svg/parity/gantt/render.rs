@@ -187,7 +187,8 @@ pub(crate) fn render_gantt_diagram_svg_model(
     }
     out.checkpoint()?;
 
-    let mut task_theme_receipt = task_theme.begin_terminal_receipt();
+    let mut task_theme_receipt = task_theme
+        .begin_terminal_receipt_with_excluded_periods(&layout.excludes, options.work_meter())?;
     out.push_str("<style>");
     out.checkpoint()?;
     let css = gantt_css(diagram_id, task_theme);
@@ -250,11 +251,13 @@ pub(crate) fn render_gantt_diagram_svg_model(
                 let end_x = gantt_scale_time_round(end_raw_ms, min_ms, max_ms, range);
                 let cx = start_x + layout.left_padding + 0.5 * (end_x - start_x);
                 let cy = (i as f64) * gap + 0.5 * h;
+                let terminal_id = gantt_dom_id(diagram_id, &r.id);
+                let class = "exclude-range";
 
                 let _ = write!(
                     &mut out,
-                    r#"<rect id="{id}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{cx}px {cy}px" class="exclude-range"/>"#,
-                    id = escape_attr(&gantt_dom_id(diagram_id, &r.id)),
+                    r#"<rect id="{id}" x="{x}" y="{y}" width="{w}" height="{h}" transform-origin="{cx}px {cy}px" class="{class}"/>"#,
+                    id = escape_attr(&terminal_id),
                     x = fmt(r.x),
                     y = fmt(r.y),
                     w = fmt(r.width),
@@ -263,6 +266,14 @@ pub(crate) fn render_gantt_diagram_svg_model(
                     cy = fmt_allow_nan(cy),
                 );
                 out.checkpoint()?;
+                if let Some(receipt) = task_theme_receipt.as_mut() {
+                    receipt.record_excluded_period(
+                        diagram_id.semantic_str(),
+                        r,
+                        &terminal_id,
+                        class,
+                    );
+                }
             }
             out.push_str("</g>");
         }

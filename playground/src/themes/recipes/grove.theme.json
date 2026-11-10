@@ -16,8 +16,8 @@
       "note-ink": { "type": "paint", "value": "#4C4434" },
       "number-ink": { "type": "paint", "value": { "ref": "surface" } },
       "body-font": { "type": "font-stack", "value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans CJK SC", "sans-serif"] },
-      "series": { "type": "palette", "value": ["#4C745C", "#926B30", "#537B7B", "#A75C43", "#737340", "#82658A"] },
-      "pie-series": { "type": "palette", "value": ["#D8E4CF", "#E9D9B9", "#D2E1DD", "#E5C9B9", "#DDDFBE", "#DFD2E3"] }
+      "series": { "type": "palette", "value": ["#3D7953", "#A57426", "#397E89", "#B05A42", "#747D2A", "#87569E"] },
+      "pie-series": { "type": "palette", "value": ["#9CCF9C", "#E9B65A", "#80C5CB", "#E39E7E", "#CBD25B", "#BD8ED4"], "description": "Six botanical pigments distinguish leaf green, ochre, mineral teal, terracotta, olive, and violet while retaining dark category lettering." }
     },
     "canvas": { "base": { "ref": "canvas" } },
     "typography": {

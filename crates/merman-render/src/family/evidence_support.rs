@@ -238,6 +238,7 @@ pub(crate) struct UnsupportedTerminalDomain<'a> {
     fill_fully_overridden: bool,
     reconcile_rules: bool,
     resolve_ordinal_rules: bool,
+    text_variant_fallback: Option<ThemeVariant>,
 }
 
 impl<'a> UnsupportedTerminalDomain<'a> {
@@ -250,6 +251,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             fill_fully_overridden: false,
             reconcile_rules: true,
             resolve_ordinal_rules: true,
+            text_variant_fallback: None,
         }
     }
 
@@ -267,6 +269,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             fill_fully_overridden: false,
             reconcile_rules: false,
             resolve_ordinal_rules: true,
+            text_variant_fallback: None,
         }
     }
 
@@ -281,6 +284,7 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             fill_fully_overridden: false,
             reconcile_rules: false,
             resolve_ordinal_rules: false,
+            text_variant_fallback: None,
         }
     }
 
@@ -323,7 +327,14 @@ impl<'a> UnsupportedTerminalDomain<'a> {
             fill_fully_overridden: false,
             reconcile_rules: true,
             resolve_ordinal_rules: true,
+            text_variant_fallback: None,
         }
+    }
+
+    /// Use the same author-ordered legacy/specific text variants as the terminal paint plan.
+    pub(crate) const fn with_text_variant_fallback(mut self, variant: ThemeVariant) -> Self {
+        self.text_variant_fallback = Some(variant);
+        self
     }
 
     fn stroke_is_overridden(self, ordinal: usize) -> bool {
@@ -481,19 +492,28 @@ pub(crate) fn reconcile_unsupported_terminal_domains(
             work_meter.charge(1)?;
             let terminal_target = domain.resolution.terminal_target();
             let ordinal_identity = domain.resolve_ordinal_rules.then_some(ordinal);
-            let style = match domain.resolution {
-                TerminalStyleResolution::Direct(_) => theme.style_with_work_meter(
+            let style = match (domain.resolution, domain.text_variant_fallback) {
+                (TerminalStyleResolution::Direct(_), _) => theme.style_with_work_meter(
                     terminal_target,
                     variant,
                     ordinal_identity,
                     work_meter,
                 )?,
-                TerminalStyleResolution::Textual { .. } => theme.text_style_with_work_meter(
-                    terminal_target,
-                    variant,
-                    ordinal_identity,
-                    work_meter,
-                )?,
+                (TerminalStyleResolution::Textual { .. }, Some(fallback)) => theme
+                    .text_style_with_variant_fallback(
+                        terminal_target,
+                        variant,
+                        fallback,
+                        ordinal_identity,
+                        work_meter,
+                    )?,
+                (TerminalStyleResolution::Textual { .. }, None) => theme
+                    .text_style_with_work_meter(
+                        terminal_target,
+                        variant,
+                        ordinal_identity,
+                        work_meter,
+                    )?,
             };
 
             for (property, origin) in style.winner_rule_properties() {

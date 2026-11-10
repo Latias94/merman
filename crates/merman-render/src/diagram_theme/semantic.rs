@@ -34,6 +34,8 @@ pub enum ThemeTarget {
     Table,
     Task,
     TaskLabel,
+    /// Gantt calendar bands for excluded dates, independent of task and section surfaces.
+    ExcludedPeriod,
     PacketByteLabel,
     PacketFieldLabel,
     State,
@@ -93,6 +95,7 @@ impl ThemeTarget {
         Self::Table,
         Self::Task,
         Self::TaskLabel,
+        Self::ExcludedPeriod,
         Self::PacketByteLabel,
         Self::PacketFieldLabel,
         Self::State,
@@ -148,6 +151,7 @@ impl ThemeTarget {
             Self::Table => "table",
             Self::Task => "task",
             Self::TaskLabel => "task-label",
+            Self::ExcludedPeriod => "excluded-period",
             Self::PacketByteLabel => "packet-byte-label",
             Self::PacketFieldLabel => "packet-field-label",
             Self::State => "state",
@@ -241,7 +245,11 @@ impl ThemeTarget {
             Self::TimelineEvent => matches!(family, DiagramFamilyId::TIMELINE),
             Self::JourneyTask => matches!(family, DiagramFamilyId::JOURNEY),
             Self::Task => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
-            Self::TaskLabel => matches!(family, DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN),
+            Self::TaskLabel => matches!(
+                family,
+                DiagramFamilyId::GANTT | DiagramFamilyId::KANBAN | DiagramFamilyId::JOURNEY
+            ),
+            Self::ExcludedPeriod => family == DiagramFamilyId::GANTT,
             Self::PacketByteLabel | Self::PacketFieldLabel => {
                 matches!(family, DiagramFamilyId::PACKET)
             }
@@ -321,6 +329,9 @@ impl ThemeTarget {
                     || (matches!(family, DiagramFamilyId::CYNEFIN | DiagramFamilyId::WARDLEY)
                         && matches!(self, Self::NodeLabel | Self::EdgeLabel))
                     || (family == DiagramFamilyId::TREEMAP && self == Self::NodeLabel)
+                    || (family == DiagramFamilyId::TIMELINE && self == Self::NodeLabel)
+                    || (matches!(family, DiagramFamilyId::ER | DiagramFamilyId::REQUIREMENT)
+                        && self == Self::EdgeLabelBackground)
             }
             Self::Marker => matches!(
                 family,
@@ -365,6 +376,7 @@ impl ThemeTarget {
                         | DiagramFamilyId::STATE
                         | DiagramFamilyId::ZENUML
                         | DiagramFamilyId::USECASE
+                        | DiagramFamilyId::CLASS
                 )
             }
         }
@@ -1067,13 +1079,25 @@ mod tests {
     }
 
     #[test]
-    fn kanban_task_label_is_a_kanban_only_semantic_target() {
+    fn task_labels_belong_to_task_surface_families() {
         assert_eq!(
             ThemeTarget::from_id("task-label"),
             Some(ThemeTarget::TaskLabel)
         );
         assert!(ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::KANBAN));
         assert!(ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::GANTT));
+        assert!(ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::JOURNEY));
+        assert!(!ThemeTarget::TaskLabel.valid_for(DiagramFamilyId::PIE));
+    }
+
+    #[test]
+    fn excluded_period_is_a_gantt_only_semantic_target() {
+        assert_eq!(
+            ThemeTarget::from_id("excluded-period"),
+            Some(ThemeTarget::ExcludedPeriod)
+        );
+        assert!(ThemeTarget::ExcludedPeriod.valid_for(DiagramFamilyId::GANTT));
+        assert!(!ThemeTarget::ExcludedPeriod.valid_for(DiagramFamilyId::KANBAN));
     }
 
     #[test]

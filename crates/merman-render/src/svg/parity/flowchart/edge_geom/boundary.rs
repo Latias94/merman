@@ -18,7 +18,10 @@ pub(in crate::svg::parity::flowchart) fn boundary_for_node(
         return Some(BoundaryNode {
             x: n.x + ctx.tx - origin_x,
             y: n.y + ctx.ty - origin_y,
-            width: n.width,
+            width: ctx
+                .elk_cluster_geometry
+                .get(node_id)
+                .map_or(n.width, |geometry| geometry.width),
             height: n.height,
         });
     }
@@ -26,7 +29,10 @@ pub(in crate::svg::parity::flowchart) fn boundary_for_node(
     Some(BoundaryNode {
         x: n.x + ctx.tx - origin_x,
         y: n.y + ctx.ty - origin_y,
-        width: n.width,
+        width: ctx
+            .elk_cluster_geometry
+            .get(node_id)
+            .map_or(n.width, |geometry| geometry.width),
         height: n.height,
     })
 }
@@ -41,7 +47,10 @@ pub(in crate::svg::parity::flowchart) fn boundary_for_cluster(
     Some(BoundaryNode {
         x: n.x + ctx.tx - origin_x,
         y: n.y + ctx.ty - origin_y,
-        width: n.width,
+        width: ctx
+            .elk_cluster_geometry
+            .get(cluster_id)
+            .map_or(n.width, |geometry| geometry.width),
         height: n.height,
     })
 }

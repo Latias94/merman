@@ -16,7 +16,7 @@
       "active-surface": { "type": "color", "label": "Translucent activation", "group": "Panels and signals", "description": "Independent alpha swatch for activation interiors; edit alongside Active signal when recoloring.", "value": "#D8FB8A66" },
       "body-font": { "type": "font-stack", "label": "Monospaced readouts", "group": "Typography", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
       "series": { "type": "palette", "label": "Instrument signals", "group": "Palettes", "value": [{ "ref": "panel-edge" }, { "ref": "signal" }, { "ref": "amber" }, "#A5CCBD", "#93B5DB", "#D9A2A8"] },
-      "pie-series": { "type": "palette", "label": "Dark instrument sectors", "group": "Palettes", "description": "Independent dark sectors preserve contrast with the light percentage text.", "value": ["#304D35", "#4A5730", "#5D4625", "#2D5148", "#34465D", "#573B46"] },
+      "pie-series": { "type": "palette", "label": "Dark instrument sectors", "group": "Palettes", "description": "Six instrument sectors separate green, lime, amber, cyan, indigo, and rose while preserving light percentage and branch text at the default Pie opacity.", "value": ["#246039", "#63651F", "#7D511B", "#155D64", "#3E3D7C", "#763A53"] },
       "signal-glow": {
         "type": "effect",
         "label": "Focused signal glow",
