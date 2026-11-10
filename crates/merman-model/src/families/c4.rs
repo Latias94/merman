@@ -33,10 +33,14 @@ impl C4Text {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct C4LayoutConfig {
     /// JavaScript Number after `parseInt` and the database's minimum-one check.
-    #[serde(default, rename = "c4ShapeInRow")]
+    #[serde(default, rename = "c4ShapeInRow", with = "crate::number::serde_number")]
     pub c4_shape_in_row: f64,
     /// JavaScript Number after `parseInt` and the database's minimum-one check.
-    #[serde(default, rename = "c4BoundaryInRow")]
+    #[serde(
+        default,
+        rename = "c4BoundaryInRow",
+        with = "crate::number::serde_number"
+    )]
     pub c4_boundary_in_row: f64,
 }
 
@@ -44,10 +48,12 @@ pub struct C4LayoutConfig {
 ///
 /// Named offsets in the color argument slots remain strings; offsets in the offset slots
 /// have already passed through `parseInt`. The renderer coerces both again before use.
+/// Canonical JSON wraps nonfinite Numbers as `{"number":"NaN"}` (or either infinity tag)
+/// so literal string offsets retain their meaning.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
 pub enum C4RelationOffset {
-    Number(f64),
+    Number(#[serde(with = "relation_offset_number")] f64),
     String(String),
 }
 
@@ -243,4 +249,39 @@ pub struct C4DiagramModel {
     pub boundaries: Vec<C4Boundary>,
     #[serde(default)]
     pub rels: Vec<C4Relation>,
+}
+
+mod relation_offset_number {
+    use serde::{Deserialize, Serialize};
+
+    #[derive(Deserialize, Serialize)]
+    enum NonfiniteNumber {
+        #[serde(rename = "number")]
+        Number(#[serde(with = "crate::number::serde_number")] f64),
+    }
+
+    pub fn serialize<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+        if value.is_finite() {
+            value.serialize(serializer)
+        } else {
+            NonfiniteNumber::Number(*value).serialize(serializer)
+        }
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<f64, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(untagged)]
+        enum Number {
+            Finite(f64),
+            Nonfinite(NonfiniteNumber),
+        }
+
+        match Number::deserialize(deserializer)? {
+            Number::Finite(value) => Ok(value),
+            Number::Nonfinite(NonfiniteNumber::Number(value)) if !value.is_finite() => Ok(value),
+            Number::Nonfinite(_) => Err(serde::de::Error::custom(
+                "expected a nonfinite number in an offset number object",
+            )),
+        }
+    }
 }

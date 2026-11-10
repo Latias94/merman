@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 #[serde(rename_all = "camelCase")]
 pub struct QuadrantChartStyles {
     /// JavaScript `parseInt` result, including binary64 rounding and overflow to infinity.
+    #[serde(default, with = "crate::number::serde_optional_number")]
     pub radius: Option<f64>,
     pub color: Option<String>,
     pub stroke_color: Option<String>,
@@ -20,8 +21,10 @@ pub struct QuadrantChartStyles {
 pub struct QuadrantChartPointModel {
     pub text: String,
     /// Coordinate after JavaScript Number coercion; a nonnumeric lexer token yields NaN.
+    #[serde(with = "crate::number::serde_number")]
     pub x: f64,
     /// Coordinate after JavaScript Number coercion; a nonnumeric lexer token yields NaN.
+    #[serde(with = "crate::number::serde_number")]
     pub y: f64,
     pub class_name: Option<String>,
     pub styles: QuadrantChartStyles,
