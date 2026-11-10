@@ -183,6 +183,123 @@ fn xychart_svg_path_points(path: roxmltree::Node<'_, '_>) -> Vec<(f64, f64)> {
 }
 
 #[test]
+fn xychart_numeric_axis_and_bar_labels_use_javascript_number_text() {
+    for (token, expected) in [
+        ("0.000001", "0.000001"),
+        ("0.0000001", "1e-7"),
+        ("1000000000000000000000", "1e+21"),
+        ("1000000000000000128", "1000000000000000100"),
+        ("-0", "0"),
+    ] {
+        for (orientation, value_axis) in [("", "left-axis"), (" horizontal", "top-axis")] {
+            let source = format!(
+                concat!(
+                    "---\nconfig:\n  xyChart:\n    showDataLabel: true\n---\n",
+                    "xychart{orientation}\nx-axis [A]\nbar [{token}]\n",
+                ),
+                orientation = orientation,
+                token = token,
+            );
+            let layout = layout_xychart_from_text(&source);
+            assert_eq!(layout.label_data, [expected], "bar label for {source}");
+            let labels = layout
+                .drawables
+                .iter()
+                .find_map(|drawable| match drawable {
+                    XyChartDrawableElem::Text { group_texts, data }
+                        if group_texts == &[value_axis, "label"] =>
+                    {
+                        Some(data)
+                    }
+                    _ => None,
+                })
+                .expect("numeric axis labels");
+            assert_eq!(
+                labels
+                    .iter()
+                    .map(|label| label.text.as_str())
+                    .collect::<Vec<_>>(),
+                [expected],
+                "axis label for {source}",
+            );
+
+            let svg = render_xychart_svg_from_text(&source);
+            let document = roxmltree::Document::parse(&svg).unwrap();
+            for group in [value_axis, "bar-plot-0"] {
+                let text = xychart_plot_group(&document, group)
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .map(|node| node.text().expect("numeric label text"))
+                    .collect::<Vec<_>>();
+                assert_eq!(text, [expected], "{group} labels for {source}");
+            }
+        }
+    }
+}
+
+#[test]
+fn xychart_infinite_y_axis_keeps_zero_size_bars_without_numeric_ticks() {
+    let overflow = format!("2{}", "0".repeat(308));
+    for (orientation, value_axis, zero_dimension) in [
+        ("", "left-axis", "height"),
+        (" horizontal", "top-axis", "width"),
+    ] {
+        let source =
+            format!("xychart{orientation}\nx-axis [A]\ny-axis 0 --> {overflow}\nbar [1]\n",);
+        let layout = layout_xychart_from_text(&source);
+        let bars = layout
+            .drawables
+            .iter()
+            .find_map(|drawable| match drawable {
+                XyChartDrawableElem::Rect { group_texts, data }
+                    if group_texts == &["plot", "bar-plot-0"] =>
+                {
+                    Some(data)
+                }
+                _ => None,
+            })
+            .expect("bar plot rectangles");
+        assert_eq!(bars.len(), 1);
+        if orientation.is_empty() {
+            assert_eq!(bars[0].height, 0.0);
+            assert!(bars[0].width > 0.0);
+        } else {
+            assert_eq!(bars[0].width, 0.0);
+            assert!(bars[0].height > 0.0);
+        }
+        for drawable in &layout.drawables {
+            match drawable {
+                XyChartDrawableElem::Text { group_texts, data }
+                    if group_texts == &[value_axis, "label"] =>
+                {
+                    assert!(data.is_empty(), "an infinite domain has no numeric labels");
+                }
+                XyChartDrawableElem::Path { group_texts, data }
+                    if group_texts == &[value_axis, "ticks"] =>
+                {
+                    assert!(data.is_empty(), "an infinite domain has no numeric ticks");
+                }
+                _ => {}
+            }
+        }
+
+        let svg = render_xychart_svg_from_text(&source);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let axis = xychart_plot_group(&document, value_axis);
+        assert!(!axis.descendants().any(|node| node.has_tag_name("text")));
+        assert!(!axis.descendants().any(|node| {
+            node.attribute("class") == Some("ticks")
+                && node.descendants().any(|child| child.has_tag_name("path"))
+        }));
+        let bar = xychart_plot_group(&document, "bar-plot-0")
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .expect("rendered zero-size bar");
+        assert_eq!(bar.attribute(zero_dimension), Some("0"));
+    }
+}
+
+#[test]
 fn xychart_duplicate_band_line_svg_keeps_endpoints_ticks_and_label_occurrences() {
     let svg = render_xychart_svg_from_text(concat!(
         "xychart\n",

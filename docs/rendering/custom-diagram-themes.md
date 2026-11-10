@@ -659,8 +659,11 @@ poster colors, bold contours and offset ink. Lacquer pairs deep panels with asym
 and a restrained canvas sheen. Their dedicated treatments include the core scenes above.
 Paper Cut uses independent hard paper edges plus soft contact depth. Aurora combines a gradient
 night canvas, radial light ribbons and supported panel halos; text remains unfiltered.
-Metro uses flat station signs and distinct route colors on a dark concourse. Carbon Copy uses
-violet side impressions, typewritten records and red review marks. Signal uses charcoal equipment
+Metro uses flat station signs and distinct route colors on a dark concourse. Its Sequence treatment
+uses recessed navy station signs with yellow lettering and frames, cyan information slips and
+lifelines, orange activations, and larger semibold message labels. These colors distinguish visual
+roles rather than message status or actor identity. Carbon Copy uses violet side impressions,
+typewritten records and red review marks. Signal uses charcoal equipment
 plates, hard mounting edges and warning stripes confined to the canvas perimeter. Their Class
 treatments rely on paint and typography rather than unsupported body effects.
 
@@ -1335,6 +1338,16 @@ shadow computation; the final depth and surface composite normally in the SVG ca
 design replaces the former single filtered-body composite, whose whole-object opacity and
 linearRGB source merge can produce different overlap colors. Independent/cascade shadow order
 and `Previous`/`SourceGraphic` inputs remain defined within the depth calculation.
+
+State retains source-owned composite group operations. With HTML labels, a source structural
+class can apply opacity or a filter to an entire composite body and title, or to a nested Dagre
+root. Splitting that group between depth and foreground would change its compositing. When the
+source requires such a group operation, State keeps the complete source hierarchy and reports
+the requested body depth as `unsupported-effect`; BestEffort retains the source appearance,
+while RequirePortable rejects the incomplete theme. Ordinary shape fill/stroke alpha and
+native-label shape rules retain their supported depth paths. The group check includes the browser
+aliases `-webkit-opacity` and `-webkit-filter`. Ordinary source body filters also recognize the
+filter alias, using the last valid declaration while retaining its authored property spelling.
 
 Saving a theme does not establish family or export support. Query support for the requested family,
 output and mechanism, and inspect execution metadata on the actual render. Keep asset licensing

@@ -20,9 +20,9 @@ pub enum XyChartAxisModel {
     Linear {
         #[serde(default)]
         title: String,
-        #[serde(default)]
+        #[serde(default, with = "crate::number::serde_optional_number")]
         min: Option<f64>,
-        #[serde(default)]
+        #[serde(default, with = "crate::number::serde_optional_number")]
         max: Option<f64>,
     },
 }
@@ -41,7 +41,9 @@ pub struct XyChartPlotModel {
     pub plot_type: XyChartPlotType,
     #[serde(default, serialize_with = "serialize_xychart_plot_title")]
     pub title: Option<String>,
+    #[serde(with = "crate::number::serde_number_list")]
     pub values: Vec<f64>,
+    #[serde(with = "plot_data")]
     pub data: Vec<(String, Option<f64>)>,
     #[serde(rename = "pointLabels", default, skip_serializing_if = "Vec::is_empty")]
     pub point_labels: Vec<String>,
@@ -189,4 +191,41 @@ where
     S: Serializer,
 {
     serializer.serialize_str(title.as_deref().unwrap_or_default())
+}
+
+mod plot_data {
+    use serde::ser::SerializeSeq;
+    use serde::{Deserialize, Serialize};
+
+    pub fn serialize<S: serde::Serializer>(
+        data: &[(String, Option<f64>)],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error> {
+        #[derive(Serialize)]
+        struct Entry<'a>(
+            &'a str,
+            #[serde(with = "crate::number::serde_optional_number")] Option<f64>,
+        );
+
+        let mut sequence = serializer.serialize_seq(Some(data.len()))?;
+        for (category, value) in data {
+            sequence.serialize_element(&Entry(category, *value))?;
+        }
+        sequence.end()
+    }
+
+    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> Result<Vec<(String, Option<f64>)>, D::Error> {
+        #[derive(Deserialize)]
+        struct Entry(
+            String,
+            #[serde(with = "crate::number::serde_optional_number")] Option<f64>,
+        );
+
+        Ok(Vec::<Entry>::deserialize(deserializer)?
+            .into_iter()
+            .map(|Entry(category, value)| (category, value))
+            .collect())
+    }
 }

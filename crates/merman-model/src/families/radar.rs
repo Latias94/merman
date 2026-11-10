@@ -10,7 +10,7 @@ pub struct RadarAxis {
 pub struct RadarCurve {
     pub name: String,
     pub label: String,
-    #[serde(default, with = "number_list")]
+    #[serde(default, with = "crate::number::serde_number_list")]
     pub entries: Vec<f64>,
 }
 
@@ -68,32 +68,3 @@ pub enum RadarOutputData {
 
 #[cfg(feature = "compat-json")]
 pub mod compat;
-
-mod number_list {
-    use serde::ser::SerializeSeq;
-    use serde::{Deserialize, Serialize};
-
-    #[derive(Deserialize, Serialize)]
-    #[serde(transparent)]
-    struct Number(#[serde(with = "crate::number::serde_number")] f64);
-
-    pub fn serialize<S: serde::Serializer>(
-        values: &[f64],
-        serializer: S,
-    ) -> Result<S::Ok, S::Error> {
-        let mut sequence = serializer.serialize_seq(Some(values.len()))?;
-        for value in values {
-            sequence.serialize_element(&Number(*value))?;
-        }
-        sequence.end()
-    }
-
-    pub fn deserialize<'de, D: serde::Deserializer<'de>>(
-        deserializer: D,
-    ) -> Result<Vec<f64>, D::Error> {
-        Ok(Vec::<Number>::deserialize(deserializer)?
-            .into_iter()
-            .map(|number| number.0)
-            .collect())
-    }
-}

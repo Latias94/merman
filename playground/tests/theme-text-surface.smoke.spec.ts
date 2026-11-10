@@ -118,11 +118,13 @@ test("centers the measured Pop Art composite title inside its native header", as
   await waitForPreviewSvg(page);
   const svg = page.locator(".preview-container > div").first().locator("svg");
   await expect(svg).toContainText("Review");
+  await expect(svg.locator(".statediagram-cluster rect.outer")).toHaveCount(1);
+  await expect(svg.locator(".statediagram-cluster rect.inner")).toHaveCount(1);
   const centered = await svg.evaluate(async (node) => {
     await document.fonts.ready;
-    const composite = node.querySelector('[data-id="Review"]')!;
     const box = (selector: string) => {
-      const element = composite.querySelector<SVGGraphicsElement>(selector)!;
+      const element = node.querySelector<SVGGraphicsElement>(selector);
+      if (!element) throw new Error(`Missing Review surface: ${selector}`);
       const bounds = element.getBBox();
       const matrix = (node as SVGSVGElement).getScreenCTM()!.inverse().multiply(element.getScreenCTM()!);
       return {
@@ -130,9 +132,10 @@ test("centers the measured Pop Art composite title inside its native header", as
         bottomRight: new DOMPoint(bounds.x + bounds.width, bounds.y + bounds.height).matrixTransform(matrix),
       };
     };
-    const text = box(".cluster-label text");
-    const outer = box("rect.outer");
-    const inner = box("rect.inner");
+    // This fixture has one composite; its body and title can occupy separate scene passes.
+    const text = box('[data-id="Review"] .cluster-label text');
+    const outer = box(".statediagram-cluster rect.outer");
+    const inner = box(".statediagram-cluster rect.inner");
     return {
       x: (text.topLeft.x + text.bottomRight.x - outer.topLeft.x - outer.bottomRight.x) / 2,
       y: (text.topLeft.y + text.bottomRight.y - outer.topLeft.y - inner.topLeft.y) / 2,

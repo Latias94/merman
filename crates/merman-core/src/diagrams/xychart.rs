@@ -46,8 +46,8 @@ enum AxisData {
     },
     Linear {
         title: String,
-        min: f64,
-        max: f64,
+        // Absence is distinct from an authored or inferred infinite endpoint.
+        range: Option<(f64, f64)>,
     },
 }
 
@@ -157,8 +157,7 @@ impl XyChartState {
             },
             y_axis: AxisData::Linear {
                 title: String::new(),
-                min: f64::INFINITY,
-                max: f64::NEG_INFINITY,
+                range: None,
             },
             plots: Vec::new(),
             has_set_x_axis: false,
@@ -195,7 +194,10 @@ impl XyChartState {
             AxisData::Band { title, .. } => title.clone(),
             AxisData::Linear { title, .. } => title.clone(),
         };
-        self.x_axis = AxisData::Linear { title, min, max };
+        self.x_axis = AxisData::Linear {
+            title,
+            range: Some((min, max)),
+        };
         self.has_set_x_axis = true;
     }
 
@@ -217,7 +219,10 @@ impl XyChartState {
             AxisData::Linear { title, .. } => title.clone(),
             AxisData::Band { title, .. } => title.clone(),
         };
-        self.y_axis = AxisData::Linear { title, min, max };
+        self.y_axis = AxisData::Linear {
+            title,
+            range: Some((min, max)),
+        };
         self.has_set_y_axis = true;
     }
 
@@ -229,14 +234,16 @@ impl XyChartState {
             .fold(f64::NEG_INFINITY, |a, b| a.max(b));
 
         let (prev_min, prev_max, title) = match &self.y_axis {
-            AxisData::Linear { min, max, title } => (*min, *max, title.clone()),
+            AxisData::Linear { title, range } => {
+                let (min, max) = range.unwrap_or((f64::INFINITY, f64::NEG_INFINITY));
+                (min, max, title.clone())
+            }
             AxisData::Band { title, .. } => (f64::INFINITY, f64::NEG_INFINITY, title.clone()),
         };
 
         self.y_axis = AxisData::Linear {
             title,
-            min: prev_min.min(min_value),
-            max: prev_max.max(max_value),
+            range: Some((prev_min.min(min_value), prev_max.max(max_value))),
         };
     }
 
@@ -250,7 +257,9 @@ impl XyChartState {
 
         if !self.has_set_x_axis {
             let (prev_min, prev_max) = match &self.x_axis {
-                AxisData::Linear { min, max, .. } => (*min, *max),
+                AxisData::Linear { range, .. } => {
+                    range.unwrap_or((f64::INFINITY, f64::NEG_INFINITY))
+                }
                 AxisData::Band { .. } => (f64::INFINITY, f64::NEG_INFINITY),
             };
             self.set_x_axis_range(prev_min.min(1.0), prev_max.max(data.len() as f64));
@@ -270,16 +279,17 @@ impl XyChartState {
                 .enumerate()
                 .map(|(i, c)| (c.clone(), data.get(i).copied()))
                 .collect(),
-            AxisData::Linear { min, max, .. } => {
+            AxisData::Linear { range, .. } => {
+                let (min, max) = range.unwrap_or((f64::INFINITY, f64::NEG_INFINITY));
                 if data.len() == 1 {
-                    vec![(crate::utils::format_js_number(*min), data.first().copied())]
+                    vec![(crate::utils::format_js_number(min), data.first().copied())]
                 } else {
-                    let step = (*max - *min) / ((data.len() as f64) - 1.0);
+                    let step = (max - min) / ((data.len() as f64) - 1.0);
                     data.iter()
                         .enumerate()
                         .map(|(index, datum)| {
                             (
-                                crate::utils::format_js_number(*min + (index as f64) * step),
+                                crate::utils::format_js_number(min + (index as f64) * step),
                                 Some(*datum),
                             )
                         })
@@ -343,8 +353,8 @@ impl XyChartState {
             title,
             acc_title,
             acc_descr,
-            x_axis: axis_data_to_render_model(self.x_axis),
-            y_axis: axis_data_to_render_model(self.y_axis),
+            x_axis: axis_data_to_semantic_model(self.x_axis),
+            y_axis: axis_data_to_semantic_model(self.y_axis),
             plots: self
                 .plots
                 .into_iter()
@@ -859,12 +869,12 @@ fn plot_title_value(title: &str, config: &MermaidConfig) -> Option<String> {
     (!title.is_empty()).then_some(title)
 }
 
-fn axis_data_to_render_model(axis: AxisData) -> XyChartAxisModel {
+fn axis_data_to_semantic_model(axis: AxisData) -> XyChartAxisModel {
     match axis {
         AxisData::Band { title, categories } => XyChartAxisModel::Band { title, categories },
-        AxisData::Linear { title, min, max } => {
-            let min = min.is_finite().then_some(min);
-            let max = max.is_finite().then_some(max);
+        AxisData::Linear { title, range } => {
+            let min = range.map(|(min, _)| min);
+            let max = range.map(|(_, max)| max);
             XyChartAxisModel::Linear { title, min, max }
         }
     }
@@ -2697,48 +2707,22 @@ bar [1, 2]
         )
         .unwrap();
         assert_eq!(xychart_syntax_construction_count(), 1);
-        for field in [
-            "orientation",
-            "title",
-            "accTitle",
-            "accDescr",
-            "xAxis",
-            "yAxis",
-            "plots",
-            "type",
-            "config",
-        ] {
-            assert_eq!(
-                combined_json[field], standalone_json[field],
-                "XYChart combined {field} drift"
-            );
-        }
+        assert_eq!(
+            combined_json, standalone_json,
+            "XYChart combined projection drift"
+        );
         #[cfg(feature = "editor-facts")]
         assert!(!combined_editor.symbols.is_empty());
 
-        let typed = serde_json::to_value(typed).expect("XYChart typed model serializes");
-        for field in [
-            "orientation",
-            "title",
-            "accTitle",
-            "accDescr",
-            "xAxis",
-            "yAxis",
-        ] {
-            assert_eq!(typed[field], combined_json[field], "XYChart {field} drift");
-        }
-        let typed_plots = typed["plots"].as_array().expect("typed plots");
-        let compat_plots = combined_json["plots"].as_array().expect("compat plots");
-        assert_eq!(typed_plots.len(), compat_plots.len());
-        for (typed, compat) in typed_plots.iter().zip(compat_plots) {
-            for field in ["type", "title", "values", "data", "pointLabels"] {
-                assert_eq!(
-                    typed.get(field),
-                    compat.get(field),
-                    "XYChart plot {field} drift"
-                );
-            }
-        }
+        let typed_projection = merman_model::families::xy_chart::compat::project(
+            &typed,
+            &merman_model::presentation::compat::CompatJsonMetadata::from(&parsed.meta),
+        )
+        .expect("XYChart typed compatibility projection succeeds");
+        assert_eq!(
+            typed_projection, combined_json,
+            "XYChart typed projection drift"
+        );
     }
 
     #[test]

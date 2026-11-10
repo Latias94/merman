@@ -66,6 +66,64 @@ pub(super) fn state_rect_style(style: &str, radius: Option<f64>) -> std::borrow:
     }
 }
 
+pub(super) fn state_node_class(node: &StateSvgNode) -> String {
+    if node.css_classes.trim().is_empty() {
+        "node".to_string()
+    } else {
+        format!("node {}", node.css_classes)
+    }
+}
+
+/// The foreground rectangle and its depth mask share one body presentation.
+pub(super) struct StateRectBody<'a> {
+    pub(super) width: f64,
+    pub(super) height: f64,
+    radius: f64,
+    style: std::borrow::Cow<'a, str>,
+}
+
+impl<'a> StateRectBody<'a> {
+    pub(super) fn new(
+        layout: &LayoutNode,
+        style: Option<&'a crate::state::StateNodeStylePlan>,
+        compatibility: &crate::state::StateCompatibilityPlan,
+    ) -> Self {
+        let radius = style.and_then(crate::state::StateNodeStylePlan::radius_override);
+        Self {
+            width: layout.width.max(1.0),
+            height: layout.height.max(1.0),
+            radius: radius.unwrap_or(compatibility.rect_radius).max(0.0),
+            style: state_rect_style(
+                style
+                    .map(crate::state::StateNodeStylePlan::shape_style_attr)
+                    .unwrap_or_default(),
+                radius,
+            ),
+        }
+    }
+
+    pub(super) fn write(&self, out: &mut impl SvgOutput, filter: Option<&str>) {
+        let _ = write!(
+            out,
+            r#"<rect class="basic label-container" style="{}""#,
+            escape_xml_display(&self.style),
+        );
+        if let Some(filter) = filter {
+            let _ = write!(out, r#" filter="{}""#, escape_attr_display(filter));
+        }
+        let _ = write!(
+            out,
+            r#" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/>"#,
+            fmt_display(self.radius),
+            fmt_display(self.radius),
+            fmt_display(-self.width / 2.0),
+            fmt_display(-self.height / 2.0),
+            fmt_display(self.width),
+            fmt_display(self.height),
+        );
+    }
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
@@ -94,11 +152,7 @@ pub(super) fn render_state_node_svg(
     let w = ln.width.max(1.0);
     let h = ln.height.max(1.0);
 
-    let node_class = if node.css_classes.trim().is_empty() {
-        "node".to_string()
-    } else {
-        format!("node {}", node.css_classes)
-    };
+    let node_class = state_node_class(node);
     let node_dom_id = state_scoped_dom_id(ctx, &node.dom_id);
     let data_look = state_data_look(ctx);
     let effective_look = state_effective_look(ctx);
@@ -975,29 +1029,23 @@ pub(super) fn render_state_node_svg(
             };
 
             if effective_look != "handDrawn" {
-                let rect_radius = radius_override
-                    .unwrap_or(compatibility.rect_radius)
-                    .max(0.0);
-                let rect_style_raw = state_rect_style(shape_style_attr, radius_override);
-                let rect_style = escape_xml_display(&rect_style_raw);
+                let body = StateRectBody::new(ln, node_style, compatibility);
                 let _g_emit = detail_guard(timing, &mut details.leaf_nodes_emit);
+                let _ = write!(
+                    out,
+                    r#"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}>"#,
+                    escape_xml_display(&node_class),
+                    node_dom_id.attr(),
+                    escape_xml_display(data_look),
+                    fmt_display(cx),
+                    fmt_display(cy),
+                    node_title_attr,
+                );
+                body.write(out, None);
                 if ctx.html_labels {
                     let _ = write!(
                         out,
-                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
-                        escape_xml_display(&node_class),
-                        node_dom_id.attr(),
-                        escape_xml_display(data_look),
-                        fmt_display(cx),
-                        fmt_display(cy),
-                        node_title_attr,
-                        rect_style,
-                        fmt_display(rect_radius),
-                        fmt_display(rect_radius),
-                        fmt_display(-w / 2.0),
-                        fmt_display(-h / 2.0),
-                        fmt_display(w),
-                        fmt_display(h),
+                        r##"<g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                         escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),
@@ -1009,20 +1057,7 @@ pub(super) fn render_state_node_svg(
                 } else {
                     let _ = write!(
                         out,
-                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
-                        escape_xml_display(&node_class),
-                        node_dom_id.attr(),
-                        escape_xml_display(data_look),
-                        fmt_display(cx),
-                        fmt_display(cy),
-                        node_title_attr,
-                        rect_style,
-                        fmt_display(rect_radius),
-                        fmt_display(rect_radius),
-                        fmt_display(-w / 2.0),
-                        fmt_display(-h / 2.0),
-                        fmt_display(w),
-                        fmt_display(h),
+                        r##"<g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                         escape_xml_display(text_style_attr),
                         fmt_display(-lw / 2.0),
                         fmt_display(-lh / 2.0),

@@ -1295,31 +1295,82 @@ fn next_requirement_line<'a>(
     }
 }
 
-fn find_requirement_token(input: &str, token: &str) -> Option<usize> {
-    let mut quoted = false;
-    let mut unquoted = false;
-    for (index, ch) in input.char_indices() {
-        if quoted {
-            if ch == '"' {
-                quoted = false;
+fn requirement_quoted_end(input: &str) -> Option<usize> {
+    input.strip_prefix('"')?.find('"').map(|end| end + 2)
+}
+
+/// Searches default-state boundaries without interpreting the contents of string tokens.
+fn find_requirement_boundary(input: &str, mut accepts: impl FnMut(&str) -> bool) -> Option<usize> {
+    // These ordered Jison literals precede unqString and require an ASCII word boundary.
+    // In particular, comments after a header or a risk/verify-method token are still comments.
+    const KEYWORDS: &[&str] = &[
+        "requirementDiagram",
+        "id",
+        "text",
+        "risk",
+        "verifyMethod",
+        "requirement",
+        "functionalRequirement",
+        "interfaceRequirement",
+        "performanceRequirement",
+        "physicalRequirement",
+        "designConstraint",
+        "low",
+        "medium",
+        "high",
+        "analysis",
+        "demonstration",
+        "inspection",
+        "test",
+        "element",
+        "contains",
+        "copies",
+        "derives",
+        "satisfies",
+        "verifies",
+        "refines",
+        "traces",
+        "type",
+        "docref",
+        "style",
+        "classDef",
+        "class",
+    ];
+
+    let mut cursor = 0;
+    while let Some(ch) = input[cursor..].chars().next() {
+        let rest = &input[cursor..];
+        if accepts(rest) {
+            return Some(cursor);
+        }
+        if matches!(ch, '#' | '%') {
+            return None;
+        }
+        cursor += if ch == '"' {
+            requirement_quoted_end(rest).unwrap_or(rest.len())
+        } else if ch.is_ascii_alphanumeric() || ch == '_' {
+            if let Some(keyword) = KEYWORDS.iter().find(|keyword| {
+                starts_with_case_insensitive(rest, keyword)
+                    && rest
+                        .as_bytes()
+                        .get(keyword.len())
+                        .is_none_or(|byte| !byte.is_ascii_alphanumeric() && *byte != b'_')
+            }) {
+                keyword.len()
+            } else {
+                // unqString may contain spaces, quotes, #, and % after its initial ASCII \w.
+                rest.find([':', ',', '\r', '\n', '{', '<', '>', '-', '='])
+                    .unwrap_or(rest.len())
             }
-            continue;
-        }
-        let delimiter = matches!(ch, ':' | ',' | '\r' | '\n' | '{' | '<' | '>' | '-' | '=');
-        if unquoted && !delimiter {
-            continue;
-        }
-        unquoted = false;
-        if input[index..].starts_with(token) {
-            return Some(index);
-        }
-        if ch == '"' {
-            quoted = true;
-        } else if !delimiter && !ch.is_whitespace() {
-            unquoted = true;
-        }
+        } else {
+            ch.len_utf8()
+        };
     }
     None
+}
+
+fn find_requirement_token(input: &str, token: &str) -> Option<usize> {
+    find_requirement_boundary(input, |rest| rest.starts_with(token))
 }
 
 fn split_requirement_line(line: &str) -> &str {
@@ -1334,27 +1385,9 @@ fn split_requirement_line(line: &str) -> &str {
         return line;
     }
 
-    let mut in_quotes = false;
-    let mut idx = 0usize;
-    let bytes = line.as_bytes();
-    while idx < bytes.len() {
-        let b = bytes[idx];
-        if b == b'"' {
-            in_quotes = !in_quotes;
-            idx += 1;
-            continue;
-        }
-        if !in_quotes {
-            if b == b'#' {
-                return &line[..idx];
-            }
-            if b == b'%' && idx + 1 < bytes.len() && bytes[idx + 1] == b'%' {
-                return &line[..idx];
-            }
-        }
-        idx += 1;
-    }
-    line
+    let end =
+        find_requirement_boundary(line, |rest| rest.starts_with(['#', '%'])).unwrap_or(line.len());
+    &line[..end]
 }
 
 struct ParsedRequirementDirection {
@@ -1675,20 +1708,8 @@ fn parse_id_or_name(input: &str) -> Result<(String, &str)> {
 }
 
 fn parse_quoted_prefix(input: &str) -> Option<(String, &str)> {
-    let mut chars = input.chars();
-    if chars.next()? != '"' {
-        return None;
-    }
-    let mut out = String::new();
-    let mut idx = 1usize;
-    for c in chars {
-        idx += c.len_utf8();
-        if c == '"' {
-            return Some((out, &input[idx..]));
-        }
-        out.push(c);
-    }
-    None
+    let end = requirement_quoted_end(input)?;
+    Some((input[1..end - 1].to_string(), &input[end..]))
 }
 
 struct RequirementBodyParse<T> {
@@ -2490,17 +2511,102 @@ mod tests {
     }
 
     #[test]
-    fn requirement_quoted_body_values_preserve_physical_line_endings_and_comments() {
+    fn requirement_unquoted_tokens_keep_embedded_comment_markers() {
         let source = concat!(
             "requirementDiagram\r\n",
-            "requirement req {\r\n",
-            " text: \"First\r\nSecond %% # café\" # comment\r\n",
+            "requirement R#tag {\r\n",
+            "  id: REQ#7%%rev\r\n",
+            "  text: Guide 雪#章 %%literal\r\n",
             "}\r\n",
-            "element doc {\r\n type: \"One\r\nTwo\"\r\n}\r\n",
+            "element Doc%%rev {\r\n",
+            "  type: 5\" 雪#screen%%rev\r\n",
+            "  docRef: guide#section%%tail\r\n",
+            "}\r\n",
+            "R#tag - traces -> Doc%%rev\r\n",
+        );
+        let parser = crate::SemanticParser::new();
+        let parsed = parser.parse_diagram_sync(source).unwrap();
+        let merman_model::semantic::SemanticDiagramModel::Requirement(model) = parsed.model else {
+            panic!("expected Requirement model");
+        };
+        assert_eq!(model.requirements[0].name, "R#tag");
+        assert_eq!(model.requirements[0].requirement_id, "REQ#7%%rev");
+        assert_eq!(model.requirements[0].text, "Guide 雪#章 %%literal");
+        assert_eq!(model.elements[0].name, "Doc%%rev");
+        assert_eq!(model.elements[0].element_type, "5\" 雪#screen%%rev");
+        assert_eq!(model.elements[0].doc_ref, "guide#section%%tail");
+        assert_eq!(model.relationships[0].src, "R#tag");
+        assert_eq!(model.relationships[0].dst, "Doc%%rev");
+
+        #[cfg(feature = "editor-facts")]
+        {
+            let crate::SemanticSnapshotCapture::Snapshot(snapshot) =
+                parser.capture_diagram_snapshot_sync(source)
+            else {
+                panic!("expected Requirement snapshot");
+            };
+            let (_, outcome, editor_facts) = snapshot.into_parts();
+            assert!(matches!(outcome, crate::SemanticParseOutcome::Parsed(_)));
+            let crate::ParsedEditorFacts::Available(facts) = editor_facts else {
+                panic!("expected Requirement editor facts");
+            };
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            for (detail, value) in [
+                ("requirement id", "REQ#7%%rev"),
+                ("requirement text", "Guide 雪#章 %%literal"),
+                ("requirement element type", "5\" 雪#screen%%rev"),
+                ("requirement doc ref", "guide#section%%tail"),
+            ] {
+                let selection = payload_selection(&facts, detail, value);
+                let start = source.find(value).unwrap();
+                assert_eq!(selection, SourceSpan::new(start, start + value.len()));
+                assert_eq!(&source[selection.start..selection.end], value);
+                assert!(facts.expected_syntax.iter().any(|syntax| {
+                    syntax.kind == EditorExpectedSyntaxKind::Payload && syntax.span == selection
+                }));
+            }
+            for name in ["R#tag", "Doc%%rev"] {
+                let symbols: Vec<_> = facts
+                    .symbols
+                    .iter()
+                    .filter(|symbol| symbol.name == name)
+                    .collect();
+                assert_eq!(symbols.len(), 2);
+                assert_eq!(symbols[0].role, EditorSemanticRole::Entity);
+                assert_eq!(symbols[1].role, EditorSemanticRole::Reference);
+                for symbol in symbols {
+                    assert_eq!(&source[symbol.selection.start..symbol.selection.end], name);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn requirement_quoted_body_values_preserve_physical_line_endings_and_comments() {
+        let source = concat!(
+            "requirementDiagram # header comment\r\n",
+            "# boundary comment: \"\r\n",
+            "requirement req {\r\n",
+            " id: \"REQ#%%\" # trailing comment: \"\r\n",
+            " text: \"First\r\nSecond %% # café\" %% trailing comment: \"\r\n",
+            " risk: high# boundary comment\r\n",
+            " verifyMethod: test%% boundary comment\r\n",
+            "} # closing comment\r\n",
+            "element doc {\r\n",
+            " type: \"One\r\nTwo\" # trailing comment: \"\r\n",
+            " docRef: \"guide#section%%rev\" %% trailing comment\r\n",
+            "}\r\n",
+            "style doc fill:#fff\r\n",
         );
         let model = parse(source);
+        assert_eq!(model["requirements"][0]["requirementId"], "REQ#%%");
         assert_eq!(model["requirements"][0]["text"], "First\nSecond %% # café");
+        assert_eq!(model["requirements"][0]["risk"], "High");
+        assert_eq!(model["requirements"][0]["verifyMethod"], "Test");
         assert_eq!(model["elements"][0]["type"], "One\nTwo");
+        assert_eq!(model["elements"][0]["docRef"], "guide#section%%rev");
+        assert_eq!(model["elements"][0]["cssStyles"], json!(["fill:#fff"]));
         #[cfg(feature = "editor-facts")]
         {
             let facts = crate::family::test_support::editor_facts(
@@ -2512,6 +2618,13 @@ mod tests {
             let selection = payload_selection(&facts, "requirement text", literal);
             assert_eq!(&source[selection.start..selection.end], literal);
             assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            assert!(
+                !facts
+                    .symbols
+                    .iter()
+                    .any(|symbol| symbol.name.contains("comment"))
+            );
         }
         assert!(
             parse_err("requirementDiagram\nrequirement req {\ntext: \"First\nSecond\n}\n")
@@ -2540,6 +2653,52 @@ mod tests {
             ));
             assert_eq!(model["requirements"][0]["text"], "retained");
             assert_eq!(model["elements"][0]["name"], "next");
+        }
+    }
+
+    #[test]
+    fn requirement_keyword_prefixes_keep_unquoted_token_boundaries() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "requirement textid\":::critical {\n",
+            "id: DocRefId#7\n",
+            "text: testid#section\n",
+            "}\n",
+            "element testid\" {\n",
+            "docRef: textid%%anchor\n",
+            "}\n",
+            "testid\" - traces -> textid\"\n",
+        );
+        let model = parse(source);
+        assert_eq!(model["requirements"][0]["name"], "textid\"");
+        assert_eq!(
+            model["requirements"][0]["classes"],
+            json!(["default", "critical"])
+        );
+        assert_eq!(model["requirements"][0]["requirementId"], "DocRefId#7");
+        assert_eq!(model["requirements"][0]["text"], "testid#section");
+        assert_eq!(model["elements"][0]["name"], "testid\"");
+        assert_eq!(model["elements"][0]["docRef"], "textid%%anchor");
+        assert_eq!(model["relationships"][0]["src"], "testid\"");
+        assert_eq!(model["relationships"][0]["dst"], "textid\"");
+
+        #[cfg(feature = "editor-facts")]
+        {
+            let facts = crate::family::test_support::editor_facts(
+                parse_requirement_json_and_editor_facts,
+                source,
+                &test_meta(),
+            );
+            assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+            assert!(facts.diagnostics.is_empty());
+            for (detail, value) in [
+                ("requirement id", "DocRefId#7"),
+                ("requirement text", "testid#section"),
+                ("requirement doc ref", "textid%%anchor"),
+            ] {
+                let selection = payload_selection(&facts, detail, value);
+                assert_eq!(&source[selection.start..selection.end], value);
+            }
         }
     }
 

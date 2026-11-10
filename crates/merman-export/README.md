@@ -32,6 +32,10 @@ supported; missing-glyph requests retain deterministic fallback by default. Opt 
 `NativeFontContext::with_strict_glyph_coverage(true)` to return a normal error instead of
 declining unsupported measurement or silently painting missing glyphs.
 This does not promise browser pixel parity or arbitrary HTML/CSS typography.
+Implicit family and missing-glyph selection exclude symbolic/pictorial faces and fonts marked
+as Last Resort by OpenType `head.flags` bit 14. Last Resort glyphs represent code-point ranges,
+not readable character coverage; choosing one for a missing emoji can replace an otherwise
+readable mixed-script label with placeholders. Explicitly named font requests remain available.
 Direct exporters set
 the same context with `RasterOptions::with_font_context` or
 `PdfOptions::with_font_context`. PNG, JPEG, and PDF do not enable `system-fonts`.
@@ -58,6 +62,37 @@ cross-process content hash of every subsequently selected platform font.
 Themes can select font-family names and typography values, but caller-supplied theme font files
 remain rejected. For explicit native shaping across layout and typed binary outputs, use the
 separate `native-fonts` context rather than a theme recipe.
+
+### Selection And Fallback Order
+
+Mermaid's `fontFamily` stack selects the initial family. Missing-glyph selection can then use
+another face; the remaining names in that stack do not currently define glyph-fallback order.
+For explicit font files or memory buffers, fallback visits admitted faces in source order,
+skipping previously tried, unsuitable, and incompatible candidates. Explicit sources precede
+discovered system candidates. Supply individual files or buffers in the intended order when
+that priority matters; directory and system discovery have their own catalogue order.
+
+Use a closed set for repeatable native output, and share the resulting context between layout
+and painting:
+
+```rust,no_run
+use merman_export::{NativeFontOptions, NativeFontError};
+use merman_model::OperationControl;
+
+fn fonts(control: &OperationControl) -> Result<merman_export::NativeFontContext, NativeFontError> {
+    NativeFontOptions::default()
+        .with_font_file("fonts/Body-Regular.ttf")
+        .with_font_file("fonts/PreferredFallback-Regular.ttf")
+        .with_font_file("fonts/OtherFallback-Regular.ttf")
+        .with_system_fonts(false)
+        .load(control)
+        .map(|context| context.with_strict_glyph_coverage(true))
+}
+```
+
+This order expresses a context-wide preference. Per-script or per-label fallback policies are
+not configurable through this interface. Exported SVG still needs matching fonts in its viewer;
+native font bytes and resolver policy are not embedded in the SVG.
 
 ### Memory-Only And Bundled Fonts
 

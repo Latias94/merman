@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { expect, test, type Page } from "@playwright/test";
 import type { editor } from "monaco-editor";
 import type { AppState, useAppStore } from "../src/store";
+import { getExampleById } from "../src/lib/examples";
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 import { monitorBrowserErrors, openPlayground, replaceEditorSource, waitForPreviewSvg } from "./helpers/playground";
 
@@ -38,7 +39,7 @@ async function bindFixture(page: Page) {
   }, paths);
 }
 
-test("external document replacement, empty source, undo and local Unicode edits stay synchronized", async ({ page }) => {
+test("external replacement, sample adoption, undo and local Unicode edits stay synchronized", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await waitForPreviewSvg(page);
@@ -54,7 +55,29 @@ test("external document replacement, empty source, undo and local Unicode edits 
   await expect.poll(() => page.evaluate(() => window.sourceSyncFixture.store.getState().code)).toBe(external);
   await page.keyboard.press("Control+Shift+z");
   await expect.poll(() => page.evaluate(() => window.sourceSyncFixture.store.getState().code)).toBe("");
-  await replaceEditorSource(page, external + "\n%% café 中文 😀");
+  const authored = external + "\n%% café 中文 😀";
+  await replaceEditorSource(page, authored);
+  await page.keyboard.press("Control+End");
+  await page.keyboard.type(" preserved");
+  const beforeAdoption = `${authored} preserved`;
+  await expect.poll(() => page.evaluate(() => window.sourceSyncFixture.store.getState().code)).toBe(beforeAdoption);
+  const example = getExampleById("sequence-interaction")!;
+  await page.getByRole("button", { name: "Examples", exact: true }).click();
+  const gallery = page.getByRole("dialog", { name: "Example Gallery" });
+  await gallery.locator(`[data-example-id="${example.id}"]`).click();
+  await expect(gallery).toBeHidden();
+  await expect.poll(() => page.evaluate(() => ({ model: window.sourceSyncFixture.editor.getValue(), store: window.sourceSyncFixture.store.getState().code })))
+    .toEqual({ model: example.source, store: example.source });
+  await textbox.focus();
+  for (const [shortcut, expected] of [
+    ["Control+z", beforeAdoption],
+    ["Control+Shift+z", example.source],
+    ["Control+z", beforeAdoption],
+  ]) {
+    await page.keyboard.press(shortcut);
+    await expect.poll(() => page.evaluate(() => ({ model: window.sourceSyncFixture.editor.getValue(), store: window.sourceSyncFixture.store.getState().code })))
+      .toEqual({ model: expected, store: expected });
+  }
   const previous = await page.locator(".monaco-editor").elementHandle();
   await page.getByRole("tab", { name: "Config", exact: true }).click();
   await page.getByRole("tab", { name: "Code", exact: true }).click();

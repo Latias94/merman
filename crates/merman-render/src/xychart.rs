@@ -84,6 +84,10 @@ struct Dimension {
 
 type Point = crate::geom::Point;
 
+fn format_js_number(value: f64) -> String {
+    ryu_js::Buffer::new().format(value).to_owned()
+}
+
 fn finite_geometry(values: impl IntoIterator<Item = f64>) -> Result<()> {
     if values.into_iter().all(f64::is_finite) {
         Ok(())
@@ -108,17 +112,26 @@ fn reserved_plot_span(span: f64, percent: f64) -> Result<f64> {
 }
 
 fn linear_scale_value(value: f64, domain: (f64, f64), range: (f64, f64)) -> f64 {
-    let (d0, d1) = domain;
-    let (r0, r1) = range;
-    if d0 == d1 {
-        return r0 + (r1 - r0) * 0.5;
+    let (mut d0, mut d1) = domain;
+    let (mut r0, mut r1) = range;
+    // D3's bimap reverses both a descending domain and its range before normalization.
+    // This matters for infinite endpoints: (value - Infinity) / -Infinity is NaN.
+    if d1 < d0 {
+        std::mem::swap(&mut d0, &mut d1);
+        std::mem::swap(&mut r0, &mut r1);
     }
     let numerator = value - d0;
     let denominator = d1 - d0;
-    let t = if numerator.is_finite() && denominator.is_finite() {
-        numerator / denominator
-    } else {
+    let t = if denominator == 0.0 {
+        0.5
+    } else if d0.is_finite()
+        && d1.is_finite()
+        && (!numerator.is_finite() || !denominator.is_finite())
+    {
+        // Recover intermediate overflow only for finite authored domains.
         (value * 0.5 - d0 * 0.5) / (d1 * 0.5 - d0 * 0.5)
+    } else {
+        numerator / denominator
     };
     r0 + t * (r1 - r0)
 }
@@ -561,7 +574,7 @@ fn build_tick_values(kind: &AxisKind, axis_position: AxisPosition) -> Vec<String
             }
             d3_ticks(a, b, 10)
                 .into_iter()
-                .map(|v| format!("{v}"))
+                .map(format_js_number)
                 .collect()
         }
     }
@@ -724,7 +737,7 @@ impl Axis {
                 }
                 linear_scale_value(value, (d0, d1), self.get_range())
             }
-            AxisKind::Band { .. } => self.get_scale_value(&format!("{value}")),
+            AxisKind::Band { .. } => self.get_scale_value(&format_js_number(value)),
         }
     }
 
@@ -1713,7 +1726,7 @@ pub(crate) fn layout_xychart_diagram_typed(
                 p.data
                     .iter()
                     .map(|(_, y)| {
-                        y.map(|v| format!("{v}"))
+                        y.map(format_js_number)
                             .unwrap_or_else(|| "null".to_string())
                     })
                     .collect()
@@ -1910,6 +1923,20 @@ mod data_label_tests {
         assert!(!ticks.is_empty() && ticks.len() <= 20);
         assert!(ticks.iter().all(|value| value.is_finite()));
         assert!(ticks.first().unwrap() < &0.0 && ticks.last().unwrap() > &0.0);
+    }
+
+    #[test]
+    fn infinite_axis_domains_follow_d3_normalization() {
+        assert_eq!(
+            linear_scale_value(1.0, (0.0, f64::INFINITY), (10.0, 110.0)),
+            10.0
+        );
+        assert_eq!(
+            linear_scale_value(1.0, (f64::INFINITY, 0.0), (10.0, 110.0)),
+            110.0
+        );
+        // D3 normalize treats Infinity - Infinity as NaN, not a constant midpoint.
+        assert!(linear_scale_value(1.0, (f64::INFINITY, f64::INFINITY), (10.0, 110.0)).is_nan());
     }
 
     #[test]
