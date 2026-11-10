@@ -1369,13 +1369,7 @@ pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1
             style(Some(label), None),
         ));
     }
-    for target in [
-        ThemeTarget::Node,
-        ThemeTarget::Task,
-        ThemeTarget::ChartSeries,
-        ThemeTarget::TimelineEvent,
-        ThemeTarget::JourneyTask,
-    ] {
+    for target in [ThemeTarget::Task, ThemeTarget::ChartSeries] {
         design
             .palettes
             .insert(target.id().to_owned(), reference("series"));
