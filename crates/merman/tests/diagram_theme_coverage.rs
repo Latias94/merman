@@ -214,6 +214,38 @@ fn assert_contains_all(name: &str, svg: &str, expected: &[&str]) {
     }
 }
 
+fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
+    node.attribute("class")
+        .is_some_and(|classes| classes.split_whitespace().any(|value| value == class))
+}
+
+fn declaration<'a>(style: &'a str, property: &str) -> Option<&'a str> {
+    style
+        .split(';')
+        .filter_map(|entry| entry.split_once(':'))
+        .filter(|(name, _)| name.trim() == property)
+        .map(|(_, value)| value.trim())
+        .next_back()
+}
+
+// Check only exact selectors emitted by these consumers, alongside their live DOM terminals.
+fn css_property(
+    document: &roxmltree::Document<'_>,
+    selector: &str,
+    property: &str,
+) -> Option<String> {
+    document
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .flat_map(|css| css.split('}'))
+        .filter_map(|rule| rule.split_once('{'))
+        .filter(|(selectors, _)| selectors.split(',').any(|value| value.trim() == selector))
+        .filter_map(|(_, body)| declaration(body, property))
+        .next_back()
+        .map(str::to_owned)
+}
+
 #[cfg(feature = "layout-cytoscape")]
 fn assert_current_dom_consumes(name: &str, svg: &str, expected: &[&str]) {
     let normalized_svg = svg
@@ -640,19 +672,25 @@ fn retained_preset_paints_reach_terminals_with_default_and_classic_looks() {
         };
         let svg = render_with_editor_dark_theme("palette-terminals", &source);
         let document = roxmltree::Document::parse(&svg).expect("valid GitGraph SVG");
-        for (slot, color) in [(0, "#60a5fa"), (1, "#34d399")] {
-            assert!(document.descendants().any(|node| {
-                node.has_tag_name("circle")
-                    && node.attribute("class").is_some_and(|classes| {
-                        classes
-                            .split_whitespace()
-                            .any(|class| class == format!("commit{slot}"))
-                    })
-            }));
-            assert!(
-                svg.contains(&format!(".commit{slot}{{stroke:{color};fill:{color};}}")),
-                "{look:?}: each visible commit must consume its typed palette color: {svg}"
-            );
+        for (slot, color) in [(0, "#93c5fd"), (1, "#6ee7b7")] {
+            let class = format!("commit{slot}");
+            let commit = document
+                .descendants()
+                .find(|node| node.has_tag_name("circle") && has_class(*node, &class))
+                .expect("live commit circle");
+            for property in ["fill", "stroke"] {
+                assert_eq!(
+                    declaration(commit.attribute("style").unwrap_or_default(), property),
+                    None,
+                    "{look:?}: inline {property} must not mask the commit palette"
+                );
+                assert_eq!(
+                    css_property(&document, &format!("#palette-terminals .{class}"), property)
+                        .as_deref(),
+                    Some(color),
+                    "{look:?}: each visible commit must consume its category {property}"
+                );
+            }
         }
     }
 }
@@ -688,7 +726,11 @@ fn diagram_theme_covers_core_diagram_roles() {
         (
             "diagram-theme-pie",
             "pie title Profile Pie\n  \"A\" : 4\n  \"B\" : 7",
-            &["#60a5fa", "#34d399", "#e5e7eb"],
+            &[
+                "fill=\"#93c5fd\" class=\"pieCircle\"",
+                "fill=\"#6ee7b7\" class=\"pieCircle\"",
+                "#e5e7eb",
+            ],
         ),
         (
             "diagram-theme-quadrant",
@@ -705,33 +747,112 @@ fn diagram_theme_covers_core_diagram_roles() {
 
 #[test]
 #[cfg(feature = "layout-cytoscape")]
-fn diagram_theme_series_palette_reaches_supported_ordinal_diagrams() {
-    let cases: &[(&str, &str, &[&str])] = &[
+fn diagram_theme_category_palette_reaches_supported_ordinal_diagrams() {
+    let cases = [
         (
             "diagram-theme-mindmap",
             "mindmap\n  Root\n    First\n    Second",
-            &["#60a5fa", "#34d399"],
         ),
         (
             "diagram-theme-gitgraph",
             "gitGraph\n  commit id: \"A\"\n  branch dev\n  checkout dev\n  commit id: \"B\"",
-            &["#60a5fa", "#34d399"],
         ),
         (
             "diagram-theme-journey",
             "journey\n  title Profile Journey\n  section Checkout\n    Sign Up: 5: Alice\n  section Payment\n    Pay: 3: Bob",
-            &["#60a5fa", "#34d399"],
         ),
         (
             "diagram-theme-timeline",
             "timeline\n  title Profile Timeline\n  section Build\n    Alpha : Start\n  section Ship\n    Beta : Ship",
-            &["#60a5fa", "#34d399"],
         ),
     ];
 
-    for (name, source, expected) in cases {
+    for (name, source) in cases {
         let svg = render_with_editor_dark_theme(name, source);
-        assert_contains_all(name, &svg, expected);
+        assert_contains_all(name, &svg, &[]);
+        let document = roxmltree::Document::parse(&svg).expect("valid categorical SVG");
+        for (slot, color) in [(0, "#93c5fd"), (1, "#6ee7b7")] {
+            let fill = match name {
+                "diagram-theme-mindmap" => {
+                    let section = slot.to_string();
+                    let branch = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("g")
+                                && has_class(*node, "node")
+                                && node.attribute("data-mindmap-section") == Some(section.as_str())
+                        })
+                        .expect("live Mindmap branch");
+                    let shape = branch
+                        .children()
+                        .find(|node| {
+                            matches!(
+                                node.tag_name().name(),
+                                "rect" | "path" | "circle" | "polygon"
+                            )
+                        })
+                        .expect("live Mindmap branch body");
+                    assert_eq!(
+                        declaration(shape.attribute("style").unwrap_or_default(), "fill"),
+                        None,
+                        "branch fill must consume its category CSS"
+                    );
+                    css_property(
+                        &document,
+                        &format!(
+                            "#{name} [data-mindmap-section=\"{slot}\"] {}",
+                            shape.tag_name().name()
+                        ),
+                        "fill",
+                    )
+                }
+                "diagram-theme-gitgraph" => {
+                    let class = format!("label{slot}");
+                    let backing = document
+                        .descendants()
+                        .find(|node| node.has_tag_name("rect") && has_class(*node, &class))
+                        .expect("live GitGraph branch backing");
+                    assert_eq!(
+                        declaration(backing.attribute("style").unwrap_or_default(), "fill"),
+                        None,
+                        "branch backing must consume its category CSS"
+                    );
+                    css_property(&document, &format!("#{name} .{class}"), "fill")
+                }
+                "diagram-theme-journey" => {
+                    let class = format!("task-type-{slot}");
+                    let task = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("rect")
+                                && has_class(*node, "task")
+                                && has_class(*node, &class)
+                        })
+                        .expect("live Journey task body");
+                    declaration(task.attribute("style").unwrap_or_default(), "fill")
+                        .map(str::to_owned)
+                }
+                "diagram-theme-timeline" => {
+                    let class = format!("section-{}", slot - 1);
+                    let section = document
+                        .descendants()
+                        .find(|node| {
+                            node.has_tag_name("g")
+                                && has_class(*node, "timeline-node")
+                                && has_class(*node, &class)
+                        })
+                        .expect("live Timeline category node");
+                    let shape = section
+                        .descendants()
+                        .find(|node| node.has_tag_name("path") && has_class(*node, "node-bkg"))
+                        .expect("live Timeline category body");
+                    declaration(shape.attribute("style").unwrap_or_default(), "fill")
+                        .map(str::to_owned)
+                }
+                _ => unreachable!("fixed categorical scene"),
+            };
+            assert_eq!(fill.as_deref(), Some(color), "{name} category {slot}");
+        }
     }
 }
 
