@@ -22,9 +22,11 @@ use crate::resources::OperationWorkMeter;
 use super::task_bar::GanttTaskBarState;
 
 mod css_binding;
+mod excluded_period;
 mod font_size;
 mod label;
 pub(crate) use css_binding::GanttCssBinding;
+use excluded_period::{GanttExcludedPeriodPlan, GanttExcludedPeriodReceipt};
 use label::GanttTaskLabelPlan;
 
 const MERMAID_TASK_RADIUS_PX: f64 = 3.0;
@@ -241,6 +243,8 @@ pub(crate) struct GanttTaskTheme {
     task_count: usize,
     tasks: Box<[GanttTaskTerminalExpectation]>,
     css: GanttCssBinding,
+    excluded_period: GanttExcludedPeriodPlan,
+    excluded_period_css: OnceLock<GanttCssBinding>,
     title_fill: Option<GanttGlobalFillExpectation>,
     text_fill: Option<GanttTextFillExpectation>,
     warning_stroke: Option<GanttWarningStrokeExpectation>,
@@ -763,6 +767,8 @@ impl GanttTaskTheme {
             task_count: tasks.len(),
             tasks: task_expectations.into_boxed_slice(),
             css,
+            excluded_period: GanttExcludedPeriodPlan::resolve(Some(theme), effective_config),
+            excluded_period_css: OnceLock::new(),
             title_fill,
             text_fill,
             warning_stroke,
@@ -792,6 +798,8 @@ impl GanttTaskTheme {
             task_count: tasks.len(),
             tasks: Box::default(),
             css,
+            excluded_period: GanttExcludedPeriodPlan::default(),
+            excluded_period_css: OnceLock::new(),
             title_fill: None,
             text_fill: None,
             warning_stroke: None,
@@ -814,7 +822,35 @@ impl GanttTaskTheme {
     }
 
     pub(crate) fn css_binding(&self) -> &GanttCssBinding {
-        &self.css
+        self.excluded_period_css.get().unwrap_or(&self.css)
+    }
+
+    pub(crate) fn begin_terminal_receipt_with_excluded_periods(
+        &self,
+        excludes: &[crate::model::GanttExcludeRangeLayout],
+        work: &OperationWorkMeter,
+    ) -> crate::Result<Option<GanttTaskThemeReceipt>> {
+        let excluded_period = self
+            .excluded_period
+            .begin_terminal_receipt(excludes, work)?;
+        if let Some(fill) = excluded_period
+            .as_ref()
+            .and_then(GanttExcludedPeriodReceipt::fill)
+        {
+            // Keep the prepared baseline untouched unless layout produced a visible exclusion.
+            let mut css = self.css.clone();
+            css.exclude_bkg_color = fill.to_owned();
+            if self.excluded_period_css.set(css).is_err() {
+                return Err(crate::Error::InvalidModel {
+                    message: "Gantt excluded-period CSS was bound more than once".to_owned(),
+                });
+            }
+        }
+        let mut receipt = self.begin_terminal_receipt();
+        if let Some(receipt) = &mut receipt {
+            receipt.excluded_period = excluded_period;
+        }
+        Ok(receipt)
     }
 
     pub(crate) fn task_label_css_priority(&self) -> &'static str {
@@ -882,6 +918,7 @@ impl GanttTaskTheme {
 
     fn requires_terminal_receipt(&self) -> bool {
         !self.pending.is_empty()
+            || self.excluded_period.requested()
             || self
                 .tasks
                 .iter()
@@ -927,6 +964,11 @@ impl GanttTaskTheme {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        if let Some(receipt) = self.terminal_receipt.get()
+            && let Some(excluded_period) = &receipt.excluded_period
+        {
+            excluded_period.record_evidence(evidence);
+        }
         for (key, pending) in &self.pending {
             let Some(receipt) = self.terminal_receipt.get() else {
                 break;
@@ -1402,6 +1444,7 @@ impl GanttTaskPendingEvidence {
 /// Writer-owned proof that every real Gantt task rect reached its canonical terminal state.
 #[derive(Debug)]
 pub(crate) struct GanttTaskThemeReceipt {
+    excluded_period: Option<GanttExcludedPeriodReceipt>,
     expectations: Box<[GanttTaskTerminalExpectation]>,
     checkpointed_tasks: Vec<bool>,
     checkpointed_labels: Vec<bool>,
@@ -1468,6 +1511,7 @@ impl GanttTaskThemeReceipt {
         warning_stroke: Option<&GanttWarningStrokeExpectation>,
     ) -> Self {
         Self {
+            excluded_period: None,
             checkpointed_tasks: vec![false; expectations.len()],
             checkpointed_labels: vec![false; expectations.len()],
             expectations: expectations.into_boxed_slice(),
@@ -1529,6 +1573,7 @@ impl GanttTaskThemeReceipt {
 
     fn invalid(expected_task_count: usize) -> Self {
         Self {
+            excluded_period: None,
             expectations: Vec::new().into_boxed_slice(),
             checkpointed_tasks: vec![false; expected_task_count],
             checkpointed_labels: vec![false; expected_task_count],
@@ -1751,6 +1796,9 @@ impl GanttTaskThemeReceipt {
     }
 
     pub(crate) fn record_global_css(&mut self, diagram_id: &str, css: &str, font_family: &str) {
+        if let Some(excluded_period) = &mut self.excluded_period {
+            excluded_period.record_css(diagram_id, css);
+        }
         if let Some(fill) = self.expected_title_fill_css.as_deref() {
             if self.title_css_recorded {
                 self.title_css_matches = false;
@@ -1813,6 +1861,18 @@ impl GanttTaskThemeReceipt {
                 );
                 self.warning_vert_css_matches = css.contains(&expected);
             }
+        }
+    }
+
+    pub(crate) fn record_excluded_period(
+        &mut self,
+        diagram_id: &str,
+        rect: &crate::model::GanttExcludeRangeLayout,
+        emitted_id: &str,
+        class: &str,
+    ) {
+        if let Some(excluded_period) = &mut self.excluded_period {
+            excluded_period.record_rect(diagram_id, rect, emitted_id, class);
         }
     }
 
@@ -1903,6 +1963,10 @@ impl GanttTaskThemeReceipt {
             },
         );
         self.terminals_match
+            && self
+                .excluded_period
+                .as_ref()
+                .is_none_or(GanttExcludedPeriodReceipt::complete)
             && labels_complete
             && self.expectations.len() == self.checkpointed_tasks.len()
             && self.terminal_ids.len() == self.expectations.len()

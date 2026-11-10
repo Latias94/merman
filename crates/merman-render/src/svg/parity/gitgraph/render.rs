@@ -1035,11 +1035,16 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             };
             let _ = write!(
                 &mut out,
-                r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text>"#,
+                r#"<g class="branchLabel"><g class="{cls}" transform="translate({x}, {y})"><text"#,
                 cls = label_class,
                 x = fmt(tx),
                 y = fmt(ty),
             );
+            let label_fill = text_paint.branch_label_fill_css(idx);
+            if let Some(fill) = label_fill {
+                let _ = write!(&mut out, r#" style="fill:{};""#, escape_attr(fill));
+            }
+            out.push('>');
             for row in rows {
                 let _ = write!(
                     &mut out,
@@ -1070,7 +1075,14 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                             )
                             .is_none()
                     });
-                receipt.record_branch(branch_index, idx, &b.name, root_inherited, root_text);
+                receipt.record_branch(
+                    branch_index,
+                    idx,
+                    &b.name,
+                    root_inherited,
+                    root_text && label_fill.is_none(),
+                    label_fill,
+                );
             }
         }
         out.push_str("</g>");

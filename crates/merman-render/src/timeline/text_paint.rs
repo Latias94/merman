@@ -18,6 +18,8 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 #[derive(Debug)]
 pub(crate) struct TimelineTextPaintPlan {
     fill: Option<DirectStaticPaint>,
+    label_fill: Option<DirectStaticPaint>,
+    label_owned: Vec<bool>,
     evidence: FamilyThemeOutcomes,
     pending: Vec<TimelinePendingTextMechanism>,
     terminal: OnceLock<TimelineTextPaintOutcome>,
@@ -28,6 +30,7 @@ struct TimelinePendingTextMechanism {
     key: FamilyThemeMechanismKey,
     residual: Option<FamilyThemeResidualReason>,
     inherited_fill_only: bool,
+    category_labels: bool,
 }
 
 #[derive(Debug)]
@@ -37,6 +40,11 @@ pub(crate) struct TimelineTextPaintOutcome {
     source_colors_static: bool,
     unverified_text_seen: bool,
     unverified_inherited_fill_seen: bool,
+    category_label_seen: bool,
+    category_fill_seen: bool,
+    unverified_category_label_seen: bool,
+    unverified_category_fill_seen: bool,
+    category_css_matches: bool,
 }
 
 impl Default for TimelineTextPaintOutcome {
@@ -47,6 +55,11 @@ impl Default for TimelineTextPaintOutcome {
             source_colors_static: true,
             unverified_text_seen: false,
             unverified_inherited_fill_seen: false,
+            category_label_seen: false,
+            category_fill_seen: false,
+            unverified_category_label_seen: false,
+            unverified_category_fill_seen: false,
+            category_css_matches: true,
         }
     }
 }
@@ -59,6 +72,8 @@ impl TimelineTextPaintPlan {
     ) -> Result<Self, OperationWorkError> {
         let mut plan = Self {
             fill: None,
+            label_fill: None,
+            label_owned: Vec::new(),
             evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             terminal: OnceLock::new(),
@@ -128,6 +143,7 @@ impl TimelineTextPaintPlan {
                     key,
                     residual,
                     inherited_fill_only,
+                    category_labels: false,
                 });
             } else {
                 plan.evidence.mark_not_applicable(key);
@@ -153,13 +169,176 @@ impl TimelineTextPaintPlan {
                 residual: Some(residual.reason()),
                 inherited_fill_only: residual.reason()
                     == FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                category_labels: false,
             });
         }
+        plan.resolve_category_labels(theme, config, work)?;
         Ok(plan)
+    }
+
+    fn resolve_category_labels(
+        &mut self,
+        theme: &ResolvedDiagramTheme,
+        config: &PresentationConfig,
+        work: &OperationWorkMeter,
+    ) -> Result<(), OperationWorkError> {
+        if !theme.family_mechanism_routes().iter().any(|route| {
+            matches!(
+                route.mechanism(),
+                FamilyThemeMechanism::RuleFacet {
+                    target: ThemeTarget::NodeLabel,
+                    ..
+                } | FamilyThemeMechanism::OrdinalPalette {
+                    target: ThemeTarget::NodeLabel
+                } | FamilyThemeMechanism::EffectBinding {
+                    target: ThemeTarget::NodeLabel,
+                    ..
+                }
+            )
+        }) {
+            return Ok(());
+        }
+        let binding = super::TimelineCssBinding::resolve(config.as_value());
+        self.label_owned = (0..binding.sections.len())
+            .map(|slot| {
+                if binding.is_redux_theme {
+                    super::TimelineCssBinding::config_owns_color(config, "nodeBorder")
+                } else {
+                    super::TimelineCssBinding::config_owns_color(
+                        config,
+                        &format!("cScaleLabel{slot}"),
+                    )
+                }
+            })
+            .collect();
+        // Redux text follows nodeBorder; gradient Neo has a different surface owner.
+        // Keep this extension in the same bounded domain as the category palette.
+        let style = theme.style_with_work_meter(
+            ThemeTarget::NodeLabel,
+            ThemeVariant::Default,
+            None,
+            work,
+        )?;
+        if !binding.is_redux_theme && !binding.use_neo_gradient {
+            self.label_fill = resolve_direct_static_fill(
+                theme,
+                &style,
+                &[ThemeTarget::NodeLabel],
+                DirectStaticSelectorDomain::Default,
+            );
+        }
+        let winners = style
+            .winner_rule_properties()
+            .map(|(property, origin)| (origin.rule_index(), property))
+            .collect::<BTreeSet<_>>();
+        let mut observations = BTreeMap::new();
+        for route in theme.family_mechanism_routes() {
+            let FamilyThemeMechanism::RuleFacet {
+                rule_index,
+                target: ThemeTarget::NodeLabel,
+                facet,
+                selector,
+            } = route.mechanism()
+            else {
+                continue;
+            };
+            work.charge(1)?;
+            let entry = observations
+                .entry(theme.family_mechanism_key(*route))
+                .or_insert((false, None, true));
+            let property = resolved_style_property_for_facet(facet);
+            let unproved_ordinal = matches!(
+                selector,
+                FamilyThemeSelectorShape::Ordinal {
+                    variant: None | Some(ThemeVariant::Default),
+                    ..
+                }
+            ) && !winners
+                .iter()
+                .any(|(index, candidate)| *candidate == property && *index > rule_index);
+            if !winners.contains(&(rule_index, property)) && !unproved_ordinal {
+                continue;
+            }
+            entry.2 &= property == ResolvedStyleProperty::Fill;
+            if route.disposition() == FamilyThemeDisposition::TypedAdapter
+                && matches!(facet, FamilyThemeRuleFacet::Fill(_))
+                && self
+                    .label_fill
+                    .as_ref()
+                    .is_some_and(|fill| fill.rule_index() == rule_index)
+            {
+                entry.0 = true;
+            } else {
+                entry.1.get_or_insert(unsupported_residual_for_facet(facet));
+            }
+        }
+        for (key, (pending, residual, inherited_fill_only)) in observations {
+            if pending || residual.is_some() {
+                self.pending.push(TimelinePendingTextMechanism {
+                    key,
+                    residual,
+                    inherited_fill_only,
+                    category_labels: true,
+                });
+            } else {
+                self.evidence.mark_not_applicable(key);
+            }
+        }
+        let mut fallbacks = FamilyThemeOutcomes::default();
+        reconcile_unsupported_terminal_domains(
+            theme,
+            &mut fallbacks,
+            &[UnsupportedTerminalDomain::static_fallbacks_only(
+                ThemeTarget::NodeLabel,
+                ThemeVariant::Default,
+            )],
+            work,
+        )?;
+        for key in fallbacks.not_applicable_mechanisms() {
+            self.evidence.mark_not_applicable(key.clone());
+        }
+        for residual in fallbacks.residuals() {
+            self.pending.push(TimelinePendingTextMechanism {
+                key: residual.key().clone(),
+                residual: Some(residual.reason()),
+                inherited_fill_only: residual.reason()
+                    == FamilyThemeResidualReason::UnsupportedOrdinalPalette,
+                category_labels: true,
+            });
+        }
+        Ok(())
     }
 
     pub(crate) fn fill_css(&self) -> Option<&str> {
         self.fill.as_ref().map(DirectStaticPaint::css)
+    }
+
+    pub(crate) fn label_fill_css(&self, slot: Option<usize>) -> Option<&str> {
+        let slot = slot?;
+        (!self.label_owned.get(slot).copied().unwrap_or(true))
+            .then(|| self.label_fill.as_ref().map(DirectStaticPaint::css))
+            .flatten()
+    }
+
+    pub(crate) fn record_category_label(
+        &self,
+        outcome: &mut TimelineTextPaintOutcome,
+        slot: Option<usize>,
+        emitted_fill: Option<&str>,
+        visible: bool,
+        font_size_known: bool,
+    ) {
+        outcome.category_css_matches &= emitted_fill == self.label_fill_css(slot);
+        if visible {
+            let owned = slot
+                .and_then(|slot| self.label_owned.get(slot))
+                .copied()
+                .unwrap_or(false);
+            outcome.category_label_seen = true;
+            outcome.category_fill_seen |= !owned;
+            outcome.unverified_category_label_seen |= !font_size_known;
+            outcome.unverified_category_fill_seen |= !owned && !font_size_known;
+        }
     }
 
     pub(crate) fn begin_emission(&self) -> Option<TimelineTextPaintOutcome> {
@@ -173,6 +352,46 @@ impl TimelineTextPaintPlan {
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
         for pending in &self.pending {
+            if pending.category_labels {
+                let key = pending.key.clone();
+                let Some(outcome) = self.terminal.get() else {
+                    evidence.mark_residual(
+                        key,
+                        pending
+                            .residual
+                            .unwrap_or(FamilyThemeResidualReason::UnsupportedPaint),
+                    );
+                    continue;
+                };
+                let (seen, unverified) = if pending.inherited_fill_only {
+                    (
+                        outcome.category_fill_seen,
+                        outcome.unverified_category_fill_seen,
+                    )
+                } else {
+                    (
+                        outcome.category_label_seen,
+                        outcome.unverified_category_label_seen,
+                    )
+                };
+                if !seen {
+                    evidence.mark_not_applicable(key);
+                } else if !unverified
+                    && outcome.category_css_matches
+                    && pending.residual.is_none()
+                    && let Some(fill) = &self.label_fill
+                {
+                    evidence.mark_applied_with_capabilities(key, [fill.capability()]);
+                } else {
+                    evidence.mark_residual(
+                        key,
+                        pending
+                            .residual
+                            .unwrap_or(FamilyThemeResidualReason::UnsupportedPaint),
+                    );
+                }
+                continue;
+            }
             match self.terminal.get() {
                 Some(outcome)
                     if if pending.inherited_fill_only {

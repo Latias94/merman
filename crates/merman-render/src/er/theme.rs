@@ -14,6 +14,7 @@ use crate::family::{
 use crate::resources::{OperationWorkError, OperationWorkMeter, PreparedTextRetainedReservation};
 
 mod css_binding;
+mod relationship_background;
 mod terminal;
 mod visual;
 pub(crate) use css_binding::ErCssBinding;
@@ -456,6 +457,7 @@ impl ErPreparedHtmlSubgraphLabel {
 #[derive(Debug)]
 pub(crate) struct ErEntityThemePlan {
     css_binding: css_binding::ErCssBinding,
+    relationship_background: crate::family::RelationshipLabelBackgroundPlan,
     entity_indices: BTreeMap<String, usize>,
     entity_source_styles: Vec<ErEntitySourceStyle>,
     subgraph_source_styles: BTreeMap<String, ErEntitySourceStyle>,
@@ -514,6 +516,7 @@ impl ErEntityThemePlan {
             &inherited_font_stack,
             &base_font_size,
         );
+        let relationship_background = relationship_background::resolve(theme, effective_config);
         // Layout is the final authority for entity visibility. Keep source indices intact
         // because ordinal rules and paint checkpoints use semantic model identities.
         let visible_entity_ids = theme
@@ -626,6 +629,7 @@ impl ErEntityThemePlan {
             return Self {
                 _prepared_labels: Arc::clone(&layout.prepared_labels),
                 css_binding,
+                relationship_background,
                 entity_indices,
                 entity_source_styles,
                 subgraph_source_styles,
@@ -1134,6 +1138,7 @@ impl ErEntityThemePlan {
         Self {
             _prepared_labels: Arc::clone(&layout.prepared_labels),
             css_binding,
+            relationship_background,
             entity_indices,
             entity_source_styles,
             subgraph_source_styles,
@@ -1161,6 +1166,12 @@ impl ErEntityThemePlan {
 
     pub(crate) fn index_for_entity_id(&self, entity_id: &str) -> Option<usize> {
         self.entity_indices.get(entity_id).copied()
+    }
+
+    pub(crate) fn relationship_background(
+        &self,
+    ) -> &crate::family::RelationshipLabelBackgroundPlan {
+        &self.relationship_background
     }
 
     pub(crate) fn css_binding(&self) -> &css_binding::ErCssBinding {
@@ -1289,6 +1300,7 @@ impl ErEntityThemePlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        self.relationship_background.record_evidence(evidence);
         self.inherited_font_stack
             .record_unsupported_typography_evidence(evidence, self.has_visible_typography);
         let font_stack_key =

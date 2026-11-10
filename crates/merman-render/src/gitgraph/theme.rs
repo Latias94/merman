@@ -333,8 +333,9 @@ struct ExpectedStylesheetRule {
 /// The plan owns only the eight visible palette slots consumed by commit shapes, arrows, and branch
 /// label backgrounds plus the static Edge stroke consumed by visible branch lines. The terminal
 /// writer resolves the actual Mermaid source for each surface and suppresses a direct value when
-/// explicit source or site configuration owns that source. Mermaid keeps ownership of `gitInvN`,
-/// `gitBranchLabelN`, text colors, and every unsupported Edge selector or paint kind. The terminal
+/// explicit source or site configuration owns that source. Mermaid keeps ownership of `gitInvN`
+/// and every unsupported Edge selector or paint kind; the text plan separately owns explicit
+/// label requests while preserving source-owned `gitBranchLabelN`. The terminal
 /// writer must provide a complete occurrence receipt before either route can become Applied
 /// evidence. The historical type name remains the central artifact seam while the family-local
 /// implementation deepens behind it.
@@ -376,7 +377,6 @@ impl GitGraphNodePalettePlan {
             &[
                 UnsupportedTerminalDomain::direct(ThemeTarget::Marker, absent),
                 UnsupportedTerminalDomain::direct(ThemeTarget::Cluster, absent),
-                UnsupportedTerminalDomain::direct(ThemeTarget::ClusterLabel, absent),
                 UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Edge,
                     TerminalVariantDomain::uniform(

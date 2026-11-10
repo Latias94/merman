@@ -21,6 +21,7 @@ use crate::mermaid_style::{CssFontFamilyOwnership, CssFontSizeOwnership};
 use crate::resources::OperationWorkMeter;
 
 mod node_visual;
+mod relationship_background;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct NodeExpectation {
@@ -56,6 +57,7 @@ pub(crate) struct RequirementPaintThemePlan {
     node_visuals: BTreeMap<String, node_visual::RequirementNodeVisual>,
     css: super::RequirementCssBinding,
     relation_paint: Option<super::RequirementRelationPaintPlan>,
+    relationship_background: crate::family::RelationshipLabelBackgroundPlan,
     text_paint: super::RequirementTextPaintPlan,
     title: Option<Box<str>>,
     title_fill: Option<DirectPaintExpectation>,
@@ -85,6 +87,7 @@ impl RequirementPaintThemePlan {
             InheritedFontStackPlan::resolve_property_local(theme, effective_config);
         let text_paint =
             super::RequirementTextPaintPlan::resolve(theme, effective_config, work_meter)?;
+        let relationship_background = relationship_background::resolve(theme, effective_config);
         let title = title.map(str::trim).filter(|title| !title.is_empty());
         let title_present = title.is_some();
         let title_fill_owned =
@@ -101,6 +104,7 @@ impl RequirementPaintThemePlan {
                 font_size_css: css.common.font_size_css().into(),
                 css,
                 relation_paint: None,
+                relationship_background,
                 text_paint,
                 title: title.map(Into::into),
                 title_fill: None,
@@ -366,6 +370,7 @@ impl RequirementPaintThemePlan {
             node_visuals: BTreeMap::new(),
             css,
             relation_paint,
+            relationship_background,
             text_paint,
             title: title.map(Into::into),
             title_fill,
@@ -399,6 +404,12 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn relation_paint(&self) -> Option<&super::RequirementRelationPaintPlan> {
         self.relation_paint.as_ref()
+    }
+
+    pub(crate) fn relationship_background(
+        &self,
+    ) -> &crate::family::RelationshipLabelBackgroundPlan {
+        &self.relationship_background
     }
 
     pub(crate) fn text_paint(&self) -> &super::RequirementTextPaintPlan {
@@ -480,6 +491,7 @@ impl RequirementPaintThemePlan {
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
+        self.relationship_background.record_evidence(evidence);
         if self.title_terminal.get().is_some()
             && let Some(fill) = &self.title_fill
         {

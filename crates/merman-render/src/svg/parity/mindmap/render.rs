@@ -818,6 +818,17 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
     )?;
     node_palette.record_typography_css(&mut node_palette_receipt, typography_css_emitted);
     for (index, node) in model.nodes.iter().enumerate() {
+        if let Some(fill) = node_palette.root_fill_for_node(index) {
+            let root_id = crate::svg::escape_css_identifier(diagram_id.semantic_str());
+            let dom_id = mindmap_dom_id(diagram_id, &node.dom_id);
+            let node_id = crate::svg::escape_css_identifier(&dom_id);
+            let _ = write!(
+                &mut super::super::output::XmlTextOutput::new(&mut out),
+                "#{root_id} g#{node_id} > rect,#{root_id} g#{node_id} > path,#{root_id} g#{node_id} > circle,#{root_id} g#{node_id} > polygon{{fill:{fill};}}"
+            );
+            out.checkpoint()?;
+            node_palette.record_root_css(&mut node_palette_receipt, index, fill);
+        }
         let Some(fill) = node_palette.label_fill_for_node(index) else {
             continue;
         };
@@ -1455,7 +1466,9 @@ pub(crate) fn render_mindmap_diagram_svg_model_with_config(
         }
         if look == "neo" {
             if (!is_root && neo_branch_uses_main_background)
-                || (is_root && (mindmap_theme.contains("redux") || use_gradient))
+                || (is_root
+                    && (mindmap_theme.contains("redux") || use_gradient)
+                    && node_palette.root_fill_for_node(node_index).is_none())
             {
                 node_palette_receipt.record_node_paint_terminal(
                     crate::mindmap::MindmapWriterThemeToken::MainBackground,

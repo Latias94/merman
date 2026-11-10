@@ -19,7 +19,7 @@
       "message-font": { "type": "font-stack", "value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans CJK SC", "sans-serif"] },
       "code-font": { "type": "font-stack", "value": ["SFMono-Regular", "Consolas", "Liberation Mono", "monospace"] },
       "series": { "type": "palette", "value": [{ "ref": "accent" }, "#335A67", "#6A6240", "#746184", "#A16D31", "#7B4B57"] },
-      "pie-series": { "type": "palette", "value": ["#E7C5B8", "#CBDCE0", "#DCD8BD", "#DDD0E3", "#E8D5B5", "#DFC6CE"] }
+      "pie-series": { "type": "palette", "value": ["#E7A983", "#83BDCE", "#B5BF76", "#B38EC9", "#E4C458", "#CE7F9E"], "description": "Six paper pigments distinguish terracotta, blue, olive, violet, gold, and rose without changing the structural printing inks." }
     },
     "canvas": { "base": { "ref": "canvas" } },
     "typography": {

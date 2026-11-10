@@ -284,6 +284,10 @@ fn write_lane_rect(
     out.checkpoint()
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "The prepared Swimlane label keeps geometry, source identity, foreground, and backing evidence together."
+)]
 pub(super) fn render_relationship_label(
     out: &mut impl SvgOutput,
     edge: &LayoutEdge,
@@ -292,6 +296,7 @@ pub(super) fn render_relationship_label(
     layout: &ErDiagramLayout,
     context: ErSubgraphRenderContext<'_>,
     receipt: &mut crate::er::ErEntityThemeReceipt<'_>,
+    background: [Option<&str>; 2],
 ) -> Result<()> {
     let Some(label) = &edge.label else {
         return Ok(());
@@ -328,20 +333,42 @@ pub(super) fn render_relationship_label(
         fmt(-label.height / 2.0),
     );
     if let Some((fragment, wrapper_style)) = prepared.html() {
+        let wrapper_background =
+            background[0].map(|paint| format!("{wrapper_style};background-color:{paint};"));
+        let wrapper_style = wrapper_background.as_deref().unwrap_or(wrapper_style);
+        let span_style = background[1].map(|paint| {
+            format!(
+                r#" style="{};background-color:{};""#,
+                escape_attr(visual.map_or("", |visual| visual.typed_style.as_str())),
+                escape_attr(paint)
+            )
+        });
         let _ = write!(
             out,
             r#"<foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}"><span class="nodeLabel"{}>{}</span></div></foreignObject>"#,
             fmt(label.width),
             fmt(label.height),
             escape_attr(wrapper_style),
-            visual.map_or("", |visual| visual.inline_attr.as_str()),
+            span_style
+                .as_deref()
+                .unwrap_or_else(|| visual.map_or("", |visual| visual.inline_attr.as_str())),
             fragment,
         );
     } else {
         let lines = prepared.svg_lines().ok_or_else(|| Error::InvalidModel {
             message: format!("missing prepared Swimlane SVG rows for relationship {index}"),
         })?;
-        write_er_svg_label_background(out);
+        if let Some(paint) = background[1] {
+            let _ = write!(
+                out,
+                r#"<rect class="background" style="fill:{} !important;stroke:none" x="0" y="0" width="{}" height="{}"/>"#,
+                escape_attr(paint),
+                fmt(label.width),
+                fmt(label.height)
+            );
+        } else {
+            write_er_svg_label_background(out);
+        }
         crate::svg::parity::label::write_svg_text_source_word_lines_with_style(
             out,
             lines,

@@ -16,8 +16,8 @@
       "note-ink": { "type": "paint", "value": "#304C6B" },
       "number-ink": { "type": "paint", "value": { "ref": "surface" } },
       "body-font": { "type": "font-stack", "value": ["system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Noto Sans CJK SC", "sans-serif"] },
-      "series": { "type": "palette", "value": [{ "ref": "accent" }, "#287E78", "#996827", "#795F9E", "#A45365", "#52764B"] },
-      "pie-series": { "type": "palette", "value": ["#C9DCEF", "#CBE3DE", "#EADABA", "#DDD2EB", "#EACDD5", "#D6E3CC"] }
+      "series": { "type": "palette", "value": [{ "ref": "accent" }, "#187C6D", "#AC691E", "#7652AB", "#B04165", "#567A21", "#45535F", "#805846"], "description": "Eight finite map-key inks: blue, jade, ochre, violet, rose, olive, slate, and umber. Source order selects categories; the cycle repeats after eight." },
+      "pie-series": { "type": "palette", "value": ["#C9DCEF", "#75C4A5", "#E9AC4F", "#B48ADF", "#E47EA1", "#B1C653", "#8DAFBF", "#B68B67"], "description": "Eight labeled category surfaces with stronger pigment and tone differences. Pie and Mindmap share these surfaces; the Mindmap root git0 remains independent." }
     },
     "canvas": { "base": { "ref": "canvas" } },
     "typography": {

@@ -156,6 +156,19 @@ impl ClassThemeOutcomes {
         }
     }
 
+    pub(crate) fn record_note(&mut self, fill_rule: Option<usize>, stroke_rule: Option<usize>) {
+        if !self.enabled {
+            return;
+        }
+        self.summary.note_count += 1;
+        self.summary
+            .note_rules
+            .extend(fill_rule.map(|rule| (rule, ResolvedStyleProperty::Fill)));
+        self.summary
+            .note_rules
+            .extend(stroke_rule.map(|rule| (rule, ResolvedStyleProperty::Stroke)));
+    }
+
     pub(crate) fn themes_marker(&self, name: &str) -> bool {
         self.themed_markers.iter().any(|marker| marker.name == name)
     }
@@ -217,6 +230,8 @@ impl ClassThemeOutcomes {
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassThemeOutcomeSummary {
     node_count: usize,
+    note_count: usize,
+    note_rules: BTreeSet<(usize, ResolvedStyleProperty)>,
     background_count: Option<usize>,
     background_rules: BTreeSet<usize>,
     namespace_title_rules: BTreeSet<usize>,
@@ -237,6 +252,12 @@ pub(crate) struct ClassThemeOutcomeSummary {
 impl ClassThemeOutcomeSummary {
     pub(super) fn node_count(&self) -> usize {
         self.node_count
+    }
+    pub(super) fn note_count(&self) -> usize {
+        self.note_count
+    }
+    pub(super) fn applied_note_paint(&self, rule: usize, property: ResolvedStyleProperty) -> bool {
+        self.note_rules.contains(&(rule, property))
     }
     pub(super) fn edge_label_background_count(&self) -> Option<usize> {
         self.background_count

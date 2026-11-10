@@ -14,8 +14,6 @@ pub(crate) struct ClassCssThemeBinding {
     pub(crate) node_default_stroke: String,
     pub(crate) node_border: String,
     pub(crate) edge_label_background: String,
-    pub(crate) note_fill: String,
-    pub(crate) note_stroke: String,
     pub(crate) palette: Vec<(String, Option<String>)>,
     pub(crate) palette_look: String,
 }
@@ -91,8 +89,6 @@ impl ClassCssThemeBinding {
             node_default_stroke: token("nodeBorder", &token("primaryBorderColor", "#9370DB")),
             node_border: token("nodeBorder", "#9370DB"),
             edge_label_background: token("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
-            note_fill: token("noteBkgColor", "#fff5ad"),
-            note_stroke: token("noteBorderColor", "#aaaa33"),
             palette,
             palette_look,
         }
@@ -157,7 +153,6 @@ mod tests {
                 "classText": "var(--class-text)",
                 "mainBkg": "color(display-p3 1 0 0)",
                 "strokeWidth": "calculated",
-                "noteBkgColor": "none",
                 "borderColorArray": ["  var(--border)  ", 12],
                 "bkgColorArray": ["  transparent  "]
             }
@@ -165,7 +160,6 @@ mod tests {
         let binding = ClassCssThemeBinding::resolve(&config);
         assert_eq!(binding.class_text, "var(--class-text)");
         assert_eq!(binding.main_bkg, "color(display-p3 1 0 0)");
-        assert_eq!(binding.note_fill, "none");
         assert_eq!(binding.palette_look, "handDrawn");
         assert_eq!(
             binding.palette,

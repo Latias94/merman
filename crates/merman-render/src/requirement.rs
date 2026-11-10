@@ -221,6 +221,7 @@ pub(crate) struct RequirementNodeLabelLine {
 
 #[derive(Debug, Clone)]
 pub(crate) struct RequirementEdgeLabelPlan {
+    pub(crate) relationship_index: usize,
     pub(crate) relationship_type: String,
     pub(crate) display_text: String,
     pub(crate) rendered_id: String,
@@ -1013,6 +1014,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
                 &first_graph_name,
                 requirement_layout_edge_label(0.0, 0.0),
                 RequirementEdgeLabelPlan {
+                    relationship_index,
                     relationship_type: rel.rel_type.clone(),
                     display_text: String::new(),
                     rendered_id: format!("{}-cyclic-special-1", rel.src),
@@ -1029,6 +1031,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
                 &middle_graph_name,
                 requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
                 RequirementEdgeLabelPlan {
+                    relationship_index,
                     relationship_type: rel.rel_type.clone(),
                     display_text: label_display,
                     rendered_id: format!("{}-cyclic-special-mid", rel.src),
@@ -1045,6 +1048,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
                 &last_graph_name,
                 requirement_layout_edge_label(0.0, 0.0),
                 RequirementEdgeLabelPlan {
+                    relationship_index,
                     relationship_type: rel.rel_type.clone(),
                     display_text: String::new(),
                     rendered_id: last_graph_name.clone(),
@@ -1067,6 +1071,7 @@ pub(crate) fn layout_requirement_diagram_typed_with_work_meter_and_typography(
                 &rendered_id,
                 requirement_layout_edge_label(metrics.width.max(0.0), metrics.height.max(0.0)),
                 RequirementEdgeLabelPlan {
+                    relationship_index,
                     relationship_type: rel.rel_type.clone(),
                     display_text: label_display,
                     rendered_id: rendered_id.clone(),

@@ -137,12 +137,12 @@
           "category-violet": { "type": "color", "label": "4 · Violet", "group": "Categories", "value": "#8455C7" },
           "category-rose": { "type": "color", "label": "5 · Rose", "group": "Categories", "value": "#BA426F" },
           "category-gold": { "type": "color", "label": "6 · Gold", "group": "Categories", "value": "#8A7515" },
-          "surface-blue": { "type": "color", "label": "1 · Blue surface", "group": "Category surfaces", "value": "#BAD2F6" },
-          "surface-orange": { "type": "color", "label": "2 · Orange surface", "group": "Category surfaces", "value": "#F5CEA5" },
-          "surface-teal": { "type": "color", "label": "3 · Teal surface", "group": "Category surfaces", "value": "#A9DCD1" },
-          "surface-violet": { "type": "color", "label": "4 · Violet surface", "group": "Category surfaces", "value": "#D5C2EE" },
-          "surface-rose": { "type": "color", "label": "5 · Rose surface", "group": "Category surfaces", "value": "#F0BDD0" },
-          "surface-gold": { "type": "color", "label": "6 · Gold surface", "group": "Category surfaces", "value": "#E8DCA1" }
+          "surface-blue": { "type": "color", "label": "1 · Blue surface", "group": "Category surfaces", "value": "#9DBFED" },
+          "surface-orange": { "type": "color", "label": "2 · Orange surface", "group": "Category surfaces", "value": "#F2B57B" },
+          "surface-teal": { "type": "color", "label": "3 · Teal surface", "group": "Category surfaces", "value": "#7DCDB9" },
+          "surface-violet": { "type": "color", "label": "4 · Violet surface", "group": "Category surfaces", "value": "#BC9BE6" },
+          "surface-rose": { "type": "color", "label": "5 · Rose surface", "group": "Category surfaces", "value": "#EA94B6" },
+          "surface-gold": { "type": "color", "label": "6 · Gold surface", "group": "Category surfaces", "value": "#D6C558" }
         },
         "mermaid": {
           "dark_mode": false,
@@ -178,12 +178,12 @@
           "category-violet": { "type": "color", "label": "4 · Violet", "group": "Categories", "value": "#B99AF0" },
           "category-rose": { "type": "color", "label": "5 · Rose", "group": "Categories", "value": "#F18CB3" },
           "category-gold": { "type": "color", "label": "6 · Gold", "group": "Categories", "value": "#DBCA70" },
-          "surface-blue": { "type": "color", "label": "1 · Blue surface", "group": "Category surfaces", "value": "#233F65" },
-          "surface-orange": { "type": "color", "label": "2 · Orange surface", "group": "Category surfaces", "value": "#5A3B24" },
-          "surface-teal": { "type": "color", "label": "3 · Teal surface", "group": "Category surfaces", "value": "#204D46" },
-          "surface-violet": { "type": "color", "label": "4 · Violet surface", "group": "Category surfaces", "value": "#43345E" },
-          "surface-rose": { "type": "color", "label": "5 · Rose surface", "group": "Category surfaces", "value": "#582E42" },
-          "surface-gold": { "type": "color", "label": "6 · Gold surface", "group": "Category surfaces", "value": "#4E4624" }
+          "surface-blue": { "type": "color", "label": "1 · Blue surface", "group": "Category surfaces", "value": "#1E5489" },
+          "surface-orange": { "type": "color", "label": "2 · Orange surface", "group": "Category surfaces", "value": "#884018" },
+          "surface-teal": { "type": "color", "label": "3 · Teal surface", "group": "Category surfaces", "value": "#126B57" },
+          "surface-violet": { "type": "color", "label": "4 · Violet surface", "group": "Category surfaces", "value": "#613F91" },
+          "surface-rose": { "type": "color", "label": "5 · Rose surface", "group": "Category surfaces", "value": "#852D55" },
+          "surface-gold": { "type": "color", "label": "6 · Gold surface", "group": "Category surfaces", "value": "#666016" }
         },
         "mermaid": {
           "dark_mode": true,

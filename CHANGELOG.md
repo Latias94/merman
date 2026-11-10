@@ -20,6 +20,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
+- Merman themes separate Pie category surfaces and percentage ink from line-series accents. Native presets include twelve finite Pie colors; saved theme recipes improve category separation and fine chart ink while retaining their material styles. Colors still repeat after each recipe's palette ends; official Mermaid palette behavior is unchanged.
 - Web WASM sizes are reported without blocking byte ceilings, and Playground engine/bootstrap
   bundles no longer enforce build-time size caps. Package provenance,
   capability checks, smoke tests and browser tests remain required. `xtask wasm-size-matrix` no
@@ -31,6 +32,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
+- Native theme labels and backgrounds now stay paired on Mindmap roots and branches, Journey tasks, Timeline categories, Git Graph branches and tags, Class notes, and ER/Requirement relationships. Presets also adapt ER attribute rows, Requirement connectors, Architecture arrows, State terminal markers, and Gantt excluded periods. Explicit source colors retain priority.
 - Block, Radar, Packet and Wardley preserve large-number rounding instead of rejecting or saturating valid values at Rust integer limits. Block retains zero spans and the selected numeric token boundaries, while bounding cumulative space expansion before allocation. Packet row splitting detects arithmetic that cannot make progress. Wardley component and pipeline-child label offsets retain signed Number values through SVG output and editor facts.
 - Quadrant coordinates follow Mermaid's greedy token boundaries and Number conversion, including punctuation inside coordinate tokens and multiline padding. Point radii retain large-number rounding and overflow. XY Chart labels, Pie diagnostics and `showData` legends use JavaScript number text, preserving small values and matching legend measurement. Journey distinguishes infinity from invalid scores, and C4 relation offsets apply the selected renderer's second integer conversion.
 - Class interaction lines restore accessibility parsing for following `accTitle` and `accDescr` directives, including their editor payload ranges. Partial `href` and `call` actions retain completion edits without splitting completed composite target names.

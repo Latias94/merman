@@ -1066,7 +1066,6 @@ fn gitgraph_terminal_less_paint_claims_are_unsupported() {
         (ThemeTarget::Marker, ThemeRuleFacetV1::StrokePaint),
         (ThemeTarget::Cluster, ThemeRuleFacetV1::Fill),
         (ThemeTarget::Cluster, ThemeRuleFacetV1::StrokePaint),
-        (ThemeTarget::ClusterLabel, ThemeRuleFacetV1::Fill),
     ] {
         let query = ThemeSupportQueryV1::for_target(
             DiagramFamilyId::GIT_GRAPH.as_str(),
@@ -2036,6 +2035,47 @@ fn block_background_discovery_reports_a_partial_typed_consumer() {
             "theme-support.public-value-domain-partial"
         ]
     );
+}
+
+#[test]
+fn categorical_labels_notes_and_backings_report_their_bounded_paint_consumers() {
+    for (family, target, facets) in [
+        (
+            "class",
+            "note",
+            &[ThemeRuleFacetV1::Fill, ThemeRuleFacetV1::StrokePaint][..],
+        ),
+        ("class", "note-label", &[ThemeRuleFacetV1::Fill][..]),
+        ("er", "edge-label-background", &[ThemeRuleFacetV1::Fill][..]),
+        (
+            "requirement",
+            "edge-label-background",
+            &[ThemeRuleFacetV1::Fill][..],
+        ),
+        ("mindmap", "node-label", &[ThemeRuleFacetV1::Fill][..]),
+        ("journey", "task-label", &[ThemeRuleFacetV1::Fill][..]),
+        ("timeline", "node-label", &[ThemeRuleFacetV1::Fill][..]),
+        ("gitGraph", "cluster-label", &[ThemeRuleFacetV1::Fill][..]),
+        ("gantt", "excluded-period", &[ThemeRuleFacetV1::Fill][..]),
+    ] {
+        for &facet in facets {
+            let support = describe_theme_support(&ThemeSupportQueryV1::for_target(
+                family,
+                ThemeSupportOutputV1::StandaloneSvg,
+                target,
+                facet,
+            ));
+            assert_eq!(support.claim_revision(), 3);
+            assert_eq!(support.state(), ThemeSupportStateV1::Conditional);
+            assert_eq!(
+                support.reason_ids(),
+                [
+                    "theme-support.family-owned-consumer-present",
+                    "theme-support.public-value-domain-partial",
+                ],
+            );
+        }
+    }
 }
 
 #[test]

@@ -11,6 +11,8 @@ mod inherited_font_stack;
 mod label_background;
 pub(crate) mod native_typography;
 mod preparation;
+#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
+mod relationship_background;
 #[cfg(any(
     feature = "diagram-treemap",
     feature = "diagram-venn",
@@ -30,6 +32,8 @@ mod static_surface_paint;
 mod terminal_paint;
 mod theme_diagnostics;
 
+#[cfg(any(feature = "diagram-er", feature = "diagram-requirement"))]
+pub(crate) use relationship_background::RelationshipLabelBackgroundPlan;
 #[cfg(any(
     feature = "diagram-treemap",
     feature = "diagram-venn",

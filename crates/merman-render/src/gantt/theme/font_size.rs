@@ -3,7 +3,7 @@ use crate::mermaid_style::{
 };
 
 /// A presentation attribute keeps its source spelling independently of its used size.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct GanttFontSize {
     css: String,
     used_px: Option<f64>,

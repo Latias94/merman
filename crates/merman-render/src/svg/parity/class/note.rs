@@ -19,7 +19,7 @@ use super::rough::{
 pub(super) struct ClassNoteRenderContext<'a> {
     pub capture_text_facts: bool,
     pub text_paint: Option<&'a crate::class::ClassTextPaint>,
-    pub css_binding: &'a crate::class::ClassCssThemeBinding,
+    pub relation_theme: &'a crate::class::ClassRelationThemePlan,
     pub diagram_id: SvgDiagramId<'a>,
     pub measurer: &'a dyn TextMeasurer,
     pub text_style: &'a TextStyle,
@@ -44,6 +44,8 @@ pub(super) struct ClassNoteRenderStats {
     pub path_bounds: Duration,
     pub path_bounds_calls: usize,
     pub typography: crate::class::ClassTextTerminalFacts,
+    pub fill_rule: Option<usize>,
+    pub stroke_rule: Option<usize>,
 }
 
 pub(super) fn render_class_note_node<O: SvgOutput>(
@@ -125,8 +127,9 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
         label_h,
     );
     let path_bounds_start = ctx.timing.start();
-    let note_fill = ctx.css_binding.note_fill.as_str();
-    let note_stroke = ctx.css_binding.note_stroke.as_str();
+    let paint = ctx.relation_theme.note_paint();
+    let note_fill = paint.fill();
+    let note_stroke = paint.stroke();
     let note_shape_style = format!("fill:{note_fill} !important;stroke:{note_stroke} !important");
     let (note_fill_d, note_stroke_d) = if hand_drawn {
         class_rough_hachure_rect_paths(
@@ -170,13 +173,27 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     let note_label_class = "label noteLabel";
     let mut note_shape = String::new();
     if hand_drawn {
+        let fill_style = paint.fill_rule().map_or_else(String::new, |_| {
+            format!(
+                r#" style="stroke:{} !important;fill:none !important""#,
+                escape_attr_display(note_fill)
+            )
+        });
+        let stroke_style = paint.stroke_rule().map_or_else(String::new, |_| {
+            format!(
+                r#" style="stroke:{} !important;fill:none !important""#,
+                escape_attr_display(note_stroke)
+            )
+        });
         let _ = write!(
             &mut note_shape,
-            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"/></g>"##,
+            r##"<g class="basic label-container outer-path"><path d="{}" stroke="{}" stroke-width="1.5" fill="none" stroke-dasharray="0 0"{}/><path d="{}" stroke="{}" stroke-width="1.3" fill="none" stroke-dasharray="0 0"{}/></g>"##,
             escape_attr_display(&note_fill_d),
             escape_attr_display(&note_fill),
+            fill_style,
             escape_attr_display(&note_stroke_d),
             escape_attr_display(&note_stroke),
+            stroke_style,
         );
     } else {
         let _ = write!(
@@ -279,5 +296,9 @@ pub(super) fn render_class_note_node<O: SvgOutput>(
     if let Some(paint) = ctx.text_paint {
         stats.typography = paint.observe(stats.typography, emitted_style);
     }
+    stats.fill_rule = paint
+        .fill_rule()
+        .filter(|_| !hand_drawn || !note_fill_d.is_empty());
+    stats.stroke_rule = paint.stroke_rule().filter(|_| !note_stroke_d.is_empty());
     Ok(stats)
 }

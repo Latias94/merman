@@ -64,7 +64,7 @@ impl MindmapLabelPaintPlan {
             .iter()
             .enumerate()
             .filter(|(_, facts)| !facts.parse_valid() || facts.has_visible_runs())
-            .map(|(index, _)| (index + 1, ThemeVariant::Default))
+            .map(|(index, _)| (index + 1, super::theme::node_variant(&model.nodes[index])))
             .collect::<Vec<_>>();
         reconcile_unsupported_terminal_domains(
             theme,
@@ -86,7 +86,7 @@ impl MindmapLabelPaintPlan {
             }
             let style = theme.text_style_with_work_meter(
                 ThemeTarget::NodeLabel,
-                ThemeVariant::Default,
+                super::theme::node_variant(&model.nodes[index]),
                 Some(index + 1),
                 work,
             )?;
@@ -104,7 +104,12 @@ impl MindmapLabelPaintPlan {
                         theme,
                         &style,
                         &TARGETS,
-                        DirectStaticSelectorDomain::Default,
+                        if super::theme::node_variant(&model.nodes[index]) == ThemeVariant::Primary
+                        {
+                            DirectStaticSelectorDomain::State(ThemeVariant::Primary)
+                        } else {
+                            DirectStaticSelectorDomain::Default
+                        },
                     )
                 })
                 .flatten()

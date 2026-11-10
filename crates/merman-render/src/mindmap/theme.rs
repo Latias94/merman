@@ -19,6 +19,10 @@ use crate::family::{
 };
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
+#[path = "root_paint.rs"]
+mod root_paint;
+pub(super) use root_paint::node_variant;
+
 pub(crate) const MINDMAP_SECTION_COUNT: usize = 11;
 const MINDMAP_THEME_COLOR_LIMIT_DEFAULT: usize = MINDMAP_SECTION_COUNT + 1;
 const MINDMAP_COLOR_SCALE_PATHS: [&str; MINDMAP_SECTION_COUNT] = [
@@ -201,6 +205,7 @@ pub(crate) struct MindmapNodePalettePlan {
     inherited_font_stack: InheritedFontStackPlan,
     css_binding: OnceLock<super::css_binding::MindmapCssBinding>,
     label_paint: super::label_paint::MindmapLabelPaintPlan,
+    root_paint: root_paint::MindmapRootPaintPlan,
     typography: Option<MindmapTypographyFacts>,
 }
 
@@ -299,10 +304,23 @@ impl MindmapNodePalettePlan {
         plan.inherited_font_stack =
             InheritedFontStackPlan::resolve_property_local(Some(theme), config);
         plan.evidence = FamilyThemeOutcomes::default();
-        plan.resolve_node_paint(theme, config, work_meter)?;
+        plan.resolve_node_paint(theme, config, model, work_meter)?;
         plan.resolve_node_palette(theme, visited, work_meter)?;
         plan.resolve_edge_stroke(theme, config, model, work_meter)?;
         plan.prepare_css_binding(config, work_meter)?;
+        plan.root_paint = root_paint::MindmapRootPaintPlan::resolve(
+            theme,
+            config,
+            model,
+            plan.css_binding(),
+            work_meter,
+        )?;
+        let node_occurrences = model
+            .nodes
+            .iter()
+            .enumerate()
+            .map(|(index, node)| (index + 1, node_variant(node)))
+            .collect::<Vec<_>>();
         let absent = TerminalVariantDomain::uniform(0, ThemeVariant::Default);
         reconcile_unsupported_terminal_domains(
             theme,
@@ -319,7 +337,7 @@ impl MindmapNodePalettePlan {
                 ),
                 UnsupportedTerminalDomain::fallbacks_only(
                     ThemeTarget::Node,
-                    TerminalVariantDomain::uniform(model.nodes.len(), ThemeVariant::Default),
+                    TerminalVariantDomain::indexed(&node_occurrences),
                 ),
             ],
             work_meter,
@@ -367,6 +385,7 @@ impl MindmapNodePalettePlan {
         &mut self,
         theme: &ResolvedDiagramTheme,
         config: &PresentationConfig,
+        model: &MindmapDiagramRenderModel,
         work_meter: &OperationWorkMeter,
     ) -> Result<(), OperationWorkError> {
         let style = theme.style_with_work_meter(
@@ -424,11 +443,11 @@ impl MindmapNodePalettePlan {
             .any(|(_, rule)| rule.target() == ThemeTarget::Node && rule.ordinal().is_some());
         let mut occurrence_winners = BTreeSet::<(usize, ResolvedStyleProperty)>::new();
         if has_ordinal_node_rules {
-            for ordinal in 1..=self.node_count {
+            for (index, node) in model.nodes.iter().enumerate() {
                 let occurrence_style = theme.style_with_work_meter(
                     ThemeTarget::Node,
-                    ThemeVariant::Default,
-                    Some(ordinal),
+                    node_variant(node),
+                    Some(index + 1),
                     work_meter,
                 )?;
                 occurrence_winners.extend(
@@ -449,6 +468,17 @@ impl MindmapNodePalettePlan {
             else {
                 continue;
             };
+            if matches!(
+                selector,
+                FamilyThemeSelectorShape::Static {
+                    variant: Some(ThemeVariant::Primary)
+                } | FamilyThemeSelectorShape::Ordinal {
+                    variant: Some(ThemeVariant::Primary),
+                    ..
+                }
+            ) {
+                continue;
+            }
             let observation = observations.entry(rule_index).or_default();
             if !selector.ordinal_domain_intersects_occurrence_count(self.node_count) {
                 continue;
@@ -758,6 +788,7 @@ impl MindmapNodePalettePlan {
             inherited_font_stack: InheritedFontStackPlan::resolve_property_local(None, config),
             css_binding: OnceLock::new(),
             label_paint: super::label_paint::MindmapLabelPaintPlan::default(),
+            root_paint: root_paint::MindmapRootPaintPlan::default(),
             typography: None,
         })
     }
@@ -854,6 +885,7 @@ impl MindmapNodePalettePlan {
 
     pub(crate) fn begin_terminal_receipt(&self) -> MindmapNodePaletteReceipt {
         MindmapNodePaletteReceipt {
+            root_paint: self.root_paint.begin_receipt(),
             label_paint: self.label_paint.begin_receipt(),
             labels_valid: true,
             fill_rule: self
@@ -880,6 +912,20 @@ impl MindmapNodePalettePlan {
             .map(DirectPaintExpectation::css)
     }
 
+    pub(crate) fn root_fill_for_node(&self, index: usize) -> Option<&str> {
+        self.root_paint.fill(index)
+    }
+
+    pub(crate) fn record_root_css(
+        &self,
+        receipt: &mut MindmapNodePaletteReceipt,
+        index: usize,
+        fill: &str,
+    ) {
+        self.root_paint
+            .record_css(&mut receipt.root_paint, index, fill);
+    }
+
     pub(crate) fn record_label_css(
         &self,
         receipt: &mut MindmapNodePaletteReceipt,
@@ -891,6 +937,7 @@ impl MindmapNodePalettePlan {
     }
 
     pub(crate) fn record_label_node(&self, receipt: &mut MindmapNodePaletteReceipt, index: usize) {
+        self.root_paint.record_node(&mut receipt.root_paint, index);
         receipt.labels_valid &= index == receipt.next_label && index < self.node_count;
         receipt.next_label = receipt.next_label.saturating_add(1);
         self.label_paint
@@ -934,6 +981,12 @@ impl MindmapNodePalettePlan {
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
+        self.root_paint.record_evidence(
+            evidence,
+            self.node_terminal_receipt
+                .get()
+                .map(|receipt| &receipt.root_paint),
+        );
         self.label_paint.record_evidence(
             evidence,
             self.node_terminal_receipt
@@ -1113,6 +1166,7 @@ pub(crate) enum MindmapNodePaletteTerminalDecision {
 /// Compact outcomes reported by the existing node shape writers.
 #[derive(Debug, Default)]
 pub(crate) struct MindmapNodePaletteReceipt {
+    root_paint: root_paint::MindmapRootPaintReceipt,
     label_paint: super::label_paint::MindmapLabelPaintReceipt,
     next_label: usize,
     labels_valid: bool,

@@ -249,6 +249,62 @@ does not imply glyph coverage, and a successful theme status does not certify ei
 [host measurement guide](../bindings/HOST_TEXT_MEASUREMENT.md) describes callback preparation,
 native contexts and per-request fallback evidence.
 
+## Categorical colors and repeated entries
+
+An ordinal palette is a finite, ordered list. A category after its last entry reuses the first
+color; the renderer does not invent additional colors or combine data into an `Other` category.
+Category identity, the family's ordering rules, and legend associations remain intact. A correct
+cycle does not guarantee that a dense chart is easy to read.
+
+Keep line-series inks, labeled category surfaces, and emphasis colors independent when they need
+different contrast. A pale paper color can work behind dark text and disappear as a thin line.
+A light label that works on a dark canvas can disappear on a bright sector. Check actual opacity
+and background layers: Pie normally paints sectors at 0.7 opacity while its percentage text and
+legend swatches remain separate opaque elements.
+
+Merman's native presets author a separate twelve-color `pie-series` palette and `pie-text` ink.
+Titles and legend labels keep their canvas-facing roles. Ghibli uses muted botanical colors for
+its sectors while retaining its paper and text treatment. Editing a Pie token does not recolor a
+line chart or a Mindmap branch. Saved artistic recipes keep their own finite capacities: Reading,
+Atlas, and Nightfall use eight categories; most others use six, while Riso intentionally retains
+two chart inks. Monograph's grayscale remains a limited categorical distinction.
+
+Native presets also keep opaque `category-fills` and `category-text` independent of Pie opacity
+and chart strokes. Mindmap's primary root has its own fill/text pair; branch labels follow the
+branch category rather than the node's visit order. Journey's `task-label`, Timeline's
+`node-label`, and Git Graph's branch `cluster-label` address text on colored surfaces, while
+titles, outside labels, Git tags, and commit labels retain their separate roles. Explicit
+family scale and label colors still own their slots. These fallback adaptations do not expand
+the preset catalog's declared design scope.
+
+Ghibli uses six darker botanical chart inks for thin chart marks and Sankey nodes/links, separate
+from its pale labeled surfaces. Native Treemap sections use the category palette without a
+uniform body fill hiding it. Gantt excluded calendar bands and text over section overlays have
+independent roles; task-state label colors retain their own priority.
+
+The family's color domain can impose another ring before palette lookup:
+
+| Family | Color domain |
+| --- | --- |
+| Pie | Original section-label order, including entries whose percentages round to `0%`; those entries retain their legend slot. Mermaid's default uses twelve `pieN` values. A typed `pie-slice` palette uses its own length. |
+| XY Chart | Plot/series declaration order across bars and lines, independently of the number of x-axis values. |
+| Mindmap | Eleven branch/depth section slots; the root has a separate paint owner. |
+| Kanban | Task occurrences wrap through twelve family slots before selecting an authored palette entry. |
+| Timeline | Section/task slots follow the configured family color ring. |
+| Journey | Section runs follow `journey.sectionFills`' ring; actors have a separate palette. |
+| Radar | The typed palette adapter currently supports twelve indexed slots; a thirteenth dependent series retains an unsupported-palette result. |
+
+Review the first repeat as well as ordinary samples. With `k + 1` visible Pie sectors and a
+`k`-color cycle, the last and first sectors share a color and touch at the circular boundary.
+Separators and labels help preserve boundaries, but do not create an unlimited supply of unique
+category identities. Inspect long legends, small values, and both appearances before choosing a
+recipe for more categories. Source-owned colors and opacity remain deliberate user overrides.
+
+These custom-preset changes leave official Mermaid palette behavior intact. Alpha presets remain
+subject to their declared family scope and [qualification](preset-qualification.md); attractive
+samples, successful compilation, and shared fallback styling do not grant additional qualified
+cells or automatically promote a saved recipe into the native catalog.
+
 ## Family configuration and compiled rules
 
 Mermaid compatibility configuration remains a separate input from compiled style rules.
@@ -800,7 +856,7 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
-Ghibli adds a warm, textured canvas and a five-color muted Pie palette with typed title,
+Ghibli adds a warm, textured canvas and a twelve-color muted Pie palette with typed title,
 percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
 uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
 

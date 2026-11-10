@@ -191,6 +191,7 @@ impl TimelineTextPaintEmissionState<'_> {
         node: &TimelineNodeLayout,
         slot: Option<usize>,
         inline_fill: Option<&str>,
+        inline_label_fill: Option<&str>,
     ) {
         let Some(outcome) = &mut self.outcome else {
             return;
@@ -198,14 +199,19 @@ impl TimelineTextPaintEmissionState<'_> {
         let shape_fill = inline_fill.or_else(|| {
             slot.and_then(|slot| timeline_section_fill(self.theme, slot, self.neo_gradient))
         });
-        let label_fill =
-            slot.and_then(|slot| timeline_section_label_fill(self.theme, slot, self.event_stroke));
-        outcome.record_node(
-            shape_fill,
-            label_fill,
-            self.text_can_be_visible && node.label_lines.iter().any(|line| !line.trim().is_empty()),
+        let label_fill = inline_label_fill.or_else(|| {
+            slot.and_then(|slot| timeline_section_label_fill(self.theme, slot, self.event_stroke))
+        });
+        let visible =
+            self.text_can_be_visible && node.label_lines.iter().any(|line| !line.trim().is_empty());
+        self.plan.record_category_label(
+            outcome,
+            slot,
+            inline_label_fill,
+            visible,
             self.text_font_size_known,
         );
+        outcome.record_node(shape_fill, label_fill, visible, self.text_font_size_known);
     }
 
     fn finish(self) {
@@ -500,7 +506,12 @@ pub(crate) fn render_timeline_diagram_svg_model(
             y = fmt(ty)
         );
         out.checkpoint()?;
-        out.push_str(r#"<text dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle">"#);
+        let label_fill = text_emission.plan.label_fill_css(node_palette_slot);
+        out.push_str(r#"<text dy="1em" alignment-baseline="middle" dominant-baseline="middle" text-anchor="middle""#);
+        if let Some(fill) = label_fill {
+            let _ = write!(out, r#" style="fill:{};""#, escape_attr(fill));
+        }
+        out.push('>');
         out.checkpoint()?;
         for (idx, line) in n.label_lines.iter().enumerate() {
             let dy = if idx == 0 { "1em" } else { "1.1em" };
@@ -519,7 +530,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
             node_palette_slot,
             direct_fill.is_none() && palette_fill.is_some(),
         );
-        text_emission.record_node(n, node_palette_slot, effective_fill);
+        text_emission.record_node(n, node_palette_slot, effective_fill, label_fill);
         options.checkpoint_emit()?;
         Ok(())
     }
