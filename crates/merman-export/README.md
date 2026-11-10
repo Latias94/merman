@@ -32,6 +32,10 @@ supported; missing-glyph requests retain deterministic fallback by default. Opt 
 `NativeFontContext::with_strict_glyph_coverage(true)` to return a normal error instead of
 declining unsupported measurement or silently painting missing glyphs.
 This does not promise browser pixel parity or arbitrary HTML/CSS typography.
+Implicit family and missing-glyph selection exclude symbolic/pictorial faces and fonts marked
+as Last Resort by OpenType `head.flags` bit 14. Last Resort glyphs represent code-point ranges,
+not readable character coverage; choosing one for a missing emoji can replace an otherwise
+readable mixed-script label with placeholders. Explicitly named font requests remain available.
 Direct exporters set
 the same context with `RasterOptions::with_font_context` or
 `PdfOptions::with_font_context`. PNG, JPEG, and PDF do not enable `system-fonts`.
