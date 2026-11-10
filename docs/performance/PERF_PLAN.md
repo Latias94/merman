@@ -80,6 +80,24 @@ optimization, changed runtime contract or different release baseline does not cl
    and resource limits. Record model size, SVG bytes/elements and relevant DOM/raster controls.
    Keep in-flight ledgers under `target/bench`; retain only concise decision-relevant evidence.
 
+## Playground frontend
+
+Keep browser UI workloads separate from native renderer latency. Local source edits stay in Monaco
+and publish to the workspace without a controlled-value echo; external replacements reconcile
+through the mounted editor binding. Preview subscribes to visible/current batches and input
+freshness, preserving immediate stale-action invalidation without observing each debounce request
+identity. Preserve these ownership boundaries when extending editor features.
+
+Remaining attribution leads, not admitted speedups:
+
+- **First syntax highlighting:** `createMermaidSyntaxEngine()` waits for Tree-sitter runtime
+  initialization before starting the language WASM download. Investigate overlapping download and
+  compilation with initialization while retaining streaming fallback and explicit worker failures.
+- **Large-diagram fitting:** the infinite-canvas fit walks the mounted SVG for connected visual
+  bounds on each fit/automatic resize. Attribute geometry reads and layout separately from rendering.
+  A reuse proposal must cover responsive sizing, fonts, DOM changes, presentation mode and mount
+  lifetime; an artifact-identity-only cache does not establish equivalent geometry.
+
 ## Current artifact budget owners
 
 [WASM_SIZE_BUDGETS.json](../release/WASM_SIZE_BUDGETS.json) owns Typst's raw, stripped, gzip and

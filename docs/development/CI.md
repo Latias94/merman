@@ -294,6 +294,18 @@ Pull requests build and test the site but do not deploy it. Main-branch runs upl
 WebKit retain focused smoke coverage because browser-specific loading and worker failures are a
 user-visible contract rather than a duplicate source-level test.
 
+Mobile interaction coverage also checks shared links that initially show Preview: neither Code nor
+Config mounts an editor before the workspace becomes visible. Opening Editor or widening the page
+activates it; later workspace switches preserve its model and undo history. Desktop startup checks
+keep the editor usable while preview WASM is blocked and retain staged language-worker activation.
+Editor synchronization coverage preserves external replacement, empty documents, Unicode edits,
+late mounting and undo/redo. Preview controls must invalidate old artifacts when any current
+render input changes, while repeated debounce scheduling leaves an unchanged preview alone.
+Theme surface smoke coverage also checks the measured native State composite title against its
+header and samples actual depth/surface overlap pixels for both supported filter color spaces.
+These checks exercise the current layer composition rather than compare with the former
+single filtered-body output.
+
 JavaScript toolchains are pinned in their owning workflows. Linux Node native packages use
 separate GNU and musl container baselines; update them only with native compatibility
 qualification. A newer host Node.js or npm version does not itself change those runtime baselines.

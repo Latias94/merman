@@ -550,9 +550,18 @@ pub(crate) struct SankeyLinkView<'a> {
     pub(crate) paint: SankeyLinkPaint<'a>,
 }
 
+/// Compiled themes own their colors and keep flows beneath nodes and labels.
+/// Unthemed output retains Mermaid's multiply compositing and document order.
+#[derive(Debug, Clone, Copy)]
+enum SankeyCompositing {
+    MermaidParity,
+    ThemeOwned,
+}
+
 /// Prepares node paint and literal labels for terminal output and occurrence evidence.
 #[derive(Debug)]
 pub(crate) struct SankeyNodePalettePlan {
+    compositing: SankeyCompositing,
     node_indices: HashMap<String, SankeyNodeLookup>,
     links: Option<Vec<SankeyPreparedLink>>,
     literal_link_paint: Box<str>,
@@ -579,6 +588,7 @@ impl SankeyNodePalettePlan {
             return Ok(plan);
         };
 
+        plan.compositing = SankeyCompositing::ThemeOwned;
         plan.evidence = FamilyThemeOutcomes::default();
         work_meter.charge(plan.paints.len())?;
         let source_owned_fill = plan
@@ -852,6 +862,7 @@ impl SankeyNodePalettePlan {
         retained_labels.reconcile_downward(retained_bytes);
 
         Ok(Self {
+            compositing: SankeyCompositing::MermaidParity,
             node_indices,
             links: None,
             literal_link_paint: "".into(),
@@ -869,6 +880,17 @@ impl SankeyNodePalettePlan {
 
     pub(crate) fn labels(&self) -> &[SankeyPreparedLabel] {
         &self.labels
+    }
+
+    pub(crate) fn link_blend_mode_css(&self) -> &'static str {
+        match self.compositing {
+            SankeyCompositing::MermaidParity => "multiply",
+            SankeyCompositing::ThemeOwned => "normal",
+        }
+    }
+
+    pub(crate) fn links_before_nodes(&self) -> bool {
+        matches!(self.compositing, SankeyCompositing::ThemeOwned)
     }
 
     pub(crate) fn fill_for(&self, node_index: usize, node_id: &str) -> Option<&str> {
@@ -1056,7 +1078,6 @@ fn sankey_node_paint(
 ) -> Option<DirectPaintExpectation> {
     let origin = resolution.winner()?;
     if origin.target() != ThemeTarget::Node
-        || origin.ordinal().is_some()
         || !matches!(origin.variant(), None | Some(ThemeVariant::Default))
         || theme.rule_facet_disposition(origin.rule_index(), facet(resolution.specified())?)
             != Some(FamilyThemeDisposition::TypedAdapter)

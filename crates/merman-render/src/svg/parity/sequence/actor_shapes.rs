@@ -522,7 +522,73 @@ pub(super) fn write_rect_actor_shape(
     shadow: Option<super::actor_effect::SequenceActorShadow<'_>>,
     property_icon: Option<&str>,
 ) -> Result<()> {
-    let filter = shadow.as_ref().map(|shadow| shadow.write_definition(out));
+    write_rect_actor_body(
+        out,
+        n,
+        actor_id,
+        actor,
+        placement_class,
+        actor_index,
+        label_ctx,
+        rect_style,
+        shadow.is_some() || receipt.effect_cleared,
+        None,
+    );
+    out.checkpoint()?;
+    if shadow.is_some() || actor_rect_geometry_supported(actor) && receipt.effect_cleared {
+        receipt.record_effect_rect();
+    }
+    if actor_rect_geometry_supported(actor) {
+        receipt.record_geometry_rect();
+    }
+    write_actor_property_icon(out, n, property_icon);
+    label_ctx.write_actor(out, n.x, n.y, actor)
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn write_rect_actor_depth(
+    out: &mut impl SvgOutput,
+    n: &LayoutNode,
+    actor_id: &str,
+    actor: &SequenceActor,
+    actor_index: usize,
+    label_ctx: &ActorLabelContext<'_>,
+    rect_style: SequenceActorRectStyle,
+    shadow: super::actor_effect::SequenceActorShadow<'_>,
+) -> Result<()> {
+    let filter = shadow.write_depth_definition(out);
+    out.push_str(r#"<g data-merman-theme-depth="actor" aria-hidden="true" pointer-events="none">"#);
+    write_rect_actor_body(
+        out,
+        n,
+        actor_id,
+        actor,
+        "actor-depth",
+        actor_index,
+        label_ctx,
+        rect_style,
+        true,
+        Some(&filter),
+    );
+    out.push_str("</g>");
+    out.checkpoint()?;
+    shadow.record_emission();
+    Ok(())
+}
+
+#[allow(clippy::too_many_arguments)]
+fn write_rect_actor_body(
+    out: &mut impl SvgOutput,
+    n: &LayoutNode,
+    actor_id: &str,
+    actor: &SequenceActor,
+    placement_class: &str,
+    actor_index: usize,
+    label_ctx: &ActorLabelContext<'_>,
+    rect_style: SequenceActorRectStyle,
+    suppress_look_filter: bool,
+    depth_filter: Option<&str>,
+) {
     let (x, y) = node_left_top(n);
     let custom_class = actor_custom_class(actor);
     let fill = if custom_class.is_some() {
@@ -541,19 +607,25 @@ pub(super) fn write_rect_actor_shape(
     };
     let _ = write!(
         out,
-        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}" name="{name}" rx="{radius}" ry="{radius}" class="{class}""##,
+        r##"<rect x="{x}" y="{y}" fill="{fill}" stroke="#666" width="{w}" height="{h}""##,
         x = fmt(x),
         y = fmt(y),
         w = fmt(n.width),
         h = fmt(n.height),
-        name = escape_xml(actor_id),
         fill = escape_xml_display(fill),
-        class = escape_attr(&class),
+    );
+    if depth_filter.is_none() {
+        let _ = write!(out, r#" name="{}""#, escape_xml(actor_id));
+    }
+    let _ = write!(
+        out,
+        r#" rx="{radius}" ry="{radius}" class="{class}""#,
         radius = fmt(f64::from(radius)),
+        class = escape_attr(&class)
     );
     if is_neo {
         out.push_str(r#" data-look="neo""#);
-        if filter.is_none() && !receipt.effect_cleared {
+        if !suppress_look_filter {
             label_ctx.write_shadow_attr(out);
         }
     }
@@ -563,22 +635,10 @@ pub(super) fn write_rect_actor_shape(
         actor_index,
         supported.then_some(rect_style.stroke_width).flatten(),
     );
-    if let Some(filter) = &filter {
+    if let Some(filter) = depth_filter {
         let _ = write!(out, r#" filter="{}""#, escape_attr(filter));
     }
     out.push_str("/>");
-    out.checkpoint()?;
-    if let Some(shadow) = shadow {
-        shadow.record_emission();
-        receipt.record_effect_rect();
-    } else if supported && receipt.effect_cleared {
-        receipt.record_effect_rect();
-    }
-    if supported {
-        receipt.record_geometry_rect();
-    }
-    write_actor_property_icon(out, n, property_icon);
-    label_ctx.write_actor(out, n.x, n.y, actor)
 }
 
 fn write_actor_property_icon(

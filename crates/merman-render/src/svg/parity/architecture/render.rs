@@ -12,7 +12,8 @@ use super::labels::{
     svg_service_title_bounds, svg_source_has_visible_text, wrap_svg_words_to_lines,
 };
 use super::nodes::{
-    ArchitectureNodeRenderContext, architecture_service_has_icon_text, push_architecture_groups,
+    ArchitectureNodeRenderContext, architecture_service_has_icon_text,
+    push_architecture_group_surfaces, push_architecture_groups,
     push_architecture_services_and_junctions,
 };
 use super::root::{architecture_a11y_nodes, begin_architecture_document};
@@ -246,6 +247,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         if let Some(b) = group_rects_computer.get(g.id.as_str()) {
             group_rects.push(GroupRect {
                 id: g.id.as_str(),
+                parent: g.in_group.as_deref(),
                 x: b.min_x,
                 y: b.min_y,
                 w: (b.max_x - b.min_x).max(1.0),
@@ -310,7 +312,20 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
         options.work_meter(),
     )?;
     let mut edge_style_emitted = false;
-    let mut group_emitted = false;
+    let separate_group_surfaces = options.resolved_theme().is_some();
+    let group_emitted = if separate_group_surfaces {
+        push_architecture_group_surfaces(
+            &mut out,
+            diagram_id,
+            &group_rects,
+            group_theme.inline_style(),
+            checkpoints,
+        )?
+    } else {
+        !group_rects.is_empty()
+    };
+    out.push_str(r#"<g class="architecture-edges">"#);
+    out.checkpoint()?;
     // Edge bounds and DOM emission live in `architecture/edges.rs`.
     {
         let mut edge_render_ctx = ArchitectureEdgeRenderContext {
@@ -354,12 +369,7 @@ pub(crate) fn render_architecture_diagram_svg_typed_with_config(
             checkpoints,
         };
         push_architecture_services_and_junctions(&mut node_render_ctx)?;
-        push_architecture_groups(
-            &mut node_render_ctx,
-            &group_rects,
-            group_theme.inline_style(),
-            &mut group_emitted,
-        )?;
+        push_architecture_groups(&mut node_render_ctx, &group_rects, !separate_group_surfaces)?;
     }
 
     checkpoints.checkpoint()?;

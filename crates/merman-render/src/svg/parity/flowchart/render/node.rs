@@ -3,11 +3,13 @@
 use super::super::*;
 use crate::svg::parity::timing::RenderTiming;
 
+mod depth;
 pub(in crate::svg::parity::flowchart) mod emission;
 pub(in crate::svg::parity::flowchart) mod geom;
 pub(in crate::svg::parity::flowchart) mod helpers;
 mod label;
 pub(in crate::svg::parity) use crate::svg::parity::roughjs_common::paths as roughjs;
+pub(in crate::svg::parity::flowchart) use depth::render_flowchart_node_depth;
 pub(in crate::svg::parity::flowchart) mod shapes;
 
 #[cfg(all(test, feature = "diagram-flowchart"))]
@@ -271,44 +273,19 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
         typed_label_fill,
     );
 
-    let effect_application = prepared_effect
-        .and_then(|geometry| geometry.shadow().zip(prepared.style.effect()))
-        .map(|(materialized, effect)| {
-            let id = format!("{}-theme-effect-{}", node_dom_id, effect.id());
-            let reference = crate::svg::parity::shadow::write_theme_shadow_application(
-                out,
-                &id,
-                effect,
-                materialized.region(),
-            );
-            let attribute = format!(r#" filter="{}""#, escape_attr(&reference));
-            let style = if look == "neo" {
-                format!(";filter:{} !important", escape_attr(&reference))
-            } else {
-                String::new()
-            };
-            (id, effect, materialized.region(), attribute, style)
-        });
     let effect_selected = prepared_effect.is_some_and(|effect| effect.replaces_look_filter());
-    let effect_filter_style = effect_application.as_ref().map_or_else(
-        || {
-            if look == "neo" && effect_selected {
-                ";filter:none !important"
-            } else {
-                ""
-            }
-        },
-        |(_, _, _, _, style)| style.as_str(),
-    );
+    let effect_filter_style = if look == "neo" && effect_selected {
+        ";filter:none !important"
+    } else {
+        ""
+    };
     let common = FlowchartNodeRenderCommon {
         geometry: prepare_node_geometry(ctx, node_id, &resolved)?,
 
         label_emission: &label_emission,
         style,
         junction_style: selection.junction_style.as_deref().unwrap_or(style),
-        effect_filter_attr: effect_application
-            .as_ref()
-            .map_or("", |(_, _, _, attr, _)| attr.as_str()),
+        effect_filter_attr: "",
         effect_filter_style,
         effect_selected,
         suppress_child_filters: effect_selected && look == "neo",
@@ -366,11 +343,6 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
             false,
         )
     };
-    if shape_outcome.emission().typed_effect_verified()
-        && let Some((id, effect, region, _, _)) = &effect_application
-    {
-        ctx.effect_evidence.record_application(effect, id, *region);
-    }
     let label_receipt = if no_label {
         out.push_str("</g>");
         if common.wrapped_in_a {

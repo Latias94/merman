@@ -27,7 +27,10 @@
       "families": {
         "flowchart": { "font_size_px": 15 },
         "sequence": { "font_stack": { "ref": "message-font" }, "font_size_px": 14 },
-        "class": { "font_stack": { "ref": "code-font" }, "font_size_px": 14 }
+        "class": { "font_stack": { "ref": "code-font" }, "font_size_px": 14 },
+        "state": {"font_size_px": 15, "font_stack": {"ref": "body-font"}},
+        "er": {"font_stack": {"ref": "code-font"}, "font_size_px": 14},
+        "mindmap": {"font_stack": {"ref": "body-font"}}
       }
     },
     "styles": {
@@ -66,11 +69,38 @@
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "ref": "outline" } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "ref": "ink" }, "typography": { "font_size_px": 16, "font_weight": 600 } } },
       { "family": "pie", "target": "title", "style": { "fill": { "ref": "accent-paint" }, "typography": { "font_size_px": 24, "font_weight": 600 } } },
-      { "family": "pie", "target": "legend", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 14 } } }
+      { "family": "pie", "target": "legend", "style": { "fill": { "ref": "muted-ink" }, "typography": { "font_size_px": 14 } } },
+      {"family": "state", "target": "text", "style": {"fill": {"ref": "ink"}}},
+      {"family": "state", "target": "state", "style": {"fill": {"ref": "surface"}, "stroke": {"paint": {"ref": "outline"}, "width": 1.5}, "radius": 0}},
+      {"family": "state", "target": "state-label", "style": {"fill": {"ref": "ink"}, "typography": {"font_weight": 600}}},
+      {"family": "state", "target": "composite", "style": {"fill": {"ref": "canvas"}, "stroke": {"paint": {"ref": "outline"}, "width": 1}}},
+      {"family": "state", "target": "composite-header", "style": {"fill": {"ref": "surface-alt"}, "stroke": {"paint": {"ref": "outline"}, "width": 1}}},
+      {"family": "state", "target": "composite-label", "style": {"fill": {"ref": "accent-paint"}, "typography": {"font_weight": 600}}},
+      {"family": "state", "target": "transition", "style": {"stroke": {"paint": {"ref": "connector"}, "width": 1.5}}},
+      {"family": "state", "target": "transition-marker", "style": {"fill": {"ref": "connector"}, "stroke": {"paint": {"ref": "connector"}}}},
+      {"family": "state", "target": "transition-label", "style": {"fill": {"ref": "ink"}, "typography": {"font_size_px": 13, "font_stack": {"ref": "message-font"}}}},
+      {"family": "state", "target": "transition-label-background", "style": {"fill": {"ref": "canvas"}}},
+      {"family": "state", "target": "special-state", "variant": "start", "style": {"fill": {"ref": "connector"}, "stroke": {"paint": {"ref": "connector"}}}},
+      {"family": "state", "target": "special-state", "variant": "end", "style": {"fill": {"ref": "canvas"}, "stroke": {"paint": {"ref": "connector"}}}},
+      {"family": "state", "target": "special-state-inner", "variant": "end", "style": {"fill": {"ref": "connector"}, "stroke": {"paint": {"ref": "connector"}}}},
+      {"family": "state", "target": "special-state", "variant": "special", "style": {"fill": {"ref": "note-surface"}, "stroke": {"paint": {"ref": "accent-paint"}}}},
+      {"family": "state", "target": "note", "style": {"fill": {"ref": "note-surface"}, "stroke": {"paint": {"ref": "outline"}}}},
+      {"family": "state", "target": "note-label", "style": {"fill": {"ref": "note-ink"}, "typography": {"font_size_px": 14}}},
+      {"family": "er", "target": "entity", "style": {"fill": {"ref": "surface-alt"}, "stroke": {"paint": {"ref": "outline"}}}},
+      {"family": "er", "target": "table", "variant": "odd", "style": {"fill": {"ref": "surface"}}},
+      {"family": "er", "target": "table", "variant": "even", "style": {"fill": {"ref": "surface-alt"}}},
+      {"family": "er", "target": "relation", "style": {"stroke": {"paint": {"ref": "connector"}}}},
+      {"family": "er", "target": "text", "style": {"fill": {"ref": "ink"}}},
+      {"family": "er", "target": "title", "style": {"fill": {"ref": "accent-paint"}}},
+      {"family": "mindmap", "target": "text", "style": {"fill": {"ref": "ink"}}},
+      {"family": "mindmap", "target": "node-label", "style": {"fill": {"ref": "ink"}}},
+      {"family": "mindmap", "target": "edge", "style": {"stroke": {"paint": {"ref": "connector"}}}}
     ],
     "palettes": {
       "chart-series": { "ref": "series" },
-      "pie-slice": { "ref": "pie-series" }
-    }
+      "pie-slice": { "ref": "pie-series" },
+      "node": {"ref": "pie-series"}
+    },
+    "mermaid": {"variables": {"git0": "#E7C5B8", "erEdgeLabelBackground": "#F7F2E8"}}
   }
 }

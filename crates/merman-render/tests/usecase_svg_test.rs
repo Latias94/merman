@@ -3566,8 +3566,7 @@ Data -- Login
         assert_eq!(evidence.theme_residual_count(), 2);
     }
 
-    #[test]
-    fn usecase_compiled_classic_body_shadows_keep_labels_and_layout_independent() {
+    fn usecase_body_shadow_theme() -> DiagramTheme {
         let effects = DiagramEffectSet::default()
             .with_graph(
                 EffectGraph::new(
@@ -3584,7 +3583,7 @@ Data -- Login
                 .unwrap(),
             )
             .unwrap();
-        let theme = DiagramThemeCompiler::new()
+        DiagramThemeCompiler::new()
             .compile(
                 DiagramThemeSpec::new()
                     .with_styles(
@@ -3597,8 +3596,13 @@ Data -- Login
                     )
                     .with_effects(effects),
             )
-            .unwrap();
-        let source = "usecase-beta\nA(Alpha)\n";
+            .unwrap()
+    }
+
+    #[test]
+    fn usecase_compiled_classic_body_shadows_keep_connections_labels_and_layout_independent() {
+        let theme = usecase_body_shadow_theme();
+        let source = "usecase-beta\ndirection TB\nsystemBoundary Work[Work]\nA(Alpha)@{business:true}\nB[Beta]\nend\nA --> B\nB --> A\nstyle A fill:#ffe500,fill-opacity:0.5,opacity:0.75\n";
         let config = json!({"layout":"dagre", "look":"classic", "htmlLabels":false});
         let (layout, rendered) = render_with_environment(
             source,
@@ -3632,8 +3636,8 @@ Data -- Login
             .iter()
             .map(|node| node.attribute("id").unwrap())
             .collect();
-        // Two shared look resources remain; exactly one new resource belongs to the body.
-        assert_eq!(filters.len(), baseline_filters.len() + 1);
+        // Two shared look resources remain; each admitted body has one depth resource.
+        assert_eq!(filters.len(), baseline_filters.len() + 2);
         assert_eq!(filter_ids.len(), filters.len(), "duplicate filter IDs");
         for id in &baseline_filters {
             let filter = filters
@@ -3657,25 +3661,110 @@ Data -- Login
             }
         }
         let theme_filters: Vec<_> = filter_ids.difference(&baseline_filters).copied().collect();
-        assert_eq!(theme_filters.len(), 1);
+        assert_eq!(theme_filters.len(), 2);
         let bodies: Vec<_> = document
             .descendants()
             .filter(|node| has_class(*node, "usecase-theme-body-effect"))
             .collect();
-        assert_eq!(bodies.len(), 1);
-        let body = bodies[0];
+        assert_eq!(bodies.len(), 2);
+        let root = document
+            .descendants()
+            .find(|node| has_class(*node, "root"))
+            .unwrap();
+        let groups: Vec<_> = root
+            .children()
+            .filter(roxmltree::Node::is_element)
+            .map(|node| node.attribute("class").unwrap())
+            .collect();
         assert_eq!(
-            body.attribute("filter"),
-            Some(format!("url(#{})", theme_filters[0]).as_str())
+            groups,
+            [
+                "clusters",
+                "usecase-node-shadows",
+                "edgePaths edges",
+                "edgeLabels",
+                "nodes"
+            ]
         );
-        assert!(body.ancestors().any(|node| node == owner(&document, "A")));
-        assert!(body.descendants().any(|node| node == shell(&document, "A")));
-        assert!(body.descendants().all(|node| !node.has_tag_name("text")));
+        for id in ["A", "B"] {
+            let shadow = document
+                .descendants()
+                .find(|node| node.attribute("data-usecase-shadow-for") == Some(id))
+                .unwrap();
+            let foreground = owner(&document, id);
+            assert_eq!(
+                shadow.attribute("transform"),
+                foreground.attribute("transform")
+            );
+            assert!(shadow.attribute("id").is_none());
+            assert!(
+                shadow
+                    .descendants()
+                    .all(|node| !node.has_tag_name("text") && !node.has_tag_name("foreignObject"))
+            );
+            let surface = shell(&document, id);
+            let depth_surface = shadow
+                .descendants()
+                .find(|node| node.tag_name() == surface.tag_name())
+                .unwrap();
+            for attribute in ["class", "style", "rx", "ry", "x", "y", "width", "height"] {
+                assert_eq!(
+                    depth_surface.attribute(attribute),
+                    surface.attribute(attribute),
+                    "{id} {attribute}"
+                );
+            }
+            assert!(
+                surface
+                    .ancestors()
+                    .all(|node| !has_class(node, "usecase-theme-body-effect"))
+            );
+        }
+        for id in theme_filters {
+            let filter = filters
+                .iter()
+                .find(|node| node.attribute("id") == Some(id))
+                .unwrap();
+            let final_merge = filter
+                .children()
+                .rfind(roxmltree::Node::is_element)
+                .unwrap();
+            assert!(final_merge.has_tag_name("feMerge"));
+            assert!(
+                final_merge
+                    .children()
+                    .filter(roxmltree::Node::is_element)
+                    .all(|node| node.attribute("in") != Some("SourceGraphic"))
+            );
+        }
+        for before in baseline_document
+            .descendants()
+            .filter(|node| has_class(*node, "relationship"))
+        {
+            let after = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id") == before.attribute("id")
+                        && has_class(*node, "relationship")
+                })
+                .unwrap();
+            for attribute in ["d", "data-points", "marker-start", "marker-end", "style"] {
+                assert_eq!(
+                    after.attribute(attribute),
+                    before.attribute(attribute),
+                    "{attribute}"
+                );
+            }
+        }
         let label = owner(&document, "A")
             .descendants()
             .find(|node| node.is_text() && node.text() == Some("Alpha"))
             .unwrap();
-        assert!(label.ancestors().all(|node| node != body));
+        assert!(
+            label
+                .ancestors()
+                .all(|node| !has_class(node, "usecase-node-shadows"))
+        );
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.accounted_count(), evidence.required_count());
@@ -3693,6 +3782,74 @@ Data -- Login
             let evidence =
                 merman_render::__private::family_evidence(rendered.into_completion().report());
             assert_eq!(evidence.theme_residual_count(), 1, "{look}");
+        }
+    }
+
+    #[test]
+    fn usecase_body_depth_uses_the_winning_effect_with_each_label_and_layout_backend() {
+        let theme = usecase_body_shadow_theme();
+        let clear = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::Node,
+            ThemeStylePatch {
+                effects: merman_render::diagram_theme::ThemeEffectPatch {
+                    effect: Specified::Clear,
+                },
+                ..Default::default()
+            },
+        )));
+        for backend in ["dagre", "elk"] {
+            if backend == "elk" && !cfg!(feature = "layout-elk") {
+                continue;
+            }
+            for html in [false, true] {
+                let config = json!({"layout":backend, "look":"classic", "htmlLabels":html});
+                let source = "usecase-beta\nA(Alpha) --> B[Beta]\nstyle A filter:none\n";
+                let (_, rendered) = render_with_environment(
+                    source,
+                    &theme,
+                    config.clone(),
+                    RenderEnvironment::deterministic(),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let depths: Vec<_> = document
+                    .descendants()
+                    .filter_map(|node| node.attribute("data-usecase-shadow-for"))
+                    .collect();
+                assert_eq!(depths, ["B"], "{backend}, html={html}");
+                assert_eq!(
+                    property(shell(&document, "A"), "filter").as_deref(),
+                    Some("none")
+                );
+                for id in ["A", "B"] {
+                    assert_eq!(
+                        owner(&document, id)
+                            .descendants()
+                            .filter(|node| node.has_tag_name("foreignObject"))
+                            .count(),
+                        usize::from(html)
+                    );
+                }
+                let (_, cleared) = render_with_environment(
+                    source,
+                    &clear,
+                    config.clone(),
+                    RenderEnvironment::deterministic(),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                assert!(!cleared.svg().contains("usecase-node-shadows"));
+                let cleared_document = roxmltree::Document::parse(cleared.svg()).unwrap();
+                assert_eq!(
+                    property(shell(&cleared_document, "B"), "filter").as_deref(),
+                    Some("none")
+                );
+                assert_eq!(
+                    property(shell(&cleared_document, "A"), "filter").as_deref(),
+                    Some("none")
+                );
+            }
         }
     }
 }

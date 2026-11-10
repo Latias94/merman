@@ -78,7 +78,6 @@ pub(super) fn render_state_node_svg(
     origin_y: f64,
     timing: super::timing::RenderTiming,
     details: &mut StateRenderDetails,
-    effect_outsets: &mut crate::diagram_theme::EffectOutsets,
 ) -> Result<()> {
     let Some(node) = ctx.nodes_by_id.get(node_id).copied() else {
         return Ok(());
@@ -130,9 +129,6 @@ pub(super) fn render_state_node_svg(
     let stroke_override = node_style.and_then(crate::state::StateNodeStylePlan::stroke_override);
     let stroke_width_override =
         node_style.and_then(crate::state::StateNodeStylePlan::stroke_width_override);
-    let classic_stroke_paint_width = node_style
-        .and_then(crate::state::StateNodeStylePlan::classic_stroke_paint_width)
-        .unwrap_or(0.0);
     let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
     let padding_override = node_style.and_then(crate::state::StateNodeStylePlan::padding_override);
 
@@ -979,38 +975,6 @@ pub(super) fn render_state_node_svg(
             };
 
             if effective_look != "handDrawn" {
-                let effect_filter = if let Some(binding) =
-                    node_style.and_then(crate::state::StateNodeStylePlan::effect)
-                {
-                    if let Some((effect, materialized)) =
-                        ctx.style_plan.effect_plan().materialize_classic_rect(
-                            binding.effect_id(),
-                            w,
-                            h,
-                            classic_stroke_paint_width,
-                        )?
-                    {
-                        effect_outsets.include(materialized.outsets());
-                        let region = materialized.region();
-                        let scoped_filter_id =
-                            format!("{}-theme-effect-{}", node_dom_id, effect.id());
-                        let filter_url =
-                            write_theme_shadow_application(out, &scoped_filter_id, effect, region);
-                        Some((effect, scoped_filter_id, filter_url, region))
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-                .map(|(effect, scoped_filter_id, filter_url, region)| {
-                    let attr = format!(r#" filter="{}""#, escape_attr(&filter_url));
-                    (effect, scoped_filter_id, attr, region)
-                });
-                let effect_filter_attr = effect_filter
-                    .as_ref()
-                    .map(|(_, _, attr, _)| attr.as_str())
-                    .unwrap_or_default();
                 let rect_radius = radius_override
                     .unwrap_or(compatibility.rect_radius)
                     .max(0.0);
@@ -1020,7 +984,7 @@ pub(super) fn render_state_node_svg(
                 if ctx.html_labels {
                     let _ = write!(
                         out,
-                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
+                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/><foreignObject width="{}" height="{}"><div xmlns="http://www.w3.org/1999/xhtml" style="{}">{}</div></foreignObject></g></g>"##,
                         escape_xml_display(&node_class),
                         node_dom_id.attr(),
                         escape_xml_display(data_look),
@@ -1028,7 +992,6 @@ pub(super) fn render_state_node_svg(
                         fmt_display(cy),
                         node_title_attr,
                         rect_style,
-                        effect_filter_attr,
                         fmt_display(rect_radius),
                         fmt_display(rect_radius),
                         fmt_display(-w / 2.0),
@@ -1046,7 +1009,7 @@ pub(super) fn render_state_node_svg(
                 } else {
                     let _ = write!(
                         out,
-                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}"{} rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
+                        r##"<g class="{}" id="{}" data-look="{}" transform="translate({}, {})"{}><rect class="basic label-container" style="{}" rx="{}" ry="{}" x="{}" y="{}" width="{}" height="{}"/><g class="label" style="{}" transform="translate({}, {})"><rect/>{}</g></g>"##,
                         escape_xml_display(&node_class),
                         node_dom_id.attr(),
                         escape_xml_display(data_look),
@@ -1054,7 +1017,6 @@ pub(super) fn render_state_node_svg(
                         fmt_display(cy),
                         node_title_attr,
                         rect_style,
-                        effect_filter_attr,
                         fmt_display(rect_radius),
                         fmt_display(rect_radius),
                         fmt_display(-w / 2.0),
@@ -1066,10 +1028,6 @@ pub(super) fn render_state_node_svg(
                         fmt_display(-lh / 2.0),
                         label_dom,
                     );
-                }
-                if let Some((effect, scoped_filter_id, _, region)) = effect_filter.as_ref() {
-                    ctx.effect_evidence
-                        .record_application(effect, scoped_filter_id, *region);
                 }
                 drop(_g_emit);
                 out.push_str(&link_close);

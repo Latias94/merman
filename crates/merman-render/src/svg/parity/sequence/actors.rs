@@ -3,7 +3,7 @@ use super::SequenceEmitCheckpoints;
 use super::actor_shapes::{
     ActorLabelContext, ActorLifelineIdentity, actor_placement_class, is_actor_man_variant,
     write_actor_man_lifeline, write_collection_actor_shape, write_database_actor_shape,
-    write_queue_actor_shape, write_rect_actor_shape,
+    write_queue_actor_shape, write_rect_actor_depth, write_rect_actor_shape,
 };
 use super::geometry::node_left_top;
 use super::model::SequenceSvgModel;
@@ -74,6 +74,50 @@ impl<'a> SequenceActorRenderContext<'a> {
             checkpoints: self.checkpoints,
         }
     }
+}
+
+pub(super) fn render_sequence_actor_depths(
+    out: &mut impl SvgOutput,
+    ctx: &SequenceActorRenderContext<'_>,
+    mirror: bool,
+    options: &SvgExecution<'_>,
+) -> Result<()> {
+    if ctx.shadow_plan.len() == 0 {
+        return Ok(());
+    }
+    let label_ctx = ctx.label_context();
+    for placement in ["bottom", "top"] {
+        if placement == "bottom" && !mirror {
+            continue;
+        }
+        for (emission_index, (index, actor_id)) in
+            ctx.model.actor_order.iter().enumerate().rev().enumerate()
+        {
+            ctx.checkpoints.checkpoint_loop(emission_index)?;
+            options.work_meter().charge(1)?;
+            let Some(actor) = ctx.model.actors.get(actor_id) else {
+                continue;
+            };
+            let node_id = format!("actor-{placement}-{actor_id}");
+            let Some(node) = ctx.nodes_by_id.get(node_id.as_str()).copied() else {
+                continue;
+            };
+            let Some(shadow) = ctx.shadow_plan.terminal(node, ctx.shadow_evidence) else {
+                continue;
+            };
+            write_rect_actor_depth(
+                out,
+                node,
+                actor_id,
+                actor,
+                index,
+                &label_ctx.for_actor(index),
+                ctx.rect_style,
+                shadow,
+            )?;
+        }
+    }
+    ctx.checkpoints.checkpoint()
 }
 
 pub(super) fn render_sequence_bottom_actors(

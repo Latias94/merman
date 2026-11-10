@@ -11,6 +11,8 @@
       "orange": { "type": "color", "label": "Orange inspection marker", "group": "Safety graphics", "description": "Used for active Sequence intervals and the XY reference line; it is a graphic accent, not a semantic status change.", "value": "#E66B2D" },
       "panel": { "type": "color", "label": "Uncoated label panel", "group": "Safety graphics", "value": "#E9E5D6" },
       "muted": { "type": "color", "label": "Secondary carbon lettering", "group": "Safety graphics", "value": "#5E6155" },
+      "task-complete": { "type": "color", "label": "Completed inspection", "group": "Gantt status", "description": "A pale equipment-green fill identifies completed work independently of the active safety-yellow bars.", "value": "#C7D2B2" },
+      "task-critical": { "type": "color", "label": "Critical inspection", "group": "Gantt status", "description": "Critical bars use this red fill. Combined active/critical and done/critical tasks retain their state fill and use this critical outline.", "value": "#A63C28" },
       "rule": { "type": "color", "label": "Equipment divider", "group": "Safety graphics", "value": "#A19D87" },
       "label-font": { "type": "font-stack", "label": "Condensed industrial label", "group": "Typography", "description": "A compact, heavy sign face keeps ordinary diagrams recognizably industrial without a glow or a comic treatment.", "value": ["Avenir Next Condensed", "Arial Narrow", "Liberation Sans Narrow", "Helvetica Neue", "Arial", "Noto Sans CJK SC", "sans-serif"] },
       "technical-font": { "type": "font-stack", "label": "Equipment specification lettering", "group": "Typography", "value": ["Menlo", "Consolas", "Liberation Mono", "Noto Sans Mono CJK SC", "monospace"] },
@@ -85,7 +87,11 @@
         "sequence": { "font_stack": { "ref": "label-font" }, "font_size_px": 15 },
         "class": { "font_stack": { "ref": "technical-font" }, "font_size_px": 12 },
         "xychart": { "font_stack": { "ref": "label-font" } },
-        "pie": { "font_stack": { "ref": "label-font" } }
+        "pie": { "font_stack": { "ref": "label-font" } },
+        "state": {"font_stack": {"ref": "label-font"}, "font_size_px": 17},
+        "er": {"font_stack": {"ref": "technical-font"}, "font_size_px": 13},
+        "mindmap": {"font_stack": {"ref": "label-font"}},
+        "gantt": {"font_stack": {"ref": "label-font"}}
       }
     },
     "styles": {
@@ -127,11 +133,50 @@
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 17, "font_weight": 700 } } },
       { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 26, "font_weight": 800 } } },
-      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 15, "font_weight": 600 } } }
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 15, "font_weight": 600 } } },
+      {"family": "state", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "state", "target": "state", "style": {"fill": {"kind": "solid", "color": {"ref": "plate"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2}, "radius": 0, "effect": {"ref": "mounted-plate"}}},
+      {"family": "state", "target": "state-label", "style": {"fill": {"kind": "solid", "color": {"ref": "signal"}}, "typography": {"font_weight": 800}}},
+      {"family": "state", "target": "composite", "style": {"fill": {"kind": "solid", "color": {"ref": "panel"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1.8}}},
+      {"family": "state", "target": "composite-header", "style": {"fill": {"kind": "solid", "color": {"ref": "plate"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1.8}}},
+      {"family": "state", "target": "composite-label", "style": {"fill": {"kind": "solid", "color": {"ref": "signal"}}, "typography": {"font_weight": 800}}},
+      {"family": "state", "target": "transition", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2}}},
+      {"family": "state", "target": "transition-marker", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "transition-label", "style": {"fill": {"kind": "solid", "color": {"ref": "muted"}}, "typography": {"font_size_px": 13, "font_weight": 700}}},
+      {"family": "state", "target": "transition-label-background", "style": {"fill": {"kind": "solid", "color": {"ref": "canvas"}}}},
+      {"family": "state", "target": "special-state", "variant": "start", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "canvas"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state-inner", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "special", "style": {"fill": {"kind": "solid", "color": {"ref": "signal"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "note", "style": {"fill": {"kind": "solid", "color": {"ref": "signal"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1.5}}},
+      {"family": "state", "target": "note-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_size_px": 14, "font_weight": 700, "font_style": "normal"}}},
+      {"family": "er", "target": "entity", "style": {"fill": {"kind": "solid", "color": {"ref": "signal"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "er", "target": "table", "variant": "odd", "style": {"fill": {"kind": "solid", "color": {"ref": "canvas"}}}},
+      {"family": "er", "target": "table", "variant": "even", "style": {"fill": {"kind": "solid", "color": {"ref": "panel"}}}},
+      {"family": "er", "target": "relation", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "er", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "er", "target": "title", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "node-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "edge", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "gantt", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "gantt", "target": "title", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "gantt", "target": "task", "style": {"radius": 1}},
+      {"family": "gantt", "target": "task", "variant": "default", "style": {"fill": {"kind": "solid", "color": {"ref": "plate"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "gantt", "target": "task-label", "variant": "default", "style": {"fill": {"kind": "solid", "color": {"ref": "card-ink"}}}},
+      {"family": "gantt", "target": "task", "variant": "active", "style": {"fill": {"kind": "solid", "color": {"ref": "signal"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "gantt", "target": "task-label", "variant": "active", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "gantt", "target": "task", "variant": "success", "style": {"fill": {"kind": "solid", "color": {"ref": "task-complete"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "muted"}}}}},
+      {"family": "gantt", "target": "task-label", "variant": "success", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "gantt", "target": "task", "variant": "error", "style": {"fill": {"kind": "solid", "color": {"ref": "task-critical"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "task-critical"}}}}},
+      {"family": "gantt", "target": "task-label", "variant": "error", "style": {"fill": {"kind": "solid", "color": {"ref": "card-ink"}}}},
+      {"family": "gantt", "target": "task", "variant": "warning", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "task-critical"}}}}}
     ],
     "palettes": {
       "chart-series": { "ref": "series" },
-      "pie-slice": { "ref": "pie-series" }
-    }
+      "pie-slice": { "ref": "pie-series" },
+      "node": {"ref": "pie-series"}
+    },
+    "mermaid": {"variables": {"git0": "#F7D938", "erEdgeLabelBackground": "#F3F0E5", "sectionBkgColor": "#E9E5D6", "sectionBkgColor2": "#E9E5D6", "altSectionBkgColor": "#F3F0E5", "gridColor": "#D0CDBC"}}
   }
 }

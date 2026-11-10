@@ -1,0 +1,20 @@
+erDiagram
+    CUSTOMER ||--o{ RESERVATION : places
+    RESOURCE ||--o{ RESERVATION : receives
+
+    CUSTOMER {
+        int id PK
+        string name
+        string email UK
+    }
+    RESERVATION {
+        int id PK
+        int customer_id FK
+        int resource_id FK
+        date booked_for
+    }
+    RESOURCE {
+        int id PK
+        string name
+        string location
+    }

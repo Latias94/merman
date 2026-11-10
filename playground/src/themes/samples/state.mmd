@@ -1,0 +1,21 @@
+stateDiagram-v2
+    direction TB
+    [*] --> Queued : request opened
+    Queued --> Review : assigned
+
+    state Review {
+        direction LR
+        [*] --> Checking
+        Checking --> Decision : checks complete
+        state Decision <<choice>>
+        Decision --> Checking : needs detail
+        Decision --> Approved : ready
+        Approved --> [*]
+
+        note right of Checking
+            Verify owner and scope
+        end note
+    }
+
+    Review --> Scheduled : accepted
+    Scheduled --> [*] : booked

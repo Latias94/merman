@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { CORE_THEME_SAMPLE_IDS } from "../src/themes/families";
 import {
   monitorBrowserErrors,
   openPlayground,
@@ -7,6 +8,7 @@ import {
   previewSvgText,
   waitForPreviewSvg,
 } from "./helpers/playground";
+import { chooseThemeOption } from "./helpers/theme-select";
 
 test("startup, render, Compare, focus, system theme, and BFCache cleanup", async ({ page }) => {
   await page.emulateMedia({ colorScheme: "dark" });
@@ -72,35 +74,95 @@ test("startup, render, Compare, focus, system theme, and BFCache cleanup", async
   errors.assertNone();
 });
 
-test("theme designs display five families and expose integration code with keyboard focus", async ({ page }) => {
+test("theme library selects expanded families and exposes source code with keyboard focus", async ({ page }) => {
+  // This flow loads twelve lazy previews, renders WASM, and activates the source editor.
+  test.setTimeout(90_000);
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await waitForPreviewSvg(page);
   const trigger = page.getByRole("button", { name: "Theme designs", exact: true });
   await trigger.click();
   const gallery = page.getByTestId("theme-showcase");
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(16);
-  await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
-  const images = gallery.locator("[data-theme-sample] img");
-  await expect(images).toHaveCount(5);
+  const cards = gallery.locator("[data-theme-design-card]");
+  await expect(cards).toHaveCount(20);
+  const family = gallery.getByRole("combobox", { name: "Diagram family filter", exact: true });
+  await chooseThemeOption(page, family, "treemap");
+  await expect(family).toBeFocused();
+  await expect(cards).toHaveCount(1);
+  await expect(cards).toHaveAttribute("data-theme-design-card", "prism");
+  await expect(cards.locator('[data-theme-card-primary="true"]')).toHaveAttribute("data-theme-card-sample", "treemap");
+  const explore = gallery.getByRole("button", { name: "Explore Prism", exact: true });
+  await explore.press("Enter");
+  const detail = gallery.getByTestId("theme-showcase-detail");
+  await expect(detail).toHaveAttribute("data-theme-design", "prism");
+  await expect(detail.getByRole("heading", { name: "Prism", exact: true })).toBeFocused();
+  const samples = detail.getByTestId("theme-sample-gallery");
+  const sampleIds = ["radar", ...CORE_THEME_SAMPLE_IDS, "quadrantChart", "sankey", "treemap"];
+  const tiles = samples.locator("article[data-theme-sample]");
+  await expect(tiles).toHaveCount(sampleIds.length);
+  expect(await tiles.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-sample")))).toEqual(sampleIds);
+  const images = samples.locator("[data-theme-sample] img");
+  await expect(images).toHaveCount(sampleIds.length);
   for (const image of await images.all()) {
     await image.scrollIntoViewIfNeeded();
     await expect.poll(() => image.evaluate((node) =>
       (node as HTMLImageElement).complete && (node as HTMLImageElement).naturalWidth > 0,
     )).toBe(true);
   }
-  const usage = gallery.getByTestId("theme-showcase-use");
+  const treemap = samples.locator('article[data-theme-sample="treemap"]');
+  await expect(treemap).toHaveAttribute("data-theme-sample-selected", "true");
+  const inspect = treemap.getByRole("button", { name: "Inspect Treemap example", exact: true });
+  await inspect.press("Enter");
+  const expanded = page.getByTestId("theme-library-expanded-preview");
+  const previewFamily = expanded.getByRole("combobox", { name: "Example diagram family", exact: true });
+  await expect(previewFamily).toHaveAttribute("data-value", "treemap");
+  await chooseThemeOption(page, previewFamily, "sankey");
+  await expect(previewFamily).toBeFocused();
+  await expect(expanded.getByTestId("theme-library-preview")).toHaveAttribute("data-theme-sample", "sankey");
+  await expect(expanded.locator('.preview-container svg[role~="graphics-document"]')).toContainText("Premium");
+  await page.keyboard.press("Escape");
+  await expect(expanded).toBeHidden();
+  await expect(gallery).toBeVisible();
+  await expect(inspect).toBeFocused();
+  const sankey = samples.locator('article[data-theme-sample="sankey"]');
+  await expect(sankey).toHaveAttribute("data-theme-sample-selected", "true");
+  await expect(samples.locator('article[data-theme-sample-selected="true"]')).toHaveCount(1);
+  await sankey.getByRole("button", { name: "Use this example", exact: true }).click();
+  const usage = detail.getByTestId("theme-showcase-use");
+  await expect(usage.getByRole("heading")).toBeInViewport();
   await usage.getByRole("tab", { name: "Web", exact: true }).click();
   await expect(usage.getByTestId("theme-showcase-code")).toContainText("renderSvgResult");
-  await usage.getByRole("navigation", { name: "Project files", exact: true }).getByRole("button", { name: "diagram.mmd", exact: true }).click();
+  const usageFamily = usage.getByRole("combobox", { name: "Example diagram for this code", exact: true });
+  await expect(usageFamily).toHaveAttribute("data-value", "sankey");
+  await expect(usage.getByTestId("theme-adoption-appearance")).toHaveAttribute("data-theme-adoption-sample", "sankey");
+  const diagramFile = usage.getByRole("navigation", { name: "Project files", exact: true }).getByRole("button", { name: "diagram.mmd", exact: true });
+  await diagramFile.click();
+  await expect(diagramFile).toHaveAttribute("aria-current", "true");
   const source = usage.getByTestId("theme-showcase-code");
   await expect(source).toHaveAttribute("data-code-language", "mermaid");
+  await expect(source).toContainText("sankey-beta");
+  await expect(source).toContainText("Premium");
+  await chooseThemeOption(page, usageFamily, "flowchart");
+  await expect(usageFamily).toBeFocused();
+  await expect(samples.locator('article[data-theme-sample="flowchart"]')).toHaveAttribute("data-theme-sample-selected", "true");
+  await expect(sankey).toHaveAttribute("data-theme-sample-selected", "false");
+  await diagramFile.click();
+  await expect(source).toHaveAttribute("data-code-language", "mermaid");
+  await expect(source).not.toContainText("sankey-beta");
   await expect.poll(() => source.locator(".view-lines span").evaluateAll((spans) => {
     const tokens = spans.map((span) => ({ text: span.textContent?.replaceAll("\u00a0", " ") ?? "", color: getComputedStyle(span).color }));
     const keyword = tokens.find((token) => token.text === "flowchart");
     const label = tokens.find((token) => token.text.includes("Review workflow"));
     return Boolean(keyword && label && keyword.color !== label.color);
   })).toBe(true);
+  await detail.getByRole("button", { name: "All designs", exact: true }).click();
+  await expect(family).toHaveAttribute("data-value", "treemap");
+  await expect(cards).toHaveCount(1);
+  await expect(explore).toBeFocused();
+  await gallery.getByTestId("theme-library-family-chip").getByRole("button").click();
+  await expect(family).toHaveAttribute("data-value", "");
+  await expect(family).toBeFocused();
+  await expect(cards).toHaveCount(20);
   await page.keyboard.press("Escape");
   await expect(gallery).toBeHidden();
   await expect(trigger).toBeFocused();

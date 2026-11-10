@@ -2632,6 +2632,165 @@ fn treemap_node_visual_theme(paint: CanvasPaint) -> DiagramTheme {
 }
 
 #[test]
+fn treemap_readability_uses_final_node_rule_and_palette_fills_in_both_directions() {
+    let grouped = "treemap\n\"Web\"\n  \"Accounts\": 42\n\"Mobile\"\n  \"Sign in\": 34\n\"Partner\"\n  \"Setup\": 28\n";
+    for (source, fill, text, expected) in [
+        (grouped, "transparent", "Accounts", "rgb(51, 51, 51)"),
+        (
+            "treemap\n\"Solo\": 42\n",
+            "#17324D",
+            "Solo",
+            "rgb(255, 255, 255)",
+        ),
+    ] {
+        for palette in [false, true] {
+            let styles = if palette {
+                ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::Node,
+                    OrdinalPalette::new([ThemeColorValue::parse(fill).unwrap()]).unwrap(),
+                )
+            } else {
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(if fill == "transparent" {
+                        CanvasPaint::Transparent
+                    } else {
+                        CanvasPaint::solid(fill).unwrap()
+                    }),
+                ))
+            };
+            let theme = DiagramThemeCompiler::new()
+                .compile(DiagramThemeSpec::new().with_styles(styles))
+                .unwrap();
+            let source = format!(
+                "---\nconfig: {{\"htmlLabels\":false,\"treemap\":{{\"showValues\":true}}}}\n---\n{source}"
+            );
+            let rendered = render_treemap_with_theme(&source, &theme, MermaidEngine::new());
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let leaf = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("treemapNode treemapLeafGroup leaf0x"))
+                .unwrap();
+            let body = leaf
+                .children()
+                .find(|node| node.attribute("class") == Some("treemapLeaf"))
+                .unwrap();
+            let expected_fill = if palette {
+                ThemeColorValue::parse(fill).unwrap().as_css()
+            } else {
+                fill.to_owned()
+            };
+            assert_eq!(
+                body.attribute("fill"),
+                Some(expected_fill.as_str()),
+                "palette={palette}"
+            );
+            for (class, content) in [("treemapLabel", text), ("treemapValue", "42")] {
+                let terminal = leaf
+                    .children()
+                    .find(|node| {
+                        node.attribute("class") == Some(class) && node.text() == Some(content)
+                    })
+                    .unwrap();
+                let style = terminal.attribute("style").unwrap();
+                assert!(style.contains(expected), "palette={palette}: {style}");
+                assert!(!style.contains("display: none"), "{style}");
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), 1, "palette={palette}");
+            assert_eq!(evidence.theme_residual_count(), 0, "palette={palette}");
+        }
+    }
+}
+
+#[test]
+fn treemap_final_fill_readability_preserves_explicit_text_owners() {
+    for (source_color, variables, targets, expected) in [
+        (
+            None,
+            serde_json::json!({}),
+            vec![ThemeTarget::Text],
+            "rgb(18, 52, 86)",
+        ),
+        (
+            None,
+            serde_json::json!({}),
+            vec![ThemeTarget::NodeLabel, ThemeTarget::Text],
+            "rgb(194, 24, 139)",
+        ),
+        (
+            Some("#778899"),
+            serde_json::json!({}),
+            vec![ThemeTarget::NodeLabel, ThemeTarget::Text],
+            "fill:#778899 !important",
+        ),
+        (
+            None,
+            serde_json::json!({"textColor":"#125634"}),
+            vec![ThemeTarget::NodeLabel, ThemeTarget::Text],
+            "rgb(18, 86, 52)",
+        ),
+        (
+            None,
+            serde_json::json!({"cScaleLabel3":"#125634"}),
+            vec![ThemeTarget::NodeLabel, ThemeTarget::Text],
+            "rgb(18, 86, 52)",
+        ),
+    ] {
+        let mut styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+        ));
+        for target in targets {
+            styles = styles.with_rule(ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(
+                    CanvasPaint::solid(if target == ThemeTarget::Text {
+                        "#123456"
+                    } else {
+                        "#c2188b"
+                    })
+                    .unwrap(),
+                ),
+            ));
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let config = serde_json::json!({
+            "htmlLabels": false,
+            "treemap": {"showValues": true},
+            "themeVariables": variables,
+        });
+        let (declaration, class) = source_color.map_or_else(
+            || (String::new(), ""),
+            |color| (format!("classDef owned color:{color};\n"), ":::owned"),
+        );
+        let source = format!(
+            "---\nconfig: {config}\n---\ntreemap\n{declaration}\"Web\"\n  \"Accounts\": 42{class}\n\"Mobile\"\n  \"Sign in\": 34\n\"Partner\"\n  \"Setup\": 28\n"
+        );
+        let rendered = render_treemap_with_theme(&source, &theme, MermaidEngine::new());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (class, content) in [("treemapLabel", "Accounts"), ("treemapValue", "42")] {
+            let terminal = document
+                .descendants()
+                .find(|node| node.attribute("class") == Some(class) && node.text() == Some(content))
+                .unwrap();
+            let style = terminal.attribute("style").unwrap();
+            assert!(
+                style.contains(expected),
+                "{config} source={source_color:?}: {style}"
+            );
+            assert!(!style.contains("display: none"), "{style}");
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.theme_residual_count(), 0, "{config}");
+    }
+}
+
+#[test]
 fn treemap_default_scale_colors_keep_property_local_ownership_from_site_and_source() {
     let config = serde_json::json!({
         "themeVariables": {"cScale0": "#125634", "cScalePeer0": "#446688"}

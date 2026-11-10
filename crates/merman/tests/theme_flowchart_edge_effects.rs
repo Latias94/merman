@@ -194,19 +194,22 @@ fn neo_node_hard_shadow_and_clear_change_native_pixels_and_application_counts() 
             );
             let nodes: Vec<_> = xml
                 .descendants()
-                .filter(|node| {
-                    node.attribute("class").is_some_and(|classes| {
-                        classes.split_whitespace().any(|class| class == "node")
-                    })
-                })
+                .filter(|node| node.attribute("data-et") == Some("node"))
                 .collect();
             assert_eq!(nodes.len(), 2);
+            let depths: Vec<_> = xml
+                .descendants()
+                .filter(|node| node.attribute("data-merman-theme-depth") == Some("node"))
+                .collect();
+            assert_eq!(depths.len(), *expected, "{case}, html={html_labels}");
             for node in nodes {
                 let body = node
                     .children()
                     .find(|child| child.attribute("class") == Some("basic label-container"))
                     .unwrap();
                 assert!(body.has_tag_name("g"));
+                assert_eq!(body.attribute("filter"), None);
+                assert!(typed_filter_reference(body).is_none());
                 let circles: Vec<_> = body
                     .children()
                     .filter(|child| child.has_tag_name("circle"))
@@ -225,18 +228,62 @@ fn neo_node_hard_shadow_and_clear_change_native_pixels_and_application_counts() 
                         }),
                         "child look filters must not compose with body effects: {case}"
                     );
-                    let cleared = *case == "clear-all"
-                        || (*case == "clear-first" && node.attribute("data-id") == Some("A"));
-                    if cleared {
+                    assert!(
+                        body.attribute("style")
+                            .unwrap()
+                            .contains("filter:none !important")
+                    );
+                }
+                let effect_prefix = format!("url(#{}-theme-effect-", node.attribute("id").unwrap());
+                let depth_body = depths
+                    .iter()
+                    .flat_map(|depth| depth.children())
+                    .find(|body| {
+                        typed_filter_reference(*body)
+                            .is_some_and(|reference| reference.starts_with(&effect_prefix))
+                    });
+                let cleared = *case == "clear-all"
+                    || (*case == "clear-first" && node.attribute("data-id") == Some("A"));
+                assert_eq!(
+                    depth_body.is_some(),
+                    *case != "omitted" && !cleared,
+                    "{case}, html={html_labels}, node={:?}",
+                    node.attribute("data-id")
+                );
+                if let Some(depth_body) = depth_body {
+                    assert_eq!(depth_body.tag_name(), body.tag_name());
+                    assert_eq!(depth_body.attribute("class"), body.attribute("class"));
+                    assert_eq!(
+                        depth_body.parent().unwrap().attribute("transform"),
+                        node.attribute("transform")
+                    );
+                    assert!(
+                        depth_body
+                            .attribute("style")
+                            .unwrap()
+                            .contains("!important")
+                    );
+                    assert!(!depth_body.descendants().any(|child| {
+                        child.has_tag_name("text") || child.has_tag_name("foreignObject")
+                    }));
+                    let depth_circles: Vec<_> = depth_body
+                        .children()
+                        .filter(|child| child.has_tag_name("circle"))
+                        .collect();
+                    assert_eq!(depth_circles.len(), circles.len());
+                    for (depth_circle, circle) in depth_circles.iter().zip(&circles) {
+                        for attribute in ["cx", "cy", "r"] {
+                            assert_eq!(
+                                depth_circle.attribute(attribute),
+                                circle.attribute(attribute)
+                            );
+                        }
                         assert!(
-                            body.attribute("style")
+                            depth_circle
+                                .attribute("style")
                                 .unwrap()
                                 .contains("filter:none !important")
                         );
-                        assert!(typed_filter_reference(body).is_none());
-                    } else {
-                        assert!(typed_filter_reference(body).is_some());
-                        assert!(body.attribute("style").unwrap().contains("!important"));
                     }
                 }
             }

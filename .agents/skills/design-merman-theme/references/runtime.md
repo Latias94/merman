@@ -24,6 +24,17 @@ reuse the repository target directory, and coordinate with other workers before 
 Use the build owner's optimizer/toolchain requirements rather than a private engine adapter or a
 weaker release build. These commands prepare artifacts; they do not publish packages.
 
+### Reuse a prepared Playground runtime
+
+For browser-owned previews, reuse the prepared Playground and its existing
+[operation input](../../../../playground/src/runtime/merman-operation-input.ts) and
+[runtime facade](../../../../playground/src/runtime/merman.ts). In the browser, construct the input
+from the exact saved source/configuration/recipe, pass a concrete appearance, and call the
+facade's `render` operation. Save its artifact SVG and metadata together with those inputs.
+Record the runtime artifact/build identity and host measurement mode. This path needs no
+separate Node artifact and does not qualify native rendering. Review each design's declared
+families; the full sample inventory is not a claim that every theme supports every sample.
+
 ## Appearance and viewer backing
 
 Pass the complete v1 recipe and select its concrete `light` or `dark` appearance. For CLI use

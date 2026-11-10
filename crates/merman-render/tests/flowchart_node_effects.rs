@@ -3,10 +3,10 @@
 use merman_core::{MermaidEngine, ParseOptions};
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
-    EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, OrdinalSelector, Specified,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget,
+    CanvasPaint, DiagramEffectSet, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec,
+    EffectBinding, EffectColorSpace, EffectGraph, EffectInput, EffectPrimitive, OrdinalSelector,
+    Specified, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family::{self, RenderedFamilySvg};
@@ -107,6 +107,190 @@ fn applications(svg: &str) -> usize {
             filter_reference(*node).is_some_and(|value| value.contains("-theme-effect-"))
         })
         .count()
+}
+
+#[test]
+fn compiled_body_depth_precedes_all_connections_in_nested_dagre_and_elk_roots() {
+    let theme = theme(
+        ThemeRuleSet::default().with_rule(
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("rgba(255, 229, 0, 0.35)").unwrap()),
+            )
+            .with_ordinal(OrdinalSelector::Exact(1)),
+        ),
+    );
+    for layout in ["dagre", "elk"] {
+        for look in ["classic", "neo"] {
+            let source = format!(
+                "---\nconfig:\n  layout: {layout}\n---\nflowchart TB\nsubgraph Outer\nsubgraph Inner\nA[Rect] -->|Advance| B(Round) --> C{{Diamond}} --> D((Circle)) --> E(((Double)))\nend\nend\nE --> Z[Result]"
+            );
+            let rendered = render(&source, &theme, look, true).unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let first_edge = doc
+                .descendants()
+                .find(|n| n.attribute("data-edge") == Some("true"))
+                .unwrap()
+                .range()
+                .start;
+            let depths: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.attribute("data-merman-theme-depth") == Some("node"))
+                .collect();
+            assert_eq!(depths.len(), 6, "{layout}/{look}");
+            for depth in depths {
+                assert!(
+                    depth.range().end < first_edge,
+                    "{layout}/{look}: depth must precede outer as well as nested connections"
+                );
+                assert!(!depth.descendants().any(|n| n.attribute("id").is_some()
+                    || n.attribute("data-id").is_some()
+                    || n.has_tag_name("text")
+                    || n.has_tag_name("foreignObject")
+                    || n.has_tag_name("a")));
+                let body = depth
+                    .children()
+                    .find(|n| filter_reference(*n).is_some())
+                    .unwrap();
+                let id = filter_reference(body)
+                    .unwrap()
+                    .strip_prefix("url(#")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                let owner = id.split_once("-theme-effect-").unwrap().0;
+                let face = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(owner))
+                    .unwrap();
+                let foreground = face
+                    .children()
+                    .find(|n| n.tag_name() == body.tag_name())
+                    .unwrap();
+                assert_eq!(foreground.attribute("filter"), None);
+                for attr in [
+                    "x",
+                    "y",
+                    "width",
+                    "height",
+                    "points",
+                    "transform",
+                    "r",
+                    "rx",
+                    "ry",
+                ] {
+                    assert_eq!(
+                        body.attribute(attr),
+                        foreground.attribute(attr),
+                        "{layout}/{look}: {owner}/{attr}"
+                    );
+                }
+                if body.has_tag_name("g") {
+                    let radii = |n: roxmltree::Node<'_, '_>| {
+                        n.children()
+                            .filter(|n| n.has_tag_name("circle"))
+                            .map(|n| n.attribute("r").unwrap().to_owned())
+                            .collect::<Vec<_>>()
+                    };
+                    assert_eq!(radii(body), radii(foreground));
+                }
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(id))
+                    .unwrap();
+                assert!(
+                    !filter
+                        .children()
+                        .find(|n| n.attribute("result") == Some("merman-shadow-stack-result"))
+                        .unwrap()
+                        .children()
+                        .any(|n| n.has_tag_name("feMergeNode")
+                            && n.attribute("in") == Some("SourceGraphic")),
+                    "a translucent face must not be composited by its depth filter"
+                );
+                assert_eq!(
+                    doc.descendants()
+                        .filter(|n| n.attribute("id") == Some(owner))
+                        .count(),
+                    1
+                );
+            }
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.attribute("data-et") == Some("node"))
+                    .count(),
+                6
+            );
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.is_text() && n.text() == Some("Advance"))
+                    .count(),
+                1
+            );
+            assert_eq!(
+                doc.descendants()
+                    .filter(|n| n.attribute("data-et") == Some("cluster"))
+                    .count(),
+                2
+            );
+            for cluster in doc
+                .descendants()
+                .filter(|n| n.attribute("data-et") == Some("cluster"))
+            {
+                assert!(
+                    !cluster.children().any(|n| n.has_tag_name("rect")),
+                    "container faces belong to the single background pass"
+                );
+                assert!(cluster.descendants().any(|n| n.has_tag_name("text")));
+            }
+            assert!(
+                doc.descendants()
+                    .filter(|n| n.attribute("data-edge") == Some("true"))
+                    .all(|n| n.attribute("marker-end").is_some())
+            );
+            let completion = rendered.into_completion();
+            assert_eq!(
+                merman_render::__private::family_evidence(completion.report())
+                    .theme_residual_count(),
+                0
+            );
+        }
+    }
+}
+
+#[test]
+fn compiled_node_depth_remains_within_the_operation_work_budget() {
+    use merman_render::resources::{RenderResourcePolicy, ResourceLimitId};
+    let theme = theme(ThemeRuleSet::default());
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync(
+            "---\nconfig:\n  look: classic\n  layout: dagre\n---\nflowchart TB\nA[Review] --> B[Share]",
+            ParseOptions::strict(),
+        ).unwrap().unwrap().into_presentation();
+    let render = |policy| -> merman_render::Result<RenderedFamilySvg> {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)?
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    };
+    let completion = render(RenderResourcePolicy::unbounded_for_trusted_input())
+        .unwrap()
+        .into_completion();
+    let work = completion.report().session_report().layout_work_units();
+    let exact = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work)
+        .unwrap();
+    render(exact).unwrap();
+    let below = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work - 1)
+        .unwrap();
+    assert!(matches!(
+        render(below),
+        Err(merman_render::Error::ResourceLimitExceeded(_))
+    ));
 }
 
 #[test]
@@ -505,13 +689,30 @@ fn html_class_opacity_keeps_the_original_shape_selector_boundary() {
         .children()
         .find(|node| node.has_tag_name("rect"))
         .expect("classDef > * must still select the original rectangle directly");
+    assert!(shape.attribute("filter").is_none());
+    assert!(shape.attribute("style").unwrap().contains("opacity:0.5"));
+    let depth = xml
+        .descendants()
+        .find(|n| {
+            n.attribute("data-merman-theme-depth") == Some("node")
+                && n.attribute("class")
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .any(|c| c == "dim")
+        })
+        .unwrap();
+    let depth_shape = depth.children().find(|n| n.has_tag_name("rect")).unwrap();
     assert!(
-        shape
-            .attribute("filter")
+        filter_reference(depth_shape)
             .unwrap()
             .contains("-theme-effect-")
     );
-    assert!(shape.attribute("style").unwrap().contains("opacity:0.5"));
+    assert!(
+        depth_shape
+            .attribute("style")
+            .unwrap()
+            .contains("opacity:0.5")
+    );
     assert!(
         !node
             .children()
@@ -657,6 +858,12 @@ fn swimlane_glow_reaches_real_nodes_without_filtering_lane_or_edge_labels() {
     let rendered = render(source, &theme, "classic", true).unwrap();
     assert_eq!(applications(rendered.svg()), 2);
     let xml = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let first_edge = xml
+        .descendants()
+        .find(|n| n.attribute("data-edge") == Some("true"))
+        .unwrap()
+        .range()
+        .start;
     assert!(
         xml.descendants()
             .any(|node| node.is_text() && node.text() == Some("Question"))
@@ -666,6 +873,14 @@ fn swimlane_glow_reaches_real_nodes_without_filtering_lane_or_edge_labels() {
         .filter(|node| node.attribute("filter").is_some())
     {
         assert!(shape.has_tag_name("rect"));
+        assert!(shape.range().end < first_edge);
+        assert_eq!(
+            shape
+                .parent_element()
+                .unwrap()
+                .attribute("data-merman-theme-depth"),
+            Some("node")
+        );
         assert!(
             shape
                 .parent_element()
@@ -788,11 +1003,13 @@ fn public_cyberpunk_recipe_exchange_keeps_flowchart_widths_and_applicable_corner
         let nodes: Vec<_> = xml
             .descendants()
             .filter(|node| {
-                node.attribute("class").is_some_and(|classes| {
-                    classes
-                        .split_whitespace()
-                        .any(|class| class == "label-container")
-                })
+                node.parent_element()
+                    .is_some_and(|owner| owner.attribute("data-et") == Some("node"))
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes
+                            .split_whitespace()
+                            .any(|class| class == "label-container")
+                    })
             })
             .collect();
         assert_eq!(nodes.len(), 4);

@@ -27,7 +27,7 @@ import {
   asciiSupportLabelKey,
   type AsciiCapability,
 } from "@/src/lib/ascii-support";
-import { selectWorkspaceSnapshot, useAppStore, type PreviewBacking } from "@/src/store";
+import { useAppStore, type PreviewBacking } from "@/src/store";
 import { currentThemeRender } from "@/src/lib/theme-discovery";
 import { ThemeRenderStatus } from "./ThemeRenderStatus";
 import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
@@ -112,8 +112,6 @@ const EMPTY_DIAGNOSTICS: Record<DiagnosticKey, DiagnosticArtifact> = {
 
 export function Preview({ active = true, className }: PreviewProps) {
   const { t } = useTranslation();
-  const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
-  const { code } = workspace;
   const resolvedTheme = useAppStore((state) => state.resolvedTheme);
   const editorTheme = WORKBENCH_EDITOR_THEMES[resolvedTheme].name;
   const previewMode = useAppStore((state) => state.previewMode);
@@ -129,9 +127,19 @@ export function Preview({ active = true, className }: PreviewProps) {
   const showSvgBounds = useAppStore((state) => state.showSvgBounds);
   const setShowSvgBounds = useAppStore((state) => state.setShowSvgBounds);
   const { openExport } = useExportWorkbench();
-  const renderState = useRenderCoordinator((state) => state);
-  const currentBatch = selectCompletedRenderBatch(renderState);
-  const visibleBatch = selectVisibleRenderBatch(renderState);
+  const { currentBatch, visibleBatch, detectedDiagramType, renderPending, automaticCanvasTone } = useRenderCoordinator(
+    useShallow((state) => ({
+      currentBatch: selectCompletedRenderBatch(state),
+      visibleBatch: selectVisibleRenderBatch(state),
+      detectedDiagramType: selectCurrentDiagramType(state),
+      renderPending: selectRenderPending(state),
+      automaticCanvasTone: selectVisibleCanvasTone(state),
+    })),
+  );
+  const { hasCode, currentRenderFresh } = useAppStore(useShallow((state) => ({
+    hasCode: Boolean(state.code.trim()),
+    currentRenderFresh: currentBatch !== null && currentThemeRender(currentBatch, state, state.resolvedTheme).status !== "waiting",
+  })));
   const runtimeStatus = useMermanRuntime(selectMermanStatus);
   const runtimeFailure = useMermanRuntime(selectMermanFailure);
   const runtimeLoadStage = useMermanRuntime(selectMermanLoadStage);
@@ -156,7 +164,6 @@ export function Preview({ active = true, className }: PreviewProps) {
   );
 
   const currentPublicationId = currentBatch?.snapshot.publicationId ?? null;
-  const detectedDiagramType = selectCurrentDiagramType(renderState);
   const visibleMerman = successfulMerman(visibleBatch?.merman ?? null);
   const svgArtifact = visibleMerman?.artifact ?? null;
   const svg = svgArtifact?.svg ?? null;
@@ -169,12 +176,9 @@ export function Preview({ active = true, className }: PreviewProps) {
   const mermaidError = failedMessage(visibleBatch?.mermaid ?? null);
   const mermaidErrorDetail = failedDetail(visibleBatch?.mermaid ?? null);
   const mermaidRenderTime = visibleMermaid?.renderTimeMs ?? null;
-  const renderPending = selectRenderPending(renderState);
-  const renderingCurrent = Boolean(code.trim() && ready && renderPending);
-  const hostAppearance = useAppStore((state) => state.resolvedTheme);
-  const currentRender = currentThemeRender(renderState, workspace, hostAppearance);
-  const actionsEnabled = currentBatch !== null && currentRender.status !== "waiting";
-  const compareStale = renderState.status === "updating" || currentRender.status === "waiting";
+  const renderingCurrent = hasCode && ready && renderPending;
+  const actionsEnabled = currentRenderFresh;
+  const compareStale = !currentRenderFresh;
   const diagnostics = currentBatch?.diagnostics ?? EMPTY_DIAGNOSTICS;
   const diagnosticsLoading = previewMode === "diagnostics" && renderPending;
   const isAsciiSupported = asciiSupport.isSupported(detectedDiagramType);
@@ -184,7 +188,6 @@ export function Preview({ active = true, className }: PreviewProps) {
   const svgViewport = useSvgViewportController();
   const canvasBatch = visibleBatch;
   const canvasOperation = canvasBatch?.snapshot.operation;
-  const automaticCanvasTone = selectVisibleCanvasTone(renderState);
   const canvasTone = previewBacking === "dark" ? "dark" : previewBacking === "light" || previewBacking === "transparency" ? "light" : automaticCanvasTone;
   const canvasMode = previewMode === "svg" || previewMode === "compare";
 
@@ -297,7 +300,7 @@ export function Preview({ active = true, className }: PreviewProps) {
     t,
   });
   const mermaidRendering = Boolean(
-    previewMode === "compare" && code.trim() && renderPending,
+    previewMode === "compare" && hasCode && renderPending,
   );
   const mermaidLoadingLabel = mermaidRendering
     ? t("preview.renderingCurrent")
@@ -356,7 +359,7 @@ export function Preview({ active = true, className }: PreviewProps) {
   const showToolbarActions =
     !loading &&
     !runtimeFailure &&
-    Boolean(code.trim()) &&
+    hasCode &&
     !(error && previewMode === "svg");
   const toolbarActions =
     canvasMode || showToolbarActions ? (
@@ -473,7 +476,7 @@ export function Preview({ active = true, className }: PreviewProps) {
                 }
                 onClick={handleCopyDiagnosticJson}
                 disabled={
-                  diagnosticsLoading || !diagnostics[diagnosticTab].json
+                  !actionsEnabled || diagnosticsLoading || !diagnostics[diagnosticTab].json
                 }
               >
                 {copiedDiagnostic === diagnosticTab ? (
@@ -530,7 +533,7 @@ export function Preview({ active = true, className }: PreviewProps) {
           </CenteredMessage>
         ) : runtimeFailure ? (
           <RuntimeFailureView failure={runtimeFailure} t={t} />
-        ) : !code.trim() ? (
+        ) : !hasCode ? (
           <CenteredMessage>{t("preview.empty")}</CenteredMessage>
         ) : error && previewMode === "svg" ? (
           <RenderError

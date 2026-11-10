@@ -58,6 +58,13 @@ pub enum NativeSvgFilterUnits {
     UserSpaceOnUse,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[doc(hidden)]
+pub enum NativeSvgFilterOutput {
+    SourceAndShadow,
+    ShadowOnly,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[doc(hidden)]
 pub struct NativeSvgFilterApplication {
@@ -66,6 +73,7 @@ pub struct NativeSvgFilterApplication {
     region_bits: [u32; 4],
     color_space: EffectColorSpace,
     composition: EffectComposition,
+    output: NativeSvgFilterOutput,
     stages: Vec<NativeSvgShadowStage>,
     reference_count: u32,
 }
@@ -121,6 +129,7 @@ impl NativeSvgFilterApplication {
             region_bits: region.map(normalized_f32_bits),
             color_space,
             composition: EffectComposition::Cascade,
+            output: NativeSvgFilterOutput::SourceAndShadow,
             stages,
             reference_count,
         })
@@ -151,6 +160,13 @@ impl NativeSvgFilterApplication {
     }
     pub const fn composition(&self) -> EffectComposition {
         self.composition
+    }
+    pub fn with_output(mut self, output: NativeSvgFilterOutput) -> Self {
+        self.output = output;
+        self
+    }
+    pub const fn output(&self) -> NativeSvgFilterOutput {
+        self.output
     }
     pub fn stages(&self) -> &[NativeSvgShadowStage] {
         &self.stages
@@ -234,6 +250,10 @@ impl NativeSvgFilterReceipt {
             if application.composition == EffectComposition::Independent {
                 update_len_prefixed(&mut hasher, b"independent");
             }
+            hasher.update([match application.output {
+                NativeSvgFilterOutput::SourceAndShadow => 0,
+                NativeSvgFilterOutput::ShadowOnly => 1,
+            }]);
             hasher.update((application.stages.len() as u32).to_le_bytes());
             for stage in application.stages {
                 hasher.update([match stage.input {
@@ -287,6 +307,28 @@ fn update_len_prefixed(hasher: &mut Sha256, bytes: &[u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn shadow_only_output_changes_identity_without_changing_application_counts() {
+        for composition in [EffectComposition::Cascade, EffectComposition::Independent] {
+            for color_space in [EffectColorSpace::LinearRgb, EffectColorSpace::Srgb] {
+                let mut combined = application("depth-theme-effect-shadow", 5.0, 2.0, 1)
+                    .with_composition(composition)
+                    .unwrap();
+                combined.color_space = color_space;
+                assert_eq!(combined.output(), NativeSvgFilterOutput::SourceAndShadow);
+                let depth = combined
+                    .clone()
+                    .with_output(NativeSvgFilterOutput::ShadowOnly);
+                let combined = NativeSvgFilterReceipt::from_applications([combined]).unwrap();
+                let depth = NativeSvgFilterReceipt::from_applications([depth]).unwrap();
+                assert_ne!(combined.identity_digest(), depth.identity_digest());
+                assert_eq!(combined.filter_count(), depth.filter_count());
+                assert_eq!(combined.drop_shadow_count(), depth.drop_shadow_count());
+                assert_eq!(combined.reference_count(), depth.reference_count());
+            }
+        }
+    }
+
     #[test]
     fn independent_composition_changes_identity_and_unions_bounds() {
         let mut cascade = application("stack", -12.0, 2.0, 1);

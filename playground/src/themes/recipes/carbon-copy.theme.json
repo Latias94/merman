@@ -83,7 +83,11 @@
         "sequence": { "font_stack": { "ref": "record-font" }, "font_size_px": 13 },
         "class": { "font_stack": { "ref": "record-font" }, "font_size_px": 13 },
         "xychart": { "font_stack": { "ref": "chart-font" } },
-        "pie": { "font_stack": { "ref": "record-font" } }
+        "pie": { "font_stack": { "ref": "record-font" } },
+        "state": {"font_stack": {"ref": "record-font"}, "font_size_px": 14},
+        "er": {"font_stack": {"ref": "record-font"}, "font_size_px": 13},
+        "mindmap": {"font_stack": {"ref": "record-font"}},
+        "kanban": {"font_stack": {"ref": "record-font"}, "font_size_px": 14}
       }
     },
     "styles": {
@@ -126,11 +130,58 @@
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "carbon" } } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 15, "font_weight": 600 } } },
       { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "stamp" } }, "typography": { "font_size_px": 22, "font_weight": 600 } } },
-      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 } } }
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 13 } } },
+      {"family": "state", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "state", "target": "state", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1.3}, "radius": 0, "effect": {"ref": "carbon-edge"}}},
+      {"family": "state", "target": "state-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_weight": 600}}},
+      {"family": "state", "target": "composite", "style": {"fill": {"kind": "solid", "color": {"ref": "folder"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ruling"}}, "width": 1}}},
+      {"family": "state", "target": "composite-header", "style": {"fill": {"kind": "solid", "color": {"ref": "copy-sheet"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ruling"}}, "width": 1}}},
+      {"family": "state", "target": "composite-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_weight": 600}}},
+      {"family": "state", "target": "transition", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1.3}}},
+      {"family": "state", "target": "transition-marker", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "transition-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_size_px": 13}}},
+      {"family": "state", "target": "transition-label-background", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}}},
+      {"family": "state", "target": "special-state", "variant": "start", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state-inner", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "special", "style": {"fill": {"kind": "solid", "color": {"ref": "stamp-paper"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "stamp"}}}}},
+      {"family": "state", "target": "note", "style": {"fill": {"kind": "solid", "color": {"ref": "stamp-paper"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "stamp"}}, "width": 1.8}}},
+      {"family": "state", "target": "note-label", "style": {"fill": {"kind": "solid", "color": {"ref": "stamp"}}, "typography": {"font_size_px": 12, "font_weight": 600, "font_style": "normal"}}},
+      {"family": "er", "target": "entity", "style": {"fill": {"kind": "solid", "color": {"ref": "copy-sheet"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "carbon"}}}}},
+      {"family": "er", "target": "table", "variant": "odd", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}}},
+      {"family": "er", "target": "table", "variant": "even", "style": {"fill": {"kind": "solid", "color": {"ref": "copy-sheet"}}}},
+      {"family": "er", "target": "relation", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "carbon"}}}}},
+      {"family": "er", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "er", "target": "title", "style": {"fill": {"kind": "solid", "color": {"ref": "stamp"}}}},
+      {"family": "mindmap", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "node-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "edge", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "carbon"}}}}},
+      {"family": "kanban", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "kanban", "target": "task", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "carbon"}}}, "radius": 1}},
+      {"family": "kanban", "target": "task-label", "ordinal": {"cycle": {"period": 1, "offset": 0}}, "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}}
     ],
     "palettes": {
       "chart-series": { "ref": "series" },
-      "pie-slice": { "ref": "pie-series" }
+      "pie-slice": { "ref": "pie-series" },
+      "node": {"ref": "pie-series"}
+    },
+    "mermaid": {
+      "variables": {
+        "git0": "#D8C6E5",
+        "erEdgeLabelBackground": "#F2EDDF",
+        "cScale0": "#E6DAEE",
+        "cScale1": "#D8C6E5",
+        "cScale2": "#E9C8B9",
+        "cScale3": "#C8C0DA",
+        "cScale4": "#DDD7B7",
+        "cScale5": "#C0CED1",
+        "cScale6": "#D4BAC8",
+        "cScale7": "#D8C6E5",
+        "cScale8": "#E9C8B9",
+        "cScale9": "#C8C0DA",
+        "cScale10": "#DDD7B7",
+        "cScale11": "#C0CED1"
+      }
     }
   }
 }

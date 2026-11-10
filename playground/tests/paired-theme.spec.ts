@@ -3,7 +3,9 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { strFromU8, unzipSync } from "fflate";
 import { decodeShareHash, encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "../src/lib/workspace-snapshot";
+import { CORE_THEME_SAMPLE_IDS } from "../src/themes/families";
 import { monitorBrowserErrors, openWorkbenchTool, replaceEditorSource, replaceMonacoText, waitForPreviewSvg } from "./helpers/playground";
+import { chooseThemeOption } from "./helpers/theme-select";
 
 const reading = await readFile(new URL("../src/themes/recipes/reading.theme.json", import.meta.url), "utf8");
 const workspace: WorkspaceSnapshot = {
@@ -57,12 +59,12 @@ test("Follow app updates actual SVG paint; an explicit appearance stays fixed an
   const errors = monitorBrowserErrors(page);
   const panel = await start(page);
   const control = panel.getByTestId("theme-appearance-control");
-  await expect(control.getByRole("combobox")).toHaveValue("follow");
+  await expect(control.getByRole("combobox")).toHaveAttribute("data-value", "follow");
   await expect.poll(() => canvas(page)).toBe("#F6F7F9");
   await setAppAppearance(page, "Dark");
   await expect(control).toHaveAttribute("data-effective-appearance", "dark");
   await expect.poll(() => canvas(page)).toBe("#171C24");
-  await control.getByRole("combobox").selectOption("light");
+  await chooseThemeOption(page, control.getByRole("combobox"), "light");
   await expect.poll(() => canvas(page)).toBe("#F6F7F9");
   await setAppAppearance(page, "Light");
   await setAppAppearance(page, "Dark");
@@ -136,7 +138,7 @@ test("concrete preset links remain pinned while their single gallery card repres
   await setAppAppearance(page, "Light");
   expect((await sharedWorkspace(page)).themePresetId).toBe("editor-dark");
   await panel.locator('[data-theme-choice="preset:editor"]').click();
-  await expect(panel.getByTestId("theme-appearance-control").getByRole("combobox")).toHaveValue("follow");
+  await expect(panel.getByTestId("theme-appearance-control").getByRole("combobox")).toHaveAttribute("data-value", "follow");
 });
 
 test("customization validates inactive branches, applies atomically and preserves composition and subsequent source edits", async ({ page }) => {
@@ -200,7 +202,7 @@ test("a paired import retains references, rule order and explicit overrides thro
   });
   await panel.getByRole("button", { name: "Use imported theme", exact: true }).click();
   const control = panel.getByTestId("theme-appearance-control");
-  await control.getByRole("combobox").selectOption("dark");
+  await chooseThemeOption(page, control.getByRole("combobox"), "dark");
   await panel.getByRole("button", { name: "Customize", exact: true }).click();
   authored.design.appearances.light.tokens.accent.value = "#B00020";
   const edited = `${JSON.stringify(authored, null, 2)}\n`;
@@ -208,8 +210,8 @@ test("a paired import retains references, rule order and explicit overrides thro
   await validateDraft(panel);
   await panel.getByRole("button", { name: "Apply changes", exact: true }).click();
   expect((await sharedWorkspace(page)).themeAppearance).toBe("dark");
-  await expect(control.getByRole("combobox").locator('option[value="default"]')).toHaveCount(1);
-  await control.getByRole("combobox").selectOption("default");
+  await expect(control.getByRole("combobox")).toHaveAttribute("data-value", "dark");
+  await chooseThemeOption(page, control.getByRole("combobox"), "default");
   await expect(control).toHaveAttribute("data-effective-appearance", "light");
   const saved = await sharedWorkspace(page);
   expect(saved.themeAppearance ?? "default").toBe("default");
@@ -236,7 +238,7 @@ test("a paired import retains references, rule order and explicit overrides thro
   await page.keyboard.press("Escape");
   await panel.getByTestId("theme-advanced").locator("summary").first().click();
   await panel.getByRole("button", { name: "Copy JSON", exact: true }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(edited);
+  expect((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/gu, "\n")).toBe(edited);
   const download = page.waitForEvent("download");
   await panel.getByRole("button", { name: "Download JSON", exact: true }).click();
   const exported = await readFile((await (await download).path())!, "utf8");
@@ -248,20 +250,41 @@ test("a paired import retains references, rule order and explicit overrides thro
   expect((await sharedWorkspace(page)).themeRecipeJson).toBe(edited);
 });
 
-test("Reading previews the same five sources in both appearances and downloads the complete editable recipe", async ({ page }) => {
+test("Reading previews the same eight sources in both appearances and downloads the complete editable recipe", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
   const panel = await start(page);
   await panel.getByRole("button", { name: "Theme designs", exact: true }).click();
   const gallery = page.getByTestId("theme-showcase");
   await expect(gallery.getByTestId("theme-showcase-detail")).toHaveAttribute("data-theme-design", "reading");
-  await expect(gallery.locator("[data-theme-sample]")).toHaveCount(5);
+  const samples = gallery.getByTestId("theme-sample-gallery");
+  await expect(samples.locator("article[data-theme-sample]")).toHaveCount(8);
+  await expect(samples.getByRole("link")).toHaveCount(8);
   for (const mode of ["light", "dark"]) {
-    await gallery.getByTestId("theme-appearance-control").getByRole("combobox").selectOption(mode);
-    await expect(gallery.locator(`[data-theme-sample] img[data-theme-preview-appearance="${mode}"]`)).toHaveCount(5);
-    for (const link of await gallery.locator("[data-theme-sample] a").all()) {
+    await chooseThemeOption(page, gallery.getByTestId("theme-appearance-control").getByRole("combobox"), mode);
+    for (const family of CORE_THEME_SAMPLE_IDS) {
+      const tile = samples.locator(`article[data-theme-sample="${family}"]`);
+      await tile.scrollIntoViewIfNeeded();
+      const image = tile.locator("img");
+      await expect(image).toHaveAttribute("data-theme-preview-appearance", mode);
+      await expect.poll(() => image.evaluate((element) => (element as HTMLImageElement).complete && (element as HTMLImageElement).naturalWidth > 0)).toBe(true);
+      await expect.poll(() => image.evaluate((element, expected) => {
+        const canvas = document.createElement("canvas");
+        canvas.width = 64;
+        canvas.height = 64;
+        const context = canvas.getContext("2d")!;
+        context.drawImage(element as HTMLImageElement, 0, 0, 64, 64);
+        const pixels = context.getImageData(0, 0, 64, 64).data;
+        for (let index = 0; index < pixels.length; index += 4) {
+          if (expected.every((value, channel) => pixels[index + channel] === value)) return true;
+        }
+        return false;
+      }, mode === "light" ? [246, 247, 249, 255] : [23, 28, 36, 255]), { message: `${family} should show the ${mode} canvas paint` }).toBe(true);
+      const link = tile.getByRole("link");
       const saved = decodeShareHash(new URL((await link.getAttribute("href"))!, page.url()).hash)!;
       expect(saved.themeRecipeJson).toBe(reading);
       expect(saved.themeAppearance).toBe(mode);
       expect(saved.diagramTheme).toBe("auto");
+      expect(saved.code).toBe(await readFile(new URL(`../src/themes/samples/${family}.mmd`, import.meta.url), "utf8"));
     }
   }
   const download = page.waitForEvent("download");
@@ -270,6 +293,7 @@ test("Reading previews the same five sources in both appearances and downloads t
   const adoption = gallery.getByTestId("theme-showcase-use");
   await adoption.getByRole("tab", { name: "CLI", exact: true }).click();
   await expect(adoption.getByTestId("theme-showcase-code")).toContainText("--theme-appearance dark");
+  errors.assertNone();
 });
 
 test("an open image export keeps the captured concrete appearance across a system appearance change", async ({ page }) => {

@@ -34,6 +34,20 @@ fn dom_part(value: &str) -> String {
     }
 }
 
+fn element_role_classes(plan: &UsecaseNodePlan, business: bool) -> String {
+    format!(
+        "usecase-element usecase-{}{}",
+        if plan.ellipse { "ellipse" } else { "rect" },
+        if business && plan.ellipse {
+            " usecase-business usecase-business-shape"
+        } else if business {
+            " usecase-business"
+        } else {
+            ""
+        }
+    )
+}
+
 fn accessible_label(label: &UsecaseLabelPlan) -> String {
     accessible_text(&label.text, label.label_type)
 }
@@ -585,7 +599,57 @@ pub(crate) fn render_usecase_diagram_svg_model(
         })
         .collect::<Vec<_>>();
     let hopped_paths = line_hops::elk_line_hop_paths(cfg, &hop_edges, options.work_meter())?;
-    out.push_str("</g><g class=\"edgePaths edges\">");
+    out.push_str("</g>");
+    if !shadows.is_empty() {
+        out.push_str(
+            r#"<g class="usecase-node-shadows" aria-hidden="true" pointer-events="none">"#,
+        );
+        for (color_index, plan) in prepared
+            .nodes
+            .iter()
+            .filter(|plan| !plan.is_boundary)
+            .enumerate()
+        {
+            let Some(shadow) = shadows.get(plan.id.as_str()) else {
+                continue;
+            };
+            options.checkpoint_emit()?;
+            let node = geometry[plan.id.as_str()];
+            let source = source_nodes.get(plan.id.as_str()).copied();
+            let typed_style = theme_plan.shell(&plan.id);
+            let node_style = format!(
+                "{}{}",
+                typed_style
+                    .map(|style| style.css(false))
+                    .unwrap_or_default(),
+                plan.source_style
+            );
+            let appearance = theme::appearance_attributes(css_binding, source.map(|_| color_index));
+            let _ = write!(
+                out,
+                r#"<g class="node default {} {}"{appearance} data-usecase-shadow-for="{}" transform="translate({},{})">"#,
+                element_role_classes(plan, source.is_some_and(|node| node.business)),
+                escape_attr(
+                    &source
+                        .map(|node| node.classes.join(" "))
+                        .unwrap_or_default()
+                ),
+                escape_attr(&plan.id),
+                fmt(node.x),
+                fmt(node.y)
+            );
+            theme::write_body_shadow_open(&mut out, shadow);
+            shapes::write_usecase_body(&mut out, node, plan, source, &node_style);
+            out.push_str("</g></g>");
+            options.checkpoint_emit()?;
+            theme::record_body_shadow(shadow, prepared.effect_evidence());
+            if let Some(style) = typed_style {
+                style.record_shadow_emitted(&receipt);
+            }
+        }
+        out.push_str("</g>");
+    }
+    out.push_str("<g class=\"edgePaths edges\">");
     for (edge_index, plan) in prepared.edges.iter().enumerate() {
         options.checkpoint_emit()?;
         let edge = edge_geometry[plan.id.as_str()];
@@ -861,17 +925,7 @@ pub(crate) fn render_usecase_diagram_svg_model(
                     }
                 )
             }
-            Some(node) => format!(
-                "usecase-element usecase-{}{}",
-                if plan.ellipse { "ellipse" } else { "rect" },
-                if node.business && plan.ellipse {
-                    " usecase-business usecase-business-shape"
-                } else if node.business {
-                    " usecase-business"
-                } else {
-                    ""
-                }
-            ),
+            Some(node) => element_role_classes(plan, node.business),
             None if note.is_some() => "usecase-note".into(),
             None => "usecase-json-table usecase-json-table".into(),
         };
@@ -904,8 +958,6 @@ pub(crate) fn render_usecase_diagram_svg_model(
                 style: &node_style,
                 typed_style,
                 receipt: &receipt,
-                shadow: shadows.get(plan.id.as_str()),
-                effect_evidence: prepared.effect_evidence(),
                 css_binding,
                 config,
                 measurer,

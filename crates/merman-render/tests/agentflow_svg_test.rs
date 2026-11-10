@@ -2212,6 +2212,25 @@ fn agentflow_basic_effects_use_the_shared_classic_and_neo_body_edge_and_label_te
                     })
                     .collect::<Vec<_>>();
                 assert_eq!(applications.len(), 6, "{backend}, {look}, html={html}");
+                let first_edge = document
+                    .descendants()
+                    .find(|n| n.attribute("data-edge") == Some("true"))
+                    .unwrap()
+                    .range()
+                    .start;
+                let body_depths: Vec<_> = document
+                    .descendants()
+                    .filter(|n| n.attribute("data-merman-theme-depth") == Some("node"))
+                    .collect();
+                assert_eq!(body_depths.len(), 2);
+                for depth in body_depths {
+                    assert!(depth.range().end < first_edge);
+                    let body = depth.children().find(|n| n.has_tag_name("rect")).unwrap();
+                    assert!(agentflow_theme_filter_reference(body).is_some());
+                    assert!(!depth.descendants().any(|n| n.attribute("id").is_some()
+                        || n.has_tag_name("text")
+                        || n.has_tag_name("foreignObject")));
+                }
                 for node_id in ["A", "B"] {
                     let node = agentflow_element(&document, node_id, "node");
                     assert_eq!(
@@ -2221,8 +2240,8 @@ fn agentflow_basic_effects_use_the_shared_classic_and_neo_body_edge_and_label_te
                                     && agentflow_theme_filter_reference(*shape).is_some()
                             })
                             .count(),
-                        1,
-                        "{backend}, {look}: missing {node_id} body filter"
+                        0,
+                        "{backend}, {look}: {node_id} face must not repaint the compiled depth"
                     );
                     let label = node
                         .descendants()

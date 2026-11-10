@@ -1,0 +1,8 @@
+{
+  "look": "classic",
+  "kanban": {
+    "sectionWidth": 240,
+    "padding": 24,
+    "useMaxWidth": false
+  }
+}

@@ -1129,6 +1129,8 @@ mod tests {
 
     #[test]
     fn state_theme_effect_emits_the_authored_std_deviation() {
+        use crate::svg::parity::shadow::write_theme_shadow_application;
+
         let effect = state_theme_effect(8.0);
         let region = crate::diagram_theme::SvgFilterRegion::try_bounded(-0.66, -1.65, 2.32, 4.3)
             .expect("bounded soft-shadow region");

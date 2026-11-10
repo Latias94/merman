@@ -351,11 +351,68 @@ pub(super) fn push_architecture_services_and_junctions<O: SvgOutput>(
     Ok(())
 }
 
+fn push_architecture_group_surface(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    group: &GroupRect<'_>,
+    group_inline_style: Option<&str>,
+) -> crate::Result<()> {
+    let _ = write!(out, r#"<rect id="{diagram_id}-group-"#);
+    escape_xml_into(out, group.id);
+    let _ = write!(
+        out,
+        r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg""#,
+        x = fmt(group.x),
+        y = fmt(group.y),
+        w = fmt(group.w.max(1.0)),
+        h = fmt(group.h.max(1.0)),
+    );
+    if let Some(style) = group_inline_style {
+        out.push_str(r#" style=""#);
+        escape_attr_into(out, style);
+        out.push('"');
+    }
+    out.push_str("/>");
+    out.checkpoint()
+}
+
+pub(super) fn push_architecture_group_surfaces(
+    out: &mut impl SvgOutput,
+    diagram_id: SvgDiagramId<'_>,
+    group_rects: &[GroupRect<'_>],
+    group_inline_style: Option<&str>,
+    checkpoints: ArchitectureEmitCheckpoints<'_>,
+) -> crate::Result<bool> {
+    checkpoints.checkpoint()?;
+    if group_rects.is_empty() {
+        return Ok(false);
+    }
+    out.push_str(r#"<g class="architecture-group-surfaces">"#);
+    out.checkpoint()?;
+    let mut pending: rustc_hash::FxHashMap<_, _> =
+        group_rects.iter().map(|group| (group.id, *group)).collect();
+    let mut ancestors = Vec::new();
+    for group in group_rects {
+        let mut next = Some(group.id);
+        while let Some(group) = next.and_then(|id| pending.remove(id)) {
+            checkpoints.checkpoint()?;
+            next = group.parent;
+            ancestors.push(group);
+        }
+        for group in ancestors.drain(..).rev() {
+            push_architecture_group_surface(out, diagram_id, &group, group_inline_style)?;
+        }
+    }
+    out.push_str("</g>");
+    out.checkpoint()?;
+    // Clear consumes the successfully emitted baseline without an inline style.
+    Ok(true)
+}
+
 pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
     ctx: &mut ArchitectureNodeRenderContext<'a, O>,
     group_rects: &[GroupRect<'a>],
-    group_inline_style: Option<&str>,
-    group_emitted: &mut bool,
+    emit_surfaces: bool,
 ) -> crate::Result<()> {
     let checkpoints = ctx.checkpoints;
     checkpoints.checkpoint()?;
@@ -385,26 +442,9 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
             let x1 = x - settings.half_icon;
             let y1 = y - settings.half_icon;
 
-            out.push_str(r#"<rect id=""#);
-            let _ = write!(out, "{}", ctx.diagram_id);
-            out.push_str("-group-");
-            escape_xml_into(out, grp.id);
-            checkpoints.checkpoint()?;
-            let _ = write!(
-                out,
-                r#"" x="{x}" y="{y}" width="{w}" height="{h}" class="node-bkg""#,
-                x = fmt(x),
-                y = fmt(y),
-                w = fmt(w.max(1.0)),
-                h = fmt(h.max(1.0))
-            );
-            if let Some(style) = group_inline_style {
-                out.push_str(r#" style=""#);
-                escape_attr_into(out, style);
-                out.push('"');
+            if emit_surfaces {
+                push_architecture_group_surface(out, ctx.diagram_id, grp, None)?;
             }
-            out.push_str("/>");
-
             out.push_str("<g>");
 
             let mut shifted_x1 = x1;
@@ -495,8 +535,6 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
 
             out.push_str("</g>");
             out.checkpoint()?;
-            // Clear consumes the successfully emitted baseline without an inline style.
-            *group_emitted = true;
             if let Some(emission) = typography_emission.as_deref_mut() {
                 emission.record_svg_text(has_visible_title);
             }
@@ -526,4 +564,67 @@ pub(super) fn push_architecture_groups<'a, O: SvgOutput>(
     ctx.surface_styles = surface_styles;
     ctx.typography_emission = typography_emission;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::svg::parity::SvgExecution;
+    use crate::svg::{SvgDebugOptions, SvgRenderOptions};
+
+    #[test]
+    fn architecture_group_surfaces_order_forward_parents_before_descendants() {
+        let group = |id, parent| GroupRect {
+            id,
+            parent,
+            x: 0.0,
+            y: 0.0,
+            w: 100.0,
+            h: 100.0,
+            icon: None,
+            title: None,
+        };
+        let groups = [
+            group("leaf", Some("inner")),
+            group("outer", None),
+            group("inner", Some("outer")),
+        ];
+        let session = crate::environment::RenderEnvironment::deterministic()
+            .begin_session()
+            .unwrap();
+        let request = SvgRenderOptions::default();
+        let debug = SvgDebugOptions::default();
+        let execution = SvgExecution::unthemed_for_test(
+            &request,
+            &debug,
+            &session,
+            crate::DiagramFamilyId::ARCHITECTURE,
+        )
+        .unwrap();
+        let mut svg = String::new();
+        assert!(
+            push_architecture_group_surfaces(
+                &mut svg,
+                execution.diagram_id_or("architecture"),
+                &groups,
+                Some("fill:#123456;"),
+                ArchitectureEmitCheckpoints::new(execution.work_meter()),
+            )
+            .unwrap()
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let ids = document
+            .root_element()
+            .children()
+            .filter_map(|node| node.attribute("id"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            [
+                "architecture-group-outer",
+                "architecture-group-inner",
+                "architecture-group-leaf",
+            ]
+        );
+    }
 }

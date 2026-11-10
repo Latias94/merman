@@ -145,13 +145,11 @@ export default function App() {
                       onPointerDownCapture={() => setWorkspacePane("editor")}
                     >
                       <EditorPanel
+                        active={!isNarrowLayout || workspacePane === "editor"}
                         activateEditorLanguageImmediately={
                           isNarrowLayout && workspacePane === "editor"
                         }
                         editorMode={editorMode}
-                        mountCodeEditorImmediately={
-                          !isNarrowLayout || workspacePane === "editor"
-                        }
                         setEditorMode={setEditorMode}
                         t={t}
                       />
@@ -205,18 +203,24 @@ export default function App() {
 }
 
 function EditorPanel({
+  active,
   activateEditorLanguageImmediately,
   editorMode,
-  mountCodeEditorImmediately,
   setEditorMode,
   t,
 }: {
+  active: boolean;
   activateEditorLanguageImmediately: boolean;
   editorMode: "code" | "config";
-  mountCodeEditorImmediately: boolean;
   setEditorMode(mode: "code" | "config"): void;
   t(key: string): string;
 }) {
+  const [activated, setActivated] = useState(active);
+  useEffect(() => {
+    if (active) setActivated(true);
+  }, [active]);
+  if (!active && !activated) return null;
+
   return (
     <Tabs
       value={editorMode}
@@ -251,7 +255,6 @@ function EditorPanel({
         <StartupCodeEditor
           activateLanguageImmediately={activateEditorLanguageImmediately}
           className="h-full min-h-0"
-          mountImmediately={mountCodeEditorImmediately}
         />
       </TabsContent>
       <TabsContent
@@ -272,32 +275,11 @@ function EditorPanel({
 function StartupCodeEditor({
   activateLanguageImmediately,
   className,
-  mountImmediately,
 }: {
   readonly activateLanguageImmediately: boolean;
   readonly className?: string;
-  readonly mountImmediately: boolean;
 }) {
   const { t } = useTranslation();
-  const [mounted, setMounted] = useState(
-    () => mountImmediately || playgroundStartupBoundary.reason() !== null,
-  );
-
-  useEffect(() => {
-    let active = true;
-    void playgroundStartupBoundary.wait().then(() => {
-      if (active) setMounted(true);
-    });
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!mountImmediately) return;
-    setMounted(true);
-  }, [mountImmediately]);
-
   useEffect(() => {
     if (!activateLanguageImmediately) return;
     playgroundStartupBoundary.activate("editor-visible");
@@ -306,27 +288,6 @@ function StartupCodeEditor({
   const activateLanguageFromEditorIntent = () => {
     playgroundStartupBoundary.activate("editor-intent");
   };
-
-  const mountFromEditorIntent = () => {
-    activateLanguageFromEditorIntent();
-    setMounted(true);
-  };
-
-  if (!mounted) {
-    return (
-      <button
-        type="button"
-        data-testid="editor-activation"
-        aria-label={t("editor.loading")}
-        className={`${className ?? ""} flex w-full items-center justify-center bg-card text-sm text-muted-foreground`}
-        onClick={mountFromEditorIntent}
-        onFocus={mountFromEditorIntent}
-        onPointerDown={mountFromEditorIntent}
-      >
-        {t("editor.loading")}
-      </button>
-    );
-  }
 
   return (
     <div

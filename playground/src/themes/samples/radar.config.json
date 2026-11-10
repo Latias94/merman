@@ -1,0 +1,8 @@
+{
+  "htmlLabels": false,
+  "radar": {
+    "width": 640,
+    "height": 560,
+    "useMaxWidth": true
+  }
+}

@@ -109,6 +109,10 @@ fn write_sankey_links(
     next_generated_id: &mut impl FnMut(&str) -> String,
     diagram_id: Option<SvgDiagramId<'_>>,
 ) -> Result<()> {
+    let link_group_open = format!(
+        r#"<g class="link" style="mix-blend-mode: {};">"#,
+        node_palette.link_blend_mode_css(),
+    );
     for (link_index, link) in layout.links.iter().enumerate() {
         let prepared =
             node_palette
@@ -131,7 +135,7 @@ fn write_sankey_links(
             tx = fmt(tx),
         );
 
-        out.push_str(r#"<g class="link" style="mix-blend-mode: multiply;">"#);
+        out.push_str(&link_group_open);
         out.checkpoint()?;
 
         let stroke = match prepared.paint {
@@ -318,6 +322,7 @@ pub(crate) fn render_sankey_diagram_svg(
         &mut super::super::output::XmlTextOutput::new(&mut out),
         diagram_id,
         typography_theme,
+        node_palette.link_blend_mode_css(),
     )?;
     if let Some(receipt) = &mut typography_receipt {
         receipt.record_css_emission(typography_css_emission);
@@ -332,6 +337,24 @@ pub(crate) fn render_sankey_diagram_svg(
     };
 
     let terminal_node_index = SankeyTerminalNodeIndex::new(&layout.nodes, &mut next_generated_id);
+
+    let mut append_links = |out: &mut BoundedSvgOutput<'_>| -> Result<()> {
+        out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
+        out.checkpoint()?;
+        write_sankey_links(
+            out,
+            layout,
+            node_palette,
+            &mut next_generated_id,
+            scope_generated_ids.then_some(diagram_id),
+        )?;
+        out.push_str("</g>");
+        out.checkpoint()
+    };
+
+    if node_palette.links_before_nodes() {
+        append_links(&mut out)?;
+    }
 
     out.push_str(r#"<g class="nodes">"#);
     out.checkpoint()?;
@@ -419,19 +442,9 @@ pub(crate) fn render_sankey_diagram_svg(
         });
     }
 
-    out.push_str(r#"<g class="links" fill="none" stroke-opacity="0.5">"#);
-    out.checkpoint()?;
-
-    write_sankey_links(
-        &mut out,
-        layout,
-        node_palette,
-        &mut next_generated_id,
-        scope_generated_ids.then_some(diagram_id),
-    )?;
-
-    out.push_str("</g>");
-    out.checkpoint()?;
+    if !node_palette.links_before_nodes() {
+        append_links(&mut out)?;
+    }
     out.push_str("</svg>");
     root_document.complete(out.finish()?)
 }

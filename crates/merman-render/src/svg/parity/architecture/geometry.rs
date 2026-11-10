@@ -38,6 +38,7 @@ pub(super) fn bounds_from_rect(x: f64, y: f64, w: f64, h: f64) -> Bounds {
 #[derive(Clone, Copy)]
 pub(super) struct GroupRect<'a> {
     pub(super) id: &'a str,
+    pub(super) parent: Option<&'a str>,
     pub(super) x: f64,
     pub(super) y: f64,
     pub(super) w: f64,

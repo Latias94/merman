@@ -10,8 +10,80 @@ import {
   openWorkbenchTool,
   previewSvgText,
   replaceEditorSource,
+  replaceMonacoText,
   waitForPreviewSvg,
 } from "./helpers/playground";
+
+for (const editorMode of ["code", "config"] as const) {
+  test(`a shared mobile preview defers the ${editorMode} editor until visible and retains its model`, async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      if (window === window.top) localStorage.setItem("merman-language", "en");
+    });
+    const errors = monitorBrowserErrors(page);
+    const requests: string[] = [];
+    const workers: string[] = [];
+    page.on("request", (request) => requests.push(request.url()));
+    page.on("worker", (worker) => workers.push(worker.url()));
+    const source = "flowchart LR\nshared[Shared preview] --> kept[Preserved source]";
+    const config = '{"htmlLabels":false}';
+    const shared = new URL(createIssueShareUrl(
+      { ...DEFAULT_WORKSPACE_SNAPSHOT, code: source, mermaidConfig: config },
+      { workspacePane: "preview", editorMode, previewMode: "svg", showSvgBounds: false, svgPresentationMode: "infinite" },
+      { origin: "https://example.test", pathname: "/" },
+    ));
+    await page.goto(`./${shared.search}${shared.hash}`, { waitUntil: "domcontentloaded" });
+    await waitForPreviewSvg(page);
+    await expect.poll(() => page.evaluate(() => performance.getEntriesByName("merman:initial-preview-presented").length)).toBe(1);
+    await page.waitForLoadState("networkidle");
+    await expect(page.getByTestId("editor-startup-surface")).toHaveCount(0);
+    await expect(page.locator(".monaco-editor")).toHaveCount(0);
+    expect(requests.filter((url) => /\/(?:EditorFeature|ConfigEditorFeature|editor\.api|monaco|editor\.worker|json\.worker|merman-language\.worker|mermaid-syntax\.worker|tree-sitter-mermaid|web-tree-sitter)-/u.test(url))).toEqual([]);
+    expect(workers).toEqual([]);
+    await expect.poll(() => previewSvgText(page)).toContain("Preserved source");
+
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
+    await expect(page.getByRole("tab", { name: editorMode === "code" ? "Code" : "Config", exact: true })).toHaveAttribute("aria-selected", "true");
+    const label = editorMode === "code" ? "Mermaid source" : "Mermaid configuration";
+    await expect(page.getByRole("textbox", { name: label, exact: true })).toBeVisible();
+    const editor = page.locator(".monaco-editor:visible");
+    const original = editorMode === "code" ? source : config;
+    const readText = async () => (await editor.locator(".view-lines").innerText()).replace(/\s/gu, "");
+    await expect.poll(readText).toBe(original.replace(/\s/gu, ""));
+    const instance = await editor.elementHandle();
+    await replaceMonacoText(page, label, editorMode === "code" ? "flowchart LR\nnewest[Newest editor source]" : '{"htmlLabels":false,"flowchart":{"curve":"linear"}}');
+    await page.getByRole("tab", { name: "Preview", exact: true }).click();
+    await waitForPreviewSvg(page);
+    await page.getByRole("tab", { name: "Editor", exact: true }).click();
+    expect(await editor.evaluate((node, previous) => node === previous, instance)).toBe(true);
+    await page.getByRole("textbox", { name: label, exact: true }).focus();
+    await page.keyboard.press("Control+z");
+    await expect.poll(readText).toBe(original.replace(/\s/gu, ""));
+    if (editorMode === "code") await expect(page.locator("footer")).toContainText(`${source.length} Chars`);
+    expect(requests.filter((url) => /\/EditorFeature-[\w-]+\.js/u.test(url))).toHaveLength(1);
+    errors.assertNone();
+  });
+}
+
+test("resizing a shared mobile preview to desktop activates the newly visible editor", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => {
+    if (window === window.top) localStorage.setItem("merman-language", "en");
+  });
+  const errors = monitorBrowserErrors(page);
+  const shared = new URL(createIssueShareUrl(
+    { ...DEFAULT_WORKSPACE_SNAPSHOT, code: "flowchart LR\nsmall[Small preview] --> wide[Wide editor]" },
+    { workspacePane: "preview", editorMode: "code", previewMode: "svg", showSvgBounds: false, svgPresentationMode: "infinite" },
+    { origin: "https://example.test", pathname: "/" },
+  ));
+  await page.goto(`./${shared.search}${shared.hash}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+  await expect(page.getByTestId("editor-startup-surface")).toHaveCount(0);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await expect(page.getByRole("textbox", { name: "Mermaid source", exact: true })).toBeVisible();
+  await expect.poll(() => previewSvgText(page)).toContain("Wide editor");
+  errors.assertNone();
+});
 
 test("320px portrait keeps toolbar, workspace tabs, and preview controls reachable", async ({
   page,

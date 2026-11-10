@@ -1,3 +1,4 @@
+import { UNAVAILABLE_DIAGRAM_DETECTION } from "@mermanjs/web";
 import type {
   DiagramDetectionFacts,
   DiagramFamilyCapability,
@@ -9,9 +10,11 @@ import type {
 } from "@mermanjs/web";
 import type { CompletedRenderBatch, RenderCoordinatorState } from "../runtime/render-coordinator.ts";
 import type { FrozenRenderOperation } from "../runtime/merman-operation-input.ts";
+import type { MermanDomainFacade } from "../runtime/merman-core.ts";
 import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { readMermaidAppearanceOverrides } from "./mermaid-appearance.ts";
-import { matchesWorkspaceAppearance } from "../runtime/merman-operation-input.ts";
+import { configuredMermanOperationInput, matchesWorkspaceAppearance } from "../runtime/merman-operation-input.ts";
+import { inspectThemeRecipe, resolveThemeSelection } from "./theme-appearance.ts";
 
 type ThemeFamilyDesignOwner = Pick<ThemePresetCatalogEntry["appearances"][number], "family_designs">;
 
@@ -44,6 +47,53 @@ export function themeFamilyMetadataId(
   capabilities: readonly Pick<DiagramFamilyCapability, "family_id" | "metadata_id">[],
 ): string | null {
   return capabilities.find((entry) => entry.family_id === familyId && entry.metadata_id !== null)?.metadata_id ?? null;
+}
+
+type DiagramDetectionFacade = Pick<MermanDomainFacade, "detectDiagram" | "themeCatalog" | "materializeTheme">;
+
+export interface WorkspaceDiagramDetection {
+  readonly facade: DiagramDetectionFacade;
+  readonly workspace: Readonly<WorkspaceSnapshot>;
+  readonly hostAppearance: ThemeAppearance;
+  readonly detection: DiagramDetectionFacts;
+}
+
+/** Detect independently of preview visibility without publishing a render or changing its state. */
+export function detectWorkspaceDiagram(
+  facade: DiagramDetectionFacade,
+  workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance: ThemeAppearance,
+): WorkspaceDiagramDetection {
+  let detection: DiagramDetectionFacts = UNAVAILABLE_DIAGRAM_DETECTION;
+  try {
+    let catalog: ReturnType<DiagramDetectionFacade["themeCatalog"]> | null = null;
+    try { catalog = facade.themeCatalog(); } catch { /* Detection also works without a theme catalog. */ }
+    const inspection = workspace.themeRecipeJson === null ? null : inspectThemeRecipe(facade, workspace.themeRecipeJson);
+    const selection = resolveThemeSelection(workspace, hostAppearance, catalog, inspection);
+    if (!selection.error) {
+      const input = configuredMermanOperationInput(workspace.code, selection.mermaidTheme, workspace.mermaidConfig, {
+        diagramFont: workspace.diagramFont,
+        themePresetId: workspace.themePresetId,
+        themeRecipeJson: workspace.themeRecipeJson,
+        themeAppearance: selection.appearance,
+        svgPipeline: workspace.svgPipeline,
+        textMeasurementMode: workspace.textMeasurementMode,
+      });
+      if (!input.configurationError) detection = facade.detectDiagram(input);
+    }
+  } catch { /* Invalid or unavailable inputs must not reuse an earlier diagram identity. */ }
+  return { facade, workspace, hostAppearance, detection };
+}
+
+/** A local detection belongs only to the exact inputs and runtime that produced it. */
+export function currentWorkspaceDiagramDetection(
+  result: WorkspaceDiagramDetection | null,
+  facade: DiagramDetectionFacade | null,
+  workspace: Readonly<WorkspaceSnapshot>,
+  hostAppearance: ThemeAppearance,
+): DiagramDetectionFacts | null {
+  return result?.facade === facade && result.workspace === workspace && result.hostAppearance === hostAppearance
+    ? result.detection : null;
 }
 
 /** Diagram identity stays usable when its own detection inputs are unchanged. */

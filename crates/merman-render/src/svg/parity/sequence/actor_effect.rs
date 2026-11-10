@@ -166,13 +166,18 @@ pub(super) struct SequenceActorShadow<'a> {
 }
 
 impl SequenceActorShadow<'_> {
-    pub(super) fn write_definition(&self, out: &mut impl SvgOutput) -> String {
-        super::super::shadow::write_theme_shadow_application(out, self.id, self.effect, self.region)
+    pub(super) fn write_depth_definition(&self, out: &mut impl SvgOutput) -> String {
+        super::super::shadow::write_theme_shadow_depth_application(
+            out,
+            self.id,
+            self.effect,
+            self.region,
+        )
     }
 
     pub(super) fn record_emission(&self) {
         self.recorder
-            .record_application(self.effect, self.id, self.region);
+            .record_depth_application(self.effect, self.id, self.region);
     }
 }
 

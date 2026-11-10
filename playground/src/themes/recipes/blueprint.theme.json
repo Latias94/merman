@@ -82,7 +82,11 @@
         "sequence": { "font_stack": { "ref": "drafting-font" }, "font_size_px": 13 },
         "class": { "font_stack": { "ref": "drafting-font" }, "font_size_px": 13 },
         "xychart": { "font_stack": { "ref": "plot-font" } },
-        "pie": { "font_stack": { "ref": "plot-font" } }
+        "pie": { "font_stack": { "ref": "plot-font" } },
+        "state": {"font_stack": {"ref": "drafting-font"}, "font_size_px": 14},
+        "er": {"font_stack": {"ref": "drafting-font"}, "font_size_px": 13},
+        "mindmap": {"font_stack": {"ref": "drafting-font"}},
+        "architecture": {"font_stack": {"ref": "drafting-font"}, "font_size_px": 14}
       }
     },
     "styles": {
@@ -124,11 +128,43 @@
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14, "font_weight": 500 } } },
       { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "accent" } }, "typography": { "font_size_px": 19, "font_weight": 600 } } },
-      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 } } }
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 12 } } },
+      {"family": "state", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "state", "target": "state", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1}, "radius": 0}},
+      {"family": "state", "target": "state-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_weight": 500}}},
+      {"family": "state", "target": "composite", "style": {"fill": {"kind": "solid", "color": {"ref": "group-sheet"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "grid"}}, "width": 0.7}}},
+      {"family": "state", "target": "composite-header", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "grid"}}, "width": 0.7}}},
+      {"family": "state", "target": "composite-label", "style": {"fill": {"kind": "solid", "color": {"ref": "accent"}}, "typography": {"font_weight": 600}}},
+      {"family": "state", "target": "transition", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 1}}},
+      {"family": "state", "target": "transition-marker", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "transition-label", "style": {"fill": {"kind": "solid", "color": {"ref": "secondary"}}, "typography": {"font_size_px": 13}}},
+      {"family": "state", "target": "transition-label-background", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}}},
+      {"family": "state", "target": "special-state", "variant": "start", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state-inner", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "special", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "accent"}}}}},
+      {"family": "state", "target": "note", "style": {"fill": {"kind": "solid", "color": {"ref": "note"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 0.8}}},
+      {"family": "state", "target": "note-label", "style": {"fill": {"kind": "solid", "color": {"ref": "note-ink"}}, "typography": {"font_size_px": 12, "font_style": "normal"}}},
+      {"family": "er", "target": "entity", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "er", "target": "table", "variant": "odd", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}}},
+      {"family": "er", "target": "table", "variant": "even", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}}},
+      {"family": "er", "target": "relation", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "accent"}}}}},
+      {"family": "er", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "er", "target": "title", "style": {"fill": {"kind": "solid", "color": {"ref": "accent"}}}},
+      {"family": "mindmap", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "node-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "edge", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "accent"}}}}},
+      {"family": "architecture", "target": "node", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "architecture", "target": "cluster", "style": {"fill": "transparent", "stroke": {"paint": {"kind": "solid", "color": {"ref": "grid"}}}}},
+      {"family": "architecture", "target": "edge", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "accent"}}}}},
+      {"family": "architecture", "target": "marker", "style": {"fill": {"kind": "solid", "color": {"ref": "accent"}}}},
+      {"family": "architecture", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}}
     ],
     "palettes": {
       "chart-series": { "ref": "series" },
-      "pie-slice": { "ref": "pie-series" }
-    }
+      "pie-slice": { "ref": "pie-series" },
+      "node": {"ref": "pie-series"}
+    },
+    "mermaid": {"variables": {"git0": "#214C77", "erEdgeLabelBackground": "#12365B"}}
   }
 }

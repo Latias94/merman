@@ -589,6 +589,19 @@ beta:R -[second]-> L:j2
             "architecture-mixed-L_beta_j2_0"
         ]
     );
+    let layers = root
+        .children()
+        .filter_map(|node| node.attribute("class"))
+        .filter(|class| class.starts_with("architecture-"))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        layers,
+        [
+            "architecture-edges",
+            "architecture-services",
+            "architecture-groups"
+        ]
+    );
     let group_ids = group("architecture-groups")
         .children()
         .filter(|node| node.has_tag_name("rect"))
@@ -615,6 +628,124 @@ beta:R -[second]-> L:j2
     );
     assert!(root.children().any(|node| node.has_tag_name("desc")
         && node.text() == Some("Services and junctions in nested groups")));
+}
+
+#[test]
+fn architecture_nested_group_surfaces_keep_connections_services_and_labels_in_front() {
+    let source = r#"architecture-beta
+group outer(cloud)[Outer]
+group inner(database)[Inner] in outer
+service api(server)[API] in inner
+service worker[Worker] in outer
+api:R -[request]-> L:worker
+"#;
+    for fill in ["#17324D", "#17324D80"] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Cluster,
+                            ThemeStylePatch::default().with_fill(CanvasPaint::solid(fill).unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default()
+                                .with_fill(CanvasPaint::solid("#123456").unwrap()),
+                        ))
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Edge,
+                            ThemeStylePatch::default()
+                                .with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
+                        )),
+                ),
+            )
+            .unwrap();
+        let rendered = try_render_architecture_with_theme(source, &theme).unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let root = document.root_element();
+        let layers = root
+            .children()
+            .filter_map(|node| node.attribute("class"))
+            .filter(|class| class.starts_with("architecture-"))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            layers,
+            [
+                "architecture-group-surfaces",
+                "architecture-edges",
+                "architecture-services",
+                "architecture-groups",
+            ],
+            "{fill}"
+        );
+        let group = |class| {
+            root.children()
+                .find(|node| node.attribute("class") == Some(class))
+                .unwrap()
+        };
+        let backgrounds = group("architecture-group-surfaces")
+            .children()
+            .filter(roxmltree::Node::is_element)
+            .collect::<Vec<_>>();
+        assert_eq!(backgrounds.len(), 2);
+        for (background, id) in backgrounds.iter().zip(["outer", "inner"]) {
+            assert!(background.has_tag_name("rect"));
+            assert_eq!(
+                background.attribute("id"),
+                Some(format!("architecture-group-{id}").as_str())
+            );
+            assert_eq!(
+                background.attribute("style"),
+                Some(format!("fill:{fill};").as_str())
+            );
+        }
+        let foreground = group("architecture-groups");
+        assert!(!foreground.children().any(|node| node.has_tag_name("rect")));
+        let labels = foreground
+            .descendants()
+            .filter(roxmltree::Node::is_text)
+            .filter_map(|node| node.text())
+            .collect::<Vec<_>>();
+        assert_eq!(labels, ["Outer", "Inner"]);
+        assert!(
+            foreground
+                .descendants()
+                .filter(|node| node.has_tag_name("svg"))
+                .count()
+                >= 2,
+            "group icons must stay in the foreground: {fill}"
+        );
+        for label in foreground
+            .descendants()
+            .filter(|node| node.has_tag_name("text"))
+        {
+            assert_eq!(label.attribute("style"), Some("fill:#123456;"));
+        }
+        let edges = group("architecture-edges");
+        assert!(edges.descendants().any(|node| {
+            node.has_tag_name("path")
+                && node.attribute("class") == Some("edge")
+                && node.attribute("style") == Some("stroke:#c2188b;")
+        }));
+        assert!(
+            edges
+                .descendants()
+                .any(|node| node.is_text() && node.text() == Some("request"))
+        );
+        let services = group("architecture-services");
+        for label in ["API", "Worker"] {
+            assert!(
+                services
+                    .descendants()
+                    .any(|node| node.is_text() && node.text() == Some(label))
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), 3, "{fill}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{fill}");
+    }
 }
 
 #[test]

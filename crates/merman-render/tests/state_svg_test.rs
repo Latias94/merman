@@ -6,6 +6,11 @@ type FamilyFixture = (
 
 mod common;
 
+#[path = "state_svg/shadow_depth.rs"]
+mod shadow_depth;
+#[path = "state_svg/source_filter.rs"]
+mod source_filter;
+
 use merman_core::{MermaidEngine, ParseOptions};
 
 use merman_render::LayoutOptions;
@@ -2444,14 +2449,23 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
                 .children()
                 .filter(|node| node.is_element())
                 .collect::<Vec<_>>();
-            assert_eq!(primitives.len(), 1);
-            let shadow = primitives[0];
-            assert!(shadow.has_tag_name("feDropShadow"));
-            assert_eq!(shadow.attribute("in"), Some("SourceGraphic"));
-            assert_eq!(shadow.attribute("dx"), Some("5"));
-            assert_eq!(shadow.attribute("dy"), Some("6"));
-            assert_eq!(shadow.attribute("stdDeviation"), Some("0"));
-            assert_eq!(shadow.attribute("flood-color"), Some("#111827"));
+            let blur = primitives
+                .iter()
+                .find(|node| node.has_tag_name("feGaussianBlur"))
+                .unwrap();
+            let offset = primitives
+                .iter()
+                .find(|node| node.has_tag_name("feOffset"))
+                .unwrap();
+            let flood = primitives
+                .iter()
+                .find(|node| node.has_tag_name("feFlood"))
+                .unwrap();
+            assert_eq!(blur.attribute("in"), Some("SourceGraphic"));
+            assert_eq!(blur.attribute("stdDeviation"), Some("0"));
+            assert_eq!(offset.attribute("dx"), Some("5"));
+            assert_eq!(offset.attribute("dy"), Some("6"));
+            assert_eq!(flood.attribute("flood-color"), Some("#111827"));
             filter.attribute("id").expect("filter id")
         })
         .collect::<std::collections::BTreeSet<_>>();
@@ -2459,7 +2473,9 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
     let referenced_filter_ids = document
         .descendants()
         .filter(|node| {
-            node.has_tag_name("rect") && node.attribute("class") == Some("basic label-container")
+            node.has_tag_name("rect")
+                && node.attribute("class") == Some("basic label-container")
+                && node.attribute("filter").is_some()
         })
         .map(|node| {
             node.attribute("filter")
@@ -2578,7 +2594,7 @@ fn state_svg_soft_shadow_uses_four_sigma_regions_and_expands_the_root_viewbox() 
     assert!(filters.iter().all(|filter| {
         filter
             .children()
-            .find(|node| node.is_element() && node.has_tag_name("feDropShadow"))
+            .find(|node| node.is_element() && node.has_tag_name("feGaussianBlur"))
             .is_some_and(|shadow| shadow.attribute("stdDeviation") == Some("8"))
     }));
 
@@ -8074,6 +8090,30 @@ fn state_composite_paint_uses_large_and_multiline_title_measurements() {
                     .children()
                     .find(|node| node.attribute("class") == Some("cluster-label"))
                     .expect("composite title");
+                let (label_x, label_y) = label
+                    .attribute("transform")
+                    .and_then(|value| value.strip_prefix("translate("))
+                    .and_then(|value| value.strip_suffix(')'))
+                    .and_then(|value| value.split_once(','))
+                    .map(|(x, y)| {
+                        (
+                            x.trim().parse::<f64>().unwrap(),
+                            y.trim().parse::<f64>().unwrap(),
+                        )
+                    })
+                    .expect("composite title origin");
+                let title_width = cluster["title_label"]["width"].as_f64().unwrap();
+                let header_center_x = number(outer, "x") + number(outer, "width") / 2.0;
+                let header_center_y = (number(outer, "y") + number(inner, "y")) / 2.0;
+                assert!(
+                    (label_x + title_width / 2.0 - header_center_x).abs() < 0.001
+                        && (label_y + title_height / 2.0 - header_center_y).abs() < 0.001,
+                    "normalized title box must be centered in its header: {layout}, html={html_labels}, title={title}"
+                );
+                assert!(
+                    (cluster["title_label"]["y"].as_f64().unwrap() - header_center_y).abs() < 0.001,
+                    "layout and painted title boxes must agree: {layout}, html={html_labels}, title={title}"
+                );
                 if html_labels {
                     let foreign = label
                         .descendants()
@@ -8732,15 +8772,19 @@ fn state_svg_preserves_ordered_shadow_inputs_and_accumulated_bounds() {
     for filter in filters {
         let stages: Vec<_> = filter
             .children()
-            .filter(|node| node.has_tag_name("feDropShadow"))
+            .filter(|node| node.has_tag_name("feGaussianBlur"))
             .collect();
         assert_eq!(stages.len(), 2);
         assert_eq!(stages[0].attribute("in"), Some("SourceGraphic"));
-        assert_eq!(stages[1].attribute("in"), None);
+        assert_eq!(stages[1].attribute("in"), Some("merman-shadow-0-result"));
         assert_eq!(stages[0].attribute("stdDeviation"), Some("2"));
         assert_eq!(stages[1].attribute("stdDeviation"), Some("3"));
-        assert_eq!(stages[0].attribute("flood-color"), Some("#ff0000"));
-        assert_eq!(stages[1].attribute("flood-color"), Some("#0000ff"));
+        let colors: Vec<_> = filter
+            .children()
+            .filter(|node| node.has_tag_name("feFlood"))
+            .map(|node| node.attribute("flood-color").unwrap())
+            .collect();
+        assert_eq!(colors, ["#ff0000", "#0000ff"]);
     }
     let composed_bounds = svg_view_box(&composed);
     let reset_bounds = svg_view_box(&reset);

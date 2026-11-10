@@ -5,9 +5,9 @@ use merman_model::resources::InputResourcePolicy;
 use merman_render::DiagramFamilyId;
 use merman_render::LayoutOptions;
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack, OrdinalPalette,
-    ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeTextStyle, TypographySpec,
+    CanvasPaint, CanvasSpec, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, FontStack,
+    OrdinalPalette, ThemeColorValue, ThemePortabilityRequirement, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeTextStyle, TypographySpec,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -1429,43 +1429,52 @@ fn sankey_static_node_stroke_supports_default_solid_transparent_and_clear() {
 
 #[test]
 fn sankey_node_stroke_does_not_certify_unsupported_geometry_in_the_same_rule() {
-    let theme = DiagramThemeCompiler::new()
-        .compile(
-            DiagramThemeSpec::new().with_styles(
-                ThemeRuleSet::default().with_rule(ThemeRule::new(
-                    ThemeTarget::Node,
-                    ThemeStylePatch::default()
-                        .with_stroke(CanvasPaint::solid("#123456").unwrap())
-                        .with_stroke_width(9.0)
-                        .unwrap(),
-                )),
-            ),
-        )
-        .unwrap();
-    let source = "sankey-beta\nA,B,10\n";
-    let rendered = render_sankey_with_theme_requirement(
-        source,
-        &theme,
-        MermaidEngine::new(),
-        ThemePortabilityRequirement::BestEffort,
-    )
-    .unwrap();
-    assert!(rendered.svg().contains(r##"stroke="#123456""##));
-    assert!(!rendered.svg().contains(r#"stroke-width="9""#));
-    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
-    assert_eq!(evidence.required_count(), 1);
-    assert_eq!(evidence.accounted_count(), 1);
-    assert_eq!(evidence.applied_count(), 0);
-    assert_eq!(evidence.theme_residual_count(), 1);
-    assert!(
-        render_sankey_with_theme_requirement(
+    use merman_render::diagram_theme::OrdinalSelector;
+
+    for ordinal in [
+        None,
+        Some(OrdinalSelector::Exact(1)),
+        Some(OrdinalSelector::cycle(6, 0).unwrap()),
+    ] {
+        let mut rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default()
+                .with_stroke(CanvasPaint::solid("#123456").unwrap())
+                .with_stroke_width(9.0)
+                .unwrap(),
+        );
+        if let Some(ordinal) = ordinal {
+            rule = rule.with_ordinal(ordinal);
+        }
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(rule)))
+            .unwrap();
+        let source = "sankey-beta\nA,B,10\n";
+        let rendered = render_sankey_with_theme_requirement(
             source,
             &theme,
             MermaidEngine::new(),
-            ThemePortabilityRequirement::RequirePortable
+            ThemePortabilityRequirement::BestEffort,
         )
-        .is_err()
-    );
+        .unwrap();
+        assert!(rendered.svg().contains(r##"stroke="#123456""##));
+        assert!(!rendered.svg().contains(r#"stroke-width="9""#));
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 1);
+        assert!(
+            render_sankey_with_theme_requirement(
+                source,
+                &theme,
+                MermaidEngine::new(),
+                ThemePortabilityRequirement::RequirePortable
+            )
+            .is_err()
+        );
+    }
 }
 
 #[test]
@@ -1952,8 +1961,222 @@ fn sankey_visible_text_ordinals_keep_fill_and_stroke_ownership_independent() {
     }
 }
 
+fn assert_sankey_compositing(svg: &str, blend_mode: &str, layers: [&str; 3]) {
+    let document = roxmltree::Document::parse(svg).expect("valid Sankey SVG");
+    let actual_layers = document
+        .descendants()
+        .filter_map(|node| node.attribute("class"))
+        .filter(|class| matches!(*class, "links" | "nodes" | "node-labels"))
+        .collect::<Vec<_>>();
+    assert_eq!(actual_layers, layers);
+    let link_groups = document
+        .descendants()
+        .filter(|node| node.has_tag_name("g") && node.attribute("class") == Some("link"))
+        .collect::<Vec<_>>();
+    assert!(!link_groups.is_empty());
+    let expected_inline = format!("mix-blend-mode: {blend_mode};");
+    for link in link_groups {
+        assert_eq!(link.attribute("style"), Some(expected_inline.as_str()));
+    }
+    assert!(sankey_style_text(svg).contains(&format!(
+        ".link{{fill:none;stroke-opacity:0.5;mix-blend-mode:{blend_mode};}}"
+    )));
+}
+
 #[test]
-fn sankey_empty_theme_preserves_unthemed_svg_bytes() {
+fn sankey_without_compiled_theme_keeps_mermaid_compositing_and_order() {
+    for mermaid_theme in ["default", "dark"] {
+        for label_style in ["legacy", "outlined"] {
+            let source = format!(
+                "---\nconfig:\n  theme: {mermaid_theme}\n  sankey:\n    labelStyle: {label_style}\n---\nsankey-beta\nA,B,10\nB,C,7\n"
+            );
+            let svg = render_sankey(&source, &SvgRenderOptions::default());
+            assert_sankey_compositing(&svg, "multiply", ["nodes", "node-labels", "links"]);
+            for id in [
+                "node-1",
+                "node-2",
+                "node-3",
+                "linearGradient-4",
+                "linearGradient-5",
+            ] {
+                assert!(svg.contains(&format!("id=\"{id}\"")));
+            }
+        }
+    }
+}
+
+#[test]
+fn sankey_compiled_palettes_keep_normal_flows_beneath_nodes_and_labels() {
+    for (canvas, text, colors) in [
+        ("#F5F7FC", "#1C2636", ["#2864DC", "#B95D12", "#137F75"]),
+        ("#101722", "#E8EFF7", ["#77ABFF", "#F7AF6A", "#58CFBA"]),
+    ] {
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_canvas(CanvasSpec::solid(canvas).unwrap())
+                    .with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(ThemeRule::new(
+                                ThemeTarget::Text,
+                                ThemeStylePatch::default()
+                                    .with_fill(CanvasPaint::solid(text).unwrap()),
+                            ))
+                            .with_ordinal_palette(ThemeTarget::Node, sankey_node_palette(&colors)),
+                    ),
+            )
+            .unwrap();
+        for label_style in ["legacy", "outlined"] {
+            for link_color in ["source", "target", "gradient", "#8B5CF6"] {
+                let source = format!(
+                    "---\nconfig:\n  sankey:\n    labelStyle: {label_style}\n    linkColor: '{link_color}'\n    nodeColors:\n      A: '#112233'\n---\nsankey-beta\nA,B,10\nB,C,7\n"
+                );
+                let rendered =
+                    render_sankey_with_theme_and_engine(&source, &theme, MermaidEngine::new());
+                assert_sankey_compositing(
+                    rendered.svg(),
+                    "normal",
+                    ["links", "nodes", "node-labels"],
+                );
+                assert_eq!(
+                    sankey_node_fills(rendered.svg()),
+                    ["#112233", colors[1], colors[2]]
+                );
+
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let strokes = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("path"))
+                    .map(|node| node.attribute("stroke").unwrap())
+                    .collect::<Vec<_>>();
+                let expected_strokes = match link_color {
+                    "source" => ["#112233", colors[1]],
+                    "target" => [colors[1], colors[2]],
+                    "gradient" => [
+                        "url(#sankey-theme-linearGradient-4)",
+                        "url(#sankey-theme-linearGradient-5)",
+                    ],
+                    _ => [link_color; 2],
+                };
+                assert_eq!(strokes, expected_strokes);
+                let stops = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("stop"))
+                    .map(|node| node.attribute("stop-color").unwrap())
+                    .collect::<Vec<_>>();
+                if link_color == "gradient" {
+                    assert_eq!(stops, ["#112233", colors[1], colors[1], colors[2]]);
+                    for id in [
+                        "sankey-theme-linearGradient-4",
+                        "sankey-theme-linearGradient-5",
+                    ] {
+                        assert!(document.descendants().any(|node| {
+                            node.has_tag_name("linearGradient") && node.attribute("id") == Some(id)
+                        }));
+                    }
+                } else {
+                    assert!(stops.is_empty());
+                }
+                let ids = document
+                    .descendants()
+                    .filter_map(|node| node.attribute("id"))
+                    .collect::<Vec<_>>();
+                let unique_ids = ids.iter().collect::<std::collections::BTreeSet<_>>();
+                assert_eq!(ids.len(), unique_ids.len());
+                for id in [
+                    "sankey-theme-node-1",
+                    "sankey-theme-node-2",
+                    "sankey-theme-node-3",
+                ] {
+                    assert!(ids.contains(&id));
+                }
+                let labels = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("text"))
+                    .collect::<Vec<_>>();
+                assert_eq!(labels.len(), if label_style == "outlined" { 6 } else { 3 });
+                assert!(
+                    labels
+                        .iter()
+                        .all(|label| label.attribute("fill") == Some(text))
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), 2);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+}
+
+#[test]
+fn sankey_canvas_only_compiled_theme_uses_normal_compositing_without_family_claims() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_canvas(CanvasSpec::solid("#101722").unwrap()))
+        .unwrap();
+    let rendered =
+        render_sankey_with_theme_and_engine("sankey-beta\nA,B,10\n", &theme, MermaidEngine::new());
+    assert_sankey_compositing(rendered.svg(), "normal", ["links", "nodes", "node-labels"]);
+    assert_eq!(sankey_node_fills(rendered.svg()), ["#4e79a7", "#f28e2c"]);
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 0);
+    assert_eq!(evidence.accounted_count(), 0);
+}
+
+#[test]
+fn sankey_compiled_compositing_preserves_exact_svg_byte_limits_and_terminal_evidence() {
+    let theme = sankey_node_palette_theme(&["#77ABFF", "#F7AF6A", "#58CFBA"]);
+    let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+        .parse_diagram_for_render_model_sync("sankey-beta\nA,B,10\nB,C,7\n", ParseOptions::strict())
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let render = |policy| {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        family::prepare(&parsed, &LayoutOptions::default(), session)?
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    };
+    let baseline = render(RenderResourcePolicy::unbounded_for_trusted_input()).unwrap();
+    let exact_bytes = baseline.svg().len();
+    let exact = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes)
+            .unwrap(),
+    )
+    .unwrap();
+    assert_eq!(exact.svg(), baseline.svg());
+    assert_sankey_compositing(exact.svg(), "normal", ["links", "nodes", "node-labels"]);
+    let evidence = merman_render::__private::family_evidence(exact.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.applied_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 0);
+
+    let error = render(
+        RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, exact_bytes - 1)
+            .unwrap(),
+    )
+    .err()
+    .expect("one byte below the themed Sankey SVG size must fail");
+    let merman_render::Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected themed Sankey MaxSvgBytes rejection, got {error}");
+    };
+    assert_eq!(limit.limit, ResourceLimitId::MaxSvgBytes.as_str());
+    assert_eq!(limit.phase, ResourceLimitPhase::SvgOutput);
+    assert_eq!(limit.cause, ResourceLimitCause::Ceiling);
+    assert_eq!(limit.max, exact_bytes - 1);
+    assert!(limit.actual > limit.max);
+}
+
+#[test]
+fn sankey_empty_compiled_theme_changes_only_compositing_and_layer_order() {
     let source = "sankey-beta\nA,B,10\n";
     let theme = DiagramThemeCompiler::new()
         .compile(DiagramThemeSpec::new())
@@ -1975,5 +2198,204 @@ fn sankey_empty_theme_preserves_unthemed_svg_bytes() {
         )
         .unwrap();
     let themed = render_sankey_with_theme_and_engine(source, &theme, MermaidEngine::new());
-    assert_eq!(plain.svg(), themed.svg());
+    let document = roxmltree::Document::parse(plain.svg()).unwrap();
+    let links = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("links"))
+        .unwrap()
+        .range();
+    let nodes = document
+        .descendants()
+        .find(|node| node.attribute("class") == Some("nodes"))
+        .unwrap()
+        .range();
+    let mut expected = plain.svg().to_owned();
+    let link_markup = expected[links.clone()].to_owned();
+    expected.replace_range(links, "");
+    expected.insert_str(nodes.start, &link_markup);
+    expected = expected
+        .replace("mix-blend-mode:multiply;", "mix-blend-mode:normal;")
+        .replace("mix-blend-mode: multiply;", "mix-blend-mode: normal;");
+    assert_eq!(themed.svg(), expected);
+}
+
+#[test]
+fn sankey_family_node_cycles_override_surface_palettes_and_drive_final_link_paints() {
+    use merman_render::diagram_theme::{OrdinalSelector, ThemeVariant};
+
+    let graph = (0..7)
+        .map(|index| format!("Node{index},Node{},10\n", index + 1))
+        .collect::<String>();
+    for colors in [
+        [
+            "#2864DC", "#B95D12", "#137F75", "#8455C7", "#BA426F", "#8A7515",
+        ],
+        [
+            "#77ABFF", "#F7AF6A", "#58CFBA", "#B99AF0", "#F18CB3", "#DBCA70",
+        ],
+    ] {
+        let mut styles = ThemeRuleSet::default().with_ordinal_palette(
+            ThemeTarget::Node,
+            sankey_node_palette(&["#182334", "#243040"]),
+        );
+        for (offset, color) in colors.iter().enumerate() {
+            styles = styles.with_rule(
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+                )
+                .for_family(DiagramFamilyId::SANKEY)
+                .with_ordinal(OrdinalSelector::cycle(6, offset).unwrap()),
+            );
+        }
+        styles = styles.with_rule(
+            ThemeRule::new(
+                ThemeTarget::Node,
+                ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#7F95AD").unwrap()),
+            )
+            .for_family(DiagramFamilyId::SANKEY)
+            .with_variant(ThemeVariant::Default)
+            .with_ordinal(OrdinalSelector::Exact(1)),
+        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        let expected_fills = (0..8)
+            .map(|index| {
+                if index == 0 {
+                    "#13579B"
+                } else {
+                    colors[index % 6]
+                }
+            })
+            .collect::<Vec<_>>();
+        for link_color in ["source", "target", "gradient"] {
+            let source = format!(
+                "---\nconfig:\n  sankey:\n    nodeColors:\n      Node0: '#13579B'\n    linkColor: {link_color}\n---\nsankey-beta\n{graph}"
+            );
+            let rendered =
+                render_sankey_with_theme_and_engine(&source, &theme, MermaidEngine::new());
+            assert_sankey_compositing(rendered.svg(), "normal", ["links", "nodes", "node-labels"]);
+            assert_eq!(sankey_node_fills(rendered.svg()), expected_fills);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let strokes = document
+                .descendants()
+                .filter(|node| node.has_tag_name("rect"))
+                .map(|node| node.attribute("stroke"))
+                .collect::<Vec<_>>();
+            assert_eq!(
+                strokes,
+                [Some("#7F95AD"), None, None, None, None, None, None, None]
+            );
+            if link_color == "gradient" {
+                let stops = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("stop"))
+                    .map(|node| node.attribute("stop-color").unwrap())
+                    .collect::<Vec<_>>();
+                let expected_stops = expected_fills
+                    .windows(2)
+                    .flat_map(|pair| pair.iter().copied())
+                    .collect::<Vec<_>>();
+                assert_eq!(stops, expected_stops);
+            } else {
+                let links = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("path"))
+                    .map(|node| node.attribute("stroke").unwrap())
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    links,
+                    if link_color == "source" {
+                        &expected_fills[..7]
+                    } else {
+                        &expected_fills[1..]
+                    }
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 8);
+            assert_eq!(evidence.accounted_count(), 8);
+            assert_eq!(evidence.applied_count(), 7);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn sankey_node_cycle_paints_preserve_clear_transparency_and_source_fill_ownership() {
+    use merman_render::diagram_theme::{OrdinalSelector, Specified, ThemeVariant};
+
+    for (paint, fill, stroke) in [
+        (
+            Specified::Value(CanvasPaint::solid("#77ABFF").unwrap()),
+            "#77ABFF",
+            "#77ABFF",
+        ),
+        (
+            Specified::Value(CanvasPaint::Transparent),
+            "transparent",
+            "transparent",
+        ),
+        (Specified::Clear, "#4e79a7", "none"),
+    ] {
+        for with_stroke in [false, true] {
+            let mut patch = ThemeStylePatch::default();
+            patch.paint.fill = paint.clone();
+            if with_stroke {
+                patch.stroke.paint = paint.clone();
+            }
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new().with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(
+                                ThemeRule::new(ThemeTarget::Node, patch)
+                                    .for_family(DiagramFamilyId::SANKEY)
+                                    .with_variant(ThemeVariant::Default)
+                                    .with_ordinal(OrdinalSelector::cycle(6, 0).unwrap()),
+                            )
+                            .with_ordinal_palette(
+                                ThemeTarget::Node,
+                                sankey_node_palette(&["#182334", "#243040"]),
+                            ),
+                    ),
+                )
+                .unwrap();
+            for source_owns_fill in [false, true] {
+                let engine = if source_owns_fill {
+                    MermaidEngine::new().with_site_config(
+                        merman_core::presentation::SourcePresentationConfig::from_value(
+                            serde_json::json!({"sankey": {"nodeColors": {"A": "#13579B"}}}),
+                        ),
+                    )
+                } else {
+                    MermaidEngine::new()
+                };
+                let rendered =
+                    render_sankey_with_theme_and_engine("sankey-beta\nA,B,10\n", &theme, engine);
+                assert_eq!(
+                    sankey_node_fills(rendered.svg()),
+                    [if source_owns_fill { "#13579B" } else { fill }, "#243040"]
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let strokes = document
+                    .descendants()
+                    .filter(|node| node.has_tag_name("rect"))
+                    .map(|node| node.attribute("stroke"))
+                    .collect::<Vec<_>>();
+                assert_eq!(strokes, [with_stroke.then_some(stroke), None]);
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                let rule_applied = with_stroke || !source_owns_fill;
+                assert_eq!(evidence.required_count(), 2);
+                assert_eq!(evidence.accounted_count(), 2);
+                assert_eq!(evidence.applied_count(), 1 + usize::from(rule_applied));
+                assert_eq!(evidence.not_applicable_count(), usize::from(!rule_applied));
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
 }

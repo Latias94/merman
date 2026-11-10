@@ -103,7 +103,20 @@ fn rasterize(svg: &str) -> C6ProofResult<C6RasterImage> {
 
 fn override_paint(svg: &str, node: roxmltree::Node<'_, '_>, declaration: &str) -> String {
     let mut changed = svg.to_owned();
-    if declaration == "marker-end:none" {
+    if declaration == "filter:none" {
+        let filter = node.attribute_node("filter").unwrap();
+        let mut replacements = vec![(filter.range_value(), "none".to_owned())];
+        if let Some(style) = node.attribute_node("style") {
+            replacements.push((
+                style.range_value(),
+                style.value().replace(filter.value(), "none"),
+            ));
+        }
+        replacements.sort_unstable_by_key(|(range, _)| std::cmp::Reverse(range.start));
+        for (range, value) in replacements {
+            changed.replace_range(range, &value);
+        }
+    } else if declaration == "marker-end:none" {
         changed.replace_range(
             node.attribute_node("marker-end").unwrap().range_value(),
             "none",
@@ -348,6 +361,85 @@ mod tests {
                     scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
                     "Sequence accepted missing or conflicting {class}"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn body_depth_rejects_missing_moved_mismatched_or_source_painting_layers() {
+        for spec in super::super::CYBERPUNK_SPECS.iter().filter(|spec| {
+            matches!(
+                spec.family,
+                DiagramFamilyId::FLOWCHART | DiagramFamilyId::SEQUENCE
+            )
+        }) {
+            let document = document(spec.source);
+            let svg = document.svg();
+            scene_semantics::verify(spec.family, &observe(svg)).unwrap();
+            let xml = roxmltree::Document::parse(svg).unwrap();
+            let owner = xml
+                .descendants()
+                .find(|node| {
+                    matches!(
+                        node.attribute("data-merman-theme-depth"),
+                        Some("node" | "actor")
+                    )
+                })
+                .unwrap();
+            let body = owner
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .unwrap();
+            let filter_id = body
+                .attribute("filter")
+                .and_then(crate::runner::artifact_observation::local_fragment_id)
+                .unwrap();
+            let filter = xml
+                .descendants()
+                .find(|node| node.attribute("id") == Some(filter_id))
+                .unwrap();
+            let final_input = filter
+                .descendants()
+                .rfind(|node| node.has_tag_name("feMergeNode"))
+                .unwrap();
+            let mut missing = svg.to_owned();
+            missing.replace_range(owner.range(), "");
+            let mut moved = missing.clone();
+            moved.insert_str(moved.rfind("</svg>").unwrap(), &svg[owner.range()]);
+            let mut mismatched = svg.to_owned();
+            mismatched.replace_range(body.attribute_node("width").unwrap().range_value(), "1");
+            let mut repainting = svg.to_owned();
+            repainting.replace_range(
+                final_input.attribute_node("in").unwrap().range_value(),
+                "SourceGraphic",
+            );
+            for (label, changed) in [
+                ("missing depth", missing),
+                ("depth over connections", moved),
+                ("mismatched silhouette", mismatched),
+                ("source in depth merge", repainting),
+            ] {
+                assert!(
+                    scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
+                    "{} accepted {label}",
+                    spec.family
+                );
+            }
+            if spec.family == DiagramFamilyId::FLOWCHART {
+                let diamond = xml
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("polygon")
+                            && node.parent().is_some_and(|parent| {
+                                parent.attribute("data-merman-theme-depth") == Some("node")
+                            })
+                    })
+                    .unwrap();
+                let transform = diamond.attribute_node("transform").unwrap();
+                assert_ne!(transform.value(), "translate(0,0)");
+                let mut changed = svg.to_owned();
+                changed.replace_range(transform.range_value(), "translate(0,0)");
+                assert!(scene_semantics::verify(spec.family, &observe(&changed)).is_err());
             }
         }
     }

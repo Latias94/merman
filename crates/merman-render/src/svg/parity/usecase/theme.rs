@@ -74,7 +74,7 @@ pub(super) fn prepare_body_shadows<'a>(
 }
 
 pub(super) fn write_body_shadow_open(out: &mut String, shadow: &UsecaseBodyShadow<'_>) {
-    let reference = super::super::shadow::write_theme_shadow_application(
+    let reference = super::super::shadow::write_theme_shadow_depth_application(
         out,
         &shadow.filter_id,
         shadow.effect,
@@ -91,7 +91,7 @@ pub(super) fn record_body_shadow(
     shadow: &UsecaseBodyShadow<'_>,
     evidence: &crate::diagram_theme::SvgShadowEvidenceRecorder,
 ) {
-    evidence.record_application(
+    evidence.record_depth_application(
         shadow.effect,
         &shadow.filter_id,
         shadow.materialized.region(),

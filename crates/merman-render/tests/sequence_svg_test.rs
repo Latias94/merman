@@ -8462,6 +8462,7 @@ fn sequence_actor_geometry_reaches_both_rectangles_without_styling_text_or_lifel
             .descendants()
             .filter(|n| {
                 n.has_tag_name("rect")
+                    && n.attribute("name").is_some()
                     && n.attribute("class")
                         .is_some_and(|c| c.split_whitespace().any(|c| c == "actor"))
             })
@@ -8659,6 +8660,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .descendants()
             .filter(|n| {
                 n.has_tag_name("rect")
+                    && n.attribute("name").is_some()
                     && n.attribute("class")
                         .is_some_and(|c| c.split_whitespace().any(|c| c == "actor"))
             })
@@ -8922,6 +8924,177 @@ fn sequence_actor_shadow_binding_clear_and_rule_ownership() {
             assert_eq!(evidence.theme_residual_count(), 0);
         }
     }
+}
+
+#[test]
+fn sequence_actor_depth_precedes_lifelines_without_repainting_translucent_faces() {
+    let rules = ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::Actor,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid("rgba(255, 229, 0, 0.35)").unwrap())
+            .with_stroke_width(3.0)
+            .unwrap(),
+    ));
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(ThemeTarget::Actor, rules.clone()))
+        .unwrap();
+    let baseline = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(rules))
+        .unwrap();
+    let source = "sequenceDiagram\nautonumber\nparticipant A\nparticipant B\nA->>B: Submit\nNote over A,B: Original source\nB-->>A: Review";
+    for look in ["classic", "neo"] {
+        for mirror in [false, true] {
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"look":look,"sequence":{"mirrorActors":mirror}}),
+                    ),
+                )
+            };
+            let rendered = try_render_sequence_theme_request(
+                source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let reference = try_render_sequence_theme_request(
+                source,
+                &baseline,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let baseline_doc = roxmltree::Document::parse(reference.svg()).unwrap();
+            let first_lifeline = doc
+                .descendants()
+                .find(|n| n.attribute("data-et") == Some("life-line"))
+                .unwrap()
+                .range()
+                .start;
+            let faces: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.has_tag_name("rect") && n.attribute("name").is_some())
+                .collect();
+            let depths: Vec<_> = doc
+                .descendants()
+                .filter(|n| n.attribute("data-merman-theme-depth") == Some("actor"))
+                .collect();
+            assert_eq!(faces.len(), if mirror { 4 } else { 2 });
+            assert_eq!(depths.len(), faces.len());
+            for depth in depths {
+                assert!(
+                    depth.range().end < first_lifeline,
+                    "{look}/{mirror}: all depth must precede all lifelines"
+                );
+                assert!(!depth.descendants().any(|n| n.attribute("id").is_some()
+                    || n.attribute("name").is_some()
+                    || n.has_tag_name("text")
+                    || n.has_tag_name("foreignObject")
+                    || n.has_tag_name("use")));
+                let body = depth.children().find(|n| n.has_tag_name("rect")).unwrap();
+                let geometry = |n: roxmltree::Node<'_, '_>| {
+                    ["x", "y", "width", "height", "rx", "ry"]
+                        .map(|k| n.attribute(k).unwrap().to_owned())
+                };
+                let matching: Vec<_> = faces
+                    .iter()
+                    .copied()
+                    .filter(|n| geometry(*n) == geometry(body))
+                    .collect();
+                assert_eq!(matching.len(), 1);
+                assert_eq!(matching[0].attribute("filter"), None);
+                assert_eq!(matching[0].attribute("style"), body.attribute("style"));
+                let filter_id = body
+                    .attribute("filter")
+                    .unwrap()
+                    .strip_prefix("url(#")
+                    .unwrap()
+                    .strip_suffix(')')
+                    .unwrap();
+                let filter = doc
+                    .descendants()
+                    .find(|n| n.attribute("id") == Some(filter_id))
+                    .unwrap();
+                assert!(
+                    !filter.descendants().any(|n| n.has_tag_name("feMergeNode")
+                        && n.attribute("in") == Some("SourceGraphic"))
+                );
+            }
+            let messages = |doc: &roxmltree::Document<'_>| {
+                doc.descendants()
+                    .filter(|n| n.attribute("data-et") == Some("message"))
+                    .map(|n| {
+                        ["x1", "y1", "x2", "y2", "d", "marker-end", "style"]
+                            .map(|k| n.attribute(k).map(str::to_owned))
+                    })
+                    .collect::<Vec<_>>()
+            };
+            assert_eq!(messages(&doc), messages(&baseline_doc));
+            for label in ["Submit", "Original source", "Review"] {
+                assert_eq!(
+                    doc.descendants()
+                        .filter(|n| n.is_text() && n.text() == Some(label))
+                        .count(),
+                    1
+                );
+            }
+            let mut ids = std::collections::HashSet::new();
+            assert!(
+                doc.descendants()
+                    .filter_map(|n| n.attribute("id"))
+                    .all(|id| ids.insert(id))
+            );
+            let completion = rendered.into_completion();
+            assert_eq!(
+                merman_render::__private::family_evidence(completion.report())
+                    .theme_residual_count(),
+                0
+            );
+        }
+    }
+}
+
+#[test]
+fn sequence_actor_depth_remains_within_the_operation_work_budget() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(sequence_shadow_spec(
+            ThemeTarget::Actor,
+            ThemeRuleSet::default(),
+        ))
+        .unwrap();
+    let parsed = common::install_parse_compatibility(&theme, classic_sequence_engine())
+        .parse_diagram_for_render_model_sync(
+            "sequenceDiagram\nA->>B: Submit",
+            ParseOptions::strict(),
+        )
+        .unwrap()
+        .unwrap()
+        .into_presentation();
+    let render = |policy| {
+        let session = RenderEnvironment::deterministic()
+            .with_resource_policy(policy)
+            .begin_session_with_theme(&theme)
+            .unwrap();
+        family::prepare(&parsed, &LayoutOptions::default(), session)?
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+    };
+    let completion = render(RenderResourcePolicy::unbounded_for_trusted_input())
+        .unwrap()
+        .into_completion();
+    let work = completion.report().session_report().layout_work_units();
+    let exact = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work)
+        .unwrap();
+    render(exact).unwrap();
+    let below = RenderResourcePolicy::unbounded_for_trusted_input()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, work - 1)
+        .unwrap();
+    assert!(matches!(
+        render(below),
+        Err(Error::ResourceLimitExceeded(_))
+    ));
 }
 
 #[test]

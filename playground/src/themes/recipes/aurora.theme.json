@@ -109,7 +109,10 @@
         "sequence": { "font_stack": { "ref": "body-font" }, "font_size_px": 14 },
         "class": { "font_stack": { "ref": "code-font" }, "font_size_px": 13 },
         "xychart": { "font_stack": { "ref": "chart-font" } },
-        "pie": { "font_stack": { "ref": "body-font" } }
+        "pie": { "font_stack": { "ref": "body-font" } },
+        "state": {"font_stack": {"ref": "body-font"}, "font_size_px": 16},
+        "er": {"font_stack": {"ref": "code-font"}, "font_size_px": 13},
+        "mindmap": {"font_stack": {"ref": "body-font"}}
       }
     },
     "styles": {
@@ -152,11 +155,38 @@
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "panel-edge" } } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 500 } } },
       { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 23, "font_weight": 500 } } },
-      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 } } }
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "muted" } }, "typography": { "font_size_px": 14 } } },
+      {"family": "state", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "state", "target": "state", "style": {"fill": {"kind": "solid", "color": {"ref": "surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "panel-edge"}}, "width": 1.1}, "radius": 12, "effect": {"ref": "panel-halo"}}},
+      {"family": "state", "target": "state-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_weight": 500}}},
+      {"family": "state", "target": "composite", "style": {"fill": {"kind": "solid", "color": {"ref": "recess"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "outline"}}, "width": 0.75}}},
+      {"family": "state", "target": "composite-header", "style": {"fill": {"kind": "solid", "color": {"ref": "class-surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "outline"}}, "width": 0.75}}},
+      {"family": "state", "target": "composite-label", "style": {"fill": {"kind": "solid", "color": {"ref": "violet"}}, "typography": {"font_weight": 600}}},
+      {"family": "state", "target": "transition", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "mint"}}, "width": 1.6}}},
+      {"family": "state", "target": "transition-marker", "style": {"fill": {"kind": "solid", "color": {"ref": "mint"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "mint"}}}}},
+      {"family": "state", "target": "transition-label", "style": {"fill": {"kind": "solid", "color": {"ref": "muted"}}, "typography": {"font_size_px": 13}}},
+      {"family": "state", "target": "transition-label-background", "style": {"fill": {"kind": "solid", "color": {"ref": "label-ground"}}}},
+      {"family": "state", "target": "special-state", "variant": "start", "style": {"fill": {"kind": "solid", "color": {"ref": "mint"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "mint"}}}}},
+      {"family": "state", "target": "special-state", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "night"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "mint"}}}}},
+      {"family": "state", "target": "special-state-inner", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "mint"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "mint"}}}}},
+      {"family": "state", "target": "special-state", "variant": "special", "style": {"fill": {"kind": "solid", "color": {"ref": "note"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "violet"}}}}},
+      {"family": "state", "target": "note", "style": {"fill": {"kind": "solid", "color": {"ref": "note"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "violet"}}, "width": 0.9}}},
+      {"family": "state", "target": "note-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_size_px": 13}}},
+      {"family": "er", "target": "entity", "style": {"fill": {"kind": "solid", "color": {"ref": "class-surface"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "panel-edge"}}}}},
+      {"family": "er", "target": "table", "variant": "odd", "style": {"fill": {"kind": "solid", "color": {"ref": "label-ground"}}}},
+      {"family": "er", "target": "table", "variant": "even", "style": {"fill": {"kind": "solid", "color": {"ref": "class-surface"}}}},
+      {"family": "er", "target": "relation", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "cyan"}}}}},
+      {"family": "er", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "er", "target": "title", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "node-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "edge", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "cyan"}}}}}
     ],
     "palettes": {
       "chart-series": { "ref": "series" },
-      "pie-slice": { "ref": "pie-series" }
-    }
+      "pie-slice": { "ref": "pie-series" },
+      "node": {"ref": "pie-series"}
+    },
+    "mermaid": {"variables": {"git0": "#215760", "erEdgeLabelBackground": "#242543"}}
   }
 }

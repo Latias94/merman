@@ -195,6 +195,7 @@ interface SvgViewportProps {
   renderMountError?: (error: Error) => ReactNode;
   showSvgBounds: boolean;
   presentationMode: SvgPresentationMode;
+  interactionMode?: "canvas" | "embedded";
 }
 
 const PAN_ACTIVATION_DISTANCE = 6;
@@ -212,6 +213,7 @@ export function SvgViewport({
   renderMountError,
   showSvgBounds,
   presentationMode,
+  interactionMode = "canvas",
 }: SvgViewportProps) {
   const prepared = useMemo<PreparedSvgPresentation>(() => {
     if (!artifact) return { error: null, preview: null };
@@ -776,6 +778,7 @@ export function SvgViewport({
 
   const handlePointerDown = useCallback(
     (event: PointerEvent<HTMLDivElement>) => {
+      if (interactionMode === "embedded" && event.pointerType === "touch") return;
       if (event.pointerType === "mouse" && event.button !== 0) return;
       const state = stateRef.current;
       if (state.pointers.size === 0) clearAnchorClickSuppression();
@@ -803,7 +806,7 @@ export function SvgViewport({
       };
       setDragging(false);
     },
-    [clearAnchorClickSuppression, navigationEnabled, promoteGesture, setDragging]
+    [clearAnchorClickSuppression, interactionMode, navigationEnabled, promoteGesture, setDragging]
   );
 
   const handlePointerMove = useCallback(
@@ -896,6 +899,7 @@ export function SvgViewport({
 
   const handleWheel = useCallback(
     (event: globalThis.WheelEvent) => {
+      if (interactionMode === "embedded" && !event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       disableAutoFit();
       const state = stateRef.current;
@@ -905,7 +909,7 @@ export function SvgViewport({
       );
       scheduleTransform();
     },
-    [disableAutoFit, scheduleTransform]
+    [disableAutoFit, interactionMode, scheduleTransform]
   );
 
   useEffect(() => {
@@ -918,10 +922,12 @@ export function SvgViewport({
   return (
     <div
       ref={containerRef}
-      className="preview-canvas relative h-full w-full cursor-grab touch-none select-none overflow-hidden"
+      className="preview-canvas relative h-full w-full cursor-grab select-none overflow-hidden"
+      style={{ touchAction: interactionMode === "embedded" ? "pan-y pinch-zoom" : "none" }}
       data-dragging="false"
       data-auto-fit="true"
       data-merman-svg-viewport="true"
+      data-viewport-interaction={interactionMode}
       data-preview-canvas-tone={canvasTone}
       data-svg-presentation-mode={presentationMode}
       data-zoom="1"

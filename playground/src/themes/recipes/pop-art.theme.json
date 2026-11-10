@@ -17,7 +17,7 @@
         "type": "effect",
         "label": "Black key line over magenta offset",
         "group": "Print effects",
-        "description": "Two unblurred, independent offsets make supported Flowchart bodies and Sequence actor cards read as cut-out print panels. Labels remain sharp; Class and Pie use paint only.",
+        "description": "Two unblurred, independent offsets give supported Flowchart and State bodies and Sequence actor cards cut-out depth behind their connections. Labels remain sharp; Class and Pie use paint only.",
         "value": {
           "kind": "shadow-stack",
           "composition": "independent",
@@ -70,7 +70,10 @@
         "sequence": { "font_stack": { "ref": "typeface" }, "font_size_px": 14 },
         "class": { "font_stack": { "ref": "typeface" }, "font_size_px": 14 },
         "xychart": { "font_stack": { "ref": "display-typeface" } },
-        "pie": { "font_stack": { "ref": "display-typeface" } }
+        "pie": { "font_stack": { "ref": "display-typeface" } },
+        "state": {"font_stack": {"ref": "typeface"}, "font_size_px": 15},
+        "er": {"font_stack": {"ref": "typeface"}, "font_size_px": 14},
+        "mindmap": {"font_stack": {"ref": "typeface"}}
       }
     },
     "styles": {
@@ -112,11 +115,38 @@
       { "family": "pie", "target": "pie-slice", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
       { "family": "pie", "target": "text", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 16, "font_weight": 700 } } },
       { "family": "pie", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 25, "font_weight": 800 } } },
-      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14, "font_weight": 600 } } }
+      { "family": "pie", "target": "legend", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } }, "typography": { "font_size_px": 14, "font_weight": 600 } } },
+      {"family": "state", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "state", "target": "state", "style": {"fill": {"kind": "solid", "color": {"ref": "yellow"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2.6}, "radius": 0, "effect": {"ref": "poster-offset"}}},
+      {"family": "state", "target": "state-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_weight": 700}}},
+      {"family": "state", "target": "composite", "style": {"fill": {"kind": "solid", "color": {"ref": "panel"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2}}},
+      {"family": "state", "target": "composite-header", "style": {"fill": {"kind": "solid", "color": {"ref": "cyan"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2}}},
+      {"family": "state", "target": "composite-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_weight": 700}}},
+      {"family": "state", "target": "transition", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2}}},
+      {"family": "state", "target": "transition-marker", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "transition-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_size_px": 13}}},
+      {"family": "state", "target": "transition-label-background", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}}},
+      {"family": "state", "target": "special-state", "variant": "start", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state-inner", "variant": "end", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "special-state", "variant": "special", "style": {"fill": {"kind": "solid", "color": {"ref": "magenta"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "state", "target": "note", "style": {"fill": {"kind": "solid", "color": {"ref": "cyan"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}, "width": 2}}},
+      {"family": "state", "target": "note-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}, "typography": {"font_size_px": 13, "font_weight": 600, "font_style": "normal"}}},
+      {"family": "er", "target": "entity", "style": {"fill": {"kind": "solid", "color": {"ref": "yellow"}}, "stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "er", "target": "table", "variant": "odd", "style": {"fill": {"kind": "solid", "color": {"ref": "paper"}}}},
+      {"family": "er", "target": "table", "variant": "even", "style": {"fill": {"kind": "solid", "color": {"ref": "panel"}}}},
+      {"family": "er", "target": "relation", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}},
+      {"family": "er", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "er", "target": "title", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "text", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "node-label", "style": {"fill": {"kind": "solid", "color": {"ref": "ink"}}}},
+      {"family": "mindmap", "target": "edge", "style": {"stroke": {"paint": {"kind": "solid", "color": {"ref": "ink"}}}}}
     ],
     "palettes": {
       "chart-series": { "ref": "series" },
-      "pie-slice": { "ref": "pie-series" }
-    }
+      "pie-slice": { "ref": "pie-series" },
+      "node": {"ref": "pie-series"}
+    },
+    "mermaid": {"variables": {"git0": "#FFE500", "erEdgeLabelBackground": "#FFF9E8"}}
   }
 }
