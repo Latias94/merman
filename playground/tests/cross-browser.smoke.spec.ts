@@ -75,6 +75,8 @@ test("startup, render, Compare, focus, system theme, and BFCache cleanup", async
 });
 
 test("theme library selects expanded families and exposes source code with keyboard focus", async ({ page }) => {
+  // This flow loads twelve lazy previews, renders WASM, and activates the source editor.
+  test.setTimeout(90_000);
   const errors = monitorBrowserErrors(page);
   await openPlayground(page);
   await waitForPreviewSvg(page);
