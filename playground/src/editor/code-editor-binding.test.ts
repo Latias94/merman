@@ -20,7 +20,6 @@ test("a local edit reads once and reaches the store synchronously without an edi
   assert.deepEqual(store.writes, [next]);
   assert.equal(onLocalChange.mock.callCount(), 1);
   assert.deepEqual(monaco.replacements, []);
-  assert.deepEqual(monaco.operations, []);
 });
 
 test("external replacement and clearing preserve undo boundaries without writing back", (t) => {
@@ -40,9 +39,42 @@ test("external replacement and clearing preserve undo boundaries without writing
   assert.equal(monaco.value, "");
   assert.equal(store.value, "");
   assert.deepEqual(monaco.replacements, [next, ""]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop", "edit", "undo-stop"]);
   assert.deepEqual(store.writes, []);
   assert.equal(onLocalChange.mock.callCount(), 0);
+
+  for (const expected of [next, initial]) {
+    monaco.undo();
+    assert.equal(monaco.value, expected);
+    assert.equal(store.value, expected);
+  }
+});
+
+test("external replacement separates previous and subsequent typing in undo and redo history", (t) => {
+  const initial = "flowchart LR\nA[Before]";
+  const monaco = fakeEditor(initial);
+  const store = fakeStore(initial);
+  const binding = bindCodeEditor(monaco.api, store.api, () => {});
+  t.after(() => binding.dispose());
+  const authored = "flowchart LR\nA[BeforeX]";
+  const adopted = "sequenceDiagram\nAlice->>Bob: Example";
+  const edited = `${adopted}\n%% Later typing`;
+
+  monaco.type(authored);
+  store.replace(adopted);
+  assert.equal(monaco.value, adopted);
+  assert.equal(store.value, adopted);
+  monaco.type(edited);
+
+  for (const expected of [adopted, authored, initial]) {
+    monaco.undo();
+    assert.equal(monaco.value, expected);
+    assert.equal(store.value, expected);
+  }
+  for (const expected of [authored, adopted, edited]) {
+    monaco.redo();
+    assert.equal(monaco.value, expected);
+    assert.equal(store.value, expected);
+  }
 });
 
 test("mounting reconciles a store update made after the model was created", (t) => {
@@ -59,7 +91,6 @@ test("mounting reconciles a store update made after the model was created", (t) 
   assert.equal(monaco.value, latest);
   assert.equal(store.value, latest);
   assert.deepEqual(monaco.replacements, [latest]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop"]);
   assert.deepEqual(store.writes, []);
   assert.equal(onLocalChange.mock.callCount(), 0);
 });
@@ -80,7 +111,6 @@ test("CRLF normalization ignores repeated store notifications and keeps local ed
   assert.equal(monaco.value, "flowchart TD\nA --> B\n");
   assert.equal(store.value, external);
   assert.deepEqual(monaco.replacements, [external]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop"]);
   assert.deepEqual(store.writes, []);
   assert.equal(onLocalChange.mock.callCount(), 0);
 
@@ -94,7 +124,6 @@ test("CRLF normalization ignores repeated store notifications and keeps local ed
   assert.deepEqual(store.writes, [local]);
   assert.equal(onLocalChange.mock.callCount(), 1);
   assert.deepEqual(monaco.replacements, [external]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop"]);
 });
 
 test("raw EOL changes matching the model do not block later external updates", (t) => {
@@ -114,7 +143,6 @@ test("raw EOL changes matching the model do not block later external updates", (
   assert.equal(monaco.value, lf);
   assert.equal(store.value, lf);
   assert.deepEqual(monaco.replacements, [crlf]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop"]);
 
   store.replace(latest);
   store.replace(latest);
@@ -122,7 +150,6 @@ test("raw EOL changes matching the model do not block later external updates", (
   assert.equal(monaco.value, "flowchart LR\nB --> C\n");
   assert.equal(store.value, latest);
   assert.deepEqual(monaco.replacements, [crlf, latest]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop", "edit", "undo-stop"]);
   assert.deepEqual(store.writes, []);
   assert.equal(onLocalChange.mock.callCount(), 0);
 });
@@ -148,7 +175,6 @@ test("store updates reentered during replacement converge on the latest document
   assert.equal(monaco.value, latest);
   assert.equal(store.value, latest);
   assert.deepEqual(monaco.replacements, [first, latest]);
-  assert.deepEqual(monaco.operations, ["edit", "undo-stop", "edit", "undo-stop"]);
   assert.deepEqual(store.writes, []);
   assert.equal(onLocalChange.mock.callCount(), 0);
 });
@@ -189,7 +215,9 @@ function fakeEditor(initial: string, onReplace?: (text: string) => void) {
   let disposals = 0;
   const listeners = new Set<() => void>();
   const replacements: string[] = [];
-  const operations: string[] = [];
+  const undoValues: string[] = [];
+  const redoValues: string[] = [];
+  let undoStart: string | null = null;
   const model = {
     isDisposed: () => false,
     getFullModelRange() {
@@ -203,6 +231,15 @@ function fakeEditor(initial: string, onReplace?: (text: string) => void) {
   const change = (text: string) => {
     value = text.replace(/\r\n?/g, "\n");
     for (const listener of [...listeners]) listener();
+  };
+  const edit = (text: string) => {
+    undoStart ??= value;
+    redoValues.length = 0;
+    change(text);
+  };
+  const closeUndoGroup = () => {
+    if (undoStart !== null && undoStart !== value) undoValues.push(undoStart);
+    undoStart = null;
   };
   const api: Parameters<typeof bindCodeEditor>[0] = {
     getModel: () => model as editor.ITextModel,
@@ -220,15 +257,27 @@ function fakeEditor(initial: string, onReplace?: (text: string) => void) {
       assert.deepEqual(range, model.getFullModelRange());
       assert(typeof text === "string");
       replacements.push(text);
-      operations.push("edit");
-      change(text);
+      edit(text);
       onReplace?.(text);
       return true;
     },
-    pushUndoStop() { operations.push("undo-stop"); return true; },
+    pushUndoStop() { closeUndoGroup(); return true; },
   };
   return {
-    api, replacements, operations, type: change,
+    api, replacements, type: edit,
+    undo() {
+      closeUndoGroup();
+      const previous = undoValues.pop();
+      if (previous === undefined) return;
+      redoValues.push(value);
+      change(previous);
+    },
+    redo() {
+      const next = redoValues.pop();
+      if (next === undefined) return;
+      undoValues.push(value);
+      change(next);
+    },
     get value() { return value; },
     get reads() { return reads; },
     get disposals() { return disposals; },
