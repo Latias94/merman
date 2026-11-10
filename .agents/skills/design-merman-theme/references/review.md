@@ -169,9 +169,19 @@ appearances, including small/filtered values; do not reorder categories to hide 
 ## Inspect bounds and fonts
 
 Load the intended fonts before browser measurement (`document.fonts.ready` where available).
-Read computed font families and text boxes from the rendered elements; check local compartments,
-legend reservations, and the root canvas in a common coordinate system. Account for transforms,
+Resolve the actual displayed face as well as the computed stack: a browser can select an installed
+user font omitted from a closed native context. Chromium's `CSS.getPlatformFontsForNode` reports
+the used face; include its checked file when comparing native geometry with that viewer. Computed
+`font-family` alone does not prove the same face was measured. Read text boxes from the rendered
+elements; check local compartments, legend reservations, and the root canvas in a common coordinate
+system. Account for transforms,
 strokes, and visible effects rather than comparing unrelated screen and SVG coordinates.
+For variable fonts, verify the selected weight/axis instance; loading the same file can still
+measure its default instance while the browser paints another weight. Use matching static faces
+for a controlled comparison when the native stack cannot select the required instance.
+Check HTML text against its `foreignObject` as well as the enclosing node. A root-bounds pass can
+miss clipped card labels. Treat text-box overflows as candidates; confirm visible glyph loss or
+painted containment before changing geometry, since font boxes can extend beyond painted pixels.
 When a measured label is normalized to its box origin, place that box in its reserved compartment;
 raw SVG helper offsets apply only to the corresponding raw text recipe. A centered layout box
 alone does not establish that the painted text is centered.

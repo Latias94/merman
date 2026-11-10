@@ -24,17 +24,19 @@ separate facts reported by the installed catalog and each render's metadata.
 | **One Dark · Class** | **Gruvbox Light · XY Chart** |
 | ![One Dark Class diagram with dark surfaces and a blue relationship](one-dark.png) | ![Gruvbox Light XY Chart with a cream canvas, teal bars and an olive line](gruvbox-light.png) |
 
-These previews were exported as native PNG on macOS with `--font-measurement native` from
-the included sources and settings. Measurement and painting share the same operation's font
-context. Font-agnostic deterministic estimates can be narrower than the final host glyphs;
+These previews were exported as native PNG with `--font-measurement native` from
+the included sources and settings. Most retain their macOS exports; Ghibli's categorical
+palette was refreshed on Windows using an explicitly loaded Open Sans regular face from the
+Open Sans variable font, with system discovery disabled. Measurement and painting share the same
+operation's font context. Font-agnostic deterministic estimates can be narrower than the final host glyphs;
 for example, Spotless's semibold note needs native measurement to fit this host's text.
 The commands below reproduce the workflow with a matching runtime, while pixel identity
 across hosts is not guaranteed. The shared Flowchart source and settings let you compare
 Brutalist and Cyberpunk without changing the diagram.
 
 One Dark includes the Class label geometry fix from the next alpha's source tree. It uses the
-explicit macOS fonts shown below, with system discovery disabled. The other gallery images
-retain their earlier exports.
+explicit macOS fonts shown below, with system discovery disabled. Apart from Ghibli, the other
+gallery images retain their earlier exports.
 
 All presets remain alpha, and the catalog has no qualified output cells. Dedicated design
 scope records family-specific styling, while base styling records a shared appearance.
@@ -92,7 +94,7 @@ reproduce all six images:
 ```text
 merman-cli capabilities
 merman-cli render brutalist.mmd --theme-preset brutalist --config-file brutalist.config.json --font-measurement native -f png -o brutalist.png
-merman-cli render ghibli.mmd --theme-preset ghibli --font-measurement native -f png -o ghibli.png
+merman-cli render ghibli.mmd --theme-preset ghibli --font-measurement native --font-file /path/to/OpenSans.ttf --font-system off -f png -o ghibli.png
 merman-cli render spotless.mmd --theme-preset spotless --font-measurement native -f png -o spotless.png
 merman-cli render brutalist.mmd --theme-preset cyberpunk --config-file brutalist.config.json --font-measurement native -f png -o cyberpunk.png
 merman-cli render one-dark.mmd --theme-preset one-dark --config-file one-dark.config.json --font-measurement native --font-file /System/Library/Fonts/SFNS.ttf --font-file /System/Library/Fonts/Menlo.ttc --font-system off --svg-id theme-gallery-one-dark -f png -o one-dark.png --theme-report one-dark.report.json
