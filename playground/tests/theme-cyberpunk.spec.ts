@@ -107,26 +107,39 @@ async function expectPaintedLabels(page: Page, svg: Locator, expected: string[])
 }
 
 async function expectPaintedEffects(page: Page, svg: Locator, count: number): Promise<void> {
-  const terminals = svg.locator("[filter], [style*='filter:']");
-  await expect(terminals).toHaveCount(count);
+  const candidates = svg.locator("[filter], [style]");
+  const terminals = await candidates.evaluateAll((elements) => elements.flatMap((element, index) => {
+    const binding = (element as SVGElement | HTMLElement).style.filter || element.getAttribute("filter");
+    // A foreground filter:none suppresses the look's default shadow; it is not an effect.
+    return binding && binding !== "none" ? [index] : [];
+  }));
+  expect(terminals).toHaveLength(count);
   const original = await captureScene(page, svg);
-  for (let index = 0; index < count; index += 1) {
-    const terminal = terminals.nth(index);
+  for (const index of terminals) {
+    const terminal = candidates.nth(index);
     const filter = await terminal.evaluate((element) => {
       const binding = element.getAttribute("filter") ?? (element as SVGElement | HTMLElement).style.filter;
       const id = /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding)?.[1];
-      return { binding, wins: Boolean(id && getComputedStyle(element).filter.includes(`#${id}`)) };
+      return { binding, wins: Boolean(id && /#([^)"']+)["']?\)$/u.exec(getComputedStyle(element).filter)?.[1] === id) };
     });
     expect(filter.binding).toMatch(/^url\(["']?#[^)"']+["']?\)$/u);
     expect(filter.wins, `effect ${index} must win the computed filter`).toBe(true);
     const originalStyle = await terminal.getAttribute("style");
-    await terminal.evaluate((element) => (element as SVGElement).style.setProperty("filter", "none", "important"));
-    await expect(terminal).toHaveCSS("filter", "none");
-    expect(await changedPixels(page, original, await captureScene(page, svg)), `effect ${index} must paint`).toBeGreaterThan(0);
-    await terminal.evaluate((element, style) => {
-      if (style === null) element.removeAttribute("style");
-      else element.setAttribute("style", style);
-    }, originalStyle);
+    const depth = await terminal.evaluate((element) => !!element.closest("[data-merman-theme-depth]"));
+    const property = depth ? "visibility" : "filter";
+    const disabled = depth ? "hidden" : "none";
+    try {
+      // Removing a depth filter would reveal its bare silhouette, so hide its paint instead.
+      await terminal.evaluate((element, { property, disabled }) =>
+        (element as SVGElement).style.setProperty(property, disabled, "important"), { property, disabled });
+      await expect(terminal).toHaveCSS(property, disabled);
+      expect(await changedPixels(page, original, await captureScene(page, svg)), `effect ${index} must paint`).toBeGreaterThan(0);
+    } finally {
+      await terminal.evaluate((element, style) => {
+        if (style === null) element.removeAttribute("style");
+        else element.setAttribute("style", style);
+      }, originalStyle);
+    }
   }
   const restored = await captureScene(page, svg);
   const restoredDifference = await changedPixels(page, original, restored);
@@ -135,6 +148,116 @@ async function expectPaintedEffects(page: Page, svg: Locator, count: number): Pr
     await test.info().attach("effects-restored", { body: restored, contentType: "image/png" });
   }
   expect(restoredDifference, "effects must restore their pixels").toBe(0);
+}
+
+async function expectFlowchartDepthAndGlows(svg: Locator, look: "classic" | "neo"): Promise<void> {
+  const facts = await svg.evaluate((root) => {
+    const faces = [...root.querySelectorAll<SVGGElement>("g[data-et='node']")];
+    const depths = [...root.querySelectorAll<SVGGElement>("[data-merman-theme-depth='node']")];
+    const edges = [...root.querySelectorAll("path.flowchart-link")];
+    const filterId = (binding: string | null) => /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding ?? "")?.[1];
+    const geometry = (body: SVGGraphicsElement) => ({
+      tag: body.localName,
+      attributes: ["x", "y", "width", "height", "rx", "ry", "points", "d", "transform"]
+        .map((name) => body.getAttribute(name)),
+      paint: ["fill", "stroke", "stroke-width", "opacity", "fill-opacity", "stroke-opacity", "rx", "ry"]
+        .map((name) => getComputedStyle(body).getPropertyValue(name)),
+    });
+    return {
+      faces: faces.map((face) => ({
+        id: face.getAttribute("data-id"), look: face.getAttribute("data-look"),
+        bodies: face.querySelectorAll(":scope > .label-container").length,
+        tag: face.querySelector(".label-container")?.localName,
+        filter: getComputedStyle(face.querySelector(".label-container")!).filter,
+      })),
+      depths: depths.map((depth) => {
+        const body = depth.querySelector<SVGGraphicsElement>(":scope > .label-container")!;
+        const binding = body.getAttribute("filter")!;
+        const id = filterId(binding);
+        const owners = faces.filter((face) => id?.startsWith(`${face.id}-theme-effect-`));
+        const owner = owners[0];
+        const face = owner?.querySelector<SVGGraphicsElement>(":scope > .label-container");
+        const filters = id ? [...root.querySelectorAll<SVGFilterElement>(`filter[id="${id}"]`)] : [];
+        const merge = filters[0]?.lastElementChild;
+        const matrix = (element: SVGGraphicsElement) => {
+          const ctm = element.getCTM()!;
+          return [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f];
+        };
+        return {
+          owner: owner?.getAttribute("data-id"), owners: owners.length,
+          look: depth.getAttribute("data-look"), hidden: depth.getAttribute("aria-hidden"),
+          pointerEvents: getComputedStyle(depth).pointerEvents,
+          layer: depth.parentElement?.getAttribute("data-merman-theme-depth"),
+          bodies: depth.children.length,
+          identityFree: !depth.matches("[id], [data-id], [data-et], [name]")
+            && !depth.querySelector("[id], [data-id], [data-et], [name], text, foreignObject, a, use"),
+          beforeEdges: edges.every((edge) => Boolean(depth.compareDocumentPosition(edge) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          beforeFace: !!owner && Boolean(depth.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING),
+          geometry: geometry(body), faceGeometry: face ? geometry(face) : null,
+          matrix: matrix(body), faceMatrix: face ? matrix(face) : [],
+          faceBinding: face?.getAttribute("filter"),
+          inlineId: filterId(body.style.filter), filterId: id, filters: filters.length,
+          merge: merge?.localName,
+          output: [...(merge?.children ?? [])].map((node) => [node.localName, node.getAttribute("in")]),
+        };
+      }),
+      terminals: [...root.querySelectorAll<SVGElement | HTMLElement>("[filter], [style]")]
+        .flatMap((terminal) => {
+          const inline = terminal.style.filter;
+          const attribute = terminal.getAttribute("filter");
+          const binding = inline || attribute;
+          if (!binding) return [];
+          const id = filterId(binding);
+          const filter = id ? root.querySelector(`filter[id="${id}"]`) : null;
+          return [{
+            kind: binding === "none" ? "suppressed-face"
+              : terminal.matches("[data-merman-theme-depth='node'] > .label-container") ? "depth"
+                : terminal.matches("path.flowchart-link") ? "edge"
+                  : terminal.matches("p") || terminal.querySelector("text, foreignObject p") ? "text" : "unexpected",
+            valid: binding === "none"
+              ? terminal.matches("g[data-et='node'] > .label-container") && attribute === null
+                && terminal.style.getPropertyPriority("filter") === "important" && getComputedStyle(terminal).filter === "none"
+              : !!id && !!filter && (!attribute || filterId(attribute) === id)
+                && /#([^)"']+)["']?\)$/u.exec(getComputedStyle(terminal).filter)?.[1] === id,
+            filtersBackground: terminal.matches("rect, .labelBkg") || !!terminal.querySelector("rect, .labelBkg")
+              || [terminal, ...terminal.querySelectorAll("*")].some((element) => {
+                if (!(element instanceof HTMLElement)) return false;
+                const style = getComputedStyle(element);
+                return style.backgroundColor !== "rgba(0, 0, 0, 0)" || style.backgroundImage !== "none";
+              }),
+            deviations: [...(filter?.querySelectorAll("feGaussianBlur") ?? [])]
+              .map((blur) => Number(blur.getAttribute("stdDeviation"))),
+          }];
+        }),
+    };
+  });
+  const ids = ["Browse", "Cart", "Stock", "Unavailable"];
+  expect(facts.faces.map(({ id }) => id).sort()).toEqual(ids);
+  for (const face of facts.faces) {
+    expect(face).toMatchObject({ look, bodies: 1, filter: "none", tag: face.id === "Stock" ? "polygon" : "rect" });
+  }
+  expect(facts.depths.map(({ owner }) => owner).sort()).toEqual(ids);
+  for (const depth of facts.depths) {
+    expect(depth, `${depth.owner} owns one non-interactive depth before connections and its face`).toMatchObject({
+      owners: 1, look, hidden: "true", pointerEvents: "none", layer: "layer", bodies: 1,
+      identityFree: true, beforeEdges: true, beforeFace: true, faceBinding: null, filters: 1,
+      merge: "feMerge", output: [["feMergeNode", "merman-shadow-1-shadow"], ["feMergeNode", "merman-shadow-0-shadow"]],
+    });
+    expect(depth.geometry, depth.owner!).toEqual(depth.faceGeometry);
+    expect(depth.inlineId, depth.owner!).toBe(depth.filterId);
+    for (const [index, value] of depth.matrix.entries()) expect(value, depth.owner!).toBeCloseTo(depth.faceMatrix[index], 5);
+  }
+  expect(facts.terminals.every(({ valid }) => valid), "all filter bindings and explicit foreground suppressions must win").toBe(true);
+  expect(facts.terminals.map(({ kind }) => kind).sort()).toEqual([
+    ...Array<string>(4).fill("depth"), ...Array<string>(3).fill("edge"),
+    ...Array<string>(look === "neo" ? 4 : 0).fill("suppressed-face"), ...Array<string>(6).fill("text"),
+  ]);
+  for (const [kind, count, deviations] of [["depth", 4, [8, 16]], ["edge", 3, [6]], ["text", 6, [5]]] as const) {
+    expect(facts.terminals.filter((terminal) => terminal.kind === kind).map((terminal) => terminal.deviations))
+      .toEqual(Array.from({ length: count }, () => deviations));
+  }
+  expect(facts.terminals.filter(({ kind }) => kind === "text").every(({ filtersBackground }) => !filtersBackground),
+    "glyph glow must not include label backgrounds").toBe(true);
 }
 
 async function expectPaintedArrows(page: Page, svg: Locator, count: number): Promise<void> {
@@ -249,23 +372,7 @@ for (const { layout, look, htmlLook } of [
     await page.evaluate(() => document.fonts.ready);
     await expectCyberpunkCanvas(svg);
 
-    const glows = await svg.evaluate((root) => [...root.querySelectorAll("[filter]")].map((terminal) => {
-      const binding = terminal.getAttribute("filter")!;
-      const id = binding.slice(5, -1);
-      const filter = root.querySelector(`[id="${id}"]`)!;
-      return {
-        kind: terminal.matches("g.node > .label-container") ? "node"
-          : terminal.matches("path.flowchart-link") ? "edge"
-            : terminal.querySelector("text") ? "text" : "unexpected",
-        deviations: [...filter.querySelectorAll("feGaussianBlur")].map((blur) => Number(blur.getAttribute("stdDeviation"))),
-      };
-    }));
-    expect(glows.map(({ kind }) => kind).sort()).toEqual([
-      ...Array<string>(3).fill("edge"), ...Array<string>(4).fill("node"), ...Array<string>(6).fill("text"),
-    ]);
-    expect(glows.filter(({ kind }) => kind === "node").map(({ deviations }) => deviations)).toEqual(Array(4).fill([8, 16]));
-    expect(glows.filter(({ kind }) => kind === "edge").map(({ deviations }) => deviations)).toEqual(Array(3).fill([6]));
-    expect(glows.filter(({ kind }) => kind === "text").map(({ deviations }) => deviations)).toEqual(Array(6).fill([5]));
+    await expectFlowchartDepthAndGlows(svg, look);
     await svg.screenshot({ path: test.info().outputPath("public-cyberpunk.png") });
     await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
     await expectPaintedEffects(page, svg, 13);
@@ -290,6 +397,7 @@ for (const { layout, look, htmlLook } of [
     await page.evaluate(() => document.fonts.ready);
     const svg = page.locator(".preview-container > div").first().locator("svg");
     await expectCyberpunkCanvas(svg);
+    await expectFlowchartDepthAndGlows(svg, htmlLook);
     const glyphs = svg.locator("g.node foreignObject p, g.edgeLabel foreignObject p");
     await expect(glyphs).toHaveCount(6);
     const facts = await glyphs.evaluateAll((nodes) => nodes.map((node) => {

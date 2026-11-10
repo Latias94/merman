@@ -48,6 +48,152 @@ async function openAdvanced(panel: Locator) {
   }
 }
 
+async function expectBrutalistDepth(page: Page, root: Locator): Promise<void> {
+  const facts = await root.evaluate((svg) => {
+    const faces = [...svg.querySelectorAll<SVGGElement>("g[data-et='node']")];
+    const depths = [...svg.querySelectorAll<SVGGElement>("[data-merman-theme-depth='node']")];
+    const edges = [...svg.querySelectorAll("path.flowchart-link")];
+    const geometry = (body: SVGGraphicsElement) => [body, ...body.querySelectorAll<SVGGraphicsElement>("*")]
+      .map((element) => ({
+        tag: element.localName,
+        attributes: ["class", "x", "y", "width", "height", "rx", "ry", "cx", "cy", "r", "points", "d", "transform"]
+          .map((name) => element.getAttribute(name)),
+        paint: ["fill", "stroke", "stroke-width", "opacity", "fill-opacity", "stroke-opacity", "rx", "ry"]
+          .map((name) => getComputedStyle(element).getPropertyValue(name)),
+      }));
+    return {
+      faces: faces.map((face) => ({
+        id: face.getAttribute("data-id"), look: face.getAttribute("data-look"),
+        bodies: face.querySelectorAll(":scope > .label-container").length,
+        tag: face.querySelector(".label-container")?.localName,
+        children: [...(face.querySelector(".label-container")?.children ?? [])].map((element) => element.localName),
+      })),
+      edges: edges.length,
+      depths: depths.map((depth) => {
+        const body = depth.querySelector<SVGGraphicsElement>(":scope > .label-container")!;
+        const binding = body.getAttribute("filter")!;
+        const id = /^url\(#([^)]*)\)$/u.exec(binding)?.[1];
+        const owners = faces.filter((face) => id?.startsWith(`${face.id}-theme-effect-`));
+        const owner = owners[0];
+        const face = owner?.querySelector<SVGGraphicsElement>(":scope > .label-container");
+        const graphs = id ? [...svg.querySelectorAll<SVGFilterElement>(`filter[id="${id}"]`)] : [];
+        const graph = graphs[0];
+        const merge = graph?.lastElementChild;
+        const matrix = (element: SVGGraphicsElement) => {
+          const ctm = element.getCTM()!;
+          return [ctm.a, ctm.b, ctm.c, ctm.d, ctm.e, ctm.f];
+        };
+        return {
+          owner: owner?.getAttribute("data-id"), owners: owners.length, look: depth.getAttribute("data-look"),
+          hidden: depth.getAttribute("aria-hidden"), pointerEvents: getComputedStyle(depth).pointerEvents,
+          layer: depth.parentElement?.getAttribute("data-merman-theme-depth"), bodies: depth.children.length,
+          identityFree: !depth.matches("[id], [data-id], [data-et], [name]")
+            && !depth.querySelector("[id], [data-id], [data-et], [name], text, foreignObject, a, use"),
+          beforeEdges: edges.every((edge) => Boolean(depth.compareDocumentPosition(edge) & Node.DOCUMENT_POSITION_FOLLOWING)),
+          beforeFace: !!owner && Boolean(depth.compareDocumentPosition(owner) & Node.DOCUMENT_POSITION_FOLLOWING),
+          geometry: geometry(body), faceGeometry: face ? geometry(face) : null,
+          matrix: matrix(body), faceMatrix: face ? matrix(face) : [],
+          inlineId: /^url\(["']?#([^)"']+)["']?\)$/u.exec(body.style.filter)?.[1], filterId: id,
+          priority: body.style.getPropertyPriority("filter"),
+          wins: /#([^)"']+)["']?\)$/u.exec(getComputedStyle(body).filter)?.[1] === id,
+          // Neo defaults must be suppressed on both rings, without filtering the face again.
+          faceUnfiltered: !!face && [face, ...face.querySelectorAll<SVGElement>("*")].every((element) =>
+            !element.hasAttribute("filter") && getComputedStyle(element).filter === "none"
+              && element.style.filter === "none" && element.style.getPropertyPriority("filter") === "important"),
+          childrenUnfiltered: [...body.querySelectorAll("circle")].every((circle) => getComputedStyle(circle).filter === "none"),
+          graphs: graphs.length,
+          offsets: [...(graph?.querySelectorAll("feOffset") ?? [])].map((offset) => [
+            Number(offset.getAttribute("dx")), Number(offset.getAttribute("dy")),
+          ]),
+          deviations: [...(graph?.querySelectorAll("feGaussianBlur") ?? [])]
+            .map((blur) => Number(blur.getAttribute("stdDeviation"))),
+          colors: [...(graph?.querySelectorAll("feFlood") ?? [])].map((flood) => getComputedStyle(flood).floodColor),
+          merge: merge?.localName,
+          output: [...(merge?.children ?? [])].map((node) => [node.localName, node.getAttribute("in")]),
+        };
+      }),
+    };
+  });
+  expect(facts.faces.sort((first, second) => first.id!.localeCompare(second.id!))).toEqual([
+    { id: "A", look: "neo", bodies: 1, tag: "rect", children: [] }, { id: "B", look: "neo", bodies: 1, tag: "rect", children: [] },
+    { id: "C", look: "neo", bodies: 1, tag: "polygon", children: [] }, { id: "D", look: "neo", bodies: 1, tag: "circle", children: [] },
+    { id: "E", look: "neo", bodies: 1, tag: "g", children: ["circle", "circle"] },
+  ]);
+  expect(facts.edges).toBe(4);
+  expect(facts.depths.map(({ owner }) => owner).sort()).toEqual(["A", "B", "C", "D", "E"]);
+  for (const depth of facts.depths) {
+    expect(depth, `${depth.owner} owns one hard-shadow silhouette below its connections and face`).toMatchObject({
+      owners: 1, look: "neo", hidden: "true", pointerEvents: "none", layer: "layer", bodies: 1,
+      identityFree: true, beforeEdges: true, beforeFace: true, priority: "important", wins: true,
+      faceUnfiltered: true, childrenUnfiltered: true, graphs: 1, offsets: [[6, 6]], deviations: [0],
+      colors: ["rgb(0, 0, 0)"], merge: "feMerge", output: [["feMergeNode", "merman-shadow-0-shadow"]],
+    });
+    expect(depth.geometry, depth.owner!).toEqual(depth.faceGeometry);
+    expect(depth.inlineId, depth.owner!).toBe(depth.filterId);
+    for (const [index, value] of depth.matrix.entries()) expect(value, depth.owner!).toBeCloseTo(depth.faceMatrix[index], 5);
+  }
+
+  const capture = async () => {
+    await root.evaluate((element) => {
+      const style = element.getAttribute("style");
+      element.style.setProperty("display", "none", "important");
+      element.getBoundingClientRect();
+      if (style === null) element.removeAttribute("style");
+      else element.setAttribute("style", style);
+      element.getBoundingClientRect();
+    });
+    return root.screenshot({ animations: "disabled" });
+  };
+  const original = await capture();
+  const probes: { owner: string; hidden: string; restored: string }[] = [];
+  const depths = root.locator("[data-merman-theme-depth='node']");
+  for (const [index, fact] of facts.depths.entries()) {
+    const depth = depths.nth(index);
+    const style = await depth.getAttribute("style");
+    let hidden: Buffer;
+    try {
+      await depth.evaluate((element) => (element as SVGElement).style.setProperty("visibility", "hidden", "important"));
+      hidden = await capture();
+    } finally {
+      await depth.evaluate((element, originalStyle) => {
+        if (originalStyle === null) element.removeAttribute("style");
+        else element.setAttribute("style", originalStyle);
+      }, style);
+    }
+    probes.push({ owner: fact.owner!, hidden: hidden.toString("base64"), restored: (await capture()).toString("base64") });
+  }
+  const contributions = await page.evaluate(async ({ original, probes }) => {
+    const decode = async (encoded: string) => {
+      const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
+      const bitmap = await createImageBitmap(new Blob([bytes], { type: "image/png" }));
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const context = canvas.getContext("2d")!;
+      context.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      return context.getImageData(0, 0, canvas.width, canvas.height);
+    };
+    const before = await decode(original);
+    const changedPixels = async (encoded: string) => {
+      const after = await decode(encoded);
+      if (before.width !== after.width || before.height !== after.height) throw new Error("Depth probe resized the diagram");
+      let count = 0;
+      for (let offset = 0; offset < before.data.length; offset += 4) {
+        if ([0, 1, 2, 3].some((channel) => before.data[offset + channel] !== after.data[offset + channel])) count += 1;
+      }
+      return count;
+    };
+    return Promise.all(probes.map(async (probe) => ({
+      owner: probe.owner, hidden: await changedPixels(probe.hidden), restored: await changedPixels(probe.restored),
+    })));
+  }, { original: original.toString("base64"), probes });
+  for (const probe of contributions) {
+    expect(probe.hidden, `${probe.owner} depth must contribute visible shadow pixels`).toBeGreaterThan(0);
+    expect(probe.restored, `${probe.owner} depth must restore its pixels`).toBe(0);
+  }
+}
+
 test("a keyboard theme choice applies immediately and survives closing Appearance", async ({ page }) => {
   await start(page, "{}", null, 'pie title Tea time\n"Tea": 4\n"Cake": 3');
   const panel = await openPanel(page);
@@ -111,26 +257,11 @@ test("Brutalist applies hard shadows in default Neo without changing source or c
   const note = panel.locator('[data-theme-application-note="flowchart-basic-shadows"]');
   await expect(note).toContainText("Classic and Neo");
   await expect(note).toContainText("basic shapes");
-  await expect.poll(() => page.locator(".preview-container > div").first().evaluate((host) => {
-    const root = host.shadowRoot?.querySelector("svg");
-    return [...(root?.querySelectorAll("g.node > .label-container") ?? [])].map((body) => {
-      const binding = body.getAttribute("filter") ?? (body as SVGElement).style.filter;
-      const id = /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding)?.[1];
-      const graph = id ? root?.querySelector(`[id="${id}"]`) : null;
-      return {
-        themed: Boolean(id?.includes("-theme-effect-")),
-        wins: Boolean(id && getComputedStyle(body).filter.includes(`#${id}`)),
-        childrenUnfiltered: [...body.querySelectorAll("circle")]
-          .every((child) => getComputedStyle(child).filter === "none"),
-        offsets: [...(graph?.querySelectorAll("feOffset") ?? [])].map((offset) => [
-          Number(offset.getAttribute("dx")), Number(offset.getAttribute("dy")),
-        ]),
-        deviations: [...(graph?.querySelectorAll("feGaussianBlur") ?? [])]
-          .map((blur) => Number(blur.getAttribute("stdDeviation"))),
-      };
-    });
-  })).toEqual(Array(5).fill({ themed: true, wins: true, childrenUnfiltered: true, offsets: [[6, 6]], deviations: [0] }));
+  const root = page.locator(".preview-container > div").first().locator("svg");
+  await expect(root.locator("[data-merman-theme-depth='node']")).toHaveCount(5);
   await expect.poll(() => svg(page)).toContain("Arial");
+  await page.evaluate(() => document.fonts.ready);
+  await expectBrutalistDepth(page, root);
   const applied = await workspaceFromLink(page);
   expect(applied.diagramTheme).toBe("auto");
   expect(applied.diagramFont).toBe("arial");
