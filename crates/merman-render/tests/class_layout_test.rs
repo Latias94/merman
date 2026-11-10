@@ -21,6 +21,39 @@ fn parse_class(text: &str) -> PresentationDiagram {
 }
 
 #[test]
+fn class_note_padding_expands_each_side_in_both_label_modes() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for html in [false, true] {
+            let note_size = |padding: f64| {
+                let source = format!(
+                    "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n  class:\n    padding: {padding}\n---\nclassDiagram\nnote \"Retry on failure\"\n"
+                );
+                let (layout, _) = layout_class_text(&source);
+                let note = layout.nodes.iter().find(|node| node.id == "note0").unwrap();
+                (note.width, note.height)
+            };
+            let (width, height) = note_size(0.0);
+            for padding in [6.0, 30.0] {
+                let padded = note_size(padding);
+                assert!(
+                    (padded.0 - width - 2.0 * padding).abs() < 1e-6,
+                    "{layout}/{html}/{padding}: width {} vs {width}",
+                    padded.0
+                );
+                assert!(
+                    (padded.1 - height - 2.0 * padding).abs() < 1e-6,
+                    "{layout}/{html}/{padding}: height {} vs {height}",
+                    padded.1
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn class_viewport_ignores_flowchart_diagram_padding() {
     use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
 

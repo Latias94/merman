@@ -91,6 +91,14 @@ fn render_class(layout: &str, node_style: &str) -> (String, Arc<FontRequests>) {
 }
 
 fn render_class_source(layout: &str, source: &str) -> (String, Arc<FontRequests>) {
+    render_class_source_with_font_size(layout, source, 24)
+}
+
+fn render_class_source_with_font_size(
+    layout: &str,
+    source: &str,
+    font_size: u32,
+) -> (String, Arc<FontRequests>) {
     let requests = Arc::new(FontRequests::default());
     let profile = TextMeasurementProfile::new(
         TextMeasurementProfileIdentity::new(
@@ -112,7 +120,7 @@ fn render_class_source(layout: &str, source: &str) -> (String, Arc<FontRequests>
                 "fontSize": 18,
                 "themeVariables": {
                     "fontFamily": "\"Visible; Face\", serif;",
-                    "fontSize": "24px"
+                    "fontSize": format!("{font_size}px")
                 }
             })),
         )
@@ -557,6 +565,40 @@ fn class_html_node_span_fonts_follow_group_inheritance_before_xhtml_measurement(
     }
     assert!(svg.contains("font-size:150%"));
     assert!(svg.contains("font-weight:lighter"));
+}
+
+#[test]
+fn class_html_notes_resolve_rem_against_the_document_root_before_sizing() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for font_size in [14, 24] {
+            let render = |size: &str| {
+                render_class_source_with_font_size(
+                    layout,
+                    &format!(
+                        "classDiagram\nnote \"<span style='font-size:{size}'>AccountAccount</span>\"\n"
+                    ),
+                    font_size,
+                )
+            };
+            let (relative, requests) = render("2rem");
+            let (pixels, _) = render("32px");
+            assert_eq!(
+                html_title_dimensions(&relative, "AccountAccount"),
+                html_title_dimensions(&pixels, "AccountAccount"),
+                "{layout}, diagram font size {font_size}px"
+            );
+            let displayed = requests.displayed.lock().unwrap();
+            assert!(
+                displayed
+                    .iter()
+                    .any(|(text, style)| { text == "AccountAccount" && style.font_size == 32.0 }),
+                "{layout}/{font_size}: {displayed:?}"
+            );
+        }
+    }
 }
 
 #[allow(dead_code)]
