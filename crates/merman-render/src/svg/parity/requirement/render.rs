@@ -145,7 +145,9 @@ pub(crate) fn render_requirement_diagram_svg_model(
             .map(|s| format!(r#" style="{}""#, escape_attr(s)))
             .unwrap_or_default();
         let div_style_prefix = div_style_prefix.unwrap_or("");
-        let constrained_width = max_width_px > 0 && (width - max_width_px as f64).abs() <= 1.0e-6;
+        // A table can grow past its requested width to fit an unbreakable word. That
+        // min-content expansion retains createText's constrained wrapping mode.
+        let constrained_width = max_width_px > 0 && width >= max_width_px as f64;
         let (display, white_space, width_style) = if constrained_width {
             (
                 "table",
@@ -414,11 +416,6 @@ pub(crate) fn render_requirement_diagram_svg_model(
         content_bounds.max_y = content_bounds.max_y.max(y + descent);
         (title, x, y)
     });
-    let viewport_padding = render_settings.viewport_padding;
-    let vb_x = content_bounds.min_x - viewport_padding;
-    let vb_y = content_bounds.min_y - viewport_padding;
-    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
-    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
     let mut out = BoundedSvgOutput::new(options.work_meter());
     let mut aria_labelledby: Option<String> = None;
     let mut aria_describedby: Option<String> = None;
@@ -451,20 +448,13 @@ pub(crate) fn render_requirement_diagram_svg_model(
         fixed_style_placement: root_svg::RootStylePlacement::Tail,
         ..root_svg::RootDomProfile::default()
     };
-    let root_document =
-        root_svg::RootViewportContext::new(crate::DiagramFamilyId::REQUIREMENT, diagram_id)
-            .write_open(
-                &mut out,
-                root_svg::RootViewportSpec::mermaid(
-                    root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
-                    render_settings.use_max_width,
-                )
-                .with_max_width(root_svg::RootMaxWidth::Precision {
-                    value: vb_w,
-                    significant_digits: 6,
-                }),
-                root_chrome,
-            )?;
+    let root_context =
+        root_svg::RootViewportContext::new(crate::DiagramFamilyId::REQUIREMENT, diagram_id);
+    let root_document = root_context.begin_document(
+        &mut out,
+        root_svg::DeferredRootSpec::mermaid(render_settings.use_max_width),
+        root_chrome,
+    )?;
 
     out.push_str(&a11y_nodes);
 
@@ -1064,6 +1054,19 @@ pub(crate) fn render_requirement_diagram_svg_model(
                 x + padding / 2.0
             };
             let label_y = y + line.y_offset - metrics.height / 2.0 + padding;
+            // Requirement labels can extend above their node after upstream's centering step.
+            // Reuse the final render measurement and the coordinates written below; SVG's extra
+            // six pixels belong to stacking, while bbox_y retains createText's font-specific top.
+            let label_top = cy + label_y + metrics.bbox_y;
+            let label_height = if render_settings.html_labels {
+                metrics.height
+            } else {
+                (metrics.height - 6.0).max(0.0)
+            };
+            content_bounds.min_x = content_bounds.min_x.min(cx + label_x);
+            content_bounds.max_x = content_bounds.max_x.max(cx + label_x + metrics.width);
+            content_bounds.min_y = content_bounds.min_y.min(label_top);
+            content_bounds.max_y = content_bounds.max_y.max(label_top + label_height);
             let style = if line.bold {
                 format!("{label_styles}; font-weight: bold;")
             } else {
@@ -1346,6 +1349,23 @@ pub(crate) fn render_requirement_diagram_svg_model(
     );
 
     out.push_str("</svg>\n");
+    let viewport_padding = render_settings.viewport_padding;
+    let vb_x = content_bounds.min_x - viewport_padding;
+    let vb_y = content_bounds.min_y - viewport_padding;
+    let vb_w = ((content_bounds.max_x - content_bounds.min_x) + 2.0 * viewport_padding).max(1.0);
+    let vb_h = ((content_bounds.max_y - content_bounds.min_y) + 2.0 * viewport_padding).max(1.0);
+    let root_document = root_context.finish_document(
+        &mut out,
+        root_document,
+        root_svg::RootViewportSpec::mermaid(
+            root_svg::DiagramBounds::from_view_box(vb_x, vb_y, vb_w, vb_h),
+            render_settings.use_max_width,
+        )
+        .with_max_width(root_svg::RootMaxWidth::Precision {
+            value: vb_w,
+            significant_digits: 6,
+        }),
+    )?;
     let rooted_svg = root_document.complete(out.finish()?)?;
     if !relationship_background.record_terminal(background_receipt) {
         return Err(Error::InvalidModel {

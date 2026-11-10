@@ -40,6 +40,9 @@ pub(crate) type BlockNode = merman_model::families::block::BlockNode;
 // Mermaid createFormattedText pads the SVG edge label's background on all four sides.
 pub(crate) const SVG_EDGE_LABEL_BACKGROUND_PADDING: f64 = 2.0;
 
+// Prepared XHTML uses a document root independently of the diagram's font size.
+const HTML_DOCUMENT_ROOT_FONT_SIZE_PX: f64 = 16.0;
+
 #[derive(Debug, Clone)]
 struct SizedBlock {
     id: String,
@@ -247,7 +250,6 @@ fn block_html_label_metrics_px(
     text: &str,
     measurer: &dyn TextMeasurer,
     style: &TextStyle,
-    root_font_size: f64,
     html_labels: bool,
     prepared_xhtml: Option<&str>,
 ) -> (f64, f64) {
@@ -256,7 +258,7 @@ fn block_html_label_metrics_px(
             measurer,
             prepared_xhtml.expect("HTML Block labels are prepared before measurement"),
             style,
-            root_font_size,
+            HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
         )
     } else {
         measurer.measure_wrapped(text, style, None, WrapMode::SvgLike)
@@ -717,7 +719,6 @@ fn to_sized_block_shallow(
     padding: f64,
     shape_settings: BlockShapeSettings,
     measurer: &dyn TextMeasurer,
-    text_style: &TextStyle,
     prepared_label: &BlockPreparedLabel,
     html_labels: bool,
 ) -> SizedBlock {
@@ -738,7 +739,6 @@ fn to_sized_block_shallow(
             &label_decoded,
             measurer,
             &prepared_label.typography.style,
-            text_style.font_size,
             html_labels,
             prepared_label.measurement_xhtml(),
         )
@@ -1188,7 +1188,6 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
                 padding,
                 shape_settings,
                 measurer,
-                &text_style,
                 prepared_labels.node_label(&block.id),
                 html_labels,
             )
@@ -1261,7 +1260,6 @@ pub(crate) fn layout_block_diagram_typed_with_text_style(
                 &edge_label,
                 measurer,
                 &prepared_label.typography.style,
-                text_style.font_size,
                 html_labels,
                 prepared_label.measurement_xhtml(),
             );
@@ -1411,7 +1409,6 @@ mod tests {
             "Font size precedence should widen this block",
             &SelectedMeasurer,
             &style,
-            style.font_size,
             true,
             Some("<p>Font size precedence should widen this block</p>"),
         );
@@ -1507,7 +1504,6 @@ mod tests {
             "authored text must not be measured",
             &measurer,
             &default_style(16.0),
-            16.0,
             true,
             Some("<p>A&amp;B<br />C</p>"),
         );

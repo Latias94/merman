@@ -368,7 +368,8 @@ fn c4_split_long_word(
         let mut best = end;
         while end < boundaries.len() {
             let candidate = &word[boundaries[start]..boundaries[end]];
-            if measurer.measure_svg_text_computed_length_px(candidate, style) <= max_width {
+            let visible = crate::entities::decode_svg_text_content_entities(candidate);
+            if measurer.measure_svg_text_computed_length_px(&visible, style) <= max_width {
                 best = end;
                 end += 1;
             } else {
@@ -424,8 +425,13 @@ fn c4_wrap_source_word_lines(
             if c4_row_width(measurer, std::slice::from_ref(word), style) <= max_width {
                 current.push(word.clone());
             } else {
-                for chunk in c4_split_long_word(measurer, word, style, max_width) {
+                let mut chunks = c4_split_long_word(measurer, word, style, max_width);
+                let tail = chunks.pop();
+                for chunk in chunks {
                     wrapped.push(C4TextRowLayout { words: vec![chunk] });
+                }
+                if let Some(tail) = tail {
+                    current.push(tail);
                 }
             }
         }
@@ -712,6 +718,36 @@ mod tests {
         assert_eq!(measured.metrics.line_count, 1);
         assert_eq!(measured.metrics.height, 11.0);
         assert_eq!(measured.metrics.width, 70.0);
+    }
+
+    #[test]
+    fn c4_unified_long_words_use_visible_prefixes_and_keep_the_tail_line_open() {
+        let measurer = crate::text::DeterministicTextMeasurer {
+            char_width_factor: 1.0,
+            ..Default::default()
+        };
+        let style = TextStyle {
+            font_size: 10.0,
+            ..Default::default()
+        };
+        // Pinned splitText.ts checks each prefix through createText's entity decoder and
+        // retries the remaining suffix as an ordinary word before consuming the next word.
+        for (text, expected) in [
+            ("A&amp;BCDEFGHIJKLMNO", vec!["A&BCDE", "FGHIJK", "LMNO"]),
+            ("ABCDEFGHIJ K", vec!["ABCDEF", "GHIJ K"]),
+        ] {
+            let measured = measure_c4_unified_text(&measurer, text, &style, true, 60.0);
+            let rows = measured
+                .render_plan
+                .rows
+                .iter()
+                .map(|row| super::c4_visible_row(&row.words))
+                .collect::<Vec<_>>();
+            assert_eq!(rows, expected, "{text}");
+            assert_eq!(measured.metrics.line_count, expected.len());
+            assert_eq!(measured.metrics.width, 60.0);
+            assert_eq!(measured.metrics.height, expected.len() as f64 * 11.0);
+        }
     }
 
     #[test]

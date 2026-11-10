@@ -185,6 +185,32 @@ pub(crate) struct KanbanPreparedItem {
     pub(crate) ticket_link: Option<KanbanPreparedTicketLink>,
 }
 
+pub(crate) struct KanbanItemLabelPositions {
+    pub(crate) left_x: f64,
+    pub(crate) right_x: f64,
+    pub(crate) title_y: f64,
+    pub(crate) details_y: f64,
+}
+
+impl KanbanPreparedItem {
+    pub(crate) fn label_positions(&self, item: &KanbanItemLayout) -> KanbanItemLabelPositions {
+        let height_adjustment = self
+            .ticket
+            .geometry
+            .content_height
+            .max(self.assigned.geometry.content_height)
+            / 2.0;
+        KanbanItemLabelPositions {
+            left_x: -item.width / 2.0 + KANBAN_SECTION_PADDING_PX,
+            right_x: item.width / 2.0
+                - KANBAN_SECTION_PADDING_PX
+                - self.assigned.geometry.foreign_object_width,
+            title_y: -height_adjustment - self.title.geometry.content_height / 2.0,
+            details_y: -height_adjustment + self.title.geometry.content_height / 2.0,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct KanbanPreparedMetadataLabel {
     pub(crate) html: String,
@@ -272,7 +298,8 @@ fn prepare_kanban_markdown_label(
         geometry: KanbanPreparedLabelGeometry {
             content_height: metrics.height,
             foreign_object_width: if wrapped {
-                max_width.max(0.0)
+                // CSS tables retain min-content expansion beyond their wrap constraint.
+                metrics.width.max(max_width).max(0.0)
             } else {
                 metrics.width.max(0.0)
             },
@@ -337,7 +364,7 @@ fn prepare_kanban_metadata_label(
         KanbanPreparedLabelGeometry {
             content_height: metrics.height,
             foreign_object_width: if wrapped {
-                max_width.max(0.0)
+                metrics.width.max(max_width).max(0.0)
             } else {
                 metrics.width.max(0.0)
             },
@@ -711,8 +738,9 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
     let mut max_y = f64::NEG_INFINITY;
 
     for s in &sections {
-        let left = s.center_x - s.width / 2.0;
-        let right = left + s.width;
+        let width = s.width.max(s.label_width);
+        let left = s.center_x - width / 2.0;
+        let right = left + width;
         let top = s.rect_y;
         let bottom = s.rect_y + s.rect_height;
         min_x = min_x.min(left);
@@ -720,7 +748,7 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         max_x = max_x.max(right);
         max_y = max_y.max(bottom);
     }
-    for n in &items {
+    for (n, prepared) in items.iter().zip(&prepared_items) {
         let left = n.center_x - n.width / 2.0;
         let right = n.center_x + n.width / 2.0;
         let top = n.center_y - n.height / 2.0;
@@ -729,6 +757,37 @@ pub(crate) fn prepare_kanban_diagram_typed_with_work_meter(
         min_y = min_y.min(top);
         max_x = max_x.max(right);
         max_y = max_y.max(bottom);
+
+        // Mermaid's final getBBox includes label foreignObjects that extend beyond fixed
+        // card bodies. Preserve that canvas without changing the source-owned card width.
+        let positions = prepared.label_positions(n);
+        for (geometry, x, y) in [
+            (prepared.title.geometry, positions.left_x, positions.title_y),
+            (
+                prepared.ticket.geometry,
+                positions.left_x,
+                positions.details_y,
+            ),
+            (
+                prepared.assigned.geometry,
+                positions.right_x,
+                positions.details_y,
+            ),
+        ] {
+            if geometry.foreign_object_width <= 0.0 {
+                continue;
+            }
+            let x = n.center_x + x;
+            let y = n.center_y + y;
+            min_x = min_x.min(x);
+            min_y = min_y.min(y);
+            max_x = max_x.max(x + geometry.foreign_object_width);
+            max_y = max_y.max(
+                y + geometry
+                    .content_height
+                    .max(KANBAN_LABEL_FOREIGN_OBJECT_HEIGHT_PX),
+            );
+        }
     }
 
     let bounds = if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite()

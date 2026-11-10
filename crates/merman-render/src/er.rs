@@ -35,6 +35,9 @@ pub(crate) type ErEntity = merman_model::families::er::ErEntity;
 pub(crate) type ErRelationship = merman_model::families::er::ErRelationship;
 pub(crate) type ErSubgraph = merman_model::families::er::ErSubgraph;
 
+// HTML rem resolves against the document root, rather than the SVG's inherited font size.
+const HTML_DOCUMENT_ROOT_FONT_SIZE_PX: f64 = 16.0;
+
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ErHtmlLabelLayout {
     pub(crate) width_budget: i64,
@@ -823,7 +826,7 @@ impl ErPreparedLabels {
                     &settings.relationship_label_style,
                     settings.relationship_html_labels,
                     markdown_auto_wrap,
-                    settings.label_style.font_size,
+                    HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
                 )
             };
             work_meter.checkpoint(merman_model::OperationPhase::Layout)?;
@@ -908,7 +911,7 @@ fn er_swimlane_title_metrics(
             label.xhtml_fragment(),
             style,
             None,
-            style.font_size,
+            HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
         ),
         WrapMode::SvgLike | WrapMode::SvgLikeSingleRun => {
             crate::text::measure_markdown_with_inline_styles(
@@ -943,7 +946,7 @@ fn er_subgraph_title_metrics(
             &fragment,
             style,
             None,
-            style.font_size,
+            HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
         )
     } else {
         crate::text::measure_markdown_with_inline_styles(
@@ -1085,8 +1088,13 @@ fn measure_entity_box_with_source(
         entity.label_source_for_render(),
         !entity.attributes.is_empty(),
     );
-    let label_probe_style = source_style.text_style(label_style, label_style.font_size);
-    let attr_probe_style = source_style.text_style(attr_style, label_style.font_size);
+    let root_font_size = if settings.label_wrap_mode == WrapMode::HtmlLike {
+        HTML_DOCUMENT_ROOT_FONT_SIZE_PX
+    } else {
+        label_style.font_size
+    };
+    let label_probe_style = source_style.text_style(label_style, root_font_size);
+    let attr_probe_style = source_style.text_style(attr_style, root_font_size);
     let label_probe_size = source_style.terminal_font_size(Some(label_style.font_size));
     let attr_probe_size = source_style.terminal_font_size(Some(attr_style.font_size));
 
@@ -1115,7 +1123,7 @@ fn measure_entity_box_with_source(
             &source_style,
             label_max_width_px,
             settings.label_wrap_mode,
-            label_style.font_size,
+            root_font_size,
             label_probe_size,
             work_meter,
         )?;
@@ -1157,7 +1165,7 @@ fn measure_entity_box_with_source(
         &source_style,
         label_text_width_px.saturating_add(100),
         settings.label_wrap_mode,
-        label_style.font_size,
+        root_font_size,
         label_probe_size,
         work_meter,
     )?;
@@ -1212,7 +1220,7 @@ fn measure_entity_box_with_source(
                 &source_style,
                 width,
                 settings.label_wrap_mode,
-                label_style.font_size,
+                root_font_size,
                 attr_probe_size,
                 work_meter,
             )

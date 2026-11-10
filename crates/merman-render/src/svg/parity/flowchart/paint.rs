@@ -234,7 +234,7 @@ pub(super) fn with_flowchart_paint_context<T>(
     let flowchart_edge_trace = options.debug.flowchart_edge_trace();
     let checkpoint_emit = || options.checkpoint_emit();
     let text_surface_paint = &prepared_theme.text_surface;
-    let ctx = FlowchartRenderCtx {
+    let mut ctx = FlowchartRenderCtx {
         prepared_nodes,
         edges_by_key: edge_order
             .iter()
@@ -300,6 +300,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         layout_nodes_by_id,
         layout_edges_by_key,
         layout_clusters_by_id,
+        elk_cluster_geometry: FxHashMap::default(),
         swimlane_direction,
         swimlane_lanes_by_id,
         swimlane_edge_label_edges_by_node_id,
@@ -312,6 +313,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         html_label_text_style,
     };
 
+    ctx.elk_cluster_geometry = super::cluster_geometry::prepare_elk_cluster_geometry(&ctx)?;
     let hierarchy_plan = FlowchartHierarchyPlan::prepare(&ctx, prepared_nodes.schedule())?;
     consume(&ctx, &render_edges, &hierarchy_plan)
 }

@@ -91,18 +91,58 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_rendered_bounds<'data
             hierarchy_plan.effective_parent(&c.id)
         };
         let y_off = y_offset_for_root(root);
-        let hw = c.width / 2.0;
+        let elk_geometry = ctx.elk_cluster_geometry.get(c.id.as_str());
+        let hw = elk_geometry.map_or(c.width, |geometry| geometry.width) / 2.0;
         let hh = c.height / 2.0;
-        include_rect(c.x - hw, c.y + y_off - hh, c.x + hw, c.y + y_off + hh);
-
-        let lhw = c.title_label.width / 2.0;
-        let lhh = c.title_label.height / 2.0;
+        let mut painted_width = hw * 2.0;
+        let mut painted_height = c.height;
+        if ctx.compatibility.look.as_str() != "handDrawn"
+            && !super::swimlane::is_lane_or_pool_cluster(ctx, c.id.as_str())
+        {
+            let terminal = ctx.prepared_nodes.cluster(c.id.as_str())?;
+            crate::mermaid_style::visit_parsed_style_declarations(
+                &terminal.rect_style,
+                |declaration| {
+                    if let Some(value) =
+                        declaration.svg_number_or_px().filter(|value| *value >= 0.0)
+                    {
+                        match declaration.property() {
+                            "width" => painted_width = value,
+                            "height" => painted_height = value,
+                            _ => {}
+                        }
+                    }
+                },
+            );
+        }
+        // CSS geometry overrides the rect dimensions without changing its attribute origin.
+        // Mermaid's final getBBox includes that painted extent, not only the provider frame.
         include_rect(
-            c.title_label.x - lhw,
-            c.title_label.y + y_off - lhh,
-            c.title_label.x + lhw,
-            c.title_label.y + y_off + lhh,
+            c.x - hw,
+            c.y + y_off - hh,
+            c.x - hw + painted_width,
+            c.y + y_off - hh + painted_height,
         );
+
+        if let Some(geometry) = elk_geometry {
+            let lhw = geometry.label.width / 2.0;
+            let label_top = c.y + y_off - hh + c.title_margin_top.max(0.0);
+            include_rect(
+                c.x - lhw,
+                label_top,
+                c.x + lhw,
+                label_top + geometry.label.height,
+            );
+        } else {
+            let lhw = c.title_label.width / 2.0;
+            let lhh = c.title_label.height / 2.0;
+            include_rect(
+                c.title_label.x - lhw,
+                c.title_label.y + y_off - lhh,
+                c.title_label.x + lhw,
+                c.title_label.y + y_off + lhh,
+            );
+        }
     }
 
     let effective_parent_for_id = |id: &str| hierarchy_plan.effective_parent(id);
@@ -399,10 +439,15 @@ fn builtin_neo_paint_bounds(
                 &cluster.id,
                 ctx.recursive_clusters.contains(cluster.id.as_str()),
             );
+        let half_width = ctx
+            .elk_cluster_geometry
+            .get(cluster.id.as_str())
+            .map_or(cluster.width, |geometry| geometry.width)
+            / 2.0;
         include(
-            cluster.x - cluster.width / 2.0 - 0.5,
+            cluster.x - half_width - 0.5,
             y - cluster.height / 2.0 - 0.5,
-            cluster.x + cluster.width / 2.0 + 0.5,
+            cluster.x + half_width + 0.5,
             y + cluster.height / 2.0 + 0.5,
         );
     }

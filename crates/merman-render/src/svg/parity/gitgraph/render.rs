@@ -576,6 +576,51 @@ fn gitgraph_commit_tag_label_height_px(
         .max(0.0)
 }
 
+fn include_gitgraph_label_ink(
+    bounds: &mut Option<crate::geom::Box2>,
+    measurer: &dyn TextMeasurer,
+    text: &str,
+    style: &crate::text::TextStyle,
+    origin: crate::geom::Point,
+    width: f64,
+    transform: crate::geom::Transform,
+) {
+    if text.trim().is_empty() || style.font_size <= 0.0 {
+        return;
+    }
+    // Backgrounds use fixed baseline offsets and need not contain large text. Mermaid's
+    // final getBBox() includes that ink. Profiles without baseline facts retain their
+    // compatibility bounds instead of borrowing an unrelated font's ascent.
+    let Some(top) = measurer.measure_svg_raw_text_bbox_y_offset_px(text, style) else {
+        return;
+    };
+    let height = measurer
+        .measure_svg_raw_text_bbox_height_px(text, style)
+        .max(0.0);
+    let ink = crate::geom::Box2::from_min_max(
+        origin.x,
+        origin.y + top,
+        origin.x + width,
+        origin.y + top + height,
+    );
+    let ink = crate::geom::Box2(transform.outer_transformed_box(&ink.0));
+    if let Some(bounds) = bounds {
+        bounds.union(ink);
+    } else {
+        *bounds = Some(ink);
+    }
+}
+
+fn gitgraph_label_rotation(
+    degrees: f64,
+    pivot: crate::geom::Point,
+    translation: crate::geom::Vector,
+) -> crate::geom::Transform {
+    crate::geom::Transform::rotation(euclid::Angle::degrees(degrees))
+        .pre_translate(crate::geom::vector(-pivot.x, -pivot.y))
+        .then_translate(crate::geom::vector(pivot.x, pivot.y) + translation)
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "The SVG writer takes geometry, resolved styles, and terminal evidence separately."
@@ -1299,6 +1344,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
     out.push_str(r#"<g class="commit-labels">"#);
     let commit_label_style = typography_theme.commit_label_style();
     let tag_label_style = typography_theme.tag_label_style();
+    let mut label_ink_bounds = None;
     for (commit_index, c) in layout.commits.iter().enumerate() {
         if crate::gitgraph::gitgraph_commit_label_is_visible(layout, c) {
             let bbox_w = gitgraph_commit_tag_label_width_px(measurer, &c.id, &commit_label_style);
@@ -1307,6 +1353,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
             let mut wrapper_transform: Option<String> = None;
             let mut rect_transform: Option<String> = None;
             let mut text_transform: Option<String> = None;
+            let mut ink_transform = crate::geom::Transform::identity();
 
             let mut rect_x = c.pos_with_offset - bbox_w / 2.0 - PY;
             let mut rect_y = c.y + 13.5;
@@ -1327,6 +1374,11 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     let t = format!("rotate(-45, {}, {})", fmt(c.x), fmt(c.y));
                     rect_transform = Some(t.clone());
                     text_transform = Some(t);
+                    ink_transform = gitgraph_label_rotation(
+                        -45.0,
+                        crate::geom::point(c.x, c.y),
+                        crate::geom::vector(0.0, 0.0),
+                    );
                 } else {
                     let r_x = -7.5 - ((bbox_w + 10.0) / 25.0) * 9.5;
                     let r_y = 10.0 + (bbox_w / 25.0) * 8.5;
@@ -1337,8 +1389,22 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         fmt(c.pos),
                         fmt(c.y)
                     ));
+                    ink_transform = gitgraph_label_rotation(
+                        -45.0,
+                        crate::geom::point(c.pos, c.y),
+                        crate::geom::vector(r_x, r_y),
+                    );
                 }
             }
+            include_gitgraph_label_ink(
+                &mut label_ink_bounds,
+                measurer,
+                &c.id,
+                &commit_label_style,
+                crate::geom::point(text_x, text_y),
+                bbox_w,
+                ink_transform,
+            );
 
             out.push_str("<g");
             if let Some(t) = &wrapper_transform {
@@ -1388,6 +1454,7 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         if !c.tags.is_empty() {
             let mut max_w: f64 = 0.0;
             let mut max_h: f64 = 0.0;
+            let mut tags = Vec::with_capacity(c.tags.len());
             for tag_value in crate::gitgraph::gitgraph_tags_in_output_order(c) {
                 let bbox_w =
                     gitgraph_commit_tag_label_width_px(measurer, tag_value, &tag_label_style);
@@ -1395,9 +1462,10 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                     gitgraph_commit_tag_label_height_px(measurer, tag_value, &tag_label_style);
                 max_w = max_w.max(bbox_w.max(0.0));
                 max_h = max_h.max(bbox_h.max(0.0));
+                tags.push((tag_value, bbox_w));
             }
 
-            for (i, tag_value) in crate::gitgraph::gitgraph_tags_in_output_order(c).enumerate() {
+            for (i, (tag_value, bbox_w)) in tags.into_iter().enumerate() {
                 let y_off = i as f64 * 20.0;
                 let h2 = max_h / 2.0;
                 let ly = c.y - 19.2 - y_off;
@@ -1447,6 +1515,19 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         t = escape_attr(&text_t),
                         txt = escape_xml(tag_value)
                     );
+                    include_gitgraph_label_ink(
+                        &mut label_ink_bounds,
+                        measurer,
+                        tag_value,
+                        &tag_label_style,
+                        crate::geom::point(c.x + 5.0, y_origin + 3.0),
+                        bbox_w,
+                        gitgraph_label_rotation(
+                            45.0,
+                            crate::geom::point(c.x, c.pos),
+                            crate::geom::vector(14.0, 14.0),
+                        ),
+                    );
                 } else {
                     let points = format!(
                         "{} {} {} {} {} {} {} {} {} {} {} {}",
@@ -1478,8 +1559,17 @@ fn render_gitgraph_diagram_svg_with_accessibility(
                         &mut out,
                         r#"<text y="{y}" class="tag-label" x="{x}">{txt}</text>"#,
                         y = fmt(c.y - 16.0 - y_off),
-                        x = fmt(c.pos_with_offset - max_w / 2.0),
+                        x = fmt(c.pos_with_offset - bbox_w / 2.0),
                         txt = escape_xml(tag_value)
+                    );
+                    include_gitgraph_label_ink(
+                        &mut label_ink_bounds,
+                        measurer,
+                        tag_value,
+                        &tag_label_style,
+                        crate::geom::point(c.pos_with_offset - bbox_w / 2.0, c.y - 16.0 - y_off),
+                        bbox_w,
+                        crate::geom::Transform::identity(),
                     );
                 }
                 out.checkpoint()?;
@@ -1514,6 +1604,12 @@ fn render_gitgraph_diagram_svg_with_accessibility(
         max_x: vb_min_x + vb_w,
         max_y: vb_min_y + vb_h,
     });
+    if let Some(ink) = label_ink_bounds {
+        b.min_x = b.min_x.min(ink.min_x());
+        b.min_y = b.min_y.min(ink.min_y());
+        b.max_x = b.max_x.max(ink.max_x());
+        b.max_y = b.max_y.max(ink.max_y());
+    }
     include_gitgraph_branch_line_bounds(&mut b, layout, use_redux_geometry);
     let title_anchor_x = (b.min_x + b.max_x) / 2.0;
     if let Some(title) = title {

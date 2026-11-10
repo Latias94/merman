@@ -434,12 +434,13 @@ fn mindmap_label_bbox_px_with_math(
         })?;
         // Preserve Mindmap's HTML min-content and wrapping rules while measuring the exact
         // recovered structure retained for emission, including sanitizer removals.
-        let metrics = crate::text::measure_html_with_inline_styles(
+        let metrics = crate::text::measure_html_with_document_root(
             measurer,
             xhtml,
             style,
             Some(max_node_width_px.max(1.0)),
-            WrapMode::HtmlLike,
+            // HTML rem uses the document root, independently of the diagram's inherited font.
+            16.0,
         );
         return Ok((metrics.width.max(0.0), metrics.height.max(0.0)));
     }

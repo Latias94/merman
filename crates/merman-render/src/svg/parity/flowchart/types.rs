@@ -110,6 +110,8 @@ pub(in crate::svg::parity) struct FlowchartRenderCtx<'a> {
         FxHashMap<crate::flowchart::FlowchartEdgeKey, &'a crate::model::LayoutEdge>,
     pub(in crate::svg::parity::flowchart) layout_clusters_by_id:
         FxHashMap<&'a str, &'a LayoutCluster>,
+    pub(in crate::svg::parity::flowchart) elk_cluster_geometry:
+        FxHashMap<&'a str, super::cluster_geometry::FlowchartElkClusterGeometry>,
     pub(in crate::svg::parity::flowchart) swimlane_direction:
         Option<crate::model::SwimlaneDirection>,
     pub(in crate::svg::parity::flowchart) swimlane_lanes_by_id:

@@ -97,8 +97,7 @@ impl ErSwimlaneRelationshipLabel {
                         &fragment,
                         style,
                         Some(wrapping_width),
-                        crate::config::config_theme_or_root_font_size_px_opt(config.as_value())
-                            .unwrap_or(16.0),
+                        super::HTML_DOCUMENT_ROOT_FONT_SIZE_PX,
                     )
                 };
             // addHtmlSpan switches a constrained table-cell to a fixed-width break-spaces

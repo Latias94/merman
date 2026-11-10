@@ -255,6 +255,30 @@ fn block_unwrapped_inline_fonts_resolve_parent_relative_sizes_and_restore_siblin
 }
 
 #[test]
+fn block_html_node_and_edge_rem_sizes_use_the_document_root() {
+    for font_size in [14, 24] {
+        let config = serde_json::json!({
+            "fontFamily": "Arial",
+            "themeVariables": { "fontFamily": "Arial", "fontSize": format!("{font_size}px") }
+        });
+        for label in [
+            "<span style='font-size:2rem'>ABCDEFGHIJKLMN</span>",
+            "<strong><span style='font-size:2rem;font-weight:normal'>ABCDEFGHIJKLMN</span></strong>",
+            "<span style='font-size:24px;font-size:2rem'><em>ABCDEFGHIJKLMN</em></span>",
+            "<span style='font-size:2rem!important;font-size:24px'><strong>ABCDEFGHIJKLMN</strong></span>",
+            "<span style='font-size:2rem;font-size:24px'>ABCDEFGHIJKLMN</span>",
+        ] {
+            let relative = render_labels(label, config.clone());
+            let pixels = render_labels(&label.replace("2rem", "32px"), config.clone());
+            for (relative, pixels) in relative.iter().zip(&pixels) {
+                assert_eq!(relative.text, "ABCDEFGHIJKLMN");
+                assert_same_size(relative, pixels);
+            }
+        }
+    }
+}
+
+#[test]
 fn block_unwrapped_inline_fonts_follow_the_sanitized_terminal() {
     let sanitized = render_labels(
         "<span style='font-size:64px;font-family:monospace;font-weight:900;font-style:italic'>MMMM</span>",
@@ -360,6 +384,46 @@ fn block_unwrapped_terminal_fonts_reach_the_host_with_element_overrides() {
         paragraph < styled,
         "complete host paragraph precedes styled probes"
     );
+}
+
+#[test]
+fn block_html_rem_terminal_fonts_reach_the_host_after_inline_overrides() {
+    for font_size in [14, 24] {
+        let probe = Arc::new(TerminalFontProbe::default());
+        let identity = TextMeasurementProfileIdentity::new(
+            MeasurementProfileId::new("block-html-rem-terminal-fonts").unwrap(),
+            "1",
+        )
+        .unwrap();
+        let environment = RenderEnvironment::deterministic().with_text_measurement_policy(
+            TextMeasurementPolicy::uniform(TextMeasurementProfile::new(identity, probe.clone())),
+        );
+        let labels = render_labels_with_environment(
+            "<strong><span style='font-size:2rem;font-weight:normal'>A</span></strong><span style='font-size:24px;font-size:2rem'><em>B</em></span><span style='font-size:2rem!important;font-size:24px'>C</span>",
+            serde_json::json!({ "themeVariables": { "fontSize": format!("{font_size}px") } }),
+            environment,
+        );
+        for label in labels {
+            assert_eq!(label.width, 96.0);
+            assert_eq!(label.height, 48.0);
+        }
+        let calls = probe.0.lock().unwrap();
+        for (text, weight, slant) in [
+            ("A", Some("400"), None),
+            ("B", None, Some("italic")),
+            ("C", None, None),
+        ] {
+            assert!(
+                calls.iter().any(|(actual, style)| {
+                    actual == text
+                        && style.font_size == 32.0
+                        && style.font_weight.as_deref() == weight
+                        && style.font_style.as_deref() == slant
+                }),
+                "{font_size}/{text}: {calls:?}"
+            );
+        }
+    }
 }
 
 #[test]

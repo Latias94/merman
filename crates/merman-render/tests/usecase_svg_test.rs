@@ -1300,6 +1300,83 @@ A edge@-- "g<br/>h" --> B
 }
 
 #[test]
+fn usecase_html_inline_rem_uses_the_document_root_and_em_uses_the_role_font() {
+    fn label_boxes(svg: &str) -> Vec<(f64, f64)> {
+        roxmltree::Document::parse(svg)
+            .unwrap()
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("foreignObject")
+                    && node
+                        .descendants()
+                        .filter(|child| child.is_text())
+                        .filter_map(|child| child.text())
+                        .collect::<String>()
+                        == "ABCDEFGHIJKLMN"
+            })
+            .map(|node| {
+                (
+                    node.attribute("width").unwrap().parse().unwrap(),
+                    node.attribute("height").unwrap().parse().unwrap(),
+                )
+            })
+            .collect()
+    }
+
+    for role_size in [12, 24] {
+        let config = json!({
+            "layout": "dagre", "htmlLabels": true,
+            "themeVariables": {"fontSize": format!("{role_size}px")},
+            "usecase": {
+                "usecaseFontSize": role_size, "actorFontSize": role_size,
+                "wrappingWidth": 1000, "minNodeWidth": 0
+            }
+        });
+        for actor in [false, true] {
+            for source_style in [
+                "style A font-size:SIZE",
+                "classDef large font-size:SIZE\nclass A large",
+            ] {
+                let declaration = if actor {
+                    "actor A(ABCDEFGHIJKLMN)"
+                } else {
+                    "A[ABCDEFGHIJKLMN]"
+                };
+                let source = format!("usecase-beta\n{declaration}\n{source_style}\n");
+                let (_, actual) = render_config(&source.replace("SIZE", "2rem"), config.clone());
+                let (_, expected) = render_config(&source.replace("SIZE", "32px"), config.clone());
+                let boxes = label_boxes(&actual);
+                assert_eq!(boxes.len(), 1, "actor={actor}, {source_style}: {actual}");
+                assert_eq!(boxes, label_boxes(&expected), "{source}");
+                assert_eq!(boxes[0].1, 48.0, "{source}");
+            }
+            for (relative, pixels) in [("2rem", 32), ("2em", role_size * 2)] {
+                let source = |size: &str| {
+                    let label =
+                        format!("\"`<span style='font-size:{size}'>ABCDEFGHIJKLMN</span>`\"");
+                    if actor {
+                        format!("usecase-beta\nactor A({label})\n")
+                    } else {
+                        format!("usecase-beta\nA[{label}]\n")
+                    }
+                };
+                let (_, actual) = render_config(&source(relative), config.clone());
+                let (_, expected) = render_config(&source(&format!("{pixels}px")), config.clone());
+                let boxes = label_boxes(&actual);
+                assert_eq!(boxes.len(), 1, "actor={actor}, {relative}: {actual}");
+                assert_eq!(
+                    boxes,
+                    label_boxes(&expected),
+                    "actor={actor}, role_size={role_size}, size={relative}"
+                );
+                assert_eq!(boxes[0].1, f64::from(pixels) * 1.5);
+                assert!(actual.contains(&format!("font-size:{relative}")));
+            }
+        }
+    }
+}
+
+#[test]
 fn usecase_html_labels_reset_paragraph_margins_and_match_the_measured_line_height() {
     let (_, svg) = render_config(
         "usecase-beta\nactor A(Reader)\nA --> B(Hello)",

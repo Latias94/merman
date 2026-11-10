@@ -87,6 +87,7 @@ fn rank_dir_from(direction: &str) -> RankDir {
 pub(crate) struct RequirementLabelMetrics {
     pub(crate) width: f64,
     pub(crate) height: f64,
+    pub(crate) bbox_y: f64,
     pub(crate) max_width_px: i64,
 }
 
@@ -335,24 +336,11 @@ fn measure_requirement_svg_word_lines(
     first_row_measurer: &dyn TextMeasurer,
     lines: &[Vec<(String, MermaidMarkdownWordType)>],
     style: &TextStyle,
-) -> TextMetrics {
+) -> (TextMetrics, f64) {
     let (first, remaining) = lines.split_at(lines.len().min(1));
-    let mut metrics = crate::text::measure_svg_markdown_word_lines(
+    let (mut metrics, first_bbox_y) = crate::text::measure_svg_markdown_word_lines_with_origin(
         first_row_measurer,
         first,
-        style,
-        crate::text::SvgTextEntityMode::CreateTextSource,
-    );
-    let Some(first_tail_row) = remaining.iter().position(|row| !row.is_empty()) else {
-        if metrics.line_count > 0 {
-            metrics.line_count = lines.len();
-        }
-        return metrics;
-    };
-    let remaining = &remaining[first_tail_row..];
-    let tail = crate::text::measure_svg_markdown_word_lines(
-        measurer,
-        remaining,
         style,
         crate::text::SvgTextEntityMode::CreateTextSource,
     );
@@ -385,8 +373,28 @@ fn measure_requirement_svg_word_lines(
     };
     // Match the final styled-word bbox origins, including retained empty rows.
     // Requirement changes only the first row's face after its wrapping probe.
+    let Some(first_tail_row) = remaining.iter().position(|row| !row.is_empty()) else {
+        if metrics.line_count > 0 {
+            metrics.line_count = lines.len();
+        }
+        return (metrics, first_bbox_y);
+    };
+    let remaining = &remaining[first_tail_row..];
+    let tail = crate::text::measure_svg_markdown_word_lines(
+        measurer,
+        remaining,
+        style,
+        crate::text::SvgTextEntityMode::CreateTextSource,
+    );
     let first_y = rows_y(first_row_measurer, first);
     let tail_y = (first_tail_row + 1) as f64 * style.font_size * 1.1 + rows_y(measurer, remaining);
+    let bbox_y = if metrics.line_count == 0 {
+        tail_y
+    } else if tail.line_count == 0 {
+        first_y
+    } else {
+        first_y.min(tail_y)
+    };
     metrics.height = if metrics.line_count == 0 {
         tail.height
     } else if tail.line_count == 0 {
@@ -396,7 +404,7 @@ fn measure_requirement_svg_word_lines(
     };
     metrics.width = metrics.width.max(tail.width);
     metrics.line_count = lines.len();
-    metrics
+    (metrics, bbox_y)
 }
 
 fn measure_requirement_label_metrics(
@@ -423,15 +431,16 @@ fn measure_requirement_label_metrics(
             + 50)
             .max(0);
     let max_width = (max_width_px > 0).then_some(max_width_px as f64);
-    let measured = if wrap_mode == WrapMode::HtmlLike {
-        crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
+    let (measured, bbox_y) = if wrap_mode == WrapMode::HtmlLike {
+        let measured = crate::text::measure_xhtml_label_fragment_with_terminal_fonts(
             measurer,
             prepared_html.expect("Requirement HTML labels are prepared before measurement"),
             html_style,
             max_width,
             // HTML rem units use the host document root, independently of SVG/node/probe sizes.
             16.0,
-        )
+        );
+        (measured, 0.0)
     } else {
         // requirementBox applies inline row styles after createText has wrapped the words.
         let lines = crate::text::mermaid_markdown_to_wrapped_word_lines(
@@ -457,6 +466,7 @@ fn measure_requirement_label_metrics(
     Some(RequirementLabelMetrics {
         width,
         height,
+        bbox_y,
         max_width_px,
     })
 }
@@ -506,6 +516,7 @@ fn measure_requirement_edge_label_metrics(
     Some(RequirementLabelMetrics {
         width: (measured.width + padding).max(1.0),
         height: (measured.height + padding).max(1.0),
+        bbox_y: 0.0,
         max_width_px: 200,
     })
 }
@@ -1264,6 +1275,48 @@ mod tests {
     use crate::text::{DeterministicTextMeasurer, TextMetrics};
     use std::cell::Cell;
 
+    #[test]
+    fn requirement_single_row_retains_its_origin_without_replaying_host_requests() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+
+        struct OriginRequests(AtomicUsize);
+        impl TextMeasurer for OriginRequests {
+            fn measure(&self, text: &str, style: &TextStyle) -> TextMetrics {
+                DeterministicTextMeasurer::default().measure(text, style)
+            }
+
+            fn measure_svg_create_text_bbox_y_offset_px(
+                &self,
+                _text: &str,
+                _style: &TextStyle,
+            ) -> f64 {
+                self.0.fetch_add(1, Ordering::Relaxed);
+                -7.25
+            }
+        }
+
+        for trailing_empty_row in [false, true] {
+            let measurer = OriginRequests(AtomicUsize::new(0));
+            let mut lines = vec![vec![
+                ("Alpha".to_owned(), MermaidMarkdownWordType::Normal),
+                ("Beta".to_owned(), MermaidMarkdownWordType::Em),
+            ]];
+            if trailing_empty_row {
+                lines.push(Vec::new());
+            }
+            let (metrics, origin) = measure_requirement_svg_word_lines(
+                &measurer,
+                &measurer,
+                &lines,
+                &TextStyle::default(),
+            );
+            assert_eq!(origin, -7.25);
+            assert!(metrics.height > 0.0);
+            assert_eq!(metrics.line_count, lines.len());
+            assert_eq!(measurer.0.load(Ordering::Relaxed), 2);
+        }
+    }
+
     fn prepared_html_specs(lines: Vec<RequirementLabelSpec>) -> Vec<RequirementLabelSpec> {
         let meter = Arc::new(OperationWorkMeter::new(
             RenderResourcePolicy::unbounded_for_trusted_input(),
@@ -1688,7 +1741,7 @@ mod tests {
                         .collect()
                 })
                 .collect::<Vec<_>>();
-            let metrics = measure_requirement_svg_word_lines(
+            let (metrics, _) = measure_requirement_svg_word_lines(
                 &LiteralWordMeasurer,
                 &LiteralWordMeasurer,
                 &lines,

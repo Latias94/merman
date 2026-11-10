@@ -2,6 +2,7 @@ use super::*;
 use rustc_hash::{FxHashMap, FxHashSet};
 
 mod agentflow;
+mod cluster_geometry;
 mod css;
 mod defs;
 mod document;
