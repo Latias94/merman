@@ -101,7 +101,7 @@ fn css_property(
         .filter_map(|rule| rule.split_once('{'))
         .filter(|(selectors, _)| selectors.split(',').any(|value| value.trim() == selector))
         .filter_map(|(_, body)| declaration(body, property))
-        .last()
+        .next_back()
         .map(str::to_owned)
 }
 
