@@ -52,17 +52,6 @@ impl Palette {
                 edge: "#2c2416",
                 background: "#EDE8DC",
             },
-            ThemePreset::Cyberpunk => Self {
-                canvas: "#0B1020",
-                nodes: ["#151E35"; 2],
-                node_border: "#53DCE4",
-                text: "#E2EFF7",
-                label_fallback: "#28253D",
-                cluster: "#10182B",
-                cluster_border: "#53DCE4",
-                edge: "#53DCE4",
-                background: "#0B1020",
-            },
             _ => {
                 return Err(C6ProofError::new(
                     "preset-flowchart-scope",
@@ -550,17 +539,16 @@ mod tests {
     }
 
     #[test]
-    fn unknown_preset_is_rejected() {
-        assert!(Palette::for_preset(ThemePreset::EditorLight).is_err());
+    fn undeclared_presets_are_rejected() {
+        // Cyberpunk's complete-scene proof owns its actual recipe, not this palette-only profile.
+        for preset in [ThemePreset::EditorLight, ThemePreset::Cyberpunk] {
+            assert!(Palette::for_preset(preset).is_err());
+        }
     }
 
     #[test]
     fn flowchart_contract_rejects_missing_or_changed_terminals() {
-        for preset in [
-            ThemePreset::Brutalist,
-            ThemePreset::Spotless,
-            ThemePreset::Cyberpunk,
-        ] {
+        for preset in [ThemePreset::Brutalist, ThemePreset::Spotless] {
             assert_changed_terminals_rejected(preset);
         }
     }
