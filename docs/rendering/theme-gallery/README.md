@@ -53,6 +53,25 @@ application with a host-dependent target. One Dark and Gruvbox Light retain the
 target. The default best-effort policy still writes their images. Keep this distinction when
 evaluating the examples; inspect `--theme-report` before requiring portable output.
 
+## Changelog preview cards
+
+The [release changelog](../../../CHANGELOG.md#designed-themes-ready-to-customize) compares Riso,
+Pop Art, Carbon Copy and Paper Cut in equal-size cards. Each combines the maintained Playground
+Flowchart, Sequence and Pie SVG previews without changing their aspect ratios or theme settings.
+Riso is a gallery recipe; the other three also have built-in preset IDs.
+
+After refreshing those Playground previews, regenerate the composed cards from the repository root:
+
+```text
+python scripts/generate_theme_showcase.py
+python scripts/generate_theme_showcase.py --check
+```
+
+The generated SVGs under `showcase/` contain all three diagrams, with isolated IDs and paint
+references. They contain no external image references, scripts or font downloads; named fonts
+still resolve on the viewer's host. These are SVG specimens, separate from the native PNG evidence
+above.
+
 ## Design references and license
 
 Brutalist, Spotless, Cyberpunk, and Ghibli use visual design references from
