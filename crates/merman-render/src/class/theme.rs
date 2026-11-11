@@ -105,9 +105,8 @@ impl ClassRelationThemePlan {
             )
         });
         let mermaid_owns_edge_label_background =
-            ["themeVariables.mainBkg", "themeVariables.primaryColor"]
-                .into_iter()
-                .any(|path| effective_config.config_paint_overrides_typed_default(path));
+            paint::ClassConfigPaint::background(effective_config.as_value())
+                .config_owned(effective_config);
         let edge_label_background = if mermaid_owns_edge_label_background {
             None
         } else {

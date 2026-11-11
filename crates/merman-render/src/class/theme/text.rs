@@ -214,20 +214,18 @@ impl ClassTextThemePlan {
             style.merge_from(&theme.style(ThemeTarget::NoteLabel, ThemeVariant::Default, None));
             select_paint(theme, &style, &[ThemeTarget::Text, ThemeTarget::NoteLabel])
         });
-        let owned = |paths: &[&str]| {
-            paths
-                .iter()
-                .any(|path| effective_config.config_paint_overrides_typed_default(path))
-        };
-        let edge_fill_config_owned = owned(&[
-            "themeVariables.classText",
-            "themeVariables.primaryTextColor",
-            "themeVariables.textColor",
-        ]);
+        let edge_fill_config_owned =
+            super::paint::ClassConfigPaint::class_text(effective_config.as_value())
+                .config_owned(effective_config);
         // SVG notes inherit Class ink; HTML notes retain Mermaid's note-specific ink owner.
         let note_fill_config_owned = [
             edge_fill_config_owned,
-            owned(&["themeVariables.noteTextColor"]),
+            super::paint::ClassConfigPaint::select(
+                effective_config.as_value(),
+                &["themeVariables.noteTextColor"],
+                "#333",
+            )
+            .config_owned(effective_config),
         ];
         let svg_note_paint = (!note_fill_config_owned[0])
             .then(|| note_selected.clone())

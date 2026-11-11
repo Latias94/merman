@@ -9,6 +9,7 @@ use crate::family::resolved_style_property_for_facet;
 use crate::resources::{OperationWorkError, OperationWorkMeter};
 
 use super::outcomes::ClassSelectedPaint;
+use super::paint::ClassConfigPaint;
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct ClassNodePaintBinding {
@@ -83,22 +84,12 @@ impl ClassNodeThemePlan {
     pub(super) fn from_config(
         effective_config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
-        let mermaid_owns_fill = ["themeVariables.mainBkg", "themeVariables.primaryColor"]
-            .into_iter()
-            .any(|path| effective_config.config_paint_overrides_typed_default(path));
-        let mermaid_owns_stroke = [
-            "themeVariables.nodeBorder",
-            "themeVariables.primaryBorderColor",
-        ]
-        .into_iter()
-        .any(|path| effective_config.config_paint_overrides_typed_default(path));
-        let mermaid_owns_label_fill = [
-            "themeVariables.classText",
-            "themeVariables.primaryTextColor",
-            "themeVariables.textColor",
-        ]
-        .into_iter()
-        .any(|path| effective_config.config_paint_overrides_typed_default(path));
+        let config = effective_config.as_value();
+        let mermaid_owns_fill = ClassConfigPaint::node_fill(config).config_owned(effective_config);
+        let mermaid_owns_stroke =
+            ClassConfigPaint::node_stroke(config).config_owned(effective_config);
+        let mermaid_owns_label_fill =
+            ClassConfigPaint::class_text(config).config_owned(effective_config);
         Self {
             mermaid_owns_fill,
             mermaid_owns_stroke,

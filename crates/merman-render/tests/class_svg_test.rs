@@ -4804,6 +4804,184 @@ fn class_edge_label_background_selector_has_no_runtime_label_group_consumer() {
 }
 
 #[test]
+fn class_paint_ownership_uses_selected_body_and_background_tokens() {
+    for (baseline, variable, typed, source_palette) in [
+        ("neutral", "primaryColor", true, false),
+        ("neutral", "mainBkg", false, false),
+        ("base", "primaryColor", false, false),
+        ("neutral", "primaryColor", false, true),
+    ] {
+        let theme = class_edge_rules_theme_with_theme(
+            [
+                ThemeRule::new(
+                    ThemeTarget::Node,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123abc").unwrap()),
+                ),
+                ThemeRule::new(
+                    ThemeTarget::EdgeLabelBackground,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::solid("#456def").unwrap()),
+                ),
+            ],
+            baseline,
+        );
+        for html_labels in [false, true] {
+            let diagram = "classDiagram\nA --> B : relation\n";
+            let source = if source_palette {
+                format!("---\nconfig:\n  theme: {baseline}\n---\n{diagram}")
+            } else {
+                diagram.to_owned()
+            };
+            let rendered = try_render_class_svg_with_theme_and_engine(
+                &source,
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "theme": baseline,
+                        "look": "classic", "layout": "dagre",
+                        "htmlLabels": html_labels,
+                        "flowchart": {"htmlLabels": html_labels},
+                        "themeVariables": {variable: "#654321"}
+                    })),
+                ),
+            )
+            .expect("render selected Class background owners");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let node = document
+                .descendants()
+                .find(|node| {
+                    node.attribute("id")
+                        .is_some_and(|id| id.starts_with("merman-classId-A-"))
+                })
+                .unwrap();
+            assert_eq!(
+                node.descendants()
+                    .any(|node| node.has_tag_name("path")
+                        && node.attribute("fill") == Some("#123abc")),
+                typed,
+                "{baseline}/{variable}/html={html_labels}/source={source_palette}: node fill"
+            );
+            let background = document
+                .descendants()
+                .find(|node| {
+                    if html_labels {
+                        node.has_tag_name("div") && node.attribute("class") == Some("labelBkg")
+                    } else {
+                        node.has_tag_name("rect")
+                            && node.attribute("class") == Some("background")
+                            && node
+                                .ancestors()
+                                .any(|parent| parent.attribute("class") == Some("edgeLabel"))
+                    }
+                })
+                .unwrap();
+            assert_eq!(
+                background
+                    .attribute("style")
+                    .unwrap_or("")
+                    .contains("#456def"),
+                typed,
+                "{baseline}/{variable}/html={html_labels}/source={source_palette}: relationship background"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), if typed { 2 } else { 0 });
+            assert_eq!(evidence.not_applicable_count(), if typed { 0 } else { 2 });
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn class_text_ownership_uses_selected_class_text_fallback() {
+    let theme = class_edge_rules_theme_with_theme(
+        [
+            (ThemeTarget::NodeLabel, "#123abc"),
+            (ThemeTarget::EdgeLabel, "#456def"),
+            (ThemeTarget::NoteLabel, "#789abc"),
+        ]
+        .map(|(target, color)| {
+            ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid(color).unwrap()),
+            )
+        }),
+        "neutral",
+    );
+    for (variables, class_owned, note_owned) in [
+        (json!({"textColor": "#654321"}), false, false),
+        (json!({"classText": "#654321"}), true, false),
+        (json!({"primaryTextColor": "#654321"}), true, false),
+        (
+            json!({"classText": null, "textColor": "#654321"}),
+            false,
+            false,
+        ),
+        (
+            json!({"classText": null, "primaryTextColor": "#654321"}),
+            true,
+            false,
+        ),
+        (
+            json!({"classText": 17, "textColor": "#654321"}),
+            false,
+            false,
+        ),
+        (
+            json!({"classText": "", "textColor": "#654321"}),
+            true,
+            false,
+        ),
+        (json!({"noteTextColor": "#654321"}), false, true),
+    ] {
+        for html_labels in [false, true] {
+            let rendered = try_render_class_svg_with_theme_and_engine(
+                "classDiagram\nA --> B : relation\nnote for A \"Memo\"\n",
+                &theme,
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                        "theme": "neutral",
+                        "look": "classic", "layout": "dagre",
+                        "htmlLabels": html_labels,
+                        "flowchart": {"htmlLabels": html_labels},
+                        "themeVariables": variables.clone()
+                    })),
+                ),
+            )
+            .expect("render selected Class text owners");
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let note_owned = if html_labels { note_owned } else { class_owned };
+            for (text, color, owned) in [
+                ("A", "#123abc", class_owned),
+                ("relation", "#456def", class_owned),
+                ("Memo", "#789abc", note_owned),
+            ] {
+                let terminal = document
+                    .descendants()
+                    .find(|node| node.is_text() && node.text() == Some(text))
+                    .unwrap();
+                assert_eq!(
+                    terminal.ancestors().any(|node| node
+                        .attribute("style")
+                        .is_some_and(|style| style.contains(color))),
+                    !owned,
+                    "{variables}/html={html_labels}/{text}: selected text paint"
+                );
+            }
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            let owned_count = 2 * usize::from(class_owned) + usize::from(note_owned);
+            assert_eq!(
+                evidence.applied_count(),
+                3 - owned_count,
+                "{variables}/html={html_labels}"
+            );
+            assert_eq!(evidence.not_applicable_count(), owned_count);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules() {
     use merman_render::diagram_theme::OrdinalSelector;
     let source = "classDiagram\nA --> B : first\nB --> C\nC --> D : second\n";
@@ -4870,9 +5048,9 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
     assert_eq!(evidence.applied_count(), 1);
 
     let theme = compile(vec![rule(None)]);
-    for theme_variables in [
-        json!({"mainBkg": "#654321"}),
-        json!({"primaryColor": "#654321"}),
+    for (theme_variables, source_owned) in [
+        (json!({"mainBkg": "#654321"}), true),
+        (json!({"primaryColor": "#654321"}), false),
     ] {
         let engine = MermaidEngine::new().with_site_config(
             merman_core::presentation::SourcePresentationConfig::from_value(
@@ -4888,7 +5066,8 @@ fn class_background_accounts_for_visible_empty_shadowed_and_source_owned_rules()
         .unwrap();
         let evidence =
             merman_render::__private::family_evidence(rendered.into_completion().report());
-        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+        assert_eq!(evidence.applied_count(), usize::from(!source_owned));
         assert_eq!(evidence.theme_residual_count(), 0);
     }
     // Source ownership of fill must not erase a winning sibling stroke facet.
