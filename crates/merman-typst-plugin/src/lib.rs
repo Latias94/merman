@@ -121,7 +121,7 @@ fn typst_capabilities_json() -> Vec<u8> {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    let options_json = match typst_options_json(options_json) {
+    let options_json = match typst_options_json(OperationKey::Svg, options_json) {
         Ok(options_json) => options_json,
         Err(error) => return typst_binding_error_payload(RENDER_OPERATION, &error),
     };
@@ -139,7 +139,7 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 
 #[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
-    let options_json = match typst_options_json(options_json) {
+    let options_json = match typst_options_json(OperationKey::AnalysisJson, options_json) {
         Ok(options_json) => options_json,
         Err(error) => return typst_binding_error_payload(ANALYZE_OPERATION, &error),
     };
@@ -193,7 +193,7 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
                 Ok(prepared) => prepared,
                 Err(error) => return typst_binding_error_payload(operation.id(), &error),
             };
-        if let Err(error) = typst_options_json(&normalized_options_json) {
+        if let Err(error) = typst_options_json(operation, &normalized_options_json) {
             return typst_binding_error_payload(operation.id(), &error);
         }
         execute_typst_theme_authoring_operation(operation, input, &theme_policy)
@@ -201,7 +201,7 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
 
     #[cfg(not(feature = "svg"))]
     let output = {
-        let options_json = match typst_options_json(options_json) {
+        let options_json = match typst_options_json(operation, options_json) {
             Ok(options_json) => options_json,
             Err(error) => return typst_binding_error_payload(operation.id(), &error),
         };
@@ -341,11 +341,33 @@ fn typst_result_payload(
     })
 }
 
-fn typst_options_json(options_json: &[u8]) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
+fn typst_options_json(
+    operation: OperationKey,
+    options_json: &[u8],
+) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
+    let ceiling_override = match operation {
+        #[cfg(feature = "svg")]
+        OperationKey::Svg => {
+            let contract = merman_bindings_core::binding_resource_contract();
+            let interactive = contract
+                .profiles
+                .iter()
+                .find(|profile| profile.id == "interactive")
+                .expect("the shared resource contract includes the interactive profile");
+            // Document layouts use the calibrated interactive work allowance while other limits
+            // retain the constrained host policy. Explicit caller profiles keep their own defaults.
+            Some((
+                "max_layout_work_units",
+                interactive.limits["max_layout_work_units"]
+                    .expect("interactive layout work has a finite allowance"),
+            ))
+        }
+        _ => None,
+    };
     let normalized = merman_bindings_core::apply_resource_ceiling_json_with_allowed_overrides(
         options_json,
         "constrained",
-        &[],
+        ceiling_override.as_slice(),
         &["max_layout_work_units"],
     )?;
     let mut options = serde_json::from_slice::<Value>(&normalized).map_err(|error| {
@@ -639,8 +661,11 @@ mod tests {
     #[test]
     fn typst_data_execution_preserves_svg_output_and_resource_ceiling() {
         let source = b"flowchart TD\nA[Hello] --> B[World]";
-        let options_json =
-            typst_options_json(br#"{"svg":{"diagram_id":"typst-data-output"}}"#).unwrap();
+        let options_json = typst_options_json(
+            OperationKey::Svg,
+            br#"{"svg":{"diagram_id":"typst-data-output"}}"#,
+        )
+        .unwrap();
         let full = typst_artifact_contract()
             .execute_once(
                 BindingOperationRequest::new("svg", source).with_options_json(&options_json),
@@ -651,8 +676,11 @@ mod tests {
         assert_eq!(full.metadata().operation_id(), "svg");
         assert_eq!(full.metadata().byte_length(), data.len() as u64);
 
-        let limited_options =
-            typst_options_json(br#"{"resources":{"limits":{"max_source_bytes":1}}}"#).unwrap();
+        let limited_options = typst_options_json(
+            OperationKey::Svg,
+            br#"{"resources":{"limits":{"max_source_bytes":1}}}"#,
+        )
+        .unwrap();
         let full_error = typst_artifact_contract()
             .execute_once(
                 BindingOperationRequest::new("svg", source).with_options_json(&limited_options),
@@ -923,19 +951,40 @@ mod tests {
     }
 
     #[test]
-    fn typst_transport_keeps_constrained_resource_defaults() {
-        let options = typst_options_json(b"").expect("default Typst options");
-        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
-        assert_eq!(payload["runtime_policy"], "deterministic");
-        assert_eq!(payload["resources"], json!({ "profile": "constrained" }));
-        if typst_artifact_contract()
-            .runtime_capabilities()
-            .has_operation("svg")
-        {
-            assert_eq!(payload["environment"]["math_renderer"], "none");
+    fn typst_transport_aligns_default_layout_work_with_interactive() {
+        let expected = if cfg!(feature = "svg") {
+            json!({ "profile": "constrained", "limits": { "max_layout_work_units": 14_100_000 } })
         } else {
-            assert!(payload.get("environment").is_none());
+            json!({ "profile": "constrained" })
+        };
+        for input in [
+            b"".as_slice(),
+            br#"{}"#,
+            br#"{"resources":{}}"#,
+            br#"{"resources":{"profile":null}}"#,
+        ] {
+            let options =
+                typst_options_json(OperationKey::Svg, input).expect("default Typst options");
+            let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+            assert_eq!(payload["runtime_policy"], "deterministic");
+            assert_eq!(payload["resources"], expected);
+            if cfg!(feature = "svg") {
+                assert_eq!(payload["environment"]["math_renderer"], "none");
+            } else {
+                assert!(payload.get("environment").is_none());
+            }
         }
+    }
+
+    #[test]
+    fn typst_explicit_constrained_profile_keeps_its_stricter_defaults() {
+        let options = typst_options_json(
+            OperationKey::Svg,
+            br#"{"resources":{"profile":"constrained"}}"#,
+        )
+        .expect("explicit constrained profile");
+        let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
+        assert_eq!(payload["resources"], json!({ "profile": "constrained" }));
     }
 
     #[test]
@@ -948,7 +997,8 @@ mod tests {
         } else {
             br#"{"runtime_policy":null}"#.as_slice()
         };
-        let options = typst_options_json(input).expect("null transport policy fields");
+        let options =
+            typst_options_json(OperationKey::Svg, input).expect("null transport policy fields");
         let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
         assert_eq!(payload["runtime_policy"], "deterministic");
@@ -970,7 +1020,8 @@ mod tests {
                 .map(|wrapper| json!({ wrapper: analysis.clone() }))
                 .unwrap_or(analysis);
             let options =
-                typst_options_json(&serde_json::to_vec(&input).unwrap()).expect("valid options");
+                typst_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
+                    .expect("valid options");
             let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
             let resources = wrapper
                 .map(|wrapper| &payload[wrapper]["resources"])
@@ -988,7 +1039,7 @@ mod tests {
     #[test]
     fn typst_resource_policy_accepts_explicit_layout_work_limits() {
         for wrapper in [None, Some("analysis"), Some("merman")] {
-            for limit in [1, 125_000, 1_000_000] {
+            for limit in [1, 125_000, 1_000_000, 14_100_000, 20_000_000] {
                 let analysis = json!({ "resources": {
                     "profile": null,
                     "limits": { "max_layout_work_units": limit }
@@ -996,8 +1047,9 @@ mod tests {
                 let input = wrapper
                     .map(|wrapper| json!({ wrapper: analysis.clone() }))
                     .unwrap_or(analysis);
-                let options = typst_options_json(&serde_json::to_vec(&input).unwrap())
-                    .expect("explicit finite layout allowance");
+                let options =
+                    typst_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
+                        .expect("explicit finite layout allowance");
                 let payload: Value = serde_json::from_slice(&options).unwrap();
                 let resources = wrapper
                     .map(|wrapper| &payload[wrapper]["resources"])
@@ -1030,7 +1082,7 @@ mod tests {
         ] {
             let input =
                 format!(r#"{{"resources":{{"limits":{{"max_layout_work_units":{value}}}}}}}"#);
-            let error = typst_options_json(input.as_bytes()).unwrap_err();
+            let error = typst_options_json(OperationKey::Svg, input.as_bytes()).unwrap_err();
             let expected = if value == "0" {
                 merman_bindings_core::BindingStatus::InvalidArgument
             } else {
@@ -1044,7 +1096,7 @@ mod tests {
             br#"{"resources":{"limits":null}}"#.as_slice(),
             br#"{"resources":{"limits":[]}}"#.as_slice(),
         ] {
-            let error = typst_options_json(input).unwrap_err();
+            let error = typst_options_json(OperationKey::Svg, input).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1070,7 +1122,7 @@ mod tests {
                 .or_insert_with(|| json!({}));
             limits["max_layout_work_units"] = json!(1_000_000);
             let input = serde_json::to_vec(&json!({ "resources": resources })).unwrap();
-            let error = typst_options_json(&input).unwrap_err();
+            let error = typst_options_json(OperationKey::Svg, &input).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1086,13 +1138,16 @@ mod tests {
     fn typst_resource_policy_preserves_analysis_wrapper_shape() {
         for wrapper in ["analysis", "merman"] {
             let input = format!(r#"{{ "{wrapper}": {{ "site_config": {{ "theme": "dark" }} }} }}"#);
-            let options = typst_options_json(input.as_bytes()).expect("valid wrapped options");
+            let options = typst_options_json(OperationKey::Svg, input.as_bytes())
+                .expect("valid wrapped options");
             let payload: Value = serde_json::from_slice(&options).expect("valid options JSON");
 
-            assert_eq!(
-                payload[wrapper]["resources"],
+            let expected = if cfg!(feature = "svg") {
+                json!({ "profile": "constrained", "limits": { "max_layout_work_units": 14_100_000 } })
+            } else {
                 json!({ "profile": "constrained" })
-            );
+            };
+            assert_eq!(payload[wrapper]["resources"], expected);
             assert_eq!(payload["runtime_policy"], "deterministic");
             assert!(payload[wrapper].get("runtime_policy").is_none());
             assert!(payload[wrapper].get("environment").is_none());
@@ -1108,7 +1163,8 @@ mod tests {
 
     #[test]
     fn typst_target_policy_rejects_native_runtime_and_ratex_math() {
-        let native = typst_options_json(br#"{"runtime_policy":"native"}"#).unwrap_err();
+        let native =
+            typst_options_json(OperationKey::Svg, br#"{"runtime_policy":"native"}"#).unwrap_err();
         assert_eq!(
             native.status(),
             merman_bindings_core::BindingStatus::UnsupportedOperation
@@ -1123,8 +1179,11 @@ mod tests {
             .runtime_capabilities()
             .has_operation("svg")
         {
-            let ratex =
-                typst_options_json(br#"{"environment":{"math_renderer":"ratex"}}"#).unwrap_err();
+            let ratex = typst_options_json(
+                OperationKey::Svg,
+                br#"{"environment":{"math_renderer":"ratex"}}"#,
+            )
+            .unwrap_err();
             assert_eq!(
                 ratex.status(),
                 merman_bindings_core::BindingStatus::UnsupportedOperation
@@ -1144,7 +1203,7 @@ mod tests {
             br#"{"analysis":{"resources":{"limits":{"max_source_bytes":1048577}}}}"#.as_slice(),
             br#"{"merman":{"resources":{"limits":{"max_model_items":1000000000}}}}"#.as_slice(),
         ] {
-            let error = typst_options_json(input).unwrap_err();
+            let error = typst_options_json(OperationKey::Svg, input).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1156,6 +1215,7 @@ mod tests {
     #[test]
     fn null_resource_profile_cannot_bypass_the_typst_limits() {
         let options = typst_options_json(
+            OperationKey::Svg,
             br#"{"resources":{"profile":null,"limits":{"max_source_bytes":4096}}}"#,
         )
         .expect("valid options");
@@ -1174,7 +1234,7 @@ mod tests {
             br#"{"merman":null,"resources":{"profile":"trusted-native"}}"#.as_slice(),
             br#"{"analysis":[]}"#.as_slice(),
         ] {
-            let error = typst_options_json(options).unwrap_err();
+            let error = typst_options_json(OperationKey::Svg, options).unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1182,7 +1242,8 @@ mod tests {
             assert!(error.message().contains("wrapper must be an object"));
         }
 
-        let error = typst_options_json(br#"{"analysis":{},"merman":{}}"#).unwrap_err();
+        let error =
+            typst_options_json(OperationKey::Svg, br#"{"analysis":{},"merman":{}}"#).unwrap_err();
         assert_eq!(
             error.status(),
             merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1194,7 +1255,8 @@ mod tests {
                 "resources": { "limits": { "max_layout_work_units": 1_000_000 } },
                 wrapper: {}
             });
-            let error = typst_options_json(&serde_json::to_vec(&input).unwrap()).unwrap_err();
+            let error = typst_options_json(OperationKey::Svg, &serde_json::to_vec(&input).unwrap())
+                .unwrap_err();
             assert_eq!(
                 error.status(),
                 merman_bindings_core::BindingStatus::OptionsJsonError
@@ -1475,7 +1537,7 @@ mod tests {
 
     #[cfg(all(feature = "diagram-mindmap", feature = "layout-cytoscape"))]
     #[test]
-    fn render_svg_json_mindmap_accepts_explicit_layout_work_allowance() {
+    fn render_svg_json_mindmap_uses_default_and_explicit_layout_work_allowances() {
         use std::fmt::Write as _;
 
         let mut source = String::from("mindmap\n  root[Root]\n");
@@ -1485,8 +1547,23 @@ mod tests {
                 writeln!(source, "      leaf{branch}_{leaf}[Leaf {leaf}]").unwrap();
             }
         }
-        let limited: Value = serde_json::from_slice(&render_svg_json(source.as_bytes(), b""))
-            .expect("default-budget result");
+        let options = json!({
+            "svg": { "diagram_id": "typst-mindmap-layout-work" }
+        });
+        let default: Value = serde_json::from_slice(&render_svg_json(
+            source.as_bytes(),
+            &serde_json::to_vec(&options).unwrap(),
+        ))
+        .expect("default-budget result");
+        assert_success_envelope(&default, RENDER_OPERATION);
+
+        let mut limited_options = options.clone();
+        limited_options["resources"] = json!({ "limits": { "max_layout_work_units": 125_000 } });
+        let limited: Value = serde_json::from_slice(&render_svg_json(
+            source.as_bytes(),
+            &serde_json::to_vec(&limited_options).unwrap(),
+        ))
+        .expect("stricter-budget result");
         assert_error_envelope(&limited, RENDER_OPERATION, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
         let resource = &limited["details"]["resource"];
         assert_eq!(resource["limit_id"], "max_layout_work_units", "{limited}");
@@ -1499,7 +1576,7 @@ mod tests {
             "environment": { "math_renderer": "none" },
             "resources": {
                 "profile": "constrained",
-                "limits": { "max_layout_work_units": 5_000_000 }
+                "limits": { "max_layout_work_units": 20_000_000 }
             },
             "svg": { "diagram_id": "typst-mindmap-layout-work" }
         }))
@@ -1508,6 +1585,7 @@ mod tests {
             .expect("explicit-budget result");
         assert_eq!(raised["ok"], true, "{raised}");
         assert_success_envelope(&raised, RENDER_OPERATION);
+        assert_eq!(default["data"]["svg"], raised["data"]["svg"]);
         let reference = execute_typst_operation("svg", source.as_bytes(), &options)
             .expect("same finite policy through the shared engine");
         assert_eq!(
@@ -1524,7 +1602,7 @@ mod tests {
             r#"{{"resources":{{"limits":{{"max_layout_work_units":1000000}}}},"theme":{{{raw_padding}"preset":"base"}}}}"#
         );
 
-        let error = typst_options_json(options_json.as_bytes())
+        let error = typst_options_json(OperationKey::Svg, options_json.as_bytes())
             .expect_err("raw encoded theme bytes must be checked before Value normalization");
         assert_eq!(
             error.status(),
@@ -1541,7 +1619,7 @@ mod tests {
             "theme": { "preset": "base" }
         })
         .to_string();
-        typst_options_json(compact.as_bytes())
+        typst_options_json(OperationKey::Svg, compact.as_bytes())
             .expect("the same semantic theme without raw padding must remain below the ceiling");
     }
 
@@ -1563,7 +1641,7 @@ mod tests {
             }
         });
         let options_json = options.to_string();
-        let preflight_error = typst_options_json(options_json.as_bytes())
+        let preflight_error = typst_options_json(OperationKey::Svg, options_json.as_bytes())
             .expect_err("Typst options preflight must reject before typed font decoding");
         assert_eq!(
             preflight_error.status(),
@@ -1606,7 +1684,7 @@ mod tests {
             .collect::<Vec<_>>();
         let options = json!({ "theme": { "spec": { "effects": effects } } });
         let options_json = options.to_string();
-        let normalized = typst_options_json(options_json.as_bytes())
+        let normalized = typst_options_json(OperationKey::Svg, options_json.as_bytes())
             .expect("Typst options normalization should admit the encoded effect input");
         let compile_error = typst_artifact_contract()
             .create_engine(&normalized)

@@ -776,16 +776,23 @@ Typed Rust geometry construction has no encoded-byte charge; the maintained cont
 enforces the exact ceiling during encoding. See the
 [development migration](../migrations/render-reuse-host-integration.md#migrate-edge-geometry-budgets).
 
-`interactive` is the default for binding surfaces. Typst selects `constrained`, including 125,000
-layout work units. Development source builds accept an explicit finite positive integer in
-`resources.limits.max_layout_work_units` below or above that default; omission keeps 125,000.
-Null, nonpositive, fractional, and overflowing values are rejected. Resources may be direct or
-inside one `analysis` or `merman` object wrapper. Other limits may only be tightened; looser
-profiles, unknown IDs, and hard-cap overrides remain rejected. Options byte admission and
-constrained theme preflight still apply. This requires a wrapper/plugin pair built from development
-source; published Typst package 0.5.0 does not support raising the limit. The shared strict ceiling
-and typed analysis helpers retain their existing restrictions for other transports. See the
-[Typst guide](../../distribution/typst/merman/README.md) for direct options and profile examples.
+`interactive` is the default for binding surfaces. For SVG rendering, Typst uses `constrained` as
+its base profile and takes the default layout-work allowance from the shared `interactive`
+contract, currently 14,100,000 units. An omitted or null `resources.profile` inherits this Typst
+host default. An explicitly selected profile keeps its own shared capacities: selecting
+`resources.profile` as `"constrained"` without a numeric layout override keeps 125,000 units.
+An explicit finite positive integer in `resources.limits.max_layout_work_units` takes precedence
+in either case and can tighten or raise the allowance.
+Analysis and theme operations retain their ordinary constrained defaults.
+
+Null, nonpositive, fractional, and overflowing layout limit values are rejected. Resources may be
+direct or inside one `analysis` or `merman` object wrapper. Other limits may only be tightened;
+looser profiles, unknown IDs, and hard-cap overrides remain rejected. Options byte admission and
+constrained theme preflight still apply. These defaults and overrides require a wrapper/plugin
+pair built from development source; published Typst package 0.5.0 is unchanged and does not support
+raising the limit. The shared strict ceiling and typed analysis helpers retain their existing
+restrictions for other transports. See the [Typst guide](../../distribution/typst/merman/README.md)
+for direct options and profile examples.
 
 Layout work is cumulative accounting, so iterative Mindmap layouts can exceed the allowance even
 for a small input. A rejected charge's `actual` value is not the final cost of completing the
@@ -807,11 +814,13 @@ batch job. `unbounded-for-trusted-input` must only be used inside an outer trust
 | Native or browser editor preview | `interactive` | Render off the UI thread; cancel stale operations; cap concurrency and retained images | Choose SVG policy for the host consumer |
 | Public upload or multi-tenant API | `constrained` | Timeout, memory, concurrency, and preemption/isolation | `resvg-safe` before raster/PDF conversion |
 | Local `merman-cli` export | `trusted-native` | Process-level cancellation for batch automation | Choose `parity` or `resvg-safe` per consumer |
-| Typst package transport | `constrained` | Typst host remains responsible for process limits | Package-owned SVG contract |
+| Typst package transport | `constrained` + `interactive` layout allowance for an omitted/null profile | Typst host remains responsible for process limits | Package-owned SVG contract |
 | Library-based documentation/static export | `trusted-native` | Finite per-diagram policy; bound concurrent jobs | Choose SVG policy for the downstream consumer |
 | Exceptional fully trusted diagram | Finite override of the reported limit; unbounded only if deliberately required | Host owns deadlines, concurrency and outer process limits | Caller owns final output limits |
 
-Read exact profile capacities from the loaded runtime catalog. The two general-purpose profiles
+Read exact shared profile capacities from the loaded runtime catalog. Typst's effective host
+default adds the layout override described above; the catalog still reports the shared profile
+values, including 125,000 layout work units for `constrained`. The two general-purpose profiles
 retain different source/model/output capacities. `constrained` deliberately accepts
 a smaller workload; it is not a claim that every ordinary document fits that profile. Work units
 are not milliseconds, nodes, or bytes. Adding a deadline does not silently raise a work ceiling.

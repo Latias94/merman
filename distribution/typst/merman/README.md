@@ -360,11 +360,13 @@ Advanced renderer parameters:
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
 - `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. It does not bypass general binding validation: `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` remain rejected because raw CSS and cascade policy belong to trusted Rust or native CLI hosts. The plugin applies the resource policy described below.
 
-Typst keeps the `constrained` default of **125,000 layout work units**. Development source builds accept an explicit finite positive integer in `resources.limits.max_layout_work_units`, below or above that default. Build the wrapper and WASM plugin together; published `@preview/merman:0.5.0` does not support raising it.
+SVG rendering in development source builds defaults to **14,100,000 layout work units**, taking the allowance from the shared `interactive` contract while retaining `constrained` as the base profile. Analysis and theme operations retain their ordinary constrained defaults. Build the wrapper and WASM plugin together; published `@preview/merman:0.5.0` is unchanged and does not support raising the allowance.
+
+An omitted or null `resources.profile` inherits this Typst default. Explicitly selecting `resources.profile` as `"constrained"` keeps the shared profile's **125,000** layout work units unless overridden. An explicit finite positive integer in `resources.limits.max_layout_work_units` takes precedence in either case and can tighten or raise the allowance.
 
 ```typst
 #let layout-options = (
-  resources: (limits: (max_layout_work_units: 1000000)),
+  resources: (limits: (max_layout_work_units: 20000000)),
 )
 #mermaid(read("diagram.mmd"), options: layout-options)
 
@@ -372,7 +374,7 @@ Typst keeps the `constrained` default of **125,000 layout work units**. Developm
 #mermaid(read("diagram.mmd"), profile: layout-profile)
 ```
 
-Work units accumulate across iterations, including Mindmap's COSE layout. One million is an example allowance; a failure's `actual` value reports the first rejected charge, not the diagram's total cost. Omission keeps 125,000; zero, negative, fractional, null, and overflowing values are rejected.
+Work units accumulate across iterations, including Mindmap's COSE layout. The 20,000,000-unit override above illustrates raising the default allowance; it is an example, not a measured total or a required value. A failure's `actual` value reports the first rejected charge, not the diagram's total cost. Zero, negative, fractional, null, and overflowing layout limit values are rejected.
 
 Other limits may only be tightened. Looser profiles, unknown IDs, and hard-cap overrides remain rejected. Resources may be direct or inside one `analysis` or `merman` object wrapper. Theme preflight and options byte admission remain constrained.
 
@@ -546,8 +548,9 @@ detect the document viewer's color mode.
 
 Each function returns the canonical result dictionary on success. On failure it returns the same
 structured operation envelope used by rendering, including `ok`, `code_name`, `kind`, `message`,
-and an optional `capability_id`. The plugin always applies its constrained resource policy; caller
-options may tighten that policy but cannot loosen it.
+and an optional `capability_id`. Theme-authoring operations retain constrained limits; caller
+options may tighten those limits. SVG rendering uses the separate layout allowance described
+under [renderer parameters](#mermaidsource-), with the remaining ceilings still constrained.
 
 When ordinary rendering needs materialization, `mermaid-result` preserves the authoring error's
 operation and full `details` and adds `svg: none`. Content calls honor their selected error mode
@@ -585,7 +588,7 @@ Returns the compiled plugin capability payload, including the current text measu
 #capabilities.capabilities.text_measurement.provider_ids
 ```
 
-The flat catalog reports the artifact's capability, output, operation, registry, and resource sets. Shared profile values do not change with the development-only layout allowance described above. Typst selects `constrained` for every operation; other ceilings remain enforced. Published 0.5.0 permits only stricter limits. The options root and any `analysis` or `merman` wrapper must be objects; malformed or mixed wrappers return structured options errors.
+The flat catalog reports the artifact's capability, output, operation, registry, and resource sets. Shared profile capacities remain unchanged, including the `constrained` layout value of 125,000. Typst's effective default combines that base profile with the shared `interactive` layout allowance; explicit profile and limit selections follow the rules above. Other ceilings remain enforced. Published 0.5.0 permits only stricter limits. The options root and any `analysis` or `merman` wrapper must be objects; malformed or mixed wrappers return structured options errors.
 
 ### `show-mermaid-blocks(..)`
 

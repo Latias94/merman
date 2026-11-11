@@ -163,20 +163,36 @@
   }
   lines.join("\n") + "\n"
 }
-#let default-layout-result = mermaid-result(layout-work-source)
-#assert(not default-layout-result.ok, message: "Mindmap should retain the constrained layout default")
-#assert.eq(default-layout-result.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED")
-#assert.eq(default-layout-result.details.resource.limit_id, "max_layout_work_units")
-#assert.eq(default-layout-result.details.resource.max, 125000)
-#assert.eq(default-layout-result.details.resource.cause, "ceiling")
+#let default-layout-result = mermaid-result(layout-work-source, id: "api-layout-work")
+#assert(default-layout-result.ok, message: "Mindmap should fit the default interactive layout allowance")
+
+#let stricter-layout-result = mermaid-result(
+  layout-work-source,
+  options: (resources: (limits: (max_layout_work_units: 125000))),
+)
+#assert(not stricter-layout-result.ok, message: "an explicit stricter layout allowance should still apply")
+#assert.eq(stricter-layout-result.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED")
+#assert.eq(stricter-layout-result.details.resource.limit_id, "max_layout_work_units")
+#assert.eq(stricter-layout-result.details.resource.max, 125000)
+#assert.eq(stricter-layout-result.details.resource.cause, "ceiling")
+
+#let constrained-layout-result = mermaid-result(
+  layout-work-source,
+  options: (resources: (profile: "constrained")),
+)
+#assert(not constrained-layout-result.ok, message: "an explicit constrained profile should retain its own allowance")
+#assert.eq(constrained-layout-result.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED")
+#assert.eq(constrained-layout-result.details.resource.limit_id, "max_layout_work_units")
+#assert.eq(constrained-layout-result.details.resource.max, 125000)
 
 #let layout-work-options = (
-  resources: (limits: (max_layout_work_units: 5000000)),
-  svg: (diagram_id: "api-layout-work"),
+  resources: (limits: (max_layout_work_units: 20000000)),
+  svg: (diagram_id: "api-layout-work", pipeline: "resvg-safe"),
 )
 #let direct-layout-result = mermaid-result(layout-work-source, options: layout-work-options)
 #assert(direct-layout-result.ok, message: "direct options should allow an explicit finite layout budget")
 #assert(direct-layout-result.svg.contains("api-layout-work"))
+#assert.eq(default-layout-result.svg, direct-layout-result.svg)
 #let layout-work-profile = mermaid-profile(options: layout-work-options)
 #let profiled-layout-result = mermaid-result(layout-work-source, profile: layout-work-profile)
 #assert(profiled-layout-result.ok, message: "a raw-options profile should reuse the finite layout budget")
