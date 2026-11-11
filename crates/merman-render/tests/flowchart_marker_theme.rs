@@ -618,8 +618,8 @@ fn public_cyberpunk_scene_has_cyan_direction_markers_after_recipe_exchange() {
         assert!(
             paints
                 .iter()
-                .all(|(_, stroke, fill)| stroke.as_deref() == Some("#53DCE4")
-                    && fill.as_deref() == Some("#53DCE4")),
+                .all(|(_, stroke, fill)| stroke.as_deref() == Some("#29F3EC")
+                    && fill.as_deref() == Some("#29F3EC")),
             "{paints:?}"
         );
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
@@ -629,7 +629,7 @@ fn public_cyberpunk_scene_has_cyan_direction_markers_after_recipe_exchange() {
             .collect();
         assert_eq!(edges.len(), 3);
         for edge in edges {
-            assert!(edge.attribute("style").unwrap().contains("stroke:#53DCE4"));
+            assert!(edge.attribute("style").unwrap().contains("stroke:#29F3EC"));
         }
     }
 }

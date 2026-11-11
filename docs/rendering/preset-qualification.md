@@ -61,18 +61,22 @@ system fonts, classic Flowchart and Sequence looks, Dagre for Flowchart, the ori
 recipe and default resource limits. Successful observations remain **HostDependent**. State is not
 part of this profile.
 
-The current design uses neutral primary ink (`#E2EFF7`) and muted XY labels (`#92A9BF`) without
-label glows. Navy canvas (`#0B1020`), dark bodies (`#151E35`) and secondary surfaces (`#202B46`)
-separate cyan contours (`#53DCE4`), magenta accents (`#F28BCB`) and amber XY marks (`#E8C078`).
-Body outlines are 1.5px with 4px corners; selected connectors and Sequence details use 1.25px.
-Body glow uses 2px/5px blur at 0.2/0.1 opacity; edges use 1.5px at 0.16, Sequence loop frames
-use 1.5px at 0.12, and note bodies use 2.5px at 0.12. XY bars use 1.25px outlines, 0.35 fill
-opacity and 2px glow at 0.12; XY lines use 2px strokes and 1.5px glow at 0.16. The three screen
-canvas layers retain their geometry with a 0.025 radial wash and 0.018 grid ink.
+The current design uses dark (`#161F25`) Flowchart and actor panels with warning-yellow
+lettering and contours (`#F3E600`). The same primary ink remains visible on exterior glyph names.
+Bright canvas ink (`#EAF4F0`) and secondary XY ink (`#A5BCC0`) remain
+independent of cyan signals (`#29F3EC`) and red contours (`#FF4564`); labels have no glow.
+The canvas is near black (`#080D11`), shared bodies use `#161F25`, secondary surfaces use
+`#253139`, and notes pair a dark-red surface (`#351C29`) with pale lettering (`#FFE9EF`).
+Body outlines and selected connectors are 1.5px; supported panel corners are square.
+Body depth combines independent zero-blur red (-3px, 0px, 0.8 opacity) and cyan
+(4px, 4px, 0.85 opacity) offsets. Edges use a 1.2px halo at 0.25 opacity; Sequence loops use
+1px at 0.14 and notes use 1.5px at 0.18. XY bars use 1.25px outlines and 0.85 fill opacity;
+lines use 2px strokes. Both use 1px halos at 0.18. Three screen canvas layers retain their
+geometry with a 0.04 yellow radial wash and 0.035 cyan grid ink.
 
 The private runner observes its actual immutable SVG and checks canvas paint, gradient/grid geometry and compositing;
 family-specific surfaces, borders, typography, series order, markers and label ownership; and
-the bound glow primitives, colors and composition chain. Internal filter-result names may change
+the bound signal/depth primitives, colors and composition. Internal filter-result names may change
 when their connections remain equivalent. Flowchart node and Sequence actor depth must match the
 foreground body geometry and appear below connections. Their final filter merge emits only shadows;
 intermediate cascade results may include the source, while the separate foreground body remains

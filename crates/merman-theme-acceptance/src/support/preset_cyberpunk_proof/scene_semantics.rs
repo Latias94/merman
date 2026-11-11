@@ -7,18 +7,17 @@ use crate::runner::{
     c6_sequence_proof::require_exact_writer_declaration,
 };
 
-const CYAN: &str = "#53DCE4";
-const MAGENTA: &str = "#F28BCB";
-const NAVY: &str = "#0B1020";
-const SURFACE: &str = "#151E35";
-const SURFACE_ALT: &str = "#202B46";
-const PRIMARY_TEXT: &str = "#E2EFF7";
-const MUTED_TEXT: &str = "#92A9BF";
-const SHAPE: &[(f64, &str)] = &[
-    (2.0, "rgba(83, 220, 228, 0.2)"),
-    (5.0, "rgba(83, 220, 228, 0.1)"),
-];
-const EDGE: &[(f64, &str)] = &[(1.5, "rgba(83, 220, 228, 0.16)")];
+const CYAN: &str = "#29F3EC";
+const RED: &str = "#FF4564";
+const YELLOW: &str = "#F3E600";
+const CANVAS: &str = "#080D11";
+const PANEL_SURFACE: &str = "#161F25";
+const SURFACE_ALT: &str = "#253139";
+const NOTE_SURFACE: &str = "#351C29";
+const NOTE_TEXT: &str = "#FFE9EF";
+const PRIMARY_TEXT: &str = "#EAF4F0";
+const MUTED_TEXT: &str = "#A5BCC0";
+const EDGE: (f64, &str) = (1.2, "rgba(41, 243, 236, 0.25)");
 
 pub(super) fn verify(
     family: DiagramFamilyId,
@@ -184,17 +183,51 @@ fn linked<'a>(
 fn glow(
     receipt: &SvgArtifactObservation,
     terminal: &SvgElementObservation,
-    shadows: &[(f64, &str)],
+    (sigma, color): (f64, &str),
 ) -> C6ProofResult<()> {
-    check_glow(receipt, terminal, shadows, false)
+    let nodes = effect_nodes(receipt, terminal, 4)?;
+    c6_ensure!(
+        "cyberpunk-filter",
+        nodes.iter().map(|node| node.tag_name()).eq([
+            "feGaussianBlur",
+            "feFlood",
+            "feComposite",
+            "feMerge",
+            "feMergeNode",
+            "feMergeNode"
+        ]),
+        "unexpected glow primitive order"
+    );
+    let blur = filter_result(nodes[0])?;
+    let flood = filter_result(nodes[1])?;
+    let shadow = filter_result(nodes[2])?;
+    filter_result(nodes[3])?;
+    props(nodes[0], &[("in", "SourceGraphic")])?;
+    number(nodes[0], "stdDeviation", sigma)?;
+    props(nodes[1], &[("flood-color", color)])?;
+    if nodes[1].attribute("flood-opacity").is_some() {
+        number(nodes[1], "flood-opacity", 1.0)?;
+    }
+    props(
+        nodes[2],
+        &[("in", flood), ("in2", blur), ("operator", "in")],
+    )?;
+    for (node, input) in [(nodes[4], shadow), (nodes[5], "SourceGraphic")] {
+        c6_ensure!(
+            "cyberpunk-filter",
+            node.parent_index() == Some(nodes[3].index()),
+            "unexpected glow merge owner"
+        );
+        props(node, &[("in", input)])?;
+    }
+    Ok(())
 }
 
-fn check_glow(
-    receipt: &SvgArtifactObservation,
+fn effect_nodes<'a>(
+    receipt: &'a SvgArtifactObservation,
     terminal: &SvgElementObservation,
-    shadows: &[(f64, &str)],
-    depth_only: bool,
-) -> C6ProofResult<()> {
+    expected_results: usize,
+) -> C6ProofResult<Vec<&'a SvgElementObservation>> {
     let binding = terminal.attribute("filter");
     c6_ensure!(
         "cyberpunk-filter",
@@ -206,23 +239,16 @@ fn check_glow(
     let filter = linked(receipt, binding, "filter")?;
     props(filter, &[("color-interpolation-filters", "sRGB")])?;
     let nodes = receipt.descendants_of(filter.index()).collect::<Vec<_>>();
-    c6_ensure!(
-        "cyberpunk-filter",
-        nodes.len()
-            == if depth_only {
-                shadows.len() * 7 - 2
-            } else {
-                shadows.len() * 6
-            },
-        "unexpected composed filter structure"
-    );
     let results = nodes
         .iter()
         .filter_map(|node| node.attribute("result"))
         .collect::<Vec<_>>();
     c6_ensure!(
         "cyberpunk-filter",
-        results.len() == shadows.len() * 4
+        results.len() == expected_results
+            && results
+                .iter()
+                .all(|name| !name.is_empty() && *name != "SourceGraphic")
             && results
                 .iter()
                 .copied()
@@ -231,68 +257,7 @@ fn check_glow(
                 == results.len(),
         "ambiguous filter result bindings"
     );
-    let mut offset = 0;
-    let mut previous_result = "SourceGraphic";
-    for (index, &(sigma, color)) in shadows.iter().enumerate() {
-        let last_depth_stage = depth_only && index + 1 == shadows.len();
-        let block_len = if last_depth_stage { 3 } else { 6 };
-        let block = &nodes[offset..offset + block_len];
-        offset += block_len;
-        c6_ensure!(
-            "cyberpunk-filter",
-            block.iter().map(|node| node.tag_name()).eq([
-                "feGaussianBlur",
-                "feFlood",
-                "feComposite",
-                "feMerge",
-                "feMergeNode",
-                "feMergeNode"
-            ][..block_len]
-                .iter()
-                .copied()),
-            "unexpected filter primitive order"
-        );
-        let blur = filter_result(block[0])?;
-        let flood = filter_result(block[1])?;
-        let shadow = filter_result(block[2])?;
-        props(block[0], &[("in", previous_result)])?;
-        number(block[0], "stdDeviation", sigma)?;
-        props(block[1], &[("flood-color", color)])?;
-        if block[1].attribute("flood-opacity").is_some() {
-            number(block[1], "flood-opacity", 1.0)?;
-        }
-        props(
-            block[2],
-            &[("in", flood), ("in2", blur), ("operator", "in")],
-        )?;
-        if !last_depth_stage {
-            props(block[4], &[("in", shadow)])?;
-            props(block[5], &[("in", previous_result)])?;
-            previous_result = filter_result(block[3])?;
-        }
-    }
-    if depth_only {
-        let merge = nodes[offset];
-        c6_ensure!(
-            "cyberpunk-filter",
-            merge.tag_name() == "feMerge",
-            "missing final depth merge"
-        );
-        filter_result(merge)?;
-        let shadows = nodes
-            .iter()
-            .filter(|node| node.tag_name() == "feComposite")
-            .rev();
-        for (node, shadow) in nodes[offset + 1..].iter().zip(shadows) {
-            c6_ensure!(
-                "cyberpunk-filter",
-                node.tag_name() == "feMergeNode" && node.parent_index() == Some(merge.index()),
-                "unexpected final depth input"
-            );
-            props(node, &[("in", filter_result(shadow)?)])?;
-        }
-    }
-    Ok(())
+    Ok(nodes)
 }
 
 fn body_depth(
@@ -350,7 +315,55 @@ fn body_depth(
         }),
         "depth must contain only the body silhouette"
     );
-    check_glow(receipt, depth, SHAPE, true)
+    let nodes = effect_nodes(receipt, depth, 7)?;
+    c6_ensure!(
+        "cyberpunk-filter",
+        nodes.iter().map(|node| node.tag_name()).eq([
+            "feOffset",
+            "feFlood",
+            "feComposite",
+            "feOffset",
+            "feFlood",
+            "feComposite",
+            "feMerge",
+            "feMergeNode",
+            "feMergeNode"
+        ]),
+        "panel depth requires two independent hard shadows"
+    );
+    let merge = nodes[6];
+    filter_result(merge)?;
+    for (index, (x, y, color)) in [
+        (-3.0, 0.0, "rgba(255, 69, 100, 0.8)"),
+        (4.0, 4.0, "rgba(41, 243, 236, 0.85)"),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let block = &nodes[index * 3..index * 3 + 3];
+        let offset = filter_result(block[0])?;
+        let flood = filter_result(block[1])?;
+        let shadow = filter_result(block[2])?;
+        props(block[0], &[("in", "SourceAlpha")])?;
+        number(block[0], "dx", x)?;
+        number(block[0], "dy", y)?;
+        props(block[1], &[("flood-color", color)])?;
+        if block[1].attribute("flood-opacity").is_some() {
+            number(block[1], "flood-opacity", 1.0)?;
+        }
+        props(
+            block[2],
+            &[("in", flood), ("in2", offset), ("operator", "in")],
+        )?;
+        let input = nodes[7 + index];
+        c6_ensure!(
+            "cyberpunk-filter",
+            input.parent_index() == Some(merge.index()),
+            "unexpected final depth input"
+        );
+        props(input, &[("in", shadow)])?;
+    }
+    Ok(())
 }
 
 fn filter_result(node: &SvgElementObservation) -> C6ProofResult<&str> {
@@ -363,7 +376,7 @@ fn canvas(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     let base = select(receipt, 1, "canvas base", |node| {
         node.attribute("data-merman-theme-canvas") == Some("base")
     })?[0];
-    props(base, &[("fill", NAVY)])?;
+    props(base, &[("fill", CANVAS)])?;
     let [x, y, width, height] = receipt.view_box();
     for (property, value) in [("x", x), ("y", y), ("width", width), ("height", height)] {
         number(base, property, value)?;
@@ -433,15 +446,15 @@ fn canvas(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
         props(gradient, &[("gradientUnits", "userSpaceOnUse")])?;
         let expected: &[(f64, &str)] = if index == 0 {
             &[
-                (0.0, "rgba(83, 220, 228, 0.025)"),
-                (70.0, "rgba(83, 220, 228, 0)"),
+                (0.0, "rgba(243, 230, 0, 0.04)"),
+                (70.0, "rgba(243, 230, 0, 0)"),
             ]
         } else {
             &[
-                (0.0, "rgba(83, 220, 228, 0.018)"),
-                (2.5, "rgba(83, 220, 228, 0.018)"),
-                (2.5, "rgba(83, 220, 228, 0)"),
-                (100.0, "rgba(83, 220, 228, 0)"),
+                (0.0, "rgba(41, 243, 236, 0.035)"),
+                (2.5, "rgba(41, 243, 236, 0.035)"),
+                (2.5, "rgba(41, 243, 236, 0)"),
+                (100.0, "rgba(41, 243, 236, 0)"),
             ]
         };
         let stops = receipt
@@ -484,7 +497,7 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     ] {
         require_exact_writer_declaration(receipt, &selector, "fill", fill)?;
     }
-    for (property, value) in [("fill", NAVY), ("opacity", "1")] {
+    for (property, value) in [("fill", CANVAS), ("opacity", "1")] {
         require_exact_writer_declaration(
             receipt,
             &format!("#{root} .edgeLabel rect"),
@@ -512,11 +525,11 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             shape.tag_name() == tag,
             "wrong {id} geometry"
         );
-        props(shape, &[("fill", SURFACE), ("stroke", CYAN)])?;
+        props(shape, &[("fill", PANEL_SURFACE), ("stroke", YELLOW)])?;
         number(shape, "stroke-width", 1.5)?;
         if tag == "rect" {
-            number(shape, "rx", 4.0)?;
-            number(shape, "ry", 4.0)?;
+            number(shape, "rx", 0.0)?;
+            number(shape, "ry", 0.0)?;
         }
         let depth_owner = depths
             .iter()
@@ -530,8 +543,8 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             .descendants_of(owner.index())
             .find(|node| node.tag_name() == "text" && node.text() == text)
             .ok_or_else(|| C6ProofError::new("cyberpunk-labels", format!("missing {text}")))?;
-        props(label, &[("fill", PRIMARY_TEXT)])?;
-        number(label, "font-weight", 600.0)?;
+        props(label, &[("fill", YELLOW)])?;
+        number(label, "font-weight", 700.0)?;
     }
     let cluster = select(receipt, 1, "Checkout", |node| {
         node.attribute("data-et") == Some("cluster")
@@ -547,7 +560,7 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
                         && parent.attribute("data-merman-theme-depth") == Some("container")
                 })
     })?[0];
-    props(surface, &[("fill", "#10182B"), ("stroke", CYAN)])?;
+    props(surface, &[("fill", "#10191F"), ("stroke", "#536B72")])?;
     c6_ensure!(
         "cyberpunk-depth-order",
         surface.index() < cluster.index(),
@@ -579,7 +592,7 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             "all node depth must precede connections"
         );
         props(edge, &[("stroke", CYAN)])?;
-        number(edge, "stroke-width", 1.25)?;
+        number(edge, "stroke-width", 1.5)?;
         glow(receipt, edge, EDGE)?;
         let marker = linked(receipt, edge.attribute("marker-end"), "marker")?;
         let path = receipt
@@ -598,17 +611,17 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     for label in select(receipt, 6, "styled labels", |node| {
         node.tag_name() == "g" && node.has_class("label") && !node.text().trim().is_empty()
     })? {
-        no_inline_conflicts(label, &[("fill", PRIMARY_TEXT), ("color", PRIMARY_TEXT)])?;
-        let weight = if label.attribute("data-id").is_some() {
-            500.0
+        let (weight, ink) = if label.attribute("data-id").is_some() {
+            (500.0, PRIMARY_TEXT)
         } else {
-            600.0
+            (700.0, YELLOW)
         };
+        no_inline_conflicts(label, &[("fill", ink), ("color", ink)])?;
         for text in receipt
             .descendants_of(label.index())
             .filter(|node| node.tag_name() == "text")
         {
-            props(text, &[("fill", PRIMARY_TEXT)])?;
+            props(text, &[("fill", ink)])?;
             number(text, "font-weight", weight)?;
         }
     }
@@ -617,7 +630,14 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
         .iter()
         .filter(|node| matches!(node.tag_name(), "text" | "tspan"))
     {
-        no_inline_conflicts(text, &[("fill", PRIMARY_TEXT)])?;
+        let node_name = std::iter::successors(Some(text), |node| {
+            node.parent_index().and_then(|index| receipt.element(index))
+        })
+        .any(|node| node.attribute("data-et") == Some("node"));
+        no_inline_conflicts(
+            text,
+            &[("fill", if node_name { YELLOW } else { PRIMARY_TEXT })],
+        )?;
     }
     Ok(())
 }
@@ -625,19 +645,19 @@ fn flowchart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
 fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     let root = root_id(receipt)?;
     for (suffix, property, value) in [
-        (".actor", "fill", SURFACE),
-        (".actor", "stroke", CYAN),
+        (".actor", "fill", PANEL_SURFACE),
+        (".actor", "stroke", YELLOW),
         (".actor-line", "stroke", CYAN),
-        (".actor-line", "stroke-width", "1.25px"),
-        (".note", "fill", SURFACE_ALT),
-        (".note", "stroke", MAGENTA),
-        (".loopLine", "stroke", CYAN),
+        (".actor-line", "stroke-width", "1.5px"),
+        (".note", "fill", NOTE_SURFACE),
+        (".note", "stroke", RED),
+        (".loopLine", "stroke", RED),
         (".loopLine", "stroke-dasharray", "2,2"),
         (".labelBox", "fill", SURFACE_ALT),
-        (".labelBox", "stroke", CYAN),
+        (".labelBox", "stroke", YELLOW),
         (".labelBox", "filter", "none"),
-        (".messageLine0", "stroke-width", "1.25px"),
-        (".messageLine1", "stroke-width", "1.25px"),
+        (".messageLine0", "stroke-width", "1.5px"),
+        (".messageLine1", "stroke-width", "1.5px"),
         (".messageLine0", "stroke-dasharray", "none"),
     ] {
         require_exact_writer_declaration(receipt, &format!("#{root} {suffix}"), property, value)?;
@@ -651,7 +671,7 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
         (
             format!("#{root} .activation0,#{root} .activation1,#{root} .activation2"),
             "fill",
-            SURFACE_ALT,
+            CYAN,
         ),
         (
             format!("#{root} .activation0,#{root} .activation1,#{root} .activation2"),
@@ -663,7 +683,7 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
                 "#{root} text.actor,#{root} text.actor>tspan,#{root} text.text,#{root} text.text>tspan"
             ),
             "fill",
-            PRIMARY_TEXT,
+            YELLOW,
         ),
         (
             format!("#{root} .messageText,#{root} .messageText>tspan"),
@@ -673,7 +693,7 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
         (
             format!("#{root} .noteText,#{root} .noteText>tspan"),
             "fill",
-            PRIMARY_TEXT,
+            NOTE_TEXT,
         ),
         (
             format!(
@@ -689,10 +709,10 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     for actor in select(receipt, 4, "actor faces", |node| {
         node.tag_name() == "rect" && node.has_class("actor") && !node.has_class("actor-depth")
     })? {
-        no_inline_conflicts(actor, &[("fill", SURFACE), ("stroke", CYAN)])?;
+        no_inline_conflicts(actor, &[("fill", PANEL_SURFACE), ("stroke", YELLOW)])?;
         number(actor, "stroke-width", 1.5)?;
-        number(actor, "rx", 4.0)?;
-        number(actor, "ry", 4.0)?;
+        number(actor, "rx", 0.0)?;
+        number(actor, "ry", 0.0)?;
         let depth = depths
             .iter()
             .find(|depth| depth.bounds() == actor.bounds())
@@ -709,7 +729,7 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     }
     for actor in by_class(receipt, "text", "actor", 4)? {
         no_glow(receipt, actor)?;
-        number(actor, "font-weight", 600.0)?;
+        number(actor, "font-weight", 700.0)?;
     }
     for lifeline in by_class(receipt, "line", "actor-line", 2)? {
         c6_ensure!(
@@ -717,11 +737,14 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             depths.iter().all(|depth| depth.index() < lifeline.index()),
             "all actor depth must precede lifelines"
         );
-        no_inline_conflicts(lifeline, &[("stroke", CYAN), ("stroke-width", "1.25px")])?;
+        no_inline_conflicts(
+            lifeline,
+            &[("fill", CYAN), ("stroke", CYAN), ("stroke-width", "1.5px")],
+        )?;
         glow(receipt, lifeline, EDGE)?;
     }
     let activation = by_class(receipt, "rect", "activation0", 1)?[0];
-    no_inline_conflicts(activation, &[("fill", SURFACE_ALT), ("stroke", CYAN)])?;
+    no_inline_conflicts(activation, &[("fill", CYAN), ("stroke", CYAN)])?;
     number(activation, "stroke-width", 1.5)?;
     c6_ensure!(
         "cyberpunk-activation",
@@ -729,27 +752,27 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
         "unexpected activation effect"
     );
     let note = by_class(receipt, "rect", "note", 1)?[0];
-    no_inline_conflicts(note, &[("fill", SURFACE_ALT), ("stroke", MAGENTA)])?;
-    number(note, "stroke-width", 1.25)?;
-    number(note, "rx", 4.0)?;
-    number(note, "ry", 4.0)?;
-    glow(receipt, note, &[(2.5, "rgba(242, 139, 203, 0.12)")])?;
+    no_inline_conflicts(note, &[("fill", NOTE_SURFACE), ("stroke", RED)])?;
+    number(note, "stroke-width", 1.5)?;
+    number(note, "rx", 0.0)?;
+    number(note, "ry", 0.0)?;
+    glow(receipt, note, (1.5, "rgba(255, 69, 100, 0.18)"))?;
     no_glow(receipt, by_class(receipt, "text", "noteText", 1)?[0])?;
     for frame in by_class(receipt, "line", "loopLine", 4)? {
-        no_inline_conflicts(frame, &[("stroke", CYAN), ("stroke-dasharray", "2,2")])?;
-        number(frame, "stroke-width", 1.25)?;
-        glow(receipt, frame, &[(1.5, "rgba(83, 220, 228, 0.12)")])?;
+        no_inline_conflicts(frame, &[("stroke", RED), ("stroke-dasharray", "2,2")])?;
+        number(frame, "stroke-width", 1.5)?;
+        glow(receipt, frame, (1.0, "rgba(255, 69, 100, 0.14)"))?;
     }
     let keyword = by_class(receipt, "polygon", "labelBox", 1)?[0];
-    no_inline_conflicts(keyword, &[("fill", SURFACE_ALT), ("stroke", CYAN)])?;
-    number(keyword, "stroke-width", 1.25)?;
+    no_inline_conflicts(keyword, &[("fill", SURFACE_ALT), ("stroke", YELLOW)])?;
+    number(keyword, "stroke-width", 1.5)?;
     no_glow(receipt, keyword)?;
     for class in ["labelText", "loopText"] {
         no_glow(receipt, by_class(receipt, "text", class, 1)?[0])?;
     }
     for class in ["messageLine0", "messageLine1"] {
         let message = by_class(receipt, "line", class, 1)?[0];
-        no_inline_conflicts(message, &[("stroke", CYAN), ("stroke-width", "1.25px")])?;
+        no_inline_conflicts(message, &[("stroke", CYAN), ("stroke-width", "1.5px")])?;
         let (from, to) = if class == "messageLine0" {
             ("Client", "API")
         } else {
@@ -795,14 +818,21 @@ fn sequence(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
             text,
             "font-weight",
             if text.has_class("actor") {
-                600.0
+                700.0
             } else {
                 500.0
             },
         )?;
         no_glow(receipt, text)?;
+        let ink = if text.has_class("actor") {
+            YELLOW
+        } else if text.has_class("noteText") {
+            NOTE_TEXT
+        } else {
+            PRIMARY_TEXT
+        };
         for leaf in std::iter::once(text).chain(receipt.descendants_of(text.index())) {
-            no_inline_conflicts(leaf, &[("fill", PRIMARY_TEXT)])?;
+            no_inline_conflicts(leaf, &[("fill", ink)])?;
         }
     }
     Ok(())
@@ -824,29 +854,29 @@ fn xychart(receipt: &SvgArtifactObservation) -> C6ProofResult<()> {
     })?;
     for (index, bar) in bars.into_iter().enumerate() {
         let (color, flood) = if index < 4 {
-            (CYAN, "rgba(83, 220, 228, 0.12)")
+            (YELLOW, "rgba(243, 230, 0, 0.18)")
         } else {
-            ("#E8C078", "rgba(232, 192, 120, 0.12)")
+            (RED, "rgba(255, 69, 100, 0.18)")
         };
         props(bar, &[("fill", color), ("stroke", color)])?;
-        number(bar, "fill-opacity", 0.35)?;
+        number(bar, "fill-opacity", 0.85)?;
         number(bar, "stroke-width", 1.25)?;
-        glow(receipt, bar, &[(2.0, flood)])?;
+        glow(receipt, bar, (1.0, flood))?;
     }
     let lines = select(receipt, 2, "series lines", |node| {
         node.tag_name() == "path" && node.attribute("filter").is_some()
     })?;
     for (line, (color, flood)) in lines.into_iter().zip([
-        (MAGENTA, "rgba(242, 139, 203, 0.16)"),
-        (CYAN, "rgba(83, 220, 228, 0.16)"),
+        (CYAN, "rgba(41, 243, 236, 0.18)"),
+        (YELLOW, "rgba(243, 230, 0, 0.18)"),
     ]) {
         props(line, &[("fill", "none"), ("stroke", color)])?;
         number(line, "stroke-width", 2.0)?;
-        glow(receipt, line, &[(1.5, flood)])?;
+        glow(receipt, line, (1.0, flood))?;
     }
     for text in select(receipt, 18, "XY labels", |node| node.tag_name() == "text")? {
         let (size, weight, color) = match text.text() {
-            "Request Volume" => (18.0, 600.0, PRIMARY_TEXT),
+            "Request Volume" => (18.0, 700.0, YELLOW),
             "Window" | "Requests" => (13.0, 500.0, MUTED_TEXT),
             _ => (14.0, 500.0, MUTED_TEXT),
         };

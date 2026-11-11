@@ -293,10 +293,10 @@ fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
         };
         let document = roxmltree::Document::parse(output.svg()).unwrap();
         for (index, kind, color, glow) in [
-            (0, "line", "#53DCE4", "rgba(83, 220, 228, 0.16)"),
-            (1, "bar", "#F28BCB", "rgba(242, 139, 203, 0.12)"),
-            (2, "bar", "#E8C078", "rgba(232, 192, 120, 0.12)"),
-            (3, "line", "#53DCE4", "rgba(83, 220, 228, 0.16)"),
+            (0, "line", "#F3E600", "rgba(243, 230, 0, 0.18)"),
+            (1, "bar", "#29F3EC", "rgba(41, 243, 236, 0.18)"),
+            (2, "bar", "#FF4564", "rgba(255, 69, 100, 0.18)"),
+            (3, "line", "#F3E600", "rgba(243, 230, 0, 0.18)"),
         ] {
             let class = format!("{kind}-plot-{index}");
             let group = document
@@ -316,7 +316,7 @@ fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
                 );
                 assert_eq!(
                     mark.attribute("fill-opacity"),
-                    if kind == "bar" { Some("0.35") } else { None }
+                    if kind == "bar" { Some("0.85") } else { None }
                 );
                 assert_eq!(
                     mark.attribute("fill"),
@@ -341,10 +341,7 @@ fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
                     .children()
                     .find(|n| n.has_tag_name("feGaussianBlur"))
                     .unwrap();
-                assert_eq!(
-                    blur.attribute("stdDeviation"),
-                    Some(if kind == "bar" { "2" } else { "1.5" })
-                );
+                assert_eq!(blur.attribute("stdDeviation"), Some("1"));
                 let flood = filter
                     .children()
                     .find(|element| element.has_tag_name("feFlood"))
@@ -431,7 +428,7 @@ fn public_cyberpunk_series_recipe_preserves_native_receipts_after_exchange() {
                 .as_chunks::<4>()
                 .0
                 .iter()
-                .any(|pixel| pixel[..3] == [83, 220, 228])
+                .any(|pixel| pixel[..3] == [243, 230, 0])
         );
         pixels.push((info.width, info.height, buffer));
     }

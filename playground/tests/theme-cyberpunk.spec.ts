@@ -11,30 +11,56 @@ const sceneSource = (family: string): string => readFileSync(
 test.setTimeout(120_000);
 
 const colors = {
-  canvas: "rgb(11, 16, 32)",
-  surface: "rgb(21, 30, 53)",
-  surfaceAlt: "rgb(32, 43, 70)",
-  primary: "rgb(226, 239, 247)",
-  muted: "rgb(146, 169, 191)",
-  cyan: "rgb(83, 220, 228)",
-  magenta: "rgb(242, 139, 203)",
-  amber: "rgb(232, 192, 120)",
+  canvas: "rgb(8, 13, 17)",
+  surface: "rgb(22, 31, 37)",
+  surfaceAlt: "rgb(37, 49, 57)",
+  primary: "rgb(234, 244, 240)",
+  muted: "rgb(165, 188, 192)",
+  yellow: "rgb(243, 230, 0)",
+  cyan: "rgb(41, 243, 236)",
+  red: "rgb(255, 69, 100)",
+  noteSurface: "rgb(53, 28, 41)",
+  noteInk: "rgb(255, 233, 239)",
 };
 
-type LabelExpectation = string | { text: string; role: "primary" | "muted" };
+type LabelExpectation = string | {
+  text: string;
+  role: "primary" | "muted" | "yellow" | "noteInk";
+  weight?: number;
+};
+interface ShadowExpectation {
+  dx: number;
+  dy: number;
+  sigma: number;
+  color: string;
+  alpha: number;
+}
 interface GlowExpectation {
   selector: string;
   count: number;
-  deviations: number[];
-  color: string;
-  alphas: number[];
+  shadows: ShadowExpectation[];
+  stroke: string;
   strokeWidth: number;
+  fill?: string;
   fillOpacity?: number;
 }
 
+const panelShadows: ShadowExpectation[] = [
+  { dx: -3, dy: 0, sigma: 0, color: colors.red, alpha: 0.8 },
+  { dx: 4, dy: 4, sigma: 0, color: colors.cyan, alpha: 0.85 },
+];
+const signalGlow: ShadowExpectation[] = [
+  { dx: 0, dy: 0, sigma: 1.2, color: colors.cyan, alpha: 0.25 },
+];
 const flowchartGlows: GlowExpectation[] = [
-  { selector: "[data-merman-theme-depth='node'] > .label-container", count: 4, deviations: [2, 5], color: colors.cyan, alphas: [0.2, 0.1], strokeWidth: 1.5 },
-  { selector: "path.flowchart-link", count: 3, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 1.25 },
+  { selector: "[data-merman-theme-depth='node'] > .label-container", count: 4, shadows: panelShadows, stroke: colors.yellow, strokeWidth: 1.5, fill: colors.surface },
+  { selector: "path.flowchart-link", count: 3, shadows: signalGlow, stroke: colors.cyan, strokeWidth: 1.5 },
+];
+const flowchartLabels: LabelExpectation[] = [
+  ...["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock"]
+    .map((text) => ({ text, role: "yellow" as const, weight: 700 })),
+  "Checkout",
+  ...["Yes", "No"].map((text) => ({ text, role: "primary" as const, weight: 500 })),
 ];
 
 function expectComputedColor(actual: string, rgb: string, alpha: number): void {
@@ -42,6 +68,14 @@ function expectComputedColor(actual: string, rgb: string, alpha: number): void {
   expect(channels.slice(0, 3)).toEqual(rgb.match(/[\d.]+/gu)!.map(Number));
   // CSSOM can serialize an authored alpha through the browser's eight-bit color storage.
   expect(Math.abs((channels[3] ?? 1) - alpha)).toBeLessThanOrEqual(1 / 255);
+}
+
+function luminance(rgb: string): number {
+  const channels = rgb.match(/[\d.]+/gu)!.slice(0, 3).map((value) => {
+    const channel = Number(value) / 255;
+    return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+  });
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722;
 }
 
 async function captureScene(page: Page, svg: Locator, clip?: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
@@ -84,10 +118,11 @@ async function changedPixels(page: Page, before: Buffer, after: Buffer): Promise
   }, [before.toString("base64"), after.toString("base64")]);
 }
 
-async function expectPaintedLabels(page: Page, svg: Locator, expected: LabelExpectation[]): Promise<void> {
-  const labelRoles = expected.map((label) => typeof label === "string" ? { text: label, role: "primary" as const } : label);
-  const ink = new Map(labelRoles.map(({ text, role }) => [text, colors[role]]));
-  const labels = svg.locator("text, foreignObject p").filter({ hasText: /\S/u });
+async function expectPaintedLabels(page: Page, svg: Locator, expected: LabelExpectation[], selector = "text, foreignObject p"): Promise<void> {
+  const labelRoles: Exclude<LabelExpectation, string>[] = expected.map((label) =>
+    typeof label === "string" ? { text: label, role: "primary" } : label);
+  const ink = new Map(labelRoles.map(({ text, role, weight }) => [text, { color: colors[role], weight }]));
+  const labels = svg.locator(selector).filter({ hasText: /\S/u });
   const texts = await labels.evaluateAll((elements) => elements.map((element) => {
     // SVG textContent concatenates wrapped row tspans without the visual line break.
     const rows = element.querySelectorAll(":scope > tspan.row");
@@ -103,12 +138,14 @@ async function expectPaintedLabels(page: Page, svg: Locator, expected: LabelExpe
     const paint = await label.evaluate((element) => {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
       const colors: string[] = [];
+      const weights: string[] = [];
       const glows: { tag: string; filter: string; textShadow: string }[] = [];
       while (walker.nextNode()) {
         if (!walker.currentNode.textContent?.trim()) continue;
         const leaf = walker.currentNode.parentElement!;
         const style = getComputedStyle(leaf);
         colors.push(leaf instanceof SVGElement ? style.fill : style.color);
+        weights.push(style.fontWeight);
         for (let ancestor: Element | null = leaf; ancestor; ancestor = ancestor.parentElement) {
           const style = getComputedStyle(ancestor);
           if (style.filter !== "none" || style.textShadow !== "none") {
@@ -117,10 +154,23 @@ async function expectPaintedLabels(page: Page, svg: Locator, expected: LabelExpe
           if (ancestor instanceof SVGSVGElement) break;
         }
       }
-      return { colors, glows };
+      return { colors, weights, glows };
     });
+    const expectedInk = ink.get(texts[index].trim())!;
     expect(paint.colors.length, texts[index]).toBeGreaterThan(0);
-    expect(new Set(paint.colors), texts[index]).toEqual(new Set([ink.get(texts[index].trim())]));
+    expect(new Set(paint.colors), texts[index]).toEqual(new Set([expectedInk.color]));
+    for (const color of new Set(paint.colors)) {
+      for (const background of [colors.surface, colors.canvas]) {
+        const foregroundLuminance = luminance(color);
+        const backgroundLuminance = luminance(background);
+        const contrast = (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+          / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+        expect(contrast, `${texts[index]} must contrast with dark panels and the canvas`).toBeGreaterThanOrEqual(7);
+      }
+    }
+    if (expectedInk.weight !== undefined) {
+      expect(new Set(paint.weights), texts[index]).toEqual(new Set([String(expectedInk.weight)]));
+    }
     expect(paint.glows, `${texts[index]} and its ancestors must keep glyphs crisp`).toEqual([]);
     const bounds = await label.boundingBox();
     expect(bounds, texts[index]).not.toBeNull();
@@ -171,15 +221,21 @@ async function expectPaintedEffects(page: Page, svg: Locator, expected: GlowExpe
       colorSpace: filters[0]?.getAttribute("color-interpolation-filters"),
       stroke: getComputedStyle(element).stroke,
       strokeWidth: getComputedStyle(element).strokeWidth,
+      fill: getComputedStyle(element).fill,
       fillOpacity: getComputedStyle(element).fillOpacity,
       deviations: [...(filters[0]?.querySelectorAll("feGaussianBlur") ?? [])]
         .map((blur) => [Number(blur.getAttribute("stdDeviation")), blur.getAttribute("in")]),
+      offsets: [...(filters[0]?.querySelectorAll("feOffset") ?? [])]
+        .map((offset) => [Number(offset.getAttribute("dx")), Number(offset.getAttribute("dy")), offset.getAttribute("in")]),
       floods: [...(filters[0]?.querySelectorAll("feFlood") ?? [])].map((flood) => ({
         authoredColor: flood.getAttribute("flood-color"),
         color: getComputedStyle(flood).floodColor, opacity: getComputedStyle(flood).floodOpacity,
       })),
       merges: [...(filters[0]?.querySelectorAll("feMerge") ?? [])]
         .map((merge) => [...merge.children].map((node) => node.getAttribute("in"))),
+      composites: [...(filters[0]?.querySelectorAll("feComposite") ?? [])].map((composite) => [
+        composite.getAttribute("in"), composite.getAttribute("in2"), composite.getAttribute("operator"),
+      ]),
       depth: depth ? {
         hidden: depth.getAttribute("aria-hidden"), pointerEvents: getComputedStyle(depth).pointerEvents,
         bodies: depth.children.length,
@@ -211,26 +267,39 @@ async function expectPaintedEffects(page: Page, svg: Locator, expected: GlowExpe
       });
     }
   }
-  for (const [owner, { selector, count, deviations, color, alphas, strokeWidth, fillOpacity }] of expected.entries()) {
+  for (const [owner, { selector, count, shadows, stroke, strokeWidth, fill, fillOpacity }] of expected.entries()) {
     const owned = terminals.filter((terminal) => terminal.owners.includes(owner));
     expect(owned, selector).toHaveLength(count);
+    // Only the two hard body offsets are Independent; single halos use Cascade.
+    const source = shadows.length === 2 ? "SourceAlpha" : "SourceGraphic";
     expect(owned.map((terminal) => terminal.deviations), selector)
-      .toEqual(Array.from({ length: count }, () => deviations.map((sigma, index) => [
-        sigma, index === 0 ? "SourceGraphic" : `merman-shadow-${index - 1}-result`,
-      ])));
+      .toEqual(Array.from({ length: count }, () => shadows.filter(({ sigma }) => sigma > 0)
+        .map(({ sigma }) => [sigma, source])));
     for (const terminal of owned) {
-      expect(terminal.floods, selector).toHaveLength(alphas.length);
+      expect(shadows).toHaveLength(terminal.depth ? 2 : 1);
+      expect(terminal.offsets, "hard registration offsets must consume independent silhouettes").toEqual(
+        shadows.flatMap(({ dx, dy, sigma }, index) => dx || dy
+          ? [[dx, dy, sigma > 0 ? `merman-shadow-${index}-blur` : source]] : []),
+      );
+      expect(terminal.floods, selector).toHaveLength(shadows.length);
       for (const [index, flood] of terminal.floods.entries()) {
-        expect(flood.authoredColor).toBe(color.replace("rgb(", "rgba(").replace(")", `, ${alphas[index]})`));
-        expectComputedColor(flood.color, color, alphas[index]);
+        const { color, alpha } = shadows[index];
+        expect(flood.authoredColor).toBe(color.replace("rgb(", "rgba(").replace(")", `, ${alpha})`));
+        expectComputedColor(flood.color, color, alpha);
         expect(flood.opacity).toBe("1");
       }
-      expect(terminal, selector).toMatchObject({ stroke: color, strokeWidth: `${strokeWidth}px` });
+      expect(terminal.composites, "each color must be clipped to its own source silhouette").toEqual(
+        shadows.map(({ dx, dy, sigma }, index) => [
+          `merman-shadow-${index}-flood`,
+          dx || dy ? `merman-shadow-${index}-offset` : sigma > 0 ? `merman-shadow-${index}-blur` : source,
+          "in",
+        ]),
+      );
+      expect(terminal, selector).toMatchObject({ stroke, strokeWidth: `${strokeWidth}px` });
+      if (fill !== undefined) expect(terminal.fill, selector).toBe(fill);
       if (fillOpacity !== undefined) expect(Number(terminal.fillOpacity), selector).toBeCloseTo(fillOpacity, 5);
       expect(terminal.merges, "body depth omits SourceGraphic while connectors and marks retain their source").toEqual(
-        terminal.depth
-          ? [["merman-shadow-0-shadow", "SourceGraphic"], ["merman-shadow-1-shadow", "merman-shadow-0-shadow"]]
-          : [["merman-shadow-0-shadow", "SourceGraphic"]],
+        [[...shadows.map((_, index) => `merman-shadow-${index}-shadow`), ...(terminal.depth ? [] : ["SourceGraphic"])]],
       );
     }
   }
@@ -331,16 +400,16 @@ async function expectFlowchartDepthAndGlows(svg: Locator, look: "classic" | "neo
   for (const face of facts.faces) {
     expect(face).toMatchObject({
       look, bodies: 1, filter: "none", tag: face.id === "Stock" ? "polygon" : "rect",
-      fill: colors.surface, stroke: colors.cyan, width: "1.5px",
+      fill: colors.surface, stroke: colors.yellow, width: "1.5px",
     });
-    if (face.tag === "rect") expect(face.radius).toEqual(["4", "4"]);
+    if (face.tag === "rect") expect(face.radius).toEqual(["0", "0"]);
   }
   expect(facts.depths.map(({ owner }) => owner).sort()).toEqual(ids);
   for (const depth of facts.depths) {
     expect(depth, `${depth.owner} owns one non-interactive depth before connections and its face`).toMatchObject({
       owners: 1, look, hidden: "true", pointerEvents: "none", layer: "layer", bodies: 1,
       identityFree: true, beforeEdges: true, beforeFace: true, faceBinding: null, filters: 1,
-      merge: "feMerge", output: [["feMergeNode", "merman-shadow-1-shadow"], ["feMergeNode", "merman-shadow-0-shadow"]],
+      merge: "feMerge", output: [["feMergeNode", "merman-shadow-0-shadow"], ["feMergeNode", "merman-shadow-1-shadow"]],
     });
     expect(depth.geometry, depth.owner!).toEqual(depth.faceGeometry);
     expect(depth.inlineId, depth.owner!).toBe(depth.filterId);
@@ -417,8 +486,8 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
   expect(radial.geometry[0]).toBeCloseTo(x + width / 2, 2);
   expect(radial.geometry[1]).toBeCloseTo(y + height / 2, 2);
   expect(radial.geometry[2]).toBeCloseTo(Math.hypot(width, height) / 2, 2);
-  expect(radial.stops.map(({ authoredColor }) => authoredColor)).toEqual(["rgba(83, 220, 228, 0.025)", "rgba(83, 220, 228, 0)"]);
-  for (const [index, stop] of radial.stops.entries()) expectComputedColor(stop.color, colors.cyan, [0.025, 0][index]);
+  expect(radial.stops.map(({ authoredColor }) => authoredColor)).toEqual(["rgba(243, 230, 0, 0.04)", "rgba(243, 230, 0, 0)"]);
+  for (const [index, stop] of radial.stops.entries()) expectComputedColor(stop.color, colors.yellow, [0.04, 0][index]);
   expect(radial.stops.map(({ offset }) => offset)).toEqual([0, expect.closeTo(0.7, 5)]);
   expect(radial.stops.map(({ opacity }) => opacity)).toEqual([1, 1]);
   expect(xGrid.geometry).toEqual([0, 20, 40, 20]);
@@ -430,9 +499,9 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
       0, expect.closeTo(0.025, 5), expect.closeTo(0.025, 5), 1,
     ]);
     expect(gradient.stops.map(({ authoredColor }) => authoredColor)).toEqual([
-      "rgba(83, 220, 228, 0.018)", "rgba(83, 220, 228, 0.018)", "rgba(83, 220, 228, 0)", "rgba(83, 220, 228, 0)",
+      "rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0)", "rgba(41, 243, 236, 0)",
     ]);
-    for (const [index, stop] of gradient.stops.entries()) expectComputedColor(stop.color, colors.cyan, [0.018, 0.018, 0, 0][index]);
+    for (const [index, stop] of gradient.stops.entries()) expectComputedColor(stop.color, colors.cyan, [0.035, 0.035, 0, 0][index]);
     expect(gradient.stops.map(({ opacity }) => opacity)).toEqual([1, 1, 1, 1]);
     const pattern = canvas.patterns[index];
     expect(pattern).toMatchObject({ units: "userSpaceOnUse", width: 40, height: 40, fill: `url(#${gradient.id})` });
@@ -446,7 +515,7 @@ for (const { layout, look, htmlLook } of [
   { layout: "elk", look: "neo", htmlLook: "classic" },
   { layout: "dagre", look: "classic", htmlLook: "neo" },
 ] as const) {
-  test(`public Cyberpunk ${look} ${layout} paints crisp SVG glyphs above restrained body and edge glows`, async ({ page }) => {
+  test(`public Cyberpunk ${look} ${layout} paints crisp yellow SVG glyphs on dark panels above hard registration edges`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource("flowchart"),
@@ -468,13 +537,13 @@ for (const { layout, look, htmlLook } of [
 
     await expectFlowchartDepthAndGlows(svg, look);
     await svg.screenshot({ path: test.info().outputPath("public-cyberpunk.png") });
-    await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
+    await expectPaintedLabels(page, svg, flowchartLabels);
     await expectPaintedEffects(page, svg, flowchartGlows, look === "neo" ? '[data-look="neo"].cluster > rect, [data-look="neo"].node rect' : undefined);
     await expectPaintedArrows(page, svg, 3);
     errors.assertNone();
   });
 
-  test(`public Cyberpunk ${htmlLook} ${layout} keeps HTML glyphs and label backgrounds crisp above body and edge glows`, async ({ page }) => {
+  test(`public Cyberpunk ${htmlLook} ${layout} keeps HTML glyphs and label backgrounds crisp above hard registration edges`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource("flowchart"),
@@ -503,7 +572,7 @@ for (const { layout, look, htmlLook } of [
     }));
     expect(facts.map(({ text }) => text).sort()).toEqual(["Add to Cart", "Browse Products", "Item in Stock?", "No", "Out of Stock", "Yes"]);
     for (const fact of facts) {
-      expect(fact.weight).toBe(fact.nodeLabel ? "600" : "500");
+      expect(fact.weight).toBe(fact.nodeLabel ? "700" : "500");
       expect(fact.filter).toBe("none");
       expect(fact.background).toBe("rgba(0, 0, 0, 0)");
       expect(fact.width).toBeGreaterThan(0);
@@ -516,7 +585,7 @@ for (const { layout, look, htmlLook } of [
       await expect(background).toHaveCSS("filter", "none");
     }
     await svg.screenshot({ path: test.info().outputPath("public-cyberpunk-html.png") });
-    await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
+    await expectPaintedLabels(page, svg, flowchartLabels);
     await expectPaintedEffects(page, svg, flowchartGlows, htmlLook === "neo" ? '[data-look="neo"].cluster > rect, [data-look="neo"].node rect' : undefined);
     await expectPaintedArrows(page, svg, 3);
     errors.assertNone();
@@ -526,28 +595,33 @@ for (const { layout, look, htmlLook } of [
 for (const scene of [
   {
     family: "sequence",
-    labels: ["Client", "Client", "API", "API", "Request data", "Return data", "Verify token", "loop", "[Each request]"],
+    labels: [
+      ...["Client", "Client", "API", "API"].map((text) => ({ text, role: "yellow" as const, weight: 700 })),
+      ...["Request data", "Return data", "loop", "[Each request]"]
+        .map((text) => ({ text, role: "primary" as const, weight: 500 })),
+      { text: "Verify token", role: "noteInk" as const, weight: 500 },
+    ],
     glows: [
-      { selector: "[data-merman-theme-depth='actor'] > rect", count: 4, deviations: [2, 5], color: colors.cyan, alphas: [0.2, 0.1], strokeWidth: 1.5 },
-      { selector: "line.actor-line", count: 2, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 1.25 },
-      { selector: "line.messageLine0, line.messageLine1", count: 2, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 1.25 },
-      { selector: "line.loopLine", count: 4, deviations: [1.5], color: colors.cyan, alphas: [0.12], strokeWidth: 1.25 },
-      { selector: "g[data-et='note'] > rect.note", count: 1, deviations: [2.5], color: colors.magenta, alphas: [0.12], strokeWidth: 1.25 },
+      { selector: "[data-merman-theme-depth='actor'] > rect", count: 4, shadows: panelShadows, stroke: colors.yellow, strokeWidth: 1.5, fill: colors.surface },
+      { selector: "line.actor-line", count: 2, shadows: signalGlow, stroke: colors.cyan, strokeWidth: 1.5 },
+      { selector: "line.messageLine0, line.messageLine1", count: 2, shadows: signalGlow, stroke: colors.cyan, strokeWidth: 1.5 },
+      { selector: "line.loopLine", count: 4, shadows: [{ dx: 0, dy: 0, sigma: 1, color: colors.red, alpha: 0.14 }], stroke: colors.red, strokeWidth: 1.5 },
+      { selector: "g[data-et='note'] > rect.note", count: 1, shadows: [{ dx: 0, dy: 0, sigma: 1.5, color: colors.red, alpha: 0.18 }], stroke: colors.red, strokeWidth: 1.5, fill: colors.noteSurface },
     ],
     arrows: 2,
   },
   {
     family: "xychart",
     labels: [
-      "Request Volume",
+      { text: "Request Volume", role: "yellow" as const, weight: 700 },
       ...["Window", "Requests", "A", "B", "C", "D", ...Array.from({ length: 11 }, (_, index) => String(index))]
-        .map((text) => ({ text, role: "muted" as const })),
+        .map((text) => ({ text, role: "muted" as const, weight: 500 })),
     ],
     glows: [
-      { selector: "g.bar-plot-0 > rect", count: 4, deviations: [2], color: colors.cyan, alphas: [0.12], strokeWidth: 1.25, fillOpacity: 0.35 },
-      { selector: "g.line-plot-1 > path", count: 1, deviations: [1.5], color: colors.magenta, alphas: [0.16], strokeWidth: 2 },
-      { selector: "g.bar-plot-2 > rect", count: 4, deviations: [2], color: colors.amber, alphas: [0.12], strokeWidth: 1.25, fillOpacity: 0.35 },
-      { selector: "g.line-plot-3 > path", count: 1, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 2 },
+      { selector: "g.bar-plot-0 > rect", count: 4, shadows: [{ dx: 0, dy: 0, sigma: 1, color: colors.yellow, alpha: 0.18 }], stroke: colors.yellow, strokeWidth: 1.25, fill: colors.yellow, fillOpacity: 0.85 },
+      { selector: "g.line-plot-1 > path", count: 1, shadows: [{ dx: 0, dy: 0, sigma: 1, color: colors.cyan, alpha: 0.18 }], stroke: colors.cyan, strokeWidth: 2 },
+      { selector: "g.bar-plot-2 > rect", count: 4, shadows: [{ dx: 0, dy: 0, sigma: 1, color: colors.red, alpha: 0.18 }], stroke: colors.red, strokeWidth: 1.25, fill: colors.red, fillOpacity: 0.85 },
+      { selector: "g.line-plot-3 > path", count: 1, shadows: [{ dx: 0, dy: 0, sigma: 1, color: colors.yellow, alpha: 0.18 }], stroke: colors.yellow, strokeWidth: 2 },
     ],
     arrows: 0,
   },
@@ -571,15 +645,29 @@ for (const scene of [
     await expect(svg.locator("foreignObject")).toHaveCount(0);
     await expectCyberpunkCanvas(svg);
     if (scene.family === "sequence") {
-      for (const { selector, count, fill } of [
-        { selector: "rect.actor[name]", count: 4, fill: colors.surface },
-        { selector: "rect.note", count: 1, fill: colors.surfaceAlt },
-        { selector: "polygon.labelBox", count: 1, fill: colors.surfaceAlt },
+      for (const { selector, count, fill, stroke, radius } of [
+        { selector: "rect.actor[name]", count: 4, fill: colors.surface, stroke: colors.yellow, radius: "0" },
+        { selector: "rect.note", count: 1, fill: colors.noteSurface, stroke: colors.red, radius: "0" },
+        { selector: "polygon.labelBox", count: 1, fill: colors.surfaceAlt, stroke: colors.yellow },
+        { selector: "rect.activation0", count: 1, fill: colors.cyan, stroke: colors.cyan },
       ]) {
         const surfaces = svg.locator(selector);
         await expect(surfaces).toHaveCount(count);
-        for (const surface of await surfaces.all()) await expect(surface).toHaveCSS("fill", fill);
+        for (const surface of await surfaces.all()) {
+          await expect(surface).toHaveCSS("fill", fill);
+          await expect(surface).toHaveCSS("stroke", stroke);
+          await expect(surface).toHaveCSS("stroke-width", "1.5px");
+          if (radius !== undefined) {
+            await expect(surface).toHaveAttribute("rx", radius);
+            await expect(surface).toHaveAttribute("ry", radius);
+          }
+        }
       }
+      for (const actor of await svg.locator("rect.actor[name]").all()) {
+        await expect(actor).toHaveCSS("filter", "none");
+        await expect(actor).not.toHaveAttribute("filter", /theme-effect-/u);
+      }
+      await expect(svg.locator("rect.activation0")).toHaveCSS("filter", "none");
       await expect(svg.locator("polygon.labelBox")).toHaveCSS("filter", "drop-shadow(rgb(185, 185, 185) 1px 2px 2px)");
       await expect(svg.locator("polygon.labelBox")).not.toHaveAttribute("filter", /theme-effect-/u);
     }
@@ -587,6 +675,119 @@ for (const scene of [
     await expectPaintedEffects(page, svg, scene.glows, scene.family === "sequence" ? "polygon.labelBox" : undefined);
     await expectPaintedArrows(page, svg, scene.arrows);
     await svg.screenshot({ path: test.info().outputPath(`public-cyberpunk-${scene.family}.png`) });
+    errors.assertNone();
+  });
+}
+
+test("public Cyberpunk keeps Alice's exterior actor names and Bob's panel names yellow and crisp", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  const hash = encodeShareHash({
+    code: "sequenceDiagram\nactor Alice\nparticipant Bob\nAlice->>Bob: Hello Bob\nBob-->>Alice: Hello Alice",
+    mermaidConfig: '{"htmlLabels":false}',
+    diagramTheme: "default",
+    themePresetId: "cyberpunk",
+    themeRecipeJson: null,
+    svgPipeline: "resvg-safe",
+    textMeasurementMode: "browser",
+    diagramFont: "trebuchet",
+  });
+  await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
+  await waitForPreviewSvg(page);
+  await page.evaluate(() => document.fonts.ready);
+  const svg = page.locator(".preview-container > div").first().locator("svg");
+  const alice = svg.locator("g.actor-man[name='Alice']");
+  await expect(alice).toHaveCount(2);
+  await expect(alice.locator(":scope > circle")).toHaveCount(2);
+  await expect(alice.locator("text.actor-man")).toHaveCount(2);
+  await expect(svg.locator("rect.actor[name='Alice']")).toHaveCount(0);
+  const bob = svg.locator("rect.actor[name='Bob']");
+  await expect(bob).toHaveCount(2);
+  await expectCyberpunkCanvas(svg);
+  for (const body of await svg.locator("g.actor-man[name='Alice'] > circle, rect.actor[name='Bob']").all()) {
+    await expect(body).toHaveCSS("fill", colors.surface);
+    await expect(body).toHaveCSS("stroke", colors.yellow);
+    await expect(body).toHaveCSS("filter", "none");
+  }
+  await expectPaintedLabels(page, svg, [
+    ...["Alice", "Alice", "Bob", "Bob"].map((text) => ({ text, role: "yellow" as const, weight: 700 })),
+    ...["Hello Bob", "Hello Alice"].map((text) => ({ text, role: "primary" as const, weight: 500 })),
+  ]);
+  await expectPaintedEffects(page, svg, [
+    { selector: "[data-merman-theme-depth='actor'] > rect", count: 2, shadows: panelShadows, stroke: colors.yellow, strokeWidth: 1.5, fill: colors.surface },
+    { selector: "line.actor-line", count: 2, shadows: signalGlow, stroke: colors.cyan, strokeWidth: 1.5 },
+    { selector: "line.messageLine0, line.messageLine1", count: 2, shadows: signalGlow, stroke: colors.cyan, strokeWidth: 1.5 },
+  ]);
+  await expectPaintedArrows(page, svg, 2);
+  errors.assertNone();
+});
+
+for (const htmlLabels of [false, true]) {
+  test(`public Cyberpunk keeps panel, BPMN annotation and exterior icon names readable with ${htmlLabels ? "HTML" : "native SVG"} node labels`, async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    // Reuse the upstream icon fixture's real top-positioned label and square frame.
+    const iconSource = readFileSync(new URL(
+      "../../fixtures/flowchart/upstream_docs_flowchart_icon_shape_132.mmd", import.meta.url,
+    ), "utf8");
+    const hash = encodeShareHash({
+      code: `${iconSource.trimEnd()}\nPanel[Panel name]\nAnnotation@{ shape: bpmn-annotation, label: "Annotation" }\nPanel --> Annotation --> A`,
+      mermaidConfig: JSON.stringify({ htmlLabels, flowchart: { look: "classic", layout: "dagre" } }),
+      diagramTheme: "default",
+      themePresetId: "cyberpunk",
+      themeRecipeJson: null,
+      // Icon names retain HTML terminals even when ordinary node labels use SVG text.
+      // Keep those terminals available for computed ink and actual-pixel assertions.
+      svgPipeline: "parity",
+      textMeasurementMode: "browser",
+      diagramFont: "trebuchet",
+    });
+    await page.goto(`./${hash}`, { waitUntil: "domcontentloaded" });
+    await waitForPreviewSvg(page);
+    await page.evaluate(() => document.fonts.ready);
+    const svg = page.locator(".preview-container > div").first().locator("svg.flowchart");
+    await expect(svg).toHaveCount(1);
+    const panel = svg.locator("g[data-et='node'][data-id='Panel'] > .label-container");
+    const annotation = svg.locator("g[data-et='node'][data-id='Annotation'] .bpmn-annotation-bracket");
+    const icon = svg.locator("g[data-et='node'][data-id='A'].icon-shape");
+    await expect(panel).toHaveCount(1);
+    await expect(annotation).toHaveCount(1);
+    await expect(icon.locator(".label")).toHaveText("User Icon");
+    for (const id of ["Panel", "Annotation"]) {
+      const label = svg.locator(`g[data-et='node'][data-id='${id}'] .label`);
+      await expect(label.locator("foreignObject")).toHaveCount(htmlLabels ? 1 : 0);
+      await expect(label.locator("text")).toHaveCount(htmlLabels ? 0 : 1);
+    }
+    await expect(icon.locator(".label foreignObject")).toHaveCount(1);
+    await expectCyberpunkCanvas(svg);
+    await expect(panel).toHaveCSS("fill", colors.surface);
+    await expect(panel).toHaveCSS("stroke", colors.yellow);
+    await expect(annotation).toHaveCSS("stroke", colors.yellow);
+    // The icon's name must actually sit above its frame, rather than on a panel face.
+    const labelBounds = await icon.locator(".label").boundingBox();
+    const frameBounds = await icon.locator(":scope > g[transform]").first().boundingBox();
+    expect(labelBounds).not.toBeNull();
+    expect(frameBounds).not.toBeNull();
+    expect(labelBounds!.y + labelBounds!.height).toBeLessThanOrEqual(frameBounds!.y + 1);
+    // Scope this probe to semantic names: a missing icon pack may render its own '?' glyph.
+    await expectPaintedLabels(page, svg, [
+      { text: "Panel name", role: "yellow", weight: 700 },
+      // The native BPMN annotation uses the existing Markdown SVG terminal, whose
+      // explicit normal-weight runs retain an unsupported-typography residual.
+      { text: "Annotation", role: "yellow", weight: htmlLabels ? 700 : 400 },
+      { text: "User Icon", role: "yellow", weight: 700 },
+    ], ".label text, .label foreignObject p");
+    if (!htmlLabels) {
+      await page.getByRole("button", { name: "Appearance", exact: true }).click();
+      const appearance = page.getByRole("region", { name: "Appearance", exact: true });
+      const advanced = appearance.getByTestId("theme-advanced");
+      await advanced.locator("summary").first().click();
+      const metadata = appearance.getByTestId("theme-execution-metadata");
+      await expect(metadata).toBeVisible();
+      const evidence = JSON.parse((await metadata.textContent())!).theme_execution_evidence;
+      expect(evidence.theme_status).toBe("residual");
+      expect(evidence.diagnostics).toEqual(expect.arrayContaining([
+        expect.objectContaining({ code: "unsupported-typography", target: "node-label" }),
+      ]));
+    }
     errors.assertNone();
   });
 }

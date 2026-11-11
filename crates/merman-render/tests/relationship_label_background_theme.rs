@@ -16,7 +16,7 @@ use roxmltree::{Document, Node};
 use serde_json::{Value, json};
 
 const BACKGROUND: &str = "#102537";
-const CYBERPUNK_BACKGROUND: &str = "#0B1020";
+const CYBERPUNK_BACKGROUND: &str = "#080D11";
 
 struct Case {
     family: DiagramFamilyId,
@@ -236,7 +236,7 @@ fn assert_native_html_layer_contrast(svg: &str) {
         });
     }
     let background = luminance(surface);
-    let foreground = luminance(opaque_rgb("#E2EFF7"));
+    let foreground = luminance(opaque_rgb("#EAF4F0"));
     assert!((foreground.max(background) + 0.05) / (foreground.min(background) + 0.05) >= 4.5);
 }
 
@@ -304,7 +304,7 @@ fn builtin_cyberpunk_reaches_actual_relationship_backings() {
                 1,
             );
             assert!(
-                rendered.svg().contains("fill:#E2EFF7"),
+                rendered.svg().contains("fill:#EAF4F0"),
                 "{}",
                 rendered.svg()
             );

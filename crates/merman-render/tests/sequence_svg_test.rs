@@ -683,6 +683,26 @@ fn css_property_values_for_exact_selector<'a>(
     values
 }
 
+fn contrast_ratio(foreground: &str, background: &str) -> f64 {
+    let luminance = |color| {
+        let rgba = merman_markup::theme_color::ThemeColor::parse(color)
+            .unwrap()
+            .rgba_channels();
+        let linear = |channel: f64| {
+            let channel = channel / 255.0;
+            if channel <= 0.04045 {
+                channel / 12.92
+            } else {
+                ((channel + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(rgba.red) + 0.7152 * linear(rgba.green) + 0.0722 * linear(rgba.blue)
+    };
+    let foreground = luminance(foreground);
+    let background = luminance(background);
+    (foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
+}
+
 fn assert_sequence_role_text_style(
     document: &roxmltree::Document<'_>,
     class_name: &str,
@@ -8666,8 +8686,8 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .collect();
         assert_eq!(actors.len(), 4);
         for actor in &actors {
-            assert_eq!(actor.attribute("rx"), Some("4"));
-            assert_eq!(actor.attribute("ry"), Some("4"));
+            assert_eq!(actor.attribute("rx"), Some("0"));
+            assert_eq!(actor.attribute("ry"), Some("0"));
             assert_eq!(actor.attribute("style"), Some("stroke-width:1.5px;"));
             assert_eq!(actor.attribute("filter"), None);
         }
@@ -8676,15 +8696,22 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             .filter(|n| n.has_tag_name("style"))
             .filter_map(|n| n.text())
             .collect();
-        assert!(css.contains(".messageLine0{stroke-width:1.25px;stroke-dasharray:none;}"));
-        assert!(css.contains(".messageLine1{stroke-width:1.25px;stroke-dasharray:2,2;}"));
+        assert!(css.contains(".messageLine0{stroke-width:1.5px;stroke-dasharray:none;}"));
+        assert!(css.contains(".messageLine1{stroke-width:1.5px;stroke-dasharray:2,2;}"));
         let diagram_id = doc.root_element().attribute("id").unwrap();
-        for (class, count, weight) in [
-            ("actor", 4, "600"),
-            ("messageText", 2, "500"),
-            ("noteText", 1, "500"),
-            ("labelText", 1, "500"),
-            ("loopText", 1, "500"),
+        assert_eq!(
+            css_property_values_for_exact_selector(&css, &format!("#{diagram_id} .actor"), "fill",)
+                .last()
+                .copied(),
+            Some("#161F25"),
+            "actor rectangles must retain their dark panel faces after recipe exchange"
+        );
+        for (class, count, weight, ink) in [
+            ("actor", 4, "700", "#F3E600"),
+            ("messageText", 2, "500", "#EAF4F0"),
+            ("noteText", 1, "500", "#FFE9EF"),
+            ("labelText", 1, "500", "#EAF4F0"),
+            ("loopText", 1, "500", "#EAF4F0"),
         ] {
             let labels: Vec<_> = doc
                 .descendants()
@@ -8724,19 +8751,19 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 css_property_values_for_exact_selector(&css, &selector, "fill")
                     .last()
                     .copied(),
-                Some("#E2EFF7"),
+                Some(ink),
                 "{class}: label ink must remain independent of the neon contours"
             );
         }
         for (selector, color) in [
-            (".actor", "#53DCE4"),
-            (".actor-line", "#53DCE4"),
-            (".messageLine0", "#53DCE4"),
-            (".messageLine1", "#53DCE4"),
-            (".loopLine", "#53DCE4"),
-            (".labelBox", "#53DCE4"),
-            (".note", "#F28BCB"),
-            (".activation0", "#53DCE4"),
+            (".actor", "#F3E600"),
+            (".actor-line", "#29F3EC"),
+            (".messageLine0", "#29F3EC"),
+            (".messageLine1", "#29F3EC"),
+            (".loopLine", "#FF4564"),
+            (".labelBox", "#F3E600"),
+            (".note", "#FF4564"),
+            (".activation0", "#29F3EC"),
         ] {
             assert_eq!(
                 css_property_values_for_exact_selector(
@@ -8757,7 +8784,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
         assert!(keyword.has_tag_name("polygon"));
         assert_eq!(keyword.attribute("rx"), None);
         assert_eq!(keyword.attribute("filter"), None);
-        assert_eq!(keyword.attribute("style"), Some("stroke-width:1.25px;"));
+        assert_eq!(keyword.attribute("style"), Some("stroke-width:1.5px;"));
         let activation = doc
             .descendants()
             .find(|node| node.attribute("class") == Some("activation0"))
@@ -8813,12 +8840,14 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
                 deviations,
-                if is_frame || is_message || is_lifeline {
-                    vec!["1.5"]
+                if is_frame {
+                    vec!["1"]
+                } else if is_message || is_lifeline {
+                    vec!["1.2"]
                 } else if is_note {
-                    vec!["2.5"]
+                    vec!["1.5"]
                 } else {
-                    vec!["2", "5"]
+                    vec![]
                 }
             );
             let floods: Vec<_> = filter
@@ -8829,13 +8858,13 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             assert_eq!(
                 floods,
                 if is_frame {
-                    vec!["rgba(83, 220, 228, 0.12)"]
+                    vec!["rgba(255, 69, 100, 0.14)"]
                 } else if is_message || is_lifeline {
-                    vec!["rgba(83, 220, 228, 0.16)"]
+                    vec!["rgba(41, 243, 236, 0.25)"]
                 } else if is_note {
-                    vec!["rgba(242, 139, 203, 0.12)"]
+                    vec!["rgba(255, 69, 100, 0.18)"]
                 } else {
-                    vec!["rgba(83, 220, 228, 0.2)", "rgba(83, 220, 228, 0.1)"]
+                    vec!["rgba(255, 69, 100, 0.8)", "rgba(41, 243, 236, 0.85)"]
                 }
             );
             let reference = format!("url(#{})", filter.attribute("id").unwrap());
@@ -8849,7 +8878,7 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 assert_eq!(consumers[0].attribute("class"), Some("loopLine"));
                 assert_eq!(
                     inline_style_value(consumers[0].attribute("style").unwrap(), "stroke-width"),
-                    Some("1.25px")
+                    Some("1.5px")
                 );
             } else if is_lifeline {
                 assert!(consumers[0].has_tag_name("line"));
@@ -8866,11 +8895,27 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             } else if is_note {
                 assert!(consumers[0].has_tag_name("rect"));
                 assert_eq!(consumers[0].attribute("class"), Some("note"));
-                assert_eq!(consumers[0].attribute("stroke-width"), Some("1.25"));
-                assert_eq!(consumers[0].attribute("rx"), Some("4"));
-                assert_eq!(consumers[0].attribute("ry"), Some("4"));
+                assert_eq!(consumers[0].attribute("stroke-width"), Some("1.5"));
+                assert_eq!(consumers[0].attribute("rx"), Some("0"));
+                assert_eq!(consumers[0].attribute("ry"), Some("0"));
             } else {
                 assert!(filter.attribute("id").unwrap().contains("-actor-"));
+                let offsets: Vec<_> = filter
+                    .children()
+                    .filter(|node| node.has_tag_name("feOffset"))
+                    .map(|node| {
+                        (
+                            node.attribute("dx").unwrap(),
+                            node.attribute("dy").unwrap(),
+                            node.attribute("in").unwrap(),
+                        )
+                    })
+                    .collect();
+                assert_eq!(
+                    offsets,
+                    vec![("-3", "0", "SourceAlpha"), ("4", "4", "SourceAlpha")],
+                    "actor registration offsets must remain independent of each other"
+                );
                 assert!(consumers[0].has_tag_name("rect"));
                 assert_eq!(consumers[0].attribute("class"), Some("actor actor-depth"));
                 let depth = consumers[0].parent_element().unwrap();
@@ -8910,6 +8955,205 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
         assert_eq!(evidence.theme_residual_count(), 0);
     }
     assert_eq!(outputs[0], outputs[1]);
+}
+
+#[test]
+fn sequence_public_cyberpunk_external_actor_names_and_glyph_outlines_remain_readable() {
+    use merman_render::diagram_theme::ThemePreset;
+
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::Cyberpunk)
+        .unwrap();
+    let source = r#"sequenceDiagram
+participant Panel
+actor U as Customer support operator for external request recovery
+participant B@{type: boundary} as Public request boundary for customer verification
+participant C@{type: control} as Request coordinator for external service fulfillment
+participant E@{type: entity} as Customer request entity with complete audit history
+participant D@{type: database} as Persistent request database for incident recovery
+U->>D: Read
+"#;
+    // The full preset retains residuals for special actor effects/geometry and marker paint.
+    let rendered = try_render_sequence_theme_request(
+        source,
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "look": "classic", "sequence": {"mirrorActors": true, "wrap": false}
+            })),
+        ),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let canvas = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("merman-theme-canvas-base"))
+        .and_then(|node| node.attribute("fill"))
+        .expect("painted canvas base");
+    assert_eq!(canvas, "#080D11");
+    let css: String = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect();
+    let diagram_id = doc.root_element().attribute("id").unwrap();
+    let css_paint = |selector: &str, property| {
+        css_property_values_for_exact_selector(&css, &format!("#{diagram_id} {selector}"), property)
+            .last()
+            .copied()
+            .expect("paint applied to the matching SVG terminal")
+    };
+    let face = css_paint(".actor", "fill");
+    let ink = css_paint("text.actor>tspan", "fill");
+    assert_eq!(face, "#161F25");
+    assert_eq!(ink, "#F3E600");
+    assert_eq!(css_paint(".actor", "stroke"), "#F3E600");
+    assert!(contrast_ratio(ink, canvas) >= 7.0, "exterior actor names");
+    assert!(contrast_ratio(ink, face) >= 7.0, "panel actor names");
+
+    let has_class = |node: roxmltree::Node<'_, '_>, class: &str| {
+        node.attribute("class").is_some_and(|classes| {
+            classes
+                .split_whitespace()
+                .any(|candidate| candidate == class)
+        })
+    };
+    let panels: Vec<_> = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && node.attribute("name") == Some("Panel"))
+        .collect();
+    assert_eq!(panels.len(), 2, "top and mirrored panel faces");
+    for panel in panels {
+        assert!(has_class(panel, "actor"));
+        assert!(inline_style_value(panel.attribute("style").unwrap_or_default(), "fill").is_none());
+    }
+    for (name, kind, expected_label) in [
+        (
+            "U",
+            "actor",
+            "Customer support operator for external request recovery",
+        ),
+        (
+            "B",
+            "boundary",
+            "Public request boundary for customer verification",
+        ),
+        (
+            "C",
+            "control",
+            "Request coordinator for external service fulfillment",
+        ),
+        (
+            "E",
+            "entity",
+            "Customer request entity with complete audit history",
+        ),
+        (
+            "D",
+            "database",
+            "Persistent request database for incident recovery",
+        ),
+    ] {
+        let participant = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("participant")
+                    && node.attribute("data-id") == Some(name)
+            })
+            .unwrap();
+        assert_eq!(participant.attribute("data-type"), Some(kind));
+        assert!(
+            !participant
+                .descendants()
+                .any(|node| node.has_tag_name("rect")),
+            "{kind}: exercise the unbacked name, not a boxed participant"
+        );
+        if kind == "database" {
+            let body = participant
+                .descendants()
+                .find(|node| node.has_tag_name("path"))
+                .expect("database cylinder body");
+            let wrapper = body.parent_element().unwrap();
+            assert!(has_class(wrapper, "actor"));
+            for terminal in [body, wrapper] {
+                for property in ["fill", "stroke"] {
+                    assert_eq!(terminal.attribute(property), None);
+                    assert!(
+                        inline_style_value(
+                            terminal.attribute("style").unwrap_or_default(),
+                            property
+                        )
+                        .is_none(),
+                        "database: the cylinder must inherit its dark face and yellow outline"
+                    );
+                }
+            }
+        }
+        let labels: Vec<_> = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && has_class(*node, "actor")
+                    && node
+                        .descendants()
+                        .any(|node| node.is_text() && node.text() == Some(expected_label))
+            })
+            .collect();
+        assert_eq!(labels.len(), 2, "{kind}: top and mirrored external names");
+        for label in labels {
+            assert_eq!(
+                inline_style_value(label.attribute("style").unwrap(), "font-weight"),
+                Some("700")
+            );
+            assert!(label.children().any(|node| node.has_tag_name("tspan")));
+            for terminal in label.descendants().filter(|node| node.is_element()) {
+                assert_eq!(terminal.attribute("fill"), None);
+                assert!(
+                    inline_style_value(terminal.attribute("style").unwrap_or_default(), "fill")
+                        .is_none(),
+                    "{kind}: inline ink must not override the yellow text rule"
+                );
+            }
+            assert!(
+                label
+                    .ancestors()
+                    .all(|node| node.attribute("filter").is_none())
+            );
+        }
+    }
+    for (class, tag) in [
+        ("actor-man", "circle"),
+        ("actor-man", "line"),
+        ("actor", "circle"),
+        ("actor", "line"),
+    ] {
+        let bodies: Vec<_> = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name(tag)
+                    && node.ancestors().skip(1).any(|node| has_class(node, class))
+            })
+            .collect();
+        assert!(!bodies.is_empty(), "{class} {tag}: actual glyph bodies");
+        assert_eq!(css_paint(&format!(".{class} {tag}"), "fill"), face);
+        assert_eq!(css_paint(&format!(".{class} {tag}"), "stroke"), "#F3E600");
+        for body in bodies {
+            for property in ["fill", "stroke"] {
+                assert_eq!(body.attribute(property), None);
+                assert!(
+                    inline_style_value(body.attribute("style").unwrap_or_default(), property)
+                        .is_none(),
+                    "{class} {tag}: the typed body paint must reach the glyph"
+                );
+            }
+        }
+    }
+    let completion = rendered.into_completion();
+    assert!(
+        merman_render::__private::family_evidence(completion.report()).theme_residual_count() > 0,
+        "readable external names must not certify unsupported actor facets"
+    );
 }
 
 #[test]

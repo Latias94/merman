@@ -193,8 +193,8 @@ fn native_cyberpunk_pairs_class_note_surface_and_ink_in_both_label_modes() {
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
-        assert_note_surface(rendered.svg(), "#202B46", "#F28BCB");
-        assert_note_ink(rendered.svg(), html, "#E2EFF7");
+        assert_note_surface(rendered.svg(), "#351C29", "#FF4564");
+        assert_note_ink(rendered.svg(), html, "#FFE9EF");
     }
 }
 

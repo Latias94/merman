@@ -376,6 +376,22 @@ mod tests {
         )
     }
 
+    fn screen_color(fill: &str, opacity: f64, canvas: &str) -> String {
+        let foreground = merman_markup::theme_color::ThemeColor::parse(fill)
+            .unwrap()
+            .rgba_channels();
+        let background = merman_markup::theme_color::ThemeColor::parse(canvas)
+            .unwrap()
+            .rgba_channels();
+        let channel = |front: f64, back: f64| back + front * opacity * (1.0 - back / 255.0);
+        format!(
+            "rgb({}, {}, {})",
+            channel(foreground.red, background.red),
+            channel(foreground.green, background.green),
+            channel(foreground.blue, background.blue)
+        )
+    }
+
     fn is_native_candidate(preset: ThemePreset) -> bool {
         matches!(
             preset,
@@ -566,7 +582,7 @@ mod tests {
         );
         for (preset, note_id) in [
             (ThemePreset::Brutalist, "flowchart-basic-shadows"),
-            (ThemePreset::Cyberpunk, "flowchart-basic-glow"),
+            (ThemePreset::Cyberpunk, "flowchart-basic-signal-depth"),
         ] {
             let descriptor = catalog
                 .iter()
@@ -1006,7 +1022,7 @@ mod tests {
         let flowchart = imported.resolve(DiagramFamilyId::FLOWCHART);
         assert_eq!(
             resolved_solid_stroke(&flowchart, ThemeTarget::Node),
-            "#123456"
+            "#F3E600"
         );
         assert_eq!(
             resolved_solid_stroke(&flowchart, ThemeTarget::Edge),
@@ -1015,17 +1031,21 @@ mod tests {
         let sequence = imported.resolve(DiagramFamilyId::SEQUENCE);
         assert_eq!(
             resolved_solid_stroke(&sequence, ThemeTarget::Actor),
+            "#F3E600"
+        );
+        assert_eq!(
+            resolved_solid_stroke(&sequence, ThemeTarget::Lifeline),
             "#123456"
         );
         assert_eq!(
             resolved_solid_fill(&sequence, ThemeTarget::ActorLabel),
-            "#E2EFF7"
+            "#F3E600"
         );
         for (resolved, target, expected) in [
-            (&flowchart, ThemeTarget::NodeLabel, "#E2EFF7"),
-            (&flowchart, ThemeTarget::EdgeLabel, "#E2EFF7"),
-            (&sequence, ThemeTarget::MessageLabel, "#E2EFF7"),
-            (&sequence, ThemeTarget::NoteLabel, "#E2EFF7"),
+            (&flowchart, ThemeTarget::NodeLabel, "#F3E600"),
+            (&flowchart, ThemeTarget::EdgeLabel, "#EAF4F0"),
+            (&sequence, ThemeTarget::MessageLabel, "#EAF4F0"),
+            (&sequence, ThemeTarget::NoteLabel, "#FFE9EF"),
         ] {
             assert_eq!(resolved_solid_fill(resolved, target), expected);
         }
@@ -1034,7 +1054,7 @@ mod tests {
                 &imported.resolve(DiagramFamilyId::MINDMAP),
                 ThemeTarget::NodeLabel,
             ),
-            "#0B1020",
+            "#080D11",
             "filled-category ink must stay independent of neon contours"
         );
 
@@ -1054,6 +1074,75 @@ mod tests {
         assert_ne!(
             spec.effects, changed.effects,
             "glows share the declared neon role"
+        );
+    }
+
+    #[test]
+    fn cyberpunk_role_color_edits_reach_specialized_rules_after_exchange() {
+        use merman_theme_contract::*;
+
+        let compiler = DiagramThemeCompiler::new();
+        let ThemeRecipeV1::Design { mut design } =
+            compiler.export_preset(ThemePreset::Cyberpunk).unwrap()
+        else {
+            panic!("editable preset design")
+        };
+        for (id, color) in [
+            ("actor-background", "#102030"),
+            ("actor-border", "#a1b2c3"),
+            ("actor-text", "#d4e5f6"),
+            ("border", "#123456"),
+            ("line", "#654321"),
+            ("note-border", "#f1e2d3"),
+            ("activation-border", "#987654"),
+        ] {
+            design.tokens.get_mut(id).unwrap().value =
+                ThemeDesignTokenValueV1::Color(ThemeValueV1::Literal(color.to_owned()));
+        }
+        let encoded = serde_json::to_vec(&ThemeRecipeV1::Design { design }).unwrap();
+        let imported = compiler
+            .compile_recipe(serde_json::from_slice(&encoded).unwrap())
+            .unwrap();
+        let sequence = imported.resolve(DiagramFamilyId::SEQUENCE);
+        for (target, color) in [
+            (ThemeTarget::Actor, "#102030"),
+            (ThemeTarget::ActorLabel, "#d4e5f6"),
+            (ThemeTarget::Lifeline, "#654321"),
+        ] {
+            assert_eq!(resolved_solid_fill(&sequence, target), color, "{target:?}");
+        }
+        for (target, color) in [
+            (ThemeTarget::Actor, "#a1b2c3"),
+            (ThemeTarget::Message, "#654321"),
+            (ThemeTarget::Lifeline, "#654321"),
+            (ThemeTarget::Note, "#f1e2d3"),
+            (ThemeTarget::Activation, "#987654"),
+            (ThemeTarget::LoopLabelBackground, "#123456"),
+        ] {
+            assert_eq!(
+                resolved_solid_stroke(&sequence, target),
+                color,
+                "{target:?}"
+            );
+        }
+        let flowchart = imported.resolve(DiagramFamilyId::FLOWCHART);
+        assert_eq!(
+            resolved_solid_stroke(&flowchart, ThemeTarget::Node),
+            "#123456"
+        );
+        assert_eq!(
+            resolved_solid_stroke(&flowchart, ThemeTarget::Edge),
+            "#654321"
+        );
+        assert_eq!(
+            resolved_solid_fill(&flowchart, ThemeTarget::NodeLabel),
+            "#F3E600",
+            "changing an outline must not implicitly change the name ink"
+        );
+        let zenuml = imported.resolve(DiagramFamilyId::ZENUML);
+        assert_eq!(
+            resolved_solid_stroke(&zenuml, ThemeTarget::Lifeline),
+            "#654321"
         );
     }
 
@@ -1098,27 +1187,65 @@ mod tests {
                 let resolved = theme.resolve(family);
                 for &target in targets {
                     let text = resolved.text_style(target, ThemeVariant::Default, None);
-                    let expected = if matches!(
-                        target,
-                        ThemeTarget::AxisTitle | ThemeTarget::AxisLabel | ThemeTarget::Legend
-                    ) {
-                        "#92A9BF"
-                    } else {
-                        "#E2EFF7"
+                    let expected = match (family, target) {
+                        (
+                            _,
+                            ThemeTarget::AxisTitle | ThemeTarget::AxisLabel | ThemeTarget::Legend,
+                        ) => "#A5BCC0",
+                        (DiagramFamilyId::FLOWCHART, ThemeTarget::NodeLabel)
+                        | (DiagramFamilyId::SEQUENCE, ThemeTarget::ActorLabel) => "#F3E600",
+                        (DiagramFamilyId::SEQUENCE, ThemeTarget::NoteLabel) => "#FFE9EF",
+                        (DiagramFamilyId::XY_CHART, ThemeTarget::Title) => "#F3E600",
+                        _ => "#EAF4F0",
                     };
-                    assert_eq!(
-                        text.fill().and_then(solid_color).as_deref(),
-                        Some(expected),
-                        "{family} {target:?} ink"
+                    let foreground = text.fill().and_then(solid_color).unwrap();
+                    assert_eq!(foreground, expected, "{family} {target:?} ink");
+                    // Include the brightest overlap of the radial wash and both grid lines.
+                    let canvas = solid_color(theme.spec().canvas().base()).unwrap();
+                    let canvas = screen_color("#F3E600", 0.04, &canvas);
+                    let canvas = screen_color("#29F3EC", 0.035, &canvas);
+                    let canvas = screen_color("#29F3EC", 0.035, &canvas);
+                    let backing = match target {
+                        ThemeTarget::NodeLabel => resolved_solid_fill(&resolved, ThemeTarget::Node),
+                        ThemeTarget::ActorLabel => {
+                            resolved_solid_fill(&resolved, ThemeTarget::Actor)
+                        }
+                        ThemeTarget::NoteLabel => resolved_solid_fill(&resolved, ThemeTarget::Note),
+                        ThemeTarget::LoopLabel => {
+                            resolved_solid_fill(&resolved, ThemeTarget::LoopLabelBackground)
+                        }
+                        ThemeTarget::ClusterLabel => {
+                            resolved_solid_fill(&resolved, ThemeTarget::Cluster)
+                        }
+                        _ => canvas,
+                    };
+                    let contrast = contrast_ratio(&foreground, &backing);
+                    assert!(
+                        contrast >= 7.0,
+                        "{family} {target:?}: {contrast:.2}:1 ({foreground} on {backing})"
                     );
+                    if matches!(target, ThemeTarget::NodeLabel | ThemeTarget::ActorLabel) {
+                        let canvas = solid_color(theme.spec().canvas().base()).unwrap();
+                        assert!(
+                            contrast_ratio(&foreground, &canvas) >= 7.0,
+                            "external {family} {target:?} names must stay readable without a panel"
+                        );
+                    }
                     assert!(
                         text.effect_resolution().value().is_none(),
                         "{family} {target:?} must not glow"
                     );
                 }
             }
+            let sequence = theme.resolve(DiagramFamilyId::SEQUENCE);
+            let lifeline = resolved_solid_stroke(&sequence, ThemeTarget::Lifeline);
+            let canvas = solid_color(theme.spec().canvas().base()).unwrap();
+            assert!(
+                contrast_ratio(&lifeline, &canvas) >= 3.0,
+                "lifelines need an independent visible signal color"
+            );
             let chart = theme.resolve(DiagramFamilyId::XY_CHART);
-            for (index, expected) in ["#53DCE4", "#F28BCB", "#E8C078", "#53DCE4"]
+            for (index, expected) in ["#F3E600", "#29F3EC", "#FF4564", "#F3E600"]
                 .into_iter()
                 .enumerate()
             {
@@ -1256,9 +1383,9 @@ mod tests {
         assert_eq!(
             sized_roles,
             [
-                (Some("xychart"), "legend"),
                 (Some("xychart"), "title"),
                 (Some("xychart"), "axis-title"),
+                (Some("xychart"), "legend"),
             ],
             "role sizes must not leak into other families"
         );
@@ -1314,8 +1441,8 @@ mod tests {
         };
         assert_eq!(color_space.as_deref(), Some("srgb"));
         assert_eq!(first.as_deref(), Some("source-graphic"));
-        assert_eq!(second.as_deref(), Some("previous"));
-        assert_eq!((*first_blur, *second_blur), (2.0, 5.0));
+        assert_eq!(second.as_deref(), Some("source-graphic"));
+        assert_eq!((*first_blur, *second_blur), (0.0, 0.0));
         assert_ne!(
             edge_id, id,
             "edge glow must not reuse the two-stage shape graph"
@@ -1337,11 +1464,11 @@ mod tests {
         assert_eq!(input.as_deref(), Some("source-graphic"));
         assert_eq!(
             (*offset_x, *offset_y, *blur_radius, *spread),
-            (0.0, 0.0, 1.5, 0.0)
+            (0.0, 0.0, 1.2, 0.0)
         );
         assert_eq!(
             ThemeColorValue::parse(color).unwrap(),
-            ThemeColorValue::parse("rgba(83, 220, 228, 0.16)").unwrap()
+            ThemeColorValue::parse("rgba(41, 243, 236, 0.25)").unwrap()
         );
         let scoped_targets: Vec<_> = complete_spec
             .styles
@@ -1399,7 +1526,7 @@ mod tests {
             let flowchart = theme.resolve(DiagramFamilyId::FLOWCHART);
             let edge = flowchart.style(ThemeTarget::Edge, ThemeVariant::Default, None);
             assert_eq!(edge.effect_resolution().value(), Some(edge_id));
-            assert_eq!(edge.stroke_width(), Some(1.25));
+            assert_eq!(edge.stroke_width(), Some(1.5));
             let graph = theme
                 .spec()
                 .effects()
@@ -1417,9 +1544,9 @@ mod tests {
                     input: crate::diagram_theme::EffectInput::SourceGraphic,
                     offset_x: 0.0,
                     offset_y: 0.0,
-                    blur_radius: 1.5,
+                    blur_radius: 1.2,
                     spread: 0.0,
-                    color: crate::diagram_theme::ThemeColorValue::parse("rgba(83, 220, 228, 0.16)")
+                    color: crate::diagram_theme::ThemeColorValue::parse("rgba(41, 243, 236, 0.25)")
                         .unwrap(),
                 }]
             );
@@ -1635,7 +1762,7 @@ mod tests {
             (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
             (ThemePreset::Brutalist, "#f6f3e9", "#000000", "#FF6B35"),
             (ThemePreset::Spotless, "#EDE8DC", "#2c2416", "#8b5e34"),
-            (ThemePreset::Cyberpunk, "#0B1020", "#53DCE4", "#22d3ee"),
+            (ThemePreset::Cyberpunk, "#080D11", "#29F3EC", "#F3E600"),
             (ThemePreset::Ghibli, "#FAF5E8", "#637261", "#EEF3E3"),
         ];
 
@@ -1662,7 +1789,7 @@ mod tests {
                 Some(if preset == ThemePreset::Ghibli {
                     "#556F50"
                 } else if preset == ThemePreset::Cyberpunk {
-                    "#53DCE4"
+                    "#F3E600"
                 } else {
                     first_series
                 })
@@ -1740,8 +1867,16 @@ mod tests {
                 &theme,
                 DiagramFamilyId::SEQUENCE,
                 ThemeTarget::Lifeline,
-                Some(palette.actor_border),
-                Some(palette.actor_border),
+                Some(if preset == ThemePreset::Cyberpunk {
+                    palette.line
+                } else {
+                    palette.actor_border
+                }),
+                Some(if preset == ThemePreset::Cyberpunk {
+                    palette.line
+                } else {
+                    palette.actor_border
+                }),
             );
             assert_style(
                 &theme,
@@ -1936,7 +2071,7 @@ mod tests {
                         Some("#556F50")
                     } else if preset == ThemePreset::Cyberpunk && target == ThemeTarget::ChartSeries
                     {
-                        Some("#53DCE4")
+                        Some("#F3E600")
                     } else {
                         palette.series.first().copied()
                     },

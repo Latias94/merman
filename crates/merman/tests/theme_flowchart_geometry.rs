@@ -149,15 +149,15 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
     use merman::svg::ThemePreset;
     let compiler = DiagramThemeCompiler::new();
     let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
-    let rounded = compiler.compile_recipe(recipe.clone()).unwrap();
-    let mut square_recipe = serde_json::to_value(recipe).unwrap();
+    let square = compiler.compile_recipe(recipe.clone()).unwrap();
+    let mut rounded_recipe = serde_json::to_value(recipe).unwrap();
     assert_eq!(
-        square_recipe["design"]["tokens"]["body-radius"]["value"], 4.0,
+        rounded_recipe["design"]["tokens"]["body-radius"]["value"], 0.0,
         "the public design must expose its shared corner radius"
     );
-    square_recipe["design"]["tokens"]["body-radius"]["value"] = serde_json::json!(0.0);
-    let square = compiler
-        .compile_recipe(serde_json::from_value(square_recipe).unwrap())
+    rounded_recipe["design"]["tokens"]["body-radius"]["value"] = serde_json::json!(4.0);
+    let rounded = compiler
+        .compile_recipe(serde_json::from_value(rounded_recipe).unwrap())
         .unwrap();
     for (source, has_corners) in [
         (
@@ -200,7 +200,7 @@ fn exported_cyberpunk_corners_change_rectangle_pixels_and_preserve_diamonds() {
                 .count();
             assert!(
                 changed_pixels > 100,
-                "public 4px corners must affect actual native pixels"
+                "editing public square corners to 4px must affect actual native pixels"
             );
         } else {
             assert!(
@@ -219,7 +219,7 @@ fn exported_cyberpunk_label_weights_match_source_owned_native_paint() {
     let strong = compiler.compile_recipe(recipe.clone()).unwrap();
     let mut light_recipe = serde_json::to_value(recipe).unwrap();
     for (target, token, weight) in [
-        ("node-label", "label-weight", 600.0),
+        ("node-label", "label-weight", 700.0),
         ("edge-label", "secondary-label-weight", 500.0),
     ] {
         assert_eq!(
@@ -245,7 +245,7 @@ fn exported_cyberpunk_label_weights_match_source_owned_native_paint() {
         .unwrap();
     let source = "---\nconfig:\n  look: classic\n  htmlLabels: false\n---\nflowchart LR\nA[Weight Alpha] -->|Weight Gamma| B[Weight Beta]";
     let overridden = format!(
-        "{source}\nstyle A font-weight:600\nstyle B font-weight:600\nlinkStyle 0 font-weight:500"
+        "{source}\nstyle A font-weight:700\nstyle B font-weight:700\nlinkStyle 0 font-weight:500"
     );
     let render = |theme, source: &str| {
         let RenderOutput::Document(Some(document)) = Renderer::new()
@@ -267,7 +267,7 @@ fn exported_cyberpunk_label_weights_match_source_owned_native_paint() {
     );
     assert!(
         strong_pixels.2 == overridden_pixels.2,
-        "source-owned and typed node weight 600 and edge weight 500 must produce identical native paint"
+        "source-owned and typed node weight 700 and edge weight 500 must produce identical native paint"
     );
     let light_pixels = render(light, source);
     assert!(

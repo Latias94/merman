@@ -504,7 +504,7 @@
     },
     "themes": {
       "brutalist": "Bold color blocks, hard black outlines, and offset shadows give diagrams the direct weight of a printed sign.",
-      "cyberpunk": "Layered dark surfaces and focused neon accents give diagrams the atmosphere of a night-time control panel.",
+      "cyberpunk": "Warning-yellow lettering and contours define dark panels, with cyan signals and hard red/cyan registration offsets against a dark technical canvas.",
       "ghibli": "Botanical colors, warm painted-paper surfaces, and soft ink contours bring the feel of an illustrated field journal.",
       "spotless": "Cream paper, fine ruled lines, and measured dark ink recall a carefully drafted technical manual.",
       "editor": "A restrained reading pair with neutral surfaces and focused color accents for light and dark editor workspaces.",
@@ -629,7 +629,7 @@
   },
   "themeApplicationNotes": {
     "flowchart-basic-shadows": "Hard node shadows work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
-    "flowchart-basic-glow": "Node glow works with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence."
+    "flowchart-basic-signal-depth": "Hard cyan/red panel offsets work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence."
   },
   "appearance": {
     "title": "Appearance",
@@ -820,7 +820,7 @@
     "collectionHint": "Each design previews several diagrams. A diagram filter brings that type forward while keeping other examples in view.",
     "mechanisms": {
       "brutalist": "Hard outlines · bold color blocks · offset shadows",
-      "cyberpunk": "Layered dark surfaces · focused neon · selective glow",
+      "cyberpunk": "Yellow lettering and contours · dark panels · hard red/cyan registration",
       "ghibli": "Botanical palette · painted-paper warmth · soft ink contours",
       "spotless": "Cream paper · ruled lines · technical lettering",
       "editor": "Neutral reading surfaces · restrained accents · paired light/dark",

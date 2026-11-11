@@ -6,7 +6,7 @@ use merman::{
     TargetAdmissionStatus,
 };
 
-fn assert_recipe_round_trip(source: &str, effects: u32) {
+fn assert_recipe_round_trip(source: &str, effects: u32, shadows: u32) {
     let compiler = DiagramThemeCompiler::new();
     let saved =
         serde_json::to_vec(&compiler.export_preset(ThemePreset::Cyberpunk).unwrap()).unwrap();
@@ -47,13 +47,10 @@ fn assert_recipe_round_trip(source: &str, effects: u32) {
             "admission={:?}; source={source}",
             png.admission(),
         );
-        assert_eq!(
-            png.export_report()
-                .native_filter_receipt()
-                .unwrap()
-                .reference_count(),
-            effects
-        );
+        let receipt = png.export_report().native_filter_receipt().unwrap();
+        assert_eq!(receipt.filter_count(), effects);
+        assert_eq!(receipt.reference_count(), effects);
+        assert_eq!(receipt.drop_shadow_count(), shadows);
         outputs.push((document.svg().to_owned(), png.bytes().to_vec()));
     }
     assert_eq!(outputs[0].0, outputs[1].0);
@@ -68,6 +65,7 @@ fn complete_flowchart_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
         include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
         7,
+        11,
     );
 }
 
@@ -76,6 +74,7 @@ fn complete_sequence_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
         include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
         13,
+        17,
     );
 }
 
@@ -83,6 +82,7 @@ fn complete_sequence_public_recipe_round_trip_preserves_artifacts() {
 fn complete_xychart_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
         include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
+        10,
         10,
     );
 }

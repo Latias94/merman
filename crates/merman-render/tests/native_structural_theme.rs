@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 const ID: &str = "native-structural";
 // Canvas, surface, surface-alt, border, line, accent. Ghibli distinguishes every role;
-// Cyberpunk also exercises the dark preset's linked neon colors.
+// Cyberpunk also exercises the dark preset's distinct signal colors.
 #[cfg(any(
     feature = "diagram-er",
     feature = "diagram-requirement",
@@ -32,7 +32,7 @@ const PRESETS: [(ThemePreset, [&str; 6]); 2] = [
     (
         ThemePreset::Cyberpunk,
         [
-            "#0B1020", "#151E35", "#202B46", "#53DCE4", "#53DCE4", "#F28BCB",
+            "#080D11", "#161F25", "#253139", "#F3E600", "#29F3EC", "#FF4564",
         ],
     ),
     (
@@ -439,7 +439,7 @@ mod treemap {
         const SOURCE: &str =
             "treemap\n\"Section A\"\n  \"Leaf A\": 42\n\"Section B\"\n  \"Leaf B\": 24\n";
         for (preset, fills, ink) in [
-            (ThemePreset::Cyberpunk, ["#67e8f9", "#f9a8d4"], "#000000"),
+            (ThemePreset::Cyberpunk, ["#F3E600", "#29F3EC"], "#000000"),
             (ThemePreset::Ghibli, ["#9bc5a1", "#efbc88"], "#314A3E"),
         ] {
             let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();

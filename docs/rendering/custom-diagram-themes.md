@@ -648,8 +648,9 @@ Available built-in designs select their catalog preset IDs, and their project ex
 presets directly. The added preset entries expose the canonical complete v1 recipe JSON exported by
 the active runtime, retaining both appearances for a paired design. Paper Cut, Carbon Copy and
 Pop Art share their canonical recipes with the built-in presets. The JSON tab keeps these complete
-documents editable. Cyberpunk uses neutral text over layered dark panels, with restrained cyan
-and magenta glow on contours and connections. Ghibli pairs warm paper and fine fibers with sage
+documents editable. Cyberpunk uses dark Flowchart and actor panels with warning-yellow names and
+contours, hard red/cyan registration edges, and cyan connections over a dark technical canvas. Canvas
+annotations use bright neutral ink, and all labels stay free of glow. Ghibli pairs warm paper and fine fibers with sage
 surfaces, forest ink and independent chart pigments. Both have dedicated Flowchart, Sequence and
 XY Chart styling, and Ghibli retains dedicated Pie styling. Brutalist keeps its bold outlines and
 hard shadows. Inclusion in the library does not establish output qualification.
@@ -1087,9 +1088,14 @@ families keep their own Clear behavior; for example, Quadrant point Clear restor
 
 Discovery for Flowchart/Swimlane Node radius remains `conditional`: the query does not include
 individual shape occurrences. Use execution evidence for the actual input. Cyberpunk's exported
-complete recipe contains an ordinary Flowchart Node `radius: 10` rule; import preserves this rule
+complete recipe contains an ordinary Flowchart Node `radius: 0` rule; import preserves this rule
 without enumerating node ordinals or substituting a different preset. This does not qualify the
 complete reference appearance.
+
+Some exterior names use different text terminals. For example, native SVG BPMN annotation labels
+retain the Markdown terminal's normal-weight runs and report `unsupported-typography` for a requested
+label weight; the HTML-label path applies that weight. Cyberpunk keeps its yellow ink readable in
+both paths. A readable label does not clear the remaining typography or shape-effect residuals.
 
 ## Start with a small theme
 
@@ -1353,6 +1359,11 @@ const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", { theme: recipe });
 const saved = JSON.stringify(recipe);
 ```
 
+Cyberpunk's `warning-yellow` token links panel names and contours; `neon-cyan` links connections,
+lifelines, activations and the cyan registration edge. Editing one keeps the other signal colors
+independent. Chart signal colors and filled-category palettes have separate bindings, so changing
+a panel color does not require recoloring Pie labels or their backgrounds.
+
 Token labels, descriptions, and groups organize editor controls without changing render identity.
 To customize one consumer independently, replace its reference with a local copy of the authored
 value. Keep nested references that should still follow other shared values. Imported `complete_spec`
@@ -1496,13 +1507,13 @@ viewBox without changing the plot layout, including for horizontal or vertical f
 Unsupported effect primitives retain residuals; SVG emission alone does not certify a native
 export target.
 
-The public Cyberpunk recipe uses these kind selectors and a three-color cycle: cyan
-`#53DCE4`, magenta `#F28BCB`, amber `#E8C078`. Bars have 35% fill opacity, a 1.25px border and
-a restrained glow with Gaussian sigma 2px; lines have a 2px stroke and sigma 1.5px glow.
+The public Cyberpunk recipe uses these kind selectors and a three-color cycle: warning yellow
+`#F3E600`, signal cyan `#29F3EC`, and alert red `#FF4564`. Bars have 85% fill opacity and a
+1.25px border; lines have a 2px stroke. Both use a fine halo with Gaussian sigma 1px at 0.18 opacity.
 The cycle follows global series order
 and repeats after the third series. Saving the preset includes these rules and effect graphs.
-The title uses neutral ink (`#E2EFF7`, 18px, weight 600); axes and the 12px legend use muted
-ink (`#92A9BF`). Axis titles use 13px at weight 500. Tick-label sizes retain their baseline.
+The title uses warning yellow (18px, weight 700); axes and the 12px legend use bright secondary
+ink (`#A5BCC0`). Axis titles use 13px at weight 500. Tick-label sizes retain their baseline.
 Labels have no glow. These values survive preset export and fresh import. Bounded scene
 observations do not qualify every input or the full Cyberpunk design. Public qualification
 cells remain empty.

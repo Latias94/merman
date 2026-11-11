@@ -118,14 +118,14 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                 };
                 let xml = roxmltree::Document::parse(output.svg()).unwrap();
                 for (text, size, weight, fill) in [
-                    (title, "18", Some("600"), "#E2EFF7"),
-                    (x_title, "13", Some("500"), "#92A9BF"),
-                    (y_title, "13", Some("500"), "#92A9BF"),
-                    (legend, "12", None, "#92A9BF"),
-                    ("A", "14", Some("500"), "#92A9BF"),
-                    ("B", "14", Some("500"), "#92A9BF"),
-                    ("0", "14", Some("500"), "#92A9BF"),
-                    ("10", "14", Some("500"), "#92A9BF"),
+                    (title, "18", Some("700"), "#F3E600"),
+                    (x_title, "13", Some("500"), "#A5BCC0"),
+                    (y_title, "13", Some("500"), "#A5BCC0"),
+                    (legend, "12", None, "#A5BCC0"),
+                    ("A", "14", Some("500"), "#A5BCC0"),
+                    ("B", "14", Some("500"), "#A5BCC0"),
+                    ("0", "14", Some("500"), "#A5BCC0"),
+                    ("10", "14", Some("500"), "#A5BCC0"),
                 ] {
                     let node = xml
                         .descendants()
@@ -145,7 +145,7 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                     assert!(
                         node.ancestors()
                             .all(|node| node.attribute("filter").is_none()),
-                        "{orientation}/{text}: neutral text must stay unfiltered"
+                        "{orientation}/{text}: role text must stay unfiltered"
                     );
                 }
                 let tick = xml
@@ -166,7 +166,7 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                         .any(|n| n.attribute("class") == Some("ticks"))
                     {
                         tick_count += 1;
-                        assert_eq!(path.attribute("stroke"), Some("#92A9BF"));
+                        assert_eq!(path.attribute("stroke"), Some("#A5BCC0"));
                         assert_eq!(
                             path.attribute("opacity"),
                             Some("0.35"),
@@ -187,14 +187,14 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                 #[cfg(all(feature = "png", feature = "pdf"))]
                 {
                     let (width, height, buffer) = native_role_pixels(&renderer, &source, theme);
-                    for rgb in [[226, 239, 247], [146, 169, 191]] {
+                    for rgb in [[243, 230, 0], [165, 188, 192]] {
                         assert!(
                             buffer
                                 .as_chunks::<4>()
                                 .0
                                 .iter()
                                 .any(|pixel| pixel[..3] == rgb),
-                            "{orientation}: neutral role ink {rgb:?} must paint native pixels"
+                            "{orientation}: role ink {rgb:?} must paint native pixels"
                         );
                     }
                     pixels.push((width, height, buffer));
