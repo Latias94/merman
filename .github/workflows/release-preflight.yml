@@ -796,9 +796,9 @@ jobs:
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
-          python3 scripts/apple_package.py --output-dir target/apple-package --version "$VERSION"
-          python3 scripts/apple_qualify.py --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
-            --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
+          python3 scripts/apple_package.py --output-dir "$RUNNER_TEMP/apple-package" --version "$VERSION"
+          python3 scripts/apple_qualify.py --package-archive "$RUNNER_TEMP/apple-package/Merman-swiftpm-v$VERSION.zip" \
+            --work-dir "$RUNNER_TEMP/apple-qualification" --version "$VERSION" --simulator --compare-original
 
       - name: Qualify controlled HTTPS SwiftPM handoff and checksum rejection
         timeout-minutes: 45
@@ -807,7 +807,7 @@ jobs:
           SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
         run: |
           python3 platforms/apple/tests/qualify_remote.py \
-            --work-dir target/apple-https-qualification --version "$VERSION" --source-commit "$SOURCE_SHA" \
+            --work-dir "$RUNNER_TEMP/apple-https-qualification" --version "$VERSION" --source-commit "$SOURCE_SHA" \
             --xcframework platforms/apple/Merman.xcframework
 
       - name: Retain controlled HTTPS resolution and consumer evidence
@@ -817,11 +817,11 @@ jobs:
           name: preflight-apple-https-qualification
           if-no-files-found: error
           path: |
-            target/apple-https-qualification/qualification.json
-            target/apple-https-qualification/*.log
-            target/apple-https-qualification/proof/qualification.json
-            target/apple-https-qualification/proof/installed/*.json
-            target/apple-https-qualification/proof/installed/*/consumer/Package.resolved
+            ${{ runner.temp }}/apple-https-qualification/qualification.json
+            ${{ runner.temp }}/apple-https-qualification/*.log
+            ${{ runner.temp }}/apple-https-qualification/proof/qualification.json
+            ${{ runner.temp }}/apple-https-qualification/proof/installed/*.json
+            ${{ runner.temp }}/apple-https-qualification/proof/installed/*/consumer/Package.resolved
 
   web-npm-dry-run:
     needs: validate-inputs

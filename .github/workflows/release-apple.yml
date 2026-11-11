@@ -191,7 +191,7 @@ jobs:
           SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
           GH_REPO: ${{ github.repository }}
         run: |
-          python3 scripts/apple_package.py --output-dir target/apple-package --version "$VERSION" \
+          python3 scripts/apple_package.py --output-dir "$RUNNER_TEMP/apple-package" --version "$VERSION" \
             --source-commit "$SOURCE_SHA" \
             --artifact-url "https://github.com/$GH_REPO/releases/download/$RELEASE_TAG/Merman.xcframework-${RELEASE_TAG}.zip"
 
@@ -228,8 +228,8 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           python3 scripts/apple_qualify.py \
-            --package-archive "target/apple-package/Merman-swiftpm-v$VERSION.zip" \
-            --work-dir target/apple-qualification --version "$VERSION" --simulator --compare-original
+            --package-archive "$RUNNER_TEMP/apple-package/Merman-swiftpm-v$VERSION.zip" \
+            --work-dir "$RUNNER_TEMP/apple-qualification" --version "$VERSION" --simulator --compare-original
 
       - name: Qualify controlled HTTPS SwiftPM handoff and checksum rejection
         id: qualify-https
@@ -239,7 +239,7 @@ jobs:
           SOURCE_SHA: ${{ needs.validate-inputs.outputs.source_sha }}
         run: |
           python3 platforms/apple/tests/qualify_remote.py \
-            --work-dir target/apple-https-qualification --version "$VERSION" --source-commit "$SOURCE_SHA" \
+            --work-dir "$RUNNER_TEMP/apple-https-qualification" --version "$VERSION" --source-commit "$SOURCE_SHA" \
             --xcframework platforms/apple/Merman.xcframework
 
       - name: Shut down workflow-owned simulator without replacing qualification failures
@@ -262,7 +262,8 @@ jobs:
           except (OSError, subprocess.SubprocessError) as error:
               report.update(status="cleanup-warning", error=str(error))
               print(f"::warning::Simulator cleanup failed after qualification: {error}")
-          Path("target/apple-simulator-cleanup.json").write_text(json.dumps(report, indent=2) + "\n")
+          (Path(os.environ["RUNNER_TEMP"]) / "apple-simulator-cleanup.json").write_text(
+              json.dumps(report, indent=2) + "\n")
           PY
 
       - name: Retain controlled HTTPS resolution and consumer evidence
@@ -272,11 +273,11 @@ jobs:
           name: merman-apple-https-qualification
           if-no-files-found: error
           path: |
-            target/apple-https-qualification/qualification.json
-            target/apple-https-qualification/*.log
-            target/apple-https-qualification/proof/qualification.json
-            target/apple-https-qualification/proof/installed/*.json
-            target/apple-https-qualification/proof/installed/*/consumer/Package.resolved
+            ${{ runner.temp }}/apple-https-qualification/qualification.json
+            ${{ runner.temp }}/apple-https-qualification/*.log
+            ${{ runner.temp }}/apple-https-qualification/proof/qualification.json
+            ${{ runner.temp }}/apple-https-qualification/proof/installed/*.json
+            ${{ runner.temp }}/apple-https-qualification/proof/installed/*/consumer/Package.resolved
 
       - name: Upload XCFramework artifact
         uses: actions/upload-artifact@v7.0.2
@@ -284,13 +285,13 @@ jobs:
           name: merman-apple-xcframework
           if-no-files-found: error
           path: |
-            target/apple-package/Merman.xcframework-${{ steps.version.outputs.tag }}.zip
-            target/apple-package/Merman.xcframework-${{ steps.version.outputs.tag }}.zip.checksum
-            target/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.zip
-            target/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.zip.checksum
-            target/apple-package/Merman-swiftpm-remote-${{ steps.version.outputs.tag }}.zip
-            target/apple-package/Merman-swiftpm-remote-${{ steps.version.outputs.tag }}.zip.checksum
-            target/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.Package.swift
+            ${{ runner.temp }}/apple-package/Merman.xcframework-${{ steps.version.outputs.tag }}.zip
+            ${{ runner.temp }}/apple-package/Merman.xcframework-${{ steps.version.outputs.tag }}.zip.checksum
+            ${{ runner.temp }}/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.zip
+            ${{ runner.temp }}/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.zip.checksum
+            ${{ runner.temp }}/apple-package/Merman-swiftpm-remote-${{ steps.version.outputs.tag }}.zip
+            ${{ runner.temp }}/apple-package/Merman-swiftpm-remote-${{ steps.version.outputs.tag }}.zip.checksum
+            ${{ runner.temp }}/apple-package/Merman-swiftpm-${{ steps.version.outputs.tag }}.Package.swift
 
       - name: Retain consumer and size evidence
         uses: actions/upload-artifact@v7.0.2
@@ -298,10 +299,10 @@ jobs:
           name: merman-apple-qualification
           if-no-files-found: error
           path: |
-            target/apple-qualification/qualification.json
-            target/apple-qualification/installed/*.json
-            target/apple-qualification/comparison/original.json
-            target/apple-simulator-cleanup.json
+            ${{ runner.temp }}/apple-qualification/qualification.json
+            ${{ runner.temp }}/apple-qualification/installed/*.json
+            ${{ runner.temp }}/apple-qualification/comparison/original.json
+            ${{ runner.temp }}/apple-simulator-cleanup.json
 
       - name: Retain failed Apple candidate and qualification diagnostics
         if: ${{ failure() && steps.package-distributions.outcome == 'success' }}
@@ -310,13 +311,13 @@ jobs:
           name: merman-apple-failed-candidate-attempt-${{ github.run_attempt }}
           if-no-files-found: error
           path: |
-            target/apple-package/*.zip
-            target/apple-package/*.checksum
-            target/apple-package/*.Package.swift
-            target/apple-qualification/**/*.json
-            target/apple-https-qualification/**/*.json
-            target/apple-https-qualification/*.log
-            target/apple-simulator-cleanup.json
+            ${{ runner.temp }}/apple-package/*.zip
+            ${{ runner.temp }}/apple-package/*.checksum
+            ${{ runner.temp }}/apple-package/*.Package.swift
+            ${{ runner.temp }}/apple-qualification/**/*.json
+            ${{ runner.temp }}/apple-https-qualification/**/*.json
+            ${{ runner.temp }}/apple-https-qualification/*.log
+            ${{ runner.temp }}/apple-simulator-cleanup.json
 
   qualify-remote:
     if: ${{ !cancelled() && needs.build.result == 'success' && (!inputs.publish || needs.upload-release.result == 'success') && (inputs.remote_package_url != '' || inputs.remote_package_revision != '') }}
@@ -334,7 +335,7 @@ jobs:
       - uses: actions/download-artifact@v8.0.2
         with:
           name: merman-apple-xcframework
-          path: target/apple-package
+          path: ${{ runner.temp }}/apple-package
 
       - name: Resolve the exact remote SwiftPM dependency and execute consumers
         env:
@@ -343,8 +344,8 @@ jobs:
           REMOTE_PACKAGE_REVISION: ${{ inputs.remote_package_revision }}
         run: |
           python3 scripts/apple_qualify.py \
-            --package-archive "target/apple-package/Merman-swiftpm-remote-v$VERSION.zip" \
-            --work-dir target/apple-remote-qualification --version "$VERSION" --simulator \
+            --package-archive "$RUNNER_TEMP/apple-package/Merman-swiftpm-remote-v$VERSION.zip" \
+            --work-dir "$RUNNER_TEMP/apple-remote-qualification" --version "$VERSION" --simulator \
             --remote-package-url "$REMOTE_PACKAGE_URL" --remote-package-revision "$REMOTE_PACKAGE_REVISION"
 
       - name: Retain remote resolution and consumer evidence
@@ -353,9 +354,9 @@ jobs:
           name: merman-apple-remote-qualification
           if-no-files-found: error
           path: |
-            target/apple-remote-qualification/qualification.json
-            target/apple-remote-qualification/installed/*.json
-            target/apple-remote-qualification/installed/*/consumer/Package.resolved
+            ${{ runner.temp }}/apple-remote-qualification/qualification.json
+            ${{ runner.temp }}/apple-remote-qualification/installed/*.json
+            ${{ runner.temp }}/apple-remote-qualification/installed/*/consumer/Package.resolved
 
   upload-release:
     if: ${{ inputs.publish }}

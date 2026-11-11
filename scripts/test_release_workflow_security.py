@@ -150,6 +150,10 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("scripts/apple_package.py", build)
         self.assertIn("scripts/apple_qualify.py", build)
         self.assertIn("--simulator --compare-original", build)
+        self.assertIn('--output-dir "$RUNNER_TEMP/apple-package"', build)
+        self.assertIn('--work-dir "$RUNNER_TEMP/apple-qualification"', build)
+        self.assertNotIn("target/apple-package", build)
+        self.assertNotIn("target/apple-qualification", build)
 
     def test_native_candidates_keep_write_and_oidc_access_in_explicit_publish_jobs(self) -> None:
         owners = {
