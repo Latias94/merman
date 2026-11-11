@@ -811,9 +811,12 @@ void preservesPresetFamilyDesigns() {
   );
   _expect(
     ghibli.displayName == 'Ghibli' &&
-        ghibli.appearances.single.familyDesigns.single.familyId == 'pie' &&
-        ghibli.appearances.single.familyDesigns.single.treatment == 'dedicated',
-    'Ghibli discovery must advertise only its dedicated Pie design',
+        ghibli.appearances.single.familyDesigns
+                .map((design) => '${design.familyId}:${design.treatment}')
+                .join(',') ==
+            'class:base_only,flowchart:dedicated,pie:dedicated,'
+                'sequence:dedicated,xychart:dedicated',
+    'Ghibli discovery must distinguish shared Class styling from its dedicated designs',
   );
 
   final source = Map<String, Object?>.from(

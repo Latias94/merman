@@ -449,20 +449,21 @@
           },
           {
             "family_id": "flowchart",
-            "treatment": "base_only"
+            "treatment": "dedicated"
           },
           {
             "family_id": "sequence",
-            "treatment": "base_only"
+            "treatment": "dedicated"
           },
           {
             "family_id": "xychart",
-            "treatment": "base_only"
+            "treatment": "dedicated"
           }
         ],
         "preview_colors": [
-          "#051423",
-          "#00f2ff",
+          "#0B1020",
+          "#151E35",
+          "#E2EFF7",
           "#22d3ee",
           "#f472b6",
           "#a3e635",
@@ -502,18 +503,34 @@
         "availability_reason_ids": [],
         "family_designs": [
           {
+            "family_id": "class",
+            "treatment": "base_only"
+          },
+          {
+            "family_id": "flowchart",
+            "treatment": "dedicated"
+          },
+          {
             "family_id": "pie",
+            "treatment": "dedicated"
+          },
+          {
+            "family_id": "sequence",
+            "treatment": "dedicated"
+          },
+          {
+            "family_id": "xychart",
             "treatment": "dedicated"
           }
         ],
         "preview_colors": [
-          "#FDF6E3",
-          "#FFFFFF",
-          "#3A2E2C",
-          "#FFF3E0",
-          "#E8F5E9",
-          "#E6E6E6",
-          "#FFDFAD"
+          "#FAF5E8",
+          "#EEF3E3",
+          "#314A3E",
+          "#F8E6BE",
+          "#E6EEEA",
+          "#EAE3EE",
+          "#F0EDCC"
         ],
         "application_notes": [],
         "qualified_cells": []

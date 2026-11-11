@@ -538,7 +538,7 @@ if (hasCapability("svg")) {
   const cyberpunk = api.exportThemePreset("cyberpunk");
   // Exercise the public recipe, not a separately authored C6 mechanism fixture.
   const canvas = api.materializeTheme(cyberpunk.design).spec.canvas;
-  assert.deepEqual(canvas.base, { kind: "solid", color: "#051423" });
+  assert.deepEqual(canvas.base, { kind: "solid", color: "#0B1020" });
   assert.equal(canvas.layers.length, 3);
   const [radial, xGrid, yGrid] = canvas.layers;
   assert.deepEqual(canvas.layers.map((layer) => layer.blend_mode), ["screen", "screen", "screen"]);
@@ -547,7 +547,7 @@ if (hasCapability("svg")) {
   assert.deepEqual(radial.paint.center_y, { percent: 50 });
   assert.ok(Math.abs(radial.paint.radius.percent - 100 / Math.SQRT2) < 0.00001);
   assert.deepEqual(radial.paint.stops.map((stop) => stop.color),
-    ["rgba(0, 242, 255, 0.05)", "rgba(0, 242, 255, 0)"]);
+    ["rgba(83, 220, 228, 0.025)", "rgba(83, 220, 228, 0)"]);
   assert.equal(radial.paint.stops[0].offset, 0);
   assert.ok(Math.abs(radial.paint.stops[1].offset - 0.7) < 0.000001);
   for (const [layer, angle] of [[xGrid, 90], [yGrid, 180]]) {
@@ -555,7 +555,7 @@ if (hasCapability("svg")) {
     assert.equal(layer.paint.angle_degrees, angle);
     assert.deepEqual(layer.paint.repetition, { kind: "tiled", width_px: 40, height_px: 40 });
     assert.deepEqual(layer.paint.stops.map((stop) => stop.color),
-      ["rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0)", "rgba(0, 242, 255, 0)"]);
+      ["rgba(83, 220, 228, 0.018)", "rgba(83, 220, 228, 0.018)", "rgba(83, 220, 228, 0)", "rgba(83, 220, 228, 0)"]);
     for (const [index, offset] of [0, 1 / 40, 1 / 40, 1].entries()) {
       assert.ok(Math.abs(layer.paint.stops[index].offset - offset) < 0.000001);
     }

@@ -117,15 +117,15 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                     panic!("expected SVG")
                 };
                 let xml = roxmltree::Document::parse(output.svg()).unwrap();
-                for (text, size, weight, sigma, alpha) in [
-                    (title, "18", Some("700"), "7.5", "0.8"),
-                    (x_title, "13", None, "5", "0.6"),
-                    (y_title, "13", None, "5", "0.6"),
-                    (legend, "12", None, "4", "0.5"),
-                    ("A", "14", Some("600"), "5", "0.5"),
-                    ("B", "14", Some("600"), "5", "0.5"),
-                    ("0", "14", Some("600"), "5", "0.5"),
-                    ("10", "14", Some("600"), "5", "0.5"),
+                for (text, size, weight, fill) in [
+                    (title, "18", Some("600"), "#E2EFF7"),
+                    (x_title, "13", Some("500"), "#92A9BF"),
+                    (y_title, "13", Some("500"), "#92A9BF"),
+                    (legend, "12", None, "#92A9BF"),
+                    ("A", "14", Some("500"), "#92A9BF"),
+                    ("B", "14", Some("500"), "#92A9BF"),
+                    ("0", "14", Some("500"), "#92A9BF"),
+                    ("10", "14", Some("500"), "#92A9BF"),
                 ] {
                     let node = xml
                         .descendants()
@@ -141,38 +141,12 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                         weight,
                         "{orientation}/{text}"
                     );
-                    assert_eq!(
-                        node.attribute("fill"),
-                        Some("#00f2ff"),
-                        "{orientation}/{text}"
+                    assert_eq!(node.attribute("fill"), Some(fill), "{orientation}/{text}");
+                    assert!(
+                        node.ancestors()
+                            .all(|node| node.attribute("filter").is_none()),
+                        "{orientation}/{text}: neutral text must stay unfiltered"
                     );
-                    let reference = node
-                        .attribute("filter")
-                        .expect("public role glow must be bound");
-                    let id = reference
-                        .strip_prefix("url(#")
-                        .unwrap()
-                        .strip_suffix(')')
-                        .unwrap();
-                    let filter = xml
-                        .descendants()
-                        .find(|n| n.has_tag_name("filter") && n.attribute("id") == Some(id))
-                        .unwrap();
-                    assert_eq!(
-                        filter.attribute("color-interpolation-filters"),
-                        Some("sRGB")
-                    );
-                    let blur = filter
-                        .descendants()
-                        .find(|n| n.has_tag_name("feGaussianBlur"))
-                        .unwrap();
-                    assert_eq!(blur.attribute("stdDeviation"), Some(sigma));
-                    let flood = filter
-                        .descendants()
-                        .find(|n| n.has_tag_name("feFlood"))
-                        .unwrap();
-                    let color = format!("rgba(0, 242, 255, {alpha})");
-                    assert_eq!(flood.attribute("flood-color"), Some(color.as_str()));
                 }
                 let tick = xml
                     .descendants()
@@ -183,7 +157,7 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                     Some("14"),
                     "axis-label size keeps the source default"
                 );
-                assert!(tick.attribute("filter").is_some());
+                assert!(tick.attribute("filter").is_none());
                 assert!(tick.attribute("opacity").is_none());
                 let mut tick_count = 0;
                 for path in xml.descendants().filter(|n| n.has_tag_name("path")) {
@@ -192,10 +166,10 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                         .any(|n| n.attribute("class") == Some("ticks"))
                     {
                         tick_count += 1;
-                        assert_eq!(path.attribute("stroke"), Some("#00f2ff"));
+                        assert_eq!(path.attribute("stroke"), Some("#92A9BF"));
                         assert_eq!(
                             path.attribute("opacity"),
-                            Some("0.3"),
+                            Some("0.35"),
                             "public tick opacity"
                         );
                     } else if path
@@ -213,13 +187,16 @@ fn public_cyberpunk_xy_roles_survive_preset_exchange() {
                 #[cfg(all(feature = "png", feature = "pdf"))]
                 {
                     let (width, height, buffer) = native_role_pixels(&renderer, &source, theme);
-                    assert!(
-                        buffer
-                            .as_chunks::<4>()
-                            .0
-                            .iter()
-                            .any(|pixel| pixel[..3] == [0, 242, 255])
-                    );
+                    for rgb in [[226, 239, 247], [146, 169, 191]] {
+                        assert!(
+                            buffer
+                                .as_chunks::<4>()
+                                .0
+                                .iter()
+                                .any(|pixel| pixel[..3] == rgb),
+                            "{orientation}: neutral role ink {rgb:?} must paint native pixels"
+                        );
+                    }
                     pixels.push((width, height, buffer));
                 }
             }
@@ -448,8 +425,8 @@ fn complete_cyberpunk_xy_scene_fits_default_native_filter_budget() {
     let pdf = document
         .export_pdf(&PdfOptions::default(), OperationControl::new())
         .unwrap();
-    // Eight bars, two lines, fifteen axis labels and three titles each retain one shadow.
-    let expected_filters = 8 + 2 + 15 + 3;
+    // Eight bars and two lines each retain one shadow; neutral labels and titles stay unfiltered.
+    let expected_filters = 8 + 2;
     assert_eq!(
         png.export_report().conversion().filtered_groups,
         expected_filters

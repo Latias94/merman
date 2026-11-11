@@ -292,11 +292,11 @@ fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
             panic!("expected SVG")
         };
         let document = roxmltree::Document::parse(output.svg()).unwrap();
-        for (index, kind, color) in [
-            (0, "line", "#6cc6cb"),
-            (1, "bar", "#c77dff"),
-            (2, "bar", "#7ce38b"),
-            (3, "line", "#6cc6cb"),
+        for (index, kind, color, glow) in [
+            (0, "line", "#53DCE4", "rgba(83, 220, 228, 0.16)"),
+            (1, "bar", "#F28BCB", "rgba(242, 139, 203, 0.12)"),
+            (2, "bar", "#E8C078", "rgba(232, 192, 120, 0.12)"),
+            (3, "line", "#53DCE4", "rgba(83, 220, 228, 0.16)"),
         ] {
             let class = format!("{kind}-plot-{index}");
             let group = document
@@ -312,11 +312,11 @@ fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
                 assert_eq!(mark.attribute("stroke"), Some(color));
                 assert_eq!(
                     mark.attribute("stroke-width"),
-                    Some(if kind == "bar" { "2" } else { "3" })
+                    Some(if kind == "bar" { "1.25" } else { "2" })
                 );
                 assert_eq!(
                     mark.attribute("fill-opacity"),
-                    if kind == "bar" { Some("0.2") } else { None }
+                    if kind == "bar" { Some("0.35") } else { None }
                 );
                 assert_eq!(
                     mark.attribute("fill"),
@@ -343,8 +343,13 @@ fn public_cyberpunk_series_recipe_tracks_kind_and_cycles_after_three_series() {
                     .unwrap();
                 assert_eq!(
                     blur.attribute("stdDeviation"),
-                    Some(if kind == "bar" { "8" } else { "6" })
+                    Some(if kind == "bar" { "2" } else { "1.5" })
                 );
+                let flood = filter
+                    .children()
+                    .find(|element| element.has_tag_name("feFlood"))
+                    .unwrap();
+                assert_eq!(flood.attribute("flood-color"), Some(glow));
             }
         }
         outputs.push(output.svg().to_owned());
@@ -407,9 +412,8 @@ fn public_cyberpunk_series_recipe_preserves_native_receipts_after_exchange() {
             }
         }
         let receipt = png.export_report().native_filter_receipt().unwrap();
-        // Four bars, two lines, two category labels and eleven numeric labels.
-        // Each terminal consumes one single-stage graph.
-        let expected_filters = 4 + 2 + 2 + 11;
+        // Four bars and two lines each retain one shadow; neutral labels stay unfiltered.
+        let expected_filters = 4 + 2;
         assert_eq!(receipt.filter_count(), expected_filters);
         assert_eq!(receipt.drop_shadow_count(), expected_filters);
         assert_eq!(receipt.reference_count(), expected_filters);
@@ -427,7 +431,7 @@ fn public_cyberpunk_series_recipe_preserves_native_receipts_after_exchange() {
                 .as_chunks::<4>()
                 .0
                 .iter()
-                .any(|pixel| pixel[..3] == [108, 198, 203])
+                .any(|pixel| pixel[..3] == [83, 220, 228])
         );
         pixels.push((info.width, info.height, buffer));
     }

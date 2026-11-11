@@ -141,7 +141,13 @@ test("grouped discovery accepts the canonical producer fixture without flattenin
   assert.deepEqual(editor.supported_appearances, ["light", "dark"]);
   assert.equal(editor.appearances[1].concrete_preset_id, "editor-dark");
   const ghibli = actual.find(({ id }) => id === "ghibli");
-  assert.deepEqual(ghibli.appearances[0].family_designs, [{ family_id: "pie", treatment: "dedicated" }]);
+  assert.deepEqual(ghibli.appearances[0].family_designs, [
+    { family_id: "class", treatment: "base_only" },
+    { family_id: "flowchart", treatment: "dedicated" },
+    { family_id: "pie", treatment: "dedicated" },
+    { family_id: "sequence", treatment: "dedicated" },
+    { family_id: "xychart", treatment: "dedicated" },
+  ]);
   assert.ok(actual.every(({ maturity, appearances }) => maturity === "alpha" &&
     appearances.every(({ qualified_cells }) => qualified_cells.length === 0)));
 });
