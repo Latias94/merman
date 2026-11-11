@@ -372,6 +372,11 @@ source or site configuration keep their property-specific dependencies. Site the
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
 
+Class checks ownership of the configuration value actually selected by its fallback chain.
+For example, when `mainBkg` supplies the node background, an independent `primaryColor`
+override does not suppress the recipe's node fill. An override that actually derives `mainBkg`
+still owns that background. Class node and relationship text follow the same selected-value rule.
+
 ER HTML labels, Block labels and Requirement node labels use a non-empty `themeVariables.nodeTextColor`,
 falling back to `themeVariables.textColor`. Journey titles use a non-empty `journey.titleColor`,
 otherwise inheriting the rendered text color. These fallbacks preserve the selected source or
@@ -1366,6 +1371,9 @@ Omitted patch fields leave ownership unchanged, `null` means Clear, and `"transp
 requests transparent paint. Clear restores family base behavior, rather than exposing a previous
 matching rule. Supported Flowchart body-effect terminals distinguish omission from Clear:
 omission retains the look's default shadow, while Clear explicitly suppresses that shadow.
+State and Timeline paint Clear also blocks ordinal-palette fallback in best-effort output.
+Those terminals still report `unsupported-paint` for Clear and reject strict portable output;
+the fallback correction does not expand their supported paint domain.
 An explicit theme effect replaces the look's default instead of implicitly stacking with it.
 Source filter ownership still takes precedence. Canvas base is a paint rather than a patch field:
 use `"transparent"`, not `null`.

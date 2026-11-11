@@ -31,6 +31,8 @@ The Playground's **Theme designs** library contains **28 designs in a complete c
 
 **Cyberpunk** now combines layered dark panels, cyan and magenta contours, restrained glow and clear neutral text. **Ghibli** combines warm paper, sage surfaces, forest ink, fine fibers and separate colors for filled categories and chart lines. Both include dedicated Flowchart, Sequence and XY Chart treatments; Ghibli also retains its dedicated Pie design. Class notes in ten library recipes now pair their text with the intended note background and border, including the dark Reading and Prism appearances. [#302](https://github.com/Latias94/merman/pull/302)
 
+Class theme colors now remain active when an unrelated Mermaid fallback variable is overridden. State and Timeline no longer reapply palette colors after a matching paint is explicitly cleared; transparent paint remains an explicit choice. [#302](https://github.com/Latias94/merman/pull/302)
+
 Compare the same Flowchart, Sequence and Pie scenes in four designs. Each card keeps a fixed canvas and preserves the diagrams' proportions; select a preview to explore its full-size examples in the Playground.
 
 <p align="center">
