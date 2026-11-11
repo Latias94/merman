@@ -67,7 +67,7 @@ fn assert_recipe_round_trip(source: &str, effects: u32) {
 fn complete_flowchart_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
         include_str!("../../../fixtures/themes/public-cyberpunk/flowchart.mmd"),
-        13,
+        7,
     );
 }
 
@@ -75,7 +75,7 @@ fn complete_flowchart_public_recipe_round_trip_preserves_artifacts() {
 fn complete_sequence_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
         include_str!("../../../fixtures/themes/public-cyberpunk/sequence.mmd"),
-        21,
+        13,
     );
 }
 
@@ -83,6 +83,6 @@ fn complete_sequence_public_recipe_round_trip_preserves_artifacts() {
 fn complete_xychart_public_recipe_round_trip_preserves_artifacts() {
     assert_recipe_round_trip(
         include_str!("../../../fixtures/themes/public-cyberpunk/xychart.mmd"),
-        28,
+        10,
     );
 }

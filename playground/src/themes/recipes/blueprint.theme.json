@@ -114,6 +114,8 @@
       { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
       { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
       { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } } } } },
+      { "family": "class", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "note-ink" } } } },
       { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "ink" } }, "width": 1 } } },
       { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "paper" } } } },
       { "family": "class", "target": "cluster", "style": { "fill": { "kind": "solid", "color": { "ref": "group-sheet" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "grid" } } } } },

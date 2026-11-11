@@ -594,10 +594,17 @@ mod tests {
         let ghibli = catalog.iter().find(|preset| preset.id == "ghibli").unwrap();
         assert_eq!(
             ghibli.appearances[0].family_designs,
-            [ThemePresetFamilyDesignV1 {
-                family_id: "pie".into(),
-                treatment: "dedicated".into(),
-            }]
+            [
+                ("class", "base_only"),
+                ("flowchart", "dedicated"),
+                ("pie", "dedicated"),
+                ("sequence", "dedicated"),
+                ("xychart", "dedicated"),
+            ]
+            .map(|(family, treatment)| ThemePresetFamilyDesignV1 {
+                family_id: family.into(),
+                treatment: treatment.into(),
+            })
         );
         assert!(ghibli.appearances[0].qualified_cells.is_empty());
     }
@@ -606,12 +613,12 @@ mod tests {
     fn ghibli_exports_editable_paper_and_scoped_pie_text_roles() {
         let compiler = DiagramThemeCompiler::new();
         let theme = compiler.compile_preset(ThemePreset::Ghibli).unwrap();
-        assert_eq!(theme.spec().canvas().layers().len(), 4);
+        assert_eq!(theme.spec().canvas().layers().len(), 1);
         let resolved = theme.resolve(DiagramFamilyId::PIE);
         for (target, size, color) in [
-            (ThemeTarget::Title, 25.0, "#3A2E2C"),
-            (ThemeTarget::Text, 17.0, "#3A2E2C"),
-            (ThemeTarget::Legend, 12.0, "#6B5B4F"),
+            (ThemeTarget::Title, 25.0, "#314A3E"),
+            (ThemeTarget::Text, 17.0, "#314A3E"),
+            (ThemeTarget::Legend, 12.0, "#637261"),
         ] {
             let style = resolved.text_style(target, ThemeVariant::Default, None);
             assert_eq!(style.typography().font_size_px(), size);
@@ -627,6 +634,100 @@ mod tests {
                 .unwrap()
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn ghibli_node_rhythm_stays_local_and_independent_of_category_edits() {
+        use merman_theme_contract::*;
+
+        let compiler = DiagramThemeCompiler::new();
+        let ThemeRecipeV1::Design { mut design } =
+            compiler.export_preset(ThemePreset::Ghibli).unwrap()
+        else {
+            panic!("editable preset design")
+        };
+        design.tokens.get_mut("category-fill.0").unwrap().value =
+            ThemeDesignTokenValueV1::Color(ThemeValueV1::Literal("#DDAACC".into()));
+        let recipe = serde_json::to_vec(&ThemeRecipeV1::Design { design }).unwrap();
+        let theme = compiler
+            .compile_recipe(serde_json::from_slice(&recipe).unwrap())
+            .unwrap();
+        let flowchart = theme.resolve(DiagramFamilyId::FLOWCHART);
+        for (index, expected) in ["#EEF3E3", "#F6EBD6", "#E6EEE7", "#EEF3E3"]
+            .into_iter()
+            .enumerate()
+        {
+            let node = flowchart.style(ThemeTarget::Node, ThemeVariant::Default, Some(index + 1));
+            assert_eq!(node.fill().and_then(solid_color).as_deref(), Some(expected));
+            assert_eq!(node.radius(), Some(7.0));
+            assert_eq!(node.stroke_width(), Some(1.5));
+            assert!(matches!(
+                node.effect_resolution().specified(),
+                crate::diagram_theme::Specified::Clear
+            ));
+        }
+        assert_eq!(
+            theme
+                .resolve(DiagramFamilyId::MINDMAP)
+                .series_color(ThemeTarget::Node, 1)
+                .unwrap()
+                .as_css(),
+            "#DDAACC"
+        );
+        let sequence = theme.resolve(DiagramFamilyId::SEQUENCE);
+        assert_eq!(
+            resolved_solid_fill(&sequence, ThemeTarget::Actor),
+            "#EEF3E3"
+        );
+        assert_eq!(resolved_solid_fill(&sequence, ThemeTarget::Note), "#F8E6BE");
+        assert_eq!(
+            theme
+                .resolve(DiagramFamilyId::CLASS)
+                .style(ThemeTarget::Node, ThemeVariant::Default, None)
+                .radius(),
+            None,
+            "Flowchart and sequence geometry must not extend Class scope"
+        );
+        assert_eq!(
+            theme
+                .resolve(DiagramFamilyId::XY_CHART)
+                .style(ThemeTarget::ChartSeries, ThemeVariant::Line, Some(1))
+                .stroke_width(),
+            Some(2.25)
+        );
+        for target in [ThemeTarget::Actor, ThemeTarget::Note] {
+            assert_eq!(
+                sequence.style(target, ThemeVariant::Default, None).radius(),
+                Some(7.0)
+            );
+        }
+        for (target, weight) in [
+            (ThemeTarget::ActorLabel, 600),
+            (ThemeTarget::NoteLabel, 500),
+            (ThemeTarget::MessageLabel, 500),
+        ] {
+            assert_eq!(
+                sequence
+                    .text_style(target, ThemeVariant::Default, None)
+                    .typography()
+                    .font_weight(),
+                weight
+            );
+        }
+        for (target, count) in [
+            (ThemeTarget::Node, 12),
+            (ThemeTarget::PieSlice, 12),
+            (ThemeTarget::ChartSeries, 6),
+        ] {
+            let palette = theme
+                .spec()
+                .styles()
+                .ordinal_palettes()
+                .iter()
+                .find(|(palette_target, _)| *palette_target == target)
+                .unwrap();
+            assert_eq!(palette.1.colors().len(), count);
+        }
     }
 
     #[test]
@@ -922,7 +1023,23 @@ mod tests {
         );
         assert_eq!(
             resolved_solid_fill(&sequence, ThemeTarget::ActorLabel),
-            "#123456"
+            "#E2EFF7"
+        );
+        for (resolved, target, expected) in [
+            (&flowchart, ThemeTarget::NodeLabel, "#E2EFF7"),
+            (&flowchart, ThemeTarget::EdgeLabel, "#E2EFF7"),
+            (&sequence, ThemeTarget::MessageLabel, "#E2EFF7"),
+            (&sequence, ThemeTarget::NoteLabel, "#E2EFF7"),
+        ] {
+            assert_eq!(resolved_solid_fill(resolved, target), expected);
+        }
+        assert_eq!(
+            resolved_solid_fill(
+                &imported.resolve(DiagramFamilyId::MINDMAP),
+                ThemeTarget::NodeLabel,
+            ),
+            "#0B1020",
+            "filled-category ink must stay independent of neon contours"
         );
 
         let spec = catalog::materialize_spec_wire(
@@ -942,6 +1059,86 @@ mod tests {
             spec.effects, changed.effects,
             "glows share the declared neon role"
         );
+    }
+
+    #[test]
+    fn cyberpunk_text_roles_keep_independent_ink_without_glow_after_exchange() {
+        let compiler = DiagramThemeCompiler::new();
+        let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
+        let recipe = compiler.export_preset(ThemePreset::Cyberpunk).unwrap();
+        let encoded = serde_json::to_vec(&recipe).unwrap();
+        let imported = compiler
+            .compile_recipe(serde_json::from_slice(&encoded).unwrap())
+            .unwrap();
+        for theme in [&selected, &imported] {
+            for (family, targets) in [
+                (
+                    DiagramFamilyId::FLOWCHART,
+                    &[
+                        ThemeTarget::NodeLabel,
+                        ThemeTarget::EdgeLabel,
+                        ThemeTarget::ClusterLabel,
+                    ][..],
+                ),
+                (
+                    DiagramFamilyId::SEQUENCE,
+                    &[
+                        ThemeTarget::ActorLabel,
+                        ThemeTarget::MessageLabel,
+                        ThemeTarget::NoteLabel,
+                        ThemeTarget::LoopLabel,
+                    ][..],
+                ),
+                (
+                    DiagramFamilyId::XY_CHART,
+                    &[
+                        ThemeTarget::Title,
+                        ThemeTarget::AxisTitle,
+                        ThemeTarget::AxisLabel,
+                        ThemeTarget::Legend,
+                    ][..],
+                ),
+            ] {
+                let resolved = theme.resolve(family);
+                for &target in targets {
+                    let text = resolved.text_style(target, ThemeVariant::Default, None);
+                    let expected = if matches!(
+                        target,
+                        ThemeTarget::AxisTitle | ThemeTarget::AxisLabel | ThemeTarget::Legend
+                    ) {
+                        "#92A9BF"
+                    } else {
+                        "#E2EFF7"
+                    };
+                    assert_eq!(
+                        text.fill().and_then(solid_color).as_deref(),
+                        Some(expected),
+                        "{family} {target:?} ink"
+                    );
+                    assert!(
+                        text.effect_resolution().value().is_none(),
+                        "{family} {target:?} must not glow"
+                    );
+                }
+            }
+            let chart = theme.resolve(DiagramFamilyId::XY_CHART);
+            for (index, expected) in ["#53DCE4", "#F28BCB", "#E8C078", "#53DCE4"]
+                .into_iter()
+                .enumerate()
+            {
+                assert_eq!(
+                    chart
+                        .series_color(ThemeTarget::ChartSeries, index + 1)
+                        .unwrap()
+                        .as_css(),
+                    expected
+                );
+                let mark =
+                    chart.style(ThemeTarget::ChartSeries, ThemeVariant::Bar, Some(index + 1));
+                assert_eq!(mark.fill().and_then(solid_color).as_deref(), Some(expected));
+                assert!(mark.effect_resolution().value().is_some());
+            }
+        }
     }
 
     #[test]
@@ -1122,7 +1319,7 @@ mod tests {
         assert_eq!(color_space.as_deref(), Some("srgb"));
         assert_eq!(first.as_deref(), Some("source-graphic"));
         assert_eq!(second.as_deref(), Some("previous"));
-        assert_eq!((*first_blur, *second_blur), (8.0, 16.0));
+        assert_eq!((*first_blur, *second_blur), (2.0, 5.0));
         assert_ne!(
             edge_id, id,
             "edge glow must not reuse the two-stage shape graph"
@@ -1144,11 +1341,11 @@ mod tests {
         assert_eq!(input.as_deref(), Some("source-graphic"));
         assert_eq!(
             (*offset_x, *offset_y, *blur_radius, *spread),
-            (0.0, 0.0, 6.0, 0.0)
+            (0.0, 0.0, 1.5, 0.0)
         );
         assert_eq!(
             ThemeColorValue::parse(color).unwrap(),
-            ThemeColorValue::parse("rgba(0, 242, 255, 0.6)").unwrap()
+            ThemeColorValue::parse("rgba(83, 220, 228, 0.16)").unwrap()
         );
         let scoped_targets: Vec<_> = complete_spec
             .styles
@@ -1169,11 +1366,7 @@ mod tests {
             .collect();
         assert_eq!(
             scoped_targets,
-            [
-                (Some("flowchart"), "node"),
-                (Some("sequence"), "actor"),
-                (Some("sequence"), "actor-label")
-            ]
+            [(Some("flowchart"), "node"), (Some("sequence"), "actor"),]
         );
         let edge_scopes: Vec<_> = complete_spec
             .styles
@@ -1210,7 +1403,7 @@ mod tests {
             let flowchart = theme.resolve(DiagramFamilyId::FLOWCHART);
             let edge = flowchart.style(ThemeTarget::Edge, ThemeVariant::Default, None);
             assert_eq!(edge.effect_resolution().value(), Some(edge_id));
-            assert_eq!(edge.stroke_width(), Some(2.0));
+            assert_eq!(edge.stroke_width(), Some(1.25));
             let graph = theme
                 .spec()
                 .effects()
@@ -1228,9 +1421,9 @@ mod tests {
                     input: crate::diagram_theme::EffectInput::SourceGraphic,
                     offset_x: 0.0,
                     offset_y: 0.0,
-                    blur_radius: 6.0,
+                    blur_radius: 1.5,
                     spread: 0.0,
-                    color: crate::diagram_theme::ThemeColorValue::parse("rgba(0, 242, 255, 0.6)")
+                    color: crate::diagram_theme::ThemeColorValue::parse("rgba(83, 220, 228, 0.16)")
                         .unwrap(),
                 }]
             );
@@ -1325,7 +1518,7 @@ mod tests {
                 .value()
                 .map(String::as_str)
         );
-        assert_eq!(theme.spec().effects().graphs().len(), 16);
+        assert_eq!(theme.spec().effects().graphs().len(), 10);
     }
 
     #[test]
@@ -1446,8 +1639,8 @@ mod tests {
             (ThemePreset::AyuDark, "#0b0e14", "#59c2ff", "#59c2ff"),
             (ThemePreset::Brutalist, "#f6f3e9", "#000000", "#FF6B35"),
             (ThemePreset::Spotless, "#EDE8DC", "#2c2416", "#8b5e34"),
-            (ThemePreset::Cyberpunk, "#051423", "#00f2ff", "#22d3ee"),
-            (ThemePreset::Ghibli, "#FDF6E3", "#6B5B4F", "#FFFFFF"),
+            (ThemePreset::Cyberpunk, "#0B1020", "#53DCE4", "#22d3ee"),
+            (ThemePreset::Ghibli, "#FAF5E8", "#637261", "#EEF3E3"),
         ];
 
         for (preset, canvas, line, first_series) in expected {
@@ -1472,6 +1665,8 @@ mod tests {
                     .as_deref(),
                 Some(if preset == ThemePreset::Ghibli {
                     "#556F50"
+                } else if preset == ThemePreset::Cyberpunk {
+                    "#53DCE4"
                 } else {
                     first_series
                 })
@@ -1743,6 +1938,9 @@ mod tests {
                         palette.pie_series.first().copied()
                     } else if preset == ThemePreset::Ghibli && target == ThemeTarget::ChartSeries {
                         Some("#556F50")
+                    } else if preset == ThemePreset::Cyberpunk && target == ThemeTarget::ChartSeries
+                    {
+                        Some("#53DCE4")
                     } else {
                         palette.series.first().copied()
                     },

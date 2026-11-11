@@ -598,7 +598,7 @@ fn glow_expands_viewport_without_moving_layout_nodes_and_survives_nested_roots()
 }
 
 #[test]
-fn public_cyberpunk_recipe_exchange_retains_shape_edge_and_text_glow() {
+fn public_cyberpunk_recipe_exchange_retains_shape_and_edge_glow_without_label_glow() {
     use merman_render::diagram_theme::ThemePreset;
     let compiler = DiagramThemeCompiler::new();
     let selected = compiler.compile_preset(ThemePreset::Cyberpunk).unwrap();
@@ -615,24 +615,77 @@ fn public_cyberpunk_recipe_exchange_retains_shape_edge_and_text_glow() {
             render_with_html_labels(source, &imported, "classic", true, html_labels).unwrap();
         assert_eq!(direct.svg(), exchanged.svg());
         let document = roxmltree::Document::parse(direct.svg()).unwrap();
-        for label in ["Alpha", "Advance", "Beta"] {
+        for (label, weight) in [("Alpha", "600"), ("Advance", "500"), ("Beta", "600")] {
             let text = document
                 .descendants()
                 .find(|node| node.is_text() && node.text() == Some(label))
                 .unwrap();
             assert!(
                 text.ancestors().any(|node| {
-                    node.attribute("font-weight") == Some("600")
+                    node.attribute("font-weight") == Some(weight)
                         || node
                             .attribute("style")
-                            .is_some_and(|style| style.contains("font-weight:600"))
+                            .is_some_and(|style| style.contains(&format!("font-weight:{weight}")))
                 }),
-                "{label}: weight 600 must reach the actual text"
+                "{label}: weight {weight} must reach the actual text"
             );
-            let reference = text
-                .ancestors()
-                .find_map(filter_reference)
-                .expect("public text must have its own glow application");
+            assert!(
+                text.ancestors().any(|node| {
+                    node.attribute("fill") == Some("#E2EFF7")
+                        || node
+                            .attribute("style")
+                            .is_some_and(|style| style.contains("fill:#E2EFF7"))
+                }),
+                "{label}: neutral ink must reach the actual text"
+            );
+            assert!(
+                !text.ancestors().any(|node| filter_reference(node).is_some()
+                    || node
+                        .attribute("style")
+                        .is_some_and(|style| style.contains("text-shadow"))),
+                "{label}: glyphs must not inherit a shape or edge glow"
+            );
+            assert_eq!(
+                text.ancestors()
+                    .any(|node| node.has_tag_name("foreignObject")),
+                html_labels,
+                "{label}: both SVG and HTML label terminals must be exercised"
+            );
+        }
+        assert_eq!(applications(direct.svg()), 3);
+        assert_eq!(
+            document
+                .descendants()
+                .filter(|node| node.has_tag_name("filter")
+                    && node
+                        .attribute("id")
+                        .is_some_and(|id| id.contains("-theme-effect-")))
+                .count(),
+            3
+        );
+        let edge = document
+            .descendants()
+            .find(|node| node.attribute("data-edge") == Some("true"))
+            .unwrap();
+        let depths: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("data-merman-theme-depth") == Some("node"))
+            .collect();
+        assert_eq!(depths.len(), 2);
+        for depth in depths {
+            assert!(depth.range().end < edge.range().start);
+            assert!(!depth.descendants().any(|node| node.has_tag_name("text")
+                || node.has_tag_name("foreignObject")
+                || node.attribute("id").is_some()
+                || node.attribute("data-id").is_some()));
+        }
+        for consumer in document.descendants().filter(|node| {
+            filter_reference(*node).is_some_and(|value| value.contains("-theme-effect-"))
+        }) {
+            let is_body = consumer
+                .parent_element()
+                .is_some_and(|parent| parent.attribute("data-merman-theme-depth") == Some("node"));
+            let reference = filter_reference(consumer).unwrap();
             let id = reference
                 .strip_prefix("url(#")
                 .unwrap()
@@ -640,8 +693,12 @@ fn public_cyberpunk_recipe_exchange_retains_shape_edge_and_text_glow() {
                 .unwrap();
             let filter = document
                 .descendants()
-                .find(|node| node.attribute("id") == Some(id))
+                .find(|node| node.has_tag_name("filter") && node.attribute("id") == Some(id))
                 .unwrap();
+            assert_eq!(
+                filter.attribute("color-interpolation-filters"),
+                Some("sRGB")
+            );
             let deviations: Vec<_> = filter
                 .descendants()
                 .filter(|node| node.has_tag_name("feGaussianBlur"))
@@ -649,26 +706,54 @@ fn public_cyberpunk_recipe_exchange_retains_shape_edge_and_text_glow() {
                 .collect();
             assert_eq!(
                 deviations,
-                ["5"],
-                "{label}: text uses the reference's 10px shadow"
+                if is_body { vec!["2", "5"] } else { vec!["1.5"] }
             );
-            assert!(
-                !text
-                    .ancestors()
-                    .find(|node| filter_reference(*node).is_some())
-                    .unwrap()
+            let floods: Vec<_> = filter
+                .descendants()
+                .filter(|node| node.has_tag_name("feFlood"))
+                .map(|node| node.attribute("flood-color").unwrap())
+                .collect();
+            assert_eq!(
+                floods,
+                if is_body {
+                    vec!["rgba(83, 220, 228, 0.2)", "rgba(83, 220, 228, 0.1)"]
+                } else {
+                    vec!["rgba(83, 220, 228, 0.16)"]
+                }
+            );
+            if is_body {
+                assert!(consumer.has_tag_name("rect"));
+                let shadow_output = filter
+                    .children()
+                    .find(|node| node.attribute("result") == Some("merman-shadow-stack-result"))
+                    .unwrap();
+                assert!(
+                    !shadow_output
+                        .children()
+                        .any(|node| node.has_tag_name("feMergeNode")
+                            && node.attribute("in") == Some("SourceGraphic"))
+                );
+                let owner = id.split_once("-theme-effect-").unwrap().0;
+                let foreground = document
                     .descendants()
-                    .any(|node| node.has_tag_name("rect"))
-            );
+                    .find(|node| node.attribute("id") == Some(owner))
+                    .unwrap()
+                    .children()
+                    .find(|node| node.has_tag_name("rect"))
+                    .unwrap();
+                assert!(filter_reference(foreground).is_none());
+                for attribute in ["x", "y", "width", "height", "rx", "ry"] {
+                    assert_eq!(
+                        consumer.attribute(attribute),
+                        foreground.attribute(attribute)
+                    );
+                }
+            } else {
+                assert_eq!(consumer, edge);
+                assert!(consumer.has_tag_name("path"));
+                assert!(consumer.attribute("marker-end").is_some());
+            }
         }
-        assert_eq!(applications(direct.svg()), 6);
-        let mut deviations = document
-            .descendants()
-            .filter(|node| node.has_tag_name("feGaussianBlur"))
-            .map(|node| node.attribute("stdDeviation").unwrap())
-            .collect::<Vec<_>>();
-        deviations.sort_unstable();
-        assert_eq!(deviations, ["16", "16", "5", "5", "5", "6", "8", "8"]);
     }
 }
 
@@ -1029,8 +1114,8 @@ fn public_cyberpunk_recipe_exchange_keeps_flowchart_widths_and_applicable_corner
         );
         for node in nodes {
             if node.has_tag_name("rect") {
-                assert_eq!(node.attribute("rx"), Some("10"));
-                assert_eq!(node.attribute("ry"), Some("10"));
+                assert_eq!(node.attribute("rx"), Some("4"));
+                assert_eq!(node.attribute("ry"), Some("4"));
             } else {
                 assert!(node.attribute("rx").is_none());
                 assert!(node.attribute("ry").is_none());
@@ -1038,8 +1123,10 @@ fn public_cyberpunk_recipe_exchange_keeps_flowchart_widths_and_applicable_corner
             assert!(
                 node.attribute("style")
                     .unwrap()
-                    .contains("stroke-width:3px")
+                    .contains("stroke-width:1.5px")
             );
+            assert!(node.attribute("style").unwrap().contains("stroke:#53DCE4"));
+            assert!(filter_reference(node).is_none());
         }
         let edges: Vec<_> = xml
             .descendants()
@@ -1050,8 +1137,9 @@ fn public_cyberpunk_recipe_exchange_keeps_flowchart_widths_and_applicable_corner
             assert!(
                 edge.attribute("style")
                     .unwrap()
-                    .contains("stroke-width:2px")
+                    .contains("stroke-width:1.25px")
             );
+            assert!(edge.attribute("style").unwrap().contains("stroke:#53DCE4"));
         }
     }
 }

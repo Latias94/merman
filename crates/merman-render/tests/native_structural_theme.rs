@@ -32,13 +32,13 @@ const PRESETS: [(ThemePreset, [&str; 6]); 2] = [
     (
         ThemePreset::Cyberpunk,
         [
-            "#051423", "#051423", "#051423", "#00f2ff", "#00f2ff", "#ff00ff",
+            "#0B1020", "#151E35", "#202B46", "#53DCE4", "#53DCE4", "#F28BCB",
         ],
     ),
     (
         ThemePreset::Ghibli,
         [
-            "#FDF6E3", "#FFFFFF", "#FFF3E0", "#000000", "#6B5B4F", "#FFDFAD",
+            "#FAF5E8", "#EEF3E3", "#F3EFDF", "#78917B", "#637261", "#B79B65",
         ],
     ),
 ];
@@ -199,8 +199,8 @@ mod er {
             .unwrap();
         for html in [false, true] {
             for (source, variables, odd, even) in [
-                (SOURCE, json!({"rowOdd":"#123456"}), "#123456", "#FFF3E0"),
-                (SOURCE, json!({"rowEven":"#123456"}), "#FFFFFF", "#123456"),
+                (SOURCE, json!({"rowOdd":"#123456"}), "#123456", "#F3EFDF"),
+                (SOURCE, json!({"rowEven":"#123456"}), "#EEF3E3", "#123456"),
             ] {
                 let svg = render(
                     source,
@@ -440,7 +440,7 @@ mod treemap {
             "treemap\n\"Section A\"\n  \"Leaf A\": 42\n\"Section B\"\n  \"Leaf B\": 24\n";
         for (preset, fills, ink) in [
             (ThemePreset::Cyberpunk, ["#67e8f9", "#f9a8d4"], "#000000"),
-            (ThemePreset::Ghibli, ["#9bc5a1", "#efbc88"], "#3A2E2C"),
+            (ThemePreset::Ghibli, ["#9bc5a1", "#efbc88"], "#314A3E"),
         ] {
             let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
             let svg = render(SOURCE, &theme, json!({}));

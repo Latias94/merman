@@ -61,6 +61,15 @@ system fonts, classic Flowchart and Sequence looks, Dagre for Flowchart, the ori
 recipe and default resource limits. Successful observations remain **HostDependent**. State is not
 part of this profile.
 
+The current design uses neutral primary ink (`#E2EFF7`) and muted XY labels (`#92A9BF`) without
+label glows. Navy canvas (`#0B1020`), dark bodies (`#151E35`) and secondary surfaces (`#202B46`)
+separate cyan contours (`#53DCE4`), magenta accents (`#F28BCB`) and amber XY marks (`#E8C078`).
+Body outlines are 1.5px with 4px corners; selected connectors and Sequence details use 1.25px.
+Body glow uses 2px/5px blur at 0.2/0.1 opacity; edges use 1.5px at 0.16, Sequence loop frames
+use 1.5px at 0.12, and note bodies use 2.5px at 0.12. XY bars use 1.25px outlines, 0.35 fill
+opacity and 2px glow at 0.12; XY lines use 2px strokes and 1.5px glow at 0.16. The three screen
+canvas layers retain their geometry with a 0.025 radial wash and 0.018 grid ink.
+
 The private runner observes its actual immutable SVG and checks canvas paint, gradient/grid geometry and compositing;
 family-specific surfaces, borders, typography, series order, markers and label ownership; and
 the bound glow primitives, colors and composition chain. Internal filter-result names may change
@@ -71,8 +80,9 @@ unfiltered. Missing depth, mismatched silhouettes, changed layer order and sourc
 depth merge are rejected. These are fixed writer/scenario checks, not a general
 CSS cascade or arbitrary-source validator.
 
-The runner also checks actual PNG contributions by independently removing 34 labels, 62 effects,
-five arrowheads and nine canvas layers across the scenes. Glyph checks disable all effects first
+The runner also checks actual PNG contributions by independently removing 34 labels, 30 effects
+(seven Flowchart, thirteen Sequence and ten XY), five arrowheads and nine canvas layers across
+the scenes. Glyph checks disable all effects first
 so glow cannot replace missing text ink. Every removal must change pixels without changing output
 dimensions; the mutation export path must first reproduce the public facade PNG exactly. Recipe
 export/import regressions separately require identical SVG and PNG bytes.

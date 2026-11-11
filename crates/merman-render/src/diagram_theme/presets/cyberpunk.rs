@@ -1,4 +1,4 @@
-//! Authored neon colors, layered canvas, and scoped cascade glows.
+//! Neutral ink on dark panels, with neon contours and restrained body and edge glows.
 
 use merman_theme_contract::*;
 
@@ -10,10 +10,7 @@ use crate::diagram_theme::{ThemeTarget, ThemeVariant};
 const SHAPE_GLOW: &str = "shape-glow";
 const EDGE_GLOW: &str = "edge-glow";
 const NOTE_GLOW: &str = "note-glow";
-const LOOP_TEXT_GLOW: &str = "loop-text-glow";
 const SOFT_CYAN_GLOW: &str = "soft-cyan-glow";
-const KEYWORD_GLOW: &str = "keyword-glow";
-const NOTE_TEXT_GLOW: &str = "note-text-glow";
 
 pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
     let mut design = build_cross_family_recipe(palette);
@@ -29,32 +26,37 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         "neon-cyan",
         "Neon cyan",
         "Core colors",
-        "Shared cyan source for linked text, outlines, canvas gradients, and glows.",
-        "#00f2ff",
+        "Shared cyan source for outlines, chart marks, canvas gradients, and glows; label ink is independent.",
+        palette.border,
     );
     color_token(
         &mut design,
         "neon-magenta",
         "Neon magenta",
         "Core colors",
-        "Shared magenta source for linked accents, note colors, and note glows.",
-        "#ff00ff",
+        "Shared magenta source for accents, note outlines, chart marks, and glows; label ink is independent.",
+        palette.accent,
+    );
+    color_token(
+        &mut design,
+        "chart-amber",
+        "Chart amber",
+        "Series palette",
+        "Warm third chart ink, independent of the pastel filled-category palette.",
+        "#E8C078",
     );
     // These bindings are source intent, not an equality-based inference over output colors.
     for id in [
-        "text",
-        "subtle-text",
         "border",
         "line",
         "cluster-border",
         "actor-border",
-        "actor-text",
         "activation-border",
     ] {
         design.tokens.get_mut(id).expect("shared color role").value =
             ThemeDesignTokenValueV1::Color(reference("neon-cyan"));
     }
-    for id in ["accent", "note-border", "note-text"] {
+    for id in ["accent", "note-border"] {
         design.tokens.get_mut(id).expect("shared color role").value =
             ThemeDesignTokenValueV1::Color(reference("neon-magenta"));
     }
@@ -64,7 +66,7 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         "Body border width",
         "Geometry",
         "Outline thickness for Flowchart nodes and sequence actors and activations.",
-        3.0,
+        1.5,
     );
     length_token(
         &mut design,
@@ -72,7 +74,7 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         "Detail border width",
         "Geometry",
         "Outline thickness for selected connectors and sequence details.",
-        2.0,
+        1.25,
     );
     length_token(
         &mut design,
@@ -80,14 +82,21 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         "Body radius",
         "Geometry",
         "Corner radius for Flowchart nodes and sequence actors and notes.",
-        10.0,
+        4.0,
     );
     number_token(
         &mut design,
         "label-weight",
         "Label weight",
-        "Font weight for Flowchart node and edge labels.",
+        "Font weight for Flowchart node labels and sequence actor labels.",
         600.0,
+    );
+    number_token(
+        &mut design,
+        "secondary-label-weight",
+        "Secondary label weight",
+        "Font weight for connector, message, loop, and note labels.",
+        500.0,
     );
     design
         .canvas
@@ -101,7 +110,7 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
             radius: literal(ThemeLengthWireV1::Percent {
                 percent: 100.0 / std::f32::consts::SQRT_2,
             }),
-            stops: vec![stop(0.0, "neon-cyan", 0.05), stop(0.7, "neon-cyan", 0.0)],
+            stops: vec![stop(0.0, "neon-cyan", 0.025), stop(0.7, "neon-cyan", 0.0)],
             repetition: None,
         }),
         screen_layer(grid_line(90.0)),
@@ -111,50 +120,26 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         (
             SOFT_CYAN_GLOW,
             "Soft cyan glow",
-            "Glow for sequence loop outlines and chart legends.",
+            "Restrained glow for sequence loop outlines.",
             "neon-cyan",
-            4.0,
-            0.5,
-        ),
-        (
-            KEYWORD_GLOW,
-            "Keyword glow",
-            "Glow around sequence loop-label backgrounds.",
-            "neon-cyan",
-            6.0,
-            0.4,
+            1.5,
+            0.12,
         ),
         (
             EDGE_GLOW,
             "Edge glow",
             "Glow for Flowchart edges and sequence messages and lifelines.",
             "neon-cyan",
-            6.0,
-            0.6,
+            1.5,
+            0.16,
         ),
         (
             NOTE_GLOW,
             "Note body glow",
             "Magenta glow around sequence note bodies.",
             "neon-magenta",
-            8.0,
-            0.4,
-        ),
-        (
-            LOOP_TEXT_GLOW,
-            "Text glow",
-            "Glow for Flowchart node and edge labels and sequence loop labels.",
-            "neon-cyan",
-            5.0,
-            0.5,
-        ),
-        (
-            NOTE_TEXT_GLOW,
-            "Note text glow",
-            "Magenta glow for sequence note labels.",
-            "neon-magenta",
-            4.0,
-            0.4,
+            2.5,
+            0.12,
         ),
     ] {
         effect_token(
@@ -169,28 +154,26 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         &mut design,
         SHAPE_GLOW,
         "Body glow",
-        "Layered cyan glow for Flowchart nodes and sequence actors and actor labels.",
+        "Restrained layered cyan glow for Flowchart bodies and sequence actor bodies.",
         vec![
-            shadow("neon-cyan", 0.0, 8.0, 0.5),
-            shadow("neon-cyan", 0.0, 16.0, 0.3),
+            shadow("neon-cyan", 0.0, 2.0, 0.2),
+            shadow("neon-cyan", 0.0, 5.0, 0.1),
         ],
     );
-    for (family, target, effect, width, radius, label_weight, paint) in [
+    for (family, target, effect, width, radius, paint) in [
         (
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::Loop,
             Some(SOFT_CYAN_GLOW),
             Some("detail-border-width"),
             false,
-            false,
             true,
         ),
         (
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::LoopLabelBackground,
-            Some(KEYWORD_GLOW),
+            None,
             Some("detail-border-width"),
-            false,
             false,
             false,
         ),
@@ -201,7 +184,6 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
             Some("body-border-width"),
             true,
             false,
-            false,
         ),
         (
             DiagramFamilyId::FLOWCHART,
@@ -209,25 +191,6 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
             Some(EDGE_GLOW),
             Some("detail-border-width"),
             false,
-            false,
-            false,
-        ),
-        (
-            DiagramFamilyId::FLOWCHART,
-            ThemeTarget::NodeLabel,
-            Some(LOOP_TEXT_GLOW),
-            None,
-            false,
-            true,
-            false,
-        ),
-        (
-            DiagramFamilyId::FLOWCHART,
-            ThemeTarget::EdgeLabel,
-            Some(LOOP_TEXT_GLOW),
-            None,
-            false,
-            true,
             false,
         ),
         (
@@ -237,23 +200,12 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
             Some("body-border-width"),
             true,
             false,
-            false,
-        ),
-        (
-            DiagramFamilyId::SEQUENCE,
-            ThemeTarget::ActorLabel,
-            Some(SHAPE_GLOW),
-            None,
-            false,
-            false,
-            false,
         ),
         (
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::Message,
             Some(EDGE_GLOW),
             Some("detail-border-width"),
-            false,
             false,
             false,
         ),
@@ -264,14 +216,12 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
             Some("detail-border-width"),
             true,
             false,
-            false,
         ),
         (
             DiagramFamilyId::SEQUENCE,
             ThemeTarget::Lifeline,
             Some(EDGE_GLOW),
             Some("detail-border-width"),
-            false,
             false,
             false,
         ),
@@ -282,32 +232,9 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
             Some("body-border-width"),
             false,
             false,
-            false,
-        ),
-        (
-            DiagramFamilyId::SEQUENCE,
-            ThemeTarget::LoopLabel,
-            Some(LOOP_TEXT_GLOW),
-            None,
-            false,
-            false,
-            false,
-        ),
-        (
-            DiagramFamilyId::SEQUENCE,
-            ThemeTarget::NoteLabel,
-            Some(NOTE_TEXT_GLOW),
-            None,
-            false,
-            false,
-            false,
         ),
     ] {
-        let mut style = if label_weight {
-            weighted("label-weight")
-        } else {
-            ThemeDesignStyleV1::default()
-        };
+        let mut style = ThemeDesignStyleV1::default();
         if let Some(id) = effect {
             style.effect = SpecifiedWireV1::Value(reference(id));
         }
@@ -327,10 +254,52 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
         }
         design.rules.push(rule(Some(family), target, None, style));
     }
+    for (family, target, ink, weight) in [
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::NodeLabel,
+            "text",
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::FLOWCHART,
+            ThemeTarget::EdgeLabel,
+            "text",
+            "secondary-label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::ActorLabel,
+            "actor-text",
+            "label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::MessageLabel,
+            "text",
+            "secondary-label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::LoopLabel,
+            "text",
+            "secondary-label-weight",
+        ),
+        (
+            DiagramFamilyId::SEQUENCE,
+            ThemeTarget::NoteLabel,
+            "note-text",
+            "secondary-label-weight",
+        ),
+    ] {
+        let mut patch = weighted(weight);
+        patch.fill = SpecifiedWireV1::Value(super::design::paint(ink));
+        design.rules.push(rule(Some(family), target, None, patch));
+    }
     append_xy_series(&mut design);
     append_xy_text(&mut design);
-    let mut tick = style(None, Some("neon-cyan"));
-    tick.opacity = SpecifiedWireV1::Value(literal(0.3));
+    let mut tick = style(None, Some("subtle-text"));
+    tick.opacity = SpecifiedWireV1::Value(literal(0.35));
     design.rules.push(rule(
         Some(DiagramFamilyId::XY_CHART),
         ThemeTarget::AxisTick,
@@ -341,8 +310,7 @@ pub(super) fn build_recipe(palette: PresetPalette) -> ThemeDesignV1 {
 }
 
 fn append_xy_text(design: &mut ThemeDesignV1) {
-    let mut legend = style(Some("neon-cyan"), None);
-    legend.effect = SpecifiedWireV1::Value(reference(SOFT_CYAN_GLOW));
+    let mut legend = style(Some("subtle-text"), None);
     legend.typography = Some(literal(ThemeDesignTextStyleV1 {
         font_size_px: SpecifiedWireV1::Value(px(12.0)),
         ..Default::default()
@@ -353,22 +321,17 @@ fn append_xy_text(design: &mut ThemeDesignV1) {
         None,
         legend,
     ));
-    // CSS text-shadow blur is twice the SVG Gaussian standard deviation.
-    for (target, size, weight, sigma, opacity) in [
-        (ThemeTarget::Title, Some(18.0), Some(700.0), 7.5, 0.8),
-        (ThemeTarget::AxisTitle, Some(13.0), None, 5.0, 0.6),
-        (ThemeTarget::AxisLabel, None, Some(600.0), 5.0, 0.5),
+    for (target, ink, size, weight) in [
+        (ThemeTarget::Title, "text", Some(18.0), Some(600.0)),
+        (
+            ThemeTarget::AxisTitle,
+            "subtle-text",
+            Some(13.0),
+            Some(500.0),
+        ),
+        (ThemeTarget::AxisLabel, "subtle-text", None, Some(500.0)),
     ] {
-        let effect_id = format!("xy-{}-glow", target.id());
-        effect_token(
-            design,
-            &effect_id,
-            &format!("Chart {} glow", target.id()),
-            "Glow for this XY chart text role.",
-            vec![shadow("neon-cyan", 0.0, sigma, opacity)],
-        );
-        let mut patch = style(Some("neon-cyan"), None);
-        patch.effect = SpecifiedWireV1::Value(reference(&effect_id));
+        let mut patch = style(Some(ink), None);
         patch.typography = Some(literal(ThemeDesignTextStyleV1 {
             font_size_px: size.map_or(SpecifiedWireV1::Unspecified, |value| {
                 SpecifiedWireV1::Value(px(value))
@@ -385,19 +348,20 @@ fn append_xy_text(design: &mut ThemeDesignV1) {
 }
 
 fn append_xy_series(design: &mut ThemeDesignV1) {
-    for (offset, color) in ["#6cc6cb", "#c77dff", "#7ce38b"].into_iter().enumerate() {
+    let colors = ["neon-cyan", "neon-magenta", "chart-amber"];
+    for (offset, color) in colors.into_iter().enumerate() {
         let color_id = format!("xy-series.{offset}");
-        color_token(
+        token(
             design,
             &color_id,
             &format!("Chart series {}", offset + 1),
             "Series palette",
-            "Dedicated XY chart bar and line color, including its matching glow.",
-            color,
+            "Chart ink for marks and legend swatches, including the matching XY glow.",
+            ThemeDesignTokenValueV1::Color(reference(color)),
         );
         for (kind, width, sigma, opacity) in [
-            (ThemeVariant::Bar, 2.0, 8.0, 0.4),
-            (ThemeVariant::Line, 3.0, 6.0, 0.5),
+            (ThemeVariant::Bar, 1.25, 2.0, 0.12),
+            (ThemeVariant::Line, 2.0, 1.5, 0.16),
         ] {
             let effect_id = format!("xy-{}-{offset}-glow", kind.id());
             effect_token(
@@ -412,7 +376,7 @@ fn append_xy_series(design: &mut ThemeDesignV1) {
                 Some(&color_id),
             );
             if kind == ThemeVariant::Bar {
-                patch.fill_opacity = SpecifiedWireV1::Value(literal(0.2));
+                patch.fill_opacity = SpecifiedWireV1::Value(literal(0.35));
             }
             if let Some(ThemeValueV1::Literal(stroke)) = patch.stroke.as_mut() {
                 stroke.width = SpecifiedWireV1::Value(px(width));
@@ -426,13 +390,29 @@ fn append_xy_series(design: &mut ThemeDesignV1) {
             );
             entry.ordinal = Some(ThemeOrdinalSelectorWireV1::Cycle {
                 cycle: ThemeOrdinalCycleWireV1 {
-                    period: 3,
+                    period: colors.len() as u32,
                     offset: offset as u32,
                 },
             });
             design.rules.push(entry);
         }
     }
+    token(
+        design,
+        "xy-series",
+        "Chart inks",
+        "Series palette",
+        "Three repeating chart inks, independent of the twelve pastel filled categories and Pie sectors.",
+        ThemeDesignTokenValueV1::Palette(literal(
+            (0..colors.len())
+                .map(|index| reference(&format!("xy-series.{index}")))
+                .collect(),
+        )),
+    );
+    design.palettes.insert(
+        ThemeTarget::ChartSeries.id().to_owned(),
+        reference("xy-series"),
+    );
 }
 
 fn screen_layer(paint: ThemeDesignPaintObjectV1) -> ThemeDesignCanvasLayerV1 {
@@ -449,8 +429,8 @@ fn grid_line(angle_degrees: f32) -> ThemeDesignPaintObjectV1 {
     ThemeDesignPaintObjectV1::LinearGradient {
         angle_degrees: literal(angle_degrees),
         stops: vec![
-            stop(0.0, "neon-cyan", 0.03),
-            stop(1.0 / 40.0, "neon-cyan", 0.03),
+            stop(0.0, "neon-cyan", 0.018),
+            stop(1.0 / 40.0, "neon-cyan", 0.018),
             stop(1.0 / 40.0, "neon-cyan", 0.0),
             stop(1.0, "neon-cyan", 0.0),
         ],

@@ -185,6 +185,10 @@
           "surface-rose": { "type": "color", "label": "5 · Rose surface", "group": "Category surfaces", "value": "#852D55" },
           "surface-gold": { "type": "color", "label": "6 · Gold surface", "group": "Category surfaces", "value": "#666016" }
         },
+        "rules": [
+          { "family": "class", "target": "note", "style": { "fill": { "ref": "note-surface" }, "stroke": { "paint": { "ref": "outline" } } } },
+          { "family": "class", "target": "note-label", "style": { "fill": { "ref": "note-ink" } } }
+        ],
         "mermaid": {
           "dark_mode": true,
           "variables": {

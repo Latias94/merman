@@ -8665,27 +8665,138 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             })
             .collect();
         assert_eq!(actors.len(), 4);
-        for actor in actors {
-            assert_eq!(actor.attribute("rx"), Some("10"));
-            assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
+        for actor in &actors {
+            assert_eq!(actor.attribute("rx"), Some("4"));
+            assert_eq!(actor.attribute("ry"), Some("4"));
+            assert_eq!(actor.attribute("style"), Some("stroke-width:1.5px;"));
+            assert_eq!(actor.attribute("filter"), None);
         }
         let css: String = doc
             .descendants()
             .filter(|n| n.has_tag_name("style"))
             .filter_map(|n| n.text())
             .collect();
-        assert!(css.contains(".messageLine0{stroke-width:2px;stroke-dasharray:none;}"));
-        assert!(css.contains(".messageLine1{stroke-width:2px;stroke-dasharray:2,2;}"));
-        outputs.push(rendered.svg().to_owned());
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.theme_residual_count(), 0);
-        let doc = roxmltree::Document::parse(outputs.last().unwrap()).unwrap();
+        assert!(css.contains(".messageLine0{stroke-width:1.25px;stroke-dasharray:none;}"));
+        assert!(css.contains(".messageLine1{stroke-width:1.25px;stroke-dasharray:2,2;}"));
+        let diagram_id = doc.root_element().attribute("id").unwrap();
+        for (class, count, weight) in [
+            ("actor", 4, "600"),
+            ("messageText", 2, "500"),
+            ("noteText", 1, "500"),
+            ("labelText", 1, "500"),
+            ("loopText", 1, "500"),
+        ] {
+            let labels: Vec<_> = doc
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|candidate| candidate == class)
+                        })
+                })
+                .collect();
+            assert_eq!(labels.len(), count, "{class}");
+            for label in labels {
+                assert_eq!(
+                    inline_style_value(label.attribute("style").unwrap(), "font-weight"),
+                    Some(weight),
+                    "{class}: weight must reach the actual text"
+                );
+                assert!(
+                    label.ancestors().chain(label.descendants()).all(|node| {
+                        node.attribute("filter").is_none()
+                            && node.attribute("style").is_none_or(|style| {
+                                inline_style_value(style, "filter").is_none()
+                                    && inline_style_value(style, "text-shadow").is_none()
+                            })
+                    }),
+                    "{class}: glyphs must not inherit a body or connector glow"
+                );
+            }
+            let selector = if class == "actor" {
+                format!("#{diagram_id} text.actor")
+            } else {
+                format!("#{diagram_id} .{class}")
+            };
+            assert_eq!(
+                css_property_values_for_exact_selector(&css, &selector, "fill")
+                    .last()
+                    .copied(),
+                Some("#E2EFF7"),
+                "{class}: label ink must remain independent of the neon contours"
+            );
+        }
+        for (selector, color) in [
+            (".actor", "#53DCE4"),
+            (".actor-line", "#53DCE4"),
+            (".messageLine0", "#53DCE4"),
+            (".messageLine1", "#53DCE4"),
+            (".loopLine", "#53DCE4"),
+            (".labelBox", "#53DCE4"),
+            (".note", "#F28BCB"),
+            (".activation0", "#53DCE4"),
+        ] {
+            assert_eq!(
+                css_property_values_for_exact_selector(
+                    &css,
+                    &format!("#{diagram_id} {selector}"),
+                    "stroke",
+                )
+                .last()
+                .copied(),
+                Some(color),
+                "{selector}: contour and glow colors must retain their role bindings"
+            );
+        }
+        let keyword = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("labelBox"))
+            .unwrap();
+        assert!(keyword.has_tag_name("polygon"));
+        assert_eq!(keyword.attribute("rx"), None);
+        assert_eq!(keyword.attribute("filter"), None);
+        assert_eq!(keyword.attribute("style"), Some("stroke-width:1.25px;"));
+        let activation = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("activation0"))
+            .unwrap();
+        assert!(activation.has_tag_name("rect"));
+        assert_eq!(activation.attribute("stroke-width"), Some("1.5"));
+        assert_eq!(activation.attribute("filter"), None);
+        let first_lifeline = doc
+            .descendants()
+            .find(|node| node.attribute("data-et") == Some("life-line"))
+            .unwrap()
+            .range()
+            .start;
         let filters: Vec<_> = doc
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 21);
+        assert_eq!(filters.len(), 13);
+        for (role, count) in [
+            ("actor", 4),
+            ("lifeline", 2),
+            ("message", 2),
+            ("loop", 4),
+            ("note", 1),
+        ] {
+            assert_eq!(
+                filters
+                    .iter()
+                    .filter(|filter| {
+                        filter
+                            .attribute("id")
+                            .unwrap()
+                            .contains(&format!("-{role}-"))
+                    })
+                    .count(),
+                count,
+                "{role}: effects must stay attached to their intended terminals"
+            );
+        }
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -8696,34 +8807,35 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.has_tag_name("feGaussianBlur"))
                 .map(|n| n.attribute("stdDeviation").unwrap())
                 .collect();
-            let is_frame = filter.attribute("id").unwrap().contains("-loop-")
-                && !filter.attribute("id").unwrap().contains("-loop-text-");
-            let is_keyword = filter
-                .attribute("id")
-                .unwrap()
-                .contains("-loop-label-background-");
-            let is_actor_text = filter.attribute("id").unwrap().contains("-actor-text-");
-            let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
-            let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
+            let is_frame = filter.attribute("id").unwrap().contains("-loop-");
             let is_lifeline = filter.attribute("id").unwrap().contains("-lifeline-");
             let is_message = filter.attribute("id").unwrap().contains("-message-");
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
                 deviations,
-                if is_keyword {
-                    vec!["6"]
-                } else if is_frame {
-                    vec!["4"]
-                } else if is_loop_text {
-                    vec!["5"]
-                } else if is_note_text {
-                    vec!["4"]
-                } else if is_message || is_lifeline {
-                    vec!["6"]
+                if is_frame || is_message || is_lifeline {
+                    vec!["1.5"]
                 } else if is_note {
-                    vec!["8"]
+                    vec!["2.5"]
                 } else {
-                    vec!["8", "16"]
+                    vec!["2", "5"]
+                }
+            );
+            let floods: Vec<_> = filter
+                .children()
+                .filter(|node| node.has_tag_name("feFlood"))
+                .map(|node| node.attribute("flood-color").unwrap())
+                .collect();
+            assert_eq!(
+                floods,
+                if is_frame {
+                    vec!["rgba(83, 220, 228, 0.12)"]
+                } else if is_message || is_lifeline {
+                    vec!["rgba(83, 220, 228, 0.16)"]
+                } else if is_note {
+                    vec!["rgba(242, 139, 203, 0.12)"]
+                } else {
+                    vec!["rgba(83, 220, 228, 0.2)", "rgba(83, 220, 228, 0.1)"]
                 }
             );
             let reference = format!("url(#{})", filter.attribute("id").unwrap());
@@ -8732,24 +8844,15 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.attribute("filter") == Some(reference.as_str()))
                 .collect();
             assert_eq!(consumers.len(), 1);
-            if is_keyword {
-                assert!(consumers[0].has_tag_name("polygon"));
-                assert_eq!(consumers[0].attribute("rx"), None);
-            } else if is_frame {
+            if is_frame {
+                assert!(consumers[0].has_tag_name("line"));
                 assert_eq!(consumers[0].attribute("class"), Some("loopLine"));
-            } else if is_actor_text {
-                assert!(consumers[0].has_tag_name("text"));
-                assert_eq!(consumers[0].attribute("class"), Some("actor actor-box"));
-            } else if is_loop_text {
-                assert!(consumers[0].has_tag_name("text"));
-                assert!(matches!(
-                    consumers[0].attribute("class"),
-                    Some("labelText" | "loopText")
-                ));
-            } else if is_note_text {
-                assert!(consumers[0].has_tag_name("text"));
-                assert_eq!(consumers[0].attribute("class"), Some("noteText"));
+                assert_eq!(
+                    inline_style_value(consumers[0].attribute("style").unwrap(), "stroke-width"),
+                    Some("1.25px")
+                );
             } else if is_lifeline {
+                assert!(consumers[0].has_tag_name("line"));
                 assert_eq!(consumers[0].attribute("data-et"), Some("life-line"));
             } else if is_message {
                 assert!(consumers[0].has_tag_name("line"));
@@ -8763,27 +8866,48 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             } else if is_note {
                 assert!(consumers[0].has_tag_name("rect"));
                 assert_eq!(consumers[0].attribute("class"), Some("note"));
-                assert_eq!(consumers[0].attribute("stroke-width"), Some("2"));
-                assert_eq!(consumers[0].attribute("rx"), Some("10"));
-                assert_eq!(consumers[0].attribute("ry"), Some("10"));
-                let flood = filter
-                    .descendants()
-                    .find(|n| n.has_tag_name("feFlood"))
-                    .unwrap();
-                assert_eq!(
-                    flood.attribute("flood-color"),
-                    Some("rgba(255, 0, 255, 0.4)")
-                );
+                assert_eq!(consumers[0].attribute("stroke-width"), Some("1.25"));
+                assert_eq!(consumers[0].attribute("rx"), Some("4"));
+                assert_eq!(consumers[0].attribute("ry"), Some("4"));
             } else {
+                assert!(filter.attribute("id").unwrap().contains("-actor-"));
                 assert!(consumers[0].has_tag_name("rect"));
+                assert_eq!(consumers[0].attribute("class"), Some("actor actor-depth"));
+                let depth = consumers[0].parent_element().unwrap();
                 assert!(
-                    consumers[0]
-                        .attribute("class")
-                        .unwrap()
-                        .starts_with("actor ")
+                    depth.attribute("data-merman-theme-depth") == Some("actor")
+                        && depth.range().end < first_lifeline
                 );
+                assert!(!depth.descendants().any(|node| node.has_tag_name("text")
+                    || node.attribute("id").is_some()
+                    || node.attribute("name").is_some()));
+                let shadow_output = filter
+                    .children()
+                    .find(|node| node.attribute("result") == Some("merman-shadow-stack-result"))
+                    .unwrap();
+                assert!(
+                    !shadow_output
+                        .children()
+                        .any(|node| node.has_tag_name("feMergeNode")
+                            && node.attribute("in") == Some("SourceGraphic"))
+                );
+                let matching: Vec<_> = actors
+                    .iter()
+                    .filter(|actor| {
+                        ["x", "y", "width", "height", "rx", "ry"]
+                            .into_iter()
+                            .all(|attribute| {
+                                actor.attribute(attribute) == consumers[0].attribute(attribute)
+                            })
+                    })
+                    .collect();
+                assert_eq!(matching.len(), 1);
             }
         }
+        outputs.push(rendered.svg().to_owned());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
     assert_eq!(outputs[0], outputs[1]);
 }

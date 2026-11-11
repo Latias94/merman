@@ -618,10 +618,19 @@ fn public_cyberpunk_scene_has_cyan_direction_markers_after_recipe_exchange() {
         assert!(
             paints
                 .iter()
-                .all(|(_, stroke, fill)| stroke.as_deref() == Some("#00f2ff")
-                    && fill.as_deref() == Some("#00f2ff")),
+                .all(|(_, stroke, fill)| stroke.as_deref() == Some("#53DCE4")
+                    && fill.as_deref() == Some("#53DCE4")),
             "{paints:?}"
         );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let edges: Vec<_> = document
+            .descendants()
+            .filter(|node| node.attribute("data-edge") == Some("true"))
+            .collect();
+        assert_eq!(edges.len(), 3);
+        for edge in edges {
+            assert!(edge.attribute("style").unwrap().contains("stroke:#53DCE4"));
+        }
     }
 }
 

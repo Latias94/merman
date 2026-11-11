@@ -10,6 +10,40 @@ const sceneSource = (family: string): string => readFileSync(
 
 test.setTimeout(120_000);
 
+const colors = {
+  canvas: "rgb(11, 16, 32)",
+  surface: "rgb(21, 30, 53)",
+  surfaceAlt: "rgb(32, 43, 70)",
+  primary: "rgb(226, 239, 247)",
+  muted: "rgb(146, 169, 191)",
+  cyan: "rgb(83, 220, 228)",
+  magenta: "rgb(242, 139, 203)",
+  amber: "rgb(232, 192, 120)",
+};
+
+type LabelExpectation = string | { text: string; role: "primary" | "muted" };
+interface GlowExpectation {
+  selector: string;
+  count: number;
+  deviations: number[];
+  color: string;
+  alphas: number[];
+  strokeWidth: number;
+  fillOpacity?: number;
+}
+
+const flowchartGlows: GlowExpectation[] = [
+  { selector: "[data-merman-theme-depth='node'] > .label-container", count: 4, deviations: [2, 5], color: colors.cyan, alphas: [0.2, 0.1], strokeWidth: 1.5 },
+  { selector: "path.flowchart-link", count: 3, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 1.25 },
+];
+
+function expectComputedColor(actual: string, rgb: string, alpha: number): void {
+  const channels = actual.match(/[\d.]+/gu)?.map(Number) ?? [];
+  expect(channels.slice(0, 3)).toEqual(rgb.match(/[\d.]+/gu)!.map(Number));
+  // CSSOM can serialize an authored alpha through the browser's eight-bit color storage.
+  expect(Math.abs((channels[3] ?? 1) - alpha)).toBeLessThanOrEqual(1 / 255);
+}
+
 async function captureScene(page: Page, svg: Locator, clip?: { x: number; y: number; width: number; height: number }): Promise<Buffer> {
   await svg.evaluate((element) => {
     const style = element.getAttribute("style");
@@ -50,7 +84,9 @@ async function changedPixels(page: Page, before: Buffer, after: Buffer): Promise
   }, [before.toString("base64"), after.toString("base64")]);
 }
 
-async function expectPaintedLabels(page: Page, svg: Locator, expected: string[]): Promise<void> {
+async function expectPaintedLabels(page: Page, svg: Locator, expected: LabelExpectation[]): Promise<void> {
+  const labelRoles = expected.map((label) => typeof label === "string" ? { text: label, role: "primary" as const } : label);
+  const ink = new Map(labelRoles.map(({ text, role }) => [text, colors[role]]));
   const labels = svg.locator("text, foreignObject p").filter({ hasText: /\S/u });
   const texts = await labels.evaluateAll((elements) => elements.map((element) => {
     // SVG textContent concatenates wrapped row tspans without the visual line break.
@@ -59,26 +95,33 @@ async function expectPaintedLabels(page: Page, svg: Locator, expected: string[])
       ? [...rows].map((row) => row.textContent?.trim() ?? "").join(" ")
       : element.textContent ?? "";
   }));
-  expect(texts.map((text) => text.trim()).sort()).toEqual([...expected].sort());
+  expect(texts.map((text) => text.trim()).sort()).toEqual(labelRoles.map(({ text }) => text).sort());
   const rootBounds = await svg.boundingBox();
   expect(rootBounds).not.toBeNull();
   for (let index = 0; index < texts.length; index += 1) {
     const label = labels.nth(index);
-    const paints = await label.evaluate((element) => {
+    const paint = await label.evaluate((element) => {
       const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
       const colors: string[] = [];
+      const glows: { tag: string; filter: string; textShadow: string }[] = [];
       while (walker.nextNode()) {
         if (!walker.currentNode.textContent?.trim()) continue;
         const leaf = walker.currentNode.parentElement!;
         const style = getComputedStyle(leaf);
         colors.push(leaf instanceof SVGElement ? style.fill : style.color);
+        for (let ancestor: Element | null = leaf; ancestor; ancestor = ancestor.parentElement) {
+          const style = getComputedStyle(ancestor);
+          if (style.filter !== "none" || style.textShadow !== "none") {
+            glows.push({ tag: ancestor.localName, filter: style.filter, textShadow: style.textShadow });
+          }
+          if (ancestor instanceof SVGSVGElement) break;
+        }
       }
-      return colors;
+      return { colors, glows };
     });
-    expect(paints.length, texts[index]).toBeGreaterThan(0);
-    expect(new Set(paints), texts[index]).toEqual(new Set([
-      texts[index].trim() === "Verify token" ? "rgb(255, 0, 255)" : "rgb(0, 242, 255)",
-    ]));
+    expect(paint.colors.length, texts[index]).toBeGreaterThan(0);
+    expect(new Set(paint.colors), texts[index]).toEqual(new Set([ink.get(texts[index].trim())]));
+    expect(paint.glows, `${texts[index]} and its ancestors must keep glyphs crisp`).toEqual([]);
     const bounds = await label.boundingBox();
     expect(bounds, texts[index]).not.toBeNull();
     expect(bounds!.width, texts[index]).toBeGreaterThan(0);
@@ -106,24 +149,94 @@ async function expectPaintedLabels(page: Page, svg: Locator, expected: string[])
   }
 }
 
-async function expectPaintedEffects(page: Page, svg: Locator, count: number): Promise<void> {
-  const candidates = svg.locator("[filter], [style]");
-  const terminals = await candidates.evaluateAll((elements) => elements.flatMap((element, index) => {
-    const binding = (element as SVGElement | HTMLElement).style.filter || element.getAttribute("filter");
-    // A foreground filter:none suppresses the look's default shadow; it is not an effect.
-    return binding && binding !== "none" ? [index] : [];
-  }));
-  expect(terminals).toHaveLength(count);
-  const original = await captureScene(page, svg);
-  for (const index of terminals) {
-    const terminal = candidates.nth(index);
-    const filter = await terminal.evaluate((element) => {
-      const binding = element.getAttribute("filter") ?? (element as SVGElement | HTMLElement).style.filter;
-      const id = /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding)?.[1];
-      return { binding, wins: Boolean(id && /#([^)"']+)["']?\)$/u.exec(getComputedStyle(element).filter)?.[1] === id) };
+async function expectPaintedEffects(page: Page, svg: Locator, expected: GlowExpectation[], baselineSelector = ":not(*)"): Promise<void> {
+  await expect(svg).toHaveCSS("filter", "none");
+  const candidates = svg.locator("*");
+  const observed = await candidates.evaluateAll((elements, { expectations, baselineSelector }) => elements.flatMap((element, index) => {
+    const computed = getComputedStyle(element).filter;
+    if (computed === "none") return [];
+    const attribute = element.getAttribute("filter");
+    const binding = (element as SVGElement | HTMLElement).style.filter || attribute || "";
+    const id = /^url\(["']?#([^)"']+)["']?\)$/u.exec(binding)?.[1];
+    const root = element.closest("svg")!;
+    const filters = id ? [...root.querySelectorAll(`filter[id="${id}"]`)] : [];
+    const depth = element.closest("[data-merman-theme-depth]");
+    return [{
+      index, binding,
+      computed, baseline: element.matches(baselineSelector),
+      wins: Boolean(id && /#([^)"']+)["']?\)$/u.exec(computed)?.[1] === id),
+      attributeMatches: !attribute || /^url\(["']?#([^)"']+)["']?\)$/u.exec(attribute)?.[1] === id,
+      definitions: filters.length,
+      owners: expectations.flatMap(({ selector }, owner) => element.matches(selector) ? [owner] : []),
+      colorSpace: filters[0]?.getAttribute("color-interpolation-filters"),
+      stroke: getComputedStyle(element).stroke,
+      strokeWidth: getComputedStyle(element).strokeWidth,
+      fillOpacity: getComputedStyle(element).fillOpacity,
+      deviations: [...(filters[0]?.querySelectorAll("feGaussianBlur") ?? [])]
+        .map((blur) => [Number(blur.getAttribute("stdDeviation")), blur.getAttribute("in")]),
+      floods: [...(filters[0]?.querySelectorAll("feFlood") ?? [])].map((flood) => ({
+        authoredColor: flood.getAttribute("flood-color"),
+        color: getComputedStyle(flood).floodColor, opacity: getComputedStyle(flood).floodOpacity,
+      })),
+      merges: [...(filters[0]?.querySelectorAll("feMerge") ?? [])]
+        .map((merge) => [...merge.children].map((node) => node.getAttribute("in"))),
+      depth: depth ? {
+        hidden: depth.getAttribute("aria-hidden"), pointerEvents: getComputedStyle(depth).pointerEvents,
+        bodies: depth.children.length,
+        identityFree: !depth.matches("[id], [data-id], [data-et], [name]")
+          && !depth.querySelector("[id], [data-id], [data-et], [name], text, foreignObject, a, use"),
+        beforeConnections: [...root.querySelectorAll("path.flowchart-link, line.actor-line, line.messageLine0, line.messageLine1")]
+          .every((edge) => Boolean(depth.compareDocumentPosition(edge) & Node.DOCUMENT_POSITION_FOLLOWING)),
+      } : null,
+    }];
+  }), { expectations: expected, baselineSelector });
+  const terminals = observed.filter((terminal) => terminal.binding.includes("-theme-effect-"));
+  // Neo retains independent Mermaid shadows on clusters and label backings. They cannot
+  // count as authored neon, enclose typed paint, or replace the glyph-ink checks above.
+  for (const baseline of observed.filter((terminal) => !terminal.binding.includes("-theme-effect-"))) {
+    expect(baseline).toMatchObject({
+      binding: "", baseline: true, computed: "drop-shadow(rgb(185, 185, 185) 1px 2px 2px)", definitions: 0,
     });
-    expect(filter.binding).toMatch(/^url\(["']?#[^)"']+["']?\)$/u);
-    expect(filter.wins, `effect ${index} must win the computed filter`).toBe(true);
+  }
+  expect(terminals).toHaveLength(expected.reduce((sum, { count }) => sum + count, 0));
+  for (const terminal of terminals) {
+    expect(terminal.binding).toMatch(/^url\(["']?#[^)"']+["']?\)$/u);
+    expect(terminal, `effect ${terminal.index} must own one winning local filter`).toMatchObject({
+      wins: true, attributeMatches: true, definitions: 1, colorSpace: "sRGB",
+    });
+    expect(terminal.owners, `effect ${terminal.index} must belong only to an expected body, edge or chart mark`).toHaveLength(1);
+    if (terminal.depth) {
+      expect(terminal.depth, "body depth must be non-interactive and precede every connection").toEqual({
+        hidden: "true", pointerEvents: "none", bodies: 1, identityFree: true, beforeConnections: true,
+      });
+    }
+  }
+  for (const [owner, { selector, count, deviations, color, alphas, strokeWidth, fillOpacity }] of expected.entries()) {
+    const owned = terminals.filter((terminal) => terminal.owners.includes(owner));
+    expect(owned, selector).toHaveLength(count);
+    expect(owned.map((terminal) => terminal.deviations), selector)
+      .toEqual(Array.from({ length: count }, () => deviations.map((sigma, index) => [
+        sigma, index === 0 ? "SourceGraphic" : `merman-shadow-${index - 1}-result`,
+      ])));
+    for (const terminal of owned) {
+      expect(terminal.floods, selector).toHaveLength(alphas.length);
+      for (const [index, flood] of terminal.floods.entries()) {
+        expect(flood.authoredColor).toBe(color.replace("rgb(", "rgba(").replace(")", `, ${alphas[index]})`));
+        expectComputedColor(flood.color, color, alphas[index]);
+        expect(flood.opacity).toBe("1");
+      }
+      expect(terminal, selector).toMatchObject({ stroke: color, strokeWidth: `${strokeWidth}px` });
+      if (fillOpacity !== undefined) expect(Number(terminal.fillOpacity), selector).toBeCloseTo(fillOpacity, 5);
+      expect(terminal.merges, "body depth omits SourceGraphic while connectors and marks retain their source").toEqual(
+        terminal.depth
+          ? [["merman-shadow-0-shadow", "SourceGraphic"], ["merman-shadow-1-shadow", "merman-shadow-0-shadow"]]
+          : [["merman-shadow-0-shadow", "SourceGraphic"]],
+      );
+    }
+  }
+  const original = await captureScene(page, svg);
+  for (const { index } of terminals) {
+    const terminal = candidates.nth(index);
     const originalStyle = await terminal.getAttribute("style");
     const depth = await terminal.evaluate((element) => !!element.closest("[data-merman-theme-depth]"));
     const property = depth ? "visibility" : "filter";
@@ -169,6 +282,10 @@ async function expectFlowchartDepthAndGlows(svg: Locator, look: "classic" | "neo
         bodies: face.querySelectorAll(":scope > .label-container").length,
         tag: face.querySelector(".label-container")?.localName,
         filter: getComputedStyle(face.querySelector(".label-container")!).filter,
+        fill: getComputedStyle(face.querySelector(".label-container")!).fill,
+        stroke: getComputedStyle(face.querySelector(".label-container")!).stroke,
+        width: getComputedStyle(face.querySelector(".label-container")!).strokeWidth,
+        radius: [face.querySelector(".label-container")?.getAttribute("rx"), face.querySelector(".label-container")?.getAttribute("ry")],
       })),
       depths: depths.map((depth) => {
         const body = depth.querySelector<SVGGraphicsElement>(":scope > .label-container")!;
@@ -201,40 +318,22 @@ async function expectFlowchartDepthAndGlows(svg: Locator, look: "classic" | "neo
           output: [...(merge?.children ?? [])].map((node) => [node.localName, node.getAttribute("in")]),
         };
       }),
-      terminals: [...root.querySelectorAll<SVGElement | HTMLElement>("[filter], [style]")]
-        .flatMap((terminal) => {
-          const inline = terminal.style.filter;
-          const attribute = terminal.getAttribute("filter");
-          const binding = inline || attribute;
-          if (!binding) return [];
-          const id = filterId(binding);
-          const filter = id ? root.querySelector(`filter[id="${id}"]`) : null;
-          return [{
-            kind: binding === "none" ? "suppressed-face"
-              : terminal.matches("[data-merman-theme-depth='node'] > .label-container") ? "depth"
-                : terminal.matches("path.flowchart-link") ? "edge"
-                  : terminal.matches("p") || terminal.querySelector("text, foreignObject p") ? "text" : "unexpected",
-            valid: binding === "none"
-              ? terminal.matches("g[data-et='node'] > .label-container") && attribute === null
-                && terminal.style.getPropertyPriority("filter") === "important" && getComputedStyle(terminal).filter === "none"
-              : !!id && !!filter && (!attribute || filterId(attribute) === id)
-                && /#([^)"']+)["']?\)$/u.exec(getComputedStyle(terminal).filter)?.[1] === id,
-            filtersBackground: terminal.matches("rect, .labelBkg") || !!terminal.querySelector("rect, .labelBkg")
-              || [terminal, ...terminal.querySelectorAll("*")].some((element) => {
-                if (!(element instanceof HTMLElement)) return false;
-                const style = getComputedStyle(element);
-                return style.backgroundColor !== "rgba(0, 0, 0, 0)" || style.backgroundImage !== "none";
-              }),
-            deviations: [...(filter?.querySelectorAll("feGaussianBlur") ?? [])]
-              .map((blur) => Number(blur.getAttribute("stdDeviation"))),
-          }];
-        }),
+      suppressions: [...root.querySelectorAll<SVGElement>("[style]")]
+        .filter((terminal) => terminal.style.filter === "none")
+        .map((terminal) => terminal.matches("g[data-et='node'] > .label-container")
+          && terminal.getAttribute("filter") === null
+          && terminal.style.getPropertyPriority("filter") === "important"
+          && getComputedStyle(terminal).filter === "none"),
     };
   });
   const ids = ["Browse", "Cart", "Stock", "Unavailable"];
   expect(facts.faces.map(({ id }) => id).sort()).toEqual(ids);
   for (const face of facts.faces) {
-    expect(face).toMatchObject({ look, bodies: 1, filter: "none", tag: face.id === "Stock" ? "polygon" : "rect" });
+    expect(face).toMatchObject({
+      look, bodies: 1, filter: "none", tag: face.id === "Stock" ? "polygon" : "rect",
+      fill: colors.surface, stroke: colors.cyan, width: "1.5px",
+    });
+    if (face.tag === "rect") expect(face.radius).toEqual(["4", "4"]);
   }
   expect(facts.depths.map(({ owner }) => owner).sort()).toEqual(ids);
   for (const depth of facts.depths) {
@@ -247,17 +346,9 @@ async function expectFlowchartDepthAndGlows(svg: Locator, look: "classic" | "neo
     expect(depth.inlineId, depth.owner!).toBe(depth.filterId);
     for (const [index, value] of depth.matrix.entries()) expect(value, depth.owner!).toBeCloseTo(depth.faceMatrix[index], 5);
   }
-  expect(facts.terminals.every(({ valid }) => valid), "all filter bindings and explicit foreground suppressions must win").toBe(true);
-  expect(facts.terminals.map(({ kind }) => kind).sort()).toEqual([
-    ...Array<string>(4).fill("depth"), ...Array<string>(3).fill("edge"),
-    ...Array<string>(look === "neo" ? 4 : 0).fill("suppressed-face"), ...Array<string>(6).fill("text"),
-  ]);
-  for (const [kind, count, deviations] of [["depth", 4, [8, 16]], ["edge", 3, [6]], ["text", 6, [5]]] as const) {
-    expect(facts.terminals.filter((terminal) => terminal.kind === kind).map((terminal) => terminal.deviations))
-      .toEqual(Array.from({ length: count }, () => deviations));
-  }
-  expect(facts.terminals.filter(({ kind }) => kind === "text").every(({ filtersBackground }) => !filtersBackground),
-    "glyph glow must not include label backgrounds").toBe(true);
+  expect(facts.suppressions, "Neo foreground faces must suppress their built-in shadow").toEqual(
+    Array<boolean>(look === "neo" ? 4 : 0).fill(true),
+  );
 }
 
 async function expectPaintedArrows(page: Page, svg: Locator, count: number): Promise<void> {
@@ -298,6 +389,7 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
           .map((name) => Number(gradient.getAttribute(name))),
         stops: [...gradient.querySelectorAll("stop")].map((stop) => ({
           offset: stop.offset.baseVal,
+          authoredColor: stop.getAttribute("stop-color"),
           color: getComputedStyle(stop).stopColor,
           opacity: Number(getComputedStyle(stop).stopOpacity),
         })),
@@ -311,7 +403,7 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
       })),
     };
   });
-  expect(canvas.base).toBe("rgb(5, 20, 35)");
+  expect(canvas.base).toBe(colors.canvas);
   expect(canvas.layers.map(({ index, blend }) => [index, blend])).toEqual([
     ["0", "screen"], ["1", "screen"], ["2", "screen"],
   ]);
@@ -325,7 +417,8 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
   expect(radial.geometry[0]).toBeCloseTo(x + width / 2, 2);
   expect(radial.geometry[1]).toBeCloseTo(y + height / 2, 2);
   expect(radial.geometry[2]).toBeCloseTo(Math.hypot(width, height) / 2, 2);
-  expect(radial.stops.map(({ color }) => color)).toEqual(["rgba(0, 242, 255, 0.05)", "rgba(0, 242, 255, 0)"]);
+  expect(radial.stops.map(({ authoredColor }) => authoredColor)).toEqual(["rgba(83, 220, 228, 0.025)", "rgba(83, 220, 228, 0)"]);
+  for (const [index, stop] of radial.stops.entries()) expectComputedColor(stop.color, colors.cyan, [0.025, 0][index]);
   expect(radial.stops.map(({ offset }) => offset)).toEqual([0, expect.closeTo(0.7, 5)]);
   expect(radial.stops.map(({ opacity }) => opacity)).toEqual([1, 1]);
   expect(xGrid.geometry).toEqual([0, 20, 40, 20]);
@@ -336,9 +429,10 @@ async function expectCyberpunkCanvas(svg: Locator): Promise<void> {
     expect(gradient.stops.map(({ offset }) => offset)).toEqual([
       0, expect.closeTo(0.025, 5), expect.closeTo(0.025, 5), 1,
     ]);
-    expect(gradient.stops.map(({ color }) => color)).toEqual([
-      "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0)", "rgba(0, 242, 255, 0)",
+    expect(gradient.stops.map(({ authoredColor }) => authoredColor)).toEqual([
+      "rgba(83, 220, 228, 0.018)", "rgba(83, 220, 228, 0.018)", "rgba(83, 220, 228, 0)", "rgba(83, 220, 228, 0)",
     ]);
+    for (const [index, stop] of gradient.stops.entries()) expectComputedColor(stop.color, colors.cyan, [0.018, 0.018, 0, 0][index]);
     expect(gradient.stops.map(({ opacity }) => opacity)).toEqual([1, 1, 1, 1]);
     const pattern = canvas.patterns[index];
     expect(pattern).toMatchObject({ units: "userSpaceOnUse", width: 40, height: 40, fill: `url(#${gradient.id})` });
@@ -352,7 +446,7 @@ for (const { layout, look, htmlLook } of [
   { layout: "elk", look: "neo", htmlLook: "classic" },
   { layout: "dagre", look: "classic", htmlLook: "neo" },
 ] as const) {
-  test(`public Cyberpunk ${look} ${layout} paints its layered canvas and separate shape, edge and text glows`, async ({ page }) => {
+  test(`public Cyberpunk ${look} ${layout} paints crisp SVG glyphs above restrained body and edge glows`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource("flowchart"),
@@ -375,12 +469,12 @@ for (const { layout, look, htmlLook } of [
     await expectFlowchartDepthAndGlows(svg, look);
     await svg.screenshot({ path: test.info().outputPath("public-cyberpunk.png") });
     await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
-    await expectPaintedEffects(page, svg, 13);
+    await expectPaintedEffects(page, svg, flowchartGlows, look === "neo" ? '[data-look="neo"].cluster > rect, [data-look="neo"].node rect' : undefined);
     await expectPaintedArrows(page, svg, 3);
     errors.assertNone();
   });
 
-  test(`public Cyberpunk ${htmlLook} ${layout} keeps HTML glyph glow separate from the label background`, async ({ page }) => {
+  test(`public Cyberpunk ${htmlLook} ${layout} keeps HTML glyphs and label backgrounds crisp above body and edge glows`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource("flowchart"),
@@ -403,17 +497,14 @@ for (const { layout, look, htmlLook } of [
     const facts = await glyphs.evaluateAll((nodes) => nodes.map((node) => {
       const style = getComputedStyle(node);
       const box = node.getBoundingClientRect();
-      const owner = style.filter !== "none" ? node : node.closest("[filter]");
-      return { text: node.textContent, weight: style.fontWeight,
-        filter: owner ? getComputedStyle(owner).filter : "none",
-        filtersBackground: !!owner?.querySelector("rect"),
+      return { text: node.textContent, weight: style.fontWeight, nodeLabel: !!node.closest("g.node"),
+        filter: style.filter,
         background: style.backgroundColor, width: box.width, height: box.height };
     }));
     expect(facts.map(({ text }) => text).sort()).toEqual(["Add to Cart", "Browse Products", "Item in Stock?", "No", "Out of Stock", "Yes"]);
     for (const fact of facts) {
-      expect(fact.weight).toBe("600");
-      expect(fact.filter).toContain("url(");
-      expect(fact.filtersBackground).toBe(false);
+      expect(fact.weight).toBe(fact.nodeLabel ? "600" : "500");
+      expect(fact.filter).toBe("none");
       expect(fact.background).toBe("rgba(0, 0, 0, 0)");
       expect(fact.width).toBeGreaterThan(0);
       expect(fact.height).toBeGreaterThan(0);
@@ -421,11 +512,12 @@ for (const { layout, look, htmlLook } of [
     const backgrounds = svg.locator("foreignObject div.labelBkg").filter({ hasText: /\S/u });
     await expect(backgrounds).toHaveCount(2);
     for (const background of await backgrounds.all()) {
-      await expect(background).toHaveCSS("background-color", "rgb(5, 20, 35)");
+      await expect(background).toHaveCSS("background-color", colors.canvas);
+      await expect(background).toHaveCSS("filter", "none");
     }
     await svg.screenshot({ path: test.info().outputPath("public-cyberpunk-html.png") });
     await expectPaintedLabels(page, svg, ["Browse Products", "Item in Stock?", "Add to Cart", "Out of Stock", "Checkout", "Yes", "No"]);
-    await expectPaintedEffects(page, svg, 13);
+    await expectPaintedEffects(page, svg, flowchartGlows, htmlLook === "neo" ? '[data-look="neo"].cluster > rect, [data-look="neo"].node rect' : undefined);
     await expectPaintedArrows(page, svg, 3);
     errors.assertNone();
   });
@@ -435,17 +527,32 @@ for (const scene of [
   {
     family: "sequence",
     labels: ["Client", "Client", "API", "API", "Request data", "Return data", "Verify token", "loop", "[Each request]"],
-    effects: 21,
+    glows: [
+      { selector: "[data-merman-theme-depth='actor'] > rect", count: 4, deviations: [2, 5], color: colors.cyan, alphas: [0.2, 0.1], strokeWidth: 1.5 },
+      { selector: "line.actor-line", count: 2, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 1.25 },
+      { selector: "line.messageLine0, line.messageLine1", count: 2, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 1.25 },
+      { selector: "line.loopLine", count: 4, deviations: [1.5], color: colors.cyan, alphas: [0.12], strokeWidth: 1.25 },
+      { selector: "g[data-et='note'] > rect.note", count: 1, deviations: [2.5], color: colors.magenta, alphas: [0.12], strokeWidth: 1.25 },
+    ],
     arrows: 2,
   },
   {
     family: "xychart",
-    labels: ["Request Volume", "Window", "Requests", "A", "B", "C", "D", ...Array.from({ length: 11 }, (_, index) => String(index))],
-    effects: 28,
+    labels: [
+      "Request Volume",
+      ...["Window", "Requests", "A", "B", "C", "D", ...Array.from({ length: 11 }, (_, index) => String(index))]
+        .map((text) => ({ text, role: "muted" as const })),
+    ],
+    glows: [
+      { selector: "g.bar-plot-0 > rect", count: 4, deviations: [2], color: colors.cyan, alphas: [0.12], strokeWidth: 1.25, fillOpacity: 0.35 },
+      { selector: "g.line-plot-1 > path", count: 1, deviations: [1.5], color: colors.magenta, alphas: [0.16], strokeWidth: 2 },
+      { selector: "g.bar-plot-2 > rect", count: 4, deviations: [2], color: colors.amber, alphas: [0.12], strokeWidth: 1.25, fillOpacity: 0.35 },
+      { selector: "g.line-plot-3 > path", count: 1, deviations: [1.5], color: colors.cyan, alphas: [0.16], strokeWidth: 2 },
+    ],
     arrows: 0,
   },
 ]) {
-  test(`public Cyberpunk ${scene.family} keeps every label, glow and arrow visible`, async ({ page }) => {
+  test(`public Cyberpunk ${scene.family} keeps crisp semantic labels above visible marks and restrained glows`, async ({ page }) => {
     const errors = monitorBrowserErrors(page);
     const hash = encodeShareHash({
       code: sceneSource(scene.family),
@@ -463,8 +570,21 @@ for (const scene of [
     const svg = page.locator(".preview-container > div").first().locator("svg");
     await expect(svg.locator("foreignObject")).toHaveCount(0);
     await expectCyberpunkCanvas(svg);
+    if (scene.family === "sequence") {
+      for (const { selector, count, fill } of [
+        { selector: "rect.actor[name]", count: 4, fill: colors.surface },
+        { selector: "rect.note", count: 1, fill: colors.surfaceAlt },
+        { selector: "polygon.labelBox", count: 1, fill: colors.surfaceAlt },
+      ]) {
+        const surfaces = svg.locator(selector);
+        await expect(surfaces).toHaveCount(count);
+        for (const surface of await surfaces.all()) await expect(surface).toHaveCSS("fill", fill);
+      }
+      await expect(svg.locator("polygon.labelBox")).toHaveCSS("filter", "drop-shadow(rgb(185, 185, 185) 1px 2px 2px)");
+      await expect(svg.locator("polygon.labelBox")).not.toHaveAttribute("filter", /theme-effect-/u);
+    }
     await expectPaintedLabels(page, svg, scene.labels);
-    await expectPaintedEffects(page, svg, scene.effects);
+    await expectPaintedEffects(page, svg, scene.glows, scene.family === "sequence" ? "polygon.labelBox" : undefined);
     await expectPaintedArrows(page, svg, scene.arrows);
     await svg.screenshot({ path: test.info().outputPath(`public-cyberpunk-${scene.family}.png`) });
     errors.assertNone();

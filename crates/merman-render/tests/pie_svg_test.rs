@@ -2555,9 +2555,9 @@ fn pie_builtin_ghibli_preserves_role_sizes_shared_fills_and_inherited_font() {
         .unwrap()
         .as_css();
     for (selector, size, color) in [
-        ("#merman .slice", "17px", "#3A2E2C"),
-        ("#merman .pieTitleText", "25px", "#3A2E2C"),
-        ("#merman .legend text", "12px", "#6B5B4F"),
+        ("#merman .slice", "17px", "#314A3E"),
+        ("#merman .pieTitleText", "25px", "#314A3E"),
+        ("#merman .legend text", "12px", "#637261"),
     ] {
         assert_eq!(
             pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),

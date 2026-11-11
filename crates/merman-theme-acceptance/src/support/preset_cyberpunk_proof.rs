@@ -42,7 +42,7 @@ fn inventory(family: DiagramFamilyId) -> C6ProofResult<(&'static [&'static str],
                 "Yes",
                 "No",
             ],
-            13,
+            7,
             3,
         )),
         DiagramFamilyId::SEQUENCE => Ok((
@@ -57,7 +57,7 @@ fn inventory(family: DiagramFamilyId) -> C6ProofResult<(&'static [&'static str],
                 "loop",
                 "[Each request]",
             ],
-            21,
+            13,
             2,
         )),
         DiagramFamilyId::XY_CHART => Ok((
@@ -81,7 +81,7 @@ fn inventory(family: DiagramFamilyId) -> C6ProofResult<(&'static [&'static str],
                 "9",
                 "10",
             ],
-            28,
+            10,
             0,
         )),
         _ => Err(C6ProofError::new("cyberpunk-scope", "undeclared family")),
@@ -277,7 +277,7 @@ mod tests {
             let mut mutations = vec![
                 ("mix-blend-mode:screen", "mix-blend-mode:normal"),
                 ("width=\"40\"", "width=\"39\""),
-                ("rgba(0, 242, 255, 0.05)", "rgba(0, 242, 255, 0)"),
+                ("rgba(83, 220, 228, 0.025)", "rgba(83, 220, 228, 0)"),
                 (
                     "gradientUnits=\"userSpaceOnUse\"",
                     "gradientUnits=\"objectBoundingBox\"",
@@ -285,33 +285,39 @@ mod tests {
             ];
             match spec.family {
                 DiagramFamilyId::FLOWCHART => mutations.extend([
-                    ("stroke-width:3px !important", "stroke-width:1px !important"),
-                    ("rx:10px", "rx:0px"),
+                    (
+                        "stroke-width:1.5px !important",
+                        "stroke-width:1px !important",
+                    ),
+                    ("rx:4px", "rx:0px"),
                     ("font-weight:600", "font-weight:400"),
+                    ("font-weight:500", "font-weight:400"),
                     ("M 0 0 L 10 5 L 0 10 z", "M 0 0"),
                     (
-                        "opacity:1;background-color:#051423",
-                        "opacity:0.5;background-color:#051423",
+                        "opacity:1;background-color:#0B1020",
+                        "opacity:0.5;background-color:#0B1020",
                     ),
                     ("data-id=\"Cart\"", "data-id=\"Missing\""),
                     ("in=\"merman-shadow-0-result\"", "in=\"SourceGraphic\""),
                 ]),
                 DiagramFamilyId::SEQUENCE => mutations.extend([
                     (
-                        ".actor{stroke:#00f2ff;fill:#051423",
-                        ".actor{stroke:#00f2ff;fill:#ffffff",
+                        ".actor{stroke:#53DCE4;fill:#151E35",
+                        ".actor{stroke:#53DCE4;fill:#ffffff",
                     ),
-                    ("font-weight:400", "font-weight:600"),
+                    ("font-weight:600", "font-weight:400"),
+                    ("font-weight:500", "font-weight:400"),
                     ("stroke-dasharray:3, 3", "stroke-dasharray:none"),
-                    ("rgba(0, 242, 255, 0.1)", "rgba(0, 242, 255, 0.9)"),
-                    ("stdDeviation=\"16\"", "stdDeviation=\"8\""),
+                    ("fill:#202B46", "fill:#ffffff"),
+                    ("rgba(83, 220, 228, 0.16)", "rgba(83, 220, 228, 0.9)"),
+                    ("stdDeviation=\"5\"", "stdDeviation=\"4\""),
                     ("M -1 0 L 10 5 L 0 10 z", "M 0 0"),
                 ]),
                 DiagramFamilyId::XY_CHART => mutations.extend([
-                    ("fill-opacity=\"0.2\"", "fill-opacity=\"1\""),
-                    ("#6cc6cb", "#ff0000"),
-                    ("stroke-width=\"3\"", "stroke-width=\"2\""),
-                    ("opacity=\"0.3\"", "opacity=\"1\""),
+                    ("fill-opacity=\"0.35\"", "fill-opacity=\"1\""),
+                    ("#53DCE4", "#ff0000"),
+                    ("stroke-width=\"1.25\"", "stroke-width=\"2\""),
+                    ("opacity=\"0.35\"", "opacity=\"1\""),
                     ("font-size=\"14\"", "font-size=\"10\""),
                     ("font-weight=\"600\"", "font-weight=\"400\""),
                 ]),
@@ -329,6 +335,21 @@ mod tests {
                     "{} accepted {before} => {after}",
                     spec.family
                 );
+            }
+            let xml = roxmltree::Document::parse(svg).unwrap();
+            let label = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            for node in [label, label.parent().unwrap()] {
+                for declaration in ["filter:blur(1px)", "text-shadow:0 0 1px #53DCE4"] {
+                    let changed = override_paint(svg, node, declaration);
+                    assert!(
+                        scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
+                        "{} accepted {declaration} on a label or ancestor",
+                        spec.family
+                    );
+                }
             }
         }
     }
@@ -450,7 +471,7 @@ mod tests {
             let document = document(spec.source);
             let original = rasterize(document.svg()).unwrap();
             let (width, height) = original.dimensions();
-            let blank = C6RasterImage::solid_for_test(width, height, [5, 20, 35]);
+            let blank = C6RasterImage::solid_for_test(width, height, [11, 16, 32]);
             assert!(verify_pixels(spec.family, document.svg(), &blank).is_err());
             let xml = roxmltree::Document::parse(document.svg()).unwrap();
             let label = xml
