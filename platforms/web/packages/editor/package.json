@@ -1,6 +1,6 @@
 {
   "name": "@mermanjs/web-editor",
-  "version": "0.10.0-alpha.2",
+  "version": "0.10.0",
   "description": "Browser-only Merman WebAssembly SDK for parser-backed editor intelligence.",
   "type": "module",
   "main": "./dist/package-entries/editor.js",
