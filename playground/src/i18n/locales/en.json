@@ -26,7 +26,6 @@
     "light": "Light overrides",
     "dark": "Dark overrides",
     "validate": "Validate theme",
-    "validating": "Validating…",
     "valid": "The runtime accepted the complete document, including every declared appearance.",
     "chooseAppearance": "The previous appearance is no longer supported. Choose an appearance before applying.",
     "apply": "Apply changes",
