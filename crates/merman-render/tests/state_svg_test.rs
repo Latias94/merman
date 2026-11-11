@@ -753,6 +753,212 @@ fn render_strict_state_svg_with_theme_and_config(
 }
 
 #[test]
+fn state_palette_fallback_preserves_clear_and_explicit_paints_in_svg() {
+    const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Continue\n";
+    const PALETTE_COLOR: &str = "#22d3ee";
+    const EXPLICIT_COLOR: &str = "#ef4444";
+    const SOURCE_COLOR: &str = "#112233";
+
+    let terminal_style = |svg: &str, target: ThemeTarget| {
+        let document = roxmltree::Document::parse(svg).expect("valid State palette SVG");
+        let terminal = match target {
+            ThemeTarget::State | ThemeTarget::StateLabel => {
+                let state = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("g")
+                            && node
+                                .attribute("id")
+                                .is_some_and(|id| id.contains("-state-Ready-"))
+                    })
+                    .expect("Ready state terminal");
+                state
+                    .descendants()
+                    .find(|node| match target {
+                        ThemeTarget::State => {
+                            node.has_tag_name("rect")
+                                && node.attribute("class") == Some("basic label-container")
+                        }
+                        _ => node.has_tag_name("g") && node.attribute("class") == Some("label"),
+                    })
+                    .expect("Ready paint terminal")
+            }
+            ThemeTarget::Transition => document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path") && node.attribute("data-id") == Some("edge0")
+                })
+                .expect("transition path terminal"),
+            ThemeTarget::TransitionLabel => document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("g")
+                        && node.attribute("class") == Some("label")
+                        && node.attribute("data-id") == Some("edge0")
+                })
+                .expect("transition label terminal"),
+            _ => unreachable!(),
+        };
+        let terminal = if matches!(
+            target,
+            ThemeTarget::StateLabel | ThemeTarget::TransitionLabel
+        ) {
+            terminal
+                .descendants()
+                .find(|node| node.has_tag_name("text") || node.has_tag_name("div"))
+                .expect("terminal label paint declaration")
+        } else {
+            terminal
+        };
+        terminal
+            .attribute("style")
+            .unwrap_or_default()
+            .split(';')
+            .filter_map(|part| part.split_once(':'))
+            .map(|(property, value)| format!("{}:{}", property.trim(), value.trim()))
+            .collect::<Vec<_>>()
+            .join(";")
+    };
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for html_labels in [false, true] {
+        let config = serde_json::json!({"htmlLabels": html_labels});
+        let (baseline, _) = render_strict_state_svg_with_theme_and_config(
+            &empty_theme,
+            SOURCE,
+            config.clone(),
+            "site",
+        );
+        for (target, property, transparent) in [
+            (ThemeTarget::State, "fill", "none"),
+            (
+                ThemeTarget::StateLabel,
+                if html_labels { "color" } else { "fill" },
+                "transparent",
+            ),
+            (ThemeTarget::Transition, "stroke", "none"),
+            (
+                ThemeTarget::TransitionLabel,
+                if html_labels { "color" } else { "fill" },
+                "transparent",
+            ),
+        ] {
+            for (paint, expected) in [
+                (Specified::Unspecified, Some(PALETTE_COLOR)),
+                (Specified::Clear, None),
+                (
+                    Specified::Value(CanvasPaint::Transparent),
+                    Some(transparent),
+                ),
+                (
+                    Specified::Value(CanvasPaint::solid(EXPLICIT_COLOR).unwrap()),
+                    Some(EXPLICIT_COLOR),
+                ),
+            ] {
+                let omitted = matches!(paint, Specified::Unspecified);
+                let clear = matches!(paint, Specified::Clear);
+                let mut rules = ThemeRuleSet::default().with_ordinal_palette(
+                    target,
+                    OrdinalPalette::new([ThemeColorValue::parse(PALETTE_COLOR).unwrap()]).unwrap(),
+                );
+                if !omitted {
+                    let mut patch = ThemeStylePatch::default();
+                    if target == ThemeTarget::Transition {
+                        patch.stroke.paint = paint.clone();
+                    } else {
+                        patch.paint.fill = paint.clone();
+                    }
+                    rules = rules.with_rule(ThemeRule::new(target, patch));
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new().with_styles(rules))
+                    .unwrap();
+                let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+                    &theme,
+                    SOURCE,
+                    config.clone(),
+                    "site",
+                );
+                let style = terminal_style(&svg, target);
+                if let Some(expected) = expected {
+                    assert!(
+                        style
+                            .split(';')
+                            .any(|part| part.trim() == format!("{property}:{expected} !important")),
+                        "{html_labels}/{target:?}/{paint:?}: {style}"
+                    );
+                } else {
+                    assert_eq!(svg, baseline, "{html_labels}/{target:?}: Clear baseline");
+                }
+                assert_eq!(
+                    evidence,
+                    StateThemeEvidenceCounts {
+                        required: if omitted { 1 } else { 2 },
+                        accounted: if omitted { 1 } else { 2 },
+                        applied: usize::from(!clear),
+                        not_applicable: usize::from(!omitted),
+                        residual: usize::from(clear),
+                    },
+                    "{html_labels}/{target:?}/{paint:?}"
+                );
+                if matches!(target, ThemeTarget::State | ThemeTarget::StateLabel) {
+                    let source =
+                        format!("{SOURCE}style Ready fill:{SOURCE_COLOR},color:{SOURCE_COLOR}\n");
+                    let (source_svg, _) = render_strict_state_svg_with_theme_and_config(
+                        &theme,
+                        &source,
+                        config.clone(),
+                        "site",
+                    );
+                    let style = terminal_style(&source_svg, target);
+                    assert!(
+                        style.split(';').any(|part| {
+                            part.trim() == format!("{property}:{SOURCE_COLOR} !important")
+                        }),
+                        "{html_labels}/{target:?}/{paint:?}: source owner: {style}"
+                    );
+                }
+                if clear {
+                    let parsed = common::install_parse_compatibility(
+                        &theme,
+                        classic_typed_engine().with_site_config(
+                            merman_core::presentation::SourcePresentationConfig::from_value(
+                                config.clone(),
+                            ),
+                        ),
+                    )
+                    .parse_diagram_for_render_model_sync(SOURCE, ParseOptions::default())
+                    .expect("parse State Clear portability fixture")
+                    .expect("State diagram")
+                    .into_presentation();
+                    let session = RenderEnvironment::deterministic()
+                        .with_theme_portability_requirement(
+                            ThemePortabilityRequirement::RequirePortable,
+                        )
+                        .begin_session_with_theme(&theme)
+                        .unwrap();
+                    let error = match family::prepare(&parsed, &LayoutOptions::default(), session) {
+                        Ok(_) => panic!("{target:?} paint Clear must remain unsupported"),
+                        Err(error) => error,
+                    };
+                    assert!(
+                        matches!(
+                            error,
+                            merman_render::Error::UnverifiedFamilyTheme {
+                                family_id: merman_model::family::DiagramFamilyId::STATE,
+                                residual_count: 1,
+                            }
+                        ),
+                        "{html_labels}/{target:?}: {error:?}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn state_configuration_preserves_zero_subpixel_and_absolute_font_sizes() {
     let theme = DiagramThemeCompiler::new()
         .compile(

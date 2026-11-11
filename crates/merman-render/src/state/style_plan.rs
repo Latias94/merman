@@ -2767,7 +2767,15 @@ fn prepare_node(
                 .and_then(|style| shape_paint_value(style.fill_resolution()))
         })
         .flatten();
-    let series_fill = ordinal.and_then(|ordinal| theme_evidence.series_color(target, ordinal));
+    let series_fill = ordinal
+        .and_then(|ordinal| theme_evidence.series_color(target, ordinal))
+        .filter(|_| {
+            paint_allows_palette_fallback(
+                semantic_shape
+                    .as_ref()
+                    .map(ResolvedThemeStyle::fill_resolution),
+            )
+        });
     let mut fill_uses_series_color =
         !shape_fill_owned && semantic_fill.is_none() && series_fill.is_some();
     let mut fill_override = (!shape_fill_owned)
@@ -2814,8 +2822,9 @@ fn prepare_node(
             append_theme_base_text_emission(theme, &mut label_emission);
         }
         append_semantic_text_emission(style, &mut label_emission);
-        let series_color =
-            label_ordinal.and_then(|ordinal| theme_evidence.series_color(label_target, ordinal));
+        let series_color = label_ordinal
+            .and_then(|ordinal| theme_evidence.series_color(label_target, ordinal))
+            .filter(|_| paint_allows_palette_fallback(Some(style.fill_resolution())));
         let semantic_color = (!label_fill_owned)
             .then(|| text_paint_value(style.fill_resolution()))
             .flatten();
@@ -3268,7 +3277,11 @@ fn prepare_edge(
     let series_stroke =
         ordinal.and_then(|ordinal| theme_evidence.series_color(ThemeTarget::Transition, ordinal));
     if !transition_stroke_owned
-        && !path_style_attr.contains("stroke:")
+        && paint_allows_palette_fallback(
+            semantic_path
+                .as_ref()
+                .map(ResolvedThemeStyle::stroke_resolution),
+        )
         && let Some(color) = series_stroke
     {
         append_style_declaration(&mut path_style_attr, "stroke", color);
@@ -3378,7 +3391,8 @@ fn prepare_edge(
         append_theme_base_text_emission(theme, &mut label_emission);
         append_semantic_text_emission(style, &mut label_emission);
         let series_color = label_ordinal
-            .and_then(|ordinal| theme_evidence.series_color(ThemeTarget::TransitionLabel, ordinal));
+            .and_then(|ordinal| theme_evidence.series_color(ThemeTarget::TransitionLabel, ordinal))
+            .filter(|_| paint_allows_palette_fallback(Some(style.fill_resolution())));
         let semantic_color = (!label_fill_owned)
             .then(|| text_paint_value(style.fill_resolution()))
             .flatten();
@@ -3916,6 +3930,10 @@ fn append_semantic_shape_emission(
     if let Some(opacity) = style.stroke_opacity() {
         insert_emitted(out, "stroke-opacity", opacity.to_string());
     }
+}
+
+fn paint_allows_palette_fallback(property: Option<&ResolvedProperty<CanvasPaint>>) -> bool {
+    property.is_none_or(|property| matches!(property.specified(), Specified::Unspecified))
 }
 
 fn shape_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
@@ -5218,6 +5236,46 @@ mod tests {
         assert!(!evidence.applied().contains(&key));
         assert!(evidence.not_applicable_mechanisms().contains(&key));
         assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn clear_state_fill_blocks_palette_and_remains_unsupported_paint() {
+        let mut patch = ThemeStylePatch::default();
+        patch.paint.fill = Specified::Clear;
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_ordinal_palette(
+                            ThemeTarget::State,
+                            OrdinalPalette::new([ThemeColorValue::parse("#22d3ee").unwrap()])
+                                .unwrap(),
+                        )
+                        .with_rule(ThemeRule::new(ThemeTarget::State, patch)),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) = resolve_theme_plan_with_evidence(&model, &json!({}), &theme, None);
+        let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::State,
+        };
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), None);
+        assert!(!evidence.applied().contains(&palette_key));
+        assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(evidence.residuals()[0].key(), &rule_key);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
     }
 
     #[test]

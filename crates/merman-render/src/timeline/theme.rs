@@ -50,6 +50,7 @@ impl TimelineEventRadius {
 #[derive(Debug, Clone)]
 struct TimelineEventDecision {
     fill: Option<TimelineEventPaint>,
+    fill_unspecified: bool,
     radius: Option<TimelineEventRadius>,
     radius_rule_index: Option<usize>,
     opacity_token: Option<Box<str>>,
@@ -95,6 +96,7 @@ impl TimelineEventDecision {
     fn baseline() -> Self {
         Self {
             fill: None,
+            fill_unspecified: true,
             radius: None,
             radius_rule_index: None,
             opacity_token: None,
@@ -660,7 +662,16 @@ impl TimelineEventTheme {
         self.stroke.as_ref().map(|stroke| stroke.paint.css.as_ref())
     }
 
-    pub(crate) fn palette_fill_for_slot(&self, slot: usize) -> Option<&str> {
+    pub(crate) fn palette_fill_for_node(
+        &self,
+        slot: usize,
+        event_index: Option<usize>,
+    ) -> Option<&str> {
+        if let Some(event) = event_index.and_then(|index| self.events.get(index))
+            && !event.fill_unspecified
+        {
+            return None;
+        }
         self.palette_slots
             .get(slot)
             .and_then(|paint| paint.as_ref())
@@ -845,6 +856,7 @@ fn apply_event_style(
     source_owns_event_fill: bool,
     source_owned_fill_rule_occurrences: &mut BTreeMap<usize, usize>,
 ) {
+    event.fill_unspecified = matches!(style.fill_resolution().specified(), Specified::Unspecified);
     if let Some(fill) = resolve_direct_static_fill(
         theme,
         style,
