@@ -25,7 +25,8 @@ cargo run -p merman --example render_svg > diagram.svg
 | Inspect computed geometry and routes | [`inspect_layout.rs`](inspect_layout.rs) | Stops after typed layout and serializes the result. |
 | Apply application-wide Mermaid defaults | [`configure_mermaid.rs`](configure_mermaid.rs) | Keeps host configuration outside user-authored diagram source. |
 | Make relative dates deterministic | [`deterministic_gantt.rs`](deterministic_gantt.rs) | Pins "today" and the local offset for snapshots and reproducible builds. |
-| Apply a bundled diagram theme | [`theme_preset.rs`](theme_preset.rs) | Compiles the One Dark preset and applies it to one render request. |
+| Apply a bundled diagram theme | [`theme_preset.rs`](theme_preset.rs) | Defaults to Paper Cut; accepts preset IDs and explicit paired appearances. |
+| Customize a bundled theme as editable JSON | [`theme_recipe.rs`](theme_recipe.rs) | Exports Paper Cut, edits a typed color token, and imports the saved recipe to render SVG. |
 | Map an application's own theme tokens | [`custom_diagram_theme.rs`](custom_diagram_theme.rs) | Compiles a typed theme definition from shared color tokens. |
 | Control consumer SVG cleanup and styling | [`custom_svg_pipeline.rs`](custom_svg_pipeline.rs) | Builds an explicit resvg-safe, background, and scoped-CSS pipeline. |
 
@@ -68,9 +69,41 @@ Configure host defaults, compiled themes, and output policy:
 ```sh
 cargo run -p merman --example configure_mermaid > configured.svg
 cargo run -p merman --example theme_preset > preset.svg
+cargo run -p merman --example theme_recipe -- target/theme-recipe
 cargo run -p merman --example custom_diagram_theme > custom-theme.svg
 cargo run -p merman --example custom_svg_pipeline > consumer-safe.svg
 ```
+
+### Theme presets and editable recipes
+
+`theme_preset` uses `compiler.compile_preset(ThemePreset::PaperCut)` by default and writes one
+resvg-safe SVG to stdout. Its optional arguments are `[preset-id [light|dark]]`. Use exact catalog
+IDs to choose another built-in design or an appearance from a paired design:
+
+```sh
+cargo run -p merman --example theme_preset -- pop-art > pop-art.svg
+cargo run -p merman --example theme_preset -- carbon-copy > carbon-copy.svg
+cargo run -p merman --example theme_preset -- editor light > editor-light.svg
+cargo run -p merman --example theme_preset -- editor dark > editor-dark.svg
+```
+
+An explicit appearance must be declared by the selected design. Paper Cut, Carbon Copy, and
+Pop Art provide Light; Editor, Gruvbox, and Ayu provide Light and Dark. Omitting the appearance
+uses the design's declared default. The host resolves any application appearance preference
+before calling `compile_preset_selection`; unknown IDs and unsupported appearances return errors.
+
+`theme_recipe` accepts an optional output directory, defaulting to `target/theme-recipe`. It writes
+the complete exported recipe to `paper-cut.json`, changes the typed `surface` color token to
+`#DCEAF7`, and saves the customized document as `theme.json`. Existing token references, canvas,
+effects, and appearance metadata remain in that document. It then reads `theme.json`, runs
+`check_design_json_input` before typed deserialization, compiles it with `compile_recipe`, and
+renders `diagram.svg` using `RenderRequest::with_theme`. Status goes to stderr.
+
+The same `surface` token also supplies Paper Cut's Sequence actor tabs and Class cards, so this
+edit applies to those consumers when the recipe is used with their source. Use
+[`custom_diagram_theme.rs`](custom_diagram_theme.rs) when starting from application-owned tokens
+instead. See the [theme guide](../../../docs/rendering/custom-diagram-themes.md) for the complete
+recipe contract and appearance-local overrides.
 
 ## Host Integration Recipes
 
@@ -210,7 +243,7 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, or `render_agent_log`.
+Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, `render_agent_log`, `custom_diagram_theme`, or `theme_recipe`.
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
@@ -224,7 +257,7 @@ The table lists output and engine requirements in addition to that family select
 | --- | --- |
 | `inspect_semantics` | None beyond the required diagram families |
 | `deterministic_gantt` | `compat-json` |
-| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
+| `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `theme_recipe`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
 | `render_png` | `png` (also enables `svg`) |
 

@@ -586,6 +586,10 @@ name = "theme_preset"
 required-features = ["svg"]
 
 [[example]]
+name = "theme_recipe"
+required-features = ["svg"]
+
+[[example]]
 name = "custom_diagram_theme"
 required-features = ["svg"]
 
