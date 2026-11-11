@@ -182,7 +182,7 @@ SVG requests can select a built-in design through the shared Options JSON gramma
 {"version":1,"operation_id":"svg","options":{"theme":{"preset":"paper-cut"}}}
 ```
 
-The `0.10.0` source candidate also includes `carbon-copy` and `pop-art`; use
+Merman `0.10.0` also includes `carbon-copy` and `pop-art`; use
 `{"preset":"editor","appearance":"dark"}` for a paired design. Discover actual available
 designs and appearance IDs through `operation_id: "theme-catalog"` with empty source and no
 options overlay. For export, execute `export-theme-preset-json` with raw UTF-8 source

@@ -62,7 +62,7 @@ extracted archive, locate those guides in the exact source commit recorded in
 
 ## Theme presets and editable configuration
 
-The `0.10.0` source candidate includes Paper Cut (`paper-cut`), Carbon Copy (`carbon-copy`),
+Merman `0.10.0` includes Paper Cut (`paper-cut`), Carbon Copy (`carbon-copy`),
 Pop Art (`pop-art`) and the other built-in designs. Native C and WASI SVG requests accept the
 same Options JSON theme selection:
 
