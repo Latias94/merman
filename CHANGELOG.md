@@ -49,7 +49,31 @@ merman-cli render docs/rendering/theme-gallery/ghibli.mmd --theme-preset ghibli 
 merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset editor --theme-appearance dark -o editor.svg
 ```
 
-For Rust, the maintained [preset example](crates/merman/examples/theme_preset.rs) defaults to Paper Cut and accepts a preset ID plus optional Light/Dark selection. The [recipe example](crates/merman/examples/theme_recipe.rs) exports Paper Cut's complete JSON, changes its shared `surface` token to `#DCEAF7`, imports the saved document and renders the customized SVG:
+In Rust, select a built-in design and attach it to a render request:
+
+```rust
+use merman::diagram_theme::{DiagramThemeCompiler, ThemePreset};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::PaperCut)?;
+    let output = Renderer::new().render(
+        RenderRequest::svg(
+            "flowchart LR\n  Source --> Theme[Paper Cut] --> SVG",
+            OperationControl::new(),
+            SvgRequest::default(),
+        )
+        .with_theme(theme),
+    )?;
+    let RenderOutput::Svg(Some(svg)) = output else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    print!("{}", svg.svg());
+    Ok(())
+}
+```
+
+The maintained [preset example](crates/merman/examples/theme_preset.rs) defaults to Paper Cut and accepts a preset ID plus optional Light/Dark selection. The [recipe example](crates/merman/examples/theme_recipe.rs) exports Paper Cut's complete JSON, changes its shared `surface` token to `#DCEAF7`, imports the saved document and renders the customized SVG:
 
 ```text
 cargo run --locked -p merman --features svg --example theme_preset -- pop-art > pop-art.svg

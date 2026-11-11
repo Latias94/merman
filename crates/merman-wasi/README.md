@@ -174,6 +174,28 @@ profile must still reject math through core's ordinary structured error.
 The host must also impose its own linear-memory limit and fuel/epoch/timeout
 policy; cooperative profiles are not a process sandbox or hard wall-clock bound.
 
+### Theme presets and editable recipes
+
+SVG requests can select a built-in design through the shared Options JSON grammar:
+
+```json
+{"version":1,"operation_id":"svg","options":{"theme":{"preset":"paper-cut"}}}
+```
+
+The `0.10.0` source candidate also includes `carbon-copy` and `pop-art`; use
+`{"preset":"editor","appearance":"dark"}` for a paired design. Discover actual available
+designs and appearance IDs through `operation_id: "theme-catalog"` with empty source and no
+options overlay. For export, execute `export-theme-preset-json` with raw UTF-8 source
+`paper-cut` and no options overlay. Its successful data bytes contain the complete recipe.
+
+Save that JSON and edit its shared tokens, such as `design.tokens.surface.value`. Pass the
+complete document as the render options' `theme` value, or use `theme: {recipe, appearance}`
+to select an appearance of a saved pair. Release every owned result with `merman_wasi_result_free`
+after copying its data. Catalog availability does not establish output qualification; effects
+retain family/look constraints and SVG viewers need the named fonts. See the
+[theme guide](../../docs/rendering/custom-diagram-themes.md) for complete configuration and
+source-style precedence. These semantic operations do not change WASI ABI 1.
+
 ## Ownership, lifecycle and limits
 
 1. Allocate and write config/font inputs; construct and read its owned result.
