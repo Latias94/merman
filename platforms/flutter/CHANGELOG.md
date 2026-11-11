@@ -26,7 +26,7 @@ Cumulative changes since the latest stable Flutter/Dart package, `0.9.3`. See th
 
 ### Changed and fixed
 
-- Refine Cyberpunk with clear neutral text and restrained neon contours, and Ghibli with warm paper, sage surfaces and independent chart inks. Both add dedicated Flowchart, Sequence and XY Chart styling while retaining editable recipe export.
+- Refine Cyberpunk with clear neutral text and restrained neon contours, and Ghibli with warm paper, sage surfaces and independent chart inks. Both add dedicated Flowchart, Sequence and XY Chart styling while retaining editable recipe export. [#302](https://github.com/Latias94/merman/pull/302)
 - Advance from Mermaid `12.1.0` to `12.3.0`, including timed Flowchart Step edges, numbered badges, nine `bpmn-*` shapes, and updated Swimlane and Usecase behavior. Static output retains Step edges and badges without browser animation. Review snapshots for ELK `0.12.1` routing, label clearance, containers, and packing; see the [Mermaid migration](../../docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
 - Correct Class, Sequence, and State source handling and label geometry; semantic/layout JSON preserves the selected Mermaid numeric behavior. ASCII Flowchart feedback edges route around occupied geometry, and Sequence accepts `and` sections in `par_over`. [#282](https://github.com/Latias94/merman/pull/282), [#286](https://github.com/Latias94/merman/pull/286), [#287](https://github.com/Latias94/merman/pull/287), [#294](https://github.com/Latias94/merman/pull/294), [#297](https://github.com/Latias94/merman/pull/297)
 
