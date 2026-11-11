@@ -1,4 +1,4 @@
-#import "@preview/merman:0.5.0": (
+#import "@preview/merman:0.6.0": (
   analyze-mermaid,
   export-theme-preset,
   materialize-theme,

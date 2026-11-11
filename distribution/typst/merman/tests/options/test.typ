@@ -1,4 +1,4 @@
-#import "@preview/merman:0.5.0": mermaid-svg
+#import "@preview/merman:0.6.0": mermaid-svg
 #import "../../src/options.typ": config-with-theme-spec, context-text-style, mermaid-profile, render-config
 #import "../../src/render.typ": render-svg-result-with-config, with-theme-definition-render-config
 

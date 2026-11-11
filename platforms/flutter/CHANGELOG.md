@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.10.0] - Unreleased
+## [0.10.0] - 2026-11-12
 
 Cumulative changes since the latest stable Flutter/Dart package, `0.9.3`. See the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.
 

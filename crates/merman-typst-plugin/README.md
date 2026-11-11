@@ -4,7 +4,7 @@
 
 > **Implementation transport:** Typst authors should import the [`@preview/merman`](https://typst.app/universe/package/merman) package. Do not load this raw WebAssembly artifact or depend on the Rust crate directly; the Typst wrapper owns package versioning, options, error presentation, and artifact loading.
 
-Typst wrapper `0.5.0` bundles this transport from Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
+Typst wrapper `0.6.0` bundles this transport from Merman `0.10.0`; wrapper `0.5.0` bundles Merman `0.9.0`, and wrapper `0.4.0` bundles Merman `0.8.0`. See the [Typst package guide](../../distribution/typst/merman/README.md) for imports, rendering options, and upgrade instructions.
 
 ## Typst Plugin ABI 3
 
@@ -45,8 +45,7 @@ shared `interactive` layout-work allowance, currently 14,100,000 units. An omitt
 override retains the shared 125,000 units. An explicit finite positive integer in
 `resources.limits.max_layout_work_units` overrides either choice. Other ceilings, options byte
 admission, and theme preflight remain constrained. The runtime catalog still reports shared profile
-capacities. These defaults and overrides require matching development wrappers and plugins; the
-published Typst `0.5.0` package is unchanged.
+capacities. These defaults and overrides require matching wrapper `0.6.0` and its bundled plugin.
 Analysis and theme operations retain their ordinary constrained defaults.
 
 The closed Typst import surface has no synchronous font-measurement service. Its runtime catalog

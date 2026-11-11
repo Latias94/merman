@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.4 - Unreleased
+## 0.3.4 - 2026-11-12
 
 - Keep generic suffixes attached to backtick-quoted Class names in declarations and compact relationship endpoints.
 - Recognize compact Class relationship operators without consuming their hyphens or dots as part of the source name. Ordinary and trailing hyphens remain valid in class names.

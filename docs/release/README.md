@@ -2,15 +2,15 @@
 
 Use this index to choose an upgrade path by the version you have installed. Stable `0.9.3` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Published prerelease `0.10.0-alpha.1` retains Mermaid `12.2.0` and Options JSON schema `3`. Use the [host installation guide](PREBUILT_PRODUCTS.md) for independently delivered package versions and channels. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
-## Merman 0.10.0 candidate
+## Merman 0.10.0
 
-Stable `0.10.0` is selected and remains **Unreleased**. Its [candidate changelog](../../CHANGELOG.md#0100---unreleased) is cumulative from stable `0.9.3`; published alpha.1 and alpha.2 sections remain historical snapshots. Use the [consolidated 0.9.3 to 0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for the final contracts instead of applying superseded alpha APIs in sequence. Alpha users can start with the guide's [remaining actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha).
+The [0.10.0 changelog](../../CHANGELOG.md#0100---2026-11-12) is cumulative from stable `0.9.3`; published alpha.1 and alpha.2 sections remain historical snapshots. Use the [consolidated 0.9.3 to 0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for the final contracts instead of applying superseded alpha APIs in sequence. Alpha users can start with the guide's [remaining actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha).
 
-The candidate selects Mermaid `12.3.0` and ELK `0.12.1`, adds prepared rendering and reusable theme recipes, and groups the built-in catalog into **11 designs with 14 concrete appearances**. Paper Cut, Carbon Copy and Pop Art are presets; Editor, Gruvbox and Ayu provide paired Light/Dark choices. The Playground library has **28 designs in a complete current runtime**, including all 11 built-in preset groups and standalone Reading and Prism pairs. See the [visual showcase and examples](../../CHANGELOG.md#designed-themes-ready-to-customize) and [theme guide](../rendering/custom-diagram-themes.md#choose-an-appearance) for editable JSON and concrete selection.
+Merman `0.10.0` selects Mermaid `12.3.0` and ELK `0.12.1`, adds prepared rendering and reusable theme recipes, and groups the built-in catalog into **11 designs with 14 concrete appearances**. Paper Cut, Carbon Copy and Pop Art are presets; Editor, Gruvbox and Ayu provide paired Light/Dark choices. The Playground library has **28 designs in a complete current runtime**, including all 11 built-in preset groups and standalone Reading and Prism pairs. See the [visual showcase and examples](../../CHANGELOG.md#designed-themes-ready-to-customize) and [theme guide](../rendering/custom-diagram-themes.md#choose-an-appearance) for editable JSON and concrete selection.
 
 Use matching source-built wrappers, generated glue and runtimes: the final Web transport API is `10`, CLI contract is `7`, Options JSON schema is `3`, analysis facts schema is `3`, and theme execution evidence schema is `2`. Theme recipes retain schema `1`. Source-default Rust/CLI builds keep math opt-in, including `complete-svg` / `complete-svg-elk`; the [upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md#select-math-and-font-services-explicitly) gives explicit feature choices.
 
-This candidate does not establish package availability or replace published alpha.2 bytes and their historical 11-preset, 15-design inventory. The [host installation guide](PREBUILT_PRODUCTS.md) owns installable package/version choices; [Publish Order](PUBLISH_ORDER.md) owns qualification and channel status. Independently published Typst wrapper `0.5.0` continues to bundle Merman `0.9.0`. Tree-sitter `0.3.4` is being prepared after published `0.3.3`; it is not yet a published grammar release. Roughr remains `0.12.6`.
+The [host installation guide](PREBUILT_PRODUCTS.md) owns installable package/version choices; [Publish Order](PUBLISH_ORDER.md) owns qualification and channel status. Independent Typst wrapper `0.6.0` bundles Merman `0.10.0`; wrapper `0.5.0` retains Merman `0.9.0`. Tree-sitter `0.3.4` supplies the LSP's grammar fixes; Roughr remains `0.12.6`. Published alpha.2 artifacts retain their historical 11-preset, 15-design inventory.
 
 ## Merman 0.10.0-alpha.2
 
@@ -68,8 +68,8 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
-| `0.9.x` | `0.10.0` candidate | [Consolidated stable upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md): final Options, Rust, model/layout, font and resource contracts |
-| `0.10.0-alpha.1` or `0.10.0-alpha.2` | `0.10.0` candidate | [Remaining alpha actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha): paired appearances, current discovery, numeric models and Sequence drawing geometry |
+| `0.9.x` | `0.10.0` | [Consolidated stable upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md): final Options, Rust, model/layout, font and resource contracts |
+| `0.10.0-alpha.1` or `0.10.0-alpha.2` | `0.10.0` | [Remaining alpha actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha): paired appearances, current discovery, numeric models and Sequence drawing geometry |
 | `0.10.0-alpha.1` | `0.10.0-alpha.2` | [Upgrade notes](../../CHANGELOG.md#upgrade-notes), [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) and [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up); review layout snapshots and build matching wrappers/artifacts from one source revision |
 | `0.9.x` | `0.10.0-alpha.1` | [Alpha changelog](../../CHANGELOG.md#0100-alpha1---2026-11-02), [model/source migration](../migrations/model-source-boundaries.md) and [prepared-rendering migration](../migrations/render-reuse-host-integration.md); match wrappers and artifacts, and verify channel availability separately |
 | `0.9.2` | `0.9.3` | [Patch changelog](../../CHANGELOG.md#093---2026-10-30): native C/WASI SDKs, text and formula fixes, and CLI native font/CSS migration; retains Mermaid 12.1 and the published binding contracts |
@@ -83,7 +83,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 | `0.8.0-alpha.6` | `0.8.0-alpha.7` | [Upgrade guide](ALPHA6_TO_ALPHA7_UPGRADE_GUIDE.md): Mermaid 12 defaults, explicit family features, Agentflow/Usecase, and ASCII/native contract changes |
 | `0.8.0-alpha.7` | `0.8.0` | [Upgrade guide](ALPHA7_TO_0_8_0_UPGRADE_GUIDE.md): Mermaid 12.1 semantics, ELK routing/labels, and low-level Rust initializer changes |
 
-Use the consolidated stable guide when moving to the `0.10.0` candidate. Apply the intervening versioned guides in order when your target is another published prerelease. For example, an alpha.5-to-alpha.7 upgrade needs both the alpha.6 and alpha.7 migrations. Published-version guides are historical release contracts: their examples target that version, not the current branch. The 0.8 stable upgrade guide consolidates consumer actions across its prereleases. For another earlier release without a dedicated guide, start with its [changelog](../../CHANGELOG.md) and the README at the matching Git tag.
+Use the consolidated stable guide when moving to `0.10.0`. Apply the intervening versioned guides in order when your target is another published prerelease. For example, an alpha.5-to-alpha.7 upgrade needs both the alpha.6 and alpha.7 migrations. Published-version guides are historical release contracts: their examples target that version, not the current branch. The 0.8 stable upgrade guide consolidates consumer actions across its prereleases. For another earlier release without a dedicated guide, start with its [changelog](../../CHANGELOG.md) and the README at the matching Git tag.
 
 Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts on one release. Inspect the installed artifact's runtime catalog when its capabilities matter. See [package surfaces](PACKAGE_SURFACES.md) for supported environments and their version mappings.
 
@@ -95,7 +95,7 @@ Keep coupled Rust dependencies, generated wrappers, and native or WASM artifacts
 | --- | --- | --- |
 | Tree-sitter grammar and queries | [Query migration](../../distribution/tree-sitter-mermaid/docs/query-migration.md) and [owner release guide](TREE_SITTER_MERMAID.md) | Published grammar `0.3.3` and prepared patch candidate `0.3.4` are versioned separately from the Merman workspace and language ABI; publish the candidate through its independent owner |
 | C and Flutter native integration | [FFI protocol and contract evolution](../bindings/FFI_PROTOCOL.md) | Rolling source protocol; use generated headers and documentation from the same Merman release |
-| Typst package | [Package README](../../distribution/typst/merman/README.md) | Wrapper `0.5.0` bundles Merman `0.9.0`; the wrapper version is independent of the workspace version |
+| Typst package | [Package README](../../distribution/typst/merman/README.md) | Wrapper `0.6.0` bundles Merman `0.10.0`; published wrapper `0.5.0` retains Merman `0.9.0`. The wrapper version is independent of the workspace version |
 | VS Code extension | [Extension README](../../tools/vscode-extension/README.md) | Independent extension version and artifact channel |
 
 ## Release operations and evidence

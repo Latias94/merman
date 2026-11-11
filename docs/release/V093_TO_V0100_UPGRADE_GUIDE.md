@@ -1,6 +1,6 @@
 # Upgrade from Merman 0.9.3 to 0.10.0
 
-This guide targets the selected **unreleased 0.10.0 stable candidate**. It consolidates the consumer actions since stable `0.9.3`, including changes first published in alpha.1 and alpha.2. Upgrade directly to the final contracts below; the published alpha changelogs remain historical references. Use the [host installation guide](PREBUILT_PRODUCTS.md) for available package versions and the [release index](README.md) for other upgrade paths.
+This guide targets **Merman 0.10.0**. It consolidates the consumer actions since stable `0.9.3`, including changes first published in alpha.1 and alpha.2. Upgrade directly to the final contracts below; the published alpha changelogs remain historical references. Use the [host installation guide](PREBUILT_PRODUCTS.md) for available package versions and the [release index](README.md) for other upgrade paths.
 
 Stable `0.9.3` belongs to the separate `release/0.9.x` maintenance line and retains Mermaid `12.1.0`, the Presentation API and Options JSON schema `2`. The `0.10` line selects Mermaid `12.3.0` and ELK `0.12.1`. Its cumulative narrative compares the final source trees, rather than treating maintenance fixes as new features. Native C/WASI SDKs, engine-local Iconify packs, CLI native-font defaults and the text/formula fixes already shipped in `0.9.3` remain part of the upgrade baseline.
 
@@ -17,7 +17,7 @@ Replace presentation-profile selection with the top-level `theme` group. A final
 
 Use `raster.matte` for an image export matte and `pdf.page_paint` for PDF page paint. A theme's canvas is diagram styling; the viewer backing is a separate host choice. Mermaid's base palette remains `site_config.theme`, and explicit source styles/configuration retain their property-specific priority over Merman styling. See the [Options reference](../bindings/OPTIONS_JSON.md) and [theme guide](../rendering/custom-diagram-themes.md).
 
-| Contract | Final candidate version or action |
+| Contract | Version or upgrade action |
 | --- | --- |
 | Binding Options JSON | `3`; replace the Presentation API input grammar |
 | Web/WASM transport | `10`; deploy the generated facade, JavaScript glue and WASM together |
@@ -112,7 +112,7 @@ For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geom
 
 Constrained policy now rejects formulas even when the artifact includes math. Handle that rejection, or select an appropriate policy for permitted workloads on hosts that expose one, retaining host execution and memory limits. Compiling math does not override resource admission. The published `0.9.x` maintenance policy is unchanged; consult the [SDK policy guide](../../distribution/sdk/README.md#native-c-sdk).
 
-Matching development Typst wrapper/plugin pairs use **14,100,000 layout work units** by default for SVG, taking the shared interactive allowance while retaining other constrained ceilings. Explicit finite `resources.limits.max_layout_work_units` values may lower or raise that allowance. An explicit `constrained` profile retains **125,000** unless overridden. Published Typst wrapper **0.5.0**, which bundles Merman **0.9.0**, is unchanged; these development changes do not establish a new Typst registry release. See the [Typst README](../../distribution/typst/merman/README.md) and [issue #300](https://github.com/Latias94/merman/issues/300).
+Typst wrapper **0.6.0**, bundling Merman **0.10.0**, uses **14,100,000 layout work units** by default for SVG, taking the shared interactive allowance while retaining other constrained ceilings. Explicit finite `resources.limits.max_layout_work_units` values may lower or raise that allowance. An explicit `constrained` profile retains **125,000** unless overridden. Update the wrapper import and bundled plugin together. See the [Typst README](../../distribution/typst/merman/README.md) and [issue #300](https://github.com/Latias94/merman/issues/300).
 
 ## Reuse prepared source and review output changes
 
@@ -142,6 +142,6 @@ VS Code preserves theme canvas paint by default. Its viewer background controls 
 
 ## Package and channel choices
 
-Use the [host guide](PREBUILT_PRODUCTS.md) for installable CLI, Web, Node, Apple, Android, Python, Flutter and SDK versions and their actual capabilities. Platform archives, registry packages and remote package repositories have separate delivery owners. This guide documents the selected candidate APIs and source workflows; [Publish Order](PUBLISH_ORDER.md) records release qualification and publication evidence.
+Use the [host guide](PREBUILT_PRODUCTS.md) for installable CLI, Web, Node, Apple, Android, Python, Flutter and SDK versions and their actual capabilities. Platform archives, registry packages and remote package repositories have separate delivery owners. This guide documents the release APIs and source workflows; [Publish Order](PUBLISH_ORDER.md) records release qualification and publication evidence.
 
-Tree-sitter and Typst remain independently versioned. The Tree-sitter `0.3.4` patch is being prepared after published `0.3.3`; use a matching grammar and the LSP's declared minimum, and check the [grammar release guide](TREE_SITTER_MERMAID.md) for delivery. Roughr remains `0.12.6`. Published Typst `0.5.0` does not acquire new theme APIs merely because the workspace advances.
+Tree-sitter and Typst remain independently versioned. Use Tree-sitter `0.3.4` for the LSP's declared grammar minimum, and check the [grammar release guide](TREE_SITTER_MERMAID.md) for delivery. Roughr remains `0.12.6`. Typst wrapper `0.6.0` bundles this release; published `0.5.0` retains its original Merman `0.9.0` runtime.

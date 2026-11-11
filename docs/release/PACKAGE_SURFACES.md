@@ -4,7 +4,7 @@ Choose a package or artifact for the environment where you use Merman. Match gen
 and native or WASM artifacts to the same Merman version.
 
 For ordinary prebuilt use, start with [host and output choices](PREBUILT_PRODUCTS.md).
-The `0.10.0` candidate's Web full/render and ordinary SVG binding recipes include math and both layout
+The `0.10.0` Web full/render and ordinary SVG binding recipes include math and both layout
 engines; the native C/WASI full SDKs are the recommendation for explicit fonts and binary outputs.
 Expert source features and reduced SDK recipes remain available. The expanded native binding
 recipes and delivery handoffs are available from the alpha source under
@@ -39,7 +39,7 @@ establish availability on every channel. Use immutable `v0.9.3` and its matching
 for the published maintenance APIs. See the
 [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for required migrations.
 
-The selected `0.10.0` source candidate refactors theme recipe and catalog schema `1` to support optional
+Merman `0.10.0` refactors theme recipe and catalog schema `1` to support optional
 paired appearances. It uses Web transport API `10` and CLI contract `7`; Options JSON remains
 schema `3`. These source contracts require matching wrappers and runtimes and do not change the
 immutable alpha.2 artifacts. See the [theme guide](../rendering/custom-diagram-themes.md) for
@@ -49,7 +49,7 @@ The alpha.2 release requires the independent `roughr-merman 0.12.6` and Tree-sit
 `0.3.3` releases. Both prerequisites were published and independently verified before their
 coupled workspace dependents; the [publication ledger](PUBLISH_ORDER.md#0100-alpha2-publication)
 records their Cargo, grammar npm, and standalone grammar delivery identities. Published alpha.1
-retains Roughr `0.12.5` and grammar `0.3.2`. Typst wrapper `0.5.0` bundles Merman `0.9.0`;
+retains Roughr `0.12.5` and grammar `0.3.2`. Typst wrapper `0.6.0` bundles Merman `0.10.0`, and `0.5.0` bundles `0.9.0`;
 wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible
 version requirements and intentional upgrade exceptions.
 
@@ -201,7 +201,7 @@ The repository-owned delivery routes are:
    before it is enabled.
 11. Independent Cargo, scoped npm, and GitHub publication for `tree-sitter-mermaid` through
     `release-tree-sitter-mermaid.yml` after both registry identities are bootstrapped.
-12. Typst Universe submission for `@preview/merman:0.5.0`, bundling Merman `0.9.0`; wrapper `0.4.0` bundles Merman `0.8.0`. The wrapper has an independent version axis and is not published by the crates.io workflow or a workspace tag.
+12. Typst Universe submission for `@preview/merman:0.6.0`, bundling Merman `0.10.0`; wrappers `0.5.0` and `0.4.0` retain Merman `0.9.0` and `0.8.0`. The wrapper has an independent version axis and is not published by the crates.io workflow or a workspace tag.
 
 The source-crate route and native-artifact routes must be audited separately. Publishing
 `merman-ffi` or `merman-uniffi` to crates.io does not publish an Android AAR, Apple XCFramework,
@@ -362,7 +362,7 @@ differ:
 | --- | --- | --- |
 | Android, Python, Flutter | analysis, ASCII, SVG, math, Cytoscape, ELK | Main-line complete SVG products; published maintenance packages retain their own capabilities. |
 | Apple on main | analysis, ASCII, SVG, math, Cytoscape, ELK | Complete local SwiftPM package and thin remote delivery handoff; published v0.9.x remains math-free. |
-| Typst | analysis, SVG, Cytoscape, ELK | Matches the six-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
+| Typst | analysis, SVG, Cytoscape, ELK | Matches the seven-function Typst ABI, whose SVG-capable transport also exposes three explicitly Alpha theme-authoring operations; no callable ASCII or binary-export operation, and no admitted math backend. |
 | Node alpha package group | SVG, math, Cytoscape, ELK | Matches the complete deterministic static-SVG interface; codecs and ambient services remain out of the prebuilt download. |
 | Browser packages | package-specific | `web-full` and `web-render` include math; dedicated packages own analysis, editor, and ASCII workflows. |
 | C ABI source reference | complete | Exercises every ABI/output path for custom embedders without defining a default binary download. |

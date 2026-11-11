@@ -1,5 +1,7 @@
 # Typst 0.5.0 preparation
 
+Status update, 2026-11-11: [Typst Universe PR #6098](https://github.com/typst/packages/pull/6098) merged on 2026-10-16, and the official registry serves `@preview/merman:0.5.0`. The dated preparation evidence below preserves the observations made before acceptance. Current `0.6.0` preparation and delivery status belong in [Publish Order](PUBLISH_ORDER.md#0100-preparation).
+
 `@preview/merman:0.5.0` is the selected Typst candidate, bundling Merman 0.9.0. It remains an independent registry submission and is submitted in [Typst Universe PR #6098](https://github.com/typst/packages/pull/6098). This document does not claim that Typst Universe has accepted or serves 0.5.0.
 
 Published `@preview/merman:0.4.0` remains the 2026-10-09 package bundling Merman 0.8.0, plugin ABI 2, and minimum Typst 0.15.0. Its source/version mapping and immutable artifact history remain unchanged; see the [publication receipt](PUBLISH_ORDER.md#typst-040-publication).

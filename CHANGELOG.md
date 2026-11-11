@@ -4,9 +4,9 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.10.0] - Unreleased
+## [0.10.0] - 2026-11-12
 
-Cumulative changes since stable [0.9.3](#093---2026-10-30), including features first published in alpha.1 and alpha.2. This stable candidate brings reusable visual themes, prepared rendering and Mermaid `12.3.0` to the `0.10` line. It is not yet a published release; choose matching source builds or verified packages through the [host installation guide](docs/release/PREBUILT_PRODUCTS.md).
+Cumulative changes since stable [0.9.3](#093---2026-10-30), including features first published in alpha.1 and alpha.2. This release brings reusable visual themes, prepared rendering and Mermaid `12.3.0` to the `0.10` line. Choose matching packages through the [host installation guide](docs/release/PREBUILT_PRODUCTS.md).
 
 ### Choose your upgrade path
 
@@ -46,10 +46,10 @@ Editable JSON: [Riso](playground/src/themes/recipes/riso.theme.json) (gallery re
 
 For paired Light/Dark appearances, explore [Reading](https://frankorz.com/merman/?theme-design=reading) and its [single editable recipe](playground/src/themes/recipes/reading.theme.json). These maintained SVG assets illustrate their saved scenes; they do not qualify every shape, family or PNG/JPEG/PDF output. The [native PNG gallery](docs/rendering/theme-gallery/README.md) also shows Brutalist's bold outlines and Ghibli's warm-paper Pie design. Preset maturity remains alpha, and catalog availability is separate from output qualification. Fonts resolve on the host, and finite category palettes repeat after their final entry. Review [theme coverage](docs/rendering/diagram-theme-coverage.md) and each render's evidence for production use.
 
-Build the CLI from the selected `0.10.0` source checkout, then try existing gallery sources from the repository root:
+Install the CLI with math support, then try the gallery sources from a matching repository checkout:
 
 ```text
-cargo install --path crates/merman-cli --locked --features math
+cargo install merman-cli --version 0.10.0 --locked --features math
 merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset paper-cut -o paper-cut.svg
 merman-cli render docs/rendering/theme-gallery/ghibli.mmd --theme-preset ghibli -o ghibli.svg
 merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset editor --theme-appearance dark -o editor.svg
@@ -100,7 +100,7 @@ Playground and VS Code offer **Follow app/editor**, **Light** and **Dark**. Foll
 - **Maintain interactive Web diagrams:** `mountDiagram` manages resizing, font refresh and cleanup, retaining the last successful diagram when an update fails. Opt into browser text measurement for page fonts and `layout.adaptation: "fit-width"` for Kanban column packing. All five Web packages expose their matching `./wasm` asset. See the [Web lifecycle guide](platforms/web/README.md#maintain-a-mounted-diagram).
 - **Choose Rust packages by input:** `merman-model` provides shared typed data without source parsers; model-to-ASCII, model-to-layout/SVG and SVG-to-image/PDF consumers can select their output packages independently. Source-consuming applications retain `merman` or `merman-core`. Rustdoc attributes can be re-exported through a facade using `crate_path`. See the [package migration](docs/migrations/model-source-boundaries.md) and [Rustdoc example](crates/merman-rustdoc/README.md#re-exporting-the-attribute). [#241](https://github.com/Latias94/merman/pull/241), [#258](https://github.com/Latias94/merman/pull/258)
 - **Use the updated host products:** target artifact recipes add SVG math to Apple, Android, Python, Flutter and Node products. Integration changes include local SwiftPM and Maven archives, five Python wheel targets with manylinux 2.28 on Linux, Flutter target-specific native downloads, and native Node GNU/musl Linux ARM64 packages. Use the [host guide](docs/release/PREBUILT_PRODUCTS.md) for package requirements, actual delivery and offline options. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
-- **Source-built Typst integration:** matching development wrappers/plugins accept `theme-preset`, `theme-recipe` and `theme-appearance` on render, figure and raw-block helpers. SVG defaults to **14,100,000 layout work units**, sharing the interactive allowance while retaining other constrained ceilings. An explicit finite `resources.limits.max_layout_work_units` can lower or raise that allowance; an explicit `constrained` profile keeps **125,000** unless overridden. Published Typst wrapper **0.5.0** remains independently versioned and unchanged. See the [Typst guide](distribution/typst/merman/README.md). [#300](https://github.com/Latias94/merman/issues/300)
+- **Typst themes and larger layouts:** independently versioned wrapper **0.6.0**, bundling Merman **0.10.0**, accepts `theme-preset`, `theme-recipe` and `theme-appearance` on render, figure and raw-block helpers. SVG defaults to **14,100,000 layout work units**, sharing the interactive allowance while retaining other constrained ceilings. An explicit finite `resources.limits.max_layout_work_units` can lower or raise that allowance; an explicit `constrained` profile keeps **125,000** unless overridden. See the [Typst guide](distribution/typst/merman/README.md). [#300](https://github.com/Latias94/merman/issues/300)
 
 ### Mermaid, layout and rendering fixes
 

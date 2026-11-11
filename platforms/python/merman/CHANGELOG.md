@@ -4,7 +4,7 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
-## [0.10.0] - Unreleased
+## [0.10.0] - 2026-11-12
 
 Cumulative changes since the latest stable Python package, `0.9.3`. Python and native Merman both use stable version `0.10.0`; see the [stable upgrade guide](../../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.
 

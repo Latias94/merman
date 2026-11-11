@@ -1,8 +1,8 @@
 # Choosing Merman capabilities
 
-This page targets the `0.10.0` candidate, including experimental compiled themes and Mermaid `12.3.0`.
+This page targets `0.10.0`, including experimental compiled themes and Mermaid `12.3.0`.
 Use the [host guide](release/PREBUILT_PRODUCTS.md) for independently published channel versions and
-the [stable candidate changelog](../CHANGELOG.md#0100---unreleased) for upgrade actions. Workspace
+the [stable changelog](../CHANGELOG.md#0100---2026-11-12) for upgrade actions. Workspace
 path snippets are for source development. See the [Rust embedding guide](rendering/RUST_EMBEDDING.md)
 for host integration.
 
@@ -588,10 +588,10 @@ reference build, not the downloadable SDK. The [SDK](../distribution/sdk/README.
 [C ABI](../crates/merman-ffi/README.md) guides provide each transport's copyable first operation
 and lifecycle rules; keep each transport's headers, facade, and binaries paired.
 
-Typst is independently versioned. Use the `0.5.0` wrapper with Typst `0.15.0` or later:
+Typst is independently versioned. Use the `0.6.0` wrapper with Typst `0.15.0` or later:
 
 ````typst
-#import "@preview/merman:0.5.0": mermaid
+#import "@preview/merman:0.6.0": mermaid
 
 #mermaid(```mermaid
 flowchart TD
@@ -599,10 +599,12 @@ flowchart TD
 ```)
 ````
 
-The `0.5.0` wrapper bundles Merman `0.9.0` with Mermaid `12.1.0` compatibility, SVG,
-analysis, Cytoscape, and ELK. It uses deterministic text measurement; Typst's actual glyph
-metrics are not measured automatically, and math rendering is unavailable. The package ships
-ELK's EPL-2.0 notices and enforces a constrained resource policy that caller options may tighten.
+The `0.6.0` wrapper bundles Merman `0.10.0` with Mermaid `12.3.0` compatibility, SVG,
+analysis, Cytoscape, ELK, compiled themes, and editable theme recipes. It uses deterministic
+text measurement; Typst's actual glyph metrics are not measured automatically, and math
+rendering is unavailable. The package ships ELK's EPL-2.0 notices and defaults to
+14,100,000 layout work units while retaining the other constrained ceilings. Explicit finite
+layout limits may lower or raise that allowance.
 Use the registry package for normal installs and local `--package-path` builds for source testing.
 See the [Typst package guide](../distribution/typst/merman/README.md) for examples and its
 [version mapping](../distribution/typst/merman/README.md#version-mapping) for bundled Merman versions.

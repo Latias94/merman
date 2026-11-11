@@ -2,15 +2,14 @@
 
 Render Mermaid diagrams in Typst with the `merman` Rust renderer.
 
-`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. This README documents Typst package `0.5.0`, bundling Merman `0.9.0`. It requires Typst `0.15.0` or newer.
-The independently submitted package `0.5.0` uses ABI 2 and Options 2. This unmerged theme source requires a matching local ABI 3 package build and Typst `--package-path`; its retained `0.5.0` package metadata is a development value, not the submitted artifact. The next theme package release is not selected here.
+`merman` embeds a WebAssembly plugin so Typst documents can render Mermaid diagrams directly during compilation while reusing the parser, layout, and SVG renderer from the broader `merman` project. Typst package `0.6.0` bundles Merman `0.10.0` with Mermaid `12.3.0` behavior. It requires Typst `0.15.0` or newer.
 
 ## Quick Start
 
 Save the following as `document.typ`:
 
 ```typst
-#import "@preview/merman:0.5.0": mermaid
+#import "@preview/merman:0.6.0": mermaid
 
 #mermaid("
 flowchart TD
@@ -27,14 +26,14 @@ typst compile document.typ document.pdf
 
 Upgrading from `0.3.0`? Mermaid 12 changed the default layout of flowcharts and several other graph families to ELK. To keep Dagre, see [Choose a Layout](#choose-a-layout); no custom plugin build is needed.
 
-See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior changes and the corresponding fixes and PRs.
+See [Upgrading from 0.5.0](#upgrading-from-050) and the [package changelog](CHANGELOG.md) for migration actions and rendering changes.
 
 ## Version Mapping
 
 | Typst package | merman source version | Typst plugin ABI | Notes |
 | --- | --- | --- | --- |
-| Unreleased theme source | `0.9.0` | `3` | Theme catalog discovery and authoring require a matching local build and Typst `--package-path`; the next package release is not selected. |
-| `0.5.0` submitted package | `0.9.0` | `2` | Independent frozen package with Options 2; see the [submission record](../../../docs/release/TYPST_050_PREPARATION.md). |
+| `0.6.0` | `0.10.0` | `3` | Options 3, compiled themes, editable recipes, and theme catalog discovery. |
+| `0.5.0` | `0.9.0` | `2` | Published package with Options 2 and Mermaid 12.1 rendering. |
 | `0.4.0` | `0.8.0` | `2` | Mermaid 12.1 rendering; requires Typst `0.15.0` or newer. |
 | `0.3.0` | `0.8.0-alpha.6` | `2` | Previous size-optimized WASM package. |
 | `0.2.0` | Previously published source revision | `2` | Published registry channel; do not infer alpha.6 source provenance from this version. |
@@ -42,13 +41,31 @@ See the [package changelog](CHANGELOG.md) for the 0.4.0 to 0.5.0 behavior change
 
 The Typst package version tracks the `@preview/merman` wrapper API. The merman source version is the Rust workspace version used to build the package. The Typst plugin ABI tracks the WebAssembly export names and byte payload contracts; wrapper-only API breaks do not require an ABI bump when that plugin surface stays stable. Render option JSON follows shared binding options schema `3`, including top-level `theme` for compiled diagram themes, `site_config` for Mermaid configuration, `layout` for geometry, and `environment` for text measurement and math rendering. This options schema is independent from Typst plugin ABI 3 and native ABI 3.
 
-The API and example sections below describe the unreleased local theme source with ABI 3 and Options 3. Build the package locally and pass its package directory with Typst `--package-path` to use these additions.
+Theme spec, authoring, recipe, materialization, support, and catalog contracts remain at version `1`, as do preset revisions. These versions are independent of the wrapper version, plugin ABI, and render options schema. Theme presets and authoring remain Alpha; catalog availability does not qualify every family or effect for Typst output.
+
+## Upgrading from 0.5.0
+
+Update imports to `@preview/merman:0.6.0`. The wrapper bundles Merman `0.10.0` and advances the plugin from ABI `2` to `3` and render options from schema `2` to `3`. Use the wrapper and WASM from the same package, including when building locally. The minimum compiler remains Typst `0.15.0`.
+
+| 0.5.0 input | 0.6.0 action |
+| --- | --- |
+| `presentation-profile`, including `"merman-modern"` | Choose `theme-preset`, an editable `theme-recipe`, or a complete `diagram-theme` spec. |
+| `host-theme` | Use `typography` for font intent and a compiled theme selection for colors and roles. |
+| `theme` shorthand for Mermaid variables | Rename it to `theme-variables`; `theme-name` still selects Mermaid's own theme. |
+| `scoped-css`, `css-override-policy`, or their raw SVG option fields | Use typed theme inputs, `theme-variables`, or `background`; raw CSS and cascade policy are rejected by general bindings. |
+| Raw options `version: 2` with `presentation` | Use `version: 3` with top-level `theme: (preset: "editor", appearance: "dark")`, `theme: (recipe: recipe)`, or `theme: (spec: spec)`. |
+
+The compiled theme selection works across render, figure, SVG/result, and raw-block helpers. Select paired designs with canonical IDs such as `editor`, `gruvbox`, or `ayu` and `theme-appearance: "light"` or `"dark"`; concrete IDs such as `editor-dark` keep their fixed appearance. See [Choose a Theme](#choose-a-theme) for selection and precedence rules.
+
+SVG rendering now defaults to **14,100,000 layout work units**, retaining the other constrained ceilings. Explicit finite `resources.limits.max_layout_work_units` values can lower or raise that allowance; an explicit `constrained` profile retains **125,000** unless overridden. See [renderer parameters](#mermaidsource-) for raw options and profiles. [Issue #300](https://github.com/Latias94/merman/issues/300)
+
+Mermaid advances from `12.1.0` to `12.3.0`, and ELK advances to `0.12.1`. Review geometry, label wrapping, typography, and document snapshots. Flowchart Step groups and badges render statically in Typst. ELK defaults and Dagre selection already shipped in `0.4.0`; see [Choose a Layout](#choose-a-layout) to keep an explicit layout choice.
 
 ## Upgrading from 0.4.0
 
-The independently submitted `0.5.0` package retains options schema 2 and plugin ABI 2. Its bundled engine moves from Merman 0.8.0 to 0.9.0, improving Unicode line breaking and adapting Mermaid marker CSS selectors for Typst compatibility. The local theme branch retains rendering functions, profiles, raw-block handlers, and minimum Typst 0.15.0, while advancing the plugin to ABI 3 and options to schema 3; pair this source wrapper with its matching local build. Review long-label wrapping, Markdown code/escaped markup, hollow relationship markers, and Block metadata in document snapshots. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md) for the corresponding fixes and PRs.
+The published `0.5.0` package bundles Merman `0.9.0`, retaining plugin ABI `2`, options schema `2`, and minimum Typst `0.15.0`. It improves Unicode line breaking, Markdown code/escaped markup, hollow relationship markers, and Block metadata. SVG backgrounds are transparent; pass `background: "white"` for opaque artwork. See the [package changelog](CHANGELOG.md#050---2026-10-13) for the corresponding fixes and PRs.
 
-The ELK layout defaults and Dagre recipes already shipped in 0.4.0. Upgrading from 0.4.0 does not introduce another default-layout migration; users upgrading from 0.3.0 can use [Choose a Layout](#choose-a-layout).
+When upgrading directly from `0.4.0` to `0.6.0`, also apply the [0.5.0 to 0.6.0 migration](#upgrading-from-050) above.
 
 ## Earlier 0.3.0 to 0.4.0 migration
 
@@ -78,7 +95,7 @@ Package fixtures are grouped by behavior family under [tests](https://github.com
 
 ## Choose a Layout
 
-The `0.5.0` package includes both Dagre and ELK. Mermaid 12.0 made ELK the default for Flowchart, State, Class, ER, Requirement, Usecase, and Agentflow when ELK is available; other diagram families keep their own layout behavior. `flowchart LR` sets the direction, not the layout algorithm.
+The `0.6.0` package includes both Dagre and ELK. Mermaid 12.0 made ELK the default for Flowchart, State, Class, ER, Requirement, Usecase, and Agentflow when ELK is available; other diagram families keep their own layout behavior. `flowchart LR` sets the direction, not the layout algorithm.
 
 To use Dagre for one diagram, pass Mermaid site configuration. This does not require rebuilding the plugin:
 
@@ -92,7 +109,7 @@ To use Dagre for one diagram, pass Mermaid site configuration. This does not req
 To use Dagre throughout a document, reuse a profile for direct calls and Mermaid raw blocks:
 
 ```typst
-#import "@preview/merman:0.5.0": mermaid, mermaid-profile, show-mermaid-blocks
+#import "@preview/merman:0.6.0": mermaid, mermaid-profile, show-mermaid-blocks
 
 #let dagre = mermaid-profile(site-config: (layout: "dagre"))
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(profile: dagre)
@@ -114,8 +131,7 @@ ELK is an embedded, modified Rust translation of Eclipse ELK. The wrapper and Me
 
 ## Choose a Theme
 
-The theme conveniences below require the matching local ABI 3 package described in
-[Version Mapping](#version-mapping); the submitted `0.5.0` artifact uses ABI 2.
+Package `0.6.0` provides compiled theme selection through its bundled ABI 3 plugin.
 
 Select a built-in design directly, or choose one appearance of a paired design:
 
@@ -130,10 +146,15 @@ Select a built-in design directly, or choose one appearance of a paired design:
 )
 ```
 
-Paper Cut, Carbon Copy, and Pop Art are Light-only designs. Use `theme-catalog()` to discover
-the installed plugin's IDs, declared modes, and availability. An omitted appearance uses the
-selected design's default; an explicitly unavailable mode fails. The plugin does not detect
-the viewer's color mode.
+The built-in catalog groups 11 designs with 14 concrete appearances:
+
+| Preset ID | Appearances | Default |
+| --- | --- | --- |
+| `editor`, `gruvbox`, `ayu` | `light`, `dark` | `light` |
+| `one-dark`, `cyberpunk` | `dark` | `dark` |
+| `brutalist`, `spotless`, `ghibli`, `paper-cut`, `carbon-copy`, `pop-art` | `light` | `light` |
+
+Use `theme-catalog()` to discover the installed plugin's IDs, declared modes, availability, and `concrete_preset_id` values. An omitted appearance uses the selected design's default; an explicitly unavailable mode fails. The plugin does not detect the viewer's color mode. Paper Cut, Carbon Copy, and Pop Art are Light-only designs.
 
 `theme-preset`, `theme-recipe`, and `diagram-theme` are alternative complete sources. Select at
 most one in a profile and at most one at the call site. A direct source replaces the profile's
@@ -240,7 +261,7 @@ A profile that contains raw `options` is an opaque binding-options bundle: it by
 Use `show-mermaid-blocks` with Typst's `raw.where` selector:
 
 ````typst
-#import "@preview/merman:0.5.0": show-mermaid-blocks
+#import "@preview/merman:0.6.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(width: 100%)
 
@@ -258,7 +279,7 @@ Avoid setting a fixed `id` in a document-wide raw-block show rule unless the doc
 For document-context-aware rendering, pass `document-context: true`. This reads the current Typst text font, text size, and container width inside `context`, then forwards them to the renderer.
 
 ```typst
-#import "@preview/merman:0.5.0": show-mermaid-blocks
+#import "@preview/merman:0.6.0": show-mermaid-blocks
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   document-context: true,
@@ -268,7 +289,7 @@ For document-context-aware rendering, pass `document-context: true`. This reads 
 
 ## API Migration
 
-This refactor intentionally removes compatibility-only context wrappers:
+For documents using the older compatibility context helpers, use the `document-context` parameter:
 
 ```typst
 // Old:
@@ -285,7 +306,7 @@ This refactor intentionally removes compatibility-only context wrappers:
 
 `context` is a Typst keyword, so the public parameter is named `document-context`.
 
-The current development package moves measurement and math selection to the binding options schema `3` render environment:
+Measurement and math selection continue to use the render environment in binding options schema `3`:
 
 ```typst
 #mermaid(source, text-measurement: "deterministic", math-renderer: "none")
@@ -300,7 +321,7 @@ The current development package moves measurement and math selection to the bind
 
 The removed layout fields are rejected; they are not translated through a compatibility path.
 
-The prerelease presentation aggregate was also removed rather than aliased:
+The presentation aggregate from `0.5.0` is removed in `0.6.0`; migrate its inputs to a compiled theme:
 
 ```typst
 // Old and rejected:
@@ -360,7 +381,7 @@ Advanced renderer parameters:
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
 - `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. It does not bypass general binding validation: `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` remain rejected because raw CSS and cascade policy belong to trusted Rust or native CLI hosts. The plugin applies the resource policy described below.
 
-SVG rendering in development source builds defaults to **14,100,000 layout work units**, taking the allowance from the shared `interactive` contract while retaining `constrained` as the base profile. Analysis and theme operations retain their ordinary constrained defaults. Build the wrapper and WASM plugin together; published `@preview/merman:0.5.0` is unchanged and does not support raising the allowance.
+SVG rendering in `0.6.0` defaults to **14,100,000 layout work units**, taking the allowance from the shared `interactive` contract while retaining `constrained` as the base profile. Analysis and theme operations retain their ordinary constrained defaults.
 
 An omitted or null `resources.profile` inherits this Typst default. Explicitly selecting `resources.profile` as `"constrained"` keeps the shared profile's **125,000** layout work units unless overridden. An explicit finite positive integer in `resources.limits.max_layout_work_units` takes precedence in either case and can tighten or raise the allowance.
 
@@ -440,9 +461,7 @@ render a shared design without manually carrying an intermediate complete spec.
 Like `mermaid`, it accepts `document-context: true` when the rendered diagram should inherit the
 current Typst text style and available width.
 
-These functions remain Alpha while the C7a authoring qualification gate is open. Their presence in
-Typst plugin ABI 3 makes the callable transport explicit; it is not a stability commitment for the
-theme authoring payloads.
+Theme authoring and presets remain Alpha. Their presence in Typst plugin ABI 3 makes the callable transport explicit; it is not a stability commitment for the theme authoring payloads.
 
 ```typst
 #let definition = (
@@ -560,7 +579,7 @@ availability and support queries do not prove every effect rendered in a particu
 
 Invalid Mermaid source remains a schema-1 analysis payload with `valid: false`; transport, options, and missing-capability failures use the structured operation envelope instead.
 
-### `theme-catalog()` (development snapshot)
+### `theme-catalog()` (Alpha)
 
 Returns the shared theme catalog for the installed plugin, including available presets, semantic
 selectors, supported outputs, and effective constrained theme resource limits. The catalog remains
@@ -588,7 +607,7 @@ Returns the compiled plugin capability payload, including the current text measu
 #capabilities.capabilities.text_measurement.provider_ids
 ```
 
-The flat catalog reports the artifact's capability, output, operation, registry, and resource sets. Shared profile capacities remain unchanged, including the `constrained` layout value of 125,000. Typst's effective default combines that base profile with the shared `interactive` layout allowance; explicit profile and limit selections follow the rules above. Other ceilings remain enforced. Published 0.5.0 permits only stricter limits. The options root and any `analysis` or `merman` wrapper must be objects; malformed or mixed wrappers return structured options errors.
+The flat catalog reports the artifact's capability, output, operation, registry, and resource sets. Shared profile capacities remain unchanged, including the `constrained` layout value of 125,000. Typst's effective default combines that base profile with the shared `interactive` layout allowance; explicit profile and limit selections follow the rules above. Other ceilings remain enforced. The options root and any `analysis` or `merman` wrapper must be objects; malformed or mixed wrappers return structured options errors.
 
 ### `show-mermaid-blocks(..)`
 
@@ -613,17 +632,17 @@ The release build requires `wasm-tools` and Binaryen `wasm-opt version 133`. The
 The package is written to:
 
 ```sh
-dist/typst/merman/0.5.0
+dist/typst/merman/0.6.0
 ```
 
 The source package carries the examples shown above so they remain readable in the package review. `typst.toml` excludes `examples/**` from the runtime download; tests stay in the Merman source repository and are not bundled.
 
-For a manual local install, copy that directory to `<package-root>/preview/merman/0.5.0` and pass the parent directory to Typst:
+For a manual local install, copy that directory to `<package-root>/preview/merman/0.6.0` and pass the parent directory to Typst:
 
 ```text
-<package-root>/preview/merman/0.5.0/typst.toml
-<package-root>/preview/merman/0.5.0/lib.typ
-<package-root>/preview/merman/0.5.0/merman_typst_plugin.wasm
+<package-root>/preview/merman/0.6.0/typst.toml
+<package-root>/preview/merman/0.6.0/lib.typ
+<package-root>/preview/merman/0.6.0/merman_typst_plugin.wasm
 ```
 
 ```sh
@@ -659,7 +678,7 @@ The sole package profile, `publish`, enables SVG rendering, analysis, the comple
 - Font family and size can be forwarded as style intent, but exact Typst font glyph measurement is not automatic.
 - RaTeX math rendering is not available in the Typst plugin. Its current upstream closure depends on browser system-font discovery; the capability will remain closed until a zero-browser-import implementation passes admission.
 - Browser-only Mermaid interactions such as script callbacks and popup behavior are not expected to work in static Typst output.
-- The package is smoke-tested with Typst 0.15.0. Typst 0.15 HTML export remains experimental and is not a package promise here.
+- The minimum supported compiler is Typst 0.15.0. Typst 0.15 HTML export remains experimental and is not a package promise here.
 - The `readable` and `parity` pipelines can embed SVG structures that Typst warns about; `resvg-safe` is the intended embedded-image path for package output.
 
 ## License

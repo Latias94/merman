@@ -1,4 +1,4 @@
-#import "@preview/merman:0.5.0": mermaid-figure, mermaid-profile
+#import "@preview/merman:0.6.0": mermaid-figure, mermaid-profile
 
 = Mermaid figure
 

@@ -2,7 +2,7 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
-## [0.10.0] - Unreleased
+## [0.10.0] - 2026-11-12
 
 Cumulative changes since the latest stable Node package group, `0.9.3`. The package remains experimental; see the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.
 

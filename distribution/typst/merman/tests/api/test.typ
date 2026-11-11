@@ -1,4 +1,4 @@
-#import "@preview/merman:0.5.0": (
+#import "@preview/merman:0.6.0": (
   analyze-mermaid,
   describe-theme-support,
   export-theme-preset,
@@ -290,7 +290,7 @@
 #let capabilities = merman-capabilities()
 #assert.eq(
   capabilities.package_version,
-  sys.inputs.at("merman-version", default: "0.9.0"),
+  sys.inputs.at("merman-version", default: "0.10.0"),
   message: "Typst package must bundle the expected Merman runtime",
 )
 #assert.eq(capabilities.schema_version, 1)

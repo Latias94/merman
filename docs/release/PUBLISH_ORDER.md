@@ -15,9 +15,33 @@ The main-line `0.10.0-alpha.2` is published for all selected products, with inde
 
 The maintainer selected stable `0.10.0` for repository preparation on 2026-11-11 (Asia/Shanghai). The pending root and five workspace-coupled package changelogs consolidate the final user experience since the previous stable release, with published alpha entries retained. Release-facing examples target the selected version; the [host guide](PREBUILT_PRODUCTS.md#published-versions) still owns verified registry availability.
 
-Workspace manifests and package-manager locks are projected through `release-version.py` from the root Cargo authority. Tree-sitter `0.3.4` is a separately prepared prerequisite for Class syntax and scanner fixes made after published `0.3.3`; Roughr remains `0.12.6`. Typst's wrapper retains its independent development version and must select a new wrapper release before publication of its new theme and layout behavior.
+Workspace manifests and package-manager locks are projected through `release-version.py` from the root Cargo authority. Tree-sitter `0.3.4` is a separately prepared prerequisite for Class syntax and scanner fixes made after published `0.3.3`; Roughr remains `0.12.6`. Independently versioned Typst wrapper `0.6.0` bundles Merman `0.10.0`; published wrapper `0.5.0` retains its Merman `0.9.0` runtime. The maintainer explicitly retains theme catalog/type schemas and preset revisions at version `1` throughout the alpha consolidation.
 
-No publication channels, tag date, immutable candidate source, or reusable release preflight have been selected by this preparation request. Before publication, commit and review the complete candidate, assign the intended date to the root and governed package changelogs, record each channel as selected or deferred, and run the existing immutable `scope=release` preflight for that exact source and version. The historical delivery observations below remain unchanged.
+On 2026-11-11, the maintainer authorized all delivery surfaces and direct preparation pushes to `main`. The intended tag date is `2026-11-12` (Asia/Shanghai), allowing for the complete immutable preflight. Root and five governed package changelogs use that date. The final source/tree, successful `scope=release` run and each publishing owner must be recorded before their corresponding upload; PR CI and documentation preparation do not replace those owners. Historical delivery observations below remain unchanged.
+
+| Delivery surface | Selected publication scope | Existing delivery baseline / prerequisite |
+| --- | --- | --- |
+| Rust workspace | Selected: all 26 coupled crates at `0.10.0` | Latest workspace prerelease `0.10.0-alpha.2`; verify API and sparse-index receipts for every upload |
+| CLI and standalone LSP | Selected: stable `v0.10.0` installers, archives and checksums | Stable Latest `v0.9.3`; the new workspace tag owns the primary Release |
+| Native C and WASI SDK | Selected: all 18 qualified archives and 18 checksum sidecars | `0.10.0-alpha.2`; reuse the exact source-matched preflight producer |
+| Web npm | Selected: the complete five-member `0.10.0` group under `latest` | Existing names and alpha.2 group; retain unrelated dist-tags |
+| Node npm | Selected: the complete nine-member `0.10.0` group under `latest` | Existing names and alpha.2 group, including both Linux ARM64 members |
+| Python / PyPI | Selected: all five `0.10.0` wheels and matching GitHub downloads | Five alpha.2 wheels; preserve the native target and glibc floor checks |
+| Flutter / pub.dev | Selected: `0.10.0` facade and all eleven native assets | Existing `flutter-v{{version}}` publisher; push the authentication tag only after the primary Release exists |
+| Apple | Selected: complete local SwiftPM, XCFramework and all seven owner assets | Existing alpha.2 local package; separately track public Git-URL package setup |
+| Android | Selected: AAR and complete local Maven repository at `io.merman:merman-android:0.10.0` | Existing alpha.2 assets; Central namespace/signing/submission remain separate prerequisites |
+| Tree-sitter Mermaid | Selected: `0.3.4` Cargo/npm and standalone GitHub source/WASM release | Published `0.3.3`; registry visibility must precede the coupled LSP upload |
+| Roughr | Reuse published `roughr-merman 0.12.6`; no implementation delta or new upload | Exact version is already non-yanked in the official registry |
+| Typst Universe | Selected: independent wrapper `0.6.0` with Merman `0.10.0`, ABI `3`, minimum Typst `0.15.0` | Registry directory `0.5.0` exists and upstream PR #6098 is merged; qualify the final package on minimum and current compilers before submitting |
+| VS Code | Selected: source-matched platform VSIX packaging; Marketplace delivery requested | Marketplace credentials and a publishing owner must exist before claiming installation availability |
+| Pages and external package managers | Selected: reviewed Pages deployment and updates through each existing upstream owner | Verify current Homebrew/Scoop/WinGet/Conda-forge/Nixpkgs versions, existing PRs and contribution rules before writing |
+| Public remote SwiftPM and Maven Central | Requested; pending verification of delivery repository, namespace and protected credentials | Local SwiftPM/Maven assets do not establish these independent public repository channels; availability has not been verified for `0.10.0` |
+
+The 2026-11-11 registry prerequisite observation found all 26 target Cargo versions absent and all 26 preceding alpha.2 versions non-yanked with matching API/sparse-index checksums. All 14 Web/Node npm names already exist with alpha.2 integrity and attestation metadata; no first-name bootstrap is needed. The `npm` environment exists without a reviewer hold; the actual trusted exchange remains part of publication.
+
+The requested public remote SwiftPM channel has no established delivery repository. Maven Central has no configured `maven-central` environment or verified namespace/signing configuration; `io.merman` metadata is not publicly available, and the existing owner prepares bundles without a Portal uploader. Marketplace/Open VSX has no configured publishing job or credential and no verified public version. These setup boundaries do not block the existing Apple, Android, or VSIX artifact owners.
+
+External observations on 2026-11-11: Homebrew, Scoop, and Conda-forge serve `0.9.3`; follow their existing update bots after the stable Release is available. Initial WinGet [PR #447353](https://github.com/microsoft/winget-pkgs/pull/447353) and Nixpkgs [PR #570822](https://github.com/NixOS/nixpkgs/pull/570822) remain open at `0.9.3`, with no corresponding upstream catalog package yet. Update those existing submissions rather than opening duplicates. Homebrew manual contributions and Nixpkgs submissions require the maintainer's personal review under their current AI contribution policies; prepare any concrete patch before that review.
 
 ## 0.10.0-alpha.2 publication
 
@@ -556,10 +580,11 @@ The Typst wrapper is an independent publication surface. `@preview/merman:0.3.0`
 
 Version `0.3.0` is the first Typst package rebuilt after the text-measurement closure reduction. ICU4X collation data and generated font-metric tables are no longer linked into the production artifact; the plugin keeps deterministic measurement and retains the existing Typst plugin ABI `2` exports. Relative to the prior `0.2.0` development candidate, the package version changes because the shipped implementation closure and size characteristics are materially different; this rebuild itself does not change the ABI 2 transport protocol.
 
-The unmerged theme development source uses Typst plugin ABI `3`, Options `3`, and the closed
-`theme_operation_json` dispatcher. Its retained `0.5.0` package metadata is a local development
-value; these additions are absent from the independently submitted ABI 2 package `0.5.0` and the
-frozen `0.3.0`/`0.4.0` registry artifacts. Select the next package release during its own preparation.
+The selected `0.6.0` wrapper bundles Merman `0.10.0`, Typst plugin ABI `3`, Options `3`, and
+the closed `theme_operation_json` dispatcher. Theme schemas and preset revisions remain `1`.
+These additions are absent from published ABI 2 package `0.5.0`, which bundles Merman `0.9.0`,
+and the frozen `0.3.0`/`0.4.0` registry artifacts. The `0.6.0` submission and registry availability
+must be verified independently of the workspace Cargo release.
 
 For a future Typst submission, bind the package to the reviewed 40-character source SHA and run the owner gates from `docs/release/RELEASING.md`: `verify-typst-profile-constants`, the `typst-wasm` dependency-closure check, `build-typst-package --profile publish --budget-file docs/release/WASM_SIZE_BUDGETS.json` for one production/budget/package pass, and the full Typst package smoke. Inspect the private artifact manifest under `target/typst-wasm-artifacts/` together with `LICENSE`, `THIRD_PARTY_NOTICES.md`, and `THIRD_PARTY_LICENSES/` in the staged package. The provenance manifest is a preflight input, not a runtime package file. Before a future submission, finish and inspect the package README with final import and usage examples. After acceptance, query the registry for the exact package and update this release record with observed publication evidence.
 
