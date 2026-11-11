@@ -487,7 +487,7 @@ test("an immediate theme choice hides previous evidence and gates artifact actio
   await page.clock.runFor(1000);
   await page.clock.resume();
   await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Flowchart");
-  await expect(ghibli).toHaveAttribute("data-theme-treatment", "unreviewed");
+  await expect(ghibli).toHaveAttribute("data-theme-treatment", "dedicated");
   await expect(panel.getByRole("button", { name: /^Brutalist/ })).toHaveAttribute("data-theme-treatment", "dedicated");
   await expect(panel.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "waiting");
   await expect(panel.getByTestId("theme-execution-metadata")).toBeVisible();

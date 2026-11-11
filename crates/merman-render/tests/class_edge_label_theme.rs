@@ -329,10 +329,12 @@ fn edge_label_ordinal_uses_relation_identity_and_never_certifies_a_static_fallba
 #[test]
 fn edge_label_config_colors_keep_property_ownership_for_supported_and_unsupported_paint() {
     for paint in [CanvasPaint::solid(INK).unwrap(), gradient()] {
+        let supported = matches!(paint, CanvasPaint::Solid(_));
         let theme = compile([rule(ThemeTarget::EdgeLabel, paint)]);
         for html in [false, true] {
             for field in ["classText", "primaryTextColor", "textColor"] {
                 let mut config = config(html, "dagre");
+                config["theme"] = json!("neutral");
                 config["themeVariables"] = json!({});
                 config["themeVariables"][field] = json!("#246801");
                 let rendered = render(
@@ -342,8 +344,18 @@ fn edge_label_config_colors_keep_property_ownership_for_supported_and_unsupporte
                     ThemePortabilityRequirement::BestEffort,
                 )
                 .unwrap();
-                assert!(!rendered.svg().contains(&format!("color:{INK} !important")));
-                assert_evidence(rendered, 0, 1, 0);
+                let selected = field != "textColor";
+                if !selected && supported {
+                    assert_relation_ink(rendered.svg(), INK, 1);
+                } else {
+                    assert!(!rendered.svg().contains(&format!("color:{INK} !important")));
+                }
+                assert_evidence(
+                    rendered,
+                    usize::from(!selected && supported),
+                    usize::from(selected),
+                    usize::from(!selected && !supported),
+                );
             }
         }
     }
