@@ -433,6 +433,199 @@ fn structural_label_color_owns_svg_glyphs_but_shape_fill_does_not() {
 }
 
 #[test]
+fn ignored_stroke_width_configuration_does_not_own_typed_node_geometry() {
+    assert_ignored_node_geometry_configuration(
+        "strokeWidth",
+        "classic",
+        ThemeStylePatch::default().with_stroke_width(7.0).unwrap(),
+        "stroke-width",
+    );
+}
+
+#[test]
+fn ignored_radius_configuration_does_not_own_typed_node_geometry() {
+    let mut style = ThemeStylePatch::default();
+    style.geometry.radius = Specified::Value(7.0);
+    assert_ignored_node_geometry_configuration("radius", "neo", style, "rx");
+}
+
+#[test]
+fn radius_configuration_owns_only_the_shape_that_consumes_it() {
+    let mut style = ThemeStylePatch::default();
+    style.geometry.radius = Specified::Value(7.0);
+    let theme = compile([ThemeRule::new(ThemeTarget::Node, style)]);
+    for (shape, owns_radius) in [("[Plain]", false), ("(Rounded)", true)] {
+        let rendered = render(
+            &format!("flowchart LR\nA{shape}\n"),
+            Some(&theme),
+            json!({"theme": "default", "look": "classic", "htmlLabels": false,
+                "themeVariables": {"radius": 3}}),
+        );
+        assert_eq!(
+            rendered.metadata().effective_config.as_value()["themeVariables"]["radius"],
+            3
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = body(&document);
+        let expected = if owns_radius { "3" } else { "7" };
+        assert_eq!(rect.attribute("rx"), Some(expected), "{shape}");
+        assert_eq!(rect.attribute("ry"), Some(expected), "{shape}");
+        assert_evidence(
+            rendered,
+            usize::from(!owns_radius),
+            usize::from(owns_radius),
+            0,
+        );
+    }
+}
+
+#[test]
+fn rounded_rectangle_keeps_the_raw_css_radius_configuration_owner() {
+    let mut style = ThemeStylePatch::default();
+    style.geometry.radius = Specified::Value(7.0);
+    let theme = compile([ThemeRule::new(ThemeTarget::Node, style)]);
+    for look in ["classic", "neo"] {
+        let rendered = render(
+            "flowchart LR\nA(Rounded)\n",
+            Some(&theme),
+            json!({"theme": "default", "look": look, "htmlLabels": false,
+                "themeVariables": {"radius": "3px"}}),
+        );
+        assert_eq!(
+            rendered.metadata().effective_config.as_value()["themeVariables"]["radius"],
+            "3px"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = body(&document);
+        assert_eq!(rect.attribute("rx"), Some("3px"), "{look}");
+        assert_eq!(rect.attribute("ry"), Some("3px"), "{look}");
+        assert_ne!(property(rect, "rx"), Some("7px"));
+        assert_evidence(rendered, 0, 1, 0);
+    }
+}
+
+fn assert_ignored_node_geometry_configuration(
+    key: &str,
+    look: &str,
+    typed_style: ThemeStylePatch,
+    expected: &str,
+) {
+    let theme = compile([ThemeRule::new(ThemeTarget::Node, typed_style)]);
+    for configured in [json!(false), json!(""), json!("   "), json!(3)] {
+        let owned = configured.is_number();
+        let rendered = render(
+            "flowchart LR\nA(Rounded)\n",
+            Some(&theme),
+            json!({"theme": "default", "look": look, "htmlLabels": false,
+                    "themeVariables": {(key): configured}}),
+        );
+        let effective = &rendered.metadata().effective_config;
+        assert_eq!(effective.as_value()["themeVariables"][key], configured);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let shape = body(&document);
+        assert_eq!(
+            property(shape, expected),
+            (!owned).then_some("7px"),
+            "{key}={configured}, {look}"
+        );
+        if expected == "rx" {
+            assert_eq!(shape.attribute("rx"), Some(if owned { "3" } else { "7" }));
+            assert_eq!(shape.attribute("ry"), Some(if owned { "3" } else { "7" }));
+        }
+        assert_evidence(rendered, usize::from(!owned), usize::from(owned), 0);
+    }
+}
+
+#[test]
+fn ignored_font_family_configuration_does_not_own_typed_node_label_fonts() {
+    let mut style = ThemeStylePatch::default();
+    style.typography.font_stack = Specified::Value(FontStack::single("monospace").unwrap());
+    assert_ignored_node_font_configuration(
+        "fontFamily",
+        "font-family",
+        "monospace",
+        json!("serif"),
+        style,
+    );
+}
+
+#[test]
+fn explicit_default_font_family_keeps_its_configuration_ownership() {
+    let mut style = ThemeStylePatch::default();
+    style.typography.font_stack = Specified::Value(FontStack::single("monospace").unwrap());
+    let theme = compile([ThemeRule::new(ThemeTarget::NodeLabel, style)]);
+    for html in [false, true] {
+        for root_font in [None, Some("serif")] {
+            let mut site = config(html);
+            site["themeVariables"] =
+                json!({"fontFamily": "\"trebuchet ms\", verdana, arial, sans-serif"});
+            if let Some(font) = root_font {
+                site["fontFamily"] = json!(font);
+            }
+            let rendered = render("flowchart LR\nA[Glyph]\n", Some(&theme), site);
+            assert!(
+                rendered
+                    .metadata()
+                    .effective_config
+                    .explicit_config_owns_path("themeVariables.fontFamily")
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(document.descendants().filter(|terminal| terminal.has_tag_name("style")).filter_map(|terminal| terminal.text()).any(|css| css.contains("#structural-class-theme{font-family:\"trebuchet ms\",verdana,arial,sans-serif;")), "the authored theme font must supply the emitted root value, html={html}, root={root_font:?}");
+            assert!(
+                !node(&document)
+                    .descendants()
+                    .any(|terminal| property(terminal, "font-family") == Some("monospace")),
+                "html={html}, root={root_font:?}"
+            );
+            assert_evidence(rendered, 0, 1, 0);
+        }
+    }
+}
+
+#[test]
+fn ignored_font_size_configuration_does_not_own_typed_node_label_fonts() {
+    let mut style = ThemeStylePatch::default();
+    style.typography.font_size_px = Specified::Value(29.0);
+    assert_ignored_node_font_configuration("fontSize", "font-size", "29px", json!("31px"), style);
+}
+
+fn assert_ignored_node_font_configuration(
+    key: &str,
+    css_property: &str,
+    expected: &str,
+    configured_valid: Value,
+    style: ThemeStylePatch,
+) {
+    // Keep only this property's typed request so evidence cannot borrow a sibling's success.
+    let theme = compile([ThemeRule::new(ThemeTarget::NodeLabel, style)]);
+    for html in [false, true] {
+        for configured in [json!(false), configured_valid.clone()] {
+            let owned = configured.is_string();
+            let mut site = config(html);
+            site["theme"] = json!("default");
+            site["themeVariables"] = json!({(key): configured});
+            let rendered = render("flowchart LR\nA[Glyph]\n", Some(&theme), site);
+            assert_eq!(
+                rendered.metadata().effective_config.as_value()["themeVariables"][key],
+                configured
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let wrapper = node(&document);
+            let typed = wrapper
+                .descendants()
+                .any(|terminal| property(terminal, css_property) == Some(expected));
+            assert_eq!(typed, !owned, "{key}={configured}, html={html}");
+            assert!(
+                wrapper
+                    .descendants()
+                    .any(|terminal| terminal.text() == Some("Glyph"))
+            );
+            assert_evidence(rendered, usize::from(!owned), usize::from(owned), 0);
+        }
+    }
+}
+
+#[test]
 fn structural_html_fonts_own_matched_spans_without_owning_native_text() {
     // Repro: .nodes span { font-family:serif!important } directly owns nodeLabel, but
     // the typed font was still appended to that span and reported as Applied.

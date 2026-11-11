@@ -139,7 +139,9 @@ impl FlowchartBaseTypographyPlan {
         effective_config: &PresentationConfig,
     ) -> Self {
         let config = FlowchartConfigView::new(effective_config.as_value());
-        let configured_font_family = config.font_family();
+        let configured_font_family = config
+            .font_family_source(Some(effective_config))
+            .map_or_else(|| config.font_family(), |(font, _)| font);
         let configured_font_size = config.render_font_size();
         let configured_text_style =
             config.render_text_style(&configured_font_family, configured_font_size);

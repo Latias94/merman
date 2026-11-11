@@ -9438,6 +9438,638 @@ fn state_explicit_radius_wins_compatibility_css_on_plain_title_and_composite_rec
 }
 
 #[test]
+fn state_hand_drawn_composite_radius_retains_pinned_paths_and_geometry_residual() {
+    const SOURCE: &str = "stateDiagram-v2\nstate Parent {\nReady\n}\n";
+    let baseline_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Composite,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(12.0),
+                    },
+                    ..Default::default()
+                },
+            ))),
+        )
+        .unwrap();
+    let config = serde_json::json!({
+        "look": "handDrawn", "handDrawnSeed": 7, "htmlLabels": false
+    });
+    let parsed = parse_state_numeric_theme_request(SOURCE, &theme, config.clone());
+    assert_eq!(
+        parsed.metadata().effective_config.get_str("look"),
+        Some("handDrawn")
+    );
+    assert_eq!(
+        parsed.metadata().effective_config.as_value()["handDrawnSeed"],
+        serde_json::json!(7)
+    );
+    let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model() else {
+        panic!("expected parsed State model");
+    };
+    let parent = model.nodes.iter().find(|node| node.id == "Parent").unwrap();
+    assert!(parent.is_group);
+    assert_eq!(parent.shape, "roundedWithTitle");
+
+    let baseline = render_state_numeric_theme_request(
+        &parse_state_numeric_theme_request(SOURCE, &baseline_theme, config),
+        &baseline_theme,
+    );
+    let rendered = render_state_numeric_theme_request(&parsed, &theme);
+    let cluster_paths = |svg: &str| {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("Parent"))
+            .expect("visible Parent composite");
+        assert_eq!(cluster.attribute("data-look"), Some("handDrawn"));
+        cluster
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("path")
+                    && node.parent().is_some_and(|parent| {
+                        matches!(parent.attribute("class"), Some("outer" | "inner"))
+                    })
+            })
+            .map(|node| node.attribute("d").unwrap().to_owned())
+            .collect::<Vec<_>>()
+    };
+    let paths = cluster_paths(rendered.svg());
+    assert_eq!(
+        paths.len(),
+        4,
+        "both composite fill/stroke pairs must be observed"
+    );
+    // Pinned clusters.js draws HandDrawn composite rectangles with radius zero.
+    assert_eq!(paths, cluster_paths(baseline.svg()));
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(
+        evidence.applied_count(),
+        0,
+        "unchanged sharp paths cannot certify radius 12"
+    );
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+fn parse_state_numeric_theme_request(
+    source: &str,
+    theme: &DiagramTheme,
+    config: serde_json::Value,
+) -> merman_model::presentation::PresentationDiagram {
+    common::install_parse_compatibility(
+        theme,
+        classic_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        ),
+    )
+    .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+    .expect("parse State numeric property source")
+    .expect("detect State diagram")
+    .into_presentation()
+}
+
+fn render_state_numeric_theme_request(
+    parsed: &merman_model::presentation::PresentationDiagram,
+    theme: &DiagramTheme,
+) -> family::RenderedFamilySvg {
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+        .begin_session_with_theme(theme)
+        .unwrap();
+    family::prepare(parsed, &LayoutOptions::default(), session)
+        .expect("prepare State numeric property fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render State numeric property fixture")
+}
+
+fn state_inline_numeric_property(node: roxmltree::Node<'_, '_>, property: &str) -> Option<String> {
+    node.attribute("style")?
+        .split(';')
+        .filter_map(|declaration| declaration.split_once(':'))
+        .filter(|(name, _)| name.trim() == property)
+        .map(|(_, value)| {
+            value
+                .trim()
+                .trim_end_matches("!important")
+                .trim()
+                .to_owned()
+        })
+        .next_back()
+}
+
+#[test]
+fn state_neo_composite_radius_config_owns_outer_without_owning_inner_value() {
+    const SOURCE: &str = "stateDiagram-v2\nstate Parent {\nReady\n}\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Composite,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(12.0),
+                    },
+                    ..Default::default()
+                },
+            ))),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        for radius in [9, 0, -1] {
+            let parsed = parse_state_numeric_theme_request(
+                SOURCE,
+                &theme,
+                serde_json::json!({
+                    "look": "neo", "htmlLabels": html_labels,
+                    "themeVariables": {"radius": radius}
+                }),
+            );
+            let config = &parsed.metadata().effective_config;
+            assert_eq!(config.get_str("look"), Some("neo"));
+            assert_eq!(config.get_bool("htmlLabels"), Some(html_labels));
+            assert_eq!(
+                config.as_value()["themeVariables"]["radius"],
+                serde_json::json!(radius)
+            );
+            assert!(config.config_path_overrides_typed_default("themeVariables.radius"));
+            let rendered = render_state_numeric_theme_request(&parsed, &theme);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let cluster = document
+                .descendants()
+                .find(|node| node.attribute("data-id") == Some("Parent"))
+                .unwrap();
+            assert_eq!(cluster.attribute("data-look"), Some("neo"));
+            let outer = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("outer"))
+                .unwrap();
+            let inner = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("inner"))
+                .unwrap();
+            let stylesheet = state_svg_stylesheet(rendered.svg());
+            let consumed_radius = radius.max(0);
+            assert!(stylesheet.contains(&format!(
+                "[data-look=\"neo\"].statediagram-cluster rect.outer{{rx:{consumed_radius}px;ry:{consumed_radius}px;"
+            )));
+            for property in ["rx", "ry"] {
+                if let Some(inline) = state_inline_numeric_property(outer, property) {
+                    assert_eq!(
+                        inline,
+                        format!("{consumed_radius}px"),
+                        "source-owned outer {property}"
+                    );
+                }
+                assert_eq!(
+                    state_inline_numeric_property(inner, property).as_deref(),
+                    Some("12px")
+                );
+                assert_eq!(inner.attribute(property), Some("12"));
+            }
+            // Only the outer consumes themeVariables.radius. The same pure radius rule
+            // still has a real, independent inner-rectangle consumer.
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn state_neo_composite_radius_ignored_config_keeps_typed_outer_and_inner() {
+    const SOURCE: &str = "stateDiagram-v2\nstate Parent {\nReady\n}\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Composite,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(12.0),
+                    },
+                    ..Default::default()
+                },
+            ))),
+        )
+        .unwrap();
+    for radius in [
+        serde_json::json!(false),
+        serde_json::json!("NaN"),
+        serde_json::json!("0.5em"),
+    ] {
+        let parsed = parse_state_numeric_theme_request(
+            SOURCE,
+            &theme,
+            serde_json::json!({
+                "look": "neo", "htmlLabels": false, "themeVariables": {"radius": radius}
+            }),
+        );
+        let config = &parsed.metadata().effective_config;
+        assert_eq!(config.get_str("look"), Some("neo"));
+        assert_eq!(
+            config.as_value().pointer("/themeVariables/radius"),
+            Some(&radius)
+        );
+        assert!(config.config_path_overrides_typed_default("themeVariables.radius"));
+        let rendered = render_state_numeric_theme_request(&parsed, &theme);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("Parent"))
+            .unwrap();
+        for class in ["outer", "inner"] {
+            let rect = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .unwrap();
+            for property in ["rx", "ry"] {
+                assert_eq!(
+                    state_inline_numeric_property(rect, property).as_deref(),
+                    Some("12px"),
+                    "ignored config {radius:?} must not own {class}/{property}"
+                );
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1);
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn state_neo_composite_source_class_radius_still_owns_both_rectangles() {
+    const SOURCE: &str = "stateDiagram-v2\nstate Parent {\nReady\n}\nclassDef corners rx:4px,ry:4px\nclass Parent corners\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Composite,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Value(12.0),
+                    },
+                    ..Default::default()
+                },
+            ))),
+        )
+        .unwrap();
+    for html_labels in [false, true] {
+        let parsed = parse_state_numeric_theme_request(
+            SOURCE,
+            &theme,
+            serde_json::json!({
+                "look": "neo", "htmlLabels": html_labels, "themeVariables": {"radius": 9}
+            }),
+        );
+        let config = &parsed.metadata().effective_config;
+        assert_eq!(
+            config.as_value()["themeVariables"]["radius"],
+            serde_json::json!(9)
+        );
+        assert!(config.config_path_overrides_typed_default("themeVariables.radius"));
+        let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("expected parsed State model");
+        };
+        assert!(
+            model.style_classes["corners"]
+                .styles
+                .contains(&"rx:4px".to_owned())
+        );
+        assert!(
+            model.style_classes["corners"]
+                .styles
+                .contains(&"ry:4px".to_owned())
+        );
+        let rendered = render_state_numeric_theme_request(&parsed, &theme);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("Parent"))
+            .unwrap();
+        for class in ["outer", "inner"] {
+            let rect = cluster
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .unwrap();
+            for property in ["rx", "ry"] {
+                assert_eq!(
+                    state_inline_numeric_property(rect, property).as_deref(),
+                    Some("4px")
+                );
+                assert_eq!(rect.attribute(property), Some("4"));
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn state_neo_composite_radius_config_preserves_outer_and_unowned_inner_clear_residual() {
+    const SOURCE: &str = "stateDiagram-v2\nstate Parent {\nReady\n}\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Composite,
+                ThemeStylePatch {
+                    geometry: ThemeGeometryPatch {
+                        radius: Specified::Clear,
+                    },
+                    ..Default::default()
+                },
+            ))),
+        )
+        .unwrap();
+    let parsed = parse_state_numeric_theme_request(
+        SOURCE,
+        &theme,
+        serde_json::json!({"look": "neo", "htmlLabels": false, "themeVariables": {"radius": 9}}),
+    );
+    let config = &parsed.metadata().effective_config;
+    assert_eq!(config.get_str("look"), Some("neo"));
+    assert_eq!(
+        config.as_value()["themeVariables"]["radius"],
+        serde_json::json!(9)
+    );
+    assert!(config.config_path_overrides_typed_default("themeVariables.radius"));
+    let rendered = render_state_numeric_theme_request(&parsed, &theme);
+    let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let cluster = document
+        .descendants()
+        .find(|node| node.attribute("data-id") == Some("Parent"))
+        .unwrap();
+    assert_eq!(cluster.attribute("data-look"), Some("neo"));
+    let stylesheet = state_svg_stylesheet(rendered.svg());
+    assert!(
+        stylesheet.contains("[data-look=\"neo\"].statediagram-cluster rect.outer{rx:9px;ry:9px;")
+    );
+    assert!(stylesheet.contains(".statediagram-cluster .inner{rx:0;ry:0;}"));
+    for class in ["outer", "inner"] {
+        let rect = cluster
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+            .unwrap();
+        for property in ["rx", "ry"] {
+            assert_eq!(state_inline_numeric_property(rect, property), None);
+            assert_eq!(rect.attribute(property), None);
+        }
+    }
+    let evidence = merman_render::__private::family_evidence(rendered.into_completion().report());
+    assert_eq!(evidence.required_count(), 1);
+    assert_eq!(evidence.accounted_count(), 1);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 0);
+    assert_eq!(
+        evidence.theme_residual_count(),
+        1,
+        "source radius does not own the inner Clear"
+    );
+}
+
+fn state_single_opacity_theme(property: &str) -> DiagramTheme {
+    let mut patch = ThemeStylePatch::default();
+    match property {
+        "opacity" => patch.paint.opacity = Specified::Value(0.25),
+        "fill-opacity" => patch.paint.fill_opacity = Specified::Value(0.25),
+        "stroke-opacity" => patch.stroke.stroke_opacity = Specified::Value(0.25),
+        _ => panic!("unexpected opacity property: {property}"),
+    }
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::State, patch)),
+        ))
+        .unwrap()
+}
+
+fn assert_state_invalid_opacity_preserves_typed_terminal(property: &str) {
+    let theme = state_single_opacity_theme(property);
+    for token in ["2px", "NaN"] {
+        for assigned_class in [false, true] {
+            let declaration = format!("{property}:{token}");
+            let source = if assigned_class {
+                format!(
+                    "stateDiagram-v2\nReady\nclassDef invalid {declaration}\nclass Ready invalid\n"
+                )
+            } else {
+                format!("stateDiagram-v2\nReady\nstyle Ready {declaration}\n")
+            };
+            let parsed = parse_state_numeric_theme_request(
+                &source,
+                &theme,
+                serde_json::json!({"look": "classic", "htmlLabels": false}),
+            );
+            assert_eq!(
+                parsed.metadata().effective_config.get_str("look"),
+                Some("classic")
+            );
+            let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model()
+            else {
+                panic!("expected parsed State model");
+            };
+            if assigned_class {
+                assert!(model.style_classes["invalid"].styles.contains(&declaration));
+                assert!(
+                    model
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "Ready")
+                        .unwrap()
+                        .css_classes
+                        .split_whitespace()
+                        .any(|class| class == "invalid")
+                );
+            } else {
+                assert!(
+                    model
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == "Ready")
+                        .unwrap()
+                        .css_styles
+                        .contains(&declaration)
+                );
+            }
+            let rendered = render_state_numeric_theme_request(&parsed, &theme);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let rect = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("basic label-container")
+                })
+                .unwrap();
+            assert_eq!(
+                state_inline_numeric_property(rect, property).as_deref(),
+                Some("0.25"),
+                "invalid {declaration}, assigned_class={assigned_class} must preserve the typed winner"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            assert!(
+                evidence.source_residual_count() > 0,
+                "invalid source value needs a diagnostic"
+            );
+        }
+    }
+}
+
+#[test]
+fn state_invalid_opacity_preserves_typed_terminal_and_evidence() {
+    assert_state_invalid_opacity_preserves_typed_terminal("opacity");
+}
+
+#[test]
+fn state_invalid_fill_opacity_preserves_typed_terminal_and_evidence() {
+    assert_state_invalid_opacity_preserves_typed_terminal("fill-opacity");
+}
+
+#[test]
+fn state_invalid_stroke_opacity_preserves_typed_terminal_and_evidence() {
+    assert_state_invalid_opacity_preserves_typed_terminal("stroke-opacity");
+}
+
+#[test]
+fn state_invalid_later_opacity_preserves_valid_class_terminal_and_evidence() {
+    for property in ["opacity", "fill-opacity", "stroke-opacity"] {
+        let theme = state_single_opacity_theme(property);
+        let valid = format!("{property}:0.5");
+        let invalid = format!("{property}:2px");
+        let source = format!(
+            "stateDiagram-v2\nReady\nclassDef visible {valid}\nclass Ready visible\nstyle Ready {invalid}\n"
+        );
+        let parsed = parse_state_numeric_theme_request(
+            &source,
+            &theme,
+            serde_json::json!({"look": "classic", "htmlLabels": false}),
+        );
+        let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model() else {
+            panic!("expected parsed State model");
+        };
+        assert!(model.style_classes["visible"].styles.contains(&valid));
+        assert!(
+            model
+                .nodes
+                .iter()
+                .find(|node| node.id == "Ready")
+                .unwrap()
+                .css_styles
+                .contains(&invalid)
+        );
+        let rendered = render_state_numeric_theme_request(&parsed, &theme);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let rect = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("rect")
+                    && node.attribute("class") == Some("basic label-container")
+            })
+            .unwrap();
+        assert_eq!(
+            state_inline_numeric_property(rect, property).as_deref(),
+            Some("0.5")
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+        assert!(evidence.source_residual_count() > 0);
+    }
+}
+
+#[test]
+fn state_source_opacity_keeps_zero_percentage_clamping_and_unresolved_ownership() {
+    for property in ["opacity", "fill-opacity", "stroke-opacity"] {
+        let theme = state_single_opacity_theme(property);
+        for token in [
+            "0",
+            "25%",
+            "-1",
+            "2",
+            "inherit",
+            "initial",
+            "unset",
+            "revert",
+            "revert-layer",
+            "calc(1 / 2)",
+            "var(--source-alpha)",
+            "var(--empty) 0.5",
+        ] {
+            let declaration = format!("{property}:{token}");
+            let parsed = parse_state_numeric_theme_request(
+                &format!("stateDiagram-v2\nReady\nstyle Ready {declaration}\n"),
+                &theme,
+                serde_json::json!({"look": "classic", "htmlLabels": false}),
+            );
+            let merman_model::presentation::RenderSemanticModel::State(model) = parsed.model()
+            else {
+                panic!("expected parsed State model");
+            };
+            assert!(
+                model
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == "Ready")
+                    .unwrap()
+                    .css_styles
+                    .contains(&declaration)
+            );
+            let rendered = render_state_numeric_theme_request(&parsed, &theme);
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let rect = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("rect")
+                        && node.attribute("class") == Some("basic label-container")
+                })
+                .unwrap();
+            assert_eq!(
+                state_inline_numeric_property(rect, property).as_deref(),
+                Some(token)
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), 0, "source-owned {declaration}");
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+            if !token.contains('(') {
+                assert_eq!(
+                    evidence.source_residual_count(),
+                    0,
+                    "valid CSS {declaration}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn state_svg_preserves_db_accessibility_text() {
     for (title, description, expected_title, expected_description) in [
         (

@@ -233,6 +233,7 @@ pub(crate) struct StateNodeStylePlan {
     stroke_width_override: Option<f64>,
     classic_stroke_paint_width: Option<f64>,
     radius_override: Option<f64>,
+    composite_outer_radius_override: Option<f64>,
     padding_override: Option<f64>,
     effect: Option<StateNodeEffectPlan>,
     cluster_label_typography: Option<ResolvedLabelTypography>,
@@ -415,6 +416,10 @@ impl StateNodeStylePlan {
 
     pub(crate) const fn radius_override(&self) -> Option<f64> {
         self.radius_override
+    }
+
+    pub(crate) const fn composite_outer_radius_override(&self) -> Option<f64> {
+        self.composite_outer_radius_override
     }
 
     pub(crate) const fn padding_override(&self) -> Option<f64> {
@@ -2293,14 +2298,26 @@ fn source_shape_property_reaches_primary_surface(
     }
 }
 
-fn state_geometry_support(node: &StateDiagramRenderNode) -> StateGeometrySupport {
+fn state_geometry_support(
+    node: &StateDiagramRenderNode,
+    compatibility: &StateCompatibilityPlan,
+) -> StateGeometrySupport {
     match node.shape.as_str() {
         "note" => StateGeometrySupport::BOTH,
         "stateStart" | "stateEnd" | "choice" | "fork" | "join" | "noteGroup" => {
             StateGeometrySupport::NONE
         }
-        // Rectangles, title rectangles, composite clusters, and divider clusters all consume
-        // uniform padding during layout and emit a bounded corner radius when requested.
+        // Pinned HandDrawn composite and divider writers draw sharp paths. Padding
+        // still reaches layout, but selecting a radius cannot certify rounded geometry.
+        _ if compatibility.is_hand_drawn()
+            && super::config::state_node_is_effective_group(node) =>
+        {
+            StateGeometrySupport {
+                radius: false,
+                padding: true,
+            }
+        }
+        // Other rectangles consume uniform padding and emit bounded corner radii.
         _ => StateGeometrySupport::BOTH,
     }
 }
@@ -2550,7 +2567,7 @@ fn prepare_node(
         })
         .transpose()?
         .flatten();
-    let geometry_support = state_geometry_support(node);
+    let geometry_support = state_geometry_support(node, compatibility);
     let shape_use = ordinal.zip(semantic_shape.as_ref()).map(|(_, style)| {
         theme_evidence.consume_shape_style(style, geometry_support, StateThemeSurface::Node)
     });
@@ -3119,6 +3136,13 @@ fn prepare_node(
             stroke_width_override,
         )
     });
+    // Neo's configured radius owns only the outer rectangle. An assigned source
+    // class still outranks that configuration, while the typed inner stays independent.
+    let composite_outer_radius_override = radius_override.filter(|_| {
+        !compatibility.is_neo()
+            || !compatibility.neo_radius_config_owned
+            || shadowed_shape_properties.contains(&ResolvedStyleProperty::Radius)
+    });
 
     Ok(StateNodeStylePlan {
         #[cfg(test)]
@@ -3155,6 +3179,7 @@ fn prepare_node(
         stroke_width_override,
         classic_stroke_paint_width,
         radius_override,
+        composite_outer_radius_override,
         padding_override,
         effect,
         cluster_label_typography,
@@ -3741,8 +3766,18 @@ fn apply_source_shape_property(
             apply_numeric_source_property(declaration, radius, residuals)
         }
         "padding" => apply_numeric_source_property(declaration, padding, residuals),
-        "opacity" | "fill-opacity" | "stroke-opacity" | "stroke-dasharray" | "stroke-linecap"
-        | "stroke-linejoin" => true,
+        "opacity" | "fill-opacity" | "stroke-opacity" => {
+            if source_opacity_value_is_admissible(declaration) {
+                true
+            } else {
+                residuals.push(SourceStyleResidual::from_declaration(
+                    declaration,
+                    SourceStyleResidualReason::InvalidValue,
+                ));
+                false
+            }
+        }
+        "stroke-dasharray" | "stroke-linecap" | "stroke-linejoin" => true,
         _ => {
             residuals.push(SourceStyleResidual::from_declaration(
                 declaration,
@@ -3750,6 +3785,39 @@ fn apply_source_shape_property(
             ));
             false
         }
+    }
+}
+
+fn source_opacity_value_is_admissible(declaration: &SourceStyleDeclaration) -> bool {
+    // Variable substitution can produce one scalar from several source components.
+    // Preserve that host-owned declaration without attempting to evaluate it.
+    if declaration.has_dynamic_reference_function() {
+        return true;
+    }
+    if !declaration.is_single_component_value() {
+        return false;
+    }
+    let value = declaration.value();
+    let mut parser = cssparser::Parser::new(value);
+    match parser.next() {
+        Ok(cssparser::Token::Number { .. } | cssparser::Token::Percentage { .. }) => {
+            // Preserve the source token and CSS clamping, including negatives. Read
+            // its finite f64 magnitude rather than cssparser's narrower f32 value.
+            value
+                .strip_suffix('%')
+                .unwrap_or(value)
+                .parse::<f64>()
+                .is_ok_and(f64::is_finite)
+        }
+        Ok(cssparser::Token::Ident(keyword)) => {
+            ["inherit", "initial", "unset", "revert", "revert-layer"]
+                .iter()
+                .any(|candidate| keyword.eq_ignore_ascii_case(candidate))
+        }
+        // Prepared declarations already passed structural CSS admission. Host
+        // expressions retain their source ownership without being evaluated here.
+        Ok(cssparser::Token::Function(_)) => true,
+        _ => false,
     }
 }
 

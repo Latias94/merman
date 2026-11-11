@@ -30,14 +30,14 @@ pub(crate) struct ClassRelationWidthBinding {
 impl ClassRelationWidthBinding {
     pub(super) fn compatibility(config: &merman_model::presentation::PresentationConfig) -> Self {
         const PATH: &str = "themeVariables.strokeWidth";
-        let config_origin = config
-            .config_path_overrides_typed_default(PATH)
-            .then_some(PATH);
         let compatibility_css = crate::config::config_css_number_or_string(
             config.as_value(),
             &["themeVariables", "strokeWidth"],
-        )
-        .unwrap_or_else(|| "1".to_owned());
+        );
+        let config_origin = (compatibility_css.is_some()
+            && config.config_path_overrides_typed_default(PATH))
+        .then_some(PATH);
+        let compatibility_css = compatibility_css.unwrap_or_else(|| "1".to_owned());
         let paint_width = config_origin.and_then(|_| {
             crate::config::config_f64_css_px(config.as_value(), &["themeVariables", "strokeWidth"])
                 .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)

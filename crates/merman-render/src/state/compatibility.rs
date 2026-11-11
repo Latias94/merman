@@ -398,6 +398,7 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) gradient_start: String,
     pub(crate) gradient_stop: String,
     pub(crate) neo_radius: f64,
+    pub(crate) neo_radius_config_owned: bool,
     pub(crate) rect_radius: f64,
     pub(crate) node_shadow: bool,
     terminal_source_owned: u32,
@@ -581,9 +582,9 @@ impl StateCompatibilityPlan {
                 gradient_start.clone()
             })
         });
-        let neo_radius = resolver
-            .direct_css_px(&["themeVariables.radius"], 5.0)
-            .map(|value| value.max(0.0));
+        let neo_radius = resolver.direct_css_px(&["themeVariables.radius"], 5.0);
+        let neo_radius_config_owned = neo_radius.source_owned;
+        let neo_radius = neo_radius.map(|value| value.max(0.0));
         let rect_radius = if resolver
             .value
             .pointer("/themeVariables/radius")
@@ -786,6 +787,7 @@ impl StateCompatibilityPlan {
             gradient_start: gradient_start.value,
             gradient_stop: gradient_stop.value,
             neo_radius: neo_radius.value,
+            neo_radius_config_owned,
             rect_radius,
             node_shadow,
             terminal_source_owned,

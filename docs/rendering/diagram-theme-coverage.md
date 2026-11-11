@@ -196,6 +196,30 @@ theme supply fallbacks. Canvas, typography, geometry and effects retain their in
 Follow the [precedence rules](custom-diagram-themes.md#family-configuration-and-compiled-rules) when
 reproducing a render, including where each configuration value originated.
 
+Configuration ownership follows the value selected by the concrete consumer. Ignored boolean or
+blank font/geometry inputs cannot reserve a property and suppress an otherwise supported theme
+value. A retained host-dependent CSS expression keeps its source ownership and any unresolved
+diagnostic. Usecase role fonts have their own configuration paths; a generic root font does not
+own an actor font that never consumes it. Class root font sizes of zero or below one pixel also
+remain the sizes used for displayed-label measurement; zero-sized text cannot certify a visible
+font-stack consumer.
+
+An HTML descendant with an arbitrary host CSS class can still have an unknown font size even
+when its inline `font-family:inherit` fixes the family. Best-effort rendering preserves both
+declarations; unresolved visibility remains a typography residual and cannot certify portability.
+
+Usecase label typography follows the declarations emitted on the label, preserving CSS property
+case and earlier valid values when a later declaration is invalid. Shell-only `font` and `all`
+declarations do not own sibling label typography. State opacity declarations retain numeric,
+percentage and host-dependent CSS ownership; a definitely invalid source value cannot discard
+the preceding valid theme or class value.
+
+Radius ownership depends on the shape and look. Flowchart's RoundedRectangle consumes its raw
+radius setting, while the plain Process rectangle consumes numeric radius configuration only in
+Neo. State's Neo Composite outer frame consumes its radius configuration independently of the
+inner frame. Hand-drawn State Composite paths retain Mermaid's sharp corners, so a theme radius
+request remains unsupported rather than being reported as applied.
+
 A selected route is not proof of emission: missing labels, unmatched ordinals, source-owned paint,
 shape geometry and look selection can change what actually applies. Partial support is local to
 the target, property and value; it does not make a whole family supported or unsupported.

@@ -221,7 +221,13 @@ fn native_requirement_borders_and_referenced_relation_markers_keep_separate_role
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
         for (variables, body_stroke, relation) in [
             (json!({}), border, line),
-            (json!({"nodeBorder":"#123456"}), "#123456", line),
+            // Stamped nodes consume the border palette before the scalar fallback.
+            (json!({"nodeBorder":"#123456"}), border, line),
+            (
+                json!({"borderColorArray":[], "nodeBorder":"#123456"}),
+                "#123456",
+                line,
+            ),
             (json!({"relationColor":"#654321"}), border, "#654321"),
         ] {
             let svg = render(

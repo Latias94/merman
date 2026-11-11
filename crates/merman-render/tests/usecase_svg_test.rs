@@ -3555,6 +3555,915 @@ Data -- Login
     }
 
     #[test]
+    fn usecase_property_selection_generic_font_does_not_own_actor_role() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::ActorLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_stack: Specified::Value(FontStack::single("monospace").unwrap()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for html in [false, true] {
+            let fonts = Arc::new(ObservedFonts::default());
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.usecase-role-font-owner").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                fonts.clone(),
+            );
+            let (_, rendered) = render_with_environment(
+                "usecase-beta\nactor A(Customer)\n",
+                &theme,
+                json!({
+                    "layout": "dagre", "look": "classic", "htmlLabels": html,
+                    "themeVariables": {"fontFamily": "serif"}
+                }),
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert_eq!(
+                rendered
+                    .metadata()
+                    .effective_config
+                    .get_str("themeVariables.fontFamily"),
+                Some("serif"),
+                "the real parse must retain the independent root font"
+            );
+            let requests = fonts.0.lock().unwrap();
+            let labels = requests
+                .iter()
+                .filter(|(text, _)| text == "Customer")
+                .collect::<Vec<_>>();
+            assert!(!labels.is_empty(), "html={html}");
+            assert!(
+                labels
+                    .iter()
+                    .all(|(_, style)| { style.font_family.as_deref() == Some("monospace") }),
+                "html={html}: {labels:?}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                label_property(&document, "Customer", "font-family").as_deref(),
+                Some("monospace"),
+                "html={html}"
+            );
+            assert_eq!(
+                stylesheet_property(&document, "#usecase-test", "font-family").as_deref(),
+                Some("serif")
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_valid_role_font_keeps_ownership() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::ActorLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_stack: Specified::Value(FontStack::single("monospace").unwrap()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for html in [false, true] {
+            let fonts = Arc::new(ObservedFonts::default());
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.usecase-explicit-role-font").unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                fonts.clone(),
+            );
+            let (_, rendered) = render_with_environment(
+                "usecase-beta\nactor A(Customer)\n",
+                &theme,
+                json!({
+                    "layout": "dagre", "look": "classic", "htmlLabels": html,
+                    "usecase": {"actorFontFamily": "serif"}
+                }),
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            assert_eq!(
+                rendered
+                    .metadata()
+                    .effective_config
+                    .get_str("usecase.actorFontFamily"),
+                Some("serif")
+            );
+            let requests = fonts.0.lock().unwrap();
+            let labels = requests
+                .iter()
+                .filter(|(text, _)| text == "Customer")
+                .collect::<Vec<_>>();
+            assert!(!labels.is_empty(), "html={html}");
+            assert!(
+                labels
+                    .iter()
+                    .all(|(_, style)| style.font_family.as_deref() == Some("serif")),
+                "html={html}: {labels:?}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                property(
+                    document.root_element(),
+                    "--mermaid-usecase-actor-font-family"
+                )
+                .as_deref(),
+                Some("serif")
+            );
+            assert_eq!(
+                stylesheet_property(&document, "#usecase-test .actor-label", "font-family")
+                    .as_deref(),
+                Some("var(--mermaid-usecase-actor-font-family)")
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_invalid_source_sizes_keep_typed_measurement_and_css() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for size in ["bogus", "-2pt"] {
+            for html in [false, true] {
+                let source = format!("usecase-beta\nA(Alpha)\nstyle A font-size:{size}\n");
+                let fonts = Arc::new(ObservedFonts::default());
+                let profile = TextMeasurementProfile::new(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("test.usecase-ignored-source-size").unwrap(),
+                        "1",
+                    )
+                    .unwrap(),
+                    fonts.clone(),
+                );
+                let (_, rendered) = render_with_environment(
+                    &source,
+                    &theme,
+                    json!({
+                        "layout": "dagre", "look": "classic", "htmlLabels": html
+                    }),
+                    RenderEnvironment::deterministic()
+                        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                assert!(
+                    !rendered
+                        .metadata()
+                        .effective_config
+                        .config_path_overrides_typed_default("themeVariables.fontSize"),
+                    "the generated root size must not introduce a competing explicit owner"
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let source_css = format!("font-size:{size} !important;");
+                assert!(
+                    owner(&document, "A").descendants().any(|node| {
+                        node.attribute("style")
+                            .is_some_and(|style| style.contains(&source_css))
+                    }),
+                    "source declaration was not retained: {size}/html={html}"
+                );
+                let requests = fonts.0.lock().unwrap();
+                let labels = requests
+                    .iter()
+                    .filter(|(text, _)| text == "Alpha")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{size}/html={html}");
+                assert!(
+                    labels.iter().all(|(_, style)| style.font_size == 30.0),
+                    "{size}/html={html}: {labels:?}"
+                );
+                assert!(
+                    owner(&document, "A").descendants().any(|node| {
+                        node.attribute("style").is_some_and(|style| {
+                            style.contains("font-size:30px !important;")
+                                && style.contains(&source_css)
+                        })
+                    }),
+                    "ignored CSS must coexist with the effective typed size: {size}/html={html}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 1);
+                assert_eq!(evidence.not_applicable_count(), 0);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_explicit_root_size_with_invalid_source_keeps_ownership() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for html in [false, true] {
+            let fonts = Arc::new(ObservedFonts::default());
+            let profile = TextMeasurementProfile::new(
+                TextMeasurementProfileIdentity::new(
+                    MeasurementProfileId::new("test.usecase-invalid-source-with-root-owner")
+                        .unwrap(),
+                    "1",
+                )
+                .unwrap(),
+                fonts.clone(),
+            );
+            let (_, rendered) = render_with_environment(
+                "usecase-beta\nA(Alpha)\nstyle A font-size:bogus\n",
+                &theme,
+                json!({
+                    "layout": "dagre", "look": "classic", "htmlLabels": html,
+                    "themeVariables": {"fontSize": "16px"}
+                }),
+                RenderEnvironment::deterministic()
+                    .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let config = &rendered.metadata().effective_config;
+            assert_eq!(config.get_str("themeVariables.fontSize"), Some("16px"));
+            assert!(config.config_path_overrides_typed_default("themeVariables.fontSize"));
+            let requests = fonts.0.lock().unwrap();
+            let labels = requests
+                .iter()
+                .filter(|(text, _)| text == "Alpha")
+                .collect::<Vec<_>>();
+            assert!(!labels.is_empty(), "html={html}");
+            let expected_size = if html { 30.0 } else { 16.0 };
+            assert!(
+                labels
+                    .iter()
+                    .all(|(_, style)| style.font_size == expected_size),
+                "html={html}: {labels:?}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                stylesheet_property(&document, "#usecase-test", "font-size").as_deref(),
+                Some("16px")
+            );
+            assert!(owner(&document, "A").descendants().any(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("font-size:bogus !important;"))
+            }));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), usize::from(html));
+            assert_eq!(evidence.not_applicable_count(), usize::from(!html));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+
+    fn render_source_typography_selection(
+        source: &str,
+        declarations: &[&str],
+        theme: &DiagramTheme,
+        html: bool,
+    ) -> (family::RenderedFamilySvg, Arc<ObservedFonts>) {
+        let parsed = common::install_parse_compatibility(theme, MermaidEngine::new())
+            .with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "layout": "dagre", "look": "classic", "htmlLabels": html
+                })),
+            )
+            .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+            .unwrap()
+            .unwrap()
+            .into_presentation();
+        let merman_model::presentation::RenderSemanticModel::Usecase(model) = parsed.model() else {
+            panic!("expected parsed Usecase model");
+        };
+        let node = model.nodes.iter().find(|node| node.id == "A").unwrap();
+        let retained = node.styles.iter().map(String::as_str).collect::<Vec<_>>();
+        assert_eq!(retained.as_slice(), declarations, "html={html}");
+        let config = &parsed.metadata().effective_config;
+        assert_eq!(config.get_bool("htmlLabels"), Some(html));
+        assert!(!config.config_path_overrides_typed_default("themeVariables.fontSize"));
+        let fonts = Arc::new(ObservedFonts::default());
+        let profile = TextMeasurementProfile::new(
+            TextMeasurementProfileIdentity::new(
+                MeasurementProfileId::new("test.usecase-source-typography-selection").unwrap(),
+                "1",
+            )
+            .unwrap(),
+            fonts.clone(),
+        );
+        let session = RenderEnvironment::deterministic()
+            .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile))
+            .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+            .begin_session_with_theme(theme)
+            .unwrap();
+        let rendered = family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+            .unwrap()
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("usecase-test".to_owned()),
+                    ..Default::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap();
+        (rendered, fonts)
+    }
+
+    #[test]
+    fn usecase_property_selection_invalid_case_variant_preserves_prior_valid_source_size() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for html in [false, true] {
+            let (rendered, fonts) = render_source_typography_selection(
+                "usecase-beta\nA(Alpha)\nstyle A font-size:24px,FONT-SIZE:bogus\n",
+                &["font-size:24px", "FONT-SIZE:bogus"],
+                &theme,
+                html,
+            );
+            let requests = fonts.0.lock().unwrap();
+            let labels = requests
+                .iter()
+                .filter(|(text, _)| text == "Alpha")
+                .collect::<Vec<_>>();
+            assert!(!labels.is_empty(), "html={html}");
+            assert!(
+                labels.iter().all(|(_, style)| style.font_size == 24.0),
+                "html={html}: {labels:?}"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(owner(&document, "A").descendants().any(|node| {
+                node.attribute("style").is_some_and(|style| {
+                    style.contains("font-size:24px !important;FONT-SIZE:bogus !important;")
+                })
+            }));
+            assert!(!owner(&document, "A").descendants().any(|node| {
+                node.attribute("style")
+                    .is_some_and(|style| style.contains("font-size:30px !important;"))
+            }));
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1, "html={html}");
+            assert_eq!(evidence.accounted_count(), 1, "html={html}");
+            assert_eq!(evidence.applied_count(), 0, "html={html}");
+            assert_eq!(evidence.not_applicable_count(), 1, "html={html}");
+            assert_eq!(evidence.theme_residual_count(), 0, "html={html}");
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_shell_shorthands_do_not_own_label_typography() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for (key, value) in [("all", "initial"), ("font", "24px serif")] {
+            let declaration = format!("{key}:{value}");
+            for html in [false, true] {
+                let context = format!("{declaration}/html={html}");
+                let (rendered, fonts) = render_source_typography_selection(
+                    &format!("usecase-beta\nA(Alpha)\nstyle A {declaration}\n"),
+                    &[declaration.as_str()],
+                    &theme,
+                    html,
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let source_css = format!("{declaration} !important;");
+                assert!(
+                    shell(&document, "A")
+                        .attribute("style")
+                        .is_some_and(|style| style.contains(&source_css)),
+                    "{context}"
+                );
+                assert_eq!(
+                    label_property(&document, "Alpha", "font-size").as_deref(),
+                    Some("30px"),
+                    "{context}"
+                );
+                let label = document
+                    .descendants()
+                    .find(|node| node.is_text() && node.text() == Some("Alpha"))
+                    .unwrap();
+                assert!(
+                    label.ancestors().all(|node| property(node, key).is_none()),
+                    "{context}"
+                );
+                let requests = fonts.0.lock().unwrap();
+                let labels = requests
+                    .iter()
+                    .filter(|(text, _)| text == "Alpha")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{context}");
+                assert!(
+                    labels.iter().all(|(_, style)| style.font_size == 30.0),
+                    "{context}: {labels:?}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1, "{context}");
+                assert_eq!(evidence.accounted_count(), 1, "{context}");
+                assert_eq!(evidence.applied_count(), 1, "{context}");
+                assert_eq!(evidence.not_applicable_count(), 0, "{context}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{context}");
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_unresolved_source_size_keeps_typography_residual() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_stack: Specified::Value(FontStack::single("monospace").unwrap()),
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for html in [false, true] {
+            let (_, rendered) = render_with_environment(
+                "usecase-beta\nA(Alpha)\nstyle A font-size:var(--host-size)\n",
+                &theme,
+                json!({"layout": "dagre", "look": "classic", "htmlLabels": html}),
+                RenderEnvironment::deterministic(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert!(
+                owner(&document, "A").descendants().any(|node| {
+                    node.attribute("style").is_some_and(|style| {
+                        style.contains("font-size:var(--host-size) !important;")
+                            && !style.contains("font-size:30px !important;")
+                    })
+                }),
+                "host-dependent source size must remain selected: html={html}"
+            );
+            let completion = rendered.into_completion();
+            assert!(
+                completion
+                    .report()
+                    .theme_diagnostics()
+                    .iter()
+                    .any(|diagnostic| {
+                        diagnostic.code() == "unsupported-typography"
+                            && diagnostic.target() == Some(ThemeTarget::NodeLabel)
+                    }),
+                "html={html}: {:?}",
+                completion.report().theme_diagnostics()
+            );
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 0);
+            assert_eq!(evidence.not_applicable_count(), 0);
+            assert_eq!(evidence.theme_residual_count(), 1);
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_valid_source_sizes_keep_ownership() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for size in ["inherit", "24pt", "0px"] {
+            for html in [false, true] {
+                let source = format!("usecase-beta\nA(Alpha)\nstyle A font-size:{size}\n");
+                let fonts = Arc::new(ObservedFonts::default());
+                let profile = TextMeasurementProfile::new(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("test.usecase-valid-source-size").unwrap(),
+                        "1",
+                    )
+                    .unwrap(),
+                    fonts.clone(),
+                );
+                let (_, rendered) = render_with_environment(
+                    &source,
+                    &theme,
+                    json!({
+                        "layout": "dagre", "look": "classic", "htmlLabels": html,
+                        "themeVariables": {"fontSize": "16px"}
+                    }),
+                    RenderEnvironment::deterministic()
+                        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                assert_eq!(
+                    rendered
+                        .metadata()
+                        .effective_config
+                        .get_str("themeVariables.fontSize"),
+                    Some("16px")
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    label_property(&document, "Alpha", "font-size").as_deref(),
+                    Some(size)
+                );
+                assert!(!owner(&document, "A").descendants().any(|node| {
+                    node.attribute("style")
+                        .is_some_and(|style| style.contains("font-size:30px !important;"))
+                }));
+                let expected_size = match size {
+                    "inherit" if html => 12.0,
+                    "inherit" => 16.0,
+                    "24pt" => 32.0,
+                    "0px" => 0.0,
+                    _ => unreachable!(),
+                };
+                let requests = fonts.0.lock().unwrap();
+                let labels = requests
+                    .iter()
+                    .filter(|(text, _)| text == "Alpha")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{size}/html={html}");
+                assert!(
+                    labels
+                        .iter()
+                        .all(|(_, style)| style.font_size == expected_size),
+                    "{size}/html={html}: {labels:?}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1);
+                assert_eq!(evidence.applied_count(), 0);
+                assert_eq!(evidence.not_applicable_count(), 1);
+                assert_eq!(evidence.theme_residual_count(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_valid_uppercase_source_size_matches_measurement_and_css() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for key in ["font-size", "FONT-SIZE"] {
+            let declaration = format!("{key}:24px");
+            for html in [false, true] {
+                let context = format!("{declaration}/html={html}");
+                let (rendered, fonts) = render_source_typography_selection(
+                    &format!("usecase-beta\nA(Alpha)\nstyle A {declaration}\n"),
+                    &[declaration.as_str()],
+                    &theme,
+                    html,
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    label_property(&document, "Alpha", "font-size").as_deref(),
+                    Some("24px"),
+                    "{context}"
+                );
+                let source_css = format!("{declaration} !important;");
+                assert!(
+                    owner(&document, "A").descendants().any(|node| {
+                        node.attribute("style")
+                            .is_some_and(|style| style.contains(&source_css))
+                    }),
+                    "{context}"
+                );
+                let requests = fonts.0.lock().unwrap();
+                let labels = requests
+                    .iter()
+                    .filter(|(text, _)| text == "Alpha")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{context}");
+                assert!(
+                    labels.iter().all(|(_, style)| style.font_size == 24.0),
+                    "{context}: {labels:?}"
+                );
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1, "{context}");
+                assert_eq!(evidence.accounted_count(), 1, "{context}");
+                assert_eq!(evidence.applied_count(), 0, "{context}");
+                assert_eq!(evidence.not_applicable_count(), 1, "{context}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{context}");
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_initial_role_font_keeps_typography_residual() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::ActorLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_size_px: Specified::Value(30.0),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for (family, unverified) in [("serif", false), ("initial", true)] {
+            for html in [false, true] {
+                let context = format!("actorFontFamily={family}/html={html}");
+                let fonts = Arc::new(ObservedFonts::default());
+                let profile = TextMeasurementProfile::new(
+                    TextMeasurementProfileIdentity::new(
+                        MeasurementProfileId::new("test.usecase-selected-role-font").unwrap(),
+                        "1",
+                    )
+                    .unwrap(),
+                    fonts.clone(),
+                );
+                let (_, rendered) = render_with_environment(
+                    "usecase-beta\nactor A(Customer)\n",
+                    &theme,
+                    json!({
+                        "layout": "dagre", "look": "classic", "htmlLabels": html,
+                        "themeVariables": {"fontFamily": "monospace"},
+                        "usecase": {"actorFontFamily": family}
+                    }),
+                    RenderEnvironment::deterministic()
+                        .with_text_measurement_policy(TextMeasurementPolicy::uniform(profile)),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let config = &rendered.metadata().effective_config;
+                assert_eq!(config.get_str("usecase.actorFontFamily"), Some(family));
+                assert!(config.config_path_overrides_typed_default("usecase.actorFontFamily"));
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    property(
+                        document.root_element(),
+                        "--mermaid-usecase-actor-font-family"
+                    )
+                    .as_deref(),
+                    Some(family),
+                    "{context}"
+                );
+                assert_eq!(
+                    stylesheet_property(&document, "#usecase-test .actor-label", "font-family")
+                        .as_deref(),
+                    Some("var(--mermaid-usecase-actor-font-family)"),
+                    "{context}"
+                );
+                assert_eq!(
+                    label_property(&document, "Customer", "font-size").as_deref(),
+                    Some("30px"),
+                    "{context}"
+                );
+                let requests = fonts.0.lock().unwrap();
+                let labels = requests
+                    .iter()
+                    .filter(|(text, _)| text == "Customer")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{context}");
+                assert!(
+                    labels.iter().all(|(_, style)| style.font_size == 30.0),
+                    "{context}: {labels:?}"
+                );
+                if !unverified {
+                    assert!(
+                        labels
+                            .iter()
+                            .all(|(_, style)| style.font_family.as_deref() == Some(family)),
+                        "{context}: {labels:?}"
+                    );
+                }
+                let completion = rendered.into_completion();
+                let diagnostics = completion.report().theme_diagnostics();
+                assert_eq!(
+                    diagnostics.iter().any(|diagnostic| {
+                        diagnostic.code() == "unsupported-typography"
+                            && diagnostic.target() == Some(ThemeTarget::ActorLabel)
+                    }),
+                    unverified,
+                    "{context}: {diagnostics:?}"
+                );
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), 1, "{context}");
+                assert_eq!(evidence.accounted_count(), 1, "{context}");
+                assert_eq!(
+                    evidence.applied_count(),
+                    usize::from(!unverified),
+                    "{context}"
+                );
+                assert_eq!(evidence.not_applicable_count(), 0, "{context}");
+                assert_eq!(
+                    evidence.theme_residual_count(),
+                    usize::from(unverified),
+                    "{context}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_typed_font_replaces_unowned_frozen_role_font() {
+        use merman_model::presentation::{PresentationConfig, PresentationDiagram};
+        let mut patch = ThemeStylePatch::default();
+        patch.typography.font_stack = Specified::Value(FontStack::single("monospace").unwrap());
+        let theme =
+            compile(ThemeRuleSet::default().with_rule(rule(ThemeTarget::ActorLabel, patch)));
+        for html in [false, true] {
+            let parsed = common::install_parse_compatibility(&theme, MermaidEngine::new())
+                .with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        json!({"look": "classic", "htmlLabels": html,
+                        "usecase": {"actorFontFamily": "initial"}}),
+                    ),
+                )
+                .parse_diagram_for_render_model_sync(
+                    "usecase-beta\nactor A(Customer)\n",
+                    ParseOptions::strict(),
+                )
+                .unwrap()
+                .unwrap()
+                .into_presentation();
+            let (mut metadata, model, context) = parsed.into_parts();
+            let policy = merman_model::resources::InputResourcePolicy::default();
+            let control = merman_model::OperationControl::new();
+            metadata.effective_config = PresentationConfig::try_from_frozen_parts_controlled(
+                metadata
+                    .effective_config
+                    .frozen_parts()
+                    .with_explicit_config_paths(Arc::new(Default::default())),
+                &policy,
+                &control,
+            )
+            .unwrap()
+            .unwrap();
+            assert_eq!(
+                metadata.effective_config.get_str("usecase.actorFontFamily"),
+                Some("initial")
+            );
+            assert!(
+                !metadata
+                    .effective_config
+                    .config_path_overrides_typed_default("usecase.actorFontFamily")
+            );
+            let parsed =
+                PresentationDiagram::try_from_frozen(metadata, model, context, &policy, &control)
+                    .unwrap()
+                    .unwrap();
+            let session = RenderEnvironment::deterministic()
+                .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+                .begin_session_with_theme(&theme)
+                .unwrap();
+            let rendered =
+                family::prepare(&parsed, &LayoutOptions::headless_svg_defaults(), session)
+                    .unwrap()
+                    .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+                    .expect(
+                        "the selected typed font must not inherit a replaced fallback's residual",
+                    );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            assert_eq!(
+                label_property(&document, "Customer", "font-family").as_deref(),
+                Some("monospace")
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+
+    #[test]
+    fn usecase_property_selection_zero_source_size_has_no_visible_font_stack_consumer() {
+        let theme = compile(ThemeRuleSet::default().with_rule(rule(
+            ThemeTarget::NodeLabel,
+            ThemeStylePatch {
+                typography: merman_render::diagram_theme::TextStylePatch {
+                    font_stack: Specified::Value(FontStack::single("monospace").unwrap()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        )));
+        for (size, expected_size, visible) in [("24px", 24.0, true), ("0px", 0.0, false)] {
+            let declaration = format!("font-size:{size}");
+            for html in [false, true] {
+                let context = format!("{declaration}/html={html}");
+                let (rendered, fonts) = render_source_typography_selection(
+                    &format!("usecase-beta\nA(Alpha)\nstyle A {declaration}\n"),
+                    &[declaration.as_str()],
+                    &theme,
+                    html,
+                );
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                assert_eq!(
+                    label_property(&document, "Alpha", "font-size").as_deref(),
+                    Some(size),
+                    "{context}"
+                );
+                let source_css = format!("{declaration} !important;");
+                assert!(
+                    owner(&document, "A").descendants().any(|node| {
+                        node.attribute("style")
+                            .is_some_and(|style| style.contains(&source_css))
+                    }),
+                    "{context}"
+                );
+                let requests = fonts.0.lock().unwrap();
+                let labels = requests
+                    .iter()
+                    .filter(|(text, _)| text == "Alpha")
+                    .collect::<Vec<_>>();
+                assert!(!labels.is_empty(), "{context}");
+                assert!(
+                    labels
+                        .iter()
+                        .all(|(_, style)| style.font_size == expected_size),
+                    "{context}: {labels:?}"
+                );
+                if visible {
+                    assert_eq!(
+                        label_property(&document, "Alpha", "font-family").as_deref(),
+                        Some("monospace"),
+                        "{context}"
+                    );
+                    assert!(
+                        labels
+                            .iter()
+                            .all(|(_, style)| style.font_family.as_deref() == Some("monospace")),
+                        "{context}: {labels:?}"
+                    );
+                }
+                let evidence =
+                    merman_render::__private::family_evidence(rendered.into_completion().report());
+                assert_eq!(evidence.required_count(), 1, "{context}");
+                assert_eq!(evidence.accounted_count(), 1, "{context}");
+                assert_eq!(evidence.applied_count(), usize::from(visible), "{context}");
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    usize::from(!visible),
+                    "{context}"
+                );
+                assert_eq!(evidence.theme_residual_count(), 0, "{context}");
+            }
+        }
+    }
+
+    #[test]
     fn usecase_compiled_role_font_config_owns_only_its_requested_properties() {
         let theme = DiagramThemeCompiler::new()
             .compile(

@@ -8547,6 +8547,188 @@ fn sequence_actor_geometry_clear_and_source_width_preserve_other_facets() {
 }
 
 #[test]
+fn sequence_ignored_actor_width_config_keeps_typed_terminal_and_evidence() {
+    let theme = sequence_single_actor_width_theme(Specified::Value(6.0));
+    for width in [
+        None,
+        Some(serde_json::json!(false)),
+        Some(serde_json::json!(true)),
+        Some(serde_json::json!("")),
+        Some(serde_json::json!("   ")),
+    ] {
+        let rendered = render_sequence_actor_width_config_request(&theme, width.clone());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let actors = document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(actors.len(), 2);
+        for actor in actors {
+            assert_eq!(
+                actor.attribute("style"),
+                Some("stroke-width:6px;"),
+                "ignored config {width:?}"
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1, "ignored config {width:?}");
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+fn sequence_single_actor_width_theme(width: Specified<f32>) -> DiagramTheme {
+    let mut patch = ThemeStylePatch::default();
+    patch.stroke.width = width;
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch)),
+        ))
+        .unwrap()
+}
+
+fn render_sequence_actor_width_config_request(
+    theme: &DiagramTheme,
+    width: Option<serde_json::Value>,
+) -> family::RenderedFamilySvg {
+    let mut config = serde_json::json!({"sequence": {"mirrorActors": false}});
+    if let Some(width) = &width {
+        config["themeVariables"] = serde_json::json!({"strokeWidth": width});
+    }
+    let parsed = common::install_parse_compatibility(
+        theme,
+        classic_sequence_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        ),
+    )
+    .parse_diagram_for_render_model_sync("sequenceDiagram\nA->>B: Hello\n", ParseOptions::strict())
+    .expect("parse Sequence actor width source")
+    .expect("detect Sequence diagram")
+    .into_presentation();
+    let effective = &parsed.metadata().effective_config;
+    assert_eq!(effective.get_str("look"), Some("classic"));
+    assert_eq!(effective.get_bool("sequence.mirrorActors"), Some(false));
+    if let Some(width) = &width {
+        assert_eq!(
+            effective.as_value().pointer("/themeVariables/strokeWidth"),
+            Some(width)
+        );
+    }
+    assert_eq!(
+        effective.config_path_overrides_typed_default("themeVariables.strokeWidth"),
+        width.is_some(),
+        "the parser must retain authored ownership independently of value consumption"
+    );
+    let RenderSemanticModel::Sequence(model) = parsed.model() else {
+        panic!("expected parsed Sequence model");
+    };
+    assert_eq!(model.actor_order.len(), 2);
+    assert!(model.actors.contains_key("A") && model.actors.contains_key("B"));
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+        .begin_session_with_theme(theme)
+        .unwrap();
+    family::prepare(&parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence actor width fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence actor width fixture")
+}
+
+#[test]
+fn sequence_consumed_actor_width_config_keeps_zero_lengths_and_unresolved_tokens() {
+    let theme = sequence_single_actor_width_theme(Specified::Value(6.0));
+    for (width, css) in [
+        (serde_json::json!(0), "0"),
+        (serde_json::json!("0"), "0"),
+        (serde_json::json!("3px"), "3px"),
+        (serde_json::json!("0.5em"), "0.5em"),
+        (
+            serde_json::json!("var(--actor-width)"),
+            "var(--actor-width)",
+        ),
+    ] {
+        let rendered = render_sequence_actor_width_config_request(&theme, Some(width));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        let actor_css = stylesheet
+            .split(".actor{")
+            .nth(1)
+            .unwrap()
+            .split('}')
+            .next()
+            .unwrap();
+        assert!(
+            actor_css.contains(&format!("stroke-width:{css};")),
+            "selected actor CSS: {actor_css}"
+        );
+        let actors = document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(actors.len(), 2);
+        for actor in actors {
+            assert_eq!(
+                actor.attribute("style"),
+                None,
+                "source-owned actor width {css}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_actor_width_clear_restores_family_or_consumed_config_fallback() {
+    let theme = sequence_single_actor_width_theme(Specified::Clear);
+    for (width, css) in [(None, "1"), (Some(serde_json::json!("3px")), "3px")] {
+        let source_owned = width.is_some();
+        let rendered = render_sequence_actor_width_config_request(&theme, width);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        let actor_css = stylesheet
+            .split(".actor{")
+            .nth(1)
+            .unwrap()
+            .split('}')
+            .next()
+            .unwrap();
+        assert!(actor_css.contains(&format!("stroke-width:{css};")));
+        let actors = document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(actors.len(), 2);
+        for actor in actors {
+            assert_eq!(actor.attribute("style"), None);
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+        assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn sequence_actor_geometry_does_not_certify_unhandled_glyphs_or_custom_classes() {
     for declaration in [
         "actor A",

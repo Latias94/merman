@@ -155,8 +155,17 @@ impl<'a> ClassConfigView<'a> {
     fn render_font_size(&self) -> f64 {
         // HTML labels inherit the same root SVG theme font size as SVG labels.
         config_f64_explicit_css_absolute_px(self.effective_config, &["themeVariables", "fontSize"])
+            .filter(|size| *size >= 0.0)
+            .or_else(|| {
+                crate::config::config_css_number_or_string(
+                    self.effective_config,
+                    &["themeVariables", "fontSize"],
+                )
+                .as_deref()
+                .is_some_and(crate::mermaid_style::css_font_size_is_zero)
+                .then_some(0.0)
+            })
             .unwrap_or(16.0)
-            .max(1.0)
     }
 
     fn wrap_probe_font_size(&self) -> f64 {

@@ -109,8 +109,12 @@ impl SequencePreparedActorTheme {
         let typed_stroke = (!stroke_overridden && has_typed_actor_stroke)
             .then(|| style.as_ref().and_then(|style| css_paint(style.stroke())))
             .flatten();
-        let width_overridden =
-            sanitize_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
+        let width_overridden = crate::config::config_css_number_or_string(
+            sanitize_config.as_value(),
+            &["themeVariables", "strokeWidth"],
+        )
+        .is_some()
+            && sanitize_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
         let stroke_width = style
             .as_ref()
             .and_then(|s| s.stroke_width())

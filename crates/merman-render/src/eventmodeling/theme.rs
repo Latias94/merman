@@ -84,17 +84,21 @@ impl EventModelingTextThemePlan {
                 == FamilyThemeMechanism::BaseTypography(ThemeTypographyProperty::FontSize)
                 && route.disposition() == FamilyThemeDisposition::TypedAdapter
         });
+        let configured_font_size_css = config_css_number_or_string(
+            effective_config.as_value(),
+            &["themeVariables", "fontSize"],
+        );
         let config_owns_font_size = typed_font_size
+            && configured_font_size_css
+                .as_deref()
+                .and_then(crate::mermaid_style::css_font_size_value_override)
+                .is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size && !config_owns_font_size;
         let font_size_css = if typed_font_size_active {
             Some(format!("{}px", theme.typography().font_size_px()).into_boxed_str())
         } else {
-            config_css_number_or_string(
-                effective_config.as_value(),
-                &["themeVariables", "fontSize"],
-            )
-            .map(String::into_boxed_str)
+            configured_font_size_css.map(String::into_boxed_str)
         };
         let text_facts = EventModelingTextFacts::from_prepared(
             layout,
