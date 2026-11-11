@@ -4,7 +4,7 @@ Choose a package or artifact for the environment where you use Merman. Match gen
 and native or WASM artifacts to the same Merman version.
 
 For ordinary prebuilt use, start with [host and output choices](PREBUILT_PRODUCTS.md).
-The alpha's Web full/render and ordinary SVG binding recipes include math and both layout
+The `0.10.0` candidate's Web full/render and ordinary SVG binding recipes include math and both layout
 engines; the native C/WASI full SDKs are the recommendation for explicit fonts and binary outputs.
 Expert source features and reduced SDK recipes remain available. The expanded native binding
 recipes and delivery handoffs are available from the alpha source under
@@ -39,7 +39,7 @@ establish availability on every channel. Use immutable `v0.9.3` and its matching
 for the published maintenance APIs. See the
 [alpha.2 changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for required migrations.
 
-Current alpha source directly refactors theme recipe and catalog schema `1` to support optional
+The selected `0.10.0` source candidate refactors theme recipe and catalog schema `1` to support optional
 paired appearances. It uses Web transport API `10` and CLI contract `7`; Options JSON remains
 schema `3`. These source contracts require matching wrappers and runtimes and do not change the
 immutable alpha.2 artifacts. See the [theme guide](../rendering/custom-diagram-themes.md) for

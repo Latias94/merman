@@ -11,14 +11,14 @@ code actions, symbols, and folding. Syntax highlighting uses the canonical
 [Merman VS Code extension](https://github.com/Latias94/merman/tree/main/tools/vscode-extension#readme)
 for an integrated editor experience.
 
-This guide covers `merman-lsp 0.10.0-alpha.2`. Match the documentation and generated artifacts to the version installed in your project. See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
+This guide covers `merman-lsp 0.10.0`. Match the documentation and generated artifacts to the version installed in your project. See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Install The Stdio Server
 
 The crate defaults to a protocol-neutral Rust library. Enable `stdio` when installing the bundled language-server executable:
 
 ```sh
-cargo install merman-lsp --version 0.10.0-alpha.2 --locked \
+cargo install merman-lsp --version 0.10.0 --locked \
   --no-default-features --features all-diagrams,stdio
 ```
 
@@ -86,7 +86,7 @@ defaults, not an independent accepted-shape definition.
 
 ```toml
 [dependencies]
-merman-lsp = { version = "=0.10.0-alpha.2", default-features = false, features = ["all-diagrams"] }
+merman-lsp = { version = "0.10.0", default-features = false, features = ["all-diagrams"] }
 ```
 
 The embedding boundary deliberately uses the same JSON-RPC and service types as `tower-lsp-server`. Declare those transport dependencies directly so Cargo resolves the traits and request types used by the host:

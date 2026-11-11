@@ -1,7 +1,10 @@
 # Theme gallery
 
-Six examples from the current 11-preset catalog show different visual designs, light and dark
-palettes, and five diagram families. Use the built-in recipes in a matching `0.10.0-alpha.2` runtime.
+Six examples from the current catalog of 11 designs and 14 concrete preset IDs show different
+visual designs, light and dark palettes, and five diagram families. The catalog also includes
+Paper Cut (`paper-cut`), Carbon Copy (`carbon-copy`), and Pop Art (`pop-art`). Use the built-in
+recipes in a matching `0.10.0` runtime; see the [host guide](../../release/PREBUILT_PRODUCTS.md)
+for available versions and installation channels.
 These are actual Merman exports; design scope, runtime availability, and portable output are
 separate facts reported by the installed catalog and each render's metadata.
 
@@ -34,7 +37,7 @@ The commands below reproduce the workflow with a matching runtime, while pixel i
 across hosts is not guaranteed. The shared Flowchart source and settings let you compare
 Brutalist and Cyberpunk without changing the diagram.
 
-One Dark includes the Class label geometry fix from the next alpha's source tree. It uses the
+One Dark's saved preview includes the Class label geometry fix. It uses the
 explicit macOS fonts shown below, with system discovery disabled. Apart from Ghibli, the other
 gallery images retain their earlier exports.
 

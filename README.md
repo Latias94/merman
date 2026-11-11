@@ -25,7 +25,7 @@ Rendered by Merman with Mermaid's default theme on a white canvas.
 
 ## Quick start
 
-The examples below use `0.10.0-alpha.2`. For release selection and prebuilt downloads, start
+The examples below use `0.10.0`. For release selection and prebuilt downloads, start
 with the [host installation guide][host guide].
 
 ### Rust
@@ -34,7 +34,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "=0.10.0-alpha.2"
+merman = "0.10.0"
 ```
 
 Save this as `src/main.rs`:
@@ -68,7 +68,7 @@ repeated rendering, and host integration.
 Install from Cargo and render a first diagram:
 
 ```sh
-cargo install merman-cli --version 0.10.0-alpha.2 --locked
+cargo install merman-cli --version 0.10.0 --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | merman-cli render - --output diagram.svg
 ```
 

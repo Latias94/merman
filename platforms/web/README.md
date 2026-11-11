@@ -2,7 +2,7 @@
 
 Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
-This guide documents `0.10.0-alpha.2`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
+This guide documents `0.10.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
 
 Start with `@mermanjs/web` when evaluating Merman or when one browser realm needs several
 workflows. Choose a focused package when the application has one isolated workflow and the smaller
@@ -19,14 +19,14 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All browser packages in `0.10.0-alpha.2` use one lockstep version, Web transport API `9`, and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`; analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence schema `2`, and ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision.
+All browser packages in `0.10.0` use one lockstep version, Web transport API `10`, and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`; analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence schema `2`, and ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision.
 
 The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
 their closed browser admission, and the static SVG projection used for native export.
 
-Version `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade the facade, generated glue, and WASM together when adopting alpha.2, and update JSON consumers for the [source appearance and render-evidence changes](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+Published `0.10.0-alpha.2` retains Web transport API `9`. Version `0.10.0-alpha.1` retains Mermaid `12.2.0`, Web transport API `8`, facts schema `2`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade the facade, generated glue, and WASM together when adopting `0.10.0`, and update JSON consumers for the [source appearance and render-evidence changes](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-Full/render products include mathematical labels, Cytoscape and ELK layouts, compiled themes,
+Prebuilt full/render packages include mathematical labels, Cytoscape and ELK layouts, compiled themes,
 prepared-source reuse, and mounted-diagram updates with explicit Kanban width adaptation.
 Dedicated analysis/editor/ASCII products retain their task scope. No extra npm math tier is
 required.
@@ -45,7 +45,7 @@ See the [Astro host integration guide](../../docs/integrations/astro.md) for bro
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web@0.10.0-alpha.2
+npm install --save-exact @mermanjs/web@0.10.0
 ```
 
 ```ts
@@ -432,7 +432,7 @@ contract.
 ## Deadlines and cancellation
 
 Use `transportApiVersion()` and `runtimeCatalog()` to inspect the loaded runtime. Initialization
-validates Web transport API `9` and all required exports before making the module available.
+validates Web transport API `10` and all required exports before making the module available.
 
 SVG calls, preparation and each prepared output expose a typed top-level `timeout_ms` option.
 Other transport-dispatched one-shot operations accept this field through their JSON-string options.

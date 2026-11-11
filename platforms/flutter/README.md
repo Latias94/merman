@@ -4,21 +4,21 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
-This guide documents `0.10.0-alpha.2`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+This guide documents `0.10.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> `Merman.open()` accepts only the exact native package version `0.10.0-alpha.2` paired with this Dart package. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+> `Merman.open()` accepts only the exact native package version `0.10.0` paired with this Dart package. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
-Native ABI `3` and Options JSON schema `3` are unchanged from `0.10.0-alpha.1`. Version `0.10.0-alpha.2` uses facts schema `3` and theme execution evidence schema `2`, while alpha.1 retains facts schema `2` and theme execution evidence schema `1`. Upgrade the Dart facade, manifest, and native assets together, and update JSON consumers for the [source appearance and render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+Version `0.10.0` uses native ABI `3`, Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. Upgrade the Dart facade, manifest, and native assets together, and update saved options and JSON consumers as described in the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md).
 
 ## Install
 
 Pin the exact package version when pairing the Dart facade with its Native Assets libraries:
 
 ```sh
-flutter pub add 'merman:0.10.0-alpha.2'
+flutter pub add 'merman:0.10.0'
 ```
 
-For source development, use the matching `0.10.0-alpha.2` source revision and a local path dependency:
+For source development, use the matching `0.10.0` source revision and a local path dependency:
 
 ```yaml
 dependencies:
@@ -28,7 +28,7 @@ dependencies:
 
 Run `flutter pub get` after adding the dependency.
 
-For a stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md).
+For the previous stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/flutter/README.md).
 That release uses Options JSON schema `2` and math-free native libraries; keep its facade and
 artifacts together rather than using them with the theme API documented here.
 
@@ -92,7 +92,7 @@ An HTTPS mirror can host the same versioned asset filenames:
 hooks:
   user_defines:
     merman:
-      mirror: https://artifacts.example.org/merman/v0.10.0-alpha.2/
+      mirror: https://artifacts.example.org/merman/v0.10.0/
 ```
 
 The mirror changes the download location only; package-pinned digests remain mandatory.
@@ -200,8 +200,10 @@ additive raw fields. `mermaidThemeDesigns` preserves the upstream literal IDs; D
 remain independent, while Neo, Redux, and Redux Color explicitly declare their paired appearances.
 
 Build the picker from the runtime inventory, using `id` for persistence and `displayName` for
-labels. Ghibli is a normal preset with a dedicated Pie design; all current built-ins remain alpha
-with empty qualification cells. Show applicable notes by `familyId`, preserving unknown IDs and
+labels. It groups 11 designs with 14 concrete presets, including `paper-cut`, `carbon-copy`, and
+`pop-art`. Editor, Gruvbox, and Ayu provide both Light and Dark. Ghibli has a dedicated Pie design;
+all current built-ins remain alpha with empty qualification cells. Show applicable notes by
+`familyId`, preserving unknown IDs and
 their fallback messages. Offer `recommendedConfig` as an explicit action that merges into the
 host's Mermaid configuration while preserving unrelated nested values. Pass accepted settings
 through `site_config` in the operation's options JSON; preset selection alone does not apply them.
@@ -218,7 +220,7 @@ final themeCatalog = merman.themeCatalog();
 final rawCatalog = merman.metadataJson('supported-diagrams');
 ```
 
-All six methods use the ABI 3 `metadata_collect` table slot. Discovery requires the current complete table before any engine or metadata API is exposed, including for `Merman.openPath(...)`.
+These discovery methods use the ABI 3 `metadata_collect` table slot. Discovery requires the current complete table before any engine or metadata API is exposed, including for `Merman.openPath(...)`.
 
 Select a discovered preset through Options JSON schema `3`:
 
@@ -236,17 +238,22 @@ One design can also provide both reading modes:
 import 'dart:convert';
 
 final recipe = merman.execute(MermanOperation.exportThemePresetJson, 'editor').jsonObject;
+final themeJson = const JsonEncoder.withIndent('  ').convert(recipe);
+final importedRecipe = jsonDecode(themeJson);
 final inspection = merman.execute(
   MermanOperation.materializeThemeJson,
-  jsonEncode({'schema_version': 1, 'action': 'inspect', 'recipe': recipe}),
+  jsonEncode({'schema_version': 1, 'action': 'inspect', 'recipe': importedRecipe}),
 ).jsonObject;
 final darkSvg = merman.renderSvg(
   'flowchart LR\nA[Review] --> B[Publish]',
-  optionsJson: jsonEncode({'theme': {'recipe': recipe, 'appearance': 'dark'}}),
+  optionsJson: jsonEncode({'theme': {'recipe': importedRecipe, 'appearance': 'dark'}}),
 );
 ```
 
-Keep the complete recipe for saving and customization. Shared values live in `design`;
+Save `themeJson`, edit its `design` values, and decode the edited text in place of the round-trip
+string above. Keep `schema_version`, `kind`, and the complete recipe for customization and reuse.
+The [theme authoring example](https://github.com/Latias94/merman/blob/main/platforms/flutter/tool/theme_authoring_smoke.dart)
+also exercises these operations through one-shot and reusable clients. Shared values live in `design`;
 appearance exceptions live in `design.appearances`. An omitted selector uses the declared
 default, while an explicit unsupported appearance fails. Resolve Follow-app/editor in the host
 before submitting `light` or `dark`. Whole-design admission validates inactive appearances too.
@@ -256,9 +263,9 @@ For a concrete snapshot, use the same authoring operation with `action: "materia
 For a reusable engine, omit `theme` to inherit its selection, use `theme: null` to clear it,
 or supply a complete selection or recipe to replace it.
 
-Flowchart glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
-selecting a preset does not change the look or layout engine. Fonts must be supplied by the
-host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+Flowchart glow and shadow effects support the documented shapes in Classic and Neo. Other families
+retain their own look and output restrictions; selecting a preset does not change the look or layout
+engine. Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
 resources in recipes are rejected. This Dart facade does not expose the native C/WASI
 memory-font constructor. See the [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
 for version-1 recipes, support discovery, and portability policy.

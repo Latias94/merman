@@ -3,17 +3,17 @@
 Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts,
 without shipping the analysis, editor, or ASCII workflows from the complete SDK.
 
-Version `0.10.0-alpha.2` uses Web transport API `9`, theme execution evidence schema `2`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+Version `0.10.0` uses Web transport API `10`, theme execution evidence schema `2`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
 
-Version `0.10.0-alpha.1` retains Web transport API `8`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade all package assets together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+Published `0.10.0-alpha.2` retains Web transport API `9`. Version `0.10.0-alpha.1` retains Web transport API `8`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade all package assets together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-This renderer includes math, Cytoscape and ELK. It stays focused by omitting the complete SDK's
+This prebuilt renderer includes math, Cytoscape and ELK. It stays focused by omitting the complete SDK's
 analysis, editor and ASCII operations.
 
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web-render@0.10.0-alpha.2
+npm install --save-exact @mermanjs/web-render@0.10.0
 ```
 
 ```ts
@@ -35,6 +35,14 @@ Dispose the returned snapshot when finished; see the
 
 For retained DOM updates and explicit Kanban width adaptation, use
 [`mountDiagram()`](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#maintain-a-mounted-diagram).
+
+## Themes
+
+Use `themeCatalog()` to discover preset designs and appearances, `renderSvgResult()` with
+`{ theme: { preset: "paper-cut" } }` to select one, and `exportThemePreset("paper-cut")` to obtain
+its editable JSON recipe. See the [theme workflow](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#choose-a-preset-for-a-diagram)
+and [customization guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
+for shared tokens, paired appearances, JSON import/export, and actual render evidence.
 
 ## Runtime and resources
 

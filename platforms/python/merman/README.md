@@ -4,16 +4,16 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-This guide documents Merman `0.10.0-alpha.2`, packaged as Python `0.10.0a2`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+This guide documents Merman and Python package version `0.10.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> The Python package version is `0.10.0a2` (PEP 440), corresponding to native Merman `0.10.0-alpha.2`. It uses direct UniFFI binding API `7` and Options JSON schema `3`, independently of the C ABI and text-measurement protocol. Install the Python wrapper and native library as one wheel rather than mixing releases.
+> Python's stable PEP 440 version is `0.10.0`, matching native Merman `0.10.0`. It uses direct UniFFI binding API `7`, Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`, independently of the C ABI and text-measurement protocol. Install the Python wrapper and native library as one wheel rather than mixing releases.
 
 ## Install
 
 Install the exact version documented here:
 
 ```sh
-python -m pip install --only-binary=:all: 'merman==0.10.0a2'
+python -m pip install --only-binary=:all: 'merman==0.10.0'
 ```
 
 The package supports Python `>=3.9` through the UniFFI/ctypes transport with five native wheels:
@@ -26,9 +26,9 @@ The package supports Python `>=3.9` through the UniFFI/ctypes transport with fiv
 | `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` |
 | `x86_64-pc-windows-msvc` | `win_amd64` |
 
-Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler. There is no qualified source distribution; use the repository's explicit source helper when building from the matching `0.10.0-alpha.2` source revision. Build the wrapper and native library together to preserve the binding contract.
+Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler. There is no qualified source distribution; use the repository's explicit source helper when building from the matching `0.10.0` source revision. Build the wrapper and native library together to preserve the binding contract.
 
-For a stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md).
+For the previous stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md).
 That release uses Options JSON schema `2`, omits math, and has three wheels, including a
 `manylinux_2_35_x86_64` wheel. Its binaries do not provide the theme API documented here.
 
@@ -112,9 +112,14 @@ before the next checkpoint, so hard preemption requires a worker or process boun
 
 ## Diagram Themes
 
-Use `client.theme_catalog_json()` to discover presets, then select one through schema-3 options:
+Use `client.theme_catalog_json()` to discover 11 design groups with 14 concrete presets, including
+`paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through schema-3 options:
 
 ```python
+import json
+
+catalog = json.loads(client.theme_catalog_json())
+print([(preset["id"], preset["supported_appearances"]) for preset in catalog["presets"]])
 pie_source = 'pie\n"A":35\n"B":65'
 themed_svg = client.render_svg(pie_source, '{"version":3,"theme":{"preset":"ghibli"}}')
 ```
@@ -126,7 +131,8 @@ Each schema-1 catalog entry groups a design's `supported_appearances`, `default_
 `appearances`. Read swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
 `concrete_preset_id` from the relevant appearance entry. Select Editor Dark using
 `{"theme":{"preset":"editor","appearance":"dark"}}`. Follow-app/editor is host policy; resolve it
-to `light` or `dark` before rendering. Omitted appearance uses the declared default.
+to `light` or `dark` before rendering. Editor, Gruvbox, and Ayu provide both appearances;
+omitted appearance uses the declared default, and an unsupported explicit appearance fails.
 
 `client.execute()` already carries the complete authoring workflow through
 `MermanOperationRequestV4`. `export-theme-preset-json` takes the plain `editor` ID and returns the
@@ -134,15 +140,17 @@ complete `ThemeRecipeV1`; shared values live in `design`, with local exceptions 
 `design.appearances` and a `design.default_appearance`. Keep that document for saving and editing.
 `materialize-theme-json` accepts schema-1 `action: "inspect"` with `recipe` to validate every
 appearance, or `action: "materialize"` with an optional concrete `appearance` to obtain its `spec`.
-Use `json.dumps({"theme": {"recipe": recipe, "appearance": "dark"}})` for render options.
-The [authoring example](examples/theme_authoring.py) exercises these same JSON operations through
-one-shot and independent reusable clients.
+Save the complete recipe with `json.dumps(recipe, indent=2)`, edit its `design` values, and reload
+it with `json.loads(...)`, preserving `schema_version` and `kind`. Use
+`json.dumps({"theme": {"recipe": recipe, "appearance": "dark"}})` for render options.
+The [authoring example](examples/theme_authoring.py) shows the exact `MermanOperationRequestV4`
+calls, complete-pair export, inspection, editing, and reuse through one-shot and independent clients.
 
 Built-in presets are alpha, with empty public qualification cells. Catalog availability and
 family design scope do not certify the result for every diagram or output target. Flowchart
-glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
-selecting a preset does not change the look or layout engine. Fonts must be supplied by the
-host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+glow and shadow effects support the documented shapes in Classic and Neo. Other families retain
+their own look and output restrictions; selecting a preset does not change the look or layout engine.
+Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
 resources in recipes are rejected. The wheel does not expose the native C/WASI memory-font
 constructor. See the [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
 for version-1 recipes, support discovery, and portability policy.

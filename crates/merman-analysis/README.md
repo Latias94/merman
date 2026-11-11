@@ -6,7 +6,7 @@ Parser-backed Mermaid diagnostics, lint metadata, and document source mapping wi
 
 Use `merman-analysis` directly when a Rust application needs to validate Mermaid, inspect diagnostics, analyze Markdown/MDX fences, or build editor tooling. Use [`merman`](https://crates.io/crates/merman) for rendering, [`merman-cli`](https://crates.io/crates/merman-cli) for command-line linting, or [`merman-lsp`](https://crates.io/crates/merman-lsp) for an editor protocol.
 
-This guide covers `merman-analysis 0.10.0-alpha.2`, with explicit fix generation and canonical model imports. See the [migration guide](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x` and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
+This guide covers `merman-analysis 0.10.0`, with explicit fix generation and canonical model imports. See the [migration guide](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x` and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Source Feature Selection
 
@@ -19,7 +19,7 @@ See the [migration guide](../../docs/FEATURES.md#select-diagram-families).
 ## Quick Start
 
 ```sh
-cargo add merman-analysis@=0.10.0-alpha.2 --features all-diagrams
+cargo add merman-analysis@0.10.0 --features all-diagrams
 ```
 
 Analyze one Mermaid diagram:
@@ -196,7 +196,7 @@ The diagnostics-only `AnalysisPayload` and richer `AnalysisFactsPayload` are ind
 
 Every diagram has an `appearance` sibling of `syntax`. `{ "state": "unknown" }` means source appearance evidence is unavailable. The `known` state has nullable `theme`, `font`, and `look` declarations. Each declaration carries its string `value`, frontmatter or directive `origin`, and an original diagram-local UTF-8 half-open `construct_span`; it does not certify the rendered palette. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-Merman `0.10.0-alpha.2` uses facts schema `3`; published `0.10.0-alpha.1` retains facts schema `2`. Match the payload decoder to the package version; the older release's contract is unchanged.
+Merman `0.10.0` uses facts schema `3`; published `0.10.0-alpha.1` retains facts schema `2`. Match the payload decoder to the package version; the older release's contract is unchanged.
 
 Facts use `fact_source: "unavailable"` when parser-backed body semantics do not exist. They do not invent body symbols, references, or rename targets. Current writers include `rename_policy` on each semantic item; older additive readers that do not see it must treat the item as non-renamable.
 

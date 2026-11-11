@@ -632,7 +632,7 @@ configuration. Other designs and edited recipes use CLI `--theme-file`, Rust `co
 or Web `theme: {recipe, appearance}`. Names and source labels remain display metadata; use the
 runtime catalog and render evidence for availability and family support.
 
-Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's preview and integration examples without changing the current workspace. Theme library adoption requires Merman v0.10.0-alpha.2 or newer.
+Use a direct link such as [Riso](https://frankorz.com/merman/?theme-design=riso) to open a design's preview and integration examples without changing the current workspace. The original library shipped in Merman `0.10.0-alpha.2`; paired appearances and the current art preset catalog require the matching `0.10.0` source candidate or its later published runtime. Use the installed catalog to discover supported selections.
 
 The inputs have separate purposes:
 
