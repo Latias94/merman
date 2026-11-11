@@ -7,9 +7,9 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Prepared version: `0.3.3`, required by the Merman LSP `0.10.0-alpha.2` candidate; not a registry publication observation
-- Latest recorded published version: `0.3.2` (2026-11-02, Asia/Shanghai; Merman LSP `0.10.0-alpha.1`)
-- Intended independent release tag: `tree-sitter-mermaid-v0.3.3` (not created by preparation)
+- Prepared version: `0.3.4`, required by the Merman LSP `0.10.0` candidate; not a registry publication observation
+- Latest recorded published version: `0.3.3` (2026-11-06, Asia/Shanghai; Merman LSP `0.10.0-alpha.2`)
+- Intended independent release tag: `tree-sitter-mermaid-v0.3.4` (not created by preparation)
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
@@ -22,7 +22,7 @@ publication without the protected release environment and maintainer credentials
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
 
-The [dated publication record](PUBLISH_ORDER.md#independent-delivery-and-workflow-recovery) records the completed `0.3.2` publication. Version `0.3.3` refreshes the npm development-tool lockfile to semver `7.8.6` and undici `8.12.4`, and includes its changelog in Cargo and npm packages. Accepted syntax, queries, Mermaid/ZenUML baselines, language ABI 15, runtime versions, and the Rust `cc` minimum of `1.10.0` remain unchanged. Consumer changes across earlier versions are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). Run this checklist and publish the independently verified grammar before workspace crates that require it; retain registry visibility and package/provenance evidence in the [alpha.2 preparation record](PUBLISH_ORDER.md#0100-alpha2-preparation).
+The [alpha.2 publication record](PUBLISH_ORDER.md#0100-alpha2-publication) records published `0.3.3`. Candidate `0.3.4` fixes quoted generic Class names and compact relationship token boundaries while retaining portable queries, Mermaid/ZenUML baselines, language ABI 15, runtime versions, and the Rust `cc` minimum of `1.10.0`. Consumer changes across earlier versions are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). Run this checklist and publish the independently verified grammar before workspace crates that require it; retain registry visibility and package/provenance evidence in the [0.10.0 preparation record](PUBLISH_ORDER.md#0100-preparation).
 
 Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
 
@@ -72,7 +72,7 @@ git diff --check
 
 One candidate release stages:
 
-- `tree-sitter-mermaid-0.3.3.crate` for crates.io;
+- `tree-sitter-mermaid-0.3.4.crate` for crates.io;
 - an `@mermanjs/tree-sitter-mermaid` tarball containing Node source fallback and release-built
   N-API prebuilds;
 - root `tree-sitter-mermaid.wasm` for npm and GitHub Releases;
