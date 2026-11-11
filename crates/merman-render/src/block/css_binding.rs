@@ -32,6 +32,41 @@ pub(crate) struct BlockCssThemeBinding {
 }
 
 impl BlockCssThemeBinding {
+    pub(super) fn palette_look(config: &Value) -> String {
+        config
+            .get("look")
+            .and_then(|look| match look {
+                Value::String(value) => Some(value.clone()),
+                Value::Number(value) => Some(value.to_string()),
+                _ => None,
+            })
+            .filter(|look: &String| {
+                !look.is_empty()
+                    && look
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
+            })
+            .unwrap_or_else(|| "classic".to_owned())
+    }
+
+    pub(super) fn palette_arrays(config: &Value) -> Option<(&[Value], Option<&[Value]>)> {
+        if !matches!(
+            config.get("theme").and_then(Value::as_str),
+            Some("redux-color" | "redux-dark-color")
+        ) {
+            return None;
+        }
+        let colors = |key: &str| {
+            config
+                .get("themeVariables")?
+                .get(key)?
+                .as_array()
+                .filter(|colors| !colors.is_empty())
+                .map(Vec::as_slice)
+        };
+        Some((colors("borderColorArray")?, colors("bkgColorArray")))
+    }
+
     pub(super) fn node_text_color_source(config: &Value) -> (&'static str, Option<&str>) {
         if let Some(color) = config
             .pointer("/themeVariables/nodeTextColor")
@@ -113,53 +148,26 @@ impl BlockCssThemeBinding {
             .parse::<f64>()
             .ok()
             .filter(|value| value.is_finite());
-        let palette_look = config
-            .get("look")
-            .and_then(|look| match look {
-                Value::String(value) => Some(value.clone()),
-                Value::Number(value) => Some(value.to_string()),
-                _ => None,
+        let palette_look = Self::palette_look(config);
+        let palette = Self::palette_arrays(config)
+            .map(|(borders, backgrounds)| {
+                borders
+                    .iter()
+                    .enumerate()
+                    .map(|(i, border)| {
+                        let color = |value: &Value| {
+                            value
+                                .as_str()
+                                .map(|value| value.trim().to_owned())
+                                .unwrap_or_else(|| value.to_string())
+                        };
+                        let border = color(border);
+                        let background = backgrounds.map(|values| color(&values[i % values.len()]));
+                        (border, background)
+                    })
+                    .collect()
             })
-            .filter(|look: &String| {
-                !look.is_empty()
-                    && look
-                        .bytes()
-                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'-'))
-            })
-            .unwrap_or_else(|| "classic".to_owned());
-        let palette = if matches!(
-            config.get("theme").and_then(Value::as_str),
-            Some("redux-color" | "redux-dark-color")
-        ) {
-            let backgrounds = config
-                .pointer("/themeVariables/bkgColorArray")
-                .and_then(Value::as_array)
-                .filter(|v| !v.is_empty());
-            config
-                .pointer("/themeVariables/borderColorArray")
-                .and_then(Value::as_array)
-                .map(|borders| {
-                    borders
-                        .iter()
-                        .enumerate()
-                        .map(|(i, border)| {
-                            let color = |value: &Value| {
-                                value
-                                    .as_str()
-                                    .map(|value| value.trim().to_owned())
-                                    .unwrap_or_else(|| value.to_string())
-                            };
-                            let border = color(border);
-                            let background =
-                                backgrounds.map(|values| color(&values[i % values.len()]));
-                            (border, background)
-                        })
-                        .collect()
-                })
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        };
+            .unwrap_or_default();
         Ok(Self {
             class_definitions: Vec::new(),
             look_defs: crate::svg::PreparedLookDefs::new(config),

@@ -2399,3 +2399,72 @@ fn sankey_node_cycle_paints_preserve_clear_transparency_and_source_fill_ownershi
         }
     }
 }
+
+#[test]
+fn sankey_css_binding_ignores_nonstring_text_color_owners() {
+    let theme = sankey_text_fill_theme(CanvasPaint::solid("#c2188b").unwrap());
+    for (value, expected, applied) in [
+        (None, "#c2188b", 1),
+        (Some(serde_json::json!(null)), "#c2188b", 1),
+        (Some(serde_json::json!(false)), "#c2188b", 1),
+        (Some(serde_json::json!("#125634")), "#125634", 0),
+    ] {
+        let variables = value.as_ref().map_or_else(
+            || serde_json::json!({}),
+            |value| serde_json::json!({"textColor": value}),
+        );
+        let config = serde_json::json!({"themeVariables": variables});
+        let source = format!("---\nconfig: {config}\n---\nsankey-beta\nA,B,1\n");
+        let rendered = render_sankey_with_theme_requirement(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"sankey": {"showValues": false}}),
+                ),
+            ),
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        assert!(
+            stylesheet
+                .split_once('}')
+                .unwrap()
+                .0
+                .ends_with(&format!("fill:{expected};")),
+            "textColor={value:?}: {stylesheet}"
+        );
+        let labels = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.parent().and_then(|parent| parent.attribute("class"))
+                        == Some("node-labels")
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            labels.iter().map(|node| node.text()).collect::<Vec<_>>(),
+            [Some("A"), Some("B")]
+        );
+        for label in labels {
+            assert_eq!(
+                label.attribute("fill"),
+                (applied == 1).then_some(expected),
+                "textColor={value:?}: {label:?}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), applied, "textColor={value:?}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}

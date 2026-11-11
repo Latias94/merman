@@ -3703,6 +3703,105 @@ fn requirement_source_palette_wins_while_site_palette_is_a_fallback() {
 }
 
 #[test]
+fn requirement_unused_scalars_do_not_own_default_palette_paint() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Requirement,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for source_owned in [true, false] {
+        let source = if source_owned {
+            format!(
+                "{}\nstyle req1 fill:#112233,stroke:#334455\n",
+                requirement_source()
+            )
+        } else {
+            requirement_source().to_owned()
+        };
+        let rendered = render_requirement_with_theme_and_engine(
+            &source,
+            &theme,
+            classic_engine().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "theme": "redux-color", "look": "classic",
+                        "themeVariables": {"mainBkg": "#fedcba", "nodeBorder": "#abcdef"}
+                    }),
+                ),
+            ),
+        );
+        let config = &rendered.metadata().effective_config;
+        assert_eq!(config.get_str("theme"), Some("redux-color"));
+        assert_eq!(config.get_str("look"), Some("classic"));
+        assert_eq!(config.get_str("themeVariables.mainBkg"), Some("#fedcba"));
+        assert_eq!(config.get_str("themeVariables.nodeBorder"), Some("#abcdef"));
+        for array in ["bkgColorArray", "borderColorArray"] {
+            assert!(
+                config.as_value()["themeVariables"][array]
+                    .as_array()
+                    .is_some_and(|colors| !colors.is_empty()),
+                "{array}: the named theme must materialize a consuming palette"
+            );
+            assert!(
+                !config.config_paint_overrides_typed_default(&format!("themeVariables.{array}")),
+                "{array}: a site theme's default palette must remain a fallback"
+            );
+        }
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let id = "requirement-theme-req1";
+        assert!(requirement_palette_property(&document, id, "fill").is_some());
+        assert!(requirement_palette_property(&document, id, "stroke").is_some());
+        for (property, expected) in [
+            ("fill", if source_owned { "#112233" } else { "#123456" }),
+            ("stroke", if source_owned { "#334455" } else { "#654321" }),
+        ] {
+            let node = document
+                .descendants()
+                .find(|node| node.attribute("id") == Some(id))
+                .expect("visible Requirement node");
+            let path = node
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("path")
+                        && if property == "fill" {
+                            node.attribute("stroke") == Some("none")
+                        } else {
+                            node.attribute("fill") == Some("none")
+                        }
+                })
+                .expect("Requirement paint terminal");
+            assert_eq!(path.attribute(property), Some(expected), "{property}");
+            assert!(
+                path.attribute("style").is_some_and(|style| {
+                    style.split(';').any(|declaration| {
+                        declaration.split_once(':').is_some_and(|(name, value)| {
+                            name.trim() == property
+                                && value.trim().trim_end_matches("!important").trim() == expected
+                        })
+                    })
+                }),
+                "source_owned={source_owned}: {property} must override the unowned palette CSS"
+            );
+        }
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+        assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn requirement_redux_fallback_palettes_yield_to_typed_paint() {
     for palette in ["redux-color", "redux-dark-color"] {
         for origin in ["site", "recipe", "source"] {

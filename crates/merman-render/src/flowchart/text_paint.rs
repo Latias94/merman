@@ -158,10 +158,14 @@ impl FlowchartTextPaintPlan {
                         node_config_owned
                     }
                     FlowchartTextPaintChannel::Cluster => {
-                        config.config_paint_overrides_typed_default("themeVariables.titleColor")
+                        super::FlowchartCompatibilityBinding::title_color_source(config.as_value())
+                            .0
+                            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
                     }
                     FlowchartTextPaintChannel::DiagramTitle => {
-                        config.config_paint_overrides_typed_default("themeVariables.textColor")
+                        config.get_str("themeVariables.textColor").is_some()
+                            && config
+                                .config_paint_overrides_typed_default("themeVariables.textColor")
                     }
                 };
                 work.charge(theme.family_mechanism_routes().len())?;

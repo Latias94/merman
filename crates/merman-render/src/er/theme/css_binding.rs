@@ -34,6 +34,14 @@ pub(crate) struct ErCssBinding {
 }
 
 impl ErCssBinding {
+    pub(super) fn title_color_source(config: &serde_json::Value) -> (Option<&'static str>, &str) {
+        crate::config::selected_config_string(
+            config,
+            &["themeVariables.titleColor", "themeVariables.textColor"],
+        )
+        .map_or((None, "#333"), |(path, color)| (Some(path), color))
+    }
+
     pub(super) fn node_text_color_source(
         config: &serde_json::Value,
     ) -> (merman_model::presentation::ErPaintInput, Option<&str>) {
@@ -123,7 +131,7 @@ impl ErCssBinding {
             line_color: color("lineColor", "#333333"),
             cluster_bkg: color("clusterBkg", &main_bkg),
             cluster_border: color("clusterBorder", &node_border),
-            title_color: color("titleColor", &text_color),
+            title_color: Self::title_color_source(config).1.to_owned(),
             node_text_color,
             main_bkg,
             node_border,

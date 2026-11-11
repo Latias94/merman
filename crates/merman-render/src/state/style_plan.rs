@@ -2507,10 +2507,12 @@ fn prepare_node(
 ) -> Result<StateNodeStylePlan, OperationWorkError> {
     let shape_surface = compatibility.node_shape_surface(node, target);
     let label_surface = StateCompatibilityPlan::node_label_surface(label_target);
-    let shape_fill_owned = shape_surface
-        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Fill));
-    let shape_stroke_owned = shape_surface
-        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Stroke));
+    let shape_fill_owned = shape_surface.is_some_and(|surface| {
+        compatibility.node_paint_owned(node, surface, StateTerminalPaintProperty::Fill)
+    });
+    let shape_stroke_owned = shape_surface.is_some_and(|surface| {
+        compatibility.node_paint_owned(node, surface, StateTerminalPaintProperty::Stroke)
+    });
     let shape_stroke_width_owned = shape_surface.is_some_and(|surface| {
         compatibility.owns(surface, StateTerminalPaintProperty::StrokeWidth)
     });
@@ -2578,10 +2580,16 @@ fn prepare_node(
         theme_evidence.shadow_source_property(label_use, ResolvedStyleProperty::Fill);
     }
     let composite_header_surface = compatibility.composite_header_surface();
-    let composite_header_fill_owned =
-        compatibility.owns(composite_header_surface, StateTerminalPaintProperty::Fill);
-    let composite_header_stroke_owned =
-        compatibility.owns(composite_header_surface, StateTerminalPaintProperty::Stroke);
+    let composite_header_fill_owned = compatibility.node_paint_owned(
+        node,
+        composite_header_surface,
+        StateTerminalPaintProperty::Fill,
+    );
+    let composite_header_stroke_owned = compatibility.node_paint_owned(
+        node,
+        composite_header_surface,
+        StateTerminalPaintProperty::Stroke,
+    );
     let composite_header_stroke_width_owned = compatibility.owns(
         composite_header_surface,
         StateTerminalPaintProperty::StrokeWidth,

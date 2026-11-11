@@ -153,6 +153,47 @@ fn cluster_label_fill_directly_reaches_both_css_terminals_in_default_and_base() 
 }
 
 #[test]
+fn cluster_label_paint_ownership_follows_the_selected_title_fallback() {
+    for swimlane in [false, true] {
+        for html in [false, true] {
+            for (variables, expected, applied) in [
+                (json!({"titleColor": false}), "#ab3257", 1),
+                (
+                    json!({"titleColor": false, "textColor": "#c0ffee"}),
+                    "#c0ffee",
+                    0,
+                ),
+                (json!({"titleColor": "#112233"}), "#112233", 0),
+            ] {
+                let mut config = json!({
+                    "theme": "default", "htmlLabels": html,
+                    "flowchart": {"htmlLabels": html}, "themeVariables": variables
+                });
+                if swimlane {
+                    config["layout"] = json!("swimlane");
+                }
+                let rendered = render_with_retained_recipe_baseline(
+                    ONE,
+                    &compile([fill(ThemeTarget::ClusterLabel, "#ab3257")]),
+                    common::presentation_config(config),
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .unwrap();
+                for selector in [".cluster-label text", ".cluster text"] {
+                    assert!(
+                        rendered
+                            .output()
+                            .contains(&format!("{selector}{{fill:{expected};}}")),
+                        "{variables}, swimlane={swimlane}, html={html}"
+                    );
+                }
+                assert_evidence(rendered, applied, 1 - applied, 0);
+            }
+        }
+    }
+}
+
+#[test]
 fn cluster_label_default_selector_keeps_author_order_within_the_more_specific_role() {
     for swimlane in [false, true] {
         for base in ["default", "base"] {

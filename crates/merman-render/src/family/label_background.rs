@@ -65,7 +65,10 @@ impl EdgeLabelBackgroundPlan {
             style,
             fill,
             config_owned: config
-                .config_paint_overrides_typed_default("themeVariables.edgeLabelBackground"),
+                .get_str("themeVariables.edgeLabelBackground")
+                .is_some()
+                && config
+                    .config_paint_overrides_typed_default("themeVariables.edgeLabelBackground"),
             ordinal_rules: theme.is_some_and(|theme| {
                 theme
                     .family_rules()

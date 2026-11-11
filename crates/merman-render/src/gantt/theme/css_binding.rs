@@ -1,4 +1,4 @@
-use crate::config::{config_f64, config_string};
+use crate::config::{config_f64, config_string, selected_config_string};
 use crate::svg::PreparedCommonCss;
 
 use super::font_size::GanttFontSize;
@@ -15,6 +15,7 @@ pub(crate) struct GanttCssBinding {
     pub(crate) alt_section_bkg_color: String,
     pub(crate) title_color: String,
     pub(crate) title_text_color: String,
+    pub(super) title_text_color_path: Option<&'static str>,
     pub(crate) grid_color: String,
     pub(crate) axis_color: Option<String>,
     pub(crate) today_line_color: String,
@@ -51,6 +52,15 @@ impl GanttCssBinding {
         let section_font_size =
             GanttFontSize::resolve(gantt_config.get("sectionFontSize"), inherited_font_size);
         let title_color = option("titleColor", "#333");
+        let title_text_color_path = selected_config_string(config, &["themeVariables.titleColor"])
+            .and_then(|(path, color)| {
+                if color.trim().is_empty() {
+                    selected_config_string(config, &["themeVariables.textColor"])
+                        .map(|(path, _)| path)
+                } else {
+                    Some(path)
+                }
+            });
         let title_text_color = if title_color.trim().is_empty() {
             text_color.clone()
         } else {
@@ -63,6 +73,7 @@ impl GanttCssBinding {
             text_color,
             title_color,
             title_text_color,
+            title_text_color_path,
             exclude_bkg_color: option("excludeBkgColor", "#eeeeee"),
             section_bkg_color: option("sectionBkgColor", "rgba(102, 102, 255, 0.49)"),
             section_bkg_color2: option("sectionBkgColor2", "#fff400"),

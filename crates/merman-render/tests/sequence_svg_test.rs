@@ -12062,6 +12062,129 @@ fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting()
 }
 
 #[test]
+fn sequence_empty_actor_palette_arrays_yield_to_typed_paint() {
+    assert_sequence_empty_palette_array_ownership(
+        "sequenceDiagram\nparticipant A\n",
+        ThemeTarget::Actor,
+    );
+}
+
+#[test]
+fn sequence_empty_activation_palette_arrays_yield_to_typed_paint() {
+    assert_sequence_empty_palette_array_ownership(
+        "sequenceDiagram\nparticipant A\nactivate A\nA->>A: Work\ndeactivate A\n",
+        ThemeTarget::Activation,
+    );
+}
+
+fn assert_sequence_empty_palette_array_ownership(source: &str, target: ThemeTarget) {
+    let (class, selector, fill_path, stroke_path) = match target {
+        ThemeTarget::Actor => (
+            "actor actor-top",
+            ".actor",
+            "themeVariables.actorBkg",
+            "themeVariables.actorBorder",
+        ),
+        ThemeTarget::Activation => (
+            "activation0",
+            ".activation0",
+            "themeVariables.activationBkgColor",
+            "themeVariables.activationBorderColor",
+        ),
+        _ => panic!("expected an actor or activation terminal"),
+    };
+    for (property, array, scalar) in [
+        ("fill", "bkgColorArray", fill_path),
+        ("stroke", "borderColorArray", stroke_path),
+    ] {
+        for (owner, palette_owned, scalar_owned) in [
+            ("empty", false, false),
+            ("site-array", true, false),
+            ("source-scalar", false, true),
+        ] {
+            let source = if scalar_owned {
+                let directive = serde_json::json!({
+                    "themeVariables": {(scalar.strip_prefix("themeVariables.").unwrap()): "#fedcba"}
+                });
+                format!("%%{{init: {directive}}}%%\n{source}")
+            } else {
+                source.to_owned()
+            };
+            let colors = if palette_owned {
+                serde_json::json!(["#fedcba"])
+            } else {
+                serde_json::json!([])
+            };
+            let case = format!("empty-palette-{target:?}-{property}-{owner}");
+            let rendered = render_sequence_paint_owner_case(
+                &source,
+                target,
+                property,
+                serde_json::json!({
+                    "theme": "redux-color", "look": "classic", "secure": [],
+                    "themeVariables": {(array): colors}
+                }),
+                "site",
+                &case,
+            );
+            let config = &rendered.metadata().effective_config;
+            assert_eq!(config.get_str("theme"), Some("redux-color"), "{case}");
+            assert_eq!(config.get_str("look"), Some("classic"), "{case}");
+            assert_eq!(
+                config.as_value()["themeVariables"][array],
+                colors,
+                "{case}: the actual palette must survive materialization"
+            );
+            assert_eq!(
+                config.config_paint_overrides_typed_default(scalar),
+                scalar_owned,
+                "{case}: use the materialized scalar owner"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .expect("visible Sequence paint terminal");
+            let inline = terminal
+                .attribute("style")
+                .and_then(|style| inline_style_value(style, property));
+            if palette_owned {
+                assert_eq!(inline, Some("rgb(254, 220, 186)"), "{case}");
+            } else {
+                assert_eq!(
+                    inline, None,
+                    "{case}: empty arrays must not add inline paint"
+                );
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .expect("Sequence stylesheet");
+                assert_eq!(
+                    css_property_values_for_exact_selector(
+                        css,
+                        &format!("#sequence-site-{case} {selector}"),
+                        property,
+                    )
+                    .last()
+                    .copied(),
+                    Some(if scalar_owned { "#fedcba" } else { "#123456" }),
+                    "{case}: typed paint must reach the fallback terminal"
+                );
+            }
+            drop(document);
+            assert_sequence_paint_owner_evidence(
+                rendered,
+                !palette_owned && !scalar_owned,
+                "site",
+                &case,
+                property,
+            );
+        }
+    }
+}
+
+#[test]
 fn sequence_redux_palette_paint_matches_scalar_and_array_ownership_evidence() {
     const SOURCE: &str = "sequenceDiagram\nparticipant A\nactivate A\ndeactivate A";
     for (theme, target, property, scalar, array, default_inline) in [

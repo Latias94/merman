@@ -16,15 +16,10 @@ impl<'a> ClassConfigPaint<'a> {
         paths: &[&'static str],
         fallback: &'a str,
     ) -> Self {
-        paths
-            .iter()
-            .find_map(|&path| {
-                let key = path.strip_prefix("themeVariables.")?;
-                let css = config.get("themeVariables")?.get(key)?.as_str()?;
-                Some(Self {
-                    css,
-                    path: Some(path),
-                })
+        crate::config::selected_config_string(config, paths)
+            .map(|(path, css)| Self {
+                css,
+                path: Some(path),
             })
             .unwrap_or(Self {
                 css: fallback,

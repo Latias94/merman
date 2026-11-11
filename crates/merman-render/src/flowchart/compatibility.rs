@@ -43,6 +43,14 @@ pub(crate) struct FlowchartCompatibilityBinding {
 }
 
 impl FlowchartCompatibilityBinding {
+    pub(crate) fn title_color_source(config: &Value) -> (Option<&'static str>, &str) {
+        crate::config::selected_config_string(
+            config,
+            &["themeVariables.titleColor", "themeVariables.textColor"],
+        )
+        .map_or((None, "#333"), |(path, color)| (Some(path), color))
+    }
+
     pub(crate) fn resolve(config: &Value) -> Self {
         let theme = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
@@ -83,7 +91,7 @@ impl FlowchartCompatibilityBinding {
             ),
             arrowhead_color: theme("arrowheadColor", &line_color),
             node_text_color: theme("nodeTextColor", &text_color),
-            title_color: theme("titleColor", &text_color),
+            title_color: Self::title_color_source(config).1.to_owned(),
             text_color,
             line_color,
             node_border,

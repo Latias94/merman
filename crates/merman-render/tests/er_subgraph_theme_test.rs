@@ -256,6 +256,80 @@ fn cluster_svg_title_uses_config_color_or_typed_fallback_despite_ignored_source_
 }
 
 #[test]
+fn cluster_text_ownership_follows_the_selected_title_color_instead_of_unused_text_color() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(
+                ThemeTarget::Text,
+                ThemeStylePatch::default().with_fill(CanvasPaint::solid("#123abc").unwrap()),
+            ))),
+        )
+        .expect("compile cluster text theme");
+    for explicit_title in [false, true] {
+        let mut site = json!({
+            "theme": "redux-color", "look": "classic", "htmlLabels": false,
+            "themeVariables": {"textColor": "#c0ffee"}
+        });
+        if explicit_title {
+            site["themeVariables"]["titleColor"] = json!("#112233");
+        }
+        let parsed = common::install_parse_compatibility(
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site),
+            ),
+        )
+        .parse_diagram_for_render_model_sync(
+            "erDiagram\nsubgraph Orders [\"Order Domain\"]\n CUSTOMER\nend\nstyle CUSTOMER color:#556677\n",
+            ParseOptions::strict(),
+        )
+        .expect("parse cluster ownership control")
+        .expect("detect ER")
+        .into_presentation();
+        let config = &parsed.metadata().effective_config;
+        assert!(config.config_paint_overrides_typed_default("themeVariables.textColor"));
+        assert_eq!(
+            config.config_paint_overrides_typed_default("themeVariables.titleColor"),
+            explicit_title,
+            "the unused text fallback must not own the selected Redux title color"
+        );
+        assert!(config.get_str("themeVariables.titleColor").is_some());
+        let session = RenderEnvironment::deterministic()
+            .with_theme_portability_requirement(ThemePortabilityRequirement::RequirePortable)
+            .begin_session_with_theme(&theme)
+            .expect("begin ER theme session");
+        let rendered = family::prepare(&parsed, &LayoutOptions::default(), session)
+            .expect("prepare cluster")
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .expect("render cluster");
+        let document = roxmltree::Document::parse(rendered.svg()).expect("valid SVG");
+        let text = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node
+                        .ancestors()
+                        .any(|ancestor| ancestor.attribute("class") == Some("cluster-label"))
+            })
+            .expect("SVG cluster title");
+        assert_eq!(
+            text.attribute("style"),
+            Some(if explicit_title {
+                ""
+            } else {
+                "color:#123abc;fill:#123abc"
+            }),
+            "explicit_title={explicit_title}"
+        );
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.applied_count(), usize::from(!explicit_title));
+        assert_eq!(evidence.not_applicable_count(), usize::from(explicit_title));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn cluster_source_label_styles_stay_on_html_spans_and_do_not_leak_to_svg_or_member_labels() {
     let cases = [
         (

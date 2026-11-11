@@ -2408,6 +2408,150 @@ fn mindmap_neo_redux_node_border_ownership_suppresses_the_typed_edge_stroke() {
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
+fn assert_mindmap_selected_border_stroke_ownership(target: ThemeTarget) {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        target,
+                        ThemeStylePatch::default()
+                            .with_stroke(CanvasPaint::solid("#123456").unwrap()),
+                    )
+                    .for_family(merman_render::DiagramFamilyId::MINDMAP),
+                ),
+            ),
+        )
+        .expect("compile Mindmap selected-border stroke theme");
+    for (case, variables, source_stroke) in [
+        ("omitted", json!({"useGradient": false}), None),
+        (
+            "unused-fallback-owner",
+            json!({"useGradient": false, "gitBranchLabel0": "#fedcba"}),
+            None,
+        ),
+        (
+            "primary-owner",
+            json!({"useGradient": false, "nodeBorder": "#abcdef"}),
+            Some("#abcdef"),
+        ),
+        (
+            "fallback-owner",
+            json!({
+                "useGradient": false,
+                "nodeBorder": 17,
+                "gitBranchLabel0": "#fedcba"
+            }),
+            Some("#fedcba"),
+        ),
+        (
+            "nonstring-primary",
+            json!({"useGradient": false, "nodeBorder": 17}),
+            None,
+        ),
+    ] {
+        let diagram_id = format!("mindmap-{}-border-{case}", target.id());
+        let rendered = render_mindmap_with_theme_and_engine(
+            "mindmap\n  Root\n    Child\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(json!({
+                    "theme": "redux",
+                    "look": "neo",
+                    "themeVariables": &variables
+                })),
+            ),
+            &diagram_id,
+            ThemePortabilityRequirement::RequirePortable,
+        );
+        let config = &rendered.metadata().effective_config;
+        assert_eq!(config.get_str("theme"), Some("redux"), "{target:?}/{case}");
+        if let Some(value) = variables
+            .get("nodeBorder")
+            .filter(|value| value.is_number())
+        {
+            assert_eq!(
+                config.as_value().pointer("/themeVariables/nodeBorder"),
+                Some(value),
+                "the real theme materialization must retain this nonstring input: {target:?}/{case}"
+            );
+        }
+        let stylesheet = mindmap_stylesheet(rendered.svg());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        match target {
+            ThemeTarget::Edge => {
+                let edge = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("path")
+                            && node.attribute("data-edge") == Some("true")
+                            && node.attribute("data-id") == Some("edge_0_1")
+                    })
+                    .expect("real Mindmap edge terminal");
+                assert_eq!(edge.attribute("data-look"), Some("neo"));
+                assert_eq!(
+                    edge.attribute("style"),
+                    source_stroke
+                        .is_none()
+                        .then_some("stroke:#123456 !important"),
+                    "{target:?}/{case}: {stylesheet}"
+                );
+                if let Some(color) = source_stroke {
+                    assert!(stylesheet.contains(&format!(
+                        "[data-look=\"neo\"].section-edge-0{{stroke:{color};}}"
+                    )));
+                }
+            }
+            ThemeTarget::Node => {
+                let child_id = format!("{diagram_id}-node_1");
+                let child = document
+                    .descendants()
+                    .find(|node| node.attribute("id") == Some(child_id.as_str()))
+                    .expect("real Mindmap child terminal");
+                assert_eq!(child.attribute("data-look"), Some("neo"));
+                assert!(child.children().any(|node| {
+                    node.has_tag_name("rect")
+                        || node.has_tag_name("path")
+                        || node.has_tag_name("circle")
+                        || node.has_tag_name("polygon")
+                }));
+                assert_eq!(
+                    mindmap_neo_section_shape_stroke(&stylesheet, &diagram_id, 0),
+                    source_stroke.unwrap_or("#123456"),
+                    "{target:?}/{case}"
+                );
+            }
+            _ => unreachable!("selected-border regression only addresses Edge and Node"),
+        }
+        drop(document);
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{target:?}/{case}");
+        assert_eq!(evidence.accounted_count(), 1, "{target:?}/{case}");
+        assert_eq!(
+            evidence.applied_count(),
+            usize::from(source_stroke.is_none()),
+            "{target:?}/{case}"
+        );
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(source_stroke.is_some()),
+            "{target:?}/{case}"
+        );
+        assert_eq!(evidence.theme_residual_count(), 0, "{target:?}/{case}");
+    }
+}
+
+#[test]
+fn mindmap_edge_stroke_follows_selected_border_fallback_ownership() {
+    assert_mindmap_selected_border_stroke_ownership(ThemeTarget::Edge);
+}
+
+#[test]
+fn mindmap_node_stroke_follows_selected_border_fallback_ownership() {
+    assert_mindmap_selected_border_stroke_ownership(ThemeTarget::Node);
+}
+
 #[test]
 fn mindmap_line_color_does_not_claim_the_edge_terminal() {
     let theme = mindmap_edge_stroke_theme(

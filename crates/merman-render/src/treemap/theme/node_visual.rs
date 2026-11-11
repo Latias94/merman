@@ -295,9 +295,12 @@ impl TreemapTypographyThemePlan {
             .range
             .extend(self.css.color_scale_peer.iter().cloned());
         let mut labels = OrdinalScale::default();
-        labels
-            .range
-            .extend(self.css.color_scale_label.iter().cloned());
+        labels.range.extend(
+            self.css
+                .color_scale_label
+                .iter()
+                .map(|color| color.css.clone()),
+        );
         let mut node_rules = BTreeMap::<usize, TreemapNodeRuleObservation>::new();
         let mut node_facets = BTreeMap::new();
         if let Some(theme) = theme {
@@ -364,7 +367,7 @@ impl TreemapTypographyThemePlan {
             };
             let label_config_owns_fill = theme.is_some()
                 && section.depth != 0
-                && label_palette_source_owned(
+                && self.css.label_palette_source_owned(
                     config,
                     labels.domain.get(&section.name).copied().unwrap_or(0),
                 );
@@ -492,7 +495,7 @@ impl TreemapTypographyThemePlan {
                     config.get_str("themeVariables.textColor").is_some()
                         && config.config_paint_overrides_typed_default("themeVariables.textColor")
                 } else {
-                    label_palette_source_owned(
+                    self.css.label_palette_source_owned(
                         config,
                         labels.domain.get(&leaf.name).copied().unwrap_or(0),
                     )
@@ -654,11 +657,6 @@ impl TreemapTypographyThemePlan {
 struct TreemapNodeRuleObservation {
     capabilities: BTreeSet<ThemeCapability>,
     residual: Option<FamilyThemeResidualReason>,
-}
-
-fn label_palette_source_owned(config: &PresentationConfig, slot: usize) -> bool {
-    let path = format!("themeVariables.cScaleLabel{}", slot % 12);
-    config.get_str(&path).is_some() && config.config_paint_overrides_typed_default(&path)
 }
 
 fn palette_source_owner(
@@ -1122,7 +1120,9 @@ mod tests {
                 TreemapTextFillOwnership::Generated
             );
         }
-        assert!(!label_palette_source_owned(&nulls, 0));
+        let css =
+            crate::treemap::css_binding::TreemapCssBinding::new(nulls.as_value(), "Inter").unwrap();
+        assert!(!css.label_palette_source_owned(&nulls, 0));
     }
 
     #[test]

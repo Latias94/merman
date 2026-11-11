@@ -62,10 +62,10 @@ enum MindmapEdgeStrokeSource {
 impl MindmapEdgeStrokeSource {
     fn is_owned(self, config: &PresentationConfig) -> bool {
         let path = match self {
-            Self::ColorScale { section } => MINDMAP_COLOR_SCALE_PATHS[section],
-            Self::NodeBorder => "themeVariables.nodeBorder",
+            Self::ColorScale { section } => Some(MINDMAP_COLOR_SCALE_PATHS[section]),
+            Self::NodeBorder => super::css_binding::MindmapCssBinding::node_border_source(config).0,
         };
-        config.config_paint_overrides_typed_default(path)
+        path.is_some_and(|path| config.config_paint_overrides_typed_default(path))
     }
 }
 
@@ -76,16 +76,6 @@ pub(crate) fn mindmap_color_scale_css(config: &PresentationConfig, slot: usize) 
         .unwrap_or_else(|| {
             MINDMAP_DEFAULT_COLOR_SCALE[slot % MINDMAP_DEFAULT_COLOR_SCALE.len()].to_string()
         })
-}
-
-pub(crate) fn mindmap_node_border_css(config: &PresentationConfig) -> String {
-    let root_label = config
-        .get_str("themeVariables.gitBranchLabel0")
-        .unwrap_or("#ffffff");
-    config
-        .get_str("themeVariables.nodeBorder")
-        .unwrap_or(root_label)
-        .to_string()
 }
 
 pub(crate) fn mindmap_neo_edges_use_node_border(theme: &str) -> bool {
@@ -396,8 +386,9 @@ impl MindmapNodePalettePlan {
         )?;
         let config_owns_fill =
             config.config_paint_overrides_typed_default("themeVariables.mainBkg");
-        let config_owns_stroke =
-            config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
+        let config_owns_stroke = super::css_binding::MindmapCssBinding::node_border_source(config)
+            .0
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path));
         let typed_fill = (!config_owns_fill)
             .then(|| {
                 resolve_direct_static_fill(

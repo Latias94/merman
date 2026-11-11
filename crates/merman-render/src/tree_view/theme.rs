@@ -407,7 +407,7 @@ impl TreeViewThemePlan {
             line_config_owned,
             &mut paint_residuals,
         );
-        // Marker is explicit when present; otherwise icon paint inherits the resolved Edge line.
+        // Only omitted Marker paint inherits Edge; Clear retains the baseline icon paint.
         let marker_style = theme.style_with_work_meter(
             ThemeTarget::Marker,
             ThemeVariant::Default,
@@ -422,7 +422,12 @@ impl TreeViewThemePlan {
             icon_config_owned,
             &mut paint_residuals,
         );
-        let icon_fallback_color = (!icon_config_owned)
+        let marker_paint_unspecified = marker_style
+            .stroke_resolution()
+            .specified()
+            .is_unspecified()
+            && marker_style.fill_resolution().specified().is_unspecified();
+        let icon_fallback_color = (!icon_config_owned && marker_paint_unspecified)
             .then(|| {
                 line_color
                     .as_ref()

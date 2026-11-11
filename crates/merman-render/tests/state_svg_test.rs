@@ -753,6 +753,112 @@ fn render_strict_state_svg_with_theme_and_config(
 }
 
 #[test]
+fn state_composite_palette_arrays_own_the_actual_header_paint() {
+    const SOURCE: &str = "stateDiagram-v2\nstate P {\nA --> B\n}\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::CompositeHeader,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for source_owned in [true, false] {
+        let source = if source_owned {
+            format!(
+                "%%{{init: {{\"theme\": \"default\", \"themeVariables\": {{\"compositeTitleBackground\": \"#112233\", \"nodeBorder\": \"#334455\"}}}}}}%%\n{SOURCE}"
+            )
+        } else {
+            SOURCE.to_owned()
+        };
+        let (svg, evidence) = render_strict_state_svg_with_theme_and_config(
+            &theme,
+            &source,
+            serde_json::json!({
+                "theme": "redux-color", "look": "classic", "layout": "dagre",
+                "htmlLabels": false, "secure": [],
+                "themeVariables": {
+                    "bkgColorArray": ["#aabbcc"], "borderColorArray": ["#445566"]
+                }
+            }),
+            "site",
+        );
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("data-id") == Some("P"))
+            .expect("visible State composite");
+        assert_eq!(cluster.attribute("data-look"), Some("classic"));
+        let header = cluster
+            .descendants()
+            .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some("outer"))
+            .expect("visible State composite header");
+        let inline_property = |property| {
+            header
+                .attribute("style")
+                .unwrap_or_default()
+                .split(';')
+                .filter_map(|declaration| declaration.split_once(':'))
+                .filter(|(name, _)| name.trim() == property)
+                .map(|(_, value)| value.trim().trim_end_matches("!important").trim())
+                .next_back()
+        };
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("State stylesheet");
+        if source_owned {
+            assert_eq!(inline_property("fill"), None);
+            assert_eq!(inline_property("stroke"), None);
+            assert!(css.contains(".statediagram-cluster rect{fill:#112233;stroke:#334455;"));
+        } else {
+            let slot = cluster
+                .attribute("data-color-id")
+                .expect("State palette slot");
+            let id = document.root_element().attribute("id").unwrap();
+            let selector = format!(
+                "#{id} [data-look=\"classic\"][data-color-id=\"{slot}\"].statediagram-cluster rect.outer{{"
+            );
+            let palette_rule = css
+                .split_once(&selector)
+                .expect("materialized composite palette selector")
+                .1
+                .split_once('}')
+                .unwrap()
+                .0;
+            assert!(palette_rule.contains("fill:#aabbcc;"), "{palette_rule}");
+            assert!(palette_rule.contains("stroke:#445566;"), "{palette_rule}");
+            assert_eq!(
+                inline_property("fill"),
+                None,
+                "typed fill must not override the explicit header palette"
+            );
+            assert_eq!(
+                inline_property("stroke"),
+                None,
+                "typed stroke must not override the explicit header palette"
+            );
+        }
+        assert_eq!(
+            evidence,
+            StateThemeEvidenceCounts {
+                required: 1,
+                accounted: 1,
+                applied: 0,
+                not_applicable: 1,
+                residual: 0,
+            },
+            "source_owned={source_owned}"
+        );
+    }
+}
+
+#[test]
 fn state_palette_fallback_preserves_clear_and_explicit_paints_in_svg() {
     const SOURCE: &str = "stateDiagram-v2\nReady --> Done: Continue\n";
     const PALETTE_COLOR: &str = "#22d3ee";

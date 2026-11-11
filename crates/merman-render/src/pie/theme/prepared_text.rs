@@ -56,14 +56,6 @@ impl PieTextRole {
         }
     }
 
-    const fn fill_path(self) -> &'static str {
-        match self {
-            Self::Title => "themeVariables.pieTitleTextColor",
-            Self::Section => "themeVariables.pieSectionTextColor",
-            Self::Legend => "themeVariables.pieLegendTextColor",
-        }
-    }
-
     const fn size_path(self) -> &'static str {
         match self {
             Self::Title => "themeVariables.pieTitleTextSize",
@@ -198,7 +190,7 @@ impl PiePreparedText {
             let target = role.target();
             // Shared CSS uses static winners, while evidence observes the actual visible ordinals.
             let style = theme.style_with_work_meter(target, ThemeVariant::Default, None, meter)?;
-            let fill_owned = config.config_paint_overrides_typed_default(role.fill_path());
+            let fill_owned = css.config_owns_text_fill(config, role);
             let size_owned = config.config_path_overrides_typed_default(role.size_path())
                 && css.configured_text_size_is_admissible(role);
             let mut owners = BTreeMap::new();

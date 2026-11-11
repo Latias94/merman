@@ -10,6 +10,7 @@ pub(crate) struct JourneyCssBinding {
     pub(crate) layout: JourneyLayoutSettings,
     pub(crate) render: JourneyRenderSettings,
     pub(crate) text_color: String,
+    pub(super) text_color_source_path: Option<&'static str>,
     pub(crate) face_color: String,
     pub(crate) main_bkg: String,
     pub(crate) node_border: String,
@@ -28,9 +29,11 @@ impl JourneyCssBinding {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
         // The cluster title fallback uses the Mermaid base text color, before typed Text.fill.
-        let base_text_color = color("textColor", "#333");
-        let title_color = color("titleColor", &base_text_color);
-        let text_color = base_text_color;
+        let (text_color_source_path, base_text_color) =
+            crate::config::selected_config_string(config, &["themeVariables.textColor"])
+                .map_or((None, "#333"), |(path, color)| (Some(path), color));
+        let title_color = color("titleColor", base_text_color);
+        let text_color = base_text_color.to_owned();
         let common = PreparedCommonCss::with_resolved_typography(
             config,
             font_family.to_owned(),
@@ -43,6 +46,7 @@ impl JourneyCssBinding {
             layout: config_view.layout_settings(),
             render: config_view.render_settings(),
             text_color,
+            text_color_source_path,
             face_color: color("faceColor", "#FFF8DC"),
             main_bkg: color("mainBkg", "#ECECFF"),
             node_border: color("nodeBorder", "#9370DB"),

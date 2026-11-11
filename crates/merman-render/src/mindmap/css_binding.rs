@@ -38,6 +38,18 @@ pub(crate) struct MindmapCssBinding {
 }
 
 impl MindmapCssBinding {
+    /// Select the border paint and its owner together; the literal fallback has no owner.
+    pub(super) fn node_border_source(config: &PresentationConfig) -> (Option<&'static str>, &str) {
+        crate::config::selected_config_string(
+            config.as_value(),
+            &[
+                "themeVariables.nodeBorder",
+                "themeVariables.gitBranchLabel0",
+            ],
+        )
+        .map_or((None, "#ffffff"), |(path, color)| (Some(path), color))
+    }
+
     pub(super) fn new(config: &PresentationConfig, plan: &MindmapNodePalettePlan) -> Self {
         let raw = config.as_value();
         let token = |key: &str, fallback: &str| {
@@ -63,7 +75,7 @@ impl MindmapCssBinding {
         let root_label = token("gitBranchLabel0", "#ffffff");
         let tokens = plan.writer_theme_tokens(
             &token("mainBkg", &root_fill),
-            &super::theme::mindmap_node_border_css(config),
+            Self::node_border_source(config).1,
         );
         const INVERSE: [&str; 12] = [
             "hsl(60, 100%, 86.2745098039%)",
@@ -178,18 +190,14 @@ impl MindmapCssBinding {
             return config
                 .config_paint_overrides_typed_default("themeVariables.mindmap.labelTextColor");
         }
-        let node_border_role = || {
-            if config.get_str("themeVariables.nodeBorder").is_some() {
-                "themeVariables.nodeBorder"
-            } else {
-                "themeVariables.gitBranchLabel0"
-            }
-        };
-        let role = if (neo && matches!(self.theme.as_ref(), "redux" | "redux-dark"))
+        if (neo && matches!(self.theme.as_ref(), "redux" | "redux-dark"))
             || (root && (html || neo) && self.theme.contains("redux"))
         {
-            node_border_role().to_string()
-        } else if root && !neo {
+            return Self::node_border_source(config)
+                .0
+                .is_some_and(|path| config.config_paint_overrides_typed_default(path));
+        }
+        let role = if root && !neo {
             "themeVariables.gitBranchLabel0".into()
         } else if neo && self.theme.as_ref() == "neutral" {
             "themeVariables.cScaleLabel1".into()

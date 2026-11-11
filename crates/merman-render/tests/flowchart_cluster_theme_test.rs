@@ -396,6 +396,63 @@ fn flowchart_cluster_source_and_config_paint_override_typed_values_per_facet() {
 }
 
 #[test]
+fn flowchart_paint_ownership_ignores_nonstring_surface_and_line_inputs() {
+    for (target, key, property) in [
+        (ThemeTarget::Node, "mainBkg", "fill"),
+        (ThemeTarget::Node, "nodeBorder", "stroke"),
+        (ThemeTarget::Edge, "lineColor", "stroke"),
+        (ThemeTarget::Cluster, "clusterBkg", "fill"),
+        (ThemeTarget::Cluster, "clusterBorder", "stroke"),
+    ] {
+        let paint = CanvasPaint::solid("#a131d8").unwrap();
+        let style = if property == "fill" {
+            ThemeStylePatch::default().with_fill(paint)
+        } else {
+            ThemeStylePatch::default().with_stroke(paint)
+        };
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new()
+                    .with_styles(ThemeRuleSet::default().with_rule(ThemeRule::new(target, style))),
+            )
+            .unwrap();
+        for config_owned in [false, true] {
+            let value = if config_owned {
+                json!("#125634")
+            } else {
+                json!(false)
+            };
+            let rendered = try_render(
+                "flowchart TD\nsubgraph Group[Group]\nA --> B\nend\n",
+                &theme,
+                common::presentation_config(json!({
+                    "theme": "default", "look": "classic", "htmlLabels": false,
+                    "themeVariables": {(key): value}
+                })),
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let inline = document.descendants().any(|node| {
+                matches!(node.tag_name().name(), "path" | "rect" | "polygon")
+                    && node
+                        .attribute("style")
+                        .is_some_and(|style| style.contains(&format!("{property}:#a131d8")))
+            });
+            assert_eq!(
+                inline, !config_owned,
+                "{target:?}.{property}, {key}={value}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.applied_count(), usize::from(!config_owned));
+            assert_eq!(evidence.not_applicable_count(), usize::from(config_owned));
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
 fn flowchart_cluster_hand_drawn_precedence_is_independent_per_paint_facet() {
     let theme = cluster_theme(
         CanvasPaint::solid("#ef4444").expect("valid fill"),

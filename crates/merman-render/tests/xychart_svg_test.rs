@@ -4901,3 +4901,53 @@ fn xychart_svg_preserves_db_accessibility_text() {
         common::assert_svg_accessibility(&svg, expected_title, expected_description);
     }
 }
+
+#[test]
+fn xychart_css_binding_ignores_nonstring_series_palette_owners() {
+    use merman_render::diagram_theme::{CanvasPaint, ThemeRule, ThemeStylePatch};
+
+    for (kind, theme) in [
+        (
+            "rule",
+            xychart_paint_rules([ThemeRule::new(
+                ThemeTarget::ChartSeries,
+                ThemeStylePatch::default()
+                    .with_fill(CanvasPaint::solid("#c2188b").unwrap())
+                    .with_stroke(CanvasPaint::solid("#c2188b").unwrap()),
+            )]),
+        ),
+        ("palette", xychart_series_palette_theme(&["#c2188b"])),
+    ] {
+        for (value, expected, applied) in [
+            (None, "#c2188b", 1),
+            (Some(serde_json::json!(null)), "#c2188b", 1),
+            (Some(serde_json::json!(false)), "#c2188b", 1),
+            (Some(serde_json::json!("#125634")), "#125634", 0),
+        ] {
+            let variables = value.as_ref().map_or_else(
+                || serde_json::json!({}),
+                |value| serde_json::json!({"xyChart": {"plotColorPalette": value}}),
+            );
+            let config = serde_json::json!({"themeVariables": variables});
+            let source = format!(
+                "---\nconfig: {config}\n---\nxychart\nx-axis [A]\ny-axis 0 --> 10\nbar [4]\n"
+            );
+            let rendered =
+                render_xychart_with_theme_and_engine(&source, &theme, MermaidEngine::new());
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let bar = xychart_plot_group(&document, "bar-plot-0")
+                .children()
+                .find(|node| node.has_tag_name("rect"))
+                .expect("the series paint must reach a visible bar");
+            assert_eq!(bar.attribute("fill"), Some(expected), "{kind}: {value:?}");
+            assert_eq!(bar.attribute("stroke"), Some(expected), "{kind}: {value:?}");
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), applied, "{kind}: {value:?}");
+            assert_eq!(evidence.not_applicable_count(), 1 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}

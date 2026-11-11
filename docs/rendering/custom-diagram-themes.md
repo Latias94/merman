@@ -372,16 +372,21 @@ source or site configuration keep their property-specific dependencies. Site the
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
 
-Class checks ownership of the configuration value actually selected by its fallback chain.
-For example, when `mainBkg` supplies the node background, an independent `primaryColor`
+Paint ownership follows the configuration value actually selected by the family consumer.
+For example, when Class `mainBkg` supplies the node background, an independent `primaryColor`
 override does not suppress the recipe's node fill. An override that actually derives `mainBkg`
-still owns that background. Class node and relationship text follow the same selected-value rule.
+still owns that background. Ignored non-string color fields do not own a string fallback;
+an unused scalar does not own a terminal painted by a category array. This also keeps source
+colors and compiled rules independent when a fallback is used only by some visible labels.
 
 ER HTML labels, Block labels and Requirement node labels use a non-empty `themeVariables.nodeTextColor`,
 falling back to `themeVariables.textColor`. Journey titles use a non-empty `journey.titleColor`,
 otherwise inheriting the rendered text color. These fallbacks preserve the selected source or
 explicit configuration's paint ownership; a site theme's default palette still yields to compiled
 paint rules.
+
+Flowchart and ER cluster titles select `titleColor` before `textColor`; Gantt skips an empty
+`titleColor`. Overriding an unused text fallback does not claim an independently selected title.
 
 | Input | Ownership |
 | --- | --- |
@@ -399,11 +404,15 @@ appearance. Playground lists detected theme, font and look declarations with the
 these hints describe authored settings, not an independent certificate of computed SVG styling.
 
 Sequence's colored Redux palettes use participant and activation color arrays. With a compiled
-paint rule, explicitly configured arrays retain their paint ownership; derived default arrays
+paint rule, explicitly configured nonempty arrays retain their paint ownership; empty arrays use
+the scalar fallback, and derived default arrays
 yield to that property's authored scalar color. Without a Merman theme, Mermaid's original
 array-versus-scalar behavior is preserved. For supported Neo participant rectangles, use an Actor
 effect or effect Clear to control the body shadow; the raw `dropShadow` variable does not control
 every participant glyph in the Mermaid baseline.
+Explicit category arrays also retain the paints they supply to State composite headers and
+Block composite shells. ER and Requirement use their selected arrays before scalar backgrounds
+and borders; a scalar override applies when the corresponding array terminal is absent.
 
 Partial source configuration also preserves Mermaid's initialized derived colors. To change an
 XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.backgroundColor` or
@@ -422,10 +431,16 @@ borders, including with Default. Visible labels normally use `cScaleLabelN`, whi
 the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fall back to
 `textColor` for readability, using the final body fill after a compiled Node rule or palette.
 Compiled label paint follows that selected source; unused
-stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
+stylesheet colors do not block it. When a non-string `cScaleLabelN` is skipped, the theme-specific
+`scaleLabelColor`, `labelTextColor` or `cScale1` fallback actually selected retains its ownership.
+Timeline's colored Redux palettes cycle through
 `borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
 Native Treemap font admission checks styles selected by rendered nodes. An unused `classDef`
 does not require support for typography that never reaches a label.
+Journey's Tspan task labels use `sectionColours` only after entering a section. A task before
+the first section can still use a compiled TaskLabel fill when no consumed input owns it.
+Tree View Marker paint Clear keeps the family icon baseline instead of inheriting a compiled
+Edge color. Clear retains its existing unsupported-paint diagnostic and strict completion behavior.
 Put Treemap stylesheet options under `themeVariables.treemap`, including `titleFontSize` and
 `titleColor`. The corresponding root `treemap` spellings remain Merman fallbacks when those
 theme variables are absent. Treemap's SVG class sizes accept unitless numbers such as `24`,
