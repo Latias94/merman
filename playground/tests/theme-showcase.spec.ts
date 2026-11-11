@@ -8,6 +8,7 @@ import { CORE_THEME_SAMPLE_IDS, type ThemeSampleId } from "../src/themes/familie
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 import { expectNoDocumentOverflow, monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
 import { chooseThemeOption } from "./helpers/theme-select";
+import { readSavedThemeRecipe } from "./helpers/theme-recipe";
 
 const changelogDesignIds = ["riso", "pop-art", "metro", "carbon-copy", "signal", "field-notes", "lacquer", "paper-cut", "aurora", "phosphor", "letterpress", "grove", "atlas", "nightfall", "blueprint"];
 const designIds = [...changelogDesignIds, "reading", "porcelain", "chalk", "prism", "monograph"];
@@ -16,7 +17,9 @@ const expandedSamples: Readonly<Record<string, readonly ThemeSampleId[]>> = {
   prism: ["radar", "quadrantChart", "sankey", "treemap"], monograph: ["requirement", "treeView"],
 };
 
-function samplesFor(id: string) {
+function samplesFor(id: string): ThemeSampleId[] {
+  if (id === "pop-art") return ["pie", ...CORE_THEME_SAMPLE_IDS.filter((sample) => sample !== "pie")];
+  if (id === "paper-cut") return ["sequence", ...CORE_THEME_SAMPLE_IDS.filter((sample) => sample !== "sequence")];
   const extra = expandedSamples[id] ?? [];
   return extra.length ? [extra[0], ...CORE_THEME_SAMPLE_IDS, ...extra.slice(1)] : [...CORE_THEME_SAMPLE_IDS];
 }
@@ -154,7 +157,7 @@ test("every design downloads its original JSON and sample links carry the actual
     const download = page.waitForEvent("download");
     await gallery.getByRole("button", { name: "Download theme JSON", exact: true }).click();
     const artifact = await download;
-    const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
+    const recipe = await readSavedThemeRecipe(id);
     expect(artifact.suggestedFilename()).toBe(`${id}.theme.json`);
     expect(await readFile((await artifact.path())!, "utf8")).toBe(recipe);
     const samples = gallery.getByTestId("theme-sample-gallery");

@@ -35,6 +35,9 @@ pub enum ThemePreset {
     Spotless,
     Cyberpunk,
     Ghibli,
+    PaperCut,
+    CarbonCopy,
+    PopArt,
 }
 
 impl ThemePreset {
@@ -213,7 +216,9 @@ fn theme_preset_unavailability_reason(error: &ThemeDesignCompileError) -> &'stat
 
 #[cfg(test)]
 fn preset_palette(preset: ThemePreset) -> catalog::PresetPalette {
-    catalog::entry_for_preset(preset).palette()
+    catalog::entry_for_preset(preset)
+        .palette()
+        .expect("generated presets own a palette template")
 }
 
 #[cfg(test)]
@@ -239,7 +244,7 @@ mod tests {
         let rejected =
             describe_theme_presets(&DiagramThemeCompiler::new().with_resource_policy(policy));
 
-        assert_eq!(default.len(), 8);
+        assert_eq!(default.len(), 11);
         assert_eq!(rejected.len(), default.len());
         for (available, rejected) in default.iter().zip(rejected) {
             assert_eq!(available.id, rejected.id);
@@ -288,6 +293,10 @@ mod tests {
         theme_preset_descriptors()
             .iter()
             .map(|descriptor| descriptor.preset())
+    }
+
+    fn generated_presets() -> impl Iterator<Item = ThemePreset> {
+        all_presets().filter(|preset| catalog::entry_for_preset(*preset).palette().is_some())
     }
 
     fn assert_style(
@@ -378,8 +387,8 @@ mod tests {
     }
 
     #[test]
-    fn built_in_presets_scope_mermaid_compatibility_without_layout_or_look() {
-        for preset in all_presets() {
+    fn generated_presets_scope_mermaid_compatibility_without_layout_or_look() {
+        for preset in generated_presets() {
             let (theme, _) = compiled(preset);
             let config = theme.spec().mermaid().to_mermaid_config();
 
@@ -405,7 +414,7 @@ mod tests {
     #[cfg(feature = "diagram-flowchart")]
     #[test]
     fn retained_presets_keep_dark_fallbacks_without_owning_typed_paints() {
-        for preset in all_presets().filter(|preset| !is_native_candidate(*preset)) {
+        for preset in generated_presets().filter(|preset| !is_native_candidate(*preset)) {
             let (theme, _) = compiled(preset);
             let selected = if preset.is_dark() { "dark" } else { "base" };
             let parse = |engine: merman_core::MermaidEngine| {
@@ -448,7 +457,7 @@ mod tests {
 
     #[test]
     fn preset_catalog_is_the_complete_unique_enum_projection() {
-        const EXPECTED_PRESETS: [ThemePreset; 11] = [
+        const EXPECTED_PRESETS: [ThemePreset; 14] = [
             ThemePreset::EditorLight,
             ThemePreset::EditorDark,
             ThemePreset::OneDark,
@@ -460,6 +469,9 @@ mod tests {
             ThemePreset::Spotless,
             ThemePreset::Cyberpunk,
             ThemePreset::Ghibli,
+            ThemePreset::PaperCut,
+            ThemePreset::CarbonCopy,
+            ThemePreset::PopArt,
         ];
 
         let descriptors = theme_preset_descriptors();
@@ -494,10 +506,51 @@ mod tests {
             assert_eq!(descriptor.export_kind(), "design");
             assert_eq!(descriptor.license_expression(), "MIT OR Apache-2.0");
             assert_eq!(descriptor.required_attribution(), None);
+            assert!(
+                entry
+                    .family_designs()
+                    .windows(2)
+                    .all(|pair| pair[0].0 < pair[1].0),
+                "{} family designs must be sorted and unique",
+                descriptor.id(),
+            );
             assert!(entry.required_feature_ids().is_empty());
             assert!(entry.bundled_resource_ids().is_empty());
             assert!(entry.allowed_residual_ids().is_empty());
             assert!(entry.retained());
+        }
+    }
+
+    #[test]
+    fn saved_art_presets_export_the_canonical_editable_documents() {
+        let compiler = DiagramThemeCompiler::new();
+        for (preset, json) in [
+            (
+                ThemePreset::PaperCut,
+                include_str!("../../assets/themes/paper-cut.theme.json"),
+            ),
+            (
+                ThemePreset::CarbonCopy,
+                include_str!("../../assets/themes/carbon-copy.theme.json"),
+            ),
+            (
+                ThemePreset::PopArt,
+                include_str!("../../assets/themes/pop-art.theme.json"),
+            ),
+        ] {
+            let document: merman_theme_contract::ThemeRecipeV1 =
+                serde_json::from_str(json).unwrap();
+            assert_eq!(compiler.export_preset(preset).unwrap(), document);
+            assert_eq!(
+                compiler
+                    .compile_preset(preset)
+                    .unwrap()
+                    .recipe_fingerprint(),
+                compiler
+                    .compile_recipe(document)
+                    .unwrap()
+                    .recipe_fingerprint(),
+            );
         }
     }
 
@@ -707,7 +760,16 @@ mod tests {
             let round_tripped = compiler
                 .compile_recipe(decoded)
                 .expect("imported design compiles");
-            let palette = preset_palette(descriptor.preset());
+            assert_eq!(
+                round_tripped.recipe_fingerprint(),
+                compiler
+                    .compile_preset(descriptor.preset())
+                    .unwrap()
+                    .recipe_fingerprint()
+            );
+            let Some(palette) = catalog::entry_for_preset(descriptor.preset()).palette() else {
+                continue;
+            };
             for (family, target, expected) in [
                 (
                     DiagramFamilyId::SEQUENCE,
@@ -752,13 +814,6 @@ mod tests {
                     descriptor.id(),
                 );
             }
-            assert_eq!(
-                round_tripped.recipe_fingerprint(),
-                compiler
-                    .compile_preset(descriptor.preset())
-                    .unwrap()
-                    .recipe_fingerprint()
-            );
         }
     }
 
@@ -1346,7 +1401,11 @@ mod tests {
     #[test]
     fn preset_design_exports_preserve_each_recipe_profile() {
         let compiler = DiagramThemeCompiler::new();
-        for descriptor in theme_preset_descriptors() {
+        for descriptor in theme_preset_descriptors().iter().filter(|descriptor| {
+            catalog::entry_for_preset(descriptor.preset())
+                .palette()
+                .is_some()
+        }) {
             let merman_theme_contract::ThemeRecipeV1::Design {
                 design: complete_spec,
             } = compiler
@@ -1438,7 +1497,7 @@ mod tests {
 
     #[test]
     fn built_in_presets_preserve_family_specific_winners_and_all_ordinal_palettes() {
-        for preset in all_presets() {
+        for preset in generated_presets() {
             let palette = preset_palette(preset);
             let theme = DiagramThemeCompiler::new()
                 .compile_preset(preset)
@@ -1729,7 +1788,7 @@ mod tests {
 
     #[test]
     fn built_in_treemap_presets_keep_category_ink_readable_on_translucent_sections() {
-        for preset in all_presets() {
+        for preset in generated_presets() {
             let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
             let treemap = theme.resolve(DiagramFamilyId::TREEMAP);
             let ink = resolved_solid_fill(&treemap, ThemeTarget::NodeLabel);
@@ -1756,7 +1815,7 @@ mod tests {
     fn built_in_sequence_presets_pair_role_foregrounds_and_backgrounds() {
         const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
 
-        for preset in all_presets() {
+        for preset in generated_presets() {
             let palette = preset_palette(preset);
             let theme = DiagramThemeCompiler::new()
                 .compile_preset(preset)
@@ -1841,7 +1900,7 @@ mod tests {
         for ordinal in 1..=24 {
             source.push_str(&format!("    task{ordinal}[Task {ordinal}]\n"));
         }
-        for preset in all_presets() {
+        for preset in generated_presets() {
             let palette = preset_palette(preset);
             let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
             let dark_modes: &[Option<bool>] = if preset == ThemePreset::Cyberpunk {
@@ -1932,7 +1991,7 @@ mod tests {
     fn built_in_packet_presets_keep_field_labels_readable_on_the_selected_block() {
         const MINIMUM_TEXT_CONTRAST: f64 = 4.5;
 
-        for preset in all_presets() {
+        for preset in generated_presets() {
             let palette = preset_palette(preset);
             let theme = DiagramThemeCompiler::new()
                 .compile_preset(preset)

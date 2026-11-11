@@ -76,6 +76,24 @@ const PRESET_DESIGNS: &[PresetDesign] = &[
         default_appearance: ThemeAppearance::Light,
         appearances: &[(ThemeAppearance::Light, ThemePreset::Ghibli)],
     },
+    PresetDesign {
+        id: "paper-cut",
+        display_name: "Paper Cut",
+        default_appearance: ThemeAppearance::Light,
+        appearances: &[(ThemeAppearance::Light, ThemePreset::PaperCut)],
+    },
+    PresetDesign {
+        id: "carbon-copy",
+        display_name: "Carbon Copy",
+        default_appearance: ThemeAppearance::Light,
+        appearances: &[(ThemeAppearance::Light, ThemePreset::CarbonCopy)],
+    },
+    PresetDesign {
+        id: "pop-art",
+        display_name: "Pop Art",
+        default_appearance: ThemeAppearance::Light,
+        appearances: &[(ThemeAppearance::Light, ThemePreset::PopArt)],
+    },
 ];
 
 impl PresetDesign {
@@ -167,11 +185,10 @@ fn concrete_document(preset: ThemePreset) -> ThemeRecipeV1 {
     } else {
         ThemeAppearance::Light
     };
-    design.appearances = Some(BTreeMap::from([(
-        appearance,
-        ThemeAppearanceOverridesV1::default(),
-    )]));
-    design.default_appearance = Some(appearance);
+    design.appearances.get_or_insert_with(|| {
+        BTreeMap::from([(appearance, ThemeAppearanceOverridesV1::default())])
+    });
+    design.default_appearance.get_or_insert(appearance);
     ThemeRecipeV1::Design { design }
 }
 
@@ -298,6 +315,9 @@ mod tests {
                 ("spotless", 1),
                 ("cyberpunk", 1),
                 ("ghibli", 1),
+                ("paper-cut", 1),
+                ("carbon-copy", 1),
+                ("pop-art", 1),
             ]
         );
         for entry in catalog {
@@ -334,7 +354,6 @@ mod tests {
             .map(|candidate| candidate.id())
             .collect::<BTreeSet<_>>();
         assert_eq!(ids.len(), candidates.len());
-        assert_eq!(ids.len(), 14);
         for design in PRESET_DESIGNS {
             assert!(ids.contains(design.id));
             let descriptor = candidates

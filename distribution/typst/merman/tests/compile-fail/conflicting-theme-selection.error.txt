@@ -1,1 +1,1 @@
-merman options must not contain both `diagram-theme` and `theme-preset`
+merman options must select only one of `diagram-theme`, `theme-preset`, or `theme-recipe`

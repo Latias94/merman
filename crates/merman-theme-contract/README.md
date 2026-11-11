@@ -1,8 +1,8 @@
 # merman-theme-contract
 
-`merman-theme-contract` owns Merman's alpha version 1 theme documents, typed authoring values,
+`merman-theme-contract` owns Merman's version 1 theme documents, typed authoring values,
 materialized results, and canonical JSON. It has no parser, renderer, bindings, or host dependency.
-The alpha refactors schema 1 directly as the design evolves. Use matching wrappers and runtimes.
+This guide covers `0.10.0`. Use matching wrappers and runtimes.
 
 ## Save and share a theme
 

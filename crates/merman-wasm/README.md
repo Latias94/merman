@@ -16,9 +16,10 @@ See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available vers
 
 The generated transport exposes generic operation dispatch plus stable convenience functions for the capabilities compiled into its artifact profile. It can project SVG, semantic JSON, layout JSON, ASCII/Unicode, validation, diagnostics, document facts, metadata, and editor operations.
 
-Merman `0.10.0-alpha.2` reports the following contracts. Published `0.10.0-alpha.1` artifacts retain transport API `8`, facts schema `2`, and theme execution evidence schema `1`. Upgrade the facade, glue, and WASM together; source builds must use one revision.
+Merman `0.10.0` reports the following contracts. Published `0.10.0-alpha.2` artifacts retain transport API `9`; `0.10.0-alpha.1` retains transport API `8`, facts schema `2`, and theme execution evidence schema `1`. Version `0.9.3` retains transport API `5`. Upgrade the facade, glue, and WASM together; source builds must use one revision.
 
-- transport API version `9` (`0.10.0-alpha.1` used `8`; `0.9.3` used `5`);
+- transport API version `10`;
+- Options JSON schema `3`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;
 - diagnostics payload schema `1`;
@@ -48,6 +49,40 @@ All current distributed profiles explicitly select `all-diagrams`. Their slim va
 callable rendering, analysis, ASCII, editor, or layout capabilities. Custom source builds may
 select `diagram-*` families independently; their family capability catalog reports actual parser
 availability, which does not imply local SVG or ASCII support.
+
+## Theme Presets And Editable JSON
+
+The SVG-capable full and render packages expose `themeCatalog()`, `exportThemePreset()`,
+`materializeTheme()`, and `describeThemeSupport()` through their public wrappers. Select a
+built-in design with `{ theme: { preset: "paper-cut" } }`. Carbon Copy (`carbon-copy`) and
+Pop Art (`pop-art`) are also available. Export a complete recipe to customize it.
+
+```ts
+import { exportThemePreset, initMerman, renderSvgResult, themeCatalog } from "@mermanjs/web";
+
+await initMerman();
+const catalog = themeCatalog();
+const recipe = exportThemePreset("paper-cut");
+if (recipe.kind !== "design") throw new Error("Expected an editable design");
+recipe.design.tokens!["surface"]!.value = "#DCEAF7";
+const themeJson = JSON.stringify(recipe, null, 2);
+const { svg, metadata } = renderSvgResult("flowchart LR\nA[Source] --> B[Custom theme]", {
+  theme: recipe,
+});
+```
+
+Keep the complete JSON document when saving or sharing it. For a paired preset, use
+`{ theme: { preset: "editor", appearance: "dark" } }`. For a saved recipe, use
+`{ theme: { recipe, appearance: "dark" } }` only when that recipe declares Dark.
+`materializeTheme({ schema_version: 1, action: "inspect", recipe })` validates every declared
+appearance. Hosts resolve Follow-app/editor before making the request.
+
+Catalog availability, per-appearance family design scope, and output qualification are separate
+facts. Inspect the render's `metadata` for its actual theme and target outcome. Mermaid
+configuration stays in `site_config`, separately from the editable recipe. See the
+[browser theme workflow](../../platforms/web/README.md#choose-a-preset-for-a-diagram) and
+[theme guide](../../docs/rendering/custom-diagram-themes.md) for selection, JSON import/export,
+support queries, and appearance overrides.
 
 ## Cooperative cancellation and deadlines
 
@@ -111,6 +146,9 @@ The complete `@mermanjs/web` package uses the `web-full` profile. Other public p
 own descriptor-owned profiles and contain exactly one matching WASM artifact. Profiles that list
 `layout-elk` intentionally carry the EPL-2.0 ELK closure; the profile-specific notice bundle is
 part of the package contract.
+
+The ordinary `web-full` and `web-render` recipes explicitly include `math`, Cytoscape, and ELK.
+Custom Rust source builds select the positive `math` feature independently.
 
 ## License And Notices
 

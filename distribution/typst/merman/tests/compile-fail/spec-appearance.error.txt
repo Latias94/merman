@@ -1,0 +1,1 @@
+merman theme-appearance cannot be combined with a fixed `diagram-theme` spec

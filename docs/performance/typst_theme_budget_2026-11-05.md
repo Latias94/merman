@@ -82,3 +82,41 @@ pass, but its old-budget failure occurs before package validation and Typst 0.15
 smoke. Those later checks must pass on the repaired source. The decision retains
 all four independent size gates, supported capabilities and functional checks;
 it makes no latency, memory or release-qualification claim.
+
+## Editable art preset reassessment, 2026-11-11
+
+The development source adds the canonical Paper Cut, Carbon Copy and Pop Art recipes to the
+built-in catalog, preserves their full editable documents, and admits an explicit finite Typst
+layout-work override. The shared shadow writer also lowers eligible opaque sRGB stages without
+changing their compositing. These additions retain the descriptor-owned Typst capability recipe,
+dependency lockfile, Cargo profile, optimizer arguments and compression implementation.
+
+The local Windows x86-64 measurement uses Rust 1.99.1, Binaryen 133 and wasm-tools 1.252.0.
+Linux CI owns its pinned-toolchain measurement with wasm-tools 1.263.0. The input fingerprint is
+`142848e41c5c0050a88f605d17699b756a1a7789dc9e8c58cf1cf66334a56f4e`;
+the raw artifact SHA-256 is
+`0d919e66e15b60a411a57b19a97631cf20157ff0d40b1495f5eec21c6ed762bf`,
+and the final stripped SHA-256 is
+`80c621623e54ccc998d7191dab6c694f32e529211b179149b7a43b03f26e1a54`.
+The generated artifact manifest retains the complete production-input and tool fingerprints.
+
+| Metric | Previous ceiling | Windows measurement | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw bytes | 26,285,000 | 26,342,354 | 27,133,000 |
+| Stripped bytes | 13,178,000 | 13,237,183 | 13,635,000 |
+| Gzip bytes | 4,996,000 | 4,990,645 | 4,996,000 |
+| Brotli bytes | 3,810,000 | 3,721,820 | 3,810,000 |
+
+Only the insufficient raw and stripped ceilings change, using the existing 3% rule:
+
+```text
+((26342354 * 103 + 99999) // 100000) * 1000 = 27133000
+((13237183 * 103 + 99999) // 100000) * 1000 = 13635000
+```
+
+The old ceilings reject this artifact by 57,354 raw bytes and 59,183 stripped bytes. Compression
+still fits both existing ceilings. This measurement includes the intervening source changes
+since the historical controls above; individual functions and recipes were not isolated for
+binary attribution. All four independent gates and the complete plugin/package smoke remain
+required. The matching-source functional checks are recorded with the PR; this reassessment
+establishes size acceptance without making a latency, memory or release-publication claim.

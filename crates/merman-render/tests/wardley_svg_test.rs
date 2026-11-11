@@ -2087,28 +2087,24 @@ fn wardley_trend_marker_fallback_uses_its_edge_after_source_owned_links() {
 }
 
 #[test]
-fn wardley_all_presets_consume_title_surface_border_axis_text_and_line() {
+fn wardley_all_presets_apply_authored_roles_and_preserve_family_defaults() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     for preset in presets {
         let compiler = DiagramThemeCompiler::new();
         let theme = compiler.compile_preset(preset.preset()).unwrap();
         let recipe =
             serde_json::to_value(compiler.export_preset(preset.preset()).unwrap()).unwrap();
         let design = serde_json::from_value(recipe["design"].clone()).unwrap();
-        let spec = serde_json::to_value(
-            merman_render::diagram_theme::materialize_theme_design(&design).unwrap(),
-        )
-        .unwrap();
-        let expected = |id: &str| {
-            let (target, facet) = match id {
-                "text" => ("text", "/style/fill"),
-                "surface" => ("node", "/style/fill"),
-                "border" => ("node", "/style/stroke/paint"),
-                "line" => ("edge", "/style/stroke/paint"),
-                _ => unreachable!(),
-            };
-            let paint = spec["styles"]
+        let materialized = merman_render::diagram_theme::materialize_theme_design(&design).unwrap();
+        let baseline_theme = compiler
+            .compile_spec_wire(merman_render::diagram_theme::DiagramThemeSpecWireV1 {
+                mermaid: materialized.mermaid.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        let spec = serde_json::to_value(materialized).unwrap();
+        let expected = |target: &str, facet: &str| {
+            spec["styles"]
                 .as_array()
                 .unwrap()
                 .iter()
@@ -2122,10 +2118,23 @@ fn wardley_all_presets_consume_title_surface_border_axis_text_and_line() {
                     .then(|| rule.pointer(facet))
                     .flatten()
                 })
-                .expect("preset has a concrete core paint consumer");
-            ThemeColorValue::parse(paint.as_str().or_else(|| paint["color"].as_str()).unwrap())
-                .unwrap()
-                .as_css()
+                .or_else(|| {
+                    (target == "node" && facet == "/style/fill")
+                        .then(|| {
+                            spec["styles"].as_array().unwrap().iter().find_map(|rule| {
+                                (rule["kind"] == "ordinal-palette" && rule["target"] == target)
+                                    .then(|| &rule["colors"][0])
+                            })
+                        })
+                        .flatten()
+                })
+                .map(|paint| {
+                    ThemeColorValue::parse(
+                        paint.as_str().or_else(|| paint["color"].as_str()).unwrap(),
+                    )
+                    .unwrap()
+                    .as_css()
+                })
         };
         let source = "wardley-beta\ntitle Preset title\ncomponent API [0.7, 0.4]\ncomponent DB [0.3, 0.6]\nAPI +> DB\n";
         let (_, rendered) = try_render_wardley_with_theme(
@@ -2136,10 +2145,21 @@ fn wardley_all_presets_consume_title_surface_border_axis_text_and_line() {
             "wardley-preset",
         )
         .unwrap();
+        let (_, baseline) = try_render_wardley_with_theme(
+            source,
+            &baseline_theme,
+            MermaidEngine::new(),
+            &RenderEnvironment::deterministic(),
+            "wardley-preset",
+        )
+        .unwrap();
         let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
+        let text = expected("text", "/style/fill").unwrap();
+        let title = expected("title", "/style/fill").unwrap_or_else(|| text.clone());
         assert_eq!(
             element_with_class(&document, "text", "wardley-title").attribute("fill"),
-            Some(expected("text").as_str()),
+            Some(title.as_str()),
             "{}",
             preset.id()
         );
@@ -2148,37 +2168,53 @@ fn wardley_all_presets_consume_title_surface_border_axis_text_and_line() {
             .children()
             .find(|node| node.has_tag_name("circle"))
             .unwrap();
-        assert_eq!(
-            circle.attribute("fill"),
-            Some(expected("surface").as_str()),
-            "{}",
-            preset.id()
-        );
-        assert_eq!(
-            circle.attribute("stroke"),
-            Some(expected("border").as_str()),
-            "{}",
-            preset.id()
-        );
+        let baseline_circle =
+            element_with_class(&baseline_document, "g", "wardley-node--component")
+                .children()
+                .find(|node| node.has_tag_name("circle"))
+                .unwrap();
+        for (property, facet) in [("fill", "/style/fill"), ("stroke", "/style/stroke/paint")] {
+            assert_eq!(
+                circle.attribute(property),
+                expected("node", facet)
+                    .as_deref()
+                    .or_else(|| baseline_circle.attribute(property)),
+                "{}: {property}",
+                preset.id()
+            );
+        }
+        let label = expected("node-label", "/style/fill").unwrap_or_else(|| text.clone());
         assert_eq!(
             element_with_class(&document, "text", "wardley-node-label").attribute("fill"),
-            Some(expected("text").as_str()),
+            Some(label.as_str()),
             "{}",
             preset.id()
         );
         let axes = element_with_class(&document, "g", "wardley-axes");
+        let baseline_axes = element_with_class(&baseline_document, "g", "wardley-axes");
         assert_eq!(
             axes.children()
                 .find(|node| node.has_tag_name("line"))
                 .unwrap()
                 .attribute("stroke"),
-            Some(expected("line").as_str()),
+            expected("axis", "/style/stroke/paint")
+                .as_deref()
+                .or_else(|| baseline_axes
+                    .children()
+                    .find(|node| node.has_tag_name("line"))
+                    .unwrap()
+                    .attribute("stroke")),
             "{}",
             preset.id()
         );
         assert_eq!(
             element_with_class(&document, "line", "wardley-link").attribute("stroke"),
-            Some(expected("line").as_str()),
+            expected("edge", "/style/stroke/paint")
+                .as_deref()
+                .or_else(
+                    || element_with_class(&baseline_document, "line", "wardley-link")
+                        .attribute("stroke")
+                ),
             "{}",
             preset.id()
         );
@@ -2191,17 +2227,70 @@ fn wardley_all_presets_consume_title_surface_border_axis_text_and_line() {
                         .is_some_and(|id| id.starts_with("link-arrow-end-"))
             })
             .unwrap();
+        let baseline_marker = baseline_document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("marker") && node.attribute("id") == marker.attribute("id")
+            })
+            .unwrap();
+        let marker_fill =
+            expected("marker", "/style/fill").or_else(|| expected("edge", "/style/stroke/paint"));
         assert_eq!(
             marker
                 .children()
                 .find(|node| node.has_tag_name("path"))
                 .unwrap()
                 .attribute("fill"),
-            Some(expected("line").as_str()),
+            marker_fill.as_deref().or_else(|| baseline_marker
+                .children()
+                .find(|node| node.has_tag_name("path"))
+                .unwrap()
+                .attribute("fill")),
+            "{}",
+            preset.id()
+        );
+        let axis_label = expected("axis", "/style/fill").unwrap_or(text);
+        assert_eq!(
+            element_with_class(&document, "text", "wardley-axis-label").attribute("fill"),
+            Some(axis_label.as_str()),
+            "{}",
+            preset.id()
+        );
+        let stack = spec
+            .pointer("/typography/families/wardley/font_stack")
+            .or_else(|| spec.pointer("/typography/default/font_stack"))
+            .unwrap()
+            .as_array()
+            .unwrap();
+        let font = FontStack::new(stack.iter().map(|value| value.as_str().unwrap()))
+            .unwrap()
+            .as_css();
+        assert_eq!(
+            element_with_class(&document, "g", "wardley-map").attribute("font-family"),
+            Some(font.as_str()),
             "{}",
             preset.id()
         );
         let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(
+            evidence.accounted_count(),
+            evidence.required_count(),
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        assert_eq!(
+            evidence.theme_residual_count(),
+            0,
+            "{}: {evidence:?}",
+            preset.id()
+        );
+        if evidence.mermaid_compatibility_residual_count() > 0 {
+            assert_eq!(
+                evidence.status(),
+                merman_render::__private::FamilyEvidenceStatus::Unverified
+            );
+        }
         assert!(
             completion
                 .report()

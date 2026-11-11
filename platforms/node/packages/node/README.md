@@ -3,7 +3,7 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-Version `0.10.0-alpha.2` targets Mermaid `12.3.0` and uses Node binding API `1`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the loader and native platform package at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. The package remains experimental.
+Version `0.10.0` targets Mermaid `12.3.0` and uses Node binding API `1`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the loader and native platform package at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability, and the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. The package remains experimental.
 
 Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. Upgrade the loader and platform package together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
@@ -12,7 +12,7 @@ Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence s
 Install the loader package, not a platform package:
 
 ```sh
-npm install --save-exact @mermanjs/node@0.10.0-alpha.2
+npm install --save-exact @mermanjs/node@0.10.0
 ```
 
 ```js
@@ -32,6 +32,9 @@ Create an engine once, reuse it for related work, and dispose it during teardown
 
 ## Compiled themes
 
+The catalog groups 11 designs with 14 concrete presets, including `paper-cut`, `carbon-copy`, and
+`pop-art`. Editor, Gruvbox, and Ayu provide both Light and Dark; other designs declare their own modes.
+
 Select a preset through the top-level `theme` group in Options JSON schema `3`. Discover preset
 IDs through the initialized engine's theme catalog:
 
@@ -47,26 +50,31 @@ and `appearances` describe its modes; each mode contains the exact `concrete_pre
 swatches, family scope, and application notes. Catalog `available` admits every appearance
 under the current resource policy. All built-in presets remain `alpha` with empty appearance-specific
 `qualified_cells`; availability and unknown
-profile/admission IDs never establish portable output. Flowchart glow and shadow effects require
-the Classic look and supported shapes. SVG fonts resolve on the viewing host; exported recipes
+profile/admission IDs never establish portable output. Flowchart glow and shadow effects support
+documented shapes in Classic and Neo; other families retain their own look and output restrictions.
+SVG fonts resolve on the viewing host; exported recipes
 do not embed them.
 
 The async authoring helpers use the same queue, cancellation, and JSON operations as rendering:
 
 ```js
 const recipe = await engine.exportThemePreset("editor");
+const editableJson = JSON.stringify(recipe, null, 2);
+const importedRecipe = JSON.parse(editableJson);
 const inspection = await engine.materializeTheme({
-  schema_version: 1, action: "inspect", recipe,
+  schema_version: 1, action: "inspect", recipe: importedRecipe,
 });
 const snapshot = await engine.materializeTheme({
-  schema_version: 1, action: "materialize", recipe, appearance: "dark",
+  schema_version: 1, action: "materialize", recipe: importedRecipe, appearance: "dark",
 });
 const svg = await engine.renderSvg("flowchart LR\nA[Review] --> B[Publish]", {
-  optionsJson: JSON.stringify({ theme: { recipe, appearance: "dark" } }),
+  optionsJson: JSON.stringify({ theme: { recipe: importedRecipe, appearance: "dark" } }),
 });
 ```
 
-Keep the complete recipe for customization and exchange. Shared values live in `recipe.design`;
+Save `editableJson`, edit its `design` values, and reload the edited JSON in place of the
+round-trip string above. Keep `schema_version`, `kind`, and the complete recipe for customization
+and exchange. Shared values live in `recipe.design`;
 local exceptions live in `recipe.design.appearances`. `snapshot.spec` is a concrete snapshot,
 while inspect reports every declared mode and reference provenance. Omitted appearance uses
 the declared default; an explicit unsupported value fails. Resolve Follow-app/editor in the

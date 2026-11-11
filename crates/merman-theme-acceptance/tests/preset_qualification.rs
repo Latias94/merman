@@ -20,6 +20,14 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 | merman::svg::ThemePreset::Cyberpunk
                 | merman::svg::ThemePreset::Ghibli
         );
+        let mermaid_residual_count = match preset {
+            // Art recipes retain compatibility variables without selecting a fallback theme.
+            merman::svg::ThemePreset::PaperCut | merman::svg::ThemePreset::PopArt => 2,
+            // Carbon Copy retains 27 variables plus one canonical dark-mode field.
+            merman::svg::ThemePreset::CarbonCopy => 28,
+            _ if native_candidate => 0,
+            _ => 1,
+        };
         assert_eq!(report.preset(), preset);
         assert_eq!(report.recipe_fingerprint(), theme.recipe_fingerprint());
         assert_eq!(
@@ -77,14 +85,28 @@ fn exact_catalog_recipes_keep_native_admission_failures_visible() {
                 );
                 assert_eq!(
                     observation.mermaid_residual_count(),
-                    if native_candidate { 0 } else { 1 },
-                    "only retained recipes select a Mermaid fallback theme"
+                    mermaid_residual_count,
+                    "{} {} {:?}: Mermaid residuals must match the exact catalog recipe",
+                    preset.id(),
+                    family,
+                    observation.artifact_kind(),
                 );
-                // Typed role paints reach the bounded terminals in these catalog scenes.
+                // The default Neo State look cannot consume the art recipes' body shadows.
+                // Their color and typography rules still reach the bounded terminals.
+                let unsupported_state_effect = family == DiagramFamilyId::STATE
+                    && matches!(
+                        preset,
+                        merman::svg::ThemePreset::PaperCut
+                            | merman::svg::ThemePreset::CarbonCopy
+                            | merman::svg::ThemePreset::PopArt
+                    );
                 assert_eq!(
                     observation.theme_residual_count(),
-                    0,
-                    "theme residual classification must match the preset profile and family",
+                    usize::from(unsupported_state_effect),
+                    "{} {} {:?}: theme residuals must match the exact catalog recipe",
+                    preset.id(),
+                    family,
+                    observation.artifact_kind(),
                 );
                 assert_eq!(observation.source_residual_count(), 0);
             }

@@ -85,8 +85,9 @@ have separate emission passes, with one visible surface even for alpha paint. Th
 extend effect admission to additional shapes or looks. State composite titles use the same
 normalized measured box for layout and header placement, in native text and HTML labels.
 
-The current source catalog groups 8 built-in design identities with 11 concrete appearances.
-They share paint and typography defaults, with selected family-specific rules. Their catalog
+The current source catalog groups 11 built-in design identities with 14 concrete appearances.
+Paper Cut, Carbon Copy and Pop Art use the same editable documents as the Playground library;
+the remaining presets use shared paint and typography templates with selected family-specific rules. Their catalog
 design scope is narrower than runtime theme availability. The current Playground library contains
 20 designs: Reading and Prism add coordinated Light/Dark examples to Riso, Pop Art, Metro, Carbon Copy,
 Signal, Field Notes, Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall,

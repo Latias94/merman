@@ -223,7 +223,6 @@ fn architecture_cytoscape_title_requests_are_not_applicable_without_a_diagram_ti
 #[test]
 fn architecture_all_presets_keep_nonvisual_diagram_titles_not_applicable() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     let source = "---\ntitle: Nonvisual metadata title\n---\narchitecture-beta\ntitle Nonvisual diagram title\ngroup backend(cloud)[Backend]\nservice api(server)[API] in backend\n";
     for preset in presets {
         let theme = DiagramThemeCompiler::new()

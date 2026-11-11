@@ -192,9 +192,10 @@
   merge-dict(out, typography-text-style(typography), "merman typography")
 }
 
-#let theme-input(diagram-theme, theme-preset, name) = {
-  if diagram-theme != none and theme-preset != none {
-    panic(name + " must not contain both `diagram-theme` and `theme-preset`")
+#let theme-input(diagram-theme, theme-preset, theme-recipe, name) = {
+  let sources = (diagram-theme, theme-preset, theme-recipe).filter(value => value != none)
+  if sources.len() > 1 {
+    panic(name + " must select only one of `diagram-theme`, `theme-preset`, or `theme-recipe`")
   } else if diagram-theme != none {
     (kind: "spec", value: dictionary-or-none(diagram-theme, name + " diagram-theme"))
   } else if theme-preset != none {
@@ -202,9 +203,18 @@
       panic(name + " theme-preset must be a non-empty string")
     }
     (kind: "preset", value: theme-preset)
+  } else if theme-recipe != none {
+    (kind: "recipe", value: dictionary-or-none(theme-recipe, name + " theme-recipe"))
   } else {
     none
   }
+}
+
+#let validated-theme-appearance(appearance) = {
+  if appearance != none and not ("light", "dark").contains(appearance) {
+    panic("merman theme-appearance must be `light` or `dark`")
+  }
+  appearance
 }
 
 #let theme-spec-with-typography(spec, text-style) = {
@@ -232,22 +242,28 @@
   }
 }
 
-#let build-theme-selection(input, text-style) = {
+#let build-theme-selection(input, text-style, appearance: none) = {
   if input == none {
+    if appearance != none {
+      panic("merman theme-appearance requires `theme-preset` or `theme-recipe`")
+    }
     if text-style == none {
       none
     } else {
       (spec: (typography: (default: text-style)))
     }
-  } else if input.kind == "preset" {
-    if text-style != none {
-      panic(
-        "merman typography cannot be combined with `theme-preset`; use `diagram-theme` with an explicit typography spec",
-      )
+  } else if input.kind == "spec" {
+    if appearance != none {
+      panic("merman theme-appearance cannot be combined with a fixed `diagram-theme` spec")
     }
-    (preset: input.value)
-  } else {
     (spec: theme-spec-with-typography(input.value, text-style))
+  } else {
+    let selection = if input.kind == "preset" {
+      (preset: input.value)
+    } else {
+      (recipe: input.value)
+    }
+    if appearance == none { selection } else { (: ..selection, appearance: appearance) }
   }
 }
 
@@ -338,6 +354,8 @@
   typography: none,
   diagram-theme: none,
   theme-preset: none,
+  theme-recipe: none,
+  theme-appearance: none,
   theme-variables: none,
   theme-name: none,
   base-theme: none,
@@ -362,6 +380,8 @@
     typography: typography,
     diagram-theme: diagram-theme,
     theme-preset: theme-preset,
+    theme-recipe: theme-recipe,
+    theme-appearance: theme-appearance,
     theme-variables: theme-variables,
     theme-name: theme-name,
     base-theme: base-theme,
@@ -403,6 +423,8 @@
   site-config: none,
   diagram-theme: none,
   theme-preset: none,
+  theme-recipe: none,
+  theme-appearance: none,
   theme-variables: none,
   theme-name: none,
   base-theme: none,
@@ -432,14 +454,22 @@
     let profile-theme-input = theme-input(
       profile-field(profile, "diagram-theme", alt: "diagram_theme"),
       profile-field(profile, "theme-preset", alt: "theme_preset"),
+      profile-field(profile, "theme-recipe", alt: "theme_recipe"),
       "merman profile",
     )
-    let direct-theme-input = theme-input(diagram-theme, theme-preset, "merman options")
+    let direct-theme-input = theme-input(diagram-theme, theme-preset, theme-recipe, "merman options")
     let selected-theme-input = if direct-theme-input != none {
       direct-theme-input
     } else {
       profile-theme-input
     }
+    let profile-appearance = validated-theme-appearance(
+      profile-field(profile, "theme-appearance", alt: "theme_appearance"),
+    )
+    let selected-appearance = choose-value(
+      if direct-theme-input == none { profile-appearance } else { none },
+      validated-theme-appearance(theme-appearance),
+    )
     let profile-layout = profile-field(profile, "layout")
     let profile-layout-container-width = layout-container-width(profile-layout)
     let profile-environment = profile-field(profile, "environment")
@@ -493,7 +523,11 @@
       profile-typography,
       typography,
     )
-    let diagram-theme-selection = build-theme-selection(selected-theme-input, text-style)
+    let diagram-theme-selection = build-theme-selection(
+      selected-theme-input,
+      text-style,
+      appearance: selected-appearance,
+    )
 
     let binding-options = (
       version: 3,

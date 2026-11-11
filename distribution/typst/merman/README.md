@@ -112,6 +112,39 @@ Use `site-config: (layout: "dagre")` to choose the Mermaid layout algorithm. The
 
 ELK is an embedded, modified Rust translation of Eclipse ELK. The wrapper and Merman-authored code remain under `MIT OR Apache-2.0`; the ELK-derived portion is under `EPL-2.0`. This is a component-level license boundary, not a relicensing of the whole package. When redistributing the package or a derivative artifact, preserve `THIRD_PARTY_NOTICES.md` and the matching files under `THIRD_PARTY_LICENSES/`.
 
+## Choose a Theme
+
+The theme conveniences below require the matching local ABI 3 package described in
+[Version Mapping](#version-mapping); the submitted `0.5.0` artifact uses ABI 2.
+
+Select a built-in design directly, or choose one appearance of a paired design:
+
+```typst
+#mermaid(source, theme-preset: "paper-cut", width: 100%)
+#mermaid(
+  source,
+  theme-preset: "editor",
+  theme-appearance: "dark",
+  document-context: true,
+  width: 100%,
+)
+```
+
+Paper Cut, Carbon Copy, and Pop Art are Light-only designs. Use `theme-catalog()` to discover
+the installed plugin's IDs, declared modes, and availability. An omitted appearance uses the
+selected design's default; an explicitly unavailable mode fails. The plugin does not detect
+the viewer's color mode.
+
+`theme-preset`, `theme-recipe`, and `diagram-theme` are alternative complete sources. Select at
+most one in a profile and at most one at the call site. A direct source replaces the profile's
+source **and its appearance**. A direct `theme-appearance` without a new source changes the mode
+of the profile's selection. A complete `diagram-theme` spec is already concrete and cannot take
+an appearance selector. These rules also apply to figures, SVG/results, and raw-block handlers.
+
+Use `theme-recipe: json("custom.theme.json")` for an editable configuration saved from Playground
+or exported with `export-theme-preset`. See [Theme authoring](#theme-authoring) for viewing,
+copying, and editing the complete JSON without converting it into a private format.
+
 ## Document Fonts
 
 `mermaid(...)` is explicit-only by default. It does not automatically inherit the surrounding Typst font, text size, or container width.
@@ -142,6 +175,12 @@ You can also pass typography intent explicitly:
 The typography size accepts CSS `px` strings, absolute Typst lengths, or numeric CSS pixels. Typst lengths are converted through the SVG 96-DPI coordinate system (`72pt == 96px`) so layout measurement and SVG output use the same numeric `font_size_px`. Typst font descriptors are projected to their ordered family names in `theme.spec.typography.default.font_stack`; descriptor `covers` constraints have no CSS or deterministic-measurer equivalent and are therefore not preserved.
 
 This changes the SVG style intent sent to the headless renderer. It does not mean the Typst plugin measured the exact Typst font file. The Typst plugin uses the built-in `deterministic` measurer; browser-style host callbacks and Typst font-asset measurement are not available through this transport. Other transports may install a host callback when the final display stack is authoritative.
+
+Both `theme-preset` and `theme-recipe` compose with `typography` and `document-context: true`.
+When needed, the wrapper uses the shared public materializer before applying the default text
+style. The overlay changes `typography.default`; explicitly authored family fonts and role sizes
+or weights still take precedence. For example, the three art designs retain their family fonts.
+Edit their shared font tokens when you want to change those fonts throughout the recipe.
 
 Check the compiled plugin capability surface with:
 
@@ -177,7 +216,7 @@ Use `mermaid-profile(...)` for reusable diagram settings:
 
 Profiles work with `mermaid(...)`, `mermaid-figure(...)`, `mermaid-svg(...)`, `mermaid-result(...)`, `analyze-mermaid(...)`, and raw-block show rules. The optional `figure` section is consumed only by `mermaid-figure(...)`; it does not change raw SVG rendering or non-figure image calls.
 
-For normal documents, start with `width`, `theme-name`, `theme-variables`, `theme-preset` or `diagram-theme`, `background`, `typography`, `document-context`, and reusable `profile` values. Lower-level renderer fields remain available when you need parity debugging or deterministic fixture control, but they are not the main authoring path.
+For normal documents, start with `width`, `theme-preset` or `theme-recipe`, optional `theme-appearance`, `background`, `typography`, `document-context`, and reusable `profile` values. Use `diagram-theme` for a concrete spec and `theme-name`/`theme-variables` for Mermaid configuration. Lower-level renderer fields remain available for parity debugging or deterministic fixture control.
 
 `base-theme` is a lower-priority compatibility alias for `theme-name`; prefer `theme-name` in new documents. When both are supplied, `theme-name` wins.
 
@@ -185,13 +224,14 @@ Raw `options` always wins. Without it, precedence is field-specific and determin
 
 - site config: profile full object, profile `theme-name`/`theme-variables`, direct full object, direct `theme-name`/`theme-variables`;
 - environment: profile full object, profile measurement/math shorthands, direct full object, direct measurement/math shorthands;
-- compiled diagram theme: direct `diagram-theme`/`theme-preset` replaces the profile selection; document context, profile typography, and direct typography merge into `theme.spec.typography.default` in that order;
+- compiled diagram theme: direct `diagram-theme`/`theme-preset`/`theme-recipe` replaces the profile source and its appearance; without a direct source, direct `theme-appearance` overrides the profile mode;
+- typography: document context, profile typography, and direct typography merge into `theme.spec.typography.default` in that order, preserving authored family and role overrides;
 - layout: profile layout followed by container shorthands, unless a direct full `layout` object is present, in which case that object replaces the layout shorthands;
 - scalar fields: direct value, profile value, package or renderer default.
 
-`theme-name` and `theme-variables` replace the Mermaid `theme` or `themeVariables` field at their layer; they do not deep-merge individual theme-variable keys. `theme-preset` selects one complete compiled preset, so it cannot be combined with `typography` or `document-context`; use `diagram-theme` when typography must be composed into an explicit spec.
+`theme-name` and `theme-variables` replace the Mermaid `theme` or `themeVariables` field at their layer; they do not deep-merge individual theme-variable keys. They do not select a compiled Merman preset or its appearance.
 
-A direct `site-config` object replaces the profile `site-config` object; use the direct `theme-name` and `theme` shorthands when you want the documented theme-layer precedence instead of replacing the full object.
+A direct `site-config` object replaces the profile `site-config` object; use the direct `theme-name` and `theme-variables` shorthands when you want the documented theme-layer precedence instead of replacing the full object.
 
 A profile that contains raw `options` is an opaque binding-options bundle: it bypasses the profile and call-site shorthands. Pass a direct raw `options` dictionary to replace that bundle, or use the structured profile fields when you want field-level overrides.
 
@@ -296,7 +336,9 @@ Common parameters:
 - `document-context`: `false` by default. Set to `true` to inherit Typst text font, text size, and finite available width for image rendering. An auto-width page reports an infinite outer width, so Merman keeps its renderer default instead of serializing infinity.
 - `profile`: reusable options produced by `mermaid-profile(...)`.
 - `typography`: high-level font and size intent projected to `theme.spec.typography.default`.
-- `theme-preset`: compiled Merman diagram-theme preset, such as `"editor-dark"` or `"ayu-dark"`.
+- `theme-preset`: built-in Merman design, such as `"paper-cut"` or paired `"editor"`; concrete IDs such as `"editor-dark"` remain supported.
+- `theme-recipe`: complete editable `ThemeRecipeV1` dictionary, for example `json("custom.theme.json")` or the result of `export-theme-preset(...)`.
+- `theme-appearance`: optional `"light"` or `"dark"` selector for a preset or recipe; omitted uses the declared default. Automatic modes are not accepted.
 - `diagram-theme`: one complete `DiagramThemeSpec` body, wrapped as top-level `theme.spec`.
 - `id`: stable SVG root id. `diagram-id` is the lower-level binding name; precedence is direct `diagram-id`, direct `id`, profile `diagram-id`, then profile `id`.
 - `background`: SVG root background color, mapped to `svg.root_background_color`.
@@ -316,7 +358,27 @@ Advanced renderer parameters:
 - `text-measurement`, `math-renderer`: shorthands for `environment.text_measurement` and `environment.math_renderer`. Direct values override `environment`, which overrides profile environment values.
 - `drop-native-duplicate-fallbacks`: SVG post-processing shorthand for removing duplicate native fallback text.
 - `fixed-today`, `fixed-local-offset-minutes`: deterministic date controls for date-sensitive diagrams.
-- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. It does not bypass general binding validation: `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` remain rejected because raw CSS and cascade policy belong to trusted Rust or native CLI hosts. The plugin also reserves the constrained `resources` ceiling; documents may provide stricter limits, while looser profiles or overrides return a structured options error.
+- `options`: escape hatch; when present, it supplies the Rust binding options and overrides shorthand parameters. It does not bypass general binding validation: `svg.scoped_css`, `svg.scopedCss`, `svg.css_override_policy`, and `svg.cssOverridePolicy` remain rejected because raw CSS and cascade policy belong to trusted Rust or native CLI hosts. The plugin applies the resource policy described below.
+
+SVG rendering in development source builds defaults to **14,100,000 layout work units**, taking the allowance from the shared `interactive` contract while retaining `constrained` as the base profile. Analysis and theme operations retain their ordinary constrained defaults. Build the wrapper and WASM plugin together; published `@preview/merman:0.5.0` is unchanged and does not support raising the allowance.
+
+An omitted or null `resources.profile` inherits this Typst default. Explicitly selecting `resources.profile` as `"constrained"` keeps the shared profile's **125,000** layout work units unless overridden. An explicit finite positive integer in `resources.limits.max_layout_work_units` takes precedence in either case and can tighten or raise the allowance.
+
+```typst
+#let layout-options = (
+  resources: (limits: (max_layout_work_units: 20000000)),
+)
+#mermaid(read("diagram.mmd"), options: layout-options)
+
+#let layout-profile = mermaid-profile(options: layout-options)
+#mermaid(read("diagram.mmd"), profile: layout-profile)
+```
+
+Work units accumulate across iterations, including Mindmap's COSE layout. The 20,000,000-unit override above illustrates raising the default allowance; it is an example, not a measured total or a required value. A failure's `actual` value reports the first rejected charge, not the diagram's total cost. Zero, negative, fractional, null, and overflowing layout limit values are rejected.
+
+Other limits may only be tightened. Looser profiles, unknown IDs, and hard-cap overrides remain rejected. Resources may be direct or inside one `analysis` or `merman` object wrapper. Theme preflight and options byte admission remain constrained.
+
+Raw `options` bypasses shorthand generation; direct `options` replaces profile `options`. Include required theme and SVG settings in the same bundle.
 
 Typst does not expose the removed `scoped-css` or `css-override-policy` high-level controls. Use `diagram-theme`, `theme-variables`, or `background` for document-owned presentation needs.
 
@@ -338,7 +400,7 @@ Figure layout parameters are forwarded to Typst's native `figure`: `placement`, 
 
 Returns the rendered SVG as a string instead of embedding it as an image.
 
-This value-returning API does not enter Typst `context`; pass `typography`, `theme-preset`/`diagram-theme`, `layout`, or `container-width` explicitly when exporting SVG text. Rendering failures panic; use `mermaid-result(...)` when the document needs programmatic error handling.
+This value-returning API does not enter Typst `context`; pass `typography`, a theme source and optional `theme-appearance`, `layout`, or `container-width` explicitly when exporting SVG text. Rendering failures panic; use `mermaid-result(...)` when the document needs programmatic error handling.
 
 ### `mermaid-result(source, ..)`
 
@@ -417,8 +479,49 @@ theme authoring payloads.
 
 Preset export returns one complete editable `ThemeRecipeV1`. For a paired design, its shared
 values and `appearances`/`default_appearance` live inside `design`. Save that complete recipe;
-a materialized `spec` retains only one concrete appearance. The same wrapper accepts explicit
-schema-1 authoring requests:
+a materialized `spec` retains only one concrete appearance. Ordinary rendering accepts the
+exported dictionary directly:
+
+```typst
+#let recipe = export-theme-preset("editor")
+#mermaid(source, theme-recipe: recipe, theme-appearance: "dark", document-context: true)
+```
+
+To view and copy every setting, display the complete JSON in the document, then save the text as
+`custom.theme.json`. `json.encode` returns text; it does not write a file:
+
+```typst
+#let recipe = export-theme-preset("paper-cut")
+#let recipe-json = json.encode(recipe, pretty: true)
+#raw(recipe-json, lang: "json", block: true)
+
+// In another document, load the saved file directly.
+#let custom = json("custom.theme.json")
+#mermaid(source, theme-recipe: custom)
+```
+
+Edit a shared token to update all its retained references. For Paper Cut, this changes the
+default and family font stacks together without erasing other typography:
+
+```typst
+#let recipe = export-theme-preset("paper-cut")
+#let tokens = recipe.design.tokens
+#let body-font = tokens.at("body-font")
+#body-font.insert("value", ("Source Sans 3", "Arial", "sans-serif"))
+#tokens.insert("body-font", body-font)
+#let design = recipe.design
+#design.insert("tokens", tokens)
+#recipe.insert("design", design)
+#mermaid(source, theme-recipe: recipe, document-context: true)
+// View/copy the edited full configuration with raw(json.encode(recipe, pretty: true)).
+```
+
+Carbon Copy uses `record-font` and `chart-font`; Pop Art uses `typeface` and `display-typeface`.
+Edit both when you intend one font throughout those designs. Font names do not embed or install
+fonts. The [theme-authoring example](examples/theme-authoring.typ) demonstrates the full JSON
+round trip and includes a switch to display the exported configuration.
+
+For inspection or explicit authoring-to-render requests, the same wrapper accepts schema-1 actions:
 
 ```typst
 #let recipe = export-theme-preset("editor")
@@ -429,14 +532,31 @@ schema-1 authoring requests:
 #mermaid-theme-definition("flowchart LR\nA --> B", dark-request, width: 80%)
 ```
 
+`materialize-theme` accepts a raw design or an action request containing a recipe; pass a
+standalone portable recipe through `theme-recipe`, or wrap it in the action above. For original
+downloaded JSON admission, preserve its text in the request rather than parsing it first:
+
+```typst
+#let saved-json = read("custom.theme.json")
+#let request-json = "{\"schema_version\":1,\"action\":\"materialize\",\"recipe\":" + saved-json + "}"
+#mermaid-theme-definition(source, request-json, document-context: true)
+```
+
 An omitted selector uses the declared default. An explicit unavailable appearance fails.
 Resolve host appearance preferences before choosing `light` or `dark`; the plugin does not
 detect the document viewer's color mode.
 
 Each function returns the canonical result dictionary on success. On failure it returns the same
 structured operation envelope used by rendering, including `ok`, `code_name`, `kind`, `message`,
-and an optional `capability_id`. The plugin always applies its constrained resource policy; caller
-options may tighten that policy but cannot loosen it.
+and an optional `capability_id`. Theme-authoring operations retain constrained limits; caller
+options may tighten those limits. SVG rendering uses the separate layout allowance described
+under [renderer parameters](#mermaidsource-), with the remaining ceilings still constrained.
+
+When ordinary rendering needs materialization, `mermaid-result` preserves the authoring error's
+operation and full `details` and adds `svg: none`. Content calls honor their selected error mode
+for these failures. Theme selection/argument validation can still panic before a plugin call.
+Successful render results contain SVG, not a per-render theme execution report. Catalog
+availability and support queries do not prove every effect rendered in a particular Typst PDF.
 
 Invalid Mermaid source remains a schema-1 analysis payload with `valid: false`; transport, options, and missing-capability failures use the structured operation envelope instead.
 
@@ -468,7 +588,7 @@ Returns the compiled plugin capability payload, including the current text measu
 #capabilities.capabilities.text_measurement.provider_ids
 ```
 
-The flat catalog reports the artifact's current capability, output, operation, registry, and resource sets. The plugin independently applies a fixed constrained resource ceiling to every render, analysis, and theme-authoring operation. Raw binding options may tighten individual resource limits but cannot loosen or silently replace that transport-owned policy. The options root and any `analysis` or `merman` wrapper must be JSON objects; malformed wrapper values return a structured options error before an operation begins.
+The flat catalog reports the artifact's capability, output, operation, registry, and resource sets. Shared profile capacities remain unchanged, including the `constrained` layout value of 125,000. Typst's effective default combines that base profile with the shared `interactive` layout allowance; explicit profile and limit selections follow the rules above. Other ceilings remain enforced. Published 0.5.0 permits only stricter limits. The options root and any `analysis` or `merman` wrapper must be objects; malformed or mixed wrappers return structured options errors.
 
 ### `show-mermaid-blocks(..)`
 

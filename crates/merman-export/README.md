@@ -7,7 +7,7 @@ typed PNG, JPEG, or PDF target. Use this crate directly only when the applicatio
 validated SVG artifact, inspect complete export evidence and allocation plans, or schedule encoding
 separately from Mermaid rendering.
 
-This guide covers `merman-export 0.10.0-alpha.2`. Select font discovery explicitly or provide a font context. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for imports and output handoffs when upgrading from `0.9.x`, and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
+This guide covers `merman-export 0.10.0`. Select font discovery explicitly or provide a font context. See the [model/source migration](../../docs/migrations/model-source-boundaries.md) for imports and output handoffs when upgrading from `0.9.x`, and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Choose A Feature
 
@@ -103,7 +103,7 @@ It owns admitted data and performs no file acquisition or ambient discovery, eve
 crate's WebAssembly code paths; explicit file/directory requests return a source error there.
 
 ```toml
-merman-export = { version = "=0.10.0-alpha.2", default-features = false, features = ["png", "bundled-fonts"] }
+merman-export = { version = "0.10.0", default-features = false, features = ["png", "bundled-fonts"] }
 ```
 
 ```rust
@@ -163,7 +163,7 @@ required basic SVG path without Cytoscape, ELK, or math engines:
 
 ```toml
 [dependencies]
-merman = { version = "=0.10.0-alpha.2", default-features = false, features = ["diagram-flowchart", "png", "system-fonts"] }
+merman = { version = "0.10.0", default-features = false, features = ["diagram-flowchart", "png", "system-fonts"] }
 ```
 
 ```rust
@@ -206,9 +206,9 @@ operation control:
 
 ```toml
 [dependencies]
-merman-model = { version = "=0.10.0-alpha.2", default-features = false }
-merman-render = { version = "=0.10.0-alpha.2", default-features = false }
-merman-export = { version = "=0.10.0-alpha.2", default-features = false, features = ["png", "system-fonts"] }
+merman-model = { version = "0.10.0", default-features = false }
+merman-render = { version = "0.10.0", default-features = false }
+merman-export = { version = "0.10.0", default-features = false, features = ["png", "system-fonts"] }
 ```
 
 ```rust

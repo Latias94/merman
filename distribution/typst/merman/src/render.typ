@@ -4,10 +4,46 @@
 #import "options.typ": config-with-context-width, config-with-theme-spec, context-text-style, options-bytes, render-config
 #import "plugin.typ": merman-plugin
 #import "source.typ": source-text-value
-#import "theme.typ": materialize-theme
+#import "theme.typ": export-theme-preset, materialize-theme
 #import "units.typ": context-width-css-px
 
+#let resolve-theme-render-config(config) = {
+  if config.typography_overlay == none {
+    return config
+  }
+  let selection = config.binding_options.at("theme", default: none)
+  if selection == none or "spec" in selection {
+    config
+  } else {
+    let recipe = if "preset" in selection {
+      export-theme-preset(selection.preset, options: config.binding_options)
+    } else {
+      selection.recipe
+    }
+    if "preset" in selection and "ok" in recipe {
+      recipe
+    } else {
+      let request = (schema_version: 1, action: "materialize", recipe: recipe)
+      let request = if "appearance" in selection {
+        (: ..request, appearance: selection.appearance)
+      } else {
+        request
+      }
+      let materialized = materialize-theme(request, options: config.binding_options)
+      if "spec" in materialized {
+        config-with-theme-spec(config, materialized.spec)
+      } else {
+        materialized
+      }
+    }
+  }
+}
+
 #let render-svg-result-with-config(source, config) = {
+  let config = resolve-theme-render-config(config)
+  if "binding_options" not in config {
+    return (: ..config, details: config.at("details", default: none), svg: none)
+  }
   let source-text = source-text-value(source)
   let envelope = json(
     merman-plugin.render_svg_json(bytes(source-text), options-bytes(config.binding_options)),
@@ -38,6 +74,10 @@
 }
 
 #let analyze-payload-with-config(source, config) = {
+  let config = resolve-theme-render-config(config)
+  if "binding_options" not in config {
+    return config
+  }
   let source-text = source-text-value(source)
   let envelope = json(
     merman-plugin.analyze_json(bytes(source-text), options-bytes(config.binding_options)),

@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-07 (Asia/Shanghai)
+Last updated: 2026-11-11 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -10,6 +10,14 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives and the Apple XCFramework. After alpha publication, all selected stable Web, Node, Python, Flutter and Android backfills are delivered and independently reconciled below. The Node loader, both transports and all five native members are available at `0.9.3` under `latest`.
 
 The main-line `0.10.0-alpha.2` is published for all selected products, with independently reconciled delivery recorded below. The previous `0.10.0-alpha.1` remains available. The `0.9.x` maintenance source and tags are unchanged.
+
+## 0.10.0 preparation
+
+The maintainer selected stable `0.10.0` for repository preparation on 2026-11-11 (Asia/Shanghai). The pending root and five workspace-coupled package changelogs consolidate the final user experience since the previous stable release, with published alpha entries retained. Release-facing examples target the selected version; the [host guide](PREBUILT_PRODUCTS.md#published-versions) still owns verified registry availability.
+
+Workspace manifests and package-manager locks are projected through `release-version.py` from the root Cargo authority. Tree-sitter `0.3.4` is a separately prepared prerequisite for Class syntax and scanner fixes made after published `0.3.3`; Roughr remains `0.12.6`. Typst's wrapper retains its independent development version and must select a new wrapper release before publication of its new theme and layout behavior.
+
+No publication channels, tag date, immutable candidate source, or reusable release preflight have been selected by this preparation request. Before publication, commit and review the complete candidate, assign the intended date to the root and governed package changelogs, record each channel as selected or deferred, and run the existing immutable `scope=release` preflight for that exact source and version. The historical delivery observations below remain unchanged.
 
 ## 0.10.0-alpha.2 publication
 

@@ -15,7 +15,7 @@ numbering does not preserve unreleased implementation iterations. None alters th
 lifecycle, cache, or benchmark ownership decisions.
 
 Current source contracts are recorded in the [source appearance migration](../release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up):
-facts schema 3, theme execution evidence schema 2 and Web transport API 9. The baseline values
+facts schema 3, theme execution evidence schema 2 and Web transport API 10. The baseline values
 above and in the historical consequences below retain the dates of those decisions.
 
 ## Context

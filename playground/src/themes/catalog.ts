@@ -4,12 +4,12 @@ import type { ThemeAppearance } from "@mermanjs/web";
 import phosphorRecipe from "./recipes/phosphor.theme.json?raw";
 import field_notesRecipe from "./recipes/field-notes.theme.json?raw";
 import blueprintRecipe from "./recipes/blueprint.theme.json?raw";
-import popArtRecipe from "./recipes/pop-art.theme.json?raw";
+import popArtRecipe from "../../../crates/merman-render/assets/themes/pop-art.theme.json?raw";
 import lacquerRecipe from "./recipes/lacquer.theme.json?raw";
-import paperCutRecipe from "./recipes/paper-cut.theme.json?raw";
+import paperCutRecipe from "../../../crates/merman-render/assets/themes/paper-cut.theme.json?raw";
 import auroraRecipe from "./recipes/aurora.theme.json?raw";
 import metroRecipe from "./recipes/metro.theme.json?raw";
-import carbonCopyRecipe from "./recipes/carbon-copy.theme.json?raw";
+import carbonCopyRecipe from "../../../crates/merman-render/assets/themes/carbon-copy.theme.json?raw";
 import signalRecipe from "./recipes/signal.theme.json?raw";
 import type { ThemeSampleId } from "./samples";
 import atlasRecipe from "./recipes/atlas.theme.json?raw";
@@ -35,6 +35,7 @@ function previewsFor(themeId: string): Partial<Record<ThemeSampleId, string>> {
 
 export interface ExplorationTheme {
   readonly id: string;
+  readonly presetId?: string;
   readonly name: string;
   readonly appearance: "light" | "dark";
   readonly colors: readonly string[];
@@ -70,7 +71,8 @@ export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
   },
   {
     id: "pop-art", name: "Pop Art", appearance: "light",
-    families: CORE_THEME_SAMPLE_IDS, styles: ["expressive", "print"],
+    presetId: "pop-art",
+    families: CORE_THEME_SAMPLE_IDS, featuredSample: "pie", styles: ["expressive", "print"],
     colors: ["#FFF9E8", "#FFE500", "#F32888", "#31D5E8"],
     recipeJson: popArtRecipe,
     previews: previewsFor("pop-art"),
@@ -84,6 +86,7 @@ export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
   },
   {
     id: "carbon-copy", name: "Carbon Copy", appearance: "light",
+    presetId: "carbon-copy",
     families: [...CORE_THEME_SAMPLE_IDS, "kanban"], featuredSample: "kanban", styles: ["print", "material"],
     colors: ["#F2EDDF", "#4B2C63", "#76508E", "#A53B32"],
     recipeJson: carbonCopyRecipe,
@@ -112,7 +115,8 @@ export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [
   },
   {
     id: "paper-cut", name: "Paper Cut", appearance: "light",
-    families: CORE_THEME_SAMPLE_IDS, styles: ["material", "expressive"],
+    presetId: "paper-cut",
+    families: CORE_THEME_SAMPLE_IDS, featuredSample: "sequence", styles: ["material", "expressive"],
     colors: ["#FBF8F0", "#E9F2E9", "#EB9C88", "#7EB4AA"],
     recipeJson: paperCutRecipe,
     previews: previewsFor("paper-cut"),

@@ -21,7 +21,7 @@ exclude = [
 [package.metadata.merman]
 artifact-profile-required = true
 fixed-capabilities = ["svg"]
-wasm-inputs = ["assets/zenuml"]
+wasm-inputs = ["assets/zenuml", "assets/themes"]
 
 [features]
 # Diagram selection is independent of output formats and optional layout engines.

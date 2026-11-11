@@ -772,7 +772,6 @@ fn requirement_title_selectors_keep_only_real_unsupported_winners_residual() {
 #[test]
 fn requirement_all_presets_consume_title_fill_without_unsupported_title_diagnostics() {
     let presets = merman_render::diagram_theme::theme_preset_descriptors();
-    assert_eq!(presets.len(), 11);
     for preset in presets {
         let theme = DiagramThemeCompiler::new()
             .compile_preset(preset.preset())

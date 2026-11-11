@@ -2,12 +2,11 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-Current source examples target the unpublished `0.10.0-alpha.2` candidate. The installation section retains the available `0.10.0-alpha.1` AAR and local Maven repository; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for published choices. Use a matching source-built AAR for the candidate's facts schema `3` and theme execution evidence schema `2`.
+Current examples target `0.10.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.10.0` AAR for the current examples.
 
-> **Binding contract:** The `0.10.0-alpha.1` AAR uses Options JSON schema `3`. Kotlin classes
-> and `libmerman_android_jni.so` must come from the same publication. The downloadable Maven
-> repository uses local coordinate `io.merman:merman-android:0.10.0-alpha.1`. This release does
-> not publish that coordinate to Maven Central.
+> **Binding contract:** Kotlin classes and `libmerman_android_jni.so` must come from the same
+> `0.10.0` AAR. The published download below uses local coordinate
+> `io.merman:merman-android:0.10.0-alpha.1`; a local coordinate does not establish Maven Central availability.
 
 ## Requirements
 
@@ -64,6 +63,9 @@ Pass `-PmermanRepository=/absolute/path/to/extracted/repository`,
 the extraction root containing `io/merman/merman-android/`. Central installation requires a
 separately verified namespace, publication and public resolution of that exact coordinate;
 the local group name is not evidence of Central ownership.
+
+For a matching `0.10.0` repository built from source, use its selected group and repository path
+with `-PmermanVersion=0.10.0`. Keep its Kotlin facade and native libraries together.
 
 ## Render A Diagram
 
@@ -137,7 +139,7 @@ The default AAR is deterministic and does not bundle native clock, time-zone, or
 
 Use `Merman.runtimeCatalogJson()` to inspect the loaded artifact's exact options and payload schemas, capability/output/operation/metadata surface, constructor-owned services, and resource-to-operation mappings. Use `Merman.themeCatalogJson()` for open-ended compiled-theme presets, capabilities, font containers, semantic targets, and variants instead of maintaining Kotlin enums. Hosts should query the loaded catalogs before exposing optional choices. A custom Android build that changes the selected SKU must regenerate and package its matching Kotlin artifact contract with the native library.
 
-`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; current development document facts use their independently defined schema `3` and contain generic parser/editor facts plus required per-diagram `appearance` evidence tagged `known` or `unknown`. Known declarations carry source provenance and byte spans, independently of render metadata. Published `0.10.0-alpha.1` retains facts schema `2`; use a matching source-built AAR for schema `3`. These payload schemas are independent of Android transport version. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up). Pass full Markdown/MDX-like content plus a URI to document analysis:
+`analyzeJson` and `analyzeDocumentJson` return diagnostics schema `1`; version `0.10.0` document facts use their independently defined schema `3` and contain generic parser/editor facts plus required per-diagram `appearance` evidence tagged `known` or `unknown`. Known declarations carry source provenance and byte spans, independently of render metadata. Published `0.10.0-alpha.1` retains facts schema `2`. These payload schemas are independent of Android transport version. See the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md). Pass full Markdown/MDX-like content plus a URI to document analysis:
 
 ````kotlin
 val factsJson = Merman.analyzeDocumentFactsJson(
@@ -148,9 +150,14 @@ val factsJson = Merman.analyzeDocumentFactsJson(
 
 ## Diagram Themes
 
-Use `Merman.themeCatalogJson()` to discover presets, then select one through schema-3 options:
+Use `Merman.themeCatalogJson()` to discover 11 design groups with 14 concrete presets, including
+`paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through schema-3 options:
 
 ```kotlin
+import org.json.JSONObject
+
+val catalog = JSONObject(Merman.themeCatalogJson())
+println(catalog.getJSONArray("presets"))
 val pieSource = "pie\n\"A\":35\n\"B\":65"
 val themedSvg = Merman.renderSvg(
     pieSource,
@@ -165,7 +172,8 @@ The schema-1 catalog groups a design's `supported_appearances`, `default_appeara
 `appearances`. Swatches, `family_designs`, `application_notes`, `qualified_cells`, and the exact
 `concrete_preset_id` live in each appearance entry. Select a reading mode with
 `{"theme":{"preset":"editor","appearance":"dark"}}`; omitted appearance uses the declared default.
-Resolve Follow-app/editor in the host instead of sending `auto` to the renderer.
+Editor, Gruvbox, and Ayu provide both appearances. Resolve Follow-app/editor in the host instead
+of sending `auto` to the renderer; an unsupported explicit appearance fails.
 
 The existing `execute()` entry point accepts `export-theme-preset-json` with the plain ID
 `editor` and returns the complete editable `ThemeRecipeV1`. Keep that recipe for saving and
@@ -174,13 +182,24 @@ customization: appearance exceptions live in `design.appearances`, beside
 `action: "inspect"` and `recipe` validates every mode; `action: "materialize"` adds an optional
 concrete `appearance` and returns a selected `spec`. For rendering, put that complete object in
 `theme.recipe` and set `theme.appearance` to `dark`.
-No new JNI method or native ABI operation is required.
+
+```kotlin
+val recipeJson = Merman.execute("export-theme-preset-json", "editor").utf8Text
+val recipe = JSONObject(recipeJson)
+val options = JSONObject().put("theme", JSONObject()
+    .put("recipe", recipe).put("appearance", "dark"))
+val darkSvg = Merman.renderSvg("flowchart LR\nA[Review] --> B[Publish]", options.toString())
+```
+
+Save `recipeJson`, edit its `design` values, and parse the edited JSON instead of the round-trip
+string above. Preserve `schema_version`, `kind`, and the complete design. The [Android example](examples/MermanSmoke.kt)
+shows complete-pair export, inspection, and rendering through one-shot and reusable engines.
 
 Built-in presets are alpha, with empty public qualification cells. Catalog availability and
 family design scope do not certify the result for every diagram or output target. Flowchart
-glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
-selecting a preset does not change the look or layout engine. Fonts must be supplied by the
-host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+glow and shadow effects support the documented shapes in Classic and Neo. Other families retain
+their own look and output restrictions; selecting a preset does not change the look or layout engine.
+Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
 resources in recipes are rejected. This Kotlin AAR does not expose the native C/WASI
 memory-font constructor. See the [theme guide](../../docs/rendering/custom-diagram-themes.md)
 for version-1 recipes, support discovery, and portability policy.
@@ -291,7 +310,7 @@ The AAR contains the Kotlin API and `libmerman_android_jni.so` for both supporte
 Do not package a second native library beside it. This legacy release uses Options JSON
 schema `2` and omits math and binary codecs. Follow its
 [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) for API
-examples; the schema-3 theme examples in this README require the alpha's matching AAR.
+examples; the current theme examples in this README require a matching `0.10.0` AAR.
 
 ## Documentation And Releases
 

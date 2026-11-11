@@ -2,6 +2,8 @@
   "schema_version": 1,
   "kind": "design",
   "design": {
+    "appearances": { "light": {} },
+    "default_appearance": "light",
     "tokens": {
       "paper": { "type": "color", "label": "Aged record paper", "group": "Archive stock", "value": "#F2EDDF" },
       "surface": { "type": "color", "label": "Original form sheet", "group": "Archive stock", "value": "#FFFCF1" },
@@ -66,8 +68,8 @@
             "kind": "linear-gradient",
             "angle_degrees": 90,
             "stops": [
-              { "offset": 0, "color": { "ref": "ruling" }, "opacity": 0.22 },
-              { "offset": 0.00625, "color": { "ref": "ruling" }, "opacity": 0.22 },
+              { "offset": 0, "color": { "ref": "ruling" }, "opacity": 0.1 },
+              { "offset": 0.00625, "color": { "ref": "ruling" }, "opacity": 0.1 },
               { "offset": 0.00625, "color": { "ref": "ruling" }, "opacity": 0 },
               { "offset": 1, "color": { "ref": "ruling" }, "opacity": 0 }
             ],

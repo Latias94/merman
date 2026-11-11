@@ -46,7 +46,7 @@ binding compiler policy on SVG-capable artifacts and Typst's constrained policy.
 installed Node and Python consumers, Typst plugin smoke, and real Web/WASM smoke compare every field,
 including grouped supported/default appearances, concrete preset IDs and per-appearance availability,
 maturity, family design scope, preview colors, application notes, empty qualification cells,
-export kind, license, and attribution. The current catalog has eight designs and eleven concrete
+export kind, license, and attribution. The current catalog has eleven designs and fourteen concrete
 preset IDs. Do not derive this
 oracle at test time from production descriptors. Non-SVG artifacts still require an empty array;
 custom resource ceilings may change availability and need a separate expectation. Output IDs and

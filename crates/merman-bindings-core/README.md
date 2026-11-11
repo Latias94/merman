@@ -125,14 +125,21 @@ cancellation retain their operation errors.
 { "svg": { "pipeline": "resvg-safe" } }
 ```
 
-Editor previews can select one experimental compiled diagram theme through top-level `theme`, using
-exactly one `preset` or complete typed `spec`. The binding compiler maps that value to the same
-`DiagramThemeSpec` / `ThemePreset` model used by Rust and installs the resulting immutable
+SVG-enabled artifacts can select one compiled diagram theme through top-level `theme`, using
+a `preset` selector, a complete typed `spec`, or a schema-1 `ThemeRecipeV1` document.
+For example, `{"theme":{"preset":"paper-cut"}}` selects Paper Cut.
+The binding compiler maps that value to the same `DiagramThemeSpec` / `ThemePreset` model used by
+Rust and installs the resulting immutable
 `DiagramTheme` on the renderer. Raw Mermaid overrides remain top-level `site_config`, while layout,
 environment, and SVG postprocessing choices retain their independent owners. The removed
 `presentation` and `host_theme` groups are rejected rather than treated as compatibility aliases.
 Theme compilation reports requirements; it does not by itself prove the unfinished cross-family,
 cross-output portability matrix.
+
+See the [C ABI theme workflow](../merman-ffi/README.md#theme-presets-and-editable-json),
+[UniFFI theme workflow](../merman-uniffi/README.md#theme-presets-and-editable-json), and
+[theme guide](../../docs/rendering/custom-diagram-themes.md) for catalog discovery, editable
+recipe export, customization, and appearance selection.
 
 Hosts can enable `drop_native_duplicate_fallbacks` for generated labels tied to native SVG switch
 fallbacks. Independent labels with equal text are preserved.

@@ -2,10 +2,12 @@
   "schema_version": 1,
   "kind": "design",
   "design": {
+    "appearances": { "light": {} },
+    "default_appearance": "light",
     "tokens": {
       "paper": { "type": "color", "label": "Warm cotton paper", "group": "Paper stock", "value": "#FBF8F0" },
       "surface": { "type": "color", "label": "Mint face sheet", "group": "Paper stock", "description": "Shared by the upper face of Flowchart cards, Sequence actor tabs, and Class cards.", "value": "#E9F2E9" },
-      "backing": { "type": "color", "label": "Pale mint backing sheet", "group": "Paper stock", "value": "#E3EBE0" },
+      "backing": { "type": "color", "label": "Pale mint backing sheet", "group": "Paper stock", "value": "#EEF1E7" },
       "ink": { "type": "color", "label": "Navy lettering", "group": "Paper colors", "description": "Shared by clear, unfiltered labels, fine connectors, chart lines, and the soft contact shadow.", "value": "#243E4A" },
       "muted": { "type": "color", "label": "Slate annotation ink", "group": "Paper colors", "value": "#536B6F" },
       "outline": { "type": "color", "label": "Fine cut edge", "group": "Paper colors", "value": "#739A92" },
@@ -74,8 +76,8 @@
             "stops": [
               { "offset": 0, "color": { "ref": "fiber" }, "opacity": 0 },
               { "offset": 0.44, "color": { "ref": "fiber" }, "opacity": 0 },
-              { "offset": 0.44, "color": { "ref": "fiber" }, "opacity": 0.09 },
-              { "offset": 0.46, "color": { "ref": "fiber" }, "opacity": 0.09 },
+              { "offset": 0.44, "color": { "ref": "fiber" }, "opacity": 0.055 },
+              { "offset": 0.46, "color": { "ref": "fiber" }, "opacity": 0.055 },
               { "offset": 0.46, "color": { "ref": "fiber" }, "opacity": 0 },
               { "offset": 1, "color": { "ref": "fiber" }, "opacity": 0 }
             ],
@@ -89,8 +91,8 @@
             "stops": [
               { "offset": 0, "color": { "ref": "fiber" }, "opacity": 0 },
               { "offset": 0.68, "color": { "ref": "fiber" }, "opacity": 0 },
-              { "offset": 0.68, "color": { "ref": "fiber" }, "opacity": 0.06 },
-              { "offset": 0.7, "color": { "ref": "fiber" }, "opacity": 0.06 },
+              { "offset": 0.68, "color": { "ref": "fiber" }, "opacity": 0.035 },
+              { "offset": 0.7, "color": { "ref": "fiber" }, "opacity": 0.035 },
               { "offset": 0.7, "color": { "ref": "fiber" }, "opacity": 0 },
               { "offset": 1, "color": { "ref": "fiber" }, "opacity": 0 }
             ],

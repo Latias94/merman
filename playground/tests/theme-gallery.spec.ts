@@ -6,6 +6,7 @@ import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 import { CORE_THEME_SAMPLE_IDS } from "../src/themes/families";
 import { optionalFeatureOutput } from "./helpers/build-manifest";
 import { expectNoDocumentOverflow, monitorBrowserErrors, waitForPreviewSvg } from "./helpers/playground";
+import { readSavedThemeRecipe } from "./helpers/theme-recipe";
 
 const workspace = {
   ...DEFAULT_WORKSPACE_SNAPSHOT,
@@ -48,7 +49,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(page.locator("[data-theme-launcher]:visible")).toBeFocused();
   await page.locator("[data-theme-launcher]:visible").click();
   const catalog = panel.getByTestId("theme-catalog");
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(20);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(17);
   await expect(catalog.locator('[data-theme-choice="mermaid:forest"]')).toBeVisible();
   await expect(catalog.locator('[data-theme-choice="preset:brutalist"]')).toHaveAttribute("aria-pressed", "true");
   expect(requests.some((url) => url.endsWith(galleryOutput))).toBe(true);
@@ -77,8 +78,8 @@ test("one theme catalog loads with the appearance panel and searches every sourc
     ["Mermaid.js official", "mermaid", 8],
     ["Merman built-in presets", "builtin", presetCount],
     ["--theme-preset", "builtin", presetCount],
-    ["Merman theme examples", "exploration", 20],
-    ["Merman example · JSON", "exploration", 20],
+    ["Merman theme examples", "exploration", 17],
+    ["Merman example · JSON", "exploration", 17],
   ] as const) {
     await search.fill(query);
     await expect(groups).toHaveCount(1);
@@ -92,7 +93,7 @@ test("one theme catalog loads with the appearance panel and searches every sourc
   await expect(search).toHaveValue("");
   await expect(groups).toHaveCount(4);
   await expect(choices).toHaveCount(1);
-  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(20);
+  await expect(catalog.locator("[data-theme-exploration]")).toHaveCount(17);
   await expect(panel).toBeVisible();
   await expect(panel.getByTestId("theme-current-name")).toHaveText("Brutalist");
   errors.assertNone();
@@ -132,7 +133,7 @@ test("catalog separates source/default from metadata-grouped official designs an
   await expect(official.locator("[data-theme-source-label]")).toHaveText(Array(8).fill("Mermaid.js official"));
   await expect(official).toContainText("Compare");
   await expect(choices.locator('[data-theme-group="builtin"]')).toContainText('theme: { preset: "…" }');
-  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(20);
+  await expect(choices.locator('[data-theme-group="exploration"] [data-theme-choice]')).toHaveCount(17);
   for (const id of ["prism", "monograph"]) {
     await expect(choices.locator(`[data-theme-choice="exploration:${id}"]`)).toHaveCount(1);
   }
@@ -165,7 +166,7 @@ for (const [id, name] of [["atlas", "Atlas"]]) {
     await page.getByRole("menuitem", { name: "Copy workspace link", exact: true }).click();
     const url = await page.evaluate(() => navigator.clipboard.readText());
     const applied = decodeShareHash(new URL(url).hash)!;
-    const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
+    const recipe = await readSavedThemeRecipe(id);
     expect(applied.themeRecipeJson).toBe(recipe);
     expect(applied.themePresetId).toBeNull();
     expect(applied.themeRecipeLabel).toEqual({ name, source: "exploration" });
@@ -219,7 +220,7 @@ for (const id of ["atlas", "nightfall", "letterpress", "grove", "riso", "phospho
       await page.addInitScript(() => {
         if (window === window.top && (location.protocol === "http:" || location.protocol === "https:")) localStorage.setItem("merman-language", "en");
       });
-      const recipe = await readFile(new URL(`../src/themes/recipes/${id}.theme.json`, import.meta.url), "utf8");
+      const recipe = await readSavedThemeRecipe(id);
       const source = await readFile(new URL(`../src/themes/samples/${sample}.mmd`, import.meta.url), "utf8");
       const config = await readFile(new URL(`../src/themes/samples/${sample}.config.json`, import.meta.url), "utf8");
       await page.goto(`./${encodeShareHash({

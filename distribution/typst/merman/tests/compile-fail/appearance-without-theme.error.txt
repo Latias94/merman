@@ -1,0 +1,1 @@
+merman theme-appearance requires `theme-preset` or `theme-recipe`

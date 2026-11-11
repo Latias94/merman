@@ -2,9 +2,9 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-Current source examples target the unpublished `0.10.0-alpha.2` candidate. The installation section retains the available `0.10.0-alpha.1` local SwiftPM package and XCFramework; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for published choices. Use a matching source-built package for the candidate's facts schema `3` and theme execution evidence schema `2`.
+Current examples target `0.10.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.10.0` package for the current examples.
 
-> **Binding contract:** Merman `0.10.0-alpha.1` uses direct UniFFI binding API `7` and Options JSON schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+> **Binding contract:** Merman `0.10.0` uses direct UniFFI binding API `7` and Options JSON schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
 ## Requirements
 
@@ -55,11 +55,11 @@ Its matching checkout supplies the generated Swift facade and `Package.swift`;
 mixing tags is unsupported. That artifact uses Options JSON schema `2`, omits math and
 binary codecs, and does not provide the complete SwiftPM archives. Follow its
 [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) for API
-examples; the schema-3 theme examples in this README require the alpha's matching build.
+examples; the current theme examples in this README require a matching `0.10.0` build.
 
 ## Build The Local Package
 
-The current source prepares `0.10.0-alpha.2`, which is not yet published. Build, package and qualify the same candidate version; the installation links above retain the available alpha.1 artifacts.
+The current source prepares `0.10.0`. Build, package and qualify the same candidate version; use the host guide to select verified public downloads.
 
 ```sh
 bash scripts/build-apple-xcframework.sh
@@ -71,7 +71,7 @@ the source-development manifest. After a complete build, produce a self-containe
 distribution from a clean source tree:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.2
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0
 ```
 
 Partial `--ios` or `--macos` builds remain useful locally but cannot be packaged as
@@ -84,19 +84,19 @@ From the clean, matching source revision and its complete staged XCFramework, se
 intended HTTPS upload destination for the binary ZIP:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0-alpha.2 \
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0 \
   --source-commit <source-commit> \
-  --artifact-url https://github.com/Latias94/merman/releases/download/v0.10.0-alpha.2/Merman.xcframework-v0.10.0-alpha.2.zip
+  --artifact-url https://github.com/Latias94/merman/releases/download/v0.10.0/Merman.xcframework-v0.10.0.zip
 ```
 
 The producer freezes these seven release assets:
 
 | Asset | Use |
 | --- | --- |
-| `Merman.xcframework-v0.10.0-alpha.2.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
-| `Merman-swiftpm-v0.10.0-alpha.2.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
-| `Merman-swiftpm-remote-v0.10.0-alpha.2.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
-| `Merman-swiftpm-v0.10.0-alpha.2.Package.swift` | Identical copy of the thin tree's remote manifest |
+| `Merman.xcframework-v0.10.0.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
+| `Merman-swiftpm-v0.10.0.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
+| `Merman-swiftpm-remote-v0.10.0.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
+| `Merman-swiftpm-v0.10.0.Package.swift` | Identical copy of the thin tree's remote manifest |
 
 The extracted remote directory contains `Package.swift`, `Sources/Merman`, `README.md`,
 `SOURCE_AVAILABILITY.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`.
@@ -120,8 +120,8 @@ repository containing its unmodified contents, and an exact delivery commit:
 
 ```text
 python3 scripts/apple_qualify.py \
-  --package-archive target/apple-package/Merman-swiftpm-remote-v0.10.0-alpha.2.zip \
-  --work-dir /absolute/fresh/apple-remote-proof --version 0.10.0-alpha.2 --simulator \
+  --package-archive target/apple-package/Merman-swiftpm-remote-v0.10.0.zip \
+  --work-dir /absolute/fresh/apple-remote-proof --version 0.10.0 --simulator \
   --remote-package-url https://your-controlled-host/Merman.git \
   --remote-package-revision <40-character-delivery-commit>
 ```
@@ -157,7 +157,7 @@ use the candidate version, exact source commit and a fresh work directory:
 
 ```text
 python3 platforms/apple/tests/qualify_remote.py \
-  --work-dir target/apple-https-qualification --version 0.10.0-alpha.2 \
+  --work-dir target/apple-https-qualification --version 0.10.0 \
   --source-commit <40-character-source-commit> \
   --xcframework platforms/apple/Merman.xcframework
 ```
@@ -267,7 +267,8 @@ remain open strings.
 
 ## Diagram Themes
 
-Use `client.themeCatalogJson()` to discover presets, then select one through schema-3 options:
+Use `client.themeCatalogJson()` to discover 11 design groups with 14 concrete presets, including
+`paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through schema-3 options:
 
 ```swift
 let pieSource = "pie\n\"A\":35\n\"B\":65"
@@ -285,7 +286,7 @@ and `appearances`. Swatches, `family_designs`, `application_notes`, `qualified_c
 `concrete_preset_id` belong to each appearance. Use
 `{"theme":{"preset":"editor","appearance":"dark"}}` for an explicit reading mode.
 Resolve Follow-app/editor in Swift; an omitted selector uses the design's default, and an explicit
-unsupported appearance fails.
+unsupported appearance fails. Editor, Gruvbox, and Ayu provide both Light and Dark.
 
 The existing `execute(request:)` path accepts `export-theme-preset-json` with the plain `editor`
 ID and returns the complete `ThemeRecipeV1`, including `design.appearances` and
@@ -293,13 +294,18 @@ ID and returns the complete `ThemeRecipeV1`, including `design.appearances` and
 Send a schema-1 `materialize-theme-json` request with `action: "inspect"` and `recipe` to inspect
 all modes; `action: "materialize"` adds an optional concrete `appearance` and returns its `spec`.
 Pass the full recipe object with `appearance` in the render options' `theme` selection.
-The Swift records and UniFFI API remain unchanged.
+The [paired authoring example](examples/smoke/Sources/MermanAppleSmoke/ThemeAuthoring.swift)
+shows the exact `MermanOperationRequestV4` calls, complete-pair export, inspection, and rendering.
+The [editable recipe example](examples/smoke/Sources/MermanAppleSmoke/ThemeRecipes.swift) shows
+editing and reuse across clients. Exported `result.data` is complete JSON: save it, edit `design`
+values, and reload it with `JSONSerialization`, retaining `schema_version`, `kind`, and both
+appearances before passing the recipe back to rendering. The Swift records and UniFFI API remain unchanged.
 
 Built-in presets are alpha, with empty public qualification cells. Catalog availability and
 family design scope do not certify the result for every diagram or output target. Flowchart
-glow and shadow effects require Classic look (`site_config.flowchart.look: "classic"`);
-selecting a preset does not change the look or layout engine. Fonts must be supplied by the
-host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
+glow and shadow effects support the documented shapes in Classic and Neo. Other families retain
+their own look and output restrictions; selecting a preset does not change the look or layout engine.
+Fonts must be supplied by the host and final SVG viewer; font-stack names do not embed fonts, and caller-provided font
 resources in recipes are rejected. See the [theme guide](../../docs/rendering/custom-diagram-themes.md)
 for version-1 recipes, support discovery, and portability policy.
 

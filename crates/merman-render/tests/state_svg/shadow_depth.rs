@@ -520,18 +520,23 @@ fn cascade_keeps_previous_alpha_and_reset_semantics_without_painting_source_twic
                     && n.attribute("id")
                         .is_some_and(|id| id.ends_with("-theme-effect-body-depth"))
             }) {
-                let blur = filter
+                assert!(
+                    !filter
+                        .children()
+                        .any(|node| node.has_tag_name("feGaussianBlur"))
+                );
+                let offset = filter
                     .children()
-                    .find(|n| n.attribute("result") == Some("merman-shadow-1-blur"))
+                    .find(|n| n.attribute("result") == Some("merman-shadow-1-offset"))
                     .unwrap();
                 if second == EffectInput::Previous {
-                    assert_eq!(blur.attribute("in"), Some("merman-shadow-0-result"));
+                    assert_eq!(offset.attribute("in"), Some("merman-shadow-0-result"));
                     assert_eq!(
                         final_inputs(filter),
                         ["merman-shadow-1-shadow", "merman-shadow-0-shadow"]
                     );
                 } else {
-                    assert_eq!(blur.attribute("in"), Some("SourceGraphic"));
+                    assert_eq!(offset.attribute("in"), Some("SourceGraphic"));
                     assert_eq!(final_inputs(filter), ["merman-shadow-1-shadow"]);
                 }
             }

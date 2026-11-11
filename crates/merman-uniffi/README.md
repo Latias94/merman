@@ -4,7 +4,7 @@
 
 Generate high-level native bindings for Merman's headless Mermaid parser, analyzer, layout engine, and renderers with [UniFFI](https://mozilla.github.io/uniffi-rs/). This crate is the source of the published Python package and the Apple SwiftPM package; native hosts that need a stable language-neutral C boundary should use [`merman-ffi`](https://crates.io/crates/merman-ffi).
 
-> Merman `0.10.0-alpha.2` uses direct UniFFI binding API `7` and Options JSON schema `3`. The unchanged UniFFI number does not make wrappers from other releases interchangeable. The C ABI and text-measurement protocol have independent versions. Regenerate bindings and ship them with the exact native library used to generate them.
+> Merman `0.10.0` uses direct UniFFI binding API `7` and Options JSON schema `3`. The unchanged UniFFI number does not make wrappers from other releases interchangeable. The C ABI and text-measurement protocol have independent versions. Regenerate bindings and ship them with the exact native library used to generate them.
 
 ## Use A Language Wrapper
 
@@ -55,7 +55,7 @@ The generated API shape remains stable for smaller feature profiles. Lint catalo
 
 Facts schema `3` requires per-diagram `appearance` evidence with `known` or `unknown` state. Known declarations carry exact source spans and provenance; they are distinct from render metadata. See the [source appearance migration](../../docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
-Merman `0.10.0-alpha.2` uses facts schema `3`; published `0.10.0-alpha.1` retains facts schema `2`. Regenerate wrappers from the exact native library for the selected release and ship them together.
+Merman `0.10.0` uses facts schema `3`; published `0.10.0-alpha.1` retains facts schema `2`. Regenerate wrappers from the exact native library for the selected release and ship them together.
 
 API 7 preserves theme-authoring diagnostics and exposes `requested_layout_profile` and `compact_attempted` in `MermanAsciiOutputPlan`,
 which uses ASCII output schema `3`. `layout_profile` reports the effective Canonical or Compact
@@ -94,6 +94,18 @@ The ASCII payload records projection, encoding, emitted dimensions, and viewport
 
 Generated `MermanError.Binding` values expose `MermanErrorKind`, an optional `capability_id`, optional `MermanResourceErrorDetails`, optional `MermanDiagnosticErrorDetails`, and optional `MermanCancelledDetails`. Unknown operations have no capability ID; known requests missing a backend preserve the exact descriptor capability ID. Resource failures preserve the stable cause (`ceiling` or `arithmetic_overflow`), limit ID, phase, actual value, effective maximum, and selected profile. Parser and ASCII failures may preserve a stable diagnostic code, optional source span, and bounded field or diagram context without retaining complete source text; ASCII width failures also expose requested/actual widths, width profile, and fallback reason when available. Cancellation remains a separate terminal class with `reason` (`requested` or `deadline_exceeded`) and the observed `phase`; none of these cases should be inferred from display text.
 
+## Theme Presets And Editable JSON
+
+With `svg` enabled, pass the following JSON through `render_svg()`'s `options_json`, or through
+`MermanOperationRequestV4.options_json` for generic execution.
+
+```json
+{"version":3,"theme":{"preset":"paper-cut"}}
+```
+
+The catalog also includes Carbon Copy (`carbon-copy`) and Pop Art (`pop-art`).
+For paired designs, use `{"theme":{"preset":"editor","appearance":"dark"}}`.
+
 Theme authoring operations (`materialize-theme-json`, `describe-theme-support-json`, and
 `export-theme-preset-json`) use the same generic `execute()` path for one-shot and reusable
 consumers. Read the schema-1 theme catalog through `theme_catalog_json()`; the old
@@ -102,13 +114,24 @@ the shared `theme_authoring` envelope with diagnostic code, path, and details.
 
 The catalog groups one design's supported/default appearances; family guidance, swatches,
 qualification, and `concrete_preset_id` live in each `appearances` entry. Preset export takes a
-plain ID such as `editor` and returns the complete schema-1 `ThemeRecipeV1`. Shared values and
+plain ID such as `paper-cut` and returns the complete schema-1 `ThemeRecipeV1`. Shared values and
 appearance exceptions live inside `design`, not separate versioned recipes.
+To export it, construct `MermanOperationRequestV4` with `operation_id` set to
+`export-theme-preset-json` and `source` set to the raw string `paper-cut`. Set `uri`, `options_json`,
+and `control` to the host language's null value. Pass it to `execute()` and decode the returned
+`data` bytes as UTF-8 JSON.
+Change `design.tokens.surface.value` to customize Paper Cut, then save the complete recipe and
+supply it as `options_json.theme` in a render call.
+
 `materialize-theme-json` accepts a schema-1 request with `action: "inspect"` and `recipe` to
 validate all modes, or `action: "materialize"` with an optional concrete `appearance`.
-Render options select `{"theme":{"preset":"editor","appearance":"dark"}}`, or a whole recipe
-object with the same selector. Hosts resolve Follow-app/editor before calling the library.
+For a paired recipe, put the saved document in `theme.recipe` and choose `theme.appearance`.
+Hosts resolve Follow-app/editor before calling the library.
 The existing API 7 records, methods, and generated foreign bindings carry these JSON payloads.
+Catalog availability, family design scope, and output qualification are separate facts. Inspect
+the selected appearance and actual render metadata before requiring portable output.
+See the [theme guide](../../docs/rendering/custom-diagram-themes.md) for editable JSON, shared
+tokens, appearance overrides, import/export, and separate Mermaid `site_config` configuration.
 
 ## Text Measurement Ownership
 

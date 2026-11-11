@@ -102,12 +102,16 @@ async function expectBrutalistDepth(page: Page, root: Locator): Promise<void> {
               && element.style.filter === "none" && element.style.getPropertyPriority("filter") === "important"),
           childrenUnfiltered: [...body.querySelectorAll("circle")].every((circle) => getComputedStyle(circle).filter === "none"),
           graphs: graphs.length,
-          offsets: [...(graph?.querySelectorAll("feOffset") ?? [])].map((offset) => [
-            Number(offset.getAttribute("dx")), Number(offset.getAttribute("dy")),
-          ]),
-          deviations: [...(graph?.querySelectorAll("feGaussianBlur") ?? [])]
-            .map((blur) => Number(blur.getAttribute("stdDeviation"))),
-          colors: [...(graph?.querySelectorAll("feFlood") ?? [])].map((flood) => getComputedStyle(flood).floodColor),
+          colorSpace: graph?.getAttribute("color-interpolation-filters"),
+          primitives: [...(graph?.children ?? [])].map((element) => element.localName),
+          offsets: [...(graph?.querySelectorAll("feOffset") ?? [])].map((offset) => ({
+            input: offset.getAttribute("in"), result: offset.getAttribute("result"),
+            dx: Number(offset.getAttribute("dx")), dy: Number(offset.getAttribute("dy")),
+          })),
+          matrices: [...(graph?.querySelectorAll("feColorMatrix") ?? [])].map((matrix) => ({
+            input: matrix.getAttribute("in"), result: matrix.getAttribute("result"), type: matrix.getAttribute("type"),
+            values: (matrix.getAttribute("values") ?? "").trim().split(/\s+/u).map(Number),
+          })),
           merge: merge?.localName,
           output: [...(merge?.children ?? [])].map((node) => [node.localName, node.getAttribute("in")]),
         };
@@ -125,8 +129,15 @@ async function expectBrutalistDepth(page: Page, root: Locator): Promise<void> {
     expect(depth, `${depth.owner} owns one hard-shadow silhouette below its connections and face`).toMatchObject({
       owners: 1, look: "neo", hidden: "true", pointerEvents: "none", layer: "layer", bodies: 1,
       identityFree: true, beforeEdges: true, beforeFace: true, priority: "important", wins: true,
-      faceUnfiltered: true, childrenUnfiltered: true, graphs: 1, offsets: [[6, 6]], deviations: [0],
-      colors: ["rgb(0, 0, 0)"], merge: "feMerge", output: [["feMergeNode", "merman-shadow-0-shadow"]],
+      faceUnfiltered: true, childrenUnfiltered: true, graphs: 1, colorSpace: "sRGB",
+      primitives: ["feOffset", "feColorMatrix", "feMerge"],
+      offsets: [{ input: "SourceGraphic", result: "merman-shadow-0-offset", dx: 6, dy: 6 }],
+      // Zero blur is omitted; the sRGB matrix paints black while preserving the offset alpha.
+      matrices: [{
+        input: "merman-shadow-0-offset", result: "merman-shadow-0-shadow", type: "matrix",
+        values: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0],
+      }],
+      merge: "feMerge", output: [["feMergeNode", "merman-shadow-0-shadow"]],
     });
     expect(depth.geometry, depth.owner!).toEqual(depth.faceGeometry);
     expect(depth.inlineId, depth.owner!).toBe(depth.filterId);

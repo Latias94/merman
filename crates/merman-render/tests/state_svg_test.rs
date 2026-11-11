@@ -2449,10 +2449,11 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
                 .children()
                 .filter(|node| node.is_element())
                 .collect::<Vec<_>>();
-            let blur = primitives
-                .iter()
-                .find(|node| node.has_tag_name("feGaussianBlur"))
-                .unwrap();
+            assert!(
+                !primitives
+                    .iter()
+                    .any(|node| node.has_tag_name("feGaussianBlur"))
+            );
             let offset = primitives
                 .iter()
                 .find(|node| node.has_tag_name("feOffset"))
@@ -2461,8 +2462,7 @@ fn state_svg_derives_safe_typed_drop_shadow_regions_for_classic_state_nodes() {
                 .iter()
                 .find(|node| node.has_tag_name("feFlood"))
                 .unwrap();
-            assert_eq!(blur.attribute("in"), Some("SourceGraphic"));
-            assert_eq!(blur.attribute("stdDeviation"), Some("0"));
+            assert_eq!(offset.attribute("in"), Some("SourceGraphic"));
             assert_eq!(offset.attribute("dx"), Some("5"));
             assert_eq!(offset.attribute("dy"), Some("6"));
             assert_eq!(flood.attribute("flood-color"), Some("#111827"));

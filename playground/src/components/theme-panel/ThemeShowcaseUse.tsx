@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { downloadBlob } from "@/src/lib/export";
-import { captureProjectHandoff, generateProjectHandoff, type ProjectUseTarget } from "@/src/lib/project-handoff";
+import { captureProjectHandoff, generateProjectHandoff, ProjectHandoffError, type ProjectUseTarget } from "@/src/lib/project-handoff";
+import { themeChoiceFields } from "@/src/lib/diagram-appearance";
 import { projectError } from "@/src/runtime/error-projection";
 import { retryMermanRuntime } from "@/src/runtime/merman";
 import { MERMAID_JS_VERSION } from "@/src/runtime/mermaid-requirements";
@@ -22,6 +23,7 @@ import { inspectThemeRecipe } from "@/src/lib/theme-appearance";
 import { isThemeSampleId } from "@/src/themes/families";
 import { themeSampleFor } from "@/src/lib/theme-library";
 import { ThemeSampleNote } from "./ThemeSampleNote";
+import { explorationThemeChoice } from "./theme-selection";
 
 type UseTab = "theme" | ProjectUseTarget;
 const TABS: readonly UseTab[] = ["theme", "rust", "cli", "web"];
@@ -58,13 +60,16 @@ export function ThemeShowcaseUse({ theme, appearance, sampleId, onSampleChange, 
   const result = useMemo(() => {
     if (!target || !facade) return { bundle: null, error: null };
     try {
+      const catalog = theme.presetId ? facade.themeCatalog() : null;
+      const choice = explorationThemeChoice(theme, catalog, appearance);
+      if (!choice) throw new ProjectHandoffError("preset-unavailable");
       const snapshot = captureProjectHandoff({
         workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, diagramTheme: "auto", diagramFont: "inherit",
-          ...(theme.appearances ? { themeAppearance: appearance } : {}),
-          themePresetId: null, themeRecipeJson: theme.recipeJson, themeRecipeLabel: { name: theme.name, source: "exploration" } },
+          ...themeChoiceFields(choice) },
         renderState: { status: "empty" },
+        themeCatalog: catalog,
         validateThemeRecipe: (raw) => facade.validateThemeRecipe(raw),
-        themeRecipeInspection: inspectThemeRecipe(facade, theme.recipeJson),
+        themeRecipeInspection: choice.kind === "recipe" ? inspectThemeRecipe(facade, choice.recipeJson) : null,
         hostAppearance: appearance,
         versions: { merman: facade.packageVersion, mermaid: MERMAID_JS_VERSION },
         buildIdentity: typeof __PLAYGROUND_BUILD__ === "undefined" ? undefined : __PLAYGROUND_BUILD__,
@@ -101,7 +106,9 @@ export function ThemeShowcaseUse({ theme, appearance, sampleId, onSampleChange, 
   return <section aria-labelledby={`${id}-title`} className="min-w-0 space-y-3 rounded-lg border bg-muted/10 p-4 sm:p-5" data-testid="theme-showcase-use">
     <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-2">
       <h3 id={`${id}-title`} className="text-lg font-semibold tracking-tight">{t("themeShowcase.useTitle")}</h3>
-      <p className="text-xs text-muted-foreground" data-testid="theme-library-minimum-version">{t("themeLibrary.requiresVersion", { version: "0.10.0-alpha.2" })}</p>
+      <p className="text-xs text-muted-foreground" data-testid="theme-library-minimum-version">{theme.presetId
+        ? t("themeLibrary.requiresMatchingSource")
+        : t("themeLibrary.requiresVersion", { version: "0.10.0-alpha.2" })}</p>
     </div>
     <p className="max-w-3xl text-xs leading-relaxed text-muted-foreground">{t("themeShowcase.useHint")}</p>
     <p className="text-xs text-muted-foreground" data-testid="theme-adoption-appearance" data-theme-adoption-sample={sample.id} data-theme-adoption-appearance={appearance}>

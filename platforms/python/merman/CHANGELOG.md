@@ -4,6 +4,35 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.10.0] - Unreleased
+
+Cumulative changes since the latest stable Python package, `0.9.3`. Python and native Merman both use stable version `0.10.0`; see the [stable upgrade guide](../../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.
+
+| Upgrading from | Next step |
+| --- | --- |
+| `0.9.3` | Apply the breaking changes below and refresh output snapshots. |
+| `0.10.0a1` or `0.10.0a2` | Review the guide's remaining contract and theme-catalog changes. |
+
+### Breaking changes
+
+- Upgrade the generated Python wrapper and native library as one wheel; regenerate both from the same source revision for custom builds. Direct UniFFI binding API remains `7`, independently of the JSON schema changes.
+- Migrate Options JSON from schema `2` to `3`: replace `presentation` styling with top-level `theme`, use `raster.matte` and `pdf.page_paint` for custom export backgrounds, and remove retired presentation-profile and host-owned CSS/security fields. Replace `presentation_catalog_json()` with `theme_catalog_json()`.
+- Update analysis-facts decoders from schema `2` to `3` for required per-diagram `appearance` declarations with source provenance and UTF-8 byte spans. Render metadata separately uses `theme_execution_evidence.version: 2` with required nullable `materialized_theme`; preserve unknown evidence versions as opaque data. [#277](https://github.com/Latias94/merman/pull/277)
+- Custom text measurers must handle `html-line-height` (operation `22`) with a length result or return `None` for fallback. Text-measurement protocol remains `1`. [#249](https://github.com/Latias94/merman/pull/249)
+- For `edge-geometry-json`, replace operation-local `max_svg_bytes` with `max_geometry_json_bytes` and remove SVG-element/backend overrides. The geometry payload remains schema `1`; see the [resource migration](../../../docs/migrations/edge-geometry-resources.md).
+- Handle formula rejection under `constrained`, or choose `interactive` or an appropriate trusted policy with host execution and memory limits. Installing a math-capable wheel does not relax resource admission.
+
+### Added
+
+- Apply optional themes from 11 design groups with 14 concrete presets, including `paper-cut`, `carbon-copy`, and `pop-art`, or import editable JSON. Core colors and fonts reach all 34 diagram families, respecting source-owned styles and the typography used to measure labels. Presets retain alpha maturity; effects and output support depend on the family, shape, look, and target. See the [theme guide](../../../docs/rendering/custom-diagram-themes.md) and [coverage limits](../../../docs/rendering/diagram-theme-coverage.md). [#178](https://github.com/Latias94/merman/pull/178), [#277](https://github.com/Latias94/merman/pull/277), [#299](https://github.com/Latias94/merman/pull/299)
+- Keep light and dark appearances in one schema-1 recipe. Editor, Gruvbox, and Ayu are paired designs; catalog consumers read `appearances` and each `concrete_preset_id`. Use `export-theme-preset-json` and `materialize-theme-json` through `execute()` to retain editable recipes and validate every appearance. Resolve Follow-app policy in Python before selecting `light` or `dark`. See the [authoring example](examples/theme_authoring.py). [#284](https://github.com/Latias94/merman/pull/284)
+- Install five native wheels without Rust on macOS ARM64/x86-64, GNU Linux ARM64/x86-64, or Windows x86-64. Linux requires glibc `2.28+`; Python remains `3.9+`. The ordinary wheel includes SVG math, Cytoscape/ELK, ASCII, and analysis, while PNG/JPEG/PDF encoders and system font discovery remain absent. See the [package guide](README.md). [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
+
+### Changed and fixed
+
+- Advance from Mermaid `12.1.0` to `12.3.0`, including timed Flowchart Step edges, numbered badges, nine `bpmn-*` shapes, and updated Swimlane and Usecase behavior. Static output retains Step edges and badges without browser animation. Review snapshots for ELK `0.12.1` routing, label clearance, containers, and packing; see the [Mermaid migration](../../../docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
+- Correct Class, Sequence, and State source handling and label geometry; semantic/layout JSON preserves the selected Mermaid numeric behavior. ASCII Flowchart feedback edges route around occupied geometry, and Sequence accepts `and` sections in `par_over`. [#282](https://github.com/Latias94/merman/pull/282), [#286](https://github.com/Latias94/merman/pull/286), [#287](https://github.com/Latias94/merman/pull/287), [#294](https://github.com/Latias94/merman/pull/294), [#297](https://github.com/Latias94/merman/pull/297)
+
 ## [0.10.0a2] - 2026-11-06
 
 Changes since `0.10.0a1`, corresponding to Merman `0.10.0-alpha.2`. See the [host installation guide](../../../docs/release/PREBUILT_PRODUCTS.md) for independently verified package availability.

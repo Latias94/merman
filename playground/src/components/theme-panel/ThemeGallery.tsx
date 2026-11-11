@@ -9,9 +9,9 @@ import { themeFamilyTreatment } from "@/src/lib/theme-discovery";
 import type { WorkspaceSnapshot } from "@/src/lib/workspace-snapshot";
 import { EXPLORATION_THEMES } from "@/src/themes/catalog";
 import { ThemeChoiceCards, type ThemeCatalogChoice } from "./ThemeChoiceCards";
-import { currentRecipeIdentity, selectedThemeKey } from "./theme-selection";
+import { currentRecipeIdentity, galleryExplorations, selectedExplorationTheme, selectedThemeKey } from "./theme-selection";
 import { ThemeShowcaseLauncher } from "./ThemeShowcaseLauncher";
-import { preferredAppearanceForSelection } from "@/src/lib/theme-appearance";
+import { preferredAppearanceForSelection, selectedPresetCatalogEntry } from "@/src/lib/theme-appearance";
 import { themeDesignTreatment } from "@/src/lib/theme-library";
 
 export default function ThemeGallery({ workspace, mermaidThemes, presets, catalog, selectedAppearance, catalogReady, familyId, pending, canSelectRecipes, onSelect }: {
@@ -29,9 +29,12 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   const { t, i18n } = useTranslation();
   const searchId = useId();
   const [query, setQuery] = useState("");
-  const recipe = currentRecipeIdentity(workspace, EXPLORATION_THEMES, t("appearance.importedTheme"));
+  const explorations = galleryExplorations(EXPLORATION_THEMES, catalog);
+  const recipe = currentRecipeIdentity(workspace, explorations, t("appearance.importedTheme"));
   const selectedKey = selectedThemeKey(workspace, EXPLORATION_THEMES, catalog);
-  const selectedExploration = EXPLORATION_THEMES.find((theme) => theme.id === recipe?.explorationId);
+  const selectedExploration = selectedExplorationTheme(workspace, EXPLORATION_THEMES, catalog);
+  const recipePreset = recipe && selectedExploration
+    ? selectedPresetCatalogEntry(catalog, selectedExploration.presetId ?? null) : null;
   const entries: ThemeCatalogChoice[] = [
     ...(catalog ? [{ key: "mermaid:auto", name: t("themes.auto"), source: "automatic" as const,
       choice: { kind: "mermaid" as const, theme: "auto" as const }, available: true },
@@ -67,7 +70,7 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
       treatment: pending ? "waiting" : themeFamilyTreatment(preset.appearances.find((entry) =>
         entry.appearance === (selectedKey === `preset:${preset.id}` ? selectedAppearance : preset.default_appearance)) ?? { family_designs: [] }, familyId),
     })),
-    ...EXPLORATION_THEMES.map((theme): ThemeCatalogChoice => ({
+    ...explorations.map((theme): ThemeCatalogChoice => ({
       key: `exploration:${theme.id}`,
       name: recipe?.explorationId === theme.id ? recipe.name : theme.name,
       source: "exploration",
@@ -80,16 +83,17 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
       searchTerms: theme.families.map((family) => `${family} ${t(`themeGallery.samples.${family}`)}`).join(" "),
       treatment: pending ? "waiting" : themeDesignTreatment(theme, familyId),
       designedFamilies: theme.families,
-      available: canSelectRecipes,
-      loading: !canSelectRecipes,
+      available: canSelectRecipes && (!theme.presetId || catalog !== null),
+      loading: !canSelectRecipes || (!!theme.presetId && !catalogReady),
     })),
   ];
   if (recipe && !recipe.explorationId) entries.push({
     key: "recipe:current", name: recipe.name, source: recipe.source,
-    choice: { kind: "recipe", recipeJson: recipe.recipeJson, label: {
+    choice: { kind: "recipe", recipeJson: recipe.recipeJson, compose: true, appearance: workspace.themeAppearance ?? "default", label: {
       name: recipe.name, source: recipe.source, ...(recipe.derivedFrom ? { derivedFrom: recipe.derivedFrom } : {}),
     } },
-    description: t("appearance.currentRecipe"), available: canSelectRecipes, loading: !canSelectRecipes,
+    description: t("appearance.currentRecipe"), available: canSelectRecipes && recipePreset?.available !== false, loading: !canSelectRecipes,
+    unavailableReason: recipePreset && !recipePreset.available ? recipePreset.preset.availability_reason_ids.join(", ") : undefined,
   });
   if (workspace.themePresetId && !presets.some((preset) => preset.id === workspace.themePresetId) &&
     !catalog?.presets.some((entry) => entry.appearances.some((appearance) => appearance.concrete_preset_id === workspace.themePresetId))) entries.push({

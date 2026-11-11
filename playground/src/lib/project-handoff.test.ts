@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { readFileSync } from "node:fs";
+import type { ThemeCatalog } from "@mermanjs/web";
 
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import { freezeRenderOperation } from "../runtime/merman-operation-input.ts";
@@ -10,6 +12,9 @@ import {
   projectHandoffMatchesWorkspace,
   ProjectHandoffError,
 } from "./project-handoff.ts";
+import { themeCatalogFixture } from "./theme-appearance.test-fixture.ts";
+import { explorationThemeChoice } from "../components/theme-panel/theme-selection.ts";
+import { themeChoiceFields } from "./diagram-appearance.ts";
 
 const versions = { merman: "0.10.0-alpha.1", mermaid: "12.3.0" };
 const presets = [{ id: "one-dark", available: true }];
@@ -195,6 +200,109 @@ test("runtime catalog presets use the actual preset APIs", () => {
   assert.match(cli.code, /--theme-preset one-dark/);
   const web = generateProjectHandoff(snapshot, { scope: "diagram", target: "web" });
   assert.deepEqual(JSON.parse(web.files["options.json"]).theme, { preset: "one-dark" });
+});
+
+function curatedCatalog(id: string): ThemeCatalog {
+  const catalog = themeCatalogFixture();
+  const preset = catalog.presets[0];
+  return { ...catalog, presets: [{ ...preset, id, display_name: id,
+    supported_appearances: ["light"], default_appearance: "light",
+    appearances: [{ ...preset.appearances[0], concrete_preset_id: id }],
+  }] };
+}
+
+for (const [id, variant] of [["paper-cut", "PaperCut"], ["carbon-copy", "CarbonCopy"], ["pop-art", "PopArt"]]) {
+  test(`${id} showcase adoption uses catalog presets in all consumers without a redundant theme file`, () => {
+    const catalog = curatedCatalog(id);
+    const raw = readFileSync(new URL(`../../../crates/merman-render/assets/themes/${id}.theme.json`, import.meta.url), "utf8");
+    const choice = explorationThemeChoice({ presetId: id, name: id, recipeJson: raw }, catalog, "follow");
+    assert.ok(choice);
+    const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, ...themeChoiceFields(choice) };
+    for (const scope of ["theme", "diagram"] as const) {
+      const snapshot = captureProjectHandoff({
+        workspace: value, renderState: scope === "diagram" ? completed(value, { themeCatalog: catalog }) : { status: "empty" },
+        themeCatalog: catalog, versions, capturedAt: "2026-11-10T00:00:00.000Z",
+        validateThemeRecipe() { assert.fail("Preset adoption must not materialize or validate a recipe copy"); },
+      });
+      for (const rustAssets of ["inline", "files"] as const) {
+        const rust = generateProjectHandoff(snapshot, { scope, target: "rust", rustAssets });
+        assert.ok(rust.code.includes(`compile_preset(ThemePreset::${variant})`));
+        assert.match(rust.code, /use merman::diagram_theme::\{DiagramThemeCompiler, ThemePreset\}/u);
+        assert.doesNotMatch(rust.code, /compile_preset_selection|ThemeRecipeV1|THEME_JSON|ThemeAppearance/u);
+        assert.equal(rust.files["theme.json"], undefined);
+        assert.deepEqual(JSON.parse(rust.files["options.json"]).theme, { preset: id, appearance: "light" });
+      }
+      const cli = generateProjectHandoff(snapshot, { scope, target: "cli" });
+      assert.ok(cli.code.includes(`--theme-preset ${id}`));
+      assert.doesNotMatch(cli.code, /--theme-file/u);
+      const web = generateProjectHandoff(snapshot, { scope, target: "web" });
+      assert.deepEqual(JSON.parse(web.files["options.json"]).theme, { preset: id, appearance: "light" });
+      for (const bundle of [cli, web]) {
+        assert.equal(bundle.files["theme.json"], undefined);
+        const record = JSON.parse(bundle.files["handoff.json"]);
+        assert.equal(record.theme.preset_id, id);
+        assert.equal(record.theme.recipe_file, null);
+      }
+    }
+  });
+
+  test(`${id} recipe snapshots stay authored recipes regardless of matching name or content`, () => {
+    const raw = readFileSync(new URL(`../../../crates/merman-render/assets/themes/${id}.theme.json`, import.meta.url), "utf8");
+    for (const source of ["imported", "exploration"] as const) {
+      const snapshot = captureProjectHandoff({
+        workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, themeRecipeJson: raw, themeRecipeLabel: { name: id, source } },
+        themeCatalog: curatedCatalog(id), renderState: { status: "empty" }, versions,
+        validateThemeRecipe: (received) => { assert.equal(received, raw); }, capturedAt: "2026-11-10T00:00:00.000Z",
+      });
+      for (const target of ["rust", "cli", "web"] as const) {
+        const bundle = generateProjectHandoff(snapshot, { scope: "theme", target });
+        assert.equal(bundle.files["theme.json"], raw);
+        assert.deepEqual(JSON.parse(bundle.files["options.json"]).theme, JSON.parse(raw));
+        assert.doesNotMatch(bundle.code, /compile_preset\(|--theme-preset/u);
+      }
+    }
+  });
+}
+
+test("a completed preset render cannot override an unavailable or missing authoritative catalog entry", () => {
+  const value = { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: "paper-cut" };
+  const catalog = curatedCatalog("paper-cut");
+  const state = completed(value, { themeCatalog: catalog });
+  for (const presets of [[], [{ ...catalog.presets[0], available: false }]]) {
+    const snapshot = captureProjectHandoff({
+      workspace: value, renderState: state, themeCatalog: { ...catalog, presets }, versions,
+      capturedAt: "2026-11-10T00:00:00.000Z",
+    });
+    assert.notEqual(snapshot.operation, null);
+    assert.equal(snapshot.presetAvailable, false);
+    for (const scope of ["theme", "diagram"] as const) {
+      for (const target of ["rust", "cli", "web"] as const) {
+        assert.throws(() => generateProjectHandoff(snapshot, { scope, target }),
+          (error) => error instanceof ProjectHandoffError && error.code === "preset-unavailable");
+      }
+    }
+  }
+});
+
+test("Rust selection preserves explicit appearances for paired IDs and non-equivalent concrete defaults", () => {
+  const curated = curatedCatalog("paper-cut");
+  const paired = themeCatalogFixture();
+  const changedDefault: ThemeCatalog = { ...curated, presets: [{ ...curated.presets[0],
+    supported_appearances: ["dark"], default_appearance: "dark",
+    appearances: [{ ...curated.presets[0].appearances[0], appearance: "dark" }],
+  }] };
+  // Metadata from a different runtime must not reduce a requested dark appearance to the enum's light default.
+  for (const [id, catalog] of [["editor", paired], ["editor-dark", paired], ["paper-cut", changedDefault]] as const) {
+    const snapshot = captureProjectHandoff({
+      workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: id, themeAppearance: "dark" },
+      renderState: { status: "empty" }, themeCatalog: catalog, hostAppearance: "dark", versions,
+      capturedAt: "2026-11-10T00:00:00.000Z",
+    });
+    const rust = generateProjectHandoff(snapshot, { scope: "theme", target: "rust" });
+    assert.ok(rust.code.includes(`compile_preset_selection("${id}", Some(ThemeAppearance::Dark))`));
+    assert.doesNotMatch(rust.code, /compile_preset\(ThemePreset::/u);
+    assert.deepEqual(JSON.parse(rust.files["options.json"]).theme, { preset: id, appearance: "dark" });
+  }
 });
 
 test("generated Rust consumers include mathematical labels available in the Web runtime", () => {

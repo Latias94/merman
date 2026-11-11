@@ -153,6 +153,58 @@
   message: "resource failure details should identify the exceeded limit",
 )
 
+#let layout-work-source = {
+  let lines = ("mindmap", "  root[Root]")
+  for branch in range(8) {
+    lines.push("    branch" + str(branch) + "[Branch " + str(branch) + "]")
+    for leaf in range(8) {
+      lines.push("      leaf" + str(branch) + "_" + str(leaf) + "[Leaf " + str(leaf) + "]")
+    }
+  }
+  lines.join("\n") + "\n"
+}
+#let default-layout-result = mermaid-result(layout-work-source, id: "api-layout-work")
+#assert(default-layout-result.ok, message: "Mindmap should fit the default interactive layout allowance")
+
+#let stricter-layout-result = mermaid-result(
+  layout-work-source,
+  options: (resources: (limits: (max_layout_work_units: 125000))),
+)
+#assert(not stricter-layout-result.ok, message: "an explicit stricter layout allowance should still apply")
+#assert.eq(stricter-layout-result.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED")
+#assert.eq(stricter-layout-result.details.resource.limit_id, "max_layout_work_units")
+#assert.eq(stricter-layout-result.details.resource.max, 125000)
+#assert.eq(stricter-layout-result.details.resource.cause, "ceiling")
+
+#let constrained-layout-result = mermaid-result(
+  layout-work-source,
+  options: (resources: (profile: "constrained")),
+)
+#assert(not constrained-layout-result.ok, message: "an explicit constrained profile should retain its own allowance")
+#assert.eq(constrained-layout-result.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED")
+#assert.eq(constrained-layout-result.details.resource.limit_id, "max_layout_work_units")
+#assert.eq(constrained-layout-result.details.resource.max, 125000)
+
+#let layout-work-options = (
+  resources: (limits: (max_layout_work_units: 20000000)),
+  svg: (diagram_id: "api-layout-work", pipeline: "resvg-safe"),
+)
+#let direct-layout-result = mermaid-result(layout-work-source, options: layout-work-options)
+#assert(direct-layout-result.ok, message: "direct options should allow an explicit finite layout budget")
+#assert(direct-layout-result.svg.contains("api-layout-work"))
+#assert.eq(default-layout-result.svg, direct-layout-result.svg)
+#let layout-work-profile = mermaid-profile(options: layout-work-options)
+#let profiled-layout-result = mermaid-result(layout-work-source, profile: layout-work-profile)
+#assert(profiled-layout-result.ok, message: "a raw-options profile should reuse the finite layout budget")
+#assert.eq(profiled-layout-result.svg, direct-layout-result.svg)
+
+#let overflowing-layout-result = mermaid-result(
+  source,
+  options: (resources: (limits: (max_layout_work_units: 4294967296))),
+)
+#assert(not overflowing-layout-result.ok, message: "layout limits must fit the WASM32 resource counter")
+#assert.eq(overflowing-layout-result.code_name, "MERMAN_OPTIONS_JSON_ERROR")
+
 #let options-svg = mermaid-svg(
   source,
   profile: svg-profile,
@@ -466,6 +518,7 @@ API fixture passed.
 #assert.eq(catalog.supported_output_ids, ("svg",))
 #assert.eq(catalog.presets.map(preset => preset.id), (
   "editor", "one-dark", "gruvbox", "ayu", "brutalist", "spotless", "cyberpunk", "ghibli",
+  "paper-cut", "carbon-copy", "pop-art",
 ))
 #assert.eq(catalog.presets.at(0).id, "editor")
 #assert.eq(catalog.presets.at(0).supported_appearances, ("light", "dark"))

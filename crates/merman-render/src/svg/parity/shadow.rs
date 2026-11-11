@@ -1,5 +1,7 @@
 //! SVG emission for bounded shadow sequences; families own the painted terminals.
 
+use std::borrow::Cow;
+
 use super::{SvgOutput, escape_attr};
 use crate::diagram_theme::{
     EffectColorSpace, EffectComposition, EffectInput, SvgFilterRegion, SvgFilterUnits,
@@ -83,6 +85,7 @@ fn write_theme_shadow_filter(
                         [stage.offset_x, stage.offset_y],
                         stage.std_deviation,
                         &stage.color,
+                        effect.color_space(),
                     );
                     let _ = write!(
                         out,
@@ -109,6 +112,7 @@ fn write_independent_shadows(
             [stage.offset_x, stage.offset_y],
             stage.std_deviation,
             &stage.color,
+            effect.color_space(),
         );
     }
     let _ = write!(out, r#"<feMerge result="merman-shadow-stack-result">"#);
@@ -138,6 +142,7 @@ fn write_cascade_depth(out: &mut impl SvgOutput, effect: &SvgShadowEffect) {
             [stage.offset_x, stage.offset_y],
             stage.std_deviation,
             &stage.color,
+            effect.color_space(),
         );
         // Previous consumes the complete previous result, including the source's alpha.
         // Keep that intermediate off-screen; only the live shadows reach the final merge.
@@ -163,25 +168,63 @@ fn write_shadow_stage(
     offset: [f32; 2],
     std_deviation: f32,
     color: &ThemeColorValue,
+    color_space: EffectColorSpace,
 ) {
-    let color = escape_attr(&color.as_css());
-    let _ = write!(
-        out,
-        r#"<feGaussianBlur in="{input}" stdDeviation="{}" result="merman-shadow-{index}-blur"/>"#,
-        std_deviation,
-    );
-    let mask = if offset == [0.0, 0.0] {
-        "blur"
-    } else {
+    // Zero sigma and zero translation are identities, including signed zero. Always name
+    // the surviving input explicitly: the previous primitive may belong to another stage.
+    let mut mask = Cow::Borrowed(input);
+    if std_deviation != 0.0 {
         let _ = write!(
             out,
-            r#"<feOffset in="merman-shadow-{index}-blur" dx="{}" dy="{}" result="merman-shadow-{index}-offset"/>"#,
+            r#"<feGaussianBlur in="{mask}" stdDeviation="{std_deviation}" result="merman-shadow-{index}-blur"/>"#,
+        );
+        mask = Cow::Owned(format!("merman-shadow-{index}-blur"));
+    }
+    if offset != [0.0, 0.0] {
+        let _ = write!(
+            out,
+            r#"<feOffset in="{mask}" dx="{}" dy="{}" result="merman-shadow-{index}-offset"/>"#,
             offset[0], offset[1],
         );
-        "offset"
-    };
+        mask = Cow::Owned(format!("merman-shadow-{index}-offset"));
+    }
+
+    let color_css = color.as_css();
+    if color_space == EffectColorSpace::Srgb
+        && let Some([red, green, blue]) = opaque_srgb_channels(&color_css)
+    {
+        // An opaque flood masked with `in` is (constant RGB, mask alpha). A color
+        // matrix expresses that in one primitive without painting the source. Use the
+        // same parsed sRGB bytes as feFlood; keep translucent floods' premultiplication
+        // and linearRGB's color conversion in the existing two-primitive expansion.
+        let _ = write!(
+            out,
+            r#"<feColorMatrix in="{mask}" type="matrix" values="0 0 0 0 {red} 0 0 0 0 {green} 0 0 0 0 {blue} 0 0 0 1 0" result="merman-shadow-{index}-shadow"/>"#,
+        );
+        return;
+    }
+
+    let color = escape_attr(&color_css);
     let _ = write!(
         out,
-        r#"<feFlood flood-color="{color}" result="merman-shadow-{index}-flood"/><feComposite in="merman-shadow-{index}-flood" in2="merman-shadow-{index}-{mask}" operator="in" result="merman-shadow-{index}-shadow"/>"#,
+        r#"<feFlood flood-color="{color}" result="merman-shadow-{index}-flood"/><feComposite in="merman-shadow-{index}-flood" in2="{mask}" operator="in" result="merman-shadow-{index}-shadow"/>"#,
     );
+}
+
+fn opaque_srgb_channels(css: &str) -> Option<[f64; 3]> {
+    let source = merman_markup::theme_color::ThemeColor::parse(css)
+        .ok()?
+        .rgba_channels();
+    let native = css.parse::<svgtypes::Color>().ok()?;
+    // Native floods use byte colors. Require exact agreement with the CSS channels,
+    // rather than rounding fractional RGB/HSL or nearly opaque alpha into this path.
+    if source.alpha != 1.0
+        || native.alpha != u8::MAX
+        || source.red != f64::from(native.red)
+        || source.green != f64::from(native.green)
+        || source.blue != f64::from(native.blue)
+    {
+        return None;
+    }
+    Some([native.red, native.green, native.blue].map(|channel| f64::from(channel) / 255.0))
 }

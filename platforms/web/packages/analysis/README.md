@@ -3,14 +3,14 @@
 Detect, validate, and analyze Mermaid source in a browser without shipping SVG rendering, ASCII
 output, or retained editor sessions.
 
-Version `0.10.0-alpha.2` uses Web transport API `9`, facts schema `3`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+Version `0.10.0` uses Web transport API `10`, facts schema `3`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
 
-Version `0.10.0-alpha.1` retains Web transport API `8`, facts schema `2`, and Options JSON schema `3`. Upgrade all package assets together and update facts consumers for the [source appearance changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
+Published `0.10.0-alpha.2` retains Web transport API `9`. Version `0.10.0-alpha.1` retains Web transport API `8`, facts schema `2`, and Options JSON schema `3`. Upgrade all package assets together and update facts consumers for the [source appearance changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web-analysis@0.10.0-alpha.2
+npm install --save-exact @mermanjs/web-analysis@0.10.0
 ```
 
 ```ts

@@ -4,12 +4,14 @@
 #set text(fill: rgb("#e5e7eb"))
 
 #let slide-profile = mermaid-profile(
-  theme-preset: "ayu-dark",
+  theme-preset: "ayu",
+  theme-appearance: "dark",
   background: "#111827",
 )
 
 #show raw.where(lang: "mermaid"): show-mermaid-blocks(
   profile: slide-profile,
+  document-context: true,
   width: 100%,
 )
 
@@ -21,6 +23,7 @@
     Demo --> PDF[PDF deck]
   ",
   profile: slide-profile,
+  document-context: true,
   width: 100%,
 )
 

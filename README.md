@@ -25,7 +25,7 @@ Rendered by Merman with Mermaid's default theme on a white canvas.
 
 ## Quick start
 
-The examples below use `0.10.0-alpha.2`. For release selection and prebuilt downloads, start
+The examples below use `0.10.0`. For release selection and prebuilt downloads, start
 with the [host installation guide][host guide].
 
 ### Rust
@@ -34,7 +34,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "=0.10.0-alpha.2"
+merman = "0.10.0"
 ```
 
 Save this as `src/main.rs`:
@@ -68,7 +68,7 @@ repeated rendering, and host integration.
 Install from Cargo and render a first diagram:
 
 ```sh
-cargo install merman-cli --version 0.10.0-alpha.2 --locked
+cargo install merman-cli --version 0.10.0 --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | merman-cli render - --output diagram.svg
 ```
 
@@ -96,10 +96,10 @@ and terminal output. Start with the [capability guide] for feature selection or 
 
 ## Optional themes
 
-**Built-in presets** such as Brutalist, Spotless, Cyberpunk, and Ghibli are selected by their
-runtime preset IDs. The standalone explorations in the [Playground theme designs]
-are editable JSON recipes, including the designs below and coordinated light/dark
-designs. Browse by diagram type and style, then copy a recipe to use it through Rust, CLI, Web, or Node.
+**Built-in presets** such as Brutalist, Ghibli, Paper Cut, Carbon Copy, and Pop Art are selected by
+their runtime preset IDs. The [Playground theme designs] include editable recipes and coordinated
+light/dark designs. Browse by diagram type and style, then use a preset or copy a recipe through
+Rust, CLI, Web, Node, or Typst.
 
 <details>
 <summary>Explore custom themes</summary>

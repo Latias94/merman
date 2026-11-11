@@ -2,16 +2,17 @@
 
 ## Reuse real inputs
 
-The [Playground theme library](../../../../playground/src/themes/) owns editable recipes, shared
-English sample sources/configurations, and saved SVGs. Open a relevant recipe and its exact preview
-before adapting it. These are standalone designs, not additional built-in preset IDs. Read current
-files rather than caching the library's size or copying every design into this skill.
+The [Playground theme library](../../../../playground/src/themes/) owns shared English sample
+sources/configurations and saved SVGs. Editable recipes live there or in the core
+[preset assets](../../../../crates/merman-render/assets/themes/). Open a relevant recipe and its exact
+preview before adapting it. Discover built-in IDs from the runtime catalog; a gallery entry alone
+does not establish registration. Read current files rather than caching the library's size.
 
-| Example | Distinct mechanism | Cross-family adaptation to study |
+| Example | Visual construction | Cross-family adaptation to study |
 | --- | --- | --- |
-| [Riso](../../../../playground/src/themes/recipes/riso.theme.json) · [Flowchart SVG](../../../../playground/src/themes/previews/riso-flowchart.svg) | Opposing independent hard offsets suggest blue/red registration passes; clear text remains single-pass. | Flowchart and Sequence bodies carry offsets; XY uses smaller bar offsets; Class and Pie keep identity through ink, type, and suitable tints. This is vector separation, not physical ink mixing. |
-| [Pop Art](../../../../playground/src/themes/recipes/pop-art.theme.json) · [Sequence SVG](../../../../playground/src/themes/previews/pop-art-sequence.svg) | Bold contours, exposed magenta/black offsets, poster faces, and a tiled dot canvas. | Use a separate Pie palette for readable percentage labels; retain family-specific effect scope instead of attaching filters to every shape. |
-| [Paper Cut](../../../../playground/src/themes/recipes/paper-cut.theme.json) · [Flowchart SVG](../../../../playground/src/themes/previews/paper-cut-flowchart.svg) | Independent hard backing sheets plus a softer contact shadow express paper thickness. | Actors and notes use different stacks; XY bars use reduced offsets; Class and Pie retain paint/type treatments without requesting the same body effect. |
+| [Riso](../../../../playground/src/themes/recipes/riso.theme.json) · [Flowchart SVG](../../../../playground/src/themes/previews/riso-flowchart.svg) | Opposing independent hard offsets suggest blue/red registration passes; clear text remains single-pass. | Flowchart and Sequence bodies carry offsets; XY keeps clean bars, four chart inks and legible labels; Class and Pie retain ink, type, and suitable tints. This is vector separation, not physical ink mixing. |
+| [Pop Art](../../../../crates/merman-render/assets/themes/pop-art.theme.json) · [Sequence SVG](../../../../playground/src/themes/previews/pop-art-sequence.svg) | Bold contours, exposed magenta/black offsets, poster faces, and a tiled dot canvas. | Use a separate Pie palette for readable percentage labels; retain family-specific effect scope instead of attaching filters to every shape. |
+| [Paper Cut](../../../../crates/merman-render/assets/themes/paper-cut.theme.json) · [Flowchart SVG](../../../../playground/src/themes/previews/paper-cut-flowchart.svg) | Independent hard backing sheets plus a softer contact shadow express paper thickness. | Actors and notes use different stacks; XY bars use reduced offsets; Class and Pie retain paint/type treatments without requesting the same body effect. |
 | [Aurora](../../../../playground/src/themes/recipes/aurora.theme.json) · [XY SVG](../../../../playground/src/themes/previews/aurora-xychart.svg) | Gradient canvas, radial light ribbons, restrained panel halos, and sharp foreground lettering. | Keep unsupported node/sector gradients in the canvas; Class uses solid surfaces; narrow chart type gives legends room. Halos and transparency do not implement backdrop blur. |
 | [Signal](../../../../playground/src/themes/recipes/signal.theme.json) · [Class SVG](../../../../playground/src/themes/previews/signal-class.svg) | Mounted sign plates, straight yellow lower flanges, condensed lettering, and perimeter warning tape. | Dense Class signatures use a measured monospace role; XY accents stay functional; [review.md](review.md#worked-failures-signal) explains the rejected bleed request and height-scaled rails. |
 | [Reading](../../../../playground/src/themes/recipes/reading.theme.json) | One shared role template with two authored appearances and independent annotation/category palettes. | Inspect both appearances using the current core scenes; changing a shared font affects its references, while appearance-specific ink and surface values remain local. Gallery previews use the matching runtime. |

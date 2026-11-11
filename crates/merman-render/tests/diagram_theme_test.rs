@@ -25,6 +25,9 @@ fn theme_catalog_contains_only_visual_presets() {
             "spotless",
             "cyberpunk",
             "ghibli",
+            "paper-cut",
+            "carbon-copy",
+            "pop-art",
         ]
     );
     assert!(ThemePreset::from_id("merman-modern").is_err());
@@ -61,6 +64,9 @@ fn preset_catalog_ids_round_trip_through_enum_projections() {
             (ThemePreset::Spotless, "Spotless"),
             (ThemePreset::Cyberpunk, "Cyberpunk"),
             (ThemePreset::Ghibli, "Ghibli"),
+            (ThemePreset::PaperCut, "Paper Cut"),
+            (ThemePreset::CarbonCopy, "Carbon Copy"),
+            (ThemePreset::PopArt, "Pop Art"),
         ]
     );
 

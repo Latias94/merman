@@ -2,9 +2,9 @@
 
 [![Crates.io](https://img.shields.io/crates/v/merman-cli.svg)](https://crates.io/crates/merman-cli) [![Documentation](https://docs.rs/merman-cli/badge.svg)](https://docs.rs/merman-cli) [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-59636e.svg)](https://github.com/Latias94/merman/blob/main/LICENSE-MIT)
 
-Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Current development source defaults omit math; select the `math` feature to include it. The current source default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
+Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Source defaults omit math; select the `math` feature to include it. The source default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-This guide covers the development CLI, including selectable theme appearances and recipe inspection. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md#0100-alpha2---2026-11-06) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
+This guide covers `merman-cli 0.10.0`, including selectable theme appearances and recipe inspection. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
 
 The command line has four explicit workflows:
 
@@ -16,6 +16,12 @@ The command line has four explicit workflows:
 | Pinned compatibility | `merman-cli mmdc` | You are migrating an `mmdc@11.16.0` command or need its naming and scanner rules |
 
 ## Install
+
+Install the CLI from source:
+
+```sh
+cargo install merman-cli --version 0.10.0 --locked
+```
 
 To install the verified `0.10.0-alpha.1` binary, pin that version with cargo-binstall:
 
@@ -31,7 +37,7 @@ Homebrew users can install the stable formula:
 brew install merman-cli
 ```
 
-The formula follows stable releases and does not select this alpha.
+The formula follows its own stable release schedule; check its installed version against the host guide.
 
 Windows users can install from Scoop's main bucket:
 
@@ -606,7 +612,7 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.10.0-alpha.2` source defaults to the standard diagram CLI with `all-diagrams`. The Rustdoc authoring command remains available in the default and release builds. For a slim binary, disable defaults and select the required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families explicitly:
+The `0.10.0` source defaults to the standard diagram CLI with `all-diagrams`. The Rustdoc authoring command remains available in the default and release builds. For a slim binary, disable defaults and select the required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families explicitly:
 
 | Build | Capabilities |
 | --- | --- |
@@ -625,7 +631,7 @@ The `0.10.0-alpha.2` source defaults to the standard diagram CLI with `all-diagr
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.10.0-alpha.2 --locked \
+cargo install merman-cli --version 0.10.0 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
@@ -788,7 +794,7 @@ merman-cli completion fish > merman-cli.fish
 merman-cli completion powershell > merman-cli.ps1
 ```
 
-Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop's main bucket provides `merman-cli`; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available package-manager versions. Stable package-manager channels do not select this alpha.
+Release archives beginning with `0.8.0-alpha.5` also carry deterministic completion snapshots and manual pages so downstream package definitions can install shell integration without executing a foreign-target binary during packaging. These assets are generated from the same Clap command tree and checked for drift in CI. Homebrew stable integration is monitored by this repository. Scoop's main bucket provides `merman-cli`; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available package-manager versions. Each external channel follows its own release schedule.
 
 The checked-in completion and manual assets represent the canonical `cli-release` complete profile.
 For a custom slim build with `shell-completions`, generate completion from that binary at runtime so

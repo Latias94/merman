@@ -60,6 +60,38 @@ the larger headless SDK's capabilities merely by sharing the renderer. In an
 extracted archive, locate those guides in the exact source commit recorded in
 `SOURCE_AVAILABILITY.md`.
 
+## Theme presets and editable configuration
+
+The `0.10.0` source candidate includes Paper Cut (`paper-cut`), Carbon Copy (`carbon-copy`),
+Pop Art (`pop-art`) and the other built-in designs. Native C and WASI SVG requests accept the
+same Options JSON theme selection:
+
+```json
+{"version":3,"theme":{"preset":"paper-cut"}}
+```
+
+For a paired design, select `{"theme":{"preset":"editor","appearance":"dark"}}`.
+The host resolves application appearance preferences before making a request. Query the loaded
+artifact's `theme-catalog` metadata to discover actual designs, declared appearances, family
+guidance and output qualification.
+
+Use `export-theme-preset-json` with the raw source `paper-cut` to obtain a complete editable
+recipe. Change `design.tokens.surface.value`, save the whole JSON document, and pass it as the
+render options' `theme` value. Paired recipes keep both appearances under `design`; select one
+with `theme: {recipe, appearance}`. In C, use the native table's corresponding operation code
+and release the result; in WASI, use the string operation ID through its request envelope and
+release its result handle. These transports have different ABI and ownership rules.
+
+See the packaged C headers and `contracts/abi/merman-v3.json`, or `docs/WASI_ABI.md`, for the
+matching request protocol. The source-tree
+[native C guide](https://github.com/Latias94/merman/blob/main/crates/merman-ffi/README.md#theme-presets-and-editable-json)
+also explains theme requests and result ownership.
+The [theme guide](https://github.com/Latias94/merman/blob/main/docs/rendering/custom-diagram-themes.md)
+covers full JSON customization and source-style precedence. Theme availability and portable
+output remain separate: fonts must be available to the consumer, and effects depend on family,
+shape, look and output target. The host guide records which published SDK version supports a
+particular theme contract.
+
 ## Native C SDK
 
 Extract the archive and configure the included consumer against its installed prefix:

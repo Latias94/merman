@@ -39,6 +39,16 @@ compiler's default linker exports. No other function, memory, table, or global e
 
 `capabilities_json` reports the flat runtime catalog schema `1` compiled from the canonical `typst-wasm` artifact recipe. It contains only current artifact facts: transport and package identity, capability/output/operation IDs, registry size, text measurement, and resource descriptors. It does not copy the global capability vocabulary or independently versioned options and result schemas. `render_svg_json`, `analyze_json`, `theme_operation_json`, and `theme_catalog_json` return result envelope schema 1 with `version`, `operation`, `ok`, `code`, `code_name`, `kind`, `capability_id`, `message`, and `data`. A successful render stores the SVG in `data.svg`; successful analysis stores canonical analysis schema 1 in `data.analysis`; successful theme operations store the shared canonical wire result in `data.result`. The theme dispatcher accepts only `materialize-theme-json`, `describe-theme-support-json`, and `export-theme-preset-json`. The theme catalog export uses operation `theme-catalog` and stores catalog schema 1 in `data.result`, including preset metadata and the actual constrained theme resource limits. Runtime discovery advertises `theme-catalog` in `metadata_ids`. A failed operation keeps its machine-readable error kind and optional capability ID. ABI 1's legacy `validate_json` projection is not exported.
 
+For SVG rendering, Typst's effective default combines the `constrained` base profile with the
+shared `interactive` layout-work allowance, currently 14,100,000 units. An omitted or null
+`resources.profile` inherits this host default; explicit `"constrained"` without a numeric layout
+override retains the shared 125,000 units. An explicit finite positive integer in
+`resources.limits.max_layout_work_units` overrides either choice. Other ceilings, options byte
+admission, and theme preflight remain constrained. The runtime catalog still reports shared profile
+capacities. These defaults and overrides require matching development wrappers and plugins; the
+published Typst `0.5.0` package is unchanged.
+Analysis and theme operations retain their ordinary constrained defaults.
+
 The closed Typst import surface has no synchronous font-measurement service. Its runtime catalog
 therefore advertises only the built-in `deterministic` text-measurement provider; Typst font assets
 and browser host callbacks are not measured by this transport.

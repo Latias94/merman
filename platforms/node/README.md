@@ -4,18 +4,18 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-This guide documents `0.10.0-alpha.2`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current Node changelog](CHANGELOG.md) for changes and upgrade actions.
+This guide documents `0.10.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current Node changelog](CHANGELOG.md) and [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for changes and upgrade actions.
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
 ## Quick start
 
-The loader, selected native platform package, and explicit `@mermanjs/node-wasm` transport use one exact package-group version. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.10.0-alpha.2` targets Mermaid `12.3.0` and uses Node binding API `1`, [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md), and theme execution evidence schema `2`.
+The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.10.0` targets Mermaid `12.3.0` and uses Node binding API `1`, [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md), and theme execution evidence schema `2`.
 
 Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. See the [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) for Step animation and static output policy, shared shapes, and layout changes.
 
 ```sh
-npm install --save-exact @mermanjs/node@0.10.0-alpha.2
+npm install --save-exact @mermanjs/node@0.10.0
 ```
 
 ```js
@@ -30,6 +30,21 @@ try {
   await engine.dispose();
 }
 ```
+
+## Diagram themes
+
+Call `engine.metadataJson("theme-catalog")` to discover 11 design groups with 14 concrete presets,
+including `paper-cut`, `carbon-copy`, and `pop-art`. Select a preset through `optionsJson`, for
+example `{"theme":{"preset":"editor","appearance":"dark"}}`. Editor, Gruvbox, and Ayu provide
+both appearances; the host resolves Follow-app policy before rendering.
+
+`engine.exportThemePreset("editor")` returns the complete editable recipe. Serialize it with
+`JSON.stringify(recipe, null, 2)`, edit the JSON, then reload it as the `recipe` in
+`theme: { recipe, appearance: "dark" }`. Keep the complete document to preserve both appearances.
+The [native theme example](packages/node/README.md#compiled-themes) shows discovery, export,
+whole-recipe inspection, and rendering; [Node-WASM](packages/node-wasm/README.md#compiled-themes)
+uses the same APIs. Presets retain alpha maturity and the [documented family and output
+limits](../../docs/rendering/diagram-theme-coverage.md).
 
 ## SVG output pipelines
 
@@ -68,8 +83,7 @@ serve the SVG recipe; it does not expose the ASCII/agent-log or PNG recipe. Use 
 CLI build for those outputs instead of inferring package support from workspace capabilities.
 The host owns semantic theme selection, caching, scheduling, persistence, and viewer or clipboard
 actions. SVG presentation values remain separate from the terminal palette used by ASCII-capable
-artifacts. See the [compiled-theme guide](packages/node/README.md#compiled-themes) for preset
-selection, discovery, and the theme system's alpha boundaries.
+artifacts.
 
 ## Loaded icon packs
 

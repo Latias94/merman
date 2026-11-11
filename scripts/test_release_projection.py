@@ -240,7 +240,7 @@ class ReleaseProjectionTests(unittest.TestCase):
                 )
                 self.assertFalse(result.ok)
                 self.assertIn(
-                    f"fuzz/Cargo.lock must contain exactly one local package entry for {name}; found 0",
+                    f"{release_projection.FUZZ_LOCK} must contain exactly one local package entry for {name}; found 0",
                     result.errors,
                 )
 
