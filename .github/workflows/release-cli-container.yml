@@ -98,7 +98,7 @@ jobs:
           tar -xJf "release-assets/merman-cli-$TARGET.tar.xz" -C container-context --strip-components=1
       - name: Build and test the native image
         run: |
-          docker build --file distribution/container/Dockerfile \
+          docker build --build-arg CI_UBUNTU_MIRROR=mirrors.mit.edu --file distribution/container/Dockerfile \
             --label "org.opencontainers.image.source=https://github.com/$GH_REPO" \
             --label "org.opencontainers.image.version=$VERSION" \
             --label "org.opencontainers.image.revision=$SOURCE_SHA" \

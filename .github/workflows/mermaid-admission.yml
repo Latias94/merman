@@ -60,7 +60,9 @@ jobs:
           npm ci --ignore-scripts --prefix playground/tests
 
       - name: Install Chromium for admission
-        run: npm exec --prefix playground/tests -- playwright install --with-deps chromium
+        run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
+          npm exec --prefix playground/tests -- playwright install --with-deps chromium
 
       - name: Run official signature and candidate behavior admission
         env:

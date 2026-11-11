@@ -369,6 +369,11 @@ The tagged crates workflow reuses the strict feature matrix and Web build/smoke 
 
 Ubuntu CLI-validator and wheel-repair dependency installation has a ten-minute step limit, bounded network timeouts, and finite retries. Failed package-index updates stop the step rather than silently using stale metadata; these limits prevent a stalled mirror from consuming the full build-job timeout.
 
+Ubuntu jobs run `sudo python3 scripts/configure_ubuntu_apt.py` before their first APT or browser
+dependency installation. The helper points known Ubuntu repository URIs to the MIT mirror while
+preserving Ubuntu `Signed-By` metadata, keyrings, and external repositories. Its persistent bounded
+APT configuration also covers sudo child installers such as Playwright and Puppeteer.
+
 ## Evidence Ownership
 
 | Claim | Owning evidence |

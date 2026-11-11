@@ -141,5 +141,6 @@ jobs:
       - name: Build and run the native image without publishing
         run: |
           version="$(python3 -c 'import tomllib; print(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')"
-          docker build --file distribution/container/Dockerfile --tag merman-cli:ci container-context
+          docker build --build-arg CI_UBUNTU_MIRROR=mirrors.mit.edu \
+            --file distribution/container/Dockerfile --tag merman-cli:ci container-context
           python3 scripts/cli_container_smoke.py merman-cli:ci --version "$version"

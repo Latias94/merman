@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-11 (Asia/Shanghai)
+Last updated: 2026-11-12 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -42,6 +42,17 @@ The 2026-11-11 registry prerequisite observation found all 26 target Cargo versi
 The requested public remote SwiftPM channel has no established delivery repository. Maven Central has no configured `maven-central` environment or verified namespace/signing configuration; `io.merman` metadata is not publicly available, and the existing owner prepares bundles without a Portal uploader. Marketplace/Open VSX has no configured publishing job or credential and no verified public version. These setup boundaries do not block the existing Apple, Android, or VSIX artifact owners.
 
 External observations on 2026-11-11: Homebrew, Scoop, and Conda-forge serve `0.9.3`; follow their existing update bots after the stable Release is available. Initial WinGet [PR #447353](https://github.com/microsoft/winget-pkgs/pull/447353) and Nixpkgs [PR #570822](https://github.com/NixOS/nixpkgs/pull/570822) remain open at `0.9.3`, with no corresponding upstream catalog package yet. Update those existing submissions rather than opening duplicates. Homebrew manual contributions and Nixpkgs submissions require the maintainer's personal review under their current AI contribution policies; prepare any concrete patch before that review.
+
+### Qualification and independent delivery
+
+The first frozen candidate was `99d1d589f9682ef1c159d5e00865f20ae1a6a275`, tree `837dff0a4d9c8bb1b1ad9c511be519f1e4839d04`. Its [release preflight 43042051855](https://github.com/Latias94/merman/actions/runs/43042051855) and [main CI 43042052129](https://github.com/Latias94/merman/actions/runs/43042052129) encountered repeated Ubuntu archive DNS failures before the affected checks could run. The CI transport repair preserves Ubuntu signing keys, package recipes and all test gates, and selects a separately hosted mirror. The workspace release must qualify the resulting new source; the earlier run does not qualify it. No `v0.10.0` or `flutter-v0.10.0` tag has been created at this stage.
+
+| Independent surface | Observed result | Owner / source |
+| --- | --- | --- |
+| Grammar `0.3.4` | Available on Cargo/npm and the standalone GitHub Release. Cargo API, sparse index and public archive agree; Trusted Publishing identifies the exact source and run. npm `latest`, integrity, original tarball, signatures and attestations agree. All six GitHub assets match the producer bytes and their source/workflow-bound attestations. | [43042149229](https://github.com/Latias94/merman/actions/runs/43042149229), attempt 1; immutable `tree-sitter-mermaid-v0.3.4` at `99d1d589f9682ef1c159d5e00865f20ae1a6a275`; published 2026-11-11 |
+| Typst `0.6.0` | Submitted as [PR #6378](https://github.com/typst/packages/pull/6378). Production budgets, interpreter and dependency closure passed; Typst 0.15.0 and 0.15.1 each passed 24 compiled fixtures and 13 expected diagnostics. The final submission passed upstream Lint/Test; preview and acceptance remain pending. A README permalink correction retained all other 58 files and the frozen WASM. | Runtime source `99d1d589f9682ef1c159d5e00865f20ae1a6a275`; submission `1db91eac9aff8f36cf90b72aae1da344834418cd` |
+| Pages | Available from the successful exact-source deployment. A public browser showed runtime `0.10.0`, build `99d1d589f` and a rendered diagram; the loaded script matches the producing artifact. | [43042051616](https://github.com/Latias94/merman/actions/runs/43042051616); deployment `7714417628`; source `99d1d589f9682ef1c159d5e00865f20ae1a6a275` |
+| Nixpkgs preparation | Real Nix prefetch, three-platform evaluation and both Linux native builds/installed output checks passed. Darwin qualification and the required personal review remain pending; the existing external PR is unchanged. This proof predates the CI transport repair and does not qualify a different source archive. | [43047634520](https://github.com/Latias94/merman/actions/runs/43047634520); candidate source `99d1d589f9682ef1c159d5e00865f20ae1a6a275` |
 
 ## 0.10.0-alpha.2 publication
 

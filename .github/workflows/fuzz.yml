@@ -358,6 +358,7 @@ jobs:
           cache-targets: false
       - name: Install Linux build dependencies
         run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
       - uses: actions/setup-node@v7.1.0

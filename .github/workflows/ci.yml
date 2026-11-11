@@ -256,6 +256,7 @@ jobs:
       - name: Install CLI build dependencies and asset validators
         timeout-minutes: 10
         run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
           sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
@@ -417,6 +418,7 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
           sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config
@@ -580,6 +582,7 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
           sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
@@ -729,6 +732,7 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
           sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
@@ -781,6 +785,7 @@ jobs:
           cache-targets: false
       - name: Install Linux font build dependencies
         run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
       - uses: actions/setup-node@v7.1.0

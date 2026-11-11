@@ -144,6 +144,15 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Checkout Ubuntu package transport tooling
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: target/apt-tools
+          sparse-checkout: scripts/configure_ubuntu_apt.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@1.99.1
         with:
@@ -170,6 +179,7 @@ jobs:
       - name: Install CLI validators and native qualification fonts
         timeout-minutes: 10
         run: |
+          sudo python3 target/apt-tools/scripts/configure_ubuntu_apt.py
           apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
           sudo apt-get "${apt_options[@]}" update --error-on=any
           sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish mandoc zsh fonts-dejavu-core fonts-noto-cjk libfontconfig1-dev pkg-config
@@ -482,6 +492,18 @@ jobs:
             --version "$VERSION" \
             --target "$TARGET" \
             --runner "$NATIVE_RUNNER"
+
+      - name: Checkout Ubuntu package transport tooling
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: target/apt-tools
+          sparse-checkout: scripts/configure_ubuntu_apt.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
+      - name: Configure Ubuntu APT
+        run: sudo python3 target/apt-tools/scripts/configure_ubuntu_apt.py
 
       - name: Install native qualification fonts
         if: matrix.target == 'x86_64-unknown-linux-gnu'
@@ -811,6 +833,15 @@ jobs:
           ref: ${{ needs.validate-inputs.outputs.source_sha }}
           persist-credentials: false
 
+      - name: Checkout Ubuntu package transport tooling
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: target/apt-tools
+          sparse-checkout: scripts/configure_ubuntu_apt.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+
       - name: Verify release versions
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
@@ -860,6 +891,7 @@ jobs:
 
       - name: Install isolated browser consumer tools
         run: |
+          sudo python3 target/apt-tools/scripts/configure_ubuntu_apt.py
           npm ci --include=dev --prefix playground
           npm ci --include=dev --prefix playground/tests
           npm run install:browser:chromium --prefix playground/tests

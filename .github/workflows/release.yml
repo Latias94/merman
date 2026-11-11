@@ -520,9 +520,19 @@ jobs:
       - name: Install Rust for native preset qualification
         if: env.QUALIFY_PRESETS == 'true'
         uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+      - name: Checkout Ubuntu package transport tooling
+        if: env.QUALIFY_PRESETS == 'true'
+        uses: actions/checkout@v7.0.1
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: target/apt-tools
+          sparse-checkout: scripts/configure_ubuntu_apt.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Install native qualification fonts
         if: env.QUALIFY_PRESETS == 'true'
         run: |
+          sudo python3 target/apt-tools/scripts/configure_ubuntu_apt.py
           sudo apt-get update
           sudo apt-get install --no-install-recommends --yes fonts-dejavu-core
       - name: Parse generated PowerShell installers

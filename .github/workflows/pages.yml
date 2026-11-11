@@ -213,7 +213,9 @@ jobs:
         run: npm run verify:dependencies --prefix playground
 
       - name: Install playground browsers
-        run: npm run install:browsers --prefix playground/tests
+        run: |
+          sudo python3 scripts/configure_ubuntu_apt.py
+          npm run install:browsers --prefix playground/tests
 
       - name: Qualify installed Web packages in Chromium and Worker
         run: node platforms/web/scripts/installed-browser-consumer.mjs
