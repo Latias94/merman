@@ -10,6 +10,6 @@ export function ThemeSampleNote({ theme, familyId, appearance }: {
   const { t } = useTranslation();
   const note = theme.sampleNotes?.find((entry) => entry.familyId === familyId && entry.appearance === appearance);
   return note ? <p role="note" className="rounded-md border bg-muted/30 px-3 py-2 text-xs leading-relaxed text-muted-foreground" data-theme-sample-note={familyId}>
-    {t(note.messageKey)}
+    {note.messageKey ? t(note.messageKey) : note.message}
   </p> : null;
 }

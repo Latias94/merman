@@ -13,9 +13,9 @@ separate facts reported by the installed catalog and each render's metadata.
 | Preset | Source and visual treatment | Configuration | Catalog design scope for this family |
 | --- | --- | --- | --- |
 | `brutalist` | [Flowchart](brutalist.mmd): repeating accents, bold labels, black outlines, hard shadows | [Classic/Dagre, SVG text labels](brutalist.config.json); supported basic node shapes | Dedicated |
-| `ghibli` | [Pie](ghibli.mmd): warm paper texture, muted slices, distinct title/percentage/legend sizes | Default Pie configuration | Dedicated |
+| `ghibli` | [Pie](ghibli.mmd): fine paper fibers, botanical slices, forest ink and distinct text roles | Default Pie configuration | Dedicated |
 | `spotless` | [Sequence](spotless.mmd): faint paper grid, ink outlines, bold participants and notes | Default Sequence configuration | Dedicated |
-| `cyberpunk` | [The same Flowchart as Brutalist](brutalist.mmd): dark grid, cyan outlines and glow | [The same Classic/Dagre configuration](brutalist.config.json) | Base styling |
+| `cyberpunk` | [The same Flowchart as Brutalist](brutalist.mmd): yellow lettering on dark panels, cyan signals and hard red/cyan registration edges | [The same Classic/Dagre configuration](brutalist.config.json) | Dedicated |
 | `one-dark` | [Class](one-dark.mmd): dark surfaces, muted labels, blue relationship | [SVG text labels](one-dark.config.json) | Base styling |
 | `gruvbox-light` | [XY Chart](gruvbox-light.mmd): warm cream canvas, teal bars, olive line | Default XY Chart configuration | Base styling |
 
@@ -23,14 +23,15 @@ separate facts reported by the installed catalog and each render's metadata.
 | --- | --- |
 | ![Brutalist Flowchart with bold labels, ordinal accents and hard shadows](brutalist.png) | ![Ghibli Pie with warm paper, muted slices and independently sized text roles](ghibli.png) |
 | **Spotless · Sequence** | **Cyberpunk · Flowchart** |
-| ![Spotless Sequence with a paper grid, ink outlines and bold participants](spotless.png) | ![Cyberpunk Flowchart with cyan glow over a dark grid](cyberpunk.png) |
+| ![Spotless Sequence with a paper grid, ink outlines and bold participants](spotless.png) | ![Cyberpunk Flowchart with yellow names and contours on dark panels over cyan/red registration edges](cyberpunk.png) |
 | **One Dark · Class** | **Gruvbox Light · XY Chart** |
 | ![One Dark Class diagram with dark surfaces and a blue relationship](one-dark.png) | ![Gruvbox Light XY Chart with a cream canvas, teal bars and an olive line](gruvbox-light.png) |
 
 These previews were exported as native PNG with `--font-measurement native` from
-the included sources and settings. Most retain their macOS exports; Ghibli's categorical
-palette was refreshed on Windows using an explicitly loaded Open Sans regular face from the
-Open Sans variable font, with system discovery disabled. Measurement and painting share the same
+the included sources and settings. Most retain their macOS exports. The current Ghibli and
+Cyberpunk images were refreshed on Windows with system discovery disabled: Ghibli uses an
+explicit Open Sans regular face from the Open Sans variable font; Cyberpunk uses explicit Inter
+regular and bold faces. Measurement and painting share the same
 operation's font context. Font-agnostic deterministic estimates can be narrower than the final host glyphs;
 for example, Spotless's semibold note needs native measurement to fit this host's text.
 The commands below reproduce the workflow with a matching runtime, while pixel identity
@@ -38,13 +39,23 @@ across hosts is not guaranteed. The shared Flowchart source and settings let you
 Brutalist and Cyberpunk without changing the diagram.
 
 One Dark's saved preview includes the Class label geometry fix. It uses the
-explicit macOS fonts shown below, with system discovery disabled. Apart from Ghibli, the other
-gallery images retain their earlier exports.
+explicit macOS fonts shown below, with system discovery disabled. The remaining gallery images
+retain their earlier exports.
+
+Cyberpunk's dedicated Flowchart, Sequence and XY Chart styling combines warning-yellow names
+and contours, dark panels, cyan signals and red registration edges. Primary names stay readable
+on panels and on the canvas below glyphs. Canvas annotations use independent bright neutral ink;
+no labels have text glow. Filled categories use a separate lighter palette.
+Ghibli adds dedicated Flowchart, Sequence and
+XY Chart treatments to its Pie design, using warm paper, sage surfaces and darker chart inks.
+Both expose the same complete editable recipe format as the newer presets. Their reviewed Class
+examples use shared styling. The Playground library also includes Brutalist, Spotless and the
+editor palettes, with coverage labels drawn from the active catalog.
 
 All presets remain alpha, and the catalog has no qualified output cells. Dedicated design
 scope records family-specific styling, while base styling records a shared appearance.
 Neither is a guarantee for every shape or export target; an unlisted family is unreviewed.
-Brutalist's hard shadows and Cyberpunk's node glow work with supported basic Flowchart shapes
+Brutalist's hard shadows and Cyberpunk's panel offsets work with supported basic Flowchart shapes
 in both Classic and Neo. These saved previews retain their recorded Classic/Dagre configuration.
 
 In these native PNG renders, Brutalist, Ghibli, Spotless, and Cyberpunk report verified theme
@@ -85,7 +96,13 @@ That project is MIT-licensed, copyright 2024 Modern Mermaid Team. Keep the
 when refreshing the reference material.
 
 Merman adapts selected mechanisms into its own typed recipes and semantic diagram targets.
-The Ghibli example is Merman's scoped Pie adaptation of the reference's warm paper identity.
+The Ghibli example adapts the reference's warm paper identity with Merman's botanical palette
+and fine fiber texture.
+Cyberpunk's current redesign also draws on the warning-yellow/black contrast and cyan/red HUD
+hierarchy of [Cyberpunk 2077](https://www.cyberpunk.net/us/en/cyberpunk-2077), including the
+[official Cyberware presentation](https://www.cyberpunk.net/en/news/49129/whats-coming-in-2-0-cyberware).
+Its palette is adapted for diagram contrast. It uses original vector recipes and host fonts,
+without game artwork, logos or brand fonts.
 The images above come from Merman, and do not establish complete Modern Mermaid theme or
 pixel parity. One Dark and Gruvbox Light are separate editor-style palette examples; they are
 not presented as Modern Mermaid designs. Fonts are resolved independently on the host.
@@ -118,7 +135,7 @@ merman-cli capabilities
 merman-cli render brutalist.mmd --theme-preset brutalist --config-file brutalist.config.json --font-measurement native -f png -o brutalist.png
 merman-cli render ghibli.mmd --theme-preset ghibli --font-measurement native --font-file /path/to/OpenSans.ttf --font-system off -f png -o ghibli.png
 merman-cli render spotless.mmd --theme-preset spotless --font-measurement native -f png -o spotless.png
-merman-cli render brutalist.mmd --theme-preset cyberpunk --config-file brutalist.config.json --font-measurement native -f png -o cyberpunk.png
+merman-cli render brutalist.mmd --theme-preset cyberpunk --config-file brutalist.config.json --font-measurement native --font-file /path/to/Inter-Regular.ttf --font-file /path/to/Inter-Bold.ttf --font-system off -f png -o cyberpunk.png
 merman-cli render one-dark.mmd --theme-preset one-dark --config-file one-dark.config.json --font-measurement native --font-file /System/Library/Fonts/SFNS.ttf --font-file /System/Library/Fonts/Menlo.ttc --font-system off --svg-id theme-gallery-one-dark -f png -o one-dark.png --theme-report one-dark.report.json
 merman-cli render gruvbox-light.mmd --theme-preset gruvbox-light --font-measurement native -f png -o gruvbox-light.png
 ```

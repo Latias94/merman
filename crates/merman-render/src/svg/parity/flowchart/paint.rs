@@ -87,7 +87,6 @@ pub(super) fn with_flowchart_paint_context<T>(
     let node_fill_config_override = render_config.node_fill_config_override;
     let node_stroke_width_config_override = render_config.node_stroke_width_config_override;
     let edge_stroke_config_override = render_config.edge_stroke_config_override;
-    let node_corner_radius_config_override = render_config.node_corner_radius_config_override;
     let edge_corner_radius = render_config.edge_corner_radius;
     let edge_label_padding = render_config.edge_label_padding;
     let compact_edge_corners = render_config.compact_edge_corners;
@@ -280,7 +279,6 @@ pub(super) fn with_flowchart_paint_context<T>(
         node_fill_config_override,
         node_stroke_width_config_override,
         edge_stroke_config_override,
-        node_corner_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,

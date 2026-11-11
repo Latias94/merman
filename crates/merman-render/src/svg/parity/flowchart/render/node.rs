@@ -508,7 +508,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_node(
                 radius: shape_outcome.emission().typed_radius_emission(
                     crate::flowchart::FlowchartFacetPrecedence::new(
                         source_evidence.radius,
-                        ctx.node_corner_radius_config_override,
+                        selection.radius_config_override,
                     ),
                     typed_radius_selected,
                 ),

@@ -233,6 +233,7 @@ pub(crate) struct StateNodeStylePlan {
     stroke_width_override: Option<f64>,
     classic_stroke_paint_width: Option<f64>,
     radius_override: Option<f64>,
+    composite_outer_radius_override: Option<f64>,
     padding_override: Option<f64>,
     effect: Option<StateNodeEffectPlan>,
     cluster_label_typography: Option<ResolvedLabelTypography>,
@@ -415,6 +416,10 @@ impl StateNodeStylePlan {
 
     pub(crate) const fn radius_override(&self) -> Option<f64> {
         self.radius_override
+    }
+
+    pub(crate) const fn composite_outer_radius_override(&self) -> Option<f64> {
+        self.composite_outer_radius_override
     }
 
     pub(crate) const fn padding_override(&self) -> Option<f64> {
@@ -2293,14 +2298,26 @@ fn source_shape_property_reaches_primary_surface(
     }
 }
 
-fn state_geometry_support(node: &StateDiagramRenderNode) -> StateGeometrySupport {
+fn state_geometry_support(
+    node: &StateDiagramRenderNode,
+    compatibility: &StateCompatibilityPlan,
+) -> StateGeometrySupport {
     match node.shape.as_str() {
         "note" => StateGeometrySupport::BOTH,
         "stateStart" | "stateEnd" | "choice" | "fork" | "join" | "noteGroup" => {
             StateGeometrySupport::NONE
         }
-        // Rectangles, title rectangles, composite clusters, and divider clusters all consume
-        // uniform padding during layout and emit a bounded corner radius when requested.
+        // Pinned HandDrawn composite and divider writers draw sharp paths. Padding
+        // still reaches layout, but selecting a radius cannot certify rounded geometry.
+        _ if compatibility.is_hand_drawn()
+            && super::config::state_node_is_effective_group(node) =>
+        {
+            StateGeometrySupport {
+                radius: false,
+                padding: true,
+            }
+        }
+        // Other rectangles consume uniform padding and emit bounded corner radii.
         _ => StateGeometrySupport::BOTH,
     }
 }
@@ -2507,10 +2524,12 @@ fn prepare_node(
 ) -> Result<StateNodeStylePlan, OperationWorkError> {
     let shape_surface = compatibility.node_shape_surface(node, target);
     let label_surface = StateCompatibilityPlan::node_label_surface(label_target);
-    let shape_fill_owned = shape_surface
-        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Fill));
-    let shape_stroke_owned = shape_surface
-        .is_some_and(|surface| compatibility.owns(surface, StateTerminalPaintProperty::Stroke));
+    let shape_fill_owned = shape_surface.is_some_and(|surface| {
+        compatibility.node_paint_owned(node, surface, StateTerminalPaintProperty::Fill)
+    });
+    let shape_stroke_owned = shape_surface.is_some_and(|surface| {
+        compatibility.node_paint_owned(node, surface, StateTerminalPaintProperty::Stroke)
+    });
     let shape_stroke_width_owned = shape_surface.is_some_and(|surface| {
         compatibility.owns(surface, StateTerminalPaintProperty::StrokeWidth)
     });
@@ -2548,7 +2567,7 @@ fn prepare_node(
         })
         .transpose()?
         .flatten();
-    let geometry_support = state_geometry_support(node);
+    let geometry_support = state_geometry_support(node, compatibility);
     let shape_use = ordinal.zip(semantic_shape.as_ref()).map(|(_, style)| {
         theme_evidence.consume_shape_style(style, geometry_support, StateThemeSurface::Node)
     });
@@ -2578,10 +2597,16 @@ fn prepare_node(
         theme_evidence.shadow_source_property(label_use, ResolvedStyleProperty::Fill);
     }
     let composite_header_surface = compatibility.composite_header_surface();
-    let composite_header_fill_owned =
-        compatibility.owns(composite_header_surface, StateTerminalPaintProperty::Fill);
-    let composite_header_stroke_owned =
-        compatibility.owns(composite_header_surface, StateTerminalPaintProperty::Stroke);
+    let composite_header_fill_owned = compatibility.node_paint_owned(
+        node,
+        composite_header_surface,
+        StateTerminalPaintProperty::Fill,
+    );
+    let composite_header_stroke_owned = compatibility.node_paint_owned(
+        node,
+        composite_header_surface,
+        StateTerminalPaintProperty::Stroke,
+    );
     let composite_header_stroke_width_owned = compatibility.owns(
         composite_header_surface,
         StateTerminalPaintProperty::StrokeWidth,
@@ -2767,7 +2792,15 @@ fn prepare_node(
                 .and_then(|style| shape_paint_value(style.fill_resolution()))
         })
         .flatten();
-    let series_fill = ordinal.and_then(|ordinal| theme_evidence.series_color(target, ordinal));
+    let series_fill = ordinal
+        .and_then(|ordinal| theme_evidence.series_color(target, ordinal))
+        .filter(|_| {
+            paint_allows_palette_fallback(
+                semantic_shape
+                    .as_ref()
+                    .map(ResolvedThemeStyle::fill_resolution),
+            )
+        });
     let mut fill_uses_series_color =
         !shape_fill_owned && semantic_fill.is_none() && series_fill.is_some();
     let mut fill_override = (!shape_fill_owned)
@@ -2814,8 +2847,9 @@ fn prepare_node(
             append_theme_base_text_emission(theme, &mut label_emission);
         }
         append_semantic_text_emission(style, &mut label_emission);
-        let series_color =
-            label_ordinal.and_then(|ordinal| theme_evidence.series_color(label_target, ordinal));
+        let series_color = label_ordinal
+            .and_then(|ordinal| theme_evidence.series_color(label_target, ordinal))
+            .filter(|_| paint_allows_palette_fallback(Some(style.fill_resolution())));
         let semantic_color = (!label_fill_owned)
             .then(|| text_paint_value(style.fill_resolution()))
             .flatten();
@@ -3102,6 +3136,13 @@ fn prepare_node(
             stroke_width_override,
         )
     });
+    // Neo's configured radius owns only the outer rectangle. An assigned source
+    // class still outranks that configuration, while the typed inner stays independent.
+    let composite_outer_radius_override = radius_override.filter(|_| {
+        !compatibility.is_neo()
+            || !compatibility.neo_radius_config_owned
+            || shadowed_shape_properties.contains(&ResolvedStyleProperty::Radius)
+    });
 
     Ok(StateNodeStylePlan {
         #[cfg(test)]
@@ -3138,6 +3179,7 @@ fn prepare_node(
         stroke_width_override,
         classic_stroke_paint_width,
         radius_override,
+        composite_outer_radius_override,
         padding_override,
         effect,
         cluster_label_typography,
@@ -3268,7 +3310,11 @@ fn prepare_edge(
     let series_stroke =
         ordinal.and_then(|ordinal| theme_evidence.series_color(ThemeTarget::Transition, ordinal));
     if !transition_stroke_owned
-        && !path_style_attr.contains("stroke:")
+        && paint_allows_palette_fallback(
+            semantic_path
+                .as_ref()
+                .map(ResolvedThemeStyle::stroke_resolution),
+        )
         && let Some(color) = series_stroke
     {
         append_style_declaration(&mut path_style_attr, "stroke", color);
@@ -3378,7 +3424,8 @@ fn prepare_edge(
         append_theme_base_text_emission(theme, &mut label_emission);
         append_semantic_text_emission(style, &mut label_emission);
         let series_color = label_ordinal
-            .and_then(|ordinal| theme_evidence.series_color(ThemeTarget::TransitionLabel, ordinal));
+            .and_then(|ordinal| theme_evidence.series_color(ThemeTarget::TransitionLabel, ordinal))
+            .filter(|_| paint_allows_palette_fallback(Some(style.fill_resolution())));
         let semantic_color = (!label_fill_owned)
             .then(|| text_paint_value(style.fill_resolution()))
             .flatten();
@@ -3719,8 +3766,18 @@ fn apply_source_shape_property(
             apply_numeric_source_property(declaration, radius, residuals)
         }
         "padding" => apply_numeric_source_property(declaration, padding, residuals),
-        "opacity" | "fill-opacity" | "stroke-opacity" | "stroke-dasharray" | "stroke-linecap"
-        | "stroke-linejoin" => true,
+        "opacity" | "fill-opacity" | "stroke-opacity" => {
+            if source_opacity_value_is_admissible(declaration) {
+                true
+            } else {
+                residuals.push(SourceStyleResidual::from_declaration(
+                    declaration,
+                    SourceStyleResidualReason::InvalidValue,
+                ));
+                false
+            }
+        }
+        "stroke-dasharray" | "stroke-linecap" | "stroke-linejoin" => true,
         _ => {
             residuals.push(SourceStyleResidual::from_declaration(
                 declaration,
@@ -3728,6 +3785,39 @@ fn apply_source_shape_property(
             ));
             false
         }
+    }
+}
+
+fn source_opacity_value_is_admissible(declaration: &SourceStyleDeclaration) -> bool {
+    // Variable substitution can produce one scalar from several source components.
+    // Preserve that host-owned declaration without attempting to evaluate it.
+    if declaration.has_dynamic_reference_function() {
+        return true;
+    }
+    if !declaration.is_single_component_value() {
+        return false;
+    }
+    let value = declaration.value();
+    let mut parser = cssparser::Parser::new(value);
+    match parser.next() {
+        Ok(cssparser::Token::Number { .. } | cssparser::Token::Percentage { .. }) => {
+            // Preserve the source token and CSS clamping, including negatives. Read
+            // its finite f64 magnitude rather than cssparser's narrower f32 value.
+            value
+                .strip_suffix('%')
+                .unwrap_or(value)
+                .parse::<f64>()
+                .is_ok_and(f64::is_finite)
+        }
+        Ok(cssparser::Token::Ident(keyword)) => {
+            ["inherit", "initial", "unset", "revert", "revert-layer"]
+                .iter()
+                .any(|candidate| keyword.eq_ignore_ascii_case(candidate))
+        }
+        // Prepared declarations already passed structural CSS admission. Host
+        // expressions retain their source ownership without being evaluated here.
+        Ok(cssparser::Token::Function(_)) => true,
+        _ => false,
     }
 }
 
@@ -3916,6 +4006,10 @@ fn append_semantic_shape_emission(
     if let Some(opacity) = style.stroke_opacity() {
         insert_emitted(out, "stroke-opacity", opacity.to_string());
     }
+}
+
+fn paint_allows_palette_fallback(property: Option<&ResolvedProperty<CanvasPaint>>) -> bool {
+    property.is_none_or(|property| matches!(property.specified(), Specified::Unspecified))
 }
 
 fn shape_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
@@ -5218,6 +5312,46 @@ mod tests {
         assert!(!evidence.applied().contains(&key));
         assert!(evidence.not_applicable_mechanisms().contains(&key));
         assert!(evidence.residuals().iter().all(|item| item.key() != &key));
+    }
+
+    #[test]
+    fn clear_state_fill_blocks_palette_and_remains_unsupported_paint() {
+        let mut patch = ThemeStylePatch::default();
+        patch.paint.fill = Specified::Clear;
+        let theme = DiagramThemeCompiler::new()
+            .compile(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_ordinal_palette(
+                            ThemeTarget::State,
+                            OrdinalPalette::new([ThemeColorValue::parse("#22d3ee").unwrap()])
+                                .unwrap(),
+                        )
+                        .with_rule(ThemeRule::new(ThemeTarget::State, patch)),
+                ),
+            )
+            .unwrap()
+            .resolve(crate::DiagramFamilyId::STATE);
+        let mut model = StateDiagramRenderModel::default();
+        model.nodes.push(semantic_node("Ready", "rect"));
+        let (plan, evidence) = resolve_theme_plan_with_evidence(&model, &json!({}), &theme, None);
+        let palette_key = FamilyThemeMechanismKey::OrdinalPalette {
+            target: ThemeTarget::State,
+        };
+        let rule_key = FamilyThemeMechanismKey::Rule {
+            index: 0,
+            target: ThemeTarget::State,
+        };
+
+        assert_eq!(plan.node("Ready").unwrap().fill_override(), None);
+        assert!(!evidence.applied().contains(&palette_key));
+        assert!(evidence.not_applicable_mechanisms().contains(&palette_key));
+        assert_eq!(evidence.residuals().len(), 1);
+        assert_eq!(evidence.residuals()[0].key(), &rule_key);
+        assert_eq!(
+            evidence.residuals()[0].reason(),
+            FamilyThemeResidualReason::UnsupportedPaint
+        );
     }
 
     #[test]

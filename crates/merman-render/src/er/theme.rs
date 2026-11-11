@@ -886,15 +886,16 @@ impl ErEntityThemePlan {
             let mermaid_owns_text = match terminal_id {
                 ErTextTerminalId::DiagramTitle => title_fill_source_owned,
                 ErTextTerminalId::SubgraphLabel(_) => {
-                    (effective_config
-                        .get_str("themeVariables.titleColor")
-                        .is_some()
-                        && effective_config
-                            .config_paint_overrides_typed_default("themeVariables.titleColor"))
-                        || mermaid_owns_paint_input(
+                    match css_binding::ErCssBinding::title_color_source(effective_config.as_value())
+                        .0
+                    {
+                        Some("themeVariables.textColor") => mermaid_owns_paint_input(
                             effective_config,
                             merman_model::presentation::ErPaintInput::Text,
-                        )
+                        ),
+                        Some(path) => effective_config.config_paint_overrides_typed_default(path),
+                        None => false,
+                    }
                 }
                 ErTextTerminalId::RelationLabel(_) => mermaid_owns_relation_text,
                 ErTextTerminalId::EntityName(_) | ErTextTerminalId::Attribute { .. } => {
@@ -1583,20 +1584,30 @@ fn table_occurrence_count(
 }
 
 fn mermaid_owns_entity_fill(config: &merman_model::presentation::PresentationConfig) -> bool {
-    config.config_paint_overrides_typed_default("themeVariables.mainBkg")
-        || (matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        ) && mermaid_owns_entity_palette(config, "bkgColorArray")
-            && entity_palette_has_colors(config, "borderColorArray"))
+    if matches!(
+        config.get_str("theme"),
+        Some("redux-color" | "redux-dark-color")
+    ) && entity_palette_has_colors(config, "bkgColorArray")
+        && entity_palette_has_colors(config, "borderColorArray")
+    {
+        mermaid_owns_entity_palette(config, "bkgColorArray")
+    } else {
+        config.get_str("themeVariables.mainBkg").is_some()
+            && config.config_paint_overrides_typed_default("themeVariables.mainBkg")
+    }
 }
 
 fn mermaid_owns_entity_stroke(config: &merman_model::presentation::PresentationConfig) -> bool {
-    config.config_paint_overrides_typed_default("themeVariables.nodeBorder")
-        || (matches!(
-            config.get_str("theme"),
-            Some("redux-color" | "redux-dark-color")
-        ) && mermaid_owns_entity_palette(config, "borderColorArray"))
+    if matches!(
+        config.get_str("theme"),
+        Some("redux-color" | "redux-dark-color")
+    ) && entity_palette_has_colors(config, "borderColorArray")
+    {
+        mermaid_owns_entity_palette(config, "borderColorArray")
+    } else {
+        config.get_str("themeVariables.nodeBorder").is_some()
+            && config.config_paint_overrides_typed_default("themeVariables.nodeBorder")
+    }
 }
 
 fn mermaid_owns_entity_palette(

@@ -1247,6 +1247,7 @@ struct ClassBoxMeasureCtx<'a> {
     mermaid_config: &'a merman_model::presentation::PresentationConfig,
     math_renderer: Option<&'a (dyn MathRenderer + Send + Sync)>,
     text_style: &'a TextStyle,
+    inherited_font_size: Option<f64>,
     html_calc_text_style: &'a TextStyle,
     wrap_probe_font_size: f64,
     wrap_mode: WrapMode,
@@ -1309,6 +1310,17 @@ pub(crate) fn class_html_label_visible_style_facts(
     }
     let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
     crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&fragment)
+}
+
+fn class_html_label_visible_style_facts_at_font_size(
+    text: &str,
+    font_size: Option<f64>,
+) -> crate::text::VisibleTextStyleFacts {
+    if !text.contains('<') {
+        return crate::text::VisibleTextStyleFacts::plain_text_at_font_size(text, font_size);
+    }
+    let fragment = crate::text::mermaid_markdown_to_xhtml_label_fragment(text, true);
+    crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(&fragment, font_size)
 }
 
 pub(crate) fn class_svg_empty_markdown_fallback(text: &str) -> Option<String> {
@@ -1435,6 +1447,8 @@ fn class_box_dimensions(
     } else {
         String::new()
     };
+    let writer_font_size =
+        crate::text::visible_text_font_size_after_style(ctx.inherited_font_size, &node_label_style);
     let node_font_ownership = if capture_style_facts {
         crate::mermaid_style::css_font_family_declaration_ownership(
             node.styles.iter().map(String::as_str),
@@ -1607,6 +1621,13 @@ fn class_box_dimensions(
             )
         };
         let style = effective_style.as_ref();
+        let visible_font_size =
+            crate::text::visible_text_font_size_after_style(ctx.inherited_font_size, css_style);
+        let visible_font_size = if writer_uses_html_labels {
+            crate::text::visible_text_font_size_after_style(visible_font_size, &node_label_style)
+        } else {
+            visible_font_size
+        };
         let max_width_px = class_html_create_text_width_px(text, measurer, html_calc_text_style);
         if let Some(metrics) = class_math_label_metrics(
             text,
@@ -1616,8 +1637,9 @@ fn class_box_dimensions(
             mermaid_config,
             math_renderer,
         ) {
-            let visible_style_facts =
-                capture_style_facts.then(|| class_html_label_visible_style_facts(text));
+            let visible_style_facts = capture_style_facts.then(|| {
+                class_html_label_visible_style_facts_at_font_size(text, visible_font_size)
+            });
             let style_facts = label_style_facts(visible_style_facts.as_ref(), text, css_style);
             return (metrics, None, style_facts);
         }
@@ -1625,8 +1647,12 @@ fn class_box_dimensions(
             let prepared =
                 crate::class::class_prepare_html_label(measurer, style, text, max_width_px, "");
             let metrics = prepared.metrics;
-            let visible_style_facts = capture_style_facts
-                .then(|| crate::text::VisibleTextStyleFacts::from_xhtml_fragment(&prepared.xhtml));
+            let visible_style_facts = capture_style_facts.then(|| {
+                crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+                    &prepared.xhtml,
+                    visible_font_size,
+                )
+            });
             let style_facts = label_style_facts(visible_style_facts.as_ref(), text, css_style);
             (
                 metrics,
@@ -1634,16 +1660,24 @@ fn class_box_dimensions(
                 style_facts,
             )
         } else if let Some(fallback) = class_svg_empty_markdown_fallback(text) {
-            let visible_style_facts = capture_style_facts
-                .then(|| crate::text::VisibleTextStyleFacts::plain_text(&fallback));
+            let visible_style_facts = capture_style_facts.then(|| {
+                crate::text::VisibleTextStyleFacts::plain_text_at_font_size(
+                    &fallback,
+                    visible_font_size,
+                )
+            });
             (
                 measurer.measure_wrapped(&fallback, style, None, wrap_mode),
                 None,
                 label_style_facts(visible_style_facts.as_ref(), &fallback, css_style),
             )
         } else if analyze_class_svg_markdown(text).has_styled_runs {
-            let visible_style_facts =
-                capture_style_facts.then(|| class_svg_label_visible_style_facts(text));
+            let visible_style_facts = capture_style_facts.then(|| {
+                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
+                    text,
+                    visible_font_size,
+                )
+            });
             (
                 crate::text::measure_markdown_with_inline_styles(
                     measurer, text, style, None, wrap_mode,
@@ -1674,8 +1708,12 @@ fn class_box_dimensions(
             } else {
                 measurer.measure_wrapped(&wrapped, style, None, wrap_mode)
             };
-            let visible_style_facts =
-                capture_style_facts.then(|| class_svg_label_visible_style_facts(text));
+            let visible_style_facts = capture_style_facts.then(|| {
+                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
+                    text,
+                    visible_font_size,
+                )
+            });
             (
                 metrics,
                 None,
@@ -1807,14 +1845,20 @@ fn class_box_dimensions(
         title_xhtml.map_or_else(
             || {
                 if writer_uses_html_labels {
-                    class_html_label_visible_style_facts(&title_text)
+                    class_html_label_visible_style_facts_at_font_size(&title_text, writer_font_size)
                 } else {
-                    crate::text::VisibleTextStyleFacts::plain_text(
+                    crate::text::VisibleTextStyleFacts::plain_text_at_font_size(
                         &svg_title.as_ref().expect("prepared SVG title").plain_text(),
+                        writer_font_size,
                     )
                 }
             },
-            crate::text::VisibleTextStyleFacts::from_xhtml_fragment,
+            |fragment| {
+                crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+                    fragment,
+                    writer_font_size,
+                )
+            },
         )
     });
     let title_style_facts = label_style_facts(title_visible_style_facts.as_ref(), &title_text, "");
@@ -2852,6 +2896,7 @@ fn measure_class_diagram(
         mermaid_config,
         math_renderer,
         text_style,
+        inherited_font_size: typography_theme.visible_font_size_px(),
         html_calc_text_style,
         wrap_probe_font_size,
         wrap_mode: wrap_mode_node,
@@ -5636,6 +5681,7 @@ mod tests {
             mermaid_config: &config,
             math_renderer: None,
             text_style: &style,
+            inherited_font_size: Some(style.font_size),
             html_calc_text_style: &style,
             wrap_probe_font_size: 16.0,
             wrap_mode: WrapMode::HtmlLike,
@@ -5746,6 +5792,7 @@ mod tests {
             mermaid_config: &config,
             math_renderer: Some(&ClassMathGeometryRenderer),
             text_style: &text_style,
+            inherited_font_size: Some(text_style.font_size),
             html_calc_text_style: &text_style,
             wrap_probe_font_size: 10.0,
             wrap_mode: WrapMode::SvgLike,

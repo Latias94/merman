@@ -3741,12 +3741,19 @@ fn block_background_reconciles_missing_labels_and_explicit_config() {
         )
         .unwrap();
     for html_labels in [false, true] {
-        for config_owned in [false, true] {
+        for (case, background, config_owned) in [
+            ("absent", None, false),
+            ("string", Some(serde_json::json!("#123456")), true),
+            ("false", Some(serde_json::json!(false)), false),
+            ("null", Some(serde_json::Value::Null), false),
+        ] {
             for has_label in [false, true] {
-                let mut config = serde_json::json!({"htmlLabels": html_labels});
-                if config_owned {
+                let mut config = serde_json::json!({
+                    "theme": "default", "look": "classic", "htmlLabels": html_labels
+                });
+                if let Some(background) = &background {
                     config["themeVariables"] =
-                        serde_json::json!({"edgeLabelBackground": "#123456"});
+                        serde_json::json!({"edgeLabelBackground": background});
                 }
                 let source = if has_label {
                     "block\n A -- \"relates\" --> B\n"
@@ -3760,17 +3767,37 @@ fn block_background_reconciles_missing_labels_and_explicit_config() {
                         merman_core::presentation::SourcePresentationConfig::from_value(config),
                     ),
                 );
+                if let Some(background) = &background {
+                    let config = &rendered.metadata().effective_config;
+                    if background.is_null() {
+                        assert_eq!(
+                            config.get_str("themeVariables.edgeLabelBackground"),
+                            Some("rgba(232,232,232, 0.8)"),
+                            "Default materializes the null input as its fallback paint"
+                        );
+                    } else {
+                        assert_eq!(
+                            &config.as_value()["themeVariables"]["edgeLabelBackground"],
+                            background,
+                            "{case}: check the actual materialized CSS input before its owner"
+                        );
+                    }
+                }
                 let expected = if config_owned { "#123456" } else { "#b316cd" };
-                assert!(rendered.svg().contains(&format!(
-                    "#block-theme .edgeLabel{{background-color:{expected};"
-                )));
+                assert!(
+                    rendered.svg().contains(&format!(
+                        "#block-theme .edgeLabel{{background-color:{expected};"
+                    )),
+                    "{case}, html_labels={html_labels}, has_label={has_label}"
+                );
                 let evidence =
                     merman_render::__private::family_evidence(rendered.into_completion().report());
                 let applied = usize::from(has_label && !config_owned);
                 assert_eq!(evidence.required_count(), 1);
-                assert_eq!(evidence.applied_count(), applied);
-                assert_eq!(evidence.not_applicable_count(), 1 - applied);
-                assert_eq!(evidence.theme_residual_count(), 0);
+                assert_eq!(evidence.accounted_count(), 1);
+                assert_eq!(evidence.applied_count(), applied, "{case}");
+                assert_eq!(evidence.not_applicable_count(), 1 - applied, "{case}");
+                assert_eq!(evidence.theme_residual_count(), 0, "{case}");
             }
         }
     }
@@ -5124,6 +5151,103 @@ fn block_look_resources_precede_markers_and_follow_theme_configuration() {
             assert_eq!(stops[0].attribute("stop-color"), Some("#123456"));
             assert_eq!(stops[1].attribute("stop-color"), Some("#abcdef"));
         }
+    }
+}
+
+#[test]
+fn block_composite_palette_arrays_own_the_actual_shell_paint() {
+    const SOURCE: &str = "block-beta\nblock:g\nA\nend\n";
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(ThemeRule::new(
+                    ThemeTarget::Cluster,
+                    ThemeStylePatch::default()
+                        .with_fill(CanvasPaint::solid("#123456").unwrap())
+                        .with_stroke(CanvasPaint::solid("#654321").unwrap()),
+                )),
+            ),
+        )
+        .unwrap();
+    for source_owned in [true, false] {
+        let source = if source_owned {
+            format!("{SOURCE}style g fill:#112233,stroke:#334455\n")
+        } else {
+            SOURCE.to_owned()
+        };
+        let rendered = render_block_with_theme_requirement(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({
+                        "theme": "redux-color", "look": "classic",
+                        "themeVariables": {
+                            "bkgColorArray": ["#aabbcc"], "borderColorArray": ["#445566"]
+                        }
+                    }),
+                ),
+            ),
+            ThemePortabilityRequirement::BestEffort,
+        );
+        assert_eq!(
+            rendered.metadata().effective_config.get_str("theme"),
+            Some("redux-color")
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let cluster = document
+            .descendants()
+            .find(|node| node.attribute("id") == Some("block-theme-g"))
+            .expect("visible Block composite");
+        assert_eq!(cluster.attribute("data-look"), Some("classic"));
+        let shell = cluster
+            .children()
+            .find(|node| node.has_tag_name("rect"))
+            .expect("visible Block composite shell");
+        let style = shell.attribute("style").unwrap_or_default();
+        if source_owned {
+            assert_eq!(terminal_fill(style), Some("#112233"));
+            assert_eq!(terminal_stroke(style), Some("#334455"));
+        } else {
+            let slot = cluster
+                .attribute("data-color-id")
+                .expect("Block palette slot");
+            let selector = format!(
+                "#block-theme [data-look=\"classic\"][data-color-id=\"{slot}\"].node rect.composite{{"
+            );
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text())
+                .expect("Block stylesheet");
+            let palette_rule = css
+                .split_once(&selector)
+                .expect("materialized composite palette selector")
+                .1
+                .split_once('}')
+                .unwrap()
+                .0;
+            assert!(palette_rule.contains("fill:#aabbcc;"), "{palette_rule}");
+            assert!(palette_rule.contains("stroke:#445566;"), "{palette_rule}");
+            assert_eq!(
+                terminal_fill(style),
+                None,
+                "typed fill must not override the explicit composite palette"
+            );
+            assert_eq!(
+                terminal_stroke(style),
+                None,
+                "typed stroke must not override the explicit composite palette"
+            );
+        }
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 

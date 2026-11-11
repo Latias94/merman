@@ -1,6 +1,39 @@
 use crate::config::{config_css_number_or_string, config_string};
 use crate::svg::PreparedCommonCss;
 use merman_markup::theme_color::{ColorChannel, ThemeColor, invert};
+use merman_model::presentation::PresentationConfig;
+
+#[derive(Debug, Clone)]
+pub(super) struct TreemapLabelColor {
+    pub(super) css: String,
+    source_path: Option<String>,
+}
+
+impl TreemapLabelColor {
+    fn selected(config: &serde_json::Value, paths: &[&'static str], fallback: &str) -> Self {
+        crate::config::selected_config_string(config, paths).map_or_else(
+            || Self::fallback(fallback),
+            |(path, css)| Self {
+                css: css.to_owned(),
+                source_path: Some(path.to_owned()),
+            },
+        )
+    }
+
+    fn configured(config: &serde_json::Value, key: &str) -> Option<Self> {
+        config_string(config, &["themeVariables", key]).map(|css| Self {
+            css,
+            source_path: Some(format!("themeVariables.{key}")),
+        })
+    }
+
+    fn fallback(css: &str) -> Self {
+        Self {
+            css: css.to_owned(),
+            source_path: None,
+        }
+    }
+}
 
 #[derive(Debug)]
 pub(crate) struct TreemapCssBinding {
@@ -21,7 +54,7 @@ pub(crate) struct TreemapCssBinding {
     pub(crate) title_font_size: String,
     pub(crate) color_scale: Vec<String>,
     pub(crate) color_scale_peer: Vec<String>,
-    pub(crate) color_scale_label: Vec<String>,
+    pub(super) color_scale_label: Vec<TreemapLabelColor>,
     text_color: String,
 }
 
@@ -39,34 +72,35 @@ impl TreemapCssBinding {
         };
 
         let text_color = color("textColor", "#333");
-        let title_color = [
-            (
-                &["themeVariables", "treemap", "titleColor"][..],
+        let title_color = crate::config::selected_config_string(
+            config,
+            &[
                 "themeVariables.treemap.titleColor",
-            ),
-            (&["treemap", "titleColor"][..], "treemap.titleColor"),
-            (
-                &["themeVariables", "titleColor"][..],
+                "treemap.titleColor",
                 "themeVariables.titleColor",
-            ),
-            (
-                &["themeVariables", "textColor"][..],
                 "themeVariables.textColor",
-            ),
-        ]
-        .into_iter()
-        .find_map(|(path, owner)| config_string(config, path).map(|value| (value, owner)));
+            ],
+        );
         let (title_color, title_color_source_path) = title_color.map_or_else(
             || (text_color.clone(), None),
-            |(value, path)| (value, Some(path)),
+            |(path, value)| (value.to_owned(), Some(path)),
         );
         let raw_theme_name =
             config_string(config, &["theme"]).unwrap_or_else(|| "default".to_owned());
         let theme_name = raw_theme_name.trim().to_ascii_lowercase();
-        let label_text_color = color("labelTextColor", "black");
-        let label_text_is_calculated = label_text_color.trim() == "calculated";
-        let scale_label_color = color("scaleLabelColor", &label_text_color);
-        let neutral_special_label_color = color("cScale1", default_c_scale(1));
+        let label_text_color =
+            TreemapLabelColor::selected(config, &["themeVariables.labelTextColor"], "black");
+        let label_text_is_calculated = label_text_color.css.trim() == "calculated";
+        let scale_label_color = TreemapLabelColor::selected(
+            config,
+            &[
+                "themeVariables.scaleLabelColor",
+                "themeVariables.labelTextColor",
+            ],
+            "black",
+        );
+        let neutral_special_label_color =
+            TreemapLabelColor::selected(config, &["themeVariables.cScale1"], default_c_scale(1));
 
         let color_scale = (0..12)
             .map(|i| color(&format!("cScale{i}"), default_c_scale(i)))
@@ -75,8 +109,10 @@ impl TreemapCssBinding {
             .map(|i| color(&format!("cScalePeer{i}"), default_c_scale_peer(i)))
             .collect();
         let color_scale_label = (0..12)
-            .map(|i| -> crate::Result<String> {
-                if let Some(color) = optional_color(&format!("cScaleLabel{i}")) {
+            .map(|i| -> crate::Result<TreemapLabelColor> {
+                if let Some(color) =
+                    TreemapLabelColor::configured(config, &format!("cScaleLabel{i}"))
+                {
                     return Ok(color);
                 }
                 Ok(match theme_name.as_str() {
@@ -92,7 +128,10 @@ impl TreemapCssBinding {
                         if label_text_is_calculated {
                             scale_label_color.clone()
                         } else if i == 0 || i == 3 {
-                            invert(&label_text_color)?
+                            TreemapLabelColor {
+                                css: invert(&label_text_color.css)?,
+                                source_path: label_text_color.source_path.clone(),
+                            }
                         } else {
                             label_text_color.clone()
                         }
@@ -134,6 +173,17 @@ impl TreemapCssBinding {
 
     pub(super) const fn root_font_size_px(&self) -> f64 {
         self.root_font_size_px
+    }
+
+    pub(super) fn label_palette_source_owned(
+        &self,
+        config: &PresentationConfig,
+        slot: usize,
+    ) -> bool {
+        self.color_scale_label[slot % self.color_scale_label.len()]
+            .source_path
+            .as_deref()
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
     }
 
     pub(crate) fn readable_leaf_label_fill(
@@ -253,7 +303,7 @@ mod tests {
         assert_eq!(binding.title_font_size, "15px");
         assert_eq!(binding.color_scale[0], "#010203");
         assert_eq!(binding.color_scale_peer[0], "#040506");
-        assert_eq!(binding.color_scale_label[0], "#070809");
+        assert_eq!(binding.color_scale_label[0].css, "#070809");
     }
 
     #[test]
@@ -263,9 +313,9 @@ mod tests {
         }), "Inter").expect("prepared default scales");
         assert_eq!(binding.color_scale[0], "#123456");
         assert_eq!(binding.color_scale_peer[0], "#654321");
-        assert_eq!(binding.color_scale_label[0], "#f5ebe1");
-        assert_eq!(binding.color_scale_label[1], "rgb(10, 20, 30)");
-        assert_eq!(binding.color_scale_label[3], "#f5ebe1");
+        assert_eq!(binding.color_scale_label[0].css, "#f5ebe1");
+        assert_eq!(binding.color_scale_label[1].css, "rgb(10, 20, 30)");
+        assert_eq!(binding.color_scale_label[3].css, "#f5ebe1");
         assert_eq!(
             binding.readable_leaf_label_fill("transparent", "", "#ffffff".into()),
             ("#333".to_owned(), true)
@@ -297,14 +347,14 @@ mod tests {
             calculated
                 .color_scale_label
                 .iter()
-                .all(|color| color == "var(--label)")
+                .all(|color| color.css == "var(--label)")
         );
         let neutral = TreemapCssBinding::new(&json!({
             "theme": "neutral", "themeVariables": {"cScale1": "#112233", "scaleLabelColor": "#445566"}
         }), "Inter").expect("neutral label roles");
-        assert_eq!(neutral.color_scale_label[0], "#112233");
-        assert_eq!(neutral.color_scale_label[2], "#112233");
-        assert_eq!(neutral.color_scale_label[1], "#445566");
+        assert_eq!(neutral.color_scale_label[0].css, "#112233");
+        assert_eq!(neutral.color_scale_label[2].css, "#112233");
+        assert_eq!(neutral.color_scale_label[1].css, "#445566");
         let fallback = TreemapCssBinding::new(
             &json!({"themeVariables": {"textColor": "#101010", "titleColor": "#202020"}}),
             "Inter",

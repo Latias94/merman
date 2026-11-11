@@ -1,4 +1,4 @@
-use crate::config::{config_css_number_or_string, config_string};
+use crate::config::config_css_number_or_string;
 use crate::mermaid_style::{
     CssFontSizeContext, css_font_size_is_zero, css_font_size_override,
     css_font_size_value_override, parse_style_declaration,
@@ -19,13 +19,51 @@ pub(crate) struct PieCssBinding {
     pub(crate) outer_stroke: PieSurfaceStroke,
     pub(crate) outer_stroke_width: String,
     pub(crate) outer_stroke_width_number: f64,
-    pub(crate) title_text_color: String,
-    pub(crate) section_text_color: String,
-    pub(crate) legend_text_color: String,
+    text_fills: [PieTextFill; 3],
     inherited_font_size: f64,
     text_sizes: [PieTextSize; 3],
     text_weights: [Option<String>; 3],
     text_styles: [Option<String>; 3],
+}
+
+#[derive(Debug)]
+struct PieTextFill {
+    css: String,
+    source_path: Option<&'static str>,
+}
+
+impl PieTextFill {
+    fn resolve(config: &serde_json::Value, role: PieTextRole) -> Self {
+        let (paths, fallback): (&[&'static str], &str) = match role {
+            PieTextRole::Title => (
+                &[
+                    "themeVariables.pieTitleTextColor",
+                    "themeVariables.taskTextDarkColor",
+                ],
+                "black",
+            ),
+            PieTextRole::Section => (
+                &[
+                    "themeVariables.pieSectionTextColor",
+                    "themeVariables.textColor",
+                ],
+                "#333",
+            ),
+            PieTextRole::Legend => (
+                &[
+                    "themeVariables.pieLegendTextColor",
+                    "themeVariables.taskTextDarkColor",
+                ],
+                "black",
+            ),
+        };
+        let (source_path, css) = crate::config::selected_config_string(config, paths)
+            .map_or((None, fallback), |(path, css)| (Some(path), css));
+        Self {
+            css: css.to_owned(),
+            source_path,
+        }
+    }
 }
 
 /// Keep CSS spelling, measurement, and configuration ownership on the same prepared role.
@@ -134,18 +172,10 @@ impl PieCssBinding {
         if font_family_override.is_none() {
             common = common.with_configured_root_font_family(effective_config);
         }
-        let color = |key: &str, fallback: &str| {
-            config_string(effective_config, &["themeVariables", key])
-                .unwrap_or_else(|| fallback.to_owned())
-        };
         let value = |key: &str, fallback: &str| {
             config_css_number_or_string(effective_config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_owned())
         };
-        let task_text_dark = color("taskTextDarkColor", "black");
-        let title_text_color = color("pieTitleTextColor", &task_text_dark);
-        let section_text_color = color("pieSectionTextColor", common.text_color());
-        let legend_text_color = color("pieLegendTextColor", &task_text_dark);
         Self {
             common,
             slice_stroke: PieSurfaceStroke::baseline(value("pieStrokeColor", "black")),
@@ -156,9 +186,7 @@ impl PieCssBinding {
             outer_stroke_width_number: super::super::config::pie_outer_stroke_width(
                 effective_config,
             ),
-            title_text_color,
-            section_text_color,
-            legend_text_color,
+            text_fills: PieTextRole::ALL.map(|role| PieTextFill::resolve(effective_config, role)),
             inherited_font_size,
             text_sizes: [
                 ("pieTitleTextSize", "25px"),
@@ -190,11 +218,17 @@ impl PieCssBinding {
     }
 
     pub(super) fn bind_text_fill(&mut self, role: PieTextRole, fill: &str) {
-        *match role {
-            PieTextRole::Title => &mut self.title_text_color,
-            PieTextRole::Section => &mut self.section_text_color,
-            PieTextRole::Legend => &mut self.legend_text_color,
-        } = fill.to_owned();
+        self.text_fills[role.index()].css = fill.to_owned();
+    }
+
+    pub(super) fn config_owns_text_fill(
+        &self,
+        config: &merman_model::presentation::PresentationConfig,
+        role: PieTextRole,
+    ) -> bool {
+        self.text_fills[role.index()]
+            .source_path
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
     }
 
     pub(super) fn bind_text_size(&mut self, role: PieTextRole, size: &str) {
@@ -218,11 +252,7 @@ impl PieCssBinding {
     }
 
     pub(crate) fn text_fill(&self, role: PieTextRole) -> &str {
-        match role {
-            PieTextRole::Title => &self.title_text_color,
-            PieTextRole::Section => &self.section_text_color,
-            PieTextRole::Legend => &self.legend_text_color,
-        }
+        &self.text_fills[role.index()].css
     }
 
     pub(crate) fn text_weight(&self, role: PieTextRole) -> Option<&str> {

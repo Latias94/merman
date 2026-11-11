@@ -1614,6 +1614,118 @@ fn eventmodeling_explicit_theme_font_size_outranks_typed_size_but_root_size_does
 }
 
 #[test]
+fn eventmodeling_property_selection_ignored_font_sizes_keep_typed_css_and_evidence() {
+    let theme =
+        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    for size in ["", "   ", "bogus", "-2pt"] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "theme": "default", "themeVariables": {"fontSize": size}
+            })),
+        );
+        let rendered =
+            render_eventmodeling_with_theme("eventmodeling\ntf 01 ui View\n", &theme, engine)
+                .unwrap();
+        assert_eq!(
+            rendered
+                .metadata()
+                .effective_config
+                .get_str("themeVariables.fontSize"),
+            Some(size),
+            "the real parse must retain the tested font size: {size:?}"
+        );
+        let stylesheet = eventmodeling_stylesheet(rendered.svg());
+        assert!(
+            stylesheet.contains("font-size: 24px;"),
+            "{size:?}: {stylesheet}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{size:?}");
+        assert_eq!(evidence.applied_count(), 1, "{size:?}");
+        assert_eq!(evidence.not_applicable_count(), 0, "{size:?}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{size:?}");
+    }
+}
+
+#[test]
+fn eventmodeling_property_selection_valid_font_sizes_keep_config_ownership() {
+    let theme =
+        eventmodeling_typography_theme(ThemeTextStyle::default().with_font_size_px(24.0).unwrap());
+    for size in [serde_json::json!(0), serde_json::json!("24pt")] {
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "theme": "default", "themeVariables": {"fontSize": size.clone()}
+            })),
+        );
+        let rendered =
+            render_eventmodeling_with_theme("eventmodeling\ntf 01 ui View\n", &theme, engine)
+                .unwrap();
+        assert_eq!(
+            rendered.metadata().effective_config.as_value()["themeVariables"]["fontSize"],
+            size
+        );
+        let css_size = size
+            .as_str()
+            .map_or_else(|| size.to_string(), str::to_owned);
+        assert!(
+            eventmodeling_stylesheet(rendered.svg()).contains(&format!("font-size: {css_size};"))
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1, "{size}");
+        assert_eq!(evidence.applied_count(), 0, "{size}");
+        assert_eq!(evidence.not_applicable_count(), 1, "{size}");
+        assert_eq!(evidence.theme_residual_count(), 0, "{size}");
+    }
+}
+
+#[test]
+fn eventmodeling_property_selection_unresolved_size_keeps_font_stack_residual() {
+    let theme = eventmodeling_typography_theme(
+        ThemeTextStyle::default()
+            .with_font_stack(FontStack::single("monospace").unwrap())
+            .with_font_size_px(24.0)
+            .unwrap(),
+    );
+    let engine = MermaidEngine::new().with_site_config(
+        merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+            "themeVariables": {"fontSize": "var(--host-size)"}
+        })),
+    );
+    let rendered = render_eventmodeling_with_theme_requirement(
+        "eventmodeling\ntf 01 ui View\n",
+        &theme,
+        engine,
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    assert_eq!(
+        rendered
+            .metadata()
+            .effective_config
+            .get_str("themeVariables.fontSize"),
+        Some("var(--host-size)")
+    );
+    let stylesheet = eventmodeling_stylesheet(rendered.svg());
+    assert!(stylesheet.contains("font-size: var(--host-size);"));
+    assert!(!stylesheet.contains("font-size: 24px;"));
+    let completion = rendered.into_completion();
+    assert!(
+        completion
+            .report()
+            .theme_diagnostics()
+            .iter()
+            .any(|diagnostic| diagnostic.code() == "unsupported-typography")
+    );
+    let evidence = merman_render::__private::family_evidence(completion.report());
+    assert_eq!(evidence.required_count(), 2);
+    assert_eq!(evidence.applied_count(), 0);
+    assert_eq!(evidence.not_applicable_count(), 1);
+    assert_eq!(evidence.theme_residual_count(), 1);
+}
+
+#[test]
 fn eventmodeling_typed_font_size_does_not_change_headless_layout() {
     let small = eventmodeling_typography_theme(
         ThemeTextStyle::default()

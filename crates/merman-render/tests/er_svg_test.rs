@@ -2913,6 +2913,7 @@ fn er_site_theme_variable_ownership_controls_typed_entity_paint() {
     );
     let engine = MermaidEngine::new().with_site_config(
         merman_core::presentation::SourcePresentationConfig::from_value(json!({
+            "theme": "default",
             "themeVariables": {
                 "mainBkg": "#112233",
                 "nodeBorder": "#445566"
@@ -3147,6 +3148,51 @@ fn er_source_palette_and_raw_colors_retain_property_local_entity_paint() {
             "{directive}"
         );
         assert_eq!(evidence.theme_residual_count(), 0, "{directive}");
+    }
+}
+
+#[test]
+fn er_entity_paint_ownership_follows_palette_selection_before_scalar_fallbacks() {
+    let theme = er_entity_paint_theme(
+        CanvasPaint::solid("#123456").unwrap(),
+        Some(CanvasPaint::solid("#654321").unwrap()),
+    );
+    for empty_palette in [false, true] {
+        let mut site = json!({
+            "theme": "redux-color", "look": "classic", "layout": "dagre",
+            "themeVariables": {"mainBkg": "#fedcba", "nodeBorder": "#abcdef"}
+        });
+        if empty_palette {
+            site["themeVariables"]["bkgColorArray"] = json!([]);
+            site["themeVariables"]["borderColorArray"] = json!([]);
+        }
+        let (parsed, layout, session) = prepare_er_family_with_theme_and_engine(
+            "erDiagram\n CUSTOMER {\n string id\n }\n",
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(site),
+            ),
+        );
+        let rendered = family::prepare(&parsed, &layout, session)
+            .unwrap()
+            .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+            .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (property, typed, scalar) in [
+            ("fill", "#123456", "#fedcba"),
+            ("stroke", "#654321", "#abcdef"),
+        ] {
+            assert_eq!(
+                er_entity_terminal_paint(&document, "merman-entity-CUSTOMER-0", property),
+                if empty_palette { scalar } else { typed },
+                "empty_palette={empty_palette}, {property}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.applied_count(), usize::from(!empty_palette));
+        assert_eq!(evidence.not_applicable_count(), usize::from(empty_palette));
+        assert_eq!(evidence.theme_residual_count(), 0);
     }
 }
 

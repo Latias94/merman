@@ -1,4 +1,4 @@
-import { lazy, useEffect, useRef, useState } from "react";
+import { lazy, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ThemeRecipeInspectionV1 } from "@mermanjs/web";
 import { Button } from "@/components/ui/button";
@@ -28,36 +28,27 @@ export function ThemeDraftWorkbench({ raw, origin, label, facade, appearancePref
   const [validation, setValidation] = useState<{ raw: string; inspection: ThemeRecipeInspectionV1 } | null>(null);
   const [replacement, setReplacement] = useState<ThemeAppearancePreference | "">("");
   const [error, setError] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const generation = useRef(0);
-  const liveDraft = useRef(draft);
-  liveDraft.current = draft;
-  useEffect(() => () => { generation.current += 1; }, []);
   const valid = validation?.raw === draft ? validation : null;
   const originalPreference = appearancePreference;
   const compatible = valid && compatibleAppearancePreference(originalPreference, valid.inspection);
   const preference = compatible ?? replacement;
-  const canApply = Boolean(valid && preference && !pending);
+  const canApply = Boolean(valid && preference);
 
-  async function validate() {
-    const attempt = ++generation.current;
+  function validate() {
     const text = draft;
-    setPending(true);
     setError(null);
     setValidation(null);
     try {
       if (exceedsUtf8ByteBudget(text, SHARE_THEME_RECIPE_BYTES)) {
         throw new Error(t("customTheme.tooLarge", { limit: SHARE_THEME_RECIPE_BYTES / 1024 }));
       }
-      await Promise.resolve();
       const inspection = inspectThemeRecipe(facade, text);
-      if (attempt !== generation.current || text !== liveDraft.current ||
-        !sameThemeEditOrigin(origin, selectWorkspaceSnapshot(useAppStore.getState()))) return;
+      if (!sameThemeEditOrigin(origin, selectWorkspaceSnapshot(useAppStore.getState()))) return;
       setValidation({ raw: text, inspection });
       setReplacement("");
     } catch (cause) {
-      if (attempt === generation.current) setError(projectError(cause).summary);
-    } finally { if (attempt === generation.current) setPending(false); }
+      setError(projectError(cause).summary);
+    }
   }
 
   function apply() {
@@ -82,7 +73,7 @@ export function ThemeDraftWorkbench({ raw, origin, label, facade, appearancePref
     </div>
     <LazyFeatureBoundary feature={t("themeDraft.editor")} presentation={{ kind: "panel" }}>
       <ThemeDraftEditor value={draft} scope={scope} onChange={(value) => {
-        generation.current += 1; setDraft(value); setPending(false); setValidation(null); setError(null); setReplacement("");
+        setDraft(value); setValidation(null); setError(null); setReplacement("");
       }} />
     </LazyFeatureBoundary>
     {valid && <p role="status" className="text-xs text-muted-foreground">{t("themeDraft.valid")}</p>}
@@ -98,7 +89,7 @@ export function ThemeDraftWorkbench({ raw, origin, label, facade, appearancePref
     </label>}
     {error && <p role="alert" className="whitespace-pre-wrap break-words text-xs text-destructive">{error}</p>}
     <div className="flex flex-wrap gap-2">
-      <Button type="button" variant="outline" size="sm" disabled={pending} onClick={() => void validate()}>{t(pending ? "themeDraft.validating" : "themeDraft.validate")}</Button>
+      <Button type="button" variant="outline" size="sm" onClick={validate}>{t("themeDraft.validate")}</Button>
       <Button type="button" size="sm" disabled={!canApply} onClick={apply}>{t("themeDraft.apply")}</Button>
       <Button type="button" variant="ghost" size="sm" onClick={onClose}>{t("themeDraft.cancel")}</Button>
     </div>

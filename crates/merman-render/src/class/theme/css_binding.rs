@@ -1,5 +1,7 @@
 use serde_json::Value;
 
+use super::paint::ClassConfigPaint;
+
 /// Raw browser paint slots bound before Class measurement and SVG emission.
 /// Values stay as CSS tokens; binding does not imply native color support.
 #[derive(Debug, Clone)]
@@ -24,8 +26,7 @@ impl ClassCssThemeBinding {
             crate::config::config_string(config, &["themeVariables", key])
                 .unwrap_or_else(|| fallback.to_string())
         };
-        let text_color = token("textColor", "#333");
-        let class_text = token("classText", &token("primaryTextColor", &text_color));
+        let class_text = ClassConfigPaint::class_text(config).css().to_owned();
         let class_group_text =
             crate::config::config_string(config, &["themeVariables", "nodeBorder"])
                 .unwrap_or_else(|| class_text.clone());
@@ -84,9 +85,9 @@ impl ClassCssThemeBinding {
             note_text: token("noteTextColor", "#333"),
             class_group_text,
             text_color: token("textColor", &class_text),
-            main_bkg: token("mainBkg", "#ECECFF"),
-            node_default_fill: token("mainBkg", &token("primaryColor", "#ECECFF")),
-            node_default_stroke: token("nodeBorder", &token("primaryBorderColor", "#9370DB")),
+            main_bkg: ClassConfigPaint::background(config).css().to_owned(),
+            node_default_fill: ClassConfigPaint::node_fill(config).css().to_owned(),
+            node_default_stroke: ClassConfigPaint::node_stroke(config).css().to_owned(),
             node_border: token("nodeBorder", "#9370DB"),
             edge_label_background: token("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
             palette,

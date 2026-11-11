@@ -1096,7 +1096,7 @@ fn typed_edge_background_preserves_alpha_in_native_pixels() {
 fn stateful_host_label_offsets_are_not_replayed_as_verified_geometry() {
     use merman::svg::{
         MeasurementProfileId, TextMeasurementPolicy, TextMeasurementProfile,
-        TextMeasurementProfileIdentity, TextMeasurer, TextMetrics, TextStyle, ThemePreset,
+        TextMeasurementProfileIdentity, TextMeasurer, TextMetrics, TextStyle,
     };
     use std::sync::{
         Arc,
@@ -1115,9 +1115,7 @@ fn stateful_host_label_offsets_are_not_replayed_as_verified_geometry() {
             self.0.fetch_add(1, Ordering::SeqCst) as f64 * 0.125
         }
     }
-    let theme = DiagramThemeCompiler::new()
-        .compile_preset(ThemePreset::Cyberpunk)
-        .unwrap();
+    let theme = hard_shadow_theme(&[ThemeTarget::EdgeLabel], ThemeRuleSet::default());
     for look in ["classic", "neo"] {
         let calls = Arc::new(AtomicUsize::new(0));
         let environment = merman::SvgEnvironment::deterministic().with_text_measurement_policy(

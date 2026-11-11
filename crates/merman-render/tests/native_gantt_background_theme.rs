@@ -275,7 +275,7 @@ fn native_presets_keep_excluded_periods_distinct_and_ink_readable_under_every_se
 #[test]
 fn native_dark_presets_keep_every_section_composite_readable() {
     for (preset, fallback, exclude) in [
-        (ThemePreset::Cyberpunk, None, "#14324a"),
+        (ThemePreset::Cyberpunk, None, "#253139"),
         (ThemePreset::EditorDark, Some("dark"), "#334155"),
         (ThemePreset::OneDark, Some("dark"), "#11151c"),
     ] {
@@ -415,13 +415,13 @@ fn exported_excluded_period_token_is_independent_and_edits_reach_the_terminal() 
         );
         let (rendered, _) = render(SOURCE, Some(&theme), json!({}));
         let document = Document::parse(rendered.svg()).unwrap();
-        assert_eq!(outside_ink(&document, 0), "#c7fdff");
+        assert_eq!(outside_ink(&document, 0), "#EAF4F0");
         let canvas = document
             .descendants()
             .find(|node| node.attribute("data-merman-theme-canvas") == Some("base"))
             .unwrap();
         assert_eq!(canvas.attribute("fill"), Some("#000710"));
-        let expected = if edited_token { "#1d3049" } else { "#14324a" };
+        let expected = if edited_token { "#1d3049" } else { "#253139" };
         assert_eq!(
             css(&document, ".exclude-range", "fill").as_deref(),
             Some(expected)

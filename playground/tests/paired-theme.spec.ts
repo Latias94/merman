@@ -4,7 +4,7 @@ import { strFromU8, unzipSync } from "fflate";
 import { decodeShareHash, encodeShareHash } from "../src/lib/share";
 import { DEFAULT_WORKSPACE_SNAPSHOT, type WorkspaceSnapshot } from "../src/lib/workspace-snapshot";
 import { CORE_THEME_SAMPLE_IDS } from "../src/themes/families";
-import { monitorBrowserErrors, openWorkbenchTool, replaceEditorSource, replaceMonacoText, waitForPreviewSvg } from "./helpers/playground";
+import { monitorBrowserErrors, openWorkbenchTool, replaceEditorSource, replaceMermaidConfig, replaceMonacoText, waitForPreviewSvg } from "./helpers/playground";
 import { chooseThemeOption } from "./helpers/theme-select";
 
 const reading = await readFile(new URL("../src/themes/recipes/reading.theme.json", import.meta.url), "utf8");
@@ -182,6 +182,86 @@ test("customizing a shared recipe without a display label does not invent preset
   expect(saved.themeRecipeJson).toBe(reading);
   expect(saved.themeAppearance).toBe("follow");
   expect(saved.themeRecipeLabel).toEqual({ name: "Imported theme", source: "imported" });
+});
+
+for (const { preset, appearance, host, fill } of [
+  { preset: "editor-dark", appearance: "dark", host: "light", fill: "#0f172a" },
+  { preset: "editor-light", appearance: "light", host: "dark", fill: "#ffffff" },
+]) {
+  test(`customizing followed ${preset} keeps its single appearance and Undo restores its preset identity`, async ({ page }) => {
+    const panel = await start(page, {
+      ...DEFAULT_WORKSPACE_SNAPSHOT, code: workspace.code,
+      themePresetId: preset, themeAppearance: "follow",
+    }, host);
+    const control = panel.getByTestId("theme-appearance-control");
+    await expect(control).toHaveAttribute("data-effective-appearance", appearance);
+    await expect.poll(() => canvas(page)).toBe(fill);
+    await panel.getByRole("button", { name: "Customize", exact: true }).click();
+    await validateDraft(panel);
+    await panel.getByRole("button", { name: "Apply changes", exact: true }).click();
+    await expect(control).toHaveAttribute("data-effective-appearance", appearance);
+    await expect.poll(() => canvas(page)).toBe(fill);
+    const saved = await sharedWorkspace(page);
+    expect(saved.themePresetId).toBeNull();
+    expect(saved.themeAppearance).toBe("follow");
+    expect(saved.themeRecipeLabel?.derivedFrom).toBe(`preset:${preset}`);
+    const recipe = JSON.parse(saved.themeRecipeJson!);
+    expect(Object.keys(recipe.design.appearances)).toEqual([appearance]);
+    expect(recipe.design.default_appearance).toBe(appearance);
+
+    await panel.getByRole("button", { name: "Undo appearance change", exact: true }).click();
+    const restored = await sharedWorkspace(page);
+    expect(restored.themePresetId).toBe(preset);
+    expect(restored.themeAppearance).toBe("follow");
+    expect(restored.themeRecipeJson).toBeNull();
+    await expect(control).toHaveAttribute("data-effective-appearance", appearance);
+  });
+}
+
+test("draft validation follows the edited bytes and preserves source and configuration edits made before Apply", async ({ page }) => {
+  const panel = await start(page);
+  await panel.getByRole("button", { name: "Customize", exact: true }).click();
+  const apply = panel.getByRole("button", { name: "Apply changes", exact: true });
+  await validateDraft(panel);
+  await expect(apply).toBeEnabled();
+  expect((await sharedWorkspace(page)).themeRecipeJson).toBe(reading);
+
+  const edited = JSON.parse(reading);
+  edited.design.appearances.light.tokens.accent.value = "#B00020";
+  const raw = `${JSON.stringify(edited, null, 2)}\n`;
+  await replaceDraft(page, raw);
+  await expect(apply).toBeDisabled();
+  await expect(panel.getByTestId("theme-draft-workbench").getByRole("status")).toHaveCount(0);
+  await validateDraft(panel);
+  await expect(apply).toBeEnabled();
+
+  const code = "flowchart LR\nA[Edited during customization] --> B[Retained]";
+  const config = '{"flowchart":{"htmlLabels":false,"curve":"linear"},"themeVariables":{"primaryColor":"#F1F2F3"}}';
+  await replaceEditorSource(page, code);
+  await replaceMermaidConfig(page, config);
+  await apply.click();
+  const saved = await sharedWorkspace(page);
+  expect(saved.themeRecipeJson).toBe(raw);
+  expect(saved.themeAppearance).toBe("follow");
+  expect(saved.code).toBe(code);
+  expect(saved.mermaidConfig).toBe(config);
+  await panel.getByRole("button", { name: "Undo appearance change", exact: true }).click();
+  const restored = await sharedWorkspace(page);
+  expect(restored.themeRecipeJson).toBe(reading);
+  expect(restored.code).toBe(code);
+  expect(restored.mermaidConfig).toBe(config);
+});
+
+test("selecting another theme discards a validated draft before it can replace the new selection", async ({ page }) => {
+  const panel = await start(page);
+  await panel.getByRole("button", { name: "Customize", exact: true }).click();
+  await validateDraft(panel);
+  await expect(panel.getByRole("button", { name: "Apply changes", exact: true })).toBeEnabled();
+  await panel.locator('[data-theme-choice="preset:editor"]').click();
+  await expect(panel.getByTestId("theme-draft-workbench")).toHaveCount(0);
+  const saved = await sharedWorkspace(page);
+  expect(saved.themePresetId).toBe("editor");
+  expect(saved.themeRecipeJson).toBeNull();
 });
 
 test("a paired import retains references, rule order and explicit overrides through edit, default selection and exchange", async ({ page }) => {

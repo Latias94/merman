@@ -2125,6 +2125,184 @@ fn timeline_direct_event_fill_overrides_only_event_palette_fill() {
     assert_eq!(evidence.theme_residual_count(), 0);
 }
 
+#[test]
+fn timeline_event_palette_fallback_preserves_clear_and_explicit_paints() {
+    const PALETTE_COLOR: &str = "#22d3ee";
+    const SOURCE_COLOR: &str = "#abcdef";
+    let empty_theme = DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new())
+        .unwrap();
+    for direction in ["", " TD"] {
+        let source = format!("timeline{direction}\nsection Release\nPlan : Build\n");
+        for source_owned in [false, true] {
+            let config = if source_owned {
+                serde_json::json!({"themeVariables": {"cScale0": SOURCE_COLOR}})
+            } else {
+                serde_json::json!({})
+            };
+            let engine = MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(config),
+            );
+            let baseline =
+                try_render_timeline_with_theme_and_engine(&source, &empty_theme, engine.clone())
+                    .unwrap();
+            let baseline_document = roxmltree::Document::parse(baseline.svg()).unwrap();
+            let baseline_event = baseline_document
+                .descendants()
+                .find(|node| node.attribute("class") == Some("eventWrapper"))
+                .unwrap()
+                .descendants()
+                .find(|node| node.attribute("class") == Some("node-bkg node-undefined"))
+                .unwrap();
+            let baseline_label_styles = baseline_document
+                .descendants()
+                .filter(|node| node.has_tag_name("text"))
+                .map(|node| node.attribute("style"))
+                .collect::<Vec<_>>();
+            for (paint, explicit_style) in [
+                (Specified::Unspecified, None),
+                (Specified::Clear, None),
+                (
+                    Specified::Value(CanvasPaint::Transparent),
+                    Some("fill:transparent;"),
+                ),
+                (
+                    Specified::Value(CanvasPaint::solid("#ef4444").unwrap()),
+                    Some("fill:#ef4444;"),
+                ),
+            ] {
+                let omitted = matches!(paint, Specified::Unspecified);
+                let clear = matches!(paint, Specified::Clear);
+                let mut styles = ThemeRuleSet::default().with_ordinal_palette(
+                    ThemeTarget::TimelineEvent,
+                    OrdinalPalette::new([ThemeColorValue::parse(PALETTE_COLOR).unwrap()]).unwrap(),
+                );
+                if !omitted {
+                    styles = styles.with_rule(ThemeRule::new(
+                        ThemeTarget::TimelineEvent,
+                        ThemeStylePatch {
+                            paint: ThemePaintPatch {
+                                fill: paint.clone(),
+                                ..ThemePaintPatch::default()
+                            },
+                            ..ThemeStylePatch::default()
+                        },
+                    ));
+                }
+                let theme = DiagramThemeCompiler::new()
+                    .compile(DiagramThemeSpec::new().with_styles(styles))
+                    .unwrap();
+                let rendered = try_render_timeline_with_theme_engine_requirement(
+                    &source,
+                    &theme,
+                    engine.clone(),
+                    ThemePortabilityRequirement::BestEffort,
+                )
+                .unwrap();
+                let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+                let paths = document
+                    .descendants()
+                    .filter(|node| {
+                        node.has_tag_name("path")
+                            && node.attribute("class") == Some("node-bkg node-undefined")
+                    })
+                    .collect::<Vec<_>>();
+                assert_eq!(paths.len(), 3, "section, task, event");
+                let palette_style = format!(
+                    "fill:{};",
+                    if source_owned {
+                        SOURCE_COLOR
+                    } else {
+                        PALETTE_COLOR
+                    }
+                );
+                for path in &paths[..2] {
+                    assert_eq!(path.attribute("style"), Some(palette_style.as_str()));
+                }
+                let expected_event_style = if omitted {
+                    Some(palette_style.as_str())
+                } else if source_owned {
+                    baseline_event.attribute("style")
+                } else {
+                    explicit_style
+                };
+                assert_eq!(
+                    paths[2].attribute("style"),
+                    expected_event_style,
+                    "{direction}/source={source_owned}/{paint:?}"
+                );
+                assert_eq!(paths[2].attribute("d"), baseline_event.attribute("d"));
+                assert_eq!(
+                    document
+                        .descendants()
+                        .filter(|node| node.has_tag_name("text"))
+                        .map(|node| node.attribute("style"))
+                        .collect::<Vec<_>>(),
+                    baseline_label_styles,
+                    "event paint must preserve section/task/event label declarations"
+                );
+                if source_owned {
+                    let css = document
+                        .descendants()
+                        .find(|node| node.has_tag_name("style"))
+                        .and_then(|node| node.text())
+                        .unwrap();
+                    assert!(css.contains(".section--1 path"));
+                    assert!(css.contains("fill:#abcdef;"));
+                    assert!(!rendered.svg().contains(PALETTE_COLOR));
+                    assert!(!rendered.svg().contains("#ef4444"));
+                }
+                let completion = rendered.into_completion();
+                let evidence = merman_render::__private::family_evidence(completion.report());
+                assert_eq!(evidence.required_count(), if omitted { 1 } else { 2 });
+                assert_eq!(evidence.accounted_count(), evidence.required_count());
+                assert_eq!(
+                    evidence.applied_count(),
+                    if source_owned {
+                        0
+                    } else {
+                        1 + usize::from(!omitted && !clear)
+                    }
+                );
+                assert_eq!(
+                    evidence.not_applicable_count(),
+                    if source_owned {
+                        1 + usize::from(!omitted && !clear)
+                    } else {
+                        0
+                    }
+                );
+                assert_eq!(evidence.theme_residual_count(), usize::from(clear));
+                assert_eq!(
+                    completion
+                        .report()
+                        .theme_diagnostics()
+                        .iter()
+                        .any(|diagnostic| {
+                            diagnostic.target() == Some(ThemeTarget::TimelineEvent)
+                                && diagnostic.code() == "unsupported-paint"
+                        }),
+                    clear
+                );
+                if clear {
+                    assert!(matches!(
+                        try_render_timeline_with_theme_engine_requirement(
+                            &source,
+                            &theme,
+                            engine.clone(),
+                            ThemePortabilityRequirement::RequirePortable,
+                        ),
+                        Err(merman_render::Error::UnverifiedFamilyTheme {
+                            family_id: merman_model::family::DiagramFamilyId::TIMELINE,
+                            residual_count: 1,
+                        })
+                    ));
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RecordedTimelineMeasurement {
     text: String,

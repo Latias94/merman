@@ -26,15 +26,25 @@ pub(crate) struct JourneyTextPaintPlan {
     title: Option<Box<str>>,
     source_title_color: Box<str>,
     surface_font_visible: bool,
+    section_colours_owned: bool,
     evidence: FamilyThemeOutcomes,
     pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
-    surface_pending: Vec<(FamilyThemeMechanismKey, Option<FamilyThemeResidualReason>)>,
+    surface_pending: Vec<JourneySurfaceRule>,
     terminal: OnceLock<JourneyTextPaintTerminalSeal>,
 }
 
 #[derive(Debug)]
 struct JourneyTextPaintTerminalSeal {
     has_visible_surface_text: bool,
+    has_visible_surface_fill: bool,
+}
+
+#[derive(Debug)]
+struct JourneySurfaceRule {
+    key: FamilyThemeMechanismKey,
+    fill_pending: bool,
+    fill_residual: Option<FamilyThemeResidualReason>,
+    residual: Option<FamilyThemeResidualReason>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -60,7 +70,9 @@ pub(crate) struct JourneyTextPaintReceipt<'a> {
     lines: usize,
     css_declarations: usize,
     surface_font_visible: bool,
+    section_colours_owned: bool,
     has_visible_surface_text: bool,
+    has_visible_surface_fill: bool,
     valid: bool,
 }
 
@@ -87,18 +99,21 @@ impl JourneyTextPaintPlan {
                 .map(str::trim)
                 .filter(|title| !title.is_empty())
                 .map(Into::into),
-            source_title_color: super::config::JourneyConfigView::new(config.as_value())
-                .render_settings()
-                .title_color
-                .into_boxed_str(),
+            source_title_color: render_settings.title_color.clone().into_boxed_str(),
             surface_font_visible: surface_font_size > 0.0,
+            section_colours_owned: render_settings.text_placement
+                == super::JourneyTextPlacement::Tspan
+                && config.config_path_overrides_typed_default("journey.sectionColours"),
             evidence: FamilyThemeOutcomes::default(),
             pending: Vec::new(),
             surface_pending: Vec::new(),
             terminal: OnceLock::new(),
         };
         let Some(theme) = theme else { return Ok(plan) };
-        let config_owned = config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let config_owned = typography
+            .css_binding()
+            .text_color_source_path
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path));
         let title_owned = !plan.source_title_color.is_empty() || config_owned;
         let title_can_be_visible = plan.title.is_some() && typography.title_can_be_visible();
         let mut title_fill_winner = None;
@@ -136,12 +151,6 @@ impl JourneyTextPaintPlan {
         }
         // TaskLabel is the foreground for the section/task surfaces sharing JourneyTask paint.
         // Keep the author-ordered Text/TaskLabel winner chain; a later Text rule still wins.
-        let surface_owned = config_owned
-            || (super::config::JourneyConfigView::new(config.as_value())
-                .render_settings()
-                .text_placement
-                == super::JourneyTextPlacement::Tspan
-                && config.config_path_overrides_typed_default("journey.sectionColours"));
         let surface_style = theme.text_style_with_work_meter(
             ThemeTarget::TaskLabel,
             ThemeVariant::Default,
@@ -165,7 +174,7 @@ impl JourneyTextPaintPlan {
                 }
             )
         });
-        if has_surface_fill && !surface_owned {
+        if has_surface_fill && !config_owned {
             plan.surface_fill = resolve_direct_static_fill(
                 theme,
                 &surface_style,
@@ -187,7 +196,12 @@ impl JourneyTextPaintPlan {
             work.charge(1)?;
             let entry = surface_observations
                 .entry(theme.family_mechanism_key(*route))
-                .or_insert((false, None));
+                .or_insert_with(|| JourneySurfaceRule {
+                    key: theme.family_mechanism_key(*route),
+                    fill_pending: false,
+                    fill_residual: None,
+                    residual: None,
+                });
             let property = resolved_style_property_for_facet(facet);
             let unproved_ordinal = matches!(
                 selector,
@@ -199,7 +213,7 @@ impl JourneyTextPaintPlan {
                 *winner_property == property && *winner > rule_index
             });
             if (!surface_winners.contains(&(rule_index, property)) && !unproved_ordinal)
-                || (property == ResolvedStyleProperty::Fill && surface_owned)
+                || (property == ResolvedStyleProperty::Fill && config_owned)
             {
                 continue;
             }
@@ -210,16 +224,25 @@ impl JourneyTextPaintPlan {
                     .as_ref()
                     .is_some_and(|fill| fill.rule_index() == rule_index)
             {
-                entry.0 = true;
+                entry.fill_pending = true;
+            } else if property == ResolvedStyleProperty::Fill {
+                entry
+                    .fill_residual
+                    .get_or_insert(unsupported_residual_for_facet(facet));
             } else {
-                entry.1.get_or_insert(unsupported_residual_for_facet(facet));
+                entry
+                    .residual
+                    .get_or_insert(unsupported_residual_for_facet(facet));
             }
         }
-        for (key, (pending, residual)) in surface_observations {
-            if pending || residual.is_some() {
-                plan.surface_pending.push((key, residual));
+        for observation in surface_observations.into_values() {
+            if observation.fill_pending
+                || observation.fill_residual.is_some()
+                || observation.residual.is_some()
+            {
+                plan.surface_pending.push(observation);
             } else {
-                plan.evidence.mark_not_applicable(key);
+                plan.evidence.mark_not_applicable(observation.key);
             }
         }
         // Aggregate all facets before certifying a Rule key. A fill does not prove typography.
@@ -328,8 +351,11 @@ impl JourneyTextPaintPlan {
         self.title_fill.as_ref().map(DirectStaticPaint::css)
     }
 
-    pub(crate) fn surface_fill_css(&self) -> Option<&str> {
-        self.surface_fill.as_ref().map(DirectStaticPaint::css)
+    pub(crate) fn surface_fill_css(&self, uses_section_colour: bool) -> Option<&str> {
+        self.surface_fill
+            .as_ref()
+            .filter(|_| !self.section_colours_owned || !uses_section_colour)
+            .map(DirectStaticPaint::css)
     }
 
     pub(crate) fn begin_terminal_receipt<'a>(
@@ -356,7 +382,7 @@ impl JourneyTextPaintPlan {
         }
         Ok(Some(JourneyTextPaintReceipt {
             expected_fill: self.fill_css(),
-            expected_surface_fill: self.surface_fill_css(),
+            expected_surface_fill: self.surface_fill.as_ref().map(DirectStaticPaint::css),
             expected_title: self.title.as_deref(),
             expected_title_fill: self.title_fill_css().unwrap_or(&self.source_title_color),
             expected_labels: [
@@ -373,7 +399,9 @@ impl JourneyTextPaintPlan {
             lines: 0,
             css_declarations: 0,
             surface_font_visible: self.surface_font_visible,
+            section_colours_owned: self.section_colours_owned,
             has_visible_surface_text: false,
+            has_visible_surface_fill: false,
             valid: has_title == self.title.is_some(),
         }))
     }
@@ -384,21 +412,32 @@ impl JourneyTextPaintPlan {
                 .terminal
                 .set(JourneyTextPaintTerminalSeal {
                     has_visible_surface_text: receipt.has_visible_surface_text,
+                    has_visible_surface_fill: receipt.has_visible_surface_fill,
                 })
                 .is_ok()
     }
 
     pub(crate) fn record_evidence(&self, evidence: &mut FamilyThemeEvidence) {
         evidence.merge_borrowed(&self.evidence);
-        for (key, residual) in &self.surface_pending {
+        for observation in &self.surface_pending {
+            let key = &observation.key;
+            // A selected section colour owns fill only; sibling facets still have visible text.
             if self
                 .terminal
                 .get()
                 .is_some_and(|seal| !seal.has_visible_surface_text)
             {
                 evidence.mark_not_applicable(key.clone());
-            } else if let Some(reason) = residual {
-                evidence.mark_residual(key.clone(), *reason);
+            } else if let Some(reason) = observation.residual {
+                evidence.mark_residual(key.clone(), reason);
+            } else if self
+                .terminal
+                .get()
+                .is_some_and(|seal| !seal.has_visible_surface_fill)
+            {
+                evidence.mark_not_applicable(key.clone());
+            } else if let Some(reason) = observation.fill_residual {
+                evidence.mark_residual(key.clone(), reason);
             } else if let Some(fill) = self
                 .surface_fill
                 .as_ref()
@@ -466,14 +505,20 @@ impl JourneyTextPaintReceipt<'_> {
         &mut self,
         role: JourneyTextPaintRole,
         inline_fill: Option<&str>,
+        uses_section_colour: bool,
         has_visible_text: bool,
     ) {
         self.valid &= matches!(
             role,
             JourneyTextPaintRole::Section | JourneyTextPaintRole::Task
         );
-        self.record_label(role, inline_fill);
-        self.has_visible_surface_text |= self.surface_font_visible && has_visible_text;
+        let source_owned = self.section_colours_owned && uses_section_colour;
+        let expected_fill = self.expected_surface_fill.filter(|_| !source_owned);
+        self.valid &= inline_fill == expected_fill;
+        self.labels[role as usize] += 1;
+        let visible = self.surface_font_visible && has_visible_text;
+        self.has_visible_surface_text |= visible;
+        self.has_visible_surface_fill |= visible && !source_owned;
     }
 
     pub(crate) fn record_title(&mut self, title: &str, fill: &str) {
@@ -502,7 +547,9 @@ mod tests {
             lines: 2,
             css_declarations: 6,
             surface_font_visible: true,
+            section_colours_owned: false,
             has_visible_surface_text: true,
+            has_visible_surface_fill: true,
             valid: true,
         }
     }

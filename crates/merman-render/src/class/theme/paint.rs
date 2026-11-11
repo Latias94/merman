@@ -2,6 +2,79 @@ use crate::diagram_theme::{CanvasPaint, ResolvedStyleProperty, ResolvedThemeStyl
 
 use super::outcomes::ClassSelectedPaint;
 
+/// Select the same string token as Class CSS before querying its frozen ownership.
+/// Derived ownership belongs to that terminal path, not to unused fallback inputs.
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ClassConfigPaint<'a> {
+    css: &'a str,
+    path: Option<&'static str>,
+}
+
+impl<'a> ClassConfigPaint<'a> {
+    pub(super) fn select(
+        config: &'a serde_json::Value,
+        paths: &[&'static str],
+        fallback: &'a str,
+    ) -> Self {
+        crate::config::selected_config_string(config, paths)
+            .map(|(path, css)| Self {
+                css,
+                path: Some(path),
+            })
+            .unwrap_or(Self {
+                css: fallback,
+                path: None,
+            })
+    }
+
+    pub(super) fn node_fill(config: &'a serde_json::Value) -> Self {
+        Self::select(
+            config,
+            &["themeVariables.mainBkg", "themeVariables.primaryColor"],
+            "#ECECFF",
+        )
+    }
+
+    pub(super) fn node_stroke(config: &'a serde_json::Value) -> Self {
+        Self::select(
+            config,
+            &[
+                "themeVariables.nodeBorder",
+                "themeVariables.primaryBorderColor",
+            ],
+            "#9370DB",
+        )
+    }
+
+    pub(super) fn class_text(config: &'a serde_json::Value) -> Self {
+        Self::select(
+            config,
+            &[
+                "themeVariables.classText",
+                "themeVariables.primaryTextColor",
+                "themeVariables.textColor",
+            ],
+            "#333",
+        )
+    }
+
+    pub(super) fn background(config: &'a serde_json::Value) -> Self {
+        Self::select(config, &["themeVariables.mainBkg"], "#ECECFF")
+    }
+
+    pub(super) fn css(self) -> &'a str {
+        self.css
+    }
+
+    pub(super) fn config_owned(
+        self,
+        config: &merman_model::presentation::PresentationConfig,
+    ) -> bool {
+        self.path
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub(super) enum ClassPaintAction {
     #[default]
@@ -35,13 +108,13 @@ impl ClassPaintBinding {
         owner_paths: &[&'static str],
         css: String,
     ) -> Self {
+        let config_origin = ClassConfigPaint::select(config.as_value(), owner_paths, &css)
+            .path
+            .filter(|path| config.config_paint_overrides_typed_default(path));
         Self {
             compatibility_css: css.clone(),
             css,
-            config_origin: owner_paths
-                .iter()
-                .copied()
-                .find(|path| config.config_paint_overrides_typed_default(path)),
+            config_origin,
             ..Self::default()
         }
     }

@@ -196,7 +196,7 @@ fn public_cyberpunk_canvas_survives_recipe_exchange() {
             .descendants()
             .find(|node| node.attribute("class") == Some("merman-theme-canvas-base"))
             .expect("painted root canvas");
-        assert_eq!(base.attribute("fill"), Some("#051423"), "{family}");
+        assert_eq!(base.attribute("fill"), Some("#080D11"), "{family}");
         let layers: Vec<_> = document
             .descendants()
             .filter(|node| node.attribute("class") == Some("merman-theme-canvas-layer"))

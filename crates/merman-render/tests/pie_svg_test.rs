@@ -2555,9 +2555,9 @@ fn pie_builtin_ghibli_preserves_role_sizes_shared_fills_and_inherited_font() {
         .unwrap()
         .as_css();
     for (selector, size, color) in [
-        ("#merman .slice", "17px", "#3A2E2C"),
-        ("#merman .pieTitleText", "25px", "#3A2E2C"),
-        ("#merman .legend text", "12px", "#6B5B4F"),
+        ("#merman .slice", "17px", "#314A3E"),
+        ("#merman .pieTitleText", "25px", "#314A3E"),
+        ("#merman .legend text", "12px", "#637261"),
     ] {
         assert_eq!(
             pie_stylesheet_property_values(rendered.svg(), selector, "font-size"),
@@ -3865,6 +3865,205 @@ fn pie_base_size_ownership_follows_the_selected_path_and_root_number_fallback() 
             merman_render::__private::family_evidence(rendered.into_completion().report());
         assert_eq!(evidence.applied_count(), applied);
         assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn pie_css_binding_ignores_nonstring_text_color_owners() {
+    for (target, key, selector, text) in [
+        (
+            ThemeTarget::Title,
+            "pieTitleTextColor",
+            "#merman .pieTitleText",
+            "Ownership",
+        ),
+        (
+            ThemeTarget::Text,
+            "pieSectionTextColor",
+            "#merman .slice",
+            "100%",
+        ),
+        (
+            ThemeTarget::Legend,
+            "pieLegendTextColor",
+            "#merman .legend text",
+            "Alpha",
+        ),
+    ] {
+        let theme = pie_rules_theme([ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+        )]);
+        for (value, expected, applied) in [
+            (None, "#c2188b", 1),
+            (Some(serde_json::json!(null)), "#c2188b", 1),
+            (Some(serde_json::json!(false)), "#c2188b", 1),
+            (Some(serde_json::json!("#125634")), "#125634", 0),
+        ] {
+            let variables = value.as_ref().map_or_else(
+                || serde_json::json!({}),
+                |value| serde_json::json!({(key): value}),
+            );
+            let config = serde_json::json!({"themeVariables": variables});
+            let source =
+                format!("---\nconfig: {config}\n---\npie title Ownership\n  \"Alpha\" : 1\n");
+            let rendered = try_render_pie_with_theme_requirement(
+                &source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some(text))
+                .expect("the styled Pie text role must have a real terminal");
+            match target {
+                ThemeTarget::Title => {
+                    assert_eq!(terminal.attribute("class"), Some("pieTitleText"));
+                }
+                ThemeTarget::Text => assert_eq!(terminal.attribute("class"), Some("slice")),
+                ThemeTarget::Legend => assert_eq!(
+                    terminal.parent().and_then(|node| node.attribute("class")),
+                    Some("legend")
+                ),
+                _ => unreachable!(),
+            }
+            assert_eq!(
+                pie_stylesheet_property_values(rendered.svg(), selector, "fill"),
+                [expected],
+                "{key}={value:?}"
+            );
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), applied, "{key}={value:?}");
+            assert_eq!(evidence.not_applicable_count(), 1 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn pie_css_binding_ignores_nonstring_slice_color_owners() {
+    for (kind, theme) in [
+        (
+            "rule",
+            pie_slice_fill_theme(CanvasPaint::solid("#c2188b").unwrap()),
+        ),
+        ("palette", pie_slice_palette_theme(&["#c2188b"])),
+    ] {
+        for (value, expected, legend_style, applied) in [
+            (
+                None,
+                "#c2188b",
+                "fill: rgb(194, 24, 139); stroke: rgb(194, 24, 139);",
+                1,
+            ),
+            (
+                Some(serde_json::json!(null)),
+                "#c2188b",
+                "fill: rgb(194, 24, 139); stroke: rgb(194, 24, 139);",
+                1,
+            ),
+            (
+                Some(serde_json::json!(false)),
+                "#c2188b",
+                "fill: rgb(194, 24, 139); stroke: rgb(194, 24, 139);",
+                1,
+            ),
+            (
+                Some(serde_json::json!("#125634")),
+                "#125634",
+                "fill: rgb(18, 86, 52); stroke: rgb(18, 86, 52);",
+                0,
+            ),
+        ] {
+            let variables = value.as_ref().map_or_else(
+                || serde_json::json!({}),
+                |value| serde_json::json!({"pie1": value}),
+            );
+            let config = serde_json::json!({"themeVariables": variables});
+            let source = format!("---\nconfig: {config}\n---\npie\n  \"Alpha\" : 1\n");
+            let rendered = try_render_pie_with_theme_requirement(
+                &source,
+                &theme,
+                ThemePortabilityRequirement::RequirePortable,
+            )
+            .unwrap();
+            let (slices, legends) = pie_terminal_fills(rendered.svg());
+            assert_eq!(slices, [expected], "{kind}: pie1={value:?}");
+            assert_eq!(legends, [legend_style], "{kind}: pie1={value:?}");
+            let evidence =
+                merman_render::__private::family_evidence(rendered.into_completion().report());
+            assert_eq!(evidence.required_count(), 1);
+            assert_eq!(evidence.accounted_count(), 1);
+            assert_eq!(evidence.applied_count(), applied, "{kind}: pie1={value:?}");
+            assert_eq!(evidence.not_applicable_count(), 1 - applied);
+            assert_eq!(evidence.theme_residual_count(), 0);
+        }
+    }
+}
+
+#[test]
+fn pie_css_binding_preserves_selected_text_fallback_owners() {
+    for (target, primary, fallback, selector, text) in [
+        (
+            ThemeTarget::Title,
+            "pieTitleTextColor",
+            "taskTextDarkColor",
+            "#merman .pieTitleText",
+            "Ownership",
+        ),
+        (
+            ThemeTarget::Text,
+            "pieSectionTextColor",
+            "textColor",
+            "#merman .slice",
+            "100%",
+        ),
+        (
+            ThemeTarget::Legend,
+            "pieLegendTextColor",
+            "taskTextDarkColor",
+            "#merman .legend text",
+            "Alpha",
+        ),
+    ] {
+        let theme = pie_rules_theme([ThemeRule::new(
+            target,
+            ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+        )]);
+        let config = serde_json::json!({"themeVariables": {
+            (primary): false,
+            (fallback): "#125634"
+        }});
+        let source = format!("---\nconfig: {config}\n---\npie title Ownership\n  \"Alpha\" : 1\n");
+        let rendered = try_render_pie_with_theme_requirement(
+            &source,
+            &theme,
+            ThemePortabilityRequirement::RequirePortable,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(
+            document
+                .descendants()
+                .any(|node| { node.has_tag_name("text") && node.text() == Some(text) })
+        );
+        assert_eq!(
+            pie_stylesheet_property_values(rendered.svg(), selector, "fill"),
+            ["#125634"],
+            "{primary} must select {fallback}"
+        );
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
         assert_eq!(evidence.theme_residual_count(), 0);
     }
 }

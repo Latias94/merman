@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { LazyFeatureBoundary } from "@/src/components/LazyFeatureBoundary";
 import { useThemeLibraryStore } from "@/src/lib/theme-library-state";
+import type { ThemeAppearancePreference } from "@/src/lib/theme-appearance";
 import {
   currentDiagramDetection, currentWorkspaceDiagramDetection, detectedThemeFamily, detectWorkspaceDiagram,
   type WorkspaceDiagramDetection,
@@ -17,9 +18,10 @@ import { selectWorkspaceSnapshot, useAppStore } from "@/src/store";
 
 const ThemeShowcase = lazy(() => import("./ThemeShowcase"));
 
-export function ThemeShowcaseLauncher({ panel = false, themeId }: {
+export function ThemeShowcaseLauncher({ panel = false, themeId, appearance }: {
   readonly panel?: boolean;
   readonly themeId?: string;
+  readonly appearance?: ThemeAppearancePreference;
 }) {
   const { t } = useTranslation();
   const trigger = useRef<HTMLButtonElement>(null);
@@ -65,7 +67,8 @@ export function ThemeShowcaseLauncher({ panel = false, themeId }: {
     {panel ? button : <Tooltip><TooltipTrigger asChild>{button}</TooltipTrigger><TooltipContent>{t("themeShowcase.title")}</TooltipContent></Tooltip>}
     {activated && <LazyFeatureBoundary feature={t("themeShowcase.title")}
       presentation={{ kind: "dialog", open, onOpenChange: setOpen, restoreFocus }}>
-      <ThemeShowcase key={initialThemeId ?? "collection"} open={open} onOpenChange={setOpen} restoreFocus={restoreFocus} initialThemeId={initialThemeId}
+      <ThemeShowcase key={`${initialThemeId ?? "collection"}:${appearance ?? "browse"}`} open={open} onOpenChange={setOpen} restoreFocus={restoreFocus} initialThemeId={initialThemeId}
+        initialAppearance={appearance}
         filters={filters} onFiltersChange={changeFilters} currentFamilyId={currentFamilyId} />
     </LazyFeatureBoundary>}
   </>;

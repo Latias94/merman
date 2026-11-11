@@ -473,7 +473,7 @@ fn public_cyberpunk_sequence_shape_and_message_glow_survives_native_export() {
             receipt.reference_count(),
             receipt.drop_shadow_count()
         ),
-        (21, 21, 29)
+        (13, 13, 17)
     );
     assert_eq!(pdf.export_report().native_filter_receipt(), Some(receipt));
 }

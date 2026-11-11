@@ -84,7 +84,7 @@ test("theme library selects expanded families and exposes source code with keybo
   await trigger.click();
   const gallery = page.getByTestId("theme-showcase");
   const cards = gallery.locator("[data-theme-design-card]");
-  await expect(cards).toHaveCount(20);
+  await expect(cards).toHaveCount(28);
   const family = gallery.getByRole("combobox", { name: "Diagram family filter", exact: true });
   await chooseThemeOption(page, family, "treemap");
   await expect(family).toBeFocused();
@@ -162,7 +162,7 @@ test("theme library selects expanded families and exposes source code with keybo
   await gallery.getByTestId("theme-library-family-chip").getByRole("button").click();
   await expect(family).toHaveAttribute("data-value", "");
   await expect(family).toBeFocused();
-  await expect(cards).toHaveCount(20);
+  await expect(cards).toHaveCount(28);
   await page.keyboard.press("Escape");
   await expect(gallery).toBeHidden();
   await expect(trigger).toBeFocused();

@@ -21,7 +21,7 @@ use serde_json::{Value, json};
 
 const ID: &str = "native-structural";
 // Canvas, surface, surface-alt, border, line, accent. Ghibli distinguishes every role;
-// Cyberpunk also exercises the dark preset's linked neon colors.
+// Cyberpunk also exercises the dark preset's distinct signal colors.
 #[cfg(any(
     feature = "diagram-er",
     feature = "diagram-requirement",
@@ -32,13 +32,13 @@ const PRESETS: [(ThemePreset, [&str; 6]); 2] = [
     (
         ThemePreset::Cyberpunk,
         [
-            "#051423", "#051423", "#051423", "#00f2ff", "#00f2ff", "#ff00ff",
+            "#080D11", "#161F25", "#253139", "#F3E600", "#29F3EC", "#FF4564",
         ],
     ),
     (
         ThemePreset::Ghibli,
         [
-            "#FDF6E3", "#FFFFFF", "#FFF3E0", "#000000", "#6B5B4F", "#FFDFAD",
+            "#FAF5E8", "#EEF3E3", "#F3EFDF", "#78917B", "#637261", "#B79B65",
         ],
     ),
 ];
@@ -199,8 +199,8 @@ mod er {
             .unwrap();
         for html in [false, true] {
             for (source, variables, odd, even) in [
-                (SOURCE, json!({"rowOdd":"#123456"}), "#123456", "#FFF3E0"),
-                (SOURCE, json!({"rowEven":"#123456"}), "#FFFFFF", "#123456"),
+                (SOURCE, json!({"rowOdd":"#123456"}), "#123456", "#F3EFDF"),
+                (SOURCE, json!({"rowEven":"#123456"}), "#EEF3E3", "#123456"),
             ] {
                 let svg = render(
                     source,
@@ -221,7 +221,13 @@ fn native_requirement_borders_and_referenced_relation_markers_keep_separate_role
         let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
         for (variables, body_stroke, relation) in [
             (json!({}), border, line),
-            (json!({"nodeBorder":"#123456"}), "#123456", line),
+            // Stamped nodes consume the border palette before the scalar fallback.
+            (json!({"nodeBorder":"#123456"}), border, line),
+            (
+                json!({"borderColorArray":[], "nodeBorder":"#123456"}),
+                "#123456",
+                line,
+            ),
             (json!({"relationColor":"#654321"}), border, "#654321"),
         ] {
             let svg = render(
@@ -439,8 +445,8 @@ mod treemap {
         const SOURCE: &str =
             "treemap\n\"Section A\"\n  \"Leaf A\": 42\n\"Section B\"\n  \"Leaf B\": 24\n";
         for (preset, fills, ink) in [
-            (ThemePreset::Cyberpunk, ["#67e8f9", "#f9a8d4"], "#000000"),
-            (ThemePreset::Ghibli, ["#9bc5a1", "#efbc88"], "#3A2E2C"),
+            (ThemePreset::Cyberpunk, ["#F3E600", "#29F3EC"], "#000000"),
+            (ThemePreset::Ghibli, ["#9bc5a1", "#efbc88"], "#314A3E"),
         ] {
             let theme = DiagramThemeCompiler::new().compile_preset(preset).unwrap();
             let svg = render(SOURCE, &theme, json!({}));

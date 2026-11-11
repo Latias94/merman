@@ -4,7 +4,6 @@ use std::sync::OnceLock;
 use merman_model::families::pie::PieDiagramModel;
 use merman_model::presentation::PresentationConfig;
 
-use crate::config::config_string;
 use crate::diagram_theme::{
     CanvasPaint, FamilyThemeDisposition, FamilyThemeMechanism, FamilyThemeMechanismKey,
     FamilyThemePaintKind, FamilyThemeRuleFacet, FamilyThemeSelectorShape, ResolvedDiagramTheme,
@@ -30,10 +29,6 @@ const PIE_OUTER_CIRCLE_CLASS: &str = "pieOuterCircle";
 pub(crate) const PIE_TITLE_CLASS: &str = "pieTitleText";
 const PIE_SLICE_STROKE_PATH: &str = "themeVariables.pieStrokeColor";
 const PIE_OUTER_STROKE_PATH: &str = "themeVariables.pieOuterStrokeColor";
-const MERMAID_PIE_SLOT_KEYS: [&str; MERMAID_PIE_PALETTE_SIZE] = [
-    "pie1", "pie2", "pie3", "pie4", "pie5", "pie6", "pie7", "pie8", "pie9", "pie10", "pie11",
-    "pie12",
-];
 const MERMAID_PIE_SLOT_PATHS: [&str; MERMAID_PIE_PALETTE_SIZE] = [
     "themeVariables.pie1",
     "themeVariables.pie2",
@@ -52,6 +47,7 @@ const MERMAID_PIE_SLOT_PATHS: [&str; MERMAID_PIE_PALETTE_SIZE] = [
 #[derive(Debug)]
 struct PieSlicePaint {
     fill: String,
+    source_path: Option<&'static str>,
     typed_owner: Option<PieSlicePaintOwner>,
 }
 
@@ -220,9 +216,9 @@ impl PieThemePlan {
                 self.palette_key = Some(key.clone());
                 let mut missing_typed_color = false;
                 for (index, paint) in self.paints.iter_mut().enumerate() {
-                    if effective_config.config_paint_overrides_typed_default(
-                        MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
-                    ) {
+                    if paint.source_path.is_some_and(|path| {
+                        effective_config.config_paint_overrides_typed_default(path)
+                    }) {
                         continue;
                     }
                     let style = theme.style_with_work_meter(
@@ -316,9 +312,10 @@ impl PieThemePlan {
                 ) else {
                     continue;
                 };
-                if effective_config.config_paint_overrides_typed_default(
-                    MERMAID_PIE_SLOT_PATHS[index % MERMAID_PIE_PALETTE_SIZE],
-                ) {
+                if paint
+                    .source_path
+                    .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path))
+                {
                     suppressed_fill_rules.insert(fill.rule_index());
                     continue;
                 }
@@ -464,14 +461,18 @@ impl PieThemePlan {
         }
         let index = self.paints.len();
         let slot = index % MERMAID_PIE_PALETTE_SIZE;
-        let fill = config_string(
+        let selected = crate::config::selected_config_string(
             effective_config,
-            &["themeVariables", MERMAID_PIE_SLOT_KEYS[slot]],
-        )
-        .unwrap_or_else(|| default_pie_palette()[slot].to_string());
+            &[MERMAID_PIE_SLOT_PATHS[slot]],
+        );
+        let (source_path, fill) = selected
+            .map_or((None, default_pie_palette()[slot]), |(path, fill)| {
+                (Some(path), fill)
+            });
         self.label_indices.insert(label.to_string(), index);
         self.paints.push(PieSlicePaint {
-            fill,
+            fill: fill.to_owned(),
+            source_path,
             typed_owner: None,
         });
         index
@@ -1000,9 +1001,9 @@ mod tests {
             }}),
         );
         let css = plan.css_binding();
-        assert_eq!(css.title_text_color, "currentColor");
-        assert_eq!(css.legend_text_color, "currentColor");
-        assert_eq!(css.section_text_color, "var(--section-color)");
+        assert_eq!(css.text_fill(PieTextRole::Title), "currentColor");
+        assert_eq!(css.text_fill(PieTextRole::Legend), "currentColor");
+        assert_eq!(css.text_fill(PieTextRole::Section), "var(--section-color)");
         assert_eq!(css.slice_stroke_width, "3");
         assert_eq!(css.outer_stroke_width, "calc(1px + 1em)");
         assert_eq!(css.outer_stroke_width_number, 2.0);

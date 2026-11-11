@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt::Write as _;
 use std::sync::OnceLock;
 
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use merman_model::families::usecase::{
     UsecaseActorType, UsecaseArrowType, UsecaseDiagramModel, UsecaseNodeKind,
     UsecaseRelationshipType,
@@ -24,7 +24,7 @@ use crate::family::{
     resolved_style_property_for_facet, unsupported_residual_for_facet,
 };
 use crate::resources::OperationWorkMeter;
-use crate::text::TextStyle;
+use crate::text::{TextStyle, VisibleTextStyleFacts};
 
 use super::{UsecaseCssBinding, UsecaseCssPaint};
 
@@ -118,6 +118,21 @@ impl UsecaseThemeStyle {
         }
     }
 
+    pub(crate) fn record_text_emitted(
+        &self,
+        receipt: &UsecaseThemeReceipt,
+        facts: impl FnOnce() -> VisibleTextStyleFacts,
+    ) {
+        if let Some(index) = self.terminal {
+            let facts = facts();
+            receipt.emitted.borrow_mut()[index] = true;
+            // A terminal can emit several JSON rows or self-loop label segments.
+            // Only text proven invisible across every emission is NotApplicable.
+            *receipt.text_visible.borrow_mut()[index].get_or_insert(false) |=
+                !facts.parse_valid() || facts.has_visible_runs();
+        }
+    }
+
     pub(crate) fn record_shadow_emitted(&self, receipt: &UsecaseThemeReceipt) {
         if let Some(index) = self.terminal {
             receipt.effects.borrow_mut().insert(index);
@@ -128,12 +143,14 @@ impl UsecaseThemeStyle {
 #[derive(Debug, Default)]
 pub(crate) struct UsecaseThemeReceipt {
     emitted: RefCell<Vec<bool>>,
+    text_visible: RefCell<Vec<Option<bool>>>,
     effects: RefCell<BTreeSet<usize>>,
 }
 
 #[derive(Debug)]
 struct UsecaseThemeSeal {
     emitted: Vec<bool>,
+    text_visible: Vec<Option<bool>>,
     effects: BTreeSet<usize>,
 }
 
@@ -164,11 +181,59 @@ struct Surface<'a> {
     ordinal: usize,
     textual: bool,
     has_fill: bool,
-    source: &'a IndexMap<String, String>,
+    source: &'a UsecaseSourceStyles,
     font_prefix: Option<&'a str>,
     fill: &'a UsecaseCssPaint,
     stroke: &'a UsecaseCssPaint,
     shadow: bool,
+}
+
+#[derive(Default)]
+struct UsecaseSourceStyles {
+    properties: IndexSet<String>,
+    typography: UsecaseSourceTypography,
+}
+
+#[derive(Default)]
+struct UsecaseSourceTypography {
+    font_family: Option<crate::mermaid_style::CssFontFamilyOverride>,
+    font_size: Option<crate::mermaid_style::CssFontSizeOverride>,
+}
+
+impl UsecaseSourceTypography {
+    fn resolve(source: &IndexMap<String, String>) -> Self {
+        // Classify the label declarations in the writer's order and original spelling.
+        // font/all are shell-only, and normalizing keys first loses valid fallbacks
+        // such as font-size:24px followed by FONT-SIZE:bogus.
+        let mut css = String::new();
+        for (key, value) in source {
+            if crate::mermaid_style::is_label_style_key(key) {
+                let _ = write!(
+                    css,
+                    "{key}:{} !important;",
+                    value.trim_end_matches("!important").trim()
+                );
+            }
+        }
+        Self {
+            font_family: crate::mermaid_style::css_font_family_override(&css),
+            font_size: crate::mermaid_style::css_font_size_override(&css),
+        }
+    }
+
+    fn unverified(
+        &self,
+        configured_family: Option<crate::mermaid_style::CssFontFamilyOverride>,
+    ) -> bool {
+        self.font_family
+            .or(configured_family)
+            .is_some_and(|winner| {
+                winner.ownership() == crate::mermaid_style::CssFontFamilyOwnership::Unverified
+            })
+            || self.font_size.is_some_and(|winner| {
+                winner.ownership() == crate::mermaid_style::CssFontSizeOwnership::Unverified
+            })
+    }
 }
 
 impl UsecaseThemePlan {
@@ -471,7 +536,7 @@ impl UsecaseThemePlan {
                         ordinal: index,
                         textual: false,
                         has_fill: true,
-                        source: &IndexMap::new(),
+                        source: &UsecaseSourceStyles::default(),
                         font_prefix: None,
                         fill: &binding.edge_background,
                         stroke: &none,
@@ -495,9 +560,13 @@ impl UsecaseThemePlan {
                 },
             };
             for start in sides {
-                if source.contains_key("marker")
-                    || source.contains_key(if *start { "marker-start" } else { "marker-end" })
-                    || source.contains_key("all")
+                if source.properties.contains("marker")
+                    || source.properties.contains(if *start {
+                        "marker-start"
+                    } else {
+                        "marker-end"
+                    })
+                    || source.properties.contains("all")
                 {
                     continue;
                 }
@@ -511,7 +580,7 @@ impl UsecaseThemePlan {
                             edge.arrow_type,
                             UsecaseArrowType::Cross | UsecaseArrowType::ReversedCross
                         ),
-                        source: &IndexMap::new(),
+                        source: &UsecaseSourceStyles::default(),
                         font_prefix: None,
                         fill: if edge.relationship_type == UsecaseRelationshipType::Generalization {
                             &binding.main
@@ -535,7 +604,7 @@ impl UsecaseThemePlan {
                     ordinal: ordinal(ThemeTarget::Edge),
                     textual: false,
                     has_fill: true,
-                    source: &IndexMap::new(),
+                    source: &UsecaseSourceStyles::default(),
                     font_prefix: None,
                     fill: &none,
                     stroke: &binding.line,
@@ -558,7 +627,7 @@ impl UsecaseThemePlan {
                     ordinal: 1,
                     textual: true,
                     has_fill: true,
-                    source: &IndexMap::new(),
+                    source: &UsecaseSourceStyles::default(),
                     font_prefix: None,
                     fill: &binding.text,
                     stroke: &none,
@@ -581,7 +650,7 @@ impl UsecaseThemePlan {
             theme
                 .family_mechanism_routes()
                 .len()
-                .saturating_add(surface.source.len()),
+                .saturating_add(surface.source.properties.len()),
         )?;
         let resolved = if surface.textual {
             theme.text_style_with_work_meter(
@@ -600,6 +669,8 @@ impl UsecaseThemePlan {
         };
         let mut observations = Vec::new();
         let mut style = UsecaseThemeStyle::default();
+        let configured_family =
+            configured_font_family(config, surface.font_prefix).map(|(_, family)| family);
         for route in theme.family_mechanism_routes().iter().copied() {
             let (property, key, facet, selector_supported) = match route.mechanism() {
                 FamilyThemeMechanism::RuleFacet {
@@ -672,6 +743,24 @@ impl UsecaseThemePlan {
                     )
                 }),
             });
+        }
+        // Reconcile after all routes selected their values: an applied typed stack
+        // replaces an unowned configured fallback, independently of route order.
+        let selected_configured_family = style
+            .font_family
+            .is_none()
+            .then_some(configured_family)
+            .flatten();
+        if surface
+            .source
+            .typography
+            .unverified(selected_configured_family)
+        {
+            for observation in &mut observations {
+                if observation.capability == Some(ThemeCapability::Typography) {
+                    observation.residual = Some(FamilyThemeResidualReason::UnsupportedTypography);
+                }
+            }
         }
         if resolved.fill_resolution().winner().is_none()
             && !source_owns(config, &surface, ResolvedStyleProperty::Fill)
@@ -803,12 +892,14 @@ impl UsecaseThemePlan {
     pub(crate) fn begin_receipt(&self) -> UsecaseThemeReceipt {
         UsecaseThemeReceipt {
             emitted: RefCell::new(vec![false; self.terminals.len()]),
+            text_visible: RefCell::new(vec![None; self.terminals.len()]),
             ..Default::default()
         }
     }
     pub(crate) fn record_terminal(&self, receipt: UsecaseThemeReceipt) {
         let _ = self.receipt.set(UsecaseThemeSeal {
             emitted: receipt.emitted.into_inner(),
+            text_visible: receipt.text_visible.into_inner(),
             effects: receipt.effects.into_inner(),
         });
     }
@@ -828,6 +919,13 @@ impl UsecaseThemePlan {
                 .or_default();
         }
         for (index, observations) in self.terminals.iter().enumerate() {
+            if self
+                .receipt
+                .get()
+                .is_some_and(|receipt| receipt.text_visible[index] == Some(false))
+            {
+                continue;
+            }
             let emitted = self
                 .receipt
                 .get()
@@ -878,22 +976,29 @@ fn source_styles(
     model: &UsecaseDiagramModel,
     classes: &[String],
     inline: &[String],
-) -> IndexMap<String, String> {
-    // Normalize ownership queries only. Measurement and SVG keep the source spelling.
-    super::super::measure::styles(model, classes, inline)
+) -> UsecaseSourceStyles {
+    let source = super::super::measure::styles(model, classes, inline);
+    let typography = UsecaseSourceTypography::resolve(&source);
+    // Non-typographic ownership uses normalized property lookup; typography must
+    // select its winner before differently spelled declarations are collapsed.
+    let properties = source
         .into_iter()
         .filter_map(|(key, value)| {
             let property =
                 crate::mermaid_style::parse_style_declaration(&format!("{key}:{value}"))?
                     .property()
                     .to_owned();
-            Some((property, value))
+            Some(property)
         })
-        .collect()
+        .collect();
+    UsecaseSourceStyles {
+        properties,
+        typography,
+    }
 }
 
-fn bounded_body_source(source: &IndexMap<String, String>) -> bool {
-    source.keys().all(|key| {
+fn bounded_body_source(source: &UsecaseSourceStyles) -> bool {
+    source.properties.iter().all(|key| {
         crate::mermaid_style::is_label_style_key(key)
             || matches!(
                 key.as_str(),
@@ -910,15 +1015,36 @@ fn bounded_body_source(source: &IndexMap<String, String>) -> bool {
     })
 }
 
+fn configured_font_family(
+    config: &PresentationConfig,
+    prefix: Option<&str>,
+) -> Option<(String, crate::mermaid_style::CssFontFamilyOverride)> {
+    let path = if let Some(prefix) = prefix {
+        // Role selectors consume their own configured font, independently of root CSS.
+        format!("usecase.{prefix}FontFamily")
+    } else if config
+        .as_value()
+        .pointer("/themeVariables/fontFamily")
+        .is_some()
+    {
+        "themeVariables.fontFamily".to_owned()
+    } else {
+        "fontFamily".to_owned()
+    };
+    let family = config.get_str(&path)?;
+    let winner = crate::mermaid_style::css_font_family_override(&format!("font-family:{family}"))?;
+    Some((path, winner))
+}
+
 fn source_owns(
     config: &PresentationConfig,
     surface: &Surface<'_>,
     property: ResolvedStyleProperty,
 ) -> bool {
     let owns = |key: &str| {
-        (surface.source.contains_key(key)
+        (surface.source.properties.contains(key)
             && (!surface.textual || crate::mermaid_style::is_label_style_key(key)))
-            || (!surface.textual && surface.source.contains_key("all"))
+            || (!surface.textual && surface.source.properties.contains("all"))
     };
     match property {
         ResolvedStyleProperty::Fill => {
@@ -945,13 +1071,16 @@ fn source_owns(
                 None => super::super::measure::configured_generic_font_size(config.as_value())
                     .map(|_| "themeVariables.fontSize".to_owned()),
             };
-            owns("font-size")
-                || owns("font")
+            surface.source.typography.font_size.is_some()
                 || configured.is_some_and(|path| config.config_path_overrides_typed_default(&path))
+        }
+        ResolvedStyleProperty::Typography(ThemeTypographyProperty::FontStack) => {
+            surface.source.typography.font_family.is_some()
+                || configured_font_family(config, surface.font_prefix)
+                    .is_some_and(|(path, _)| config.config_path_overrides_typed_default(&path))
         }
         ResolvedStyleProperty::Typography(property) => {
             let (key, root, local) = match property {
-                ThemeTypographyProperty::FontStack => ("font-family", "fontFamily", "FontFamily"),
                 ThemeTypographyProperty::FontWeight => ("font-weight", "fontWeight", "FontWeight"),
                 ThemeTypographyProperty::FontStyle => ("font-style", "fontStyle", "FontStyle"),
                 _ => return false,

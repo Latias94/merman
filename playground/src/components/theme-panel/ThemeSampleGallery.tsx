@@ -11,6 +11,7 @@ import { explorationAppearance, type ExplorationTheme } from "@/src/themes/catal
 import { samplesForTheme, THEME_SAMPLES, type ThemeSampleId } from "@/src/themes/samples";
 import { ThemeExamplePreview } from "./ThemeExamplePreview";
 import { ThemeSampleNote } from "./ThemeSampleNote";
+import { themeDesignTreatment } from "@/src/lib/theme-library";
 
 export function ThemeSampleGallery({ theme, appearance, selectedSampleId, active, onInspect, onUse }: {
   readonly theme: ExplorationTheme;
@@ -38,13 +39,17 @@ export function ThemeSampleGallery({ theme, appearance, selectedSampleId, active
       {samples.map((sample) => {
         const family = t(`themeGallery.samples.${sample.id}`);
         const selected = selectedSampleId === sample.id;
-        return <article key={sample.id} data-theme-sample={sample.id} data-theme-sample-selected={selected}
+        const treatment = themeDesignTreatment(theme, sample.id);
+        return <article key={sample.id} data-theme-sample={sample.id} data-theme-sample-selected={selected} data-theme-coverage={treatment}
           className={cn("min-w-0 overflow-hidden rounded-xl border bg-card", selected && "border-primary/60 ring-1 ring-primary/20")}>
           <button type="button" className="group block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
             aria-label={t("themeLibrary.inspectSample", { family })} aria-haspopup="dialog" data-theme-library-focus={`gallery-${sample.id}`}
             onClick={(event) => onInspect(sample.id, event.currentTarget)}>
             <div className="flex min-h-12 items-center justify-between gap-2 px-4 py-3">
-              <h4 className="text-sm font-medium">{family}</h4>
+              <div className="min-w-0">
+                <h4 className="text-sm font-medium">{family}</h4>
+                {treatment === "base_only" && <p className="text-[10px] text-muted-foreground">{t("themeLibrary.coverage.base_only")}</p>}
+              </div>
               <div className="flex shrink-0 items-center gap-2 text-muted-foreground">
                 {selected && <span className="inline-flex items-center gap-1 text-[10px] text-primary"><Check className="size-3" aria-hidden="true" />{t("themeLibrary.selectedExample")}</span>}
                 <Maximize2 className="size-3.5 group-hover:text-foreground" aria-hidden="true" />

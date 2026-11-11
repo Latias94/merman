@@ -608,6 +608,8 @@ pub(crate) fn render_journey_diagram_svg_model(
                 .section_colours
                 .get(section_index % render_settings.section_colours.len().max(1))
                 .map(String::as_str);
+            let uses_section_colour = section_colour.is_some();
+            let section_text_fill = text_paint.surface_fill_css(uses_section_colour);
             write_section_rect(
                 &mut out,
                 section,
@@ -628,7 +630,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                     task_font_size,
                     task_font_family,
                     section_colour,
-                    typed_fill: text_paint.surface_fill_css(),
+                    typed_fill: section_text_fill,
                 },
                 &theme.text_color,
             )?;
@@ -640,7 +642,8 @@ pub(crate) fn render_journey_diagram_svg_model(
             if let Some(receipt) = text_receipt.as_mut() {
                 receipt.record_surface_label(
                     crate::journey::JourneyTextPaintRole::Section,
-                    text_paint.surface_fill_css(),
+                    section_text_fill,
+                    uses_section_colour,
                     has_visible_text,
                 );
             }
@@ -757,6 +760,9 @@ pub(crate) fn render_journey_diagram_svg_model(
             out.checkpoint()?;
         }
 
+        // Pre-section tasks use the literal black baseline rather than sectionColours.
+        let uses_section_colour = section_index != 0 && section_colour.is_some();
+        let task_text_fill = text_paint.surface_fill_css(uses_section_colour);
         let has_visible_text = write_text_candidate(
             &mut out,
             &task.task,
@@ -772,7 +778,7 @@ pub(crate) fn render_journey_diagram_svg_model(
                 task_font_size,
                 task_font_family,
                 section_colour,
-                typed_fill: text_paint.surface_fill_css(),
+                typed_fill: task_text_fill,
             },
             &theme.text_color,
         )?;
@@ -785,7 +791,8 @@ pub(crate) fn render_journey_diagram_svg_model(
         if let Some(receipt) = text_receipt.as_mut() {
             receipt.record_surface_label(
                 crate::journey::JourneyTextPaintRole::Task,
-                text_paint.surface_fill_css(),
+                task_text_fill,
+                uses_section_colour,
                 has_visible_text,
             );
         }

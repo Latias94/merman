@@ -372,8 +372,11 @@ impl GanttTaskTheme {
             }
         }
 
-        let title_config_owned =
-            effective_config.config_paint_overrides_typed_default("themeVariables.titleColor");
+        let mut css =
+            GanttCssBinding::new(effective_config.as_value(), &typography.font_family_css);
+        let title_config_owned = css
+            .title_text_color_path
+            .is_some_and(|path| effective_config.config_paint_overrides_typed_default(path));
         let title_style = theme.style_with_work_meter(
             ThemeTarget::Title,
             ThemeVariant::Default,
@@ -756,8 +759,6 @@ impl GanttTaskTheme {
             }
         }
 
-        let mut css =
-            GanttCssBinding::new(effective_config.as_value(), &typography.font_family_css);
         css.bind_winners(
             title_fill.as_ref(),
             text_fill.as_ref(),

@@ -151,7 +151,8 @@ fn styled(
     for (key, value) in styles {
         let value = value.trim_end_matches("!important").trim();
         // The writer emits every compiled label declaration as important.
-        cascade.observe(key, value, true);
+        // Normalize each property without collapsing differently spelled declarations.
+        cascade.observe(&key.to_ascii_lowercase(), value, true);
     }
     cascade.finish().into_owned()
 }

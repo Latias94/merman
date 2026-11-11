@@ -108,6 +108,49 @@ fn native_marker_pixels_follow_the_public_edge_paint() {
             );
             continue;
         }
+        assert!(
+            pixels
+                .as_chunks::<4>()
+                .0
+                .iter()
+                .zip(control_pixels.as_chunks::<4>().0.iter())
+                .filter(|(original, control)| original != control)
+                .count()
+                > 20,
+            "missing visible markers in {source}"
+        );
+        let (pixels, control_pixels) = if xml.descendants().any(|node| {
+            node.attribute("data-edge") == Some("true") && node.attribute("filter").is_some()
+        }) {
+            let without_edge_filters = |svg: &str| {
+                let xml = roxmltree::Document::parse(svg).unwrap();
+                let mut removals: Vec<_> = xml
+                    .descendants()
+                    .filter(|node| node.attribute("data-edge") == Some("true"))
+                    .flat_map(|node| {
+                        node.attributes()
+                            .filter(|attr| attr.name() == "filter")
+                            .map(|attr| attr.range())
+                    })
+                    .collect();
+                removals.sort_by_key(|range| range.start);
+                let mut unfiltered = svg.to_owned();
+                for range in removals.into_iter().rev() {
+                    unfiltered.replace_range(range, "");
+                }
+                let svg = merman_render::svg::finalize_resvg_svg(&unfiltered, &session).unwrap();
+                let png = merman::svg::export::svg_to_png(&svg, &options).unwrap();
+                let (color_width, color_height, pixels) = rgba(&png);
+                assert_eq!((width, height), (color_width, color_height));
+                pixels
+            };
+            (
+                without_edge_filters(document.svg()),
+                without_edge_filters(&without_markers),
+            )
+        } else {
+            (pixels, control_pixels)
+        };
         let mut marker_pixels = 0;
         let mut cyan_marker_pixels = 0;
         for (original, control) in pixels

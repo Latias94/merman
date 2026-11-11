@@ -105,6 +105,8 @@
       { "family": "sequence", "target": "sequence-number", "style": { "fill": { "kind": "solid", "color": { "ref": "canvas" } } } },
       { "family": "class", "target": "node", "style": { "fill": { "kind": "solid", "color": { "ref": "surface" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "outline" } } } } },
       { "family": "class", "target": "node-label", "style": { "fill": { "kind": "solid", "color": { "ref": "ink" } } } },
+      { "family": "class", "target": "note", "style": { "fill": { "kind": "solid", "color": { "ref": "note" } }, "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } } } } },
+      { "family": "class", "target": "note-label", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } } } },
       { "family": "class", "target": "title", "style": { "fill": { "kind": "solid", "color": { "ref": "gold" } } } },
       { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "kind": "solid", "color": { "ref": "gold" } }, "width": 1.1 } } },
       { "family": "class", "target": "edge-label-background", "style": { "fill": { "kind": "solid", "color": { "ref": "recess" } } } },

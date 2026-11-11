@@ -1633,6 +1633,79 @@ fn gantt_title_fill_reaches_section_and_diagram_title_css() {
 }
 
 #[test]
+fn gantt_empty_title_color_uses_the_selected_text_owner() {
+    const SOURCE: &str = "gantt\ntitle Fallback title\ndateFormat YYYY-MM-DD\ntodayMarker off\nShip: task, 2024-01-01, 1d\n";
+    let theme = gantt_title_fill_theme(CanvasPaint::solid("#123456").unwrap(), None);
+    for source_owned in [true, false] {
+        let source = if source_owned {
+            format!(
+                "%%{{init: {{\"themeVariables\": {{\"textColor\": \"#fedcba\"}}}}}}%%\n{SOURCE}"
+            )
+        } else {
+            SOURCE.to_owned()
+        };
+        let engine = MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "theme": "default", "look": "classic", "secure": [],
+                "themeVariables": {"titleColor": ""}
+            })),
+        );
+        let (parsed, options, session) =
+            prepare_gantt_family_with_theme_and_engine(&source, &theme, engine);
+        let rendered = family::prepare(&parsed, &options, session)
+            .unwrap()
+            .render_svg(
+                &SvgRenderOptions {
+                    diagram_id: Some("gantt-title-fallback".to_owned()),
+                    ..SvgRenderOptions::default()
+                },
+                &SvgDebugOptions::default(),
+            )
+            .unwrap();
+        let config = &rendered.metadata().effective_config;
+        assert_eq!(config.get_str("theme"), Some("default"));
+        assert_eq!(config.get_str("look"), Some("classic"));
+        assert_eq!(config.get_str("themeVariables.titleColor"), Some(""));
+        assert_eq!(
+            config.config_paint_overrides_typed_default("themeVariables.textColor"),
+            source_owned,
+            "materialization must preserve the selected text owner"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        assert!(document.descendants().any(|node| {
+            node.has_tag_name("text")
+                && node.attribute("class") == Some("titleText")
+                && node.text() == Some("Fallback title")
+        }));
+        let css = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .expect("Gantt stylesheet");
+        let title_rule = css
+            .split_once("#gantt-title-fallback .titleText{")
+            .expect("title paint selector")
+            .1
+            .split_once('}')
+            .expect("title paint declarations")
+            .0;
+        assert_eq!(
+            style_property(title_rule, "fill"),
+            Some(if source_owned { "#fedcba" } else { "#123456" }),
+            "source_owned={source_owned}: an unused titleColor must not own the title terminal"
+        );
+        drop(document);
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+        assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn gantt_title_fill_requires_a_visible_title_terminal() {
     let theme = gantt_title_fill_theme(
         CanvasPaint::solid("#123456").expect("valid title fill"),

@@ -768,6 +768,15 @@ impl BlockNodePaintThemePlan {
             effective_config.config_paint_overrides_typed_default("themeVariables.clusterBkg");
         let cluster_config_stroke =
             effective_config.config_paint_overrides_typed_default("themeVariables.clusterBorder");
+        let palette =
+            BlockCssThemeBinding::palette_arrays(effective_config.as_value()).filter(|_| {
+                BlockCssThemeBinding::palette_look(effective_config.as_value())
+                    == crate::config::config_diagram_look(effective_config.as_value()).as_str()
+            });
+        let palette_fill_owned =
+            effective_config.config_paint_overrides_typed_default("themeVariables.bkgColorArray");
+        let palette_stroke_owned = effective_config
+            .config_paint_overrides_typed_default("themeVariables.borderColorArray");
         let has_ordinals = |target| {
             theme
                 .family_rules()
@@ -815,8 +824,18 @@ impl BlockNodePaintThemePlan {
                     source.classes,
                 )
             });
-            let owned_fill = source_fill || node_config_fill;
-            let owned_stroke = source_stroke || node_config_stroke;
+            let composite = composites.contains(layout.nodes[node_index].id.as_str());
+            // The per-composite CSS outranks scalar paint only on a stamped shell.
+            let palette_slot = source
+                .filter(|source| composite && source.color_index.is_some())
+                .and(palette);
+            let selected_palette_fill = palette_slot
+                .and_then(|(_, backgrounds)| backgrounds)
+                .map(|_| palette_fill_owned);
+            let selected_palette_stroke = palette_slot.map(|_| palette_stroke_owned);
+            let owned_fill = source_fill || selected_palette_fill.unwrap_or(node_config_fill);
+            let owned_stroke =
+                source_stroke || selected_palette_stroke.unwrap_or(node_config_stroke);
             node_owned_fill.push(owned_fill);
             node_owned_stroke.push(owned_stroke);
             let ordinal_node_style;
@@ -841,12 +860,16 @@ impl BlockNodePaintThemePlan {
                 &mut winners,
                 &mut capabilities,
             );
-            if composites.contains(layout.nodes[node_index].id.as_str()) {
+            if composite {
                 cluster_index += 1;
                 // Node paint that actually reached this shell owns its property. Node
                 // capability gaps do not erase its residual or block Cluster's fallback.
-                let owned_fill = source_fill || cluster_config_fill || paint.fill.is_some();
-                let owned_stroke = source_stroke || cluster_config_stroke || paint.stroke.is_some();
+                let owned_fill = source_fill
+                    || selected_palette_fill.unwrap_or(cluster_config_fill)
+                    || paint.fill.is_some();
+                let owned_stroke = source_stroke
+                    || selected_palette_stroke.unwrap_or(cluster_config_stroke)
+                    || paint.stroke.is_some();
                 cluster_owned_fill.push(owned_fill);
                 cluster_owned_stroke.push(owned_stroke);
                 let ordinal_cluster_style;

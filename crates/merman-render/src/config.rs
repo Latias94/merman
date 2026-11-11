@@ -19,6 +19,17 @@ pub(crate) fn config_string(cfg: &Value, path: &[&str]) -> Option<String> {
     value_at(cfg, path).and_then(|v| v.as_str().map(str::to_string))
 }
 
+/// Selects a string and its actual origin together; empty strings remain CSS tokens.
+pub(crate) fn selected_config_string<'a>(
+    cfg: &'a Value,
+    paths: &[&'static str],
+) -> Option<(&'static str, &'a str)> {
+    paths.iter().find_map(|&path| {
+        let value = path.split('.').try_fold(cfg, |value, key| value.get(key))?;
+        Some((path, value.as_str()?))
+    })
+}
+
 pub(crate) fn json_string_or_first_array(value: &Value) -> Option<String> {
     value.as_str().map(str::to_string).or_else(|| {
         value

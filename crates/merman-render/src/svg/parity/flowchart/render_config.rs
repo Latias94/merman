@@ -34,6 +34,7 @@ pub(crate) struct FlowchartRenderConfig {
     pub cluster_fill_config_override: bool,
     pub cluster_stroke_config_override: bool,
     pub node_corner_radius_config_override: bool,
+    pub rounded_rect_radius_config_override: bool,
     pub edge_corner_radius: f64,
     pub edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
     pub compact_edge_corners: bool,
@@ -104,14 +105,15 @@ pub(crate) fn prepare_flowchart_render_config(
         crate::flowchart::flowchart_typography_config_ownership(effective_config);
     let node_label_fill_config_override =
         flowchart_node_label_fill_config_override(effective_config);
-    let node_border_config_override =
-        effective_config.config_paint_overrides_typed_default("themeVariables.nodeBorder");
-    let node_fill_config_override =
-        effective_config.config_paint_overrides_typed_default("themeVariables.mainBkg");
-    let node_stroke_width_config_override =
-        effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
-    let edge_stroke_config_override =
-        effective_config.config_paint_overrides_typed_default("themeVariables.lineColor");
+    let owns_color = |path| {
+        effective_config.get_str(path).is_some()
+            && effective_config.config_paint_overrides_typed_default(path)
+    };
+    let node_border_config_override = owns_color("themeVariables.nodeBorder");
+    let node_fill_config_override = owns_color("themeVariables.mainBkg");
+    let node_stroke_width_config_override = compatibility.stroke_width_configured
+        && effective_config.config_path_overrides_typed_default("themeVariables.strokeWidth");
+    let edge_stroke_config_override = owns_color("themeVariables.lineColor");
     let agentflow = model.keyword == "agentflow-beta";
     let cluster_fill_color = if agentflow {
         "none".to_owned()
@@ -123,16 +125,24 @@ pub(crate) fn prepare_flowchart_render_config(
     } else {
         compatibility.cluster_border.clone()
     };
-    let cluster_fill_config_override = !agentflow
-        && effective_config.config_paint_overrides_typed_default("themeVariables.clusterBkg");
-    let cluster_stroke_config_override =
-        effective_config.config_paint_overrides_typed_default(if agentflow {
-            "themeVariables.flowContainerStroke"
-        } else {
-            "themeVariables.clusterBorder"
-        });
-    let node_corner_radius_config_override =
-        effective_config.config_path_overrides_typed_default("themeVariables.radius");
+    let cluster_fill_config_override = !agentflow && owns_color("themeVariables.clusterBkg");
+    let cluster_stroke_config_override = if agentflow {
+        crate::config::selected_config_string(
+            effective_config.as_value(),
+            &[
+                "themeVariables.flowContainerStroke",
+                "themeVariables.secondaryBorderColor",
+                "themeVariables.clusterBorder",
+            ],
+        )
+        .is_some_and(|(path, _)| owns_color(path))
+    } else {
+        owns_color("themeVariables.clusterBorder")
+    };
+    let node_corner_radius_config_override = compatibility.node_corner_radius_configured
+        && effective_config.config_path_overrides_typed_default("themeVariables.radius");
+    let rounded_rect_radius_config_override = compatibility.rounded_rect_radius_configured
+        && effective_config.config_path_overrides_typed_default("themeVariables.radius");
     let edge_corner_radius = 5.0;
     let compact_edge_corners = false;
 
@@ -166,6 +176,7 @@ pub(crate) fn prepare_flowchart_render_config(
         cluster_fill_config_override,
         cluster_stroke_config_override,
         node_corner_radius_config_override,
+        rounded_rect_radius_config_override,
         edge_corner_radius,
         edge_label_padding,
         compact_edge_corners,
@@ -193,7 +204,7 @@ pub(crate) fn flowchart_node_label_fill_config_override(
 
     let owns = |path| effective_config.config_paint_overrides_typed_default(path);
     let Some(node_text_color) = node_text_color else {
-        return owns(TEXT_COLOR);
+        return effective_config.get_str(TEXT_COLOR).is_some() && owns(TEXT_COLOR);
     };
     if owns(NODE_TEXT_COLOR) {
         return true;

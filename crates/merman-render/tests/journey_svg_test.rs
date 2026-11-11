@@ -2827,3 +2827,204 @@ fn journey_task_theme_receipts_only_require_actual_section_headers() {
 
 #[allow(dead_code)]
 mod common;
+
+#[test]
+fn journey_css_binding_preserves_unowned_presection_task_labels() {
+    let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::TaskLabel,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+    ));
+    for before_section in [false, true] {
+        let initial_task = if before_section {
+            "Before section: 5\n"
+        } else {
+            ""
+        };
+        let config = serde_json::json!({"journey": {"sectionColours": ["#125634"]}});
+        let source = format!(
+            "---\nconfig: {config}\n---\njourney\n{initial_task}section First\nFirst task: 5\nsection Second\nSecond task: 5\n"
+        );
+        let rendered = render_journey_text_rules(
+            &source,
+            styles.clone(),
+            serde_json::json!({"journey": {"textPlacement": "tspan"}}),
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let tasks = document
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && node.attribute("class").is_some_and(|classes| {
+                        classes.split_whitespace().any(|class| class == "task")
+                    })
+            })
+            .collect::<Vec<_>>();
+        let mut expected = vec![
+            ("First task", "#fff", false),
+            ("Second task", "#125634", false),
+        ];
+        if before_section {
+            expected.insert(0, ("Before section", "#c2188b", true));
+        }
+        assert_eq!(tasks.len(), expected.len());
+        for (task, (text, fill, typed)) in tasks.into_iter().zip(expected) {
+            assert_eq!(
+                task.children()
+                    .find(|node| node.has_tag_name("tspan"))
+                    .and_then(|node| node.text()),
+                Some(text)
+            );
+            let style = task.attribute("style").unwrap();
+            if typed {
+                assert!(style.contains(&format!("fill: {fill};")), "{text}: {style}");
+            } else {
+                assert_eq!(task.attribute("fill"), Some(fill), "{text}");
+                assert!(!style.contains("fill:"), "{text}: {style}");
+            }
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(before_section));
+        assert_eq!(
+            evidence.not_applicable_count(),
+            usize::from(!before_section)
+        );
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_css_binding_ignores_nonstring_text_color_owners() {
+    let styles = ThemeRuleSet::default().with_rule(ThemeRule::new(
+        ThemeTarget::Text,
+        ThemeStylePatch::default().with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+    ));
+    for (value, expected, applied) in [
+        (None, "#c2188b", 1),
+        (Some(serde_json::json!(null)), "#c2188b", 1),
+        (Some(serde_json::json!(false)), "#c2188b", 1),
+        (Some(serde_json::json!("#125634")), "#125634", 0),
+    ] {
+        let variables = value.as_ref().map_or_else(
+            || serde_json::json!({}),
+            |value| serde_json::json!({"textColor": value}),
+        );
+        let config = serde_json::json!({"themeVariables": variables});
+        let source =
+            format!("---\nconfig: {config}\n---\njourney\nsection Delivery\nShip: 5: Actor\n");
+        let rendered =
+            render_journey_text_rules(&source, styles.clone(), serde_json::json!({})).unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        assert!(
+            stylesheet
+                .split_once('}')
+                .unwrap()
+                .0
+                .ends_with(&format!("fill:{expected};")),
+            "textColor={value:?}: {stylesheet}"
+        );
+        for class in ["task", "journey-section"] {
+            let terminal = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|candidate| candidate == class)
+                        })
+                })
+                .expect("Journey text paint must reach its native label candidate");
+            let style = terminal.attribute("style").unwrap();
+            assert!(
+                style.contains(&format!("fill: {expected};")),
+                "{value:?}: {style}"
+            );
+            assert!(
+                terminal
+                    .children()
+                    .any(|node| node.has_tag_name("tspan") && node.text().is_some())
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), applied, "textColor={value:?}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn journey_css_binding_keeps_clear_and_unsupported_sibling_residuals() {
+    for (clear, before_section, residuals) in [(false, false, 1), (true, false, 0), (true, true, 1)]
+    {
+        let mut patch = ThemeStylePatch::default();
+        if clear {
+            patch.paint.fill = Specified::Clear;
+        } else {
+            patch = patch
+                .with_fill(CanvasPaint::solid("#c2188b").unwrap())
+                .with_stroke(CanvasPaint::solid("#654321").unwrap());
+        }
+        let styles =
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::TaskLabel, patch));
+        let initial_task = if before_section {
+            "Before section: 5\n"
+        } else {
+            ""
+        };
+        let config = serde_json::json!({"journey": {"sectionColours": ["#125634"]}});
+        let source = format!(
+            "---\nconfig: {config}\n---\njourney\n{initial_task}section First\nFirst task: 5\n"
+        );
+        let rendered = render_journey_rules_with_requirement(
+            &source,
+            styles,
+            serde_json::json!({"journey": {"textPlacement": "tspan"}}),
+            ThemePortabilityRequirement::BestEffort,
+        )
+        .unwrap();
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let first_task = document
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("text")
+                    && node.children().any(|child| {
+                        child.has_tag_name("tspan") && child.text() == Some("First task")
+                    })
+            })
+            .unwrap();
+        assert_eq!(first_task.attribute("fill"), Some("#fff"));
+        assert!(!first_task.attribute("style").unwrap().contains("fill:"));
+        if before_section {
+            let initial = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.children().any(|child| {
+                            child.has_tag_name("tspan") && child.text() == Some("Before section")
+                        })
+                })
+                .unwrap();
+            assert_eq!(initial.attribute("fill"), Some("black"));
+            assert!(!initial.attribute("style").unwrap().contains("fill:"));
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1 - residuals);
+        assert_eq!(evidence.theme_residual_count(), residuals);
+    }
+}

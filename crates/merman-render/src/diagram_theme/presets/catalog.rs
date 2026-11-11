@@ -22,7 +22,13 @@ const README_STYLE_DESIGNS: &[(&str, &str)] = &[
     ("sequence", "dedicated"),
     ("xychart", "dedicated"),
 ];
-const GHIBLI_DESIGNS: &[(&str, &str)] = &[("pie", "dedicated")];
+const GHIBLI_DESIGNS: &[(&str, &str)] = &[
+    ("class", "base_only"),
+    ("flowchart", "dedicated"),
+    ("pie", "dedicated"),
+    ("sequence", "dedicated"),
+    ("xychart", "dedicated"),
+];
 const ART_DESIGNS: &[(&str, &str)] = &[
     ("class", "dedicated"),
     ("er", "dedicated"),
@@ -44,7 +50,6 @@ const CARBON_COPY_DESIGNS: &[(&str, &str)] = &[
     ("state", "dedicated"),
     ("xychart", "dedicated"),
 ];
-const NO_IDS: &[&str] = &[];
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
 
 #[derive(Clone, Copy)]
@@ -111,12 +116,8 @@ pub(super) struct PresetCatalogEntry {
     family_designs: &'static [(&'static str, &'static str)],
     qualified_cells: &'static [ThemePresetQualifiedCell],
     export_kind: &'static str,
-    required_feature_ids: &'static [&'static str],
-    bundled_resource_ids: &'static [&'static str],
-    allowed_residual_ids: &'static [&'static str],
     license_expression: &'static str,
     required_attribution: Option<&'static str>,
-    retained: bool,
 }
 
 impl PresetCatalogEntry {
@@ -179,8 +180,8 @@ impl PresetCatalogEntry {
                 "Hard node shadows work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
             ),
             ThemePreset::Cyberpunk => (
-                "flowchart-basic-glow",
-                "Node glow works with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
+                "flowchart-basic-signal-depth",
+                "Hard cyan/red panel offsets work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
             ),
             _ => return Vec::new(),
         };
@@ -214,26 +215,6 @@ impl PresetCatalogEntry {
             PresetRecipeSource::Generated { palette, .. } => Some(*palette),
             PresetRecipeSource::Document { .. } => None,
         }
-    }
-
-    #[cfg(test)]
-    pub(super) const fn required_feature_ids(&self) -> &'static [&'static str] {
-        self.required_feature_ids
-    }
-
-    #[cfg(test)]
-    pub(super) const fn bundled_resource_ids(&self) -> &'static [&'static str] {
-        self.bundled_resource_ids
-    }
-
-    #[cfg(test)]
-    pub(super) const fn allowed_residual_ids(&self) -> &'static [&'static str] {
-        self.allowed_residual_ids
-    }
-
-    #[cfg(test)]
-    pub(super) const fn retained(&self) -> bool {
-        self.retained
     }
 
     fn recipe(&self) -> ThemeDesignV1 {
@@ -280,7 +261,9 @@ const fn entry(
             palette,
         },
         match preset {
-            ThemePreset::Brutalist | ThemePreset::Spotless => README_STYLE_DESIGNS,
+            ThemePreset::Brutalist | ThemePreset::Spotless | ThemePreset::Cyberpunk => {
+                README_STYLE_DESIGNS
+            }
             ThemePreset::Ghibli => GHIBLI_DESIGNS,
             _ => SHARED_PALETTE_DESIGNS,
         },
@@ -329,12 +312,8 @@ const fn catalog_entry(
         family_designs,
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "design",
-        required_feature_ids: NO_IDS,
-        bundled_resource_ids: NO_IDS,
-        allowed_residual_ids: NO_IDS,
         license_expression: PROJECT_LICENSE,
         required_attribution: None,
-        retained: true,
     }
 }
 
@@ -769,42 +748,42 @@ const PRESET_CATALOG: [PresetCatalogEntry; 14] = [
         true,
         PresetRecipeProfile::Native,
         &PresetPalette {
-            canvas: "#051423",
-            surface: "#051423",
-            surface_alt: "#051423",
-            text: "#00f2ff",
-            subtle_text: "#00f2ff",
-            border: "#00f2ff",
-            line: "#00f2ff",
-            accent: "#ff00ff",
-            edge_label_background: "#051423",
-            cluster_background: "#051423",
-            cluster_border: "#00f2ff",
-            note_background: "#051423",
-            note_border: "#ff00ff",
-            note_text: "#ff00ff",
-            actor_background: "#051423",
-            actor_border: "#00f2ff",
-            actor_text: "#00f2ff",
-            activation_background: "rgba(0, 242, 255, 0.1)",
-            activation_border: "#00f2ff",
-            sequence_number_text: "#051423",
-            packet_field_label_text: "#00f2ff",
-            gantt_active_text: "#051423",
-            gantt_critical: "#fb7185",
-            gantt_critical_text: "#051423",
-            gantt_excluded_period: "#14324a",
+            canvas: "#080D11",
+            surface: "#161F25",
+            surface_alt: "#253139",
+            text: "#EAF4F0",
+            subtle_text: "#A5BCC0",
+            border: "#F3E600",
+            line: "#29F3EC",
+            accent: "#FF4564",
+            edge_label_background: "#080D11",
+            cluster_background: "#10191F",
+            cluster_border: "#536B72",
+            note_background: "#351C29",
+            note_border: "#FF4564",
+            note_text: "#FFE9EF",
+            actor_background: "#161F25",
+            actor_border: "#F3E600",
+            actor_text: "#F3E600",
+            activation_background: "#29F3EC",
+            activation_border: "#29F3EC",
+            sequence_number_text: "#080D11",
+            packet_field_label_text: "#EAF4F0",
+            gantt_active_text: "#080D11",
+            gantt_critical: "#FF4564",
+            gantt_critical_text: "#080D11",
+            gantt_excluded_period: "#253139",
             gantt_text: None,
             treemap_text: Some("#000000"),
             series: &[
-                "#22d3ee", "#f472b6", "#a3e635", "#facc15", "#c084fc", "#38bdf8", "#fb7185",
-                "#2dd4bf",
+                "#F3E600", "#29F3EC", "#FFB0BE", "#C8BFFF", "#9BE8C8", "#FFC394", "#9AD6FF",
+                "#EBC6F3",
             ],
             pie_series: &[
-                "#67e8f9", "#f9a8d4", "#bef264", "#fde047", "#d8b4fe", "#7dd3fc", "#fda4af",
-                "#5eead4", "#c4b5fd", "#fdba74", "#a7f3d0", "#e9b8ff",
+                "#F3E600", "#29F3EC", "#FFB0BE", "#C8BFFF", "#9BE8C8", "#FFC394", "#9AD6FF",
+                "#EBC6F3", "#D5F28F", "#FFDCC2", "#AFEFE6", "#E4DFFF",
             ],
-            pie_text: "#051423",
+            pie_text: "#080D11",
             kanban_task_labels: &["#000000"; 8],
         },
     ),
@@ -815,39 +794,39 @@ const PRESET_CATALOG: [PresetCatalogEntry; 14] = [
         false,
         PresetRecipeProfile::Native,
         &PresetPalette {
-            canvas: "#FDF6E3",
-            surface: "#FFFFFF",
-            surface_alt: "#FFF3E0",
-            text: "#3A2E2C",
-            subtle_text: "#6B5B4F",
-            border: "#000000",
-            line: "#6B5B4F",
-            accent: "#FFDFAD",
-            edge_label_background: "#FDF6E3",
-            cluster_background: "#FFF3E0",
-            cluster_border: "#6B5B4F",
-            note_background: "#FFF3E0",
-            note_border: "#6B5B4F",
-            note_text: "#3A2E2C",
-            actor_background: "#FFFFFF",
-            actor_border: "#6B5B4F",
-            actor_text: "#3A2E2C",
-            activation_background: "#E8F5E9",
-            activation_border: "#6B5B4F",
-            sequence_number_text: "#FDF6E3",
-            packet_field_label_text: "#3A2E2C",
-            gantt_active_text: "#3A2E2C",
-            gantt_critical: "#FFDFAD",
-            gantt_critical_text: "#3A2E2C",
-            gantt_excluded_period: "#FFDFAD",
+            canvas: "#FAF5E8",
+            surface: "#EEF3E3",
+            surface_alt: "#F3EFDF",
+            text: "#314A3E",
+            subtle_text: "#637261",
+            border: "#78917B",
+            line: "#637261",
+            accent: "#B79B65",
+            edge_label_background: "#FAF5E8",
+            cluster_background: "#F3EFDF",
+            cluster_border: "#A7B49A",
+            note_background: "#F8E6BE",
+            note_border: "#78917B",
+            note_text: "#314A3E",
+            actor_background: "#EEF3E3",
+            actor_border: "#78917B",
+            actor_text: "#314A3E",
+            activation_background: "#DDE7D3",
+            activation_border: "#78917B",
+            sequence_number_text: "#FAF5E8",
+            packet_field_label_text: "#314A3E",
+            gantt_active_text: "#314A3E",
+            gantt_critical: "#F8E6BE",
+            gantt_critical_text: "#314A3E",
+            gantt_excluded_period: "#F8E6BE",
             gantt_text: None,
             treemap_text: None,
-            series: &["#FFFFFF", "#FFF3E0", "#E8F5E9", "#E6E6E6", "#FFDFAD"],
+            series: &["#EEF3E3", "#F8E6BE", "#E6EEEA", "#EAE3EE", "#F0EDCC"],
             pie_series: &[
                 "#9bc5a1", "#efbc88", "#a9bfdf", "#e2a5b1", "#c8b7dd", "#e2d77f", "#91c8bf",
                 "#d9ad88", "#b5cd91", "#a5c9d2", "#d7b6a1", "#c9bd94",
             ],
-            pie_text: "#3A2E2C",
+            pie_text: "#314A3E",
             kanban_task_labels: &["#000000"; 5],
         },
     ),
@@ -887,28 +866,22 @@ const fn descriptor_projection() -> [ThemePresetDescriptor; PRESET_CATALOG.len()
     descriptors
 }
 
-const DISCOVERABLE_DESCRIPTORS: [ThemePresetDescriptor; PRESET_CATALOG.len()] =
-    descriptor_projection();
+const DESCRIPTORS: [ThemePresetDescriptor; PRESET_CATALOG.len()] = descriptor_projection();
 
 pub(super) const fn descriptors() -> &'static [ThemePresetDescriptor] {
-    &DISCOVERABLE_DESCRIPTORS
+    &DESCRIPTORS
 }
 
 pub(super) const fn entry_at(index: usize) -> &'static PresetCatalogEntry {
     &PRESET_CATALOG[index]
 }
 
-pub(super) fn entry_for_preset(preset: ThemePreset) -> &'static PresetCatalogEntry {
-    PRESET_CATALOG
-        .iter()
-        .find(|entry| entry.preset == preset && is_discoverable(entry))
-        .expect("every ThemePreset projection must resolve through the catalog")
+pub(super) const fn entry_for_preset(preset: ThemePreset) -> &'static PresetCatalogEntry {
+    entry_at(preset as usize)
 }
 
 pub(super) fn entry_for_id(id: &str) -> Option<&'static PresetCatalogEntry> {
-    PRESET_CATALOG
-        .iter()
-        .find(|entry| entry.id == id && is_discoverable(entry))
+    PRESET_CATALOG.iter().find(|entry| entry.id == id)
 }
 
 #[cfg(test)]
@@ -925,10 +898,6 @@ pub(crate) fn materialize_spec_wire(
 /// Builds the editable source; its caller admits the design before export or compilation.
 pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
     let entry = entry_for_preset(preset);
-    debug_assert!(
-        entry.allowed_residual_ids.is_empty(),
-        "unqualified alpha presets must not inherit qualification residual allowances"
-    );
     let mut design = entry.recipe();
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
         // Choose a fallback without claiming derived variables that would shadow typed paint.
@@ -939,10 +908,6 @@ pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
         });
     }
     design
-}
-
-fn is_discoverable(entry: &PresetCatalogEntry) -> bool {
-    entry.retained && entry.required_feature_ids.is_empty() && entry.bundled_resource_ids.is_empty()
 }
 
 pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1 {

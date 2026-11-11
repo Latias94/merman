@@ -70,7 +70,7 @@ for (const scene of [
   }
 }
 
-test("Ghibli lists only its reviewed Pie design and retains selection for unreviewed families", async ({ page }) => {
+test("Ghibli lists its authored families and retains selection for unreviewed families", async ({ page }) => {
   await page.addInitScript(() => window.localStorage.setItem("merman-language", "en"));
   await page.goto(`./${encodeShareHash({
     code: 'pie\n"Tea": 4\n"Cake": 3', mermaidConfig: "{}", diagramTheme: "default",
@@ -84,9 +84,9 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
   await expect(card).toHaveAttribute("data-theme-treatment", "dedicated");
   await panel.getByTestId("theme-advanced").locator("summary").first().click();
   const reviewed = panel.getByTestId("theme-reviewed-families");
-  await expect(reviewed.getByRole("listitem")).toHaveCount(1);
-  await expect(reviewed.getByRole("listitem")).toContainText("Pie Chart");
-  await expect(reviewed.getByRole("listitem")).toContainText("Designed for this diagram");
+  await expect(reviewed.getByRole("listitem")).toHaveCount(5);
+  await expect(reviewed.getByRole("listitem").filter({ hasText: "Pie Chart" })).toContainText("Designed for this diagram");
+  await expect(reviewed.getByRole("listitem").filter({ hasText: "Class" })).toContainText("Shared styling");
   const catalogSummary = panel.locator("summary").filter({ hasText: /^Preset runtime details$/ });
   await catalogSummary.click();
   const details = catalogSummary.locator("..");
@@ -105,12 +105,15 @@ test("Ghibli lists only its reviewed Pie design and retains selection for unrevi
   await replaceEditorSource(page, "flowchart LR\nA[New source] --> B");
   await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: Flowchart");
   await expect(card).toHaveAttribute("aria-pressed", "true");
+  await expect(card).toHaveAttribute("data-theme-treatment", "dedicated");
+  await replaceEditorSource(page, "erDiagram\nACCOUNT {\n string id\n}");
+  await expect(panel.getByTestId("theme-current-family")).toHaveText("Current diagram: ER Diagram");
   await expect(card).toHaveAttribute("data-theme-treatment", "unreviewed");
   await expect(card).toContainText("Not yet reviewed for this diagram");
   await expect(panel.getByTestId("theme-render-evidence")).not.toHaveAttribute("data-theme-evidence-state", "waiting");
   const execution = JSON.parse((await panel.getByTestId("theme-execution-metadata").textContent())!);
-  expect(execution.theme_execution_evidence.family_id).toBe("flowchart");
-  await expect(reviewed.getByRole("listitem")).toHaveCount(1);
+  expect(execution.theme_execution_evidence.family_id).toBe("er");
+  await expect(reviewed.getByRole("listitem")).toHaveCount(5);
 });
 
 

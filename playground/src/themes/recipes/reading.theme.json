@@ -178,6 +178,10 @@
           "series": {"type": "palette", "value": ["#91AEDC", "#66C8A1", "#BD98E5", "#E2B567", "#E98DAD", "#B8CD6F", "#69CBE5", "#CEAD94"], "description": "Eight ordered reading categories in both appearances: blue, teal, violet, ochre, rose, olive, cyan, and umber. Colors repeat after eight; emphasis remains independent."},
           "pie-series": {"type": "palette", "value": ["#304D73", "#196A4A", "#604080", "#7B551C", "#853653", "#536525", "#136C95", "#846149"], "description": "Eight labeled category surfaces follow the same hue order in both appearances. Pie and Mindmap share paint; the root git0 remains an independent scalar."}
         },
+        "rules": [
+          {"family": "class", "target": "note", "style": {"fill": {"ref": "note-surface"}, "stroke": {"paint": {"ref": "outline"}}}},
+          {"family": "class", "target": "note-label", "style": {"fill": {"ref": "note-ink"}}}
+        ],
         "mermaid": {"variables": {"git0": "#304D73", "erEdgeLabelBackground": "#171C24"}}
       }
     },

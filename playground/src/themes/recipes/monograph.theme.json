@@ -55,6 +55,8 @@
       { "family": "sequence", "target": "sequence-number", "style": { "fill": { "ref": "paper" } } },
       { "family": "class", "target": "node", "style": { "fill": { "ref": "paper" }, "stroke": { "paint": { "ref": "outline" } } } },
       { "family": "class", "target": "node-label", "style": { "fill": { "ref": "ink" } } },
+      { "family": "class", "target": "note", "style": { "fill": { "ref": "annotation" }, "stroke": { "paint": { "ref": "rule" } } } },
+      { "family": "class", "target": "note-label", "style": { "fill": { "ref": "ink" } } },
       { "family": "class", "target": "edge", "style": { "stroke": { "paint": { "ref": "connector" }, "width": 1.25 } } },
       { "family": "class", "target": "edge-label-background", "style": { "fill": { "ref": "paper" } } },
       { "family": "class", "target": "cluster", "style": { "fill": { "ref": "annotation" }, "stroke": { "paint": { "ref": "rule" } } } },

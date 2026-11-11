@@ -683,6 +683,26 @@ fn css_property_values_for_exact_selector<'a>(
     values
 }
 
+fn contrast_ratio(foreground: &str, background: &str) -> f64 {
+    let luminance = |color| {
+        let rgba = merman_markup::theme_color::ThemeColor::parse(color)
+            .unwrap()
+            .rgba_channels();
+        let linear = |channel: f64| {
+            let channel = channel / 255.0;
+            if channel <= 0.04045 {
+                channel / 12.92
+            } else {
+                ((channel + 0.055) / 1.055).powf(2.4)
+            }
+        };
+        0.2126 * linear(rgba.red) + 0.7152 * linear(rgba.green) + 0.0722 * linear(rgba.blue)
+    };
+    let foreground = luminance(foreground);
+    let background = luminance(background);
+    (foreground.max(background) + 0.05) / (foreground.min(background) + 0.05)
+}
+
 fn assert_sequence_role_text_style(
     document: &roxmltree::Document<'_>,
     class_name: &str,
@@ -8527,6 +8547,188 @@ fn sequence_actor_geometry_clear_and_source_width_preserve_other_facets() {
 }
 
 #[test]
+fn sequence_ignored_actor_width_config_keeps_typed_terminal_and_evidence() {
+    let theme = sequence_single_actor_width_theme(Specified::Value(6.0));
+    for width in [
+        None,
+        Some(serde_json::json!(false)),
+        Some(serde_json::json!(true)),
+        Some(serde_json::json!("")),
+        Some(serde_json::json!("   ")),
+    ] {
+        let rendered = render_sequence_actor_width_config_request(&theme, width.clone());
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let actors = document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(actors.len(), 2);
+        for actor in actors {
+            assert_eq!(
+                actor.attribute("style"),
+                Some("stroke-width:6px;"),
+                "ignored config {width:?}"
+            );
+        }
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 1, "ignored config {width:?}");
+        assert_eq!(evidence.not_applicable_count(), 0);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+fn sequence_single_actor_width_theme(width: Specified<f32>) -> DiagramTheme {
+    let mut patch = ThemeStylePatch::default();
+    patch.stroke.width = width;
+    DiagramThemeCompiler::new()
+        .compile(DiagramThemeSpec::new().with_styles(
+            ThemeRuleSet::default().with_rule(ThemeRule::new(ThemeTarget::Actor, patch)),
+        ))
+        .unwrap()
+}
+
+fn render_sequence_actor_width_config_request(
+    theme: &DiagramTheme,
+    width: Option<serde_json::Value>,
+) -> family::RenderedFamilySvg {
+    let mut config = serde_json::json!({"sequence": {"mirrorActors": false}});
+    if let Some(width) = &width {
+        config["themeVariables"] = serde_json::json!({"strokeWidth": width});
+    }
+    let parsed = common::install_parse_compatibility(
+        theme,
+        classic_sequence_engine().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(config),
+        ),
+    )
+    .parse_diagram_for_render_model_sync("sequenceDiagram\nA->>B: Hello\n", ParseOptions::strict())
+    .expect("parse Sequence actor width source")
+    .expect("detect Sequence diagram")
+    .into_presentation();
+    let effective = &parsed.metadata().effective_config;
+    assert_eq!(effective.get_str("look"), Some("classic"));
+    assert_eq!(effective.get_bool("sequence.mirrorActors"), Some(false));
+    if let Some(width) = &width {
+        assert_eq!(
+            effective.as_value().pointer("/themeVariables/strokeWidth"),
+            Some(width)
+        );
+    }
+    assert_eq!(
+        effective.config_path_overrides_typed_default("themeVariables.strokeWidth"),
+        width.is_some(),
+        "the parser must retain authored ownership independently of value consumption"
+    );
+    let RenderSemanticModel::Sequence(model) = parsed.model() else {
+        panic!("expected parsed Sequence model");
+    };
+    assert_eq!(model.actor_order.len(), 2);
+    assert!(model.actors.contains_key("A") && model.actors.contains_key("B"));
+    let session = RenderEnvironment::deterministic()
+        .with_theme_portability_requirement(ThemePortabilityRequirement::BestEffort)
+        .begin_session_with_theme(theme)
+        .unwrap();
+    family::prepare(&parsed, &LayoutOptions::default(), session)
+        .expect("prepare Sequence actor width fixture")
+        .render_svg(&SvgRenderOptions::default(), &SvgDebugOptions::default())
+        .expect("render Sequence actor width fixture")
+}
+
+#[test]
+fn sequence_consumed_actor_width_config_keeps_zero_lengths_and_unresolved_tokens() {
+    let theme = sequence_single_actor_width_theme(Specified::Value(6.0));
+    for (width, css) in [
+        (serde_json::json!(0), "0"),
+        (serde_json::json!("0"), "0"),
+        (serde_json::json!("3px"), "3px"),
+        (serde_json::json!("0.5em"), "0.5em"),
+        (
+            serde_json::json!("var(--actor-width)"),
+            "var(--actor-width)",
+        ),
+    ] {
+        let rendered = render_sequence_actor_width_config_request(&theme, Some(width));
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        let actor_css = stylesheet
+            .split(".actor{")
+            .nth(1)
+            .unwrap()
+            .split('}')
+            .next()
+            .unwrap();
+        assert!(
+            actor_css.contains(&format!("stroke-width:{css};")),
+            "selected actor CSS: {actor_css}"
+        );
+        let actors = document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(actors.len(), 2);
+        for actor in actors {
+            assert_eq!(
+                actor.attribute("style"),
+                None,
+                "source-owned actor width {css}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), 0);
+        assert_eq!(evidence.not_applicable_count(), 1);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
+fn sequence_actor_width_clear_restores_family_or_consumed_config_fallback() {
+    let theme = sequence_single_actor_width_theme(Specified::Clear);
+    for (width, css) in [(None, "1"), (Some(serde_json::json!("3px")), "3px")] {
+        let source_owned = width.is_some();
+        let rendered = render_sequence_actor_width_config_request(&theme, width);
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        let stylesheet = document
+            .descendants()
+            .find(|node| node.has_tag_name("style"))
+            .and_then(|node| node.text())
+            .unwrap();
+        let actor_css = stylesheet
+            .split(".actor{")
+            .nth(1)
+            .unwrap()
+            .split('}')
+            .next()
+            .unwrap();
+        assert!(actor_css.contains(&format!("stroke-width:{css};")));
+        let actors = document
+            .descendants()
+            .filter(|node| node.has_tag_name("rect") && node.attribute("name").is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(actors.len(), 2);
+        for actor in actors {
+            assert_eq!(actor.attribute("style"), None);
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), usize::from(!source_owned));
+        assert_eq!(evidence.not_applicable_count(), usize::from(source_owned));
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}
+
+#[test]
 fn sequence_actor_geometry_does_not_certify_unhandled_glyphs_or_custom_classes() {
     for declaration in [
         "actor A",
@@ -8665,27 +8867,145 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             })
             .collect();
         assert_eq!(actors.len(), 4);
-        for actor in actors {
-            assert_eq!(actor.attribute("rx"), Some("10"));
-            assert_eq!(actor.attribute("style"), Some("stroke-width:3px;"));
+        for actor in &actors {
+            assert_eq!(actor.attribute("rx"), Some("0"));
+            assert_eq!(actor.attribute("ry"), Some("0"));
+            assert_eq!(actor.attribute("style"), Some("stroke-width:1.5px;"));
+            assert_eq!(actor.attribute("filter"), None);
         }
         let css: String = doc
             .descendants()
             .filter(|n| n.has_tag_name("style"))
             .filter_map(|n| n.text())
             .collect();
-        assert!(css.contains(".messageLine0{stroke-width:2px;stroke-dasharray:none;}"));
-        assert!(css.contains(".messageLine1{stroke-width:2px;stroke-dasharray:2,2;}"));
-        outputs.push(rendered.svg().to_owned());
-        let completion = rendered.into_completion();
-        let evidence = merman_render::__private::family_evidence(completion.report());
-        assert_eq!(evidence.theme_residual_count(), 0);
-        let doc = roxmltree::Document::parse(outputs.last().unwrap()).unwrap();
+        assert!(css.contains(".messageLine0{stroke-width:1.5px;stroke-dasharray:none;}"));
+        assert!(css.contains(".messageLine1{stroke-width:1.5px;stroke-dasharray:2,2;}"));
+        let diagram_id = doc.root_element().attribute("id").unwrap();
+        assert_eq!(
+            css_property_values_for_exact_selector(&css, &format!("#{diagram_id} .actor"), "fill",)
+                .last()
+                .copied(),
+            Some("#161F25"),
+            "actor rectangles must retain their dark panel faces after recipe exchange"
+        );
+        for (class, count, weight, ink) in [
+            ("actor", 4, "700", "#F3E600"),
+            ("messageText", 2, "500", "#EAF4F0"),
+            ("noteText", 1, "500", "#FFE9EF"),
+            ("labelText", 1, "500", "#EAF4F0"),
+            ("loopText", 1, "500", "#EAF4F0"),
+        ] {
+            let labels: Vec<_> = doc
+                .descendants()
+                .filter(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class").is_some_and(|classes| {
+                            classes
+                                .split_whitespace()
+                                .any(|candidate| candidate == class)
+                        })
+                })
+                .collect();
+            assert_eq!(labels.len(), count, "{class}");
+            for label in labels {
+                assert_eq!(
+                    inline_style_value(label.attribute("style").unwrap(), "font-weight"),
+                    Some(weight),
+                    "{class}: weight must reach the actual text"
+                );
+                assert!(
+                    label.ancestors().chain(label.descendants()).all(|node| {
+                        node.attribute("filter").is_none()
+                            && node.attribute("style").is_none_or(|style| {
+                                inline_style_value(style, "filter").is_none()
+                                    && inline_style_value(style, "text-shadow").is_none()
+                            })
+                    }),
+                    "{class}: glyphs must not inherit a body or connector glow"
+                );
+            }
+            let selector = if class == "actor" {
+                format!("#{diagram_id} text.actor")
+            } else {
+                format!("#{diagram_id} .{class}")
+            };
+            assert_eq!(
+                css_property_values_for_exact_selector(&css, &selector, "fill")
+                    .last()
+                    .copied(),
+                Some(ink),
+                "{class}: label ink must remain independent of the neon contours"
+            );
+        }
+        for (selector, color) in [
+            (".actor", "#F3E600"),
+            (".actor-line", "#29F3EC"),
+            (".messageLine0", "#29F3EC"),
+            (".messageLine1", "#29F3EC"),
+            (".loopLine", "#FF4564"),
+            (".labelBox", "#F3E600"),
+            (".note", "#FF4564"),
+            (".activation0", "#29F3EC"),
+        ] {
+            assert_eq!(
+                css_property_values_for_exact_selector(
+                    &css,
+                    &format!("#{diagram_id} {selector}"),
+                    "stroke",
+                )
+                .last()
+                .copied(),
+                Some(color),
+                "{selector}: contour and glow colors must retain their role bindings"
+            );
+        }
+        let keyword = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("labelBox"))
+            .unwrap();
+        assert!(keyword.has_tag_name("polygon"));
+        assert_eq!(keyword.attribute("rx"), None);
+        assert_eq!(keyword.attribute("filter"), None);
+        assert_eq!(keyword.attribute("style"), Some("stroke-width:1.5px;"));
+        let activation = doc
+            .descendants()
+            .find(|node| node.attribute("class") == Some("activation0"))
+            .unwrap();
+        assert!(activation.has_tag_name("rect"));
+        assert_eq!(activation.attribute("stroke-width"), Some("1.5"));
+        assert_eq!(activation.attribute("filter"), None);
+        let first_lifeline = doc
+            .descendants()
+            .find(|node| node.attribute("data-et") == Some("life-line"))
+            .unwrap()
+            .range()
+            .start;
         let filters: Vec<_> = doc
             .descendants()
             .filter(|n| n.has_tag_name("filter"))
             .collect();
-        assert_eq!(filters.len(), 21);
+        assert_eq!(filters.len(), 13);
+        for (role, count) in [
+            ("actor", 4),
+            ("lifeline", 2),
+            ("message", 2),
+            ("loop", 4),
+            ("note", 1),
+        ] {
+            assert_eq!(
+                filters
+                    .iter()
+                    .filter(|filter| {
+                        filter
+                            .attribute("id")
+                            .unwrap()
+                            .contains(&format!("-{role}-"))
+                    })
+                    .count(),
+                count,
+                "{role}: effects must stay attached to their intended terminals"
+            );
+        }
         for filter in filters {
             assert_eq!(
                 filter.attribute("color-interpolation-filters"),
@@ -8696,34 +9016,37 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.has_tag_name("feGaussianBlur"))
                 .map(|n| n.attribute("stdDeviation").unwrap())
                 .collect();
-            let is_frame = filter.attribute("id").unwrap().contains("-loop-")
-                && !filter.attribute("id").unwrap().contains("-loop-text-");
-            let is_keyword = filter
-                .attribute("id")
-                .unwrap()
-                .contains("-loop-label-background-");
-            let is_actor_text = filter.attribute("id").unwrap().contains("-actor-text-");
-            let is_loop_text = filter.attribute("id").unwrap().contains("-loop-text-");
-            let is_note_text = filter.attribute("id").unwrap().contains("-note-text-");
+            let is_frame = filter.attribute("id").unwrap().contains("-loop-");
             let is_lifeline = filter.attribute("id").unwrap().contains("-lifeline-");
             let is_message = filter.attribute("id").unwrap().contains("-message-");
             let is_note = filter.attribute("id").unwrap().contains("-note-");
             assert_eq!(
                 deviations,
-                if is_keyword {
-                    vec!["6"]
-                } else if is_frame {
-                    vec!["4"]
-                } else if is_loop_text {
-                    vec!["5"]
-                } else if is_note_text {
-                    vec!["4"]
+                if is_frame {
+                    vec!["1"]
                 } else if is_message || is_lifeline {
-                    vec!["6"]
+                    vec!["1.2"]
                 } else if is_note {
-                    vec!["8"]
+                    vec!["1.5"]
                 } else {
-                    vec!["8", "16"]
+                    vec![]
+                }
+            );
+            let floods: Vec<_> = filter
+                .children()
+                .filter(|node| node.has_tag_name("feFlood"))
+                .map(|node| node.attribute("flood-color").unwrap())
+                .collect();
+            assert_eq!(
+                floods,
+                if is_frame {
+                    vec!["rgba(255, 69, 100, 0.14)"]
+                } else if is_message || is_lifeline {
+                    vec!["rgba(41, 243, 236, 0.25)"]
+                } else if is_note {
+                    vec!["rgba(255, 69, 100, 0.18)"]
+                } else {
+                    vec!["rgba(255, 69, 100, 0.8)", "rgba(41, 243, 236, 0.85)"]
                 }
             );
             let reference = format!("url(#{})", filter.attribute("id").unwrap());
@@ -8732,24 +9055,15 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
                 .filter(|n| n.attribute("filter") == Some(reference.as_str()))
                 .collect();
             assert_eq!(consumers.len(), 1);
-            if is_keyword {
-                assert!(consumers[0].has_tag_name("polygon"));
-                assert_eq!(consumers[0].attribute("rx"), None);
-            } else if is_frame {
+            if is_frame {
+                assert!(consumers[0].has_tag_name("line"));
                 assert_eq!(consumers[0].attribute("class"), Some("loopLine"));
-            } else if is_actor_text {
-                assert!(consumers[0].has_tag_name("text"));
-                assert_eq!(consumers[0].attribute("class"), Some("actor actor-box"));
-            } else if is_loop_text {
-                assert!(consumers[0].has_tag_name("text"));
-                assert!(matches!(
-                    consumers[0].attribute("class"),
-                    Some("labelText" | "loopText")
-                ));
-            } else if is_note_text {
-                assert!(consumers[0].has_tag_name("text"));
-                assert_eq!(consumers[0].attribute("class"), Some("noteText"));
+                assert_eq!(
+                    inline_style_value(consumers[0].attribute("style").unwrap(), "stroke-width"),
+                    Some("1.5px")
+                );
             } else if is_lifeline {
+                assert!(consumers[0].has_tag_name("line"));
                 assert_eq!(consumers[0].attribute("data-et"), Some("life-line"));
             } else if is_message {
                 assert!(consumers[0].has_tag_name("line"));
@@ -8763,29 +9077,265 @@ fn sequence_actor_geometry_public_cyberpunk_recipe_preserves_exchange_and_glow()
             } else if is_note {
                 assert!(consumers[0].has_tag_name("rect"));
                 assert_eq!(consumers[0].attribute("class"), Some("note"));
-                assert_eq!(consumers[0].attribute("stroke-width"), Some("2"));
-                assert_eq!(consumers[0].attribute("rx"), Some("10"));
-                assert_eq!(consumers[0].attribute("ry"), Some("10"));
-                let flood = filter
-                    .descendants()
-                    .find(|n| n.has_tag_name("feFlood"))
-                    .unwrap();
-                assert_eq!(
-                    flood.attribute("flood-color"),
-                    Some("rgba(255, 0, 255, 0.4)")
-                );
+                assert_eq!(consumers[0].attribute("stroke-width"), Some("1.5"));
+                assert_eq!(consumers[0].attribute("rx"), Some("0"));
+                assert_eq!(consumers[0].attribute("ry"), Some("0"));
             } else {
+                assert!(filter.attribute("id").unwrap().contains("-actor-"));
+                let offsets: Vec<_> = filter
+                    .children()
+                    .filter(|node| node.has_tag_name("feOffset"))
+                    .map(|node| {
+                        (
+                            node.attribute("dx").unwrap(),
+                            node.attribute("dy").unwrap(),
+                            node.attribute("in").unwrap(),
+                        )
+                    })
+                    .collect();
+                assert_eq!(
+                    offsets,
+                    vec![("-3", "0", "SourceAlpha"), ("4", "4", "SourceAlpha")],
+                    "actor registration offsets must remain independent of each other"
+                );
                 assert!(consumers[0].has_tag_name("rect"));
+                assert_eq!(consumers[0].attribute("class"), Some("actor actor-depth"));
+                let depth = consumers[0].parent_element().unwrap();
                 assert!(
-                    consumers[0]
-                        .attribute("class")
-                        .unwrap()
-                        .starts_with("actor ")
+                    depth.attribute("data-merman-theme-depth") == Some("actor")
+                        && depth.range().end < first_lifeline
+                );
+                assert!(!depth.descendants().any(|node| node.has_tag_name("text")
+                    || node.attribute("id").is_some()
+                    || node.attribute("name").is_some()));
+                let shadow_output = filter
+                    .children()
+                    .find(|node| node.attribute("result") == Some("merman-shadow-stack-result"))
+                    .unwrap();
+                assert!(
+                    !shadow_output
+                        .children()
+                        .any(|node| node.has_tag_name("feMergeNode")
+                            && node.attribute("in") == Some("SourceGraphic"))
+                );
+                let matching: Vec<_> = actors
+                    .iter()
+                    .filter(|actor| {
+                        ["x", "y", "width", "height", "rx", "ry"]
+                            .into_iter()
+                            .all(|attribute| {
+                                actor.attribute(attribute) == consumers[0].attribute(attribute)
+                            })
+                    })
+                    .collect();
+                assert_eq!(matching.len(), 1);
+            }
+        }
+        outputs.push(rendered.svg().to_owned());
+        let completion = rendered.into_completion();
+        let evidence = merman_render::__private::family_evidence(completion.report());
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+    assert_eq!(outputs[0], outputs[1]);
+}
+
+#[test]
+fn sequence_public_cyberpunk_external_actor_names_and_glyph_outlines_remain_readable() {
+    use merman_render::diagram_theme::ThemePreset;
+
+    let theme = DiagramThemeCompiler::new()
+        .compile_preset(ThemePreset::Cyberpunk)
+        .unwrap();
+    let source = r#"sequenceDiagram
+participant Panel
+actor U as Customer support operator for external request recovery
+participant B@{type: boundary} as Public request boundary for customer verification
+participant C@{type: control} as Request coordinator for external service fulfillment
+participant E@{type: entity} as Customer request entity with complete audit history
+participant D@{type: database} as Persistent request database for incident recovery
+U->>D: Read
+"#;
+    // The full preset retains residuals for special actor effects/geometry and marker paint.
+    let rendered = try_render_sequence_theme_request(
+        source,
+        &theme,
+        MermaidEngine::new().with_site_config(
+            merman_core::presentation::SourcePresentationConfig::from_value(serde_json::json!({
+                "look": "classic", "sequence": {"mirrorActors": true, "wrap": false}
+            })),
+        ),
+        ThemePortabilityRequirement::BestEffort,
+    )
+    .unwrap();
+    let doc = roxmltree::Document::parse(rendered.svg()).unwrap();
+    let canvas = doc
+        .descendants()
+        .find(|node| node.attribute("class") == Some("merman-theme-canvas-base"))
+        .and_then(|node| node.attribute("fill"))
+        .expect("painted canvas base");
+    assert_eq!(canvas, "#080D11");
+    let css: String = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("style"))
+        .filter_map(|node| node.text())
+        .collect();
+    let diagram_id = doc.root_element().attribute("id").unwrap();
+    let css_paint = |selector: &str, property| {
+        css_property_values_for_exact_selector(&css, &format!("#{diagram_id} {selector}"), property)
+            .last()
+            .copied()
+            .expect("paint applied to the matching SVG terminal")
+    };
+    let face = css_paint(".actor", "fill");
+    let ink = css_paint("text.actor>tspan", "fill");
+    assert_eq!(face, "#161F25");
+    assert_eq!(ink, "#F3E600");
+    assert_eq!(css_paint(".actor", "stroke"), "#F3E600");
+    assert!(contrast_ratio(ink, canvas) >= 7.0, "exterior actor names");
+    assert!(contrast_ratio(ink, face) >= 7.0, "panel actor names");
+
+    let has_class = |node: roxmltree::Node<'_, '_>, class: &str| {
+        node.attribute("class").is_some_and(|classes| {
+            classes
+                .split_whitespace()
+                .any(|candidate| candidate == class)
+        })
+    };
+    let panels: Vec<_> = doc
+        .descendants()
+        .filter(|node| node.has_tag_name("rect") && node.attribute("name") == Some("Panel"))
+        .collect();
+    assert_eq!(panels.len(), 2, "top and mirrored panel faces");
+    for panel in panels {
+        assert!(has_class(panel, "actor"));
+        assert!(inline_style_value(panel.attribute("style").unwrap_or_default(), "fill").is_none());
+    }
+    for (name, kind, expected_label) in [
+        (
+            "U",
+            "actor",
+            "Customer support operator for external request recovery",
+        ),
+        (
+            "B",
+            "boundary",
+            "Public request boundary for customer verification",
+        ),
+        (
+            "C",
+            "control",
+            "Request coordinator for external service fulfillment",
+        ),
+        (
+            "E",
+            "entity",
+            "Customer request entity with complete audit history",
+        ),
+        (
+            "D",
+            "database",
+            "Persistent request database for incident recovery",
+        ),
+    ] {
+        let participant = doc
+            .descendants()
+            .find(|node| {
+                node.attribute("data-et") == Some("participant")
+                    && node.attribute("data-id") == Some(name)
+            })
+            .unwrap();
+        assert_eq!(participant.attribute("data-type"), Some(kind));
+        assert!(
+            !participant
+                .descendants()
+                .any(|node| node.has_tag_name("rect")),
+            "{kind}: exercise the unbacked name, not a boxed participant"
+        );
+        if kind == "database" {
+            let body = participant
+                .descendants()
+                .find(|node| node.has_tag_name("path"))
+                .expect("database cylinder body");
+            let wrapper = body.parent_element().unwrap();
+            assert!(has_class(wrapper, "actor"));
+            for terminal in [body, wrapper] {
+                for property in ["fill", "stroke"] {
+                    assert_eq!(terminal.attribute(property), None);
+                    assert!(
+                        inline_style_value(
+                            terminal.attribute("style").unwrap_or_default(),
+                            property
+                        )
+                        .is_none(),
+                        "database: the cylinder must inherit its dark face and yellow outline"
+                    );
+                }
+            }
+        }
+        let labels: Vec<_> = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name("text")
+                    && has_class(*node, "actor")
+                    && node
+                        .descendants()
+                        .any(|node| node.is_text() && node.text() == Some(expected_label))
+            })
+            .collect();
+        assert_eq!(labels.len(), 2, "{kind}: top and mirrored external names");
+        for label in labels {
+            assert_eq!(
+                inline_style_value(label.attribute("style").unwrap(), "font-weight"),
+                Some("700")
+            );
+            assert!(label.children().any(|node| node.has_tag_name("tspan")));
+            for terminal in label.descendants().filter(|node| node.is_element()) {
+                assert_eq!(terminal.attribute("fill"), None);
+                assert!(
+                    inline_style_value(terminal.attribute("style").unwrap_or_default(), "fill")
+                        .is_none(),
+                    "{kind}: inline ink must not override the yellow text rule"
+                );
+            }
+            assert!(
+                label
+                    .ancestors()
+                    .all(|node| node.attribute("filter").is_none())
+            );
+        }
+    }
+    for (class, tag) in [
+        ("actor-man", "circle"),
+        ("actor-man", "line"),
+        ("actor", "circle"),
+        ("actor", "line"),
+    ] {
+        let bodies: Vec<_> = doc
+            .descendants()
+            .filter(|node| {
+                node.has_tag_name(tag)
+                    && node.ancestors().skip(1).any(|node| has_class(node, class))
+            })
+            .collect();
+        assert!(!bodies.is_empty(), "{class} {tag}: actual glyph bodies");
+        assert_eq!(css_paint(&format!(".{class} {tag}"), "fill"), face);
+        assert_eq!(css_paint(&format!(".{class} {tag}"), "stroke"), "#F3E600");
+        for body in bodies {
+            for property in ["fill", "stroke"] {
+                assert_eq!(body.attribute(property), None);
+                assert!(
+                    inline_style_value(body.attribute("style").unwrap_or_default(), property)
+                        .is_none(),
+                    "{class} {tag}: the typed body paint must reach the glyph"
                 );
             }
         }
     }
-    assert_eq!(outputs[0], outputs[1]);
+    let completion = rendered.into_completion();
+    assert!(
+        merman_render::__private::family_evidence(completion.report()).theme_residual_count() > 0,
+        "readable external names must not certify unsupported actor facets"
+    );
 }
 
 #[test]
@@ -11689,6 +12239,129 @@ fn sequence_activation_palettes_follow_actor_order_across_creation_and_nesting()
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn sequence_empty_actor_palette_arrays_yield_to_typed_paint() {
+    assert_sequence_empty_palette_array_ownership(
+        "sequenceDiagram\nparticipant A\n",
+        ThemeTarget::Actor,
+    );
+}
+
+#[test]
+fn sequence_empty_activation_palette_arrays_yield_to_typed_paint() {
+    assert_sequence_empty_palette_array_ownership(
+        "sequenceDiagram\nparticipant A\nactivate A\nA->>A: Work\ndeactivate A\n",
+        ThemeTarget::Activation,
+    );
+}
+
+fn assert_sequence_empty_palette_array_ownership(source: &str, target: ThemeTarget) {
+    let (class, selector, fill_path, stroke_path) = match target {
+        ThemeTarget::Actor => (
+            "actor actor-top",
+            ".actor",
+            "themeVariables.actorBkg",
+            "themeVariables.actorBorder",
+        ),
+        ThemeTarget::Activation => (
+            "activation0",
+            ".activation0",
+            "themeVariables.activationBkgColor",
+            "themeVariables.activationBorderColor",
+        ),
+        _ => panic!("expected an actor or activation terminal"),
+    };
+    for (property, array, scalar) in [
+        ("fill", "bkgColorArray", fill_path),
+        ("stroke", "borderColorArray", stroke_path),
+    ] {
+        for (owner, palette_owned, scalar_owned) in [
+            ("empty", false, false),
+            ("site-array", true, false),
+            ("source-scalar", false, true),
+        ] {
+            let source = if scalar_owned {
+                let directive = serde_json::json!({
+                    "themeVariables": {(scalar.strip_prefix("themeVariables.").unwrap()): "#fedcba"}
+                });
+                format!("%%{{init: {directive}}}%%\n{source}")
+            } else {
+                source.to_owned()
+            };
+            let colors = if palette_owned {
+                serde_json::json!(["#fedcba"])
+            } else {
+                serde_json::json!([])
+            };
+            let case = format!("empty-palette-{target:?}-{property}-{owner}");
+            let rendered = render_sequence_paint_owner_case(
+                &source,
+                target,
+                property,
+                serde_json::json!({
+                    "theme": "redux-color", "look": "classic", "secure": [],
+                    "themeVariables": {(array): colors}
+                }),
+                "site",
+                &case,
+            );
+            let config = &rendered.metadata().effective_config;
+            assert_eq!(config.get_str("theme"), Some("redux-color"), "{case}");
+            assert_eq!(config.get_str("look"), Some("classic"), "{case}");
+            assert_eq!(
+                config.as_value()["themeVariables"][array],
+                colors,
+                "{case}: the actual palette must survive materialization"
+            );
+            assert_eq!(
+                config.config_paint_overrides_typed_default(scalar),
+                scalar_owned,
+                "{case}: use the materialized scalar owner"
+            );
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let terminal = document
+                .descendants()
+                .find(|node| node.has_tag_name("rect") && node.attribute("class") == Some(class))
+                .expect("visible Sequence paint terminal");
+            let inline = terminal
+                .attribute("style")
+                .and_then(|style| inline_style_value(style, property));
+            if palette_owned {
+                assert_eq!(inline, Some("rgb(254, 220, 186)"), "{case}");
+            } else {
+                assert_eq!(
+                    inline, None,
+                    "{case}: empty arrays must not add inline paint"
+                );
+                let css = document
+                    .descendants()
+                    .find(|node| node.has_tag_name("style"))
+                    .and_then(|node| node.text())
+                    .expect("Sequence stylesheet");
+                assert_eq!(
+                    css_property_values_for_exact_selector(
+                        css,
+                        &format!("#sequence-site-{case} {selector}"),
+                        property,
+                    )
+                    .last()
+                    .copied(),
+                    Some(if scalar_owned { "#fedcba" } else { "#123456" }),
+                    "{case}: typed paint must reach the fallback terminal"
+                );
+            }
+            drop(document);
+            assert_sequence_paint_owner_evidence(
+                rendered,
+                !palette_owned && !scalar_owned,
+                "site",
+                &case,
+                property,
+            );
         }
     }
 }

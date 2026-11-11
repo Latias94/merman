@@ -5,8 +5,8 @@ mod common;
 use merman_core::{MermaidEngine, ParseOptions, presentation::SourcePresentationConfig};
 use merman_render::diagram_theme::{
     CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified,
-    ThemePortabilityRequirement, ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch,
-    ThemeTarget, ThemeVariant,
+    ThemeAppearance, ThemePortabilityRequirement, ThemePreset, ThemeRule, ThemeRuleSet,
+    ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -193,8 +193,118 @@ fn native_cyberpunk_pairs_class_note_surface_and_ink_in_both_label_modes() {
             ThemePortabilityRequirement::BestEffort,
         )
         .unwrap();
-        assert_note_surface(rendered.svg(), "#051423", "#ff00ff");
-        assert_note_ink(rendered.svg(), html, "#ff00ff");
+        assert_note_surface(rendered.svg(), "#351C29", "#FF4564");
+        assert_note_ink(rendered.svg(), html, "#FFE9EF");
+    }
+}
+
+#[test]
+fn library_recipes_pair_class_note_paints_in_both_label_modes() {
+    let reading = include_str!("../../../playground/src/themes/recipes/reading.theme.json");
+    let prism = include_str!("../../../playground/src/themes/recipes/prism.theme.json");
+    let cases = [
+        (
+            "aurora",
+            include_str!("../../../playground/src/themes/recipes/aurora.theme.json"),
+            None,
+            ["#302849", "#BB9CFF", "#EBF5FF"],
+        ),
+        (
+            "blueprint",
+            include_str!("../../../playground/src/themes/recipes/blueprint.theme.json"),
+            None,
+            ["#CBE6EE", "#E3F3FA", "#173C5C"],
+        ),
+        (
+            "chalk",
+            include_str!("../../../playground/src/themes/recipes/chalk.theme.json"),
+            None,
+            ["#3B4032", "#F0D88B", "#F0D88B"],
+        ),
+        (
+            "lacquer",
+            include_str!("../../../playground/src/themes/recipes/lacquer.theme.json"),
+            None,
+            ["#291B23", "#D8BC82", "#D8BC82"],
+        ),
+        (
+            "metro",
+            include_str!("../../../playground/src/themes/recipes/metro.theme.json"),
+            None,
+            ["#63DCE5", "#63DCE5", "#071B2C"],
+        ),
+        (
+            "nightfall",
+            include_str!("../../../playground/src/themes/recipes/nightfall.theme.json"),
+            None,
+            ["#31394A", "#72839B", "#E8D4AC"],
+        ),
+        (
+            "phosphor",
+            include_str!("../../../playground/src/themes/recipes/phosphor.theme.json"),
+            None,
+            ["#332C18", "#F1C577", "#F1C577"],
+        ),
+        (
+            "monograph",
+            include_str!("../../../playground/src/themes/recipes/monograph.theme.json"),
+            None,
+            ["#F7F7F7", "#737373", "#161616"],
+        ),
+        (
+            "reading-dark",
+            reading,
+            Some(ThemeAppearance::Dark),
+            ["#403623", "#71839B", "#E9CF92"],
+        ),
+        (
+            "prism-dark",
+            prism,
+            Some(ThemeAppearance::Dark),
+            ["#30334A", "#6C819C", "#D2CEED"],
+        ),
+        // The new appearance-local rules must leave the existing light notes unchanged.
+        (
+            "reading-light",
+            reading,
+            Some(ThemeAppearance::Light),
+            ["#fff5ad", "#FACC15", "#243246"],
+        ),
+        (
+            "prism-light",
+            prism,
+            Some(ThemeAppearance::Light),
+            ["#fff5ad", "#FACC15", "#223047"],
+        ),
+    ];
+    let compiler = DiagramThemeCompiler::new();
+    for (name, document, appearance, [fill, stroke, ink]) in cases {
+        let theme = compiler
+            .compile_document(serde_json::from_str(document).unwrap(), appearance)
+            .unwrap_or_else(|error| panic!("{name}: {error}"));
+        for html in [false, true] {
+            let rendered = render(
+                SOURCE,
+                Some(&theme),
+                config(html),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap_or_else(|error| panic!("{name} (HTML labels: {html}): {error}"));
+            assert_note_surface(rendered.svg(), fill, stroke);
+            assert_note_ink(rendered.svg(), html, ink);
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(
+                evidence.accounted_count(),
+                evidence.required_count(),
+                "{name} (HTML labels: {html}): {evidence:?}"
+            );
+            assert_eq!(
+                evidence.theme_residual_count(),
+                0,
+                "{name} (HTML labels: {html}): {evidence:?}"
+            );
+        }
     }
 }
 

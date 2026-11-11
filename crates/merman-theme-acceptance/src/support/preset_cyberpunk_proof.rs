@@ -42,7 +42,7 @@ fn inventory(family: DiagramFamilyId) -> C6ProofResult<(&'static [&'static str],
                 "Yes",
                 "No",
             ],
-            13,
+            7,
             3,
         )),
         DiagramFamilyId::SEQUENCE => Ok((
@@ -57,7 +57,7 @@ fn inventory(family: DiagramFamilyId) -> C6ProofResult<(&'static [&'static str],
                 "loop",
                 "[Each request]",
             ],
-            21,
+            13,
             2,
         )),
         DiagramFamilyId::XY_CHART => Ok((
@@ -81,7 +81,7 @@ fn inventory(family: DiagramFamilyId) -> C6ProofResult<(&'static [&'static str],
                 "9",
                 "10",
             ],
-            28,
+            10,
             0,
         )),
         _ => Err(C6ProofError::new("cyberpunk-scope", "undeclared family")),
@@ -277,7 +277,9 @@ mod tests {
             let mut mutations = vec![
                 ("mix-blend-mode:screen", "mix-blend-mode:normal"),
                 ("width=\"40\"", "width=\"39\""),
-                ("rgba(0, 242, 255, 0.05)", "rgba(0, 242, 255, 0)"),
+                ("rgba(243, 230, 0, 0.04)", "rgba(243, 230, 0, 0)"),
+                ("rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0)"),
+                ("in=\"SourceGraphic\"", "in=\"SourceAlpha\""),
                 (
                     "gradientUnits=\"userSpaceOnUse\"",
                     "gradientUnits=\"objectBoundingBox\"",
@@ -285,35 +287,53 @@ mod tests {
             ];
             match spec.family {
                 DiagramFamilyId::FLOWCHART => mutations.extend([
-                    ("stroke-width:3px !important", "stroke-width:1px !important"),
-                    ("rx:10px", "rx:0px"),
-                    ("font-weight:600", "font-weight:400"),
+                    (
+                        "stroke-width:1.5px !important",
+                        "stroke-width:1px !important",
+                    ),
+                    ("rx:0px", "rx:4px"),
+                    ("font-weight:700", "font-weight:400"),
+                    ("font-weight:500", "font-weight:400"),
+                    ("fill:#161F25", "fill:#F3E600"),
+                    ("stroke:#F3E600", "stroke:#080D11"),
+                    ("fill:#F3E600", "fill:#080D11"),
                     ("M 0 0 L 10 5 L 0 10 z", "M 0 0"),
                     (
-                        "opacity:1;background-color:#051423",
-                        "opacity:0.5;background-color:#051423",
+                        "opacity:1;background-color:#080D11",
+                        "opacity:0.5;background-color:#080D11",
                     ),
                     ("data-id=\"Cart\"", "data-id=\"Missing\""),
-                    ("in=\"merman-shadow-0-result\"", "in=\"SourceGraphic\""),
+                    ("in=\"SourceAlpha\"", "in=\"SourceGraphic\""),
+                    ("dx=\"-3\"", "dx=\"-2\""),
+                    ("dy=\"4\"", "dy=\"0\""),
                 ]),
                 DiagramFamilyId::SEQUENCE => mutations.extend([
                     (
-                        ".actor{stroke:#00f2ff;fill:#051423",
-                        ".actor{stroke:#00f2ff;fill:#ffffff",
+                        ".actor{stroke:#F3E600;fill:#161F25",
+                        ".actor{stroke:#F3E600;fill:#ffffff",
                     ),
-                    ("font-weight:400", "font-weight:600"),
-                    ("stroke-dasharray:3, 3", "stroke-dasharray:none"),
-                    ("rgba(0, 242, 255, 0.1)", "rgba(0, 242, 255, 0.9)"),
-                    ("stdDeviation=\"16\"", "stdDeviation=\"8\""),
+                    (".actor{stroke:#F3E600", ".actor{stroke:#080D11"),
+                    ("fill:#F3E600", "fill:#080D11"),
+                    ("font-weight:700", "font-weight:400"),
+                    ("font-weight:500", "font-weight:400"),
+                    ("fill:#253139", "fill:#ffffff"),
+                    ("fill:#351C29", "fill:#ffffff"),
+                    ("fill:#FFE9EF", "fill:#ffffff"),
+                    ("rgba(41, 243, 236, 0.25)", "rgba(41, 243, 236, 0.9)"),
+                    ("stdDeviation=\"1.2\"", "stdDeviation=\"1.1\""),
+                    ("dx=\"-3\"", "dx=\"-2\""),
+                    ("dy=\"4\"", "dy=\"0\""),
+                    (".actor-line{stroke:#29F3EC", ".actor-line{stroke:#080D11"),
                     ("M -1 0 L 10 5 L 0 10 z", "M 0 0"),
                 ]),
                 DiagramFamilyId::XY_CHART => mutations.extend([
-                    ("fill-opacity=\"0.2\"", "fill-opacity=\"1\""),
-                    ("#6cc6cb", "#ff0000"),
-                    ("stroke-width=\"3\"", "stroke-width=\"2\""),
-                    ("opacity=\"0.3\"", "opacity=\"1\""),
+                    ("fill-opacity=\"0.85\"", "fill-opacity=\"1\""),
+                    ("#29F3EC", "#ff0000"),
+                    ("stroke-width=\"1.25\"", "stroke-width=\"2\""),
+                    ("opacity=\"0.35\"", "opacity=\"1\""),
                     ("font-size=\"14\"", "font-size=\"10\""),
-                    ("font-weight=\"600\"", "font-weight=\"400\""),
+                    ("font-weight=\"700\"", "font-weight=\"400\""),
+                    ("stdDeviation=\"1\"", "stdDeviation=\"2\""),
                 ]),
                 _ => unreachable!(),
             }
@@ -330,6 +350,21 @@ mod tests {
                     spec.family
                 );
             }
+            let xml = roxmltree::Document::parse(svg).unwrap();
+            let label = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text"))
+                .unwrap();
+            for node in [label, label.parent().unwrap()] {
+                for declaration in ["filter:blur(1px)", "text-shadow:0 0 1px #29F3EC"] {
+                    let changed = override_paint(svg, node, declaration);
+                    assert!(
+                        scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
+                        "{} accepted {declaration} on a label or ancestor",
+                        spec.family
+                    );
+                }
+            }
         }
     }
 
@@ -343,7 +378,7 @@ mod tests {
         let svg = document.svg();
         scene_semantics::verify(spec.family, &observe(svg)).unwrap();
         let xml = roxmltree::Document::parse(svg).unwrap();
-        for class in ["messageText", "noteText", "loopText"] {
+        for class in ["actor", "messageText", "noteText", "loopText"] {
             let text = xml
                 .descendants()
                 .find(|node| {
@@ -363,6 +398,17 @@ mod tests {
                 );
             }
         }
+        let returned_message = xml
+            .descendants()
+            .find(|node| {
+                node.has_tag_name("line") && node.attribute("class") == Some("messageLine1")
+            })
+            .unwrap();
+        let changed = override_paint(svg, returned_message, "stroke-dasharray:none");
+        assert!(
+            scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
+            "Sequence accepted a solid return message"
+        );
     }
 
     #[test]
@@ -413,11 +459,28 @@ mod tests {
                 final_input.attribute_node("in").unwrap().range_value(),
                 "SourceGraphic",
             );
+            let offsets = filter
+                .children()
+                .filter(|node| node.has_tag_name("feOffset"))
+                .collect::<Vec<_>>();
+            assert_eq!(offsets.len(), 2);
+            let first_shadow = filter
+                .children()
+                .find(|node| node.has_tag_name("feComposite"))
+                .unwrap()
+                .attribute("result")
+                .unwrap();
+            let mut cascaded = svg.to_owned();
+            cascaded.replace_range(
+                offsets[1].attribute_node("in").unwrap().range_value(),
+                first_shadow,
+            );
             for (label, changed) in [
                 ("missing depth", missing),
                 ("depth over connections", moved),
                 ("mismatched silhouette", mismatched),
                 ("source in depth merge", repainting),
+                ("cascaded depth instead of independent shadows", cascaded),
             ] {
                 assert!(
                     scene_semantics::verify(spec.family, &observe(&changed)).is_err(),
@@ -450,7 +513,7 @@ mod tests {
             let document = document(spec.source);
             let original = rasterize(document.svg()).unwrap();
             let (width, height) = original.dimensions();
-            let blank = C6RasterImage::solid_for_test(width, height, [5, 20, 35]);
+            let blank = C6RasterImage::solid_for_test(width, height, [8, 13, 17]);
             assert!(verify_pixels(spec.family, document.svg(), &blank).is_err());
             let xml = roxmltree::Document::parse(document.svg()).unwrap();
             let label = xml

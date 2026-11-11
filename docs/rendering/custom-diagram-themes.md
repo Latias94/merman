@@ -25,8 +25,9 @@ Flowchart, Pie, Sequence, Class, and XY Chart. Brutalist, Spotless, Cyberpunk, a
 visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid);
 the [gallery credits](theme-gallery/README.md#design-references-and-license) retain the source
 revision and MIT notice.
-Ghibli has a dedicated Pie design. Brutalist has dedicated Flowchart, Sequence and XY Chart
-designs and a base palette adaptation for Class. The catalog records each preset's scope;
+Ghibli has dedicated Flowchart, Sequence, XY Chart and Pie designs. Brutalist, Spotless and
+Cyberpunk have dedicated Flowchart, Sequence and XY Chart designs. All four have reviewed
+shared styling for Class. The catalog records each preset's scope;
 unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,
 effect or export format. Review the actual preview outcome for your diagram.
 
@@ -371,11 +372,21 @@ source or site configuration keep their property-specific dependencies. Site the
 and a recipe's own compatibility theme supply fallback palettes and do not suppress compiled
 style rules. Typography, geometry, effects, and the host canvas retain their independent owners.
 
+Paint ownership follows the configuration value actually selected by the family consumer.
+For example, when Class `mainBkg` supplies the node background, an independent `primaryColor`
+override does not suppress the recipe's node fill. An override that actually derives `mainBkg`
+still owns that background. Ignored non-string color fields do not own a string fallback;
+an unused scalar does not own a terminal painted by a category array. This also keeps source
+colors and compiled rules independent when a fallback is used only by some visible labels.
+
 ER HTML labels, Block labels and Requirement node labels use a non-empty `themeVariables.nodeTextColor`,
 falling back to `themeVariables.textColor`. Journey titles use a non-empty `journey.titleColor`,
 otherwise inheriting the rendered text color. These fallbacks preserve the selected source or
 explicit configuration's paint ownership; a site theme's default palette still yields to compiled
 paint rules.
+
+Flowchart and ER cluster titles select `titleColor` before `textColor`; Gantt skips an empty
+`titleColor`. Overriding an unused text fallback does not claim an independently selected title.
 
 | Input | Ownership |
 | --- | --- |
@@ -393,11 +404,15 @@ appearance. Playground lists detected theme, font and look declarations with the
 these hints describe authored settings, not an independent certificate of computed SVG styling.
 
 Sequence's colored Redux palettes use participant and activation color arrays. With a compiled
-paint rule, explicitly configured arrays retain their paint ownership; derived default arrays
+paint rule, explicitly configured nonempty arrays retain their paint ownership; empty arrays use
+the scalar fallback, and derived default arrays
 yield to that property's authored scalar color. Without a Merman theme, Mermaid's original
 array-versus-scalar behavior is preserved. For supported Neo participant rectangles, use an Actor
 effect or effect Clear to control the body shadow; the raw `dropShadow` variable does not control
 every participant glyph in the Mermaid baseline.
+Explicit category arrays also retain the paints they supply to State composite headers and
+Block composite shells. ER and Requirement use their selected arrays before scalar backgrounds
+and borders; a scalar override applies when the corresponding array terminal is absent.
 
 Partial source configuration also preserves Mermaid's initialized derived colors. To change an
 XY Chart or Wardley backdrop from source, set `themeVariables.xyChart.backgroundColor` or
@@ -416,10 +431,16 @@ borders, including with Default. Visible labels normally use `cScaleLabelN`, whi
 the `treemap.labelColor` and `valueColor` stylesheets. Transparent leaves can fall back to
 `textColor` for readability, using the final body fill after a compiled Node rule or palette.
 Compiled label paint follows that selected source; unused
-stylesheet colors do not block it. Timeline's colored Redux palettes cycle through
+stylesheet colors do not block it. When a non-string `cScaleLabelN` is skipped, the theme-specific
+`scaleLabelColor`, `labelTextColor` or `cScale1` fallback actually selected retains its ownership.
+Timeline's colored Redux palettes cycle through
 `borderColorArray`; an empty array restores the theme's `mainBkg`/`nodeBorder` fallback.
 Native Treemap font admission checks styles selected by rendered nodes. An unused `classDef`
 does not require support for typography that never reaches a label.
+Journey's Tspan task labels use `sectionColours` only after entering a section. A task before
+the first section can still use a compiled TaskLabel fill when no consumed input owns it.
+Tree View Marker paint Clear keeps the family icon baseline instead of inheriting a compiled
+Edge color. Clear retains its existing unsupported-paint diagnostic and strict completion behavior.
 Put Treemap stylesheet options under `themeVariables.treemap`, including `titleFontSize` and
 `titleColor`. The corresponding root `treemap` spellings remain Merman fallbacks when those
 theme variables are absent. Treemap's SVG class sizes accept unitless numbers such as `24`,
@@ -593,12 +614,20 @@ These two local display preferences are remembered separately.
 
 ### Standalone explorations and example scenes
 
-Open **Theme designs** from the toolbar or the Appearance panel to browse standalone
-recipes. Reading and Prism provide coordinated Light/Dark examples. Riso, Pop Art, Metro, Carbon Copy
+Open **Theme designs** from the toolbar or the Appearance panel to browse built-in presets and
+standalone editable recipes. A complete current runtime exposes **28 designs**: the existing 20
+plus Brutalist, Cyberpunk, Ghibli, Spotless, Editor, One Dark, Gruvbox and Ayu. The preset catalog
+remains **11 groups with 14 concrete appearances**; Editor, Gruvbox and Ayu each occupy one library
+entry with Light/Dark choices. All available preset groups are browsable, and the added entries
+follow the loaded runtime catalog.
+
+Reading and Prism provide coordinated Light/Dark examples. Riso, Pop Art, Metro, Carbon Copy
 and Signal have distinct artistic treatments, alongside Field Notes,
 Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall, Blueprint, Porcelain, Chalk and Monograph.
 The first visit uses the detected current diagram as a visible family filter in the search area.
-Change the family selector or remove its chip to browse other diagrams. Search text, appearance
+The family filter includes dedicated designs and reviewed shared styles, excluding only
+unreviewed entries while preserving distinct coverage labels. Change the family selector or
+remove its chip to browse other diagrams. Search text, appearance
 and style filters combine; **Clear filters** keeps the search text. Returning from detail or
 reopening the library preserves explicit filter choices and browsing position. Closing and
 reopening a detail also retains preview controls, adoption target and selected project file.
@@ -607,11 +636,15 @@ Cards combine a large primary diagram with two supporting previews, each labeled
 A family filter makes that sample primary across designs for direct comparison while retaining
 the other previews. Without a family filter, each card uses its representative example where
 declared, such as Metro's Git Graph or Blueprint's Architecture diagram. Opening a design defaults
-to **Diagram gallery**, a responsive gallery showing that design's reviewed families together.
-All designs include Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap. Metro adds
+to **Diagram gallery**, a responsive gallery showing that design's listed family samples together.
+The existing 20 entries include Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap. Metro adds
 Git Graph, Signal adds Gantt, Carbon Copy adds Kanban, Field Notes adds Timeline, and Blueprint
 adds Architecture. Prism adds Radar, Quadrant Chart, Sankey and Treemap; Monograph adds Requirement
-and Tree View. Entering from a family filter highlights its tile while keeping the design's
+and Tree View. Added preset entries take their dedicated and shared/base sample classifications
+from the active runtime catalog. **Shared styling** samples use the common appearance and remain
+distinct from **Designed for this diagram** samples with dedicated family styling. A listed
+sample or saved preview does not establish output qualification.
+Entering from a family filter highlights its tile while keeping the design's
 other examples available. Click a diagram to inspect it in an expanded preview with zoom, fit and source/configuration
 controls. The expanded preview's family selector and **Previous example** / **Next example** buttons
 switch examples; **Close expanded preview** returns focus and scroll position to the tile you opened.
@@ -626,9 +659,17 @@ depends on the diagram and viewport. **Reset view** restores 100% and centers th
 Showing source and returning to the inline diagram preserves its zoom and position.
 Browsing does not change the workspace. **Apply to my diagram**
 uses the selected design on the current source and configuration, with an explicit appearance choice.
-Paper Cut, Carbon Copy and Pop Art select their built-in IDs when the runtime catalog provides them.
-Their project examples use the preset directly; the JSON tab still exposes the complete editable
-configuration. Other designs and edited recipes use CLI `--theme-file`, Rust `compile_document`,
+Available built-in designs select their catalog preset IDs, and their project examples use those
+presets directly. The added preset entries expose the canonical complete v1 recipe JSON exported by
+the active runtime, retaining both appearances for a paired design. Paper Cut, Carbon Copy and
+Pop Art share their canonical recipes with the built-in presets. The JSON tab keeps these complete
+documents editable. Cyberpunk uses dark Flowchart and actor panels with warning-yellow names and
+contours, hard red/cyan registration edges, and cyan connections over a dark technical canvas. Canvas
+annotations use bright neutral ink, and all labels stay free of glow. Ghibli pairs warm paper and fine fibers with sage
+surfaces, forest ink and independent chart pigments. Both have dedicated Flowchart, Sequence and
+XY Chart styling, and Ghibli retains dedicated Pie styling. Brutalist keeps its bold outlines and
+hard shadows. Inclusion in the library does not establish output qualification.
+Standalone designs and edited recipes use CLI `--theme-file`, Rust `compile_document`,
 or Web `theme: {recipe, appearance}`. Names and source labels remain display metadata; use the
 runtime catalog and render evidence for availability and family support.
 
@@ -672,7 +713,7 @@ The shared samples, configurations, gallery recipes and SVGs live in
 [`playground/src/themes`](../../playground/src/themes/). Paper Cut, Carbon Copy and Pop Art use
 canonical recipes in [`crates/merman-render/assets/themes`](../../crates/merman-render/assets/themes/),
 imported directly by the Playground and embedded by the core catalog. The sample inventory covers 19 families;
-each catalog entry declares its own dedicated design scope. Monograph uses a grayscale design;
+each catalog entry distinguishes dedicated family styling from reviewed shared samples. Monograph uses a grayscale design;
 Prism keeps category identity across its two appearances. These design intentions do not certify
 black-and-white printing, accessibility, or output portability. Other families and targets need
 their own review. Source styles and
@@ -699,6 +740,10 @@ Class compartments and chart legends need actual font measurement. Browser previ
 Playground's host measurer and available browser fonts. The categorical readability refresh uses
 native measurement with explicitly loaded Windows font files for 54 affected saved SVGs; unchanged
 examples retain their earlier exports. The Atlas example above uses Segoe UI regular and semibold.
+The original preset groups add 45 saved previews across their reviewed families and appearances,
+also measured with explicit native font files and system discovery disabled.
+Ghibli's new SVG previews load static Open Sans faces at weights 400, 500 and 600; the native
+PNG gallery records its own Open Sans and Inter font conditions.
 For other recipes, supply checked files matching their actual font roles and weights with repeatable
 `--font-file` arguments and `--font-system off`. Match the faces selected by the viewer, including
 user-installed fonts such as Menlo, rather than assuming the first loaded fallback is displayed.
@@ -908,7 +953,7 @@ interfaces. Every child of a grouped design shares the complete-document availab
 One passing appearance cannot make an invalid pair available. Inspect the matching appearance's
 swatches and family notes when explaining a selection.
 
-The catalog records dedicated design scope for Brutalist, Spotless, Ghibli, Paper Cut, Carbon Copy
+The catalog records dedicated design scope for Brutalist, Spotless, Cyberpunk, Ghibli, Paper Cut, Carbon Copy
 and Pop Art. It does not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
 labels, complete effects, or PNG/PDF portability. Cyberpunk carries a layered canvas and scoped
 effects with bounded Flowchart, Sequence and XY Chart SVG/PNG/PDF observations. Larger scenes may
@@ -916,9 +961,10 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
-Ghibli adds a warm, textured canvas and a twelve-color muted Pie palette with typed title,
+Ghibli adds fine paper fibers, sage node and actor surfaces, authored contours and label weights,
+six darker chart inks and a separate twelve-color muted Pie palette with typed title,
 percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
-uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
+uses a tiled gradient; this does not imply generic pattern or every effect primitive is supported.
 
 Flowchart Classic and the default Neo look both apply supported node, edge and label glow/shadow
 effects with ELK or Dagre. Node body effects cover rectangles, rounded rectangles, diamonds,
@@ -1057,9 +1103,14 @@ families keep their own Clear behavior; for example, Quadrant point Clear restor
 
 Discovery for Flowchart/Swimlane Node radius remains `conditional`: the query does not include
 individual shape occurrences. Use execution evidence for the actual input. Cyberpunk's exported
-complete recipe contains an ordinary Flowchart Node `radius: 10` rule; import preserves this rule
+complete recipe contains an ordinary Flowchart Node `radius: 0` rule; import preserves this rule
 without enumerating node ordinals or substituting a different preset. This does not qualify the
 complete reference appearance.
+
+Some exterior names use different text terminals. For example, native SVG BPMN annotation labels
+retain the Markdown terminal's normal-weight runs and report `unsupported-typography` for a requested
+label weight; the HTML-label path applies that weight. Cyberpunk keeps its yellow ink readable in
+both paths. A readable label does not clear the remaining typography or shape-effect residuals.
 
 ## Start with a small theme
 
@@ -1323,6 +1374,11 @@ const svg = renderSvg("flowchart LR\nA[Start] --> B[Done]", { theme: recipe });
 const saved = JSON.stringify(recipe);
 ```
 
+Cyberpunk's `warning-yellow` token links panel names and contours; `neon-cyan` links connections,
+lifelines, activations and the cyan registration edge. Editing one keeps the other signal colors
+independent. Chart signal colors and filled-category palettes have separate bindings, so changing
+a panel color does not require recoloring Pie labels or their backgrounds.
+
 Token labels, descriptions, and groups organize editor controls without changing render identity.
 To customize one consumer independently, replace its reference with a local copy of the authored
 value. Keep nested references that should still follow other shared values. Imported `complete_spec`
@@ -1341,6 +1397,9 @@ Omitted patch fields leave ownership unchanged, `null` means Clear, and `"transp
 requests transparent paint. Clear restores family base behavior, rather than exposing a previous
 matching rule. Supported Flowchart body-effect terminals distinguish omission from Clear:
 omission retains the look's default shadow, while Clear explicitly suppresses that shadow.
+State and Timeline paint Clear also blocks ordinal-palette fallback in best-effort output.
+Those terminals still report `unsupported-paint` for Clear and reject strict portable output;
+the fallback correction does not expand their supported paint domain.
 An explicit theme effect replaces the look's default instead of implicitly stacking with it.
 Source filter ownership still takes precedence. Canvas base is a paint rather than a patch field:
 use `"transparent"`, not `null`.
@@ -1463,14 +1522,16 @@ viewBox without changing the plot layout, including for horizontal or vertical f
 Unsupported effect primitives retain residuals; SVG emission alone does not certify a native
 export target.
 
-The public Cyberpunk recipe uses these kind selectors and a three-color cycle: cyan
-`#6cc6cb`, purple `#c77dff`, green `#7ce38b`. Bars have 20% fill opacity, a 2px border and an
-8px shadow; lines have a 3px stroke and a 6px shadow. The cycle follows global series order
+The public Cyberpunk recipe uses these kind selectors and a three-color cycle: warning yellow
+`#F3E600`, signal cyan `#29F3EC`, and alert red `#FF4564`. Bars have 85% fill opacity and a
+1.25px border; lines have a 2px stroke. Both use a fine halo with Gaussian sigma 1px at 0.18 opacity.
+The cycle follows global series order
 and repeats after the third series. Saving the preset includes these rules and effect graphs.
-The recipe also scopes cyan (`#00f2ff`) text to the XY Chart title (18px, weight 700), axis
-titles (13px), and legend (12px). Tick-label sizes retain their baseline. These values survive
-preset export and fresh import. Scoped text glow has bounded SVG/PNG/PDF scene observations;
-these do not qualify every input or the full Cyberpunk design. Public qualification cells remain empty.
+The title uses warning yellow (18px, weight 700); axes and the 12px legend use bright secondary
+ink (`#A5BCC0`). Axis titles use 13px at weight 500. Tick-label sizes retain their baseline.
+Labels have no glow. These values survive preset export and fresh import. Bounded scene
+observations do not qualify every input or the full Cyberpunk design. Public qualification
+cells remain empty.
 
 ## Style XY Chart text roles
 

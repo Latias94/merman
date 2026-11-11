@@ -682,9 +682,18 @@ fn requirement_paint_owners(
         let slot = color_indices
             .get(id)
             .and_then(|index| css.palette_slot(*index));
+        // Palette CSS overrides the scalar presentation attributes on stamped nodes.
         owners[*node_index] = (
-            fill || (background_palette && slot.is_some() && !css.background_colors.is_empty()),
-            stroke || (border_palette && slot.is_some()),
+            if slot.is_some() && !css.background_colors.is_empty() {
+                background_palette
+            } else {
+                fill
+            },
+            if slot.is_some() {
+                border_palette
+            } else {
+                stroke
+            },
         );
     }
     owners

@@ -536,9 +536,36 @@ if (hasCapability("svg")) {
     theme: restoredRecipe, svg: recipeSvgOptions,
   })), presetSvg, "raw WASM and public recipe selection must agree");
   const cyberpunk = api.exportThemePreset("cyberpunk");
+  assert.deepEqual(Object.keys(cyberpunk.design.appearances), ["dark"]);
+  assert.equal(cyberpunk.design.default_appearance, "dark");
+  for (const [id, value] of [
+    ["surface", "#161F25"], ["warning-yellow", "#F3E600"],
+    ["text", "#EAF4F0"], ["subtle-text", "#A5BCC0"],
+    ["actor-background", { ref: "surface" }],
+    ["actor-border", { ref: "warning-yellow" }],
+    ["actor-text", { ref: "warning-yellow" }],
+  ]) {
+    assert.deepEqual(cyberpunk.design.tokens[id].value, value, id);
+  }
+  for (const [family, target, ink] of [
+    ["flowchart", "node-label", "warning-yellow"], ["sequence", "actor-label", "actor-text"],
+  ]) {
+    const label = cyberpunk.design.rules.findLast((rule) => rule.family === family && rule.target === target);
+    assert.deepEqual(label.style.fill, { kind: "solid", color: { ref: ink } });
+    assert.equal(label.variant, undefined, "yellow names must also reach exterior labels");
+  }
+  const effects = Object.entries(cyberpunk.design.tokens).filter(([, token]) => token.type === "effect");
+  for (const [id, { value }] of effects) {
+    assert.equal(value.composition, id === "panel-depth" ? "independent" : "cascade", id);
+    assert.equal(value.shadows.length, id === "panel-depth" ? 2 : 1, id);
+  }
+  assert.deepEqual(cyberpunk.design.tokens["panel-depth"].value.shadows, [
+    { offset_x: -3, offset_y: 0, std_deviation: 0, color: { ref: "alert-red" }, opacity: 0.8 },
+    { offset_x: 4, offset_y: 4, std_deviation: 0, color: { ref: "neon-cyan" }, opacity: 0.85 },
+  ]);
   // Exercise the public recipe, not a separately authored C6 mechanism fixture.
   const canvas = api.materializeTheme(cyberpunk.design).spec.canvas;
-  assert.deepEqual(canvas.base, { kind: "solid", color: "#051423" });
+  assert.deepEqual(canvas.base, { kind: "solid", color: "#080D11" });
   assert.equal(canvas.layers.length, 3);
   const [radial, xGrid, yGrid] = canvas.layers;
   assert.deepEqual(canvas.layers.map((layer) => layer.blend_mode), ["screen", "screen", "screen"]);
@@ -547,7 +574,7 @@ if (hasCapability("svg")) {
   assert.deepEqual(radial.paint.center_y, { percent: 50 });
   assert.ok(Math.abs(radial.paint.radius.percent - 100 / Math.SQRT2) < 0.00001);
   assert.deepEqual(radial.paint.stops.map((stop) => stop.color),
-    ["rgba(0, 242, 255, 0.05)", "rgba(0, 242, 255, 0)"]);
+    ["rgba(243, 230, 0, 0.04)", "rgba(243, 230, 0, 0)"]);
   assert.equal(radial.paint.stops[0].offset, 0);
   assert.ok(Math.abs(radial.paint.stops[1].offset - 0.7) < 0.000001);
   for (const [layer, angle] of [[xGrid, 90], [yGrid, 180]]) {
@@ -555,7 +582,7 @@ if (hasCapability("svg")) {
     assert.equal(layer.paint.angle_degrees, angle);
     assert.deepEqual(layer.paint.repetition, { kind: "tiled", width_px: 40, height_px: 40 });
     assert.deepEqual(layer.paint.stops.map((stop) => stop.color),
-      ["rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0.03)", "rgba(0, 242, 255, 0)", "rgba(0, 242, 255, 0)"]);
+      ["rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0.035)", "rgba(41, 243, 236, 0)", "rgba(41, 243, 236, 0)"]);
     for (const [index, offset] of [0, 1 / 40, 1 / 40, 1].entries()) {
       assert.ok(Math.abs(layer.paint.stops[index].offset - offset) < 0.000001);
     }
@@ -568,7 +595,7 @@ if (hasCapability("svg")) {
   const glowSvg = api.renderSvg(glowSource, { ...glowOptions, theme: { preset: "cyberpunk" } });
   assert.equal(api.renderSvg(glowSource, {
     ...glowOptions, theme: JSON.parse(JSON.stringify(cyberpunk)),
-  }), glowSvg, "export/import must retain the actual background and glow output");
+  }), glowSvg, "export/import must retain dark panels, yellow lettering and red/cyan registration");
   const originalCyberpunk = structuredClone(cyberpunk);
   const customized = customizeNodeColors(cyberpunk, {
     background: "#142535", nodeBorder: "#fb7185", classFill: "#22354d",

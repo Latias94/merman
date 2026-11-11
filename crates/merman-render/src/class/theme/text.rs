@@ -33,6 +33,7 @@ pub(crate) struct ClassTextThemePlan {
     svg_note_paint: Option<ClassTextPaint>,
     layout_font_family_css: Box<str>,
     font_size_px: f64,
+    font_size_known: bool,
     typed_font_size_requested: bool,
     typed_font_size_active: bool,
     node_style_facts_requested: bool,
@@ -214,20 +215,18 @@ impl ClassTextThemePlan {
             style.merge_from(&theme.style(ThemeTarget::NoteLabel, ThemeVariant::Default, None));
             select_paint(theme, &style, &[ThemeTarget::Text, ThemeTarget::NoteLabel])
         });
-        let owned = |paths: &[&str]| {
-            paths
-                .iter()
-                .any(|path| effective_config.config_paint_overrides_typed_default(path))
-        };
-        let edge_fill_config_owned = owned(&[
-            "themeVariables.classText",
-            "themeVariables.primaryTextColor",
-            "themeVariables.textColor",
-        ]);
+        let edge_fill_config_owned =
+            super::paint::ClassConfigPaint::class_text(effective_config.as_value())
+                .config_owned(effective_config);
         // SVG notes inherit Class ink; HTML notes retain Mermaid's note-specific ink owner.
         let note_fill_config_owned = [
             edge_fill_config_owned,
-            owned(&["themeVariables.noteTextColor"]),
+            super::paint::ClassConfigPaint::select(
+                effective_config.as_value(),
+                &["themeVariables.noteTextColor"],
+                "#333",
+            )
+            .config_owned(effective_config),
         ];
         let svg_note_paint = (!note_fill_config_owned[0])
             .then(|| note_selected.clone())
@@ -283,30 +282,42 @@ impl ClassTextThemePlan {
                         == crate::diagram_theme::FamilyThemeDisposition::TypedAdapter
             })
         });
+        let configured_font_size_css = crate::config::config_css_number_or_string(
+            effective_config.as_value(),
+            &["themeVariables", "fontSize"],
+        );
+        let configured_font_size = configured_font_size_css
+            .as_deref()
+            .and_then(crate::mermaid_style::css_font_size_value_override);
+        let configured_font_size_px = crate::config::config_f64_explicit_css_absolute_px(
+            effective_config.as_value(),
+            &["themeVariables", "fontSize"],
+        )
+        .filter(|size| *size >= 0.0)
+        .or_else(|| {
+            configured_font_size_css
+                .as_deref()
+                .is_some_and(crate::mermaid_style::css_font_size_is_zero)
+                .then_some(0.0)
+        });
         let config_owns_font_size = typed_font_size_requested
+            && configured_font_size.is_some()
             && effective_config.config_path_overrides_typed_default("themeVariables.fontSize");
         let typed_font_size_active = typed_font_size_requested && !config_owns_font_size;
         let typed_font_size = theme.filter(|_| typed_font_size_active).map(|theme| {
             crate::number_format::canonicalize_number(f64::from(theme.typography().font_size_px()))
-                .max(1.0)
         });
+        let font_size_known = typed_font_size_active
+            || configured_font_size.is_none()
+            || configured_font_size_px.is_some();
         let (font_size_px, font_size_css) = if let Some(font_size_px) = typed_font_size {
             (
                 font_size_px,
                 format!("{}px", crate::number_format::canonical_number(font_size_px)),
             )
         } else {
-            let font_size_css = crate::config::config_css_number_or_string(
-                effective_config.as_value(),
-                &["themeVariables", "fontSize"],
-            )
-            .unwrap_or_else(|| "16px".to_string());
-            let font_size_px = crate::config::config_f64_explicit_css_absolute_px(
-                effective_config.as_value(),
-                &["themeVariables", "fontSize"],
-            )
-            .unwrap_or(16.0)
-            .max(1.0);
+            let font_size_css = configured_font_size_css.unwrap_or_else(|| "16px".to_string());
+            let font_size_px = configured_font_size_px.unwrap_or(16.0);
             (font_size_px, font_size_css)
         };
         let stylesheet_font_family_css = if inherited_font_stack.typed_font_stack_active() {
@@ -342,6 +353,7 @@ impl ClassTextThemePlan {
             inherited_font_stack,
             layout_font_family_css: layout_font_family_css.into_boxed_str(),
             font_size_px,
+            font_size_known,
             typed_font_size_requested,
             typed_font_size_active,
             node_style_facts_requested: theme.is_some_and(|theme| {
@@ -425,6 +437,10 @@ impl ClassTextThemePlan {
 
     pub(crate) const fn font_size_px(&self) -> f64 {
         self.font_size_px
+    }
+
+    pub(crate) fn visible_font_size_px(&self) -> Option<f64> {
+        self.font_size_known.then_some(self.font_size_px)
     }
 
     pub(crate) const fn typed_font_size_active(&self) -> bool {
@@ -687,13 +703,14 @@ impl ClassNodeLabelStyleFacts {
         }
         let visible_runs = facts.visible_run_count();
         self.visible_runs = self.visible_runs.saturating_add(visible_runs);
-        self.color_ownership_unverified |= color_ownership_unverified;
+        self.color_ownership_unverified |=
+            color_ownership_unverified || !facts.font_visibility_verified();
         if !parent_owns_color {
             self.inherited_color_runs = self
                 .inherited_color_runs
                 .saturating_add(facts.inherited_color_run_count());
         }
-        if font_ownership_unverified {
+        if font_ownership_unverified || !facts.font_visibility_verified() {
             self.unverified_font_runs = self.unverified_font_runs.saturating_add(visible_runs);
         } else {
             self.unverified_font_runs = self
@@ -711,6 +728,7 @@ impl ClassNodeLabelStyleFacts {
             }
         }
         if font_size_ownership_unverified
+            || !facts.font_visibility_verified()
             || layout_parent_owns_font_size != writer_parent_owns_font_size
         {
             self.unverified_font_size_runs =

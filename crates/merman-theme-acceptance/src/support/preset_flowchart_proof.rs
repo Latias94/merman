@@ -20,6 +20,7 @@ struct Palette {
     nodes: [&'static str; 2],
     node_border: &'static str,
     text: &'static str,
+    label_fallback: &'static str,
     cluster: &'static str,
     cluster_border: &'static str,
     edge: &'static str,
@@ -34,6 +35,7 @@ impl Palette {
                 nodes: ["#ffffff", "#FFE66D"],
                 node_border: "#000000",
                 text: "#000000",
+                label_fallback: "#000000",
                 cluster: "#ffe88a",
                 cluster_border: "#000000",
                 edge: "#000000",
@@ -44,20 +46,11 @@ impl Palette {
                 nodes: ["#F5F1E8"; 2],
                 node_border: "#2C2416",
                 text: "#1a1a1a",
+                label_fallback: "#1a1a1a",
                 cluster: "#f0ece2",
                 cluster_border: "#2C2416",
                 edge: "#2c2416",
                 background: "#EDE8DC",
-            },
-            ThemePreset::Cyberpunk => Self {
-                canvas: "#051423",
-                nodes: ["#051423"; 2],
-                node_border: "#00f2ff",
-                text: "#00f2ff",
-                cluster: "#051423",
-                cluster_border: "#00f2ff",
-                edge: "#00f2ff",
-                background: "#051423",
             },
             _ => {
                 return Err(C6ProofError::new(
@@ -271,14 +264,22 @@ fn check_svg(receipt: &SvgArtifactObservation, palette: Palette) -> C6ProofResul
         .root_id()
         .ok_or_else(|| C6ProofError::new("preset-flowchart-root", "missing root"))?;
     // Check the producer's declarations, not a second CSS cascade implementation.
-    for selector in [
-        format!("#{root} .label text,#{root} span"),
-        format!("#{root} .cluster-label text"),
-        format!("#{root} .cluster text"),
-        format!("#{root} .flowchartTitleText"),
-        format!("#{root} .edgeLabel .label,#{root} .edgeLabel .label text,#{root} .edgeLabel span"),
+    for (selector, fill) in [
+        (
+            format!("#{root} .label text,#{root} span"),
+            palette.label_fallback,
+        ),
+        (format!("#{root} .cluster-label text"), palette.text),
+        (format!("#{root} .cluster text"), palette.text),
+        (format!("#{root} .flowchartTitleText"), palette.text),
+        (
+            format!(
+                "#{root} .edgeLabel .label,#{root} .edgeLabel .label text,#{root} .edgeLabel span"
+            ),
+            palette.label_fallback,
+        ),
     ] {
-        require_exact_writer_declaration(receipt, &selector, "fill", palette.text)?;
+        require_exact_writer_declaration(receipt, &selector, "fill", fill)?;
     }
     require_exact_writer_declaration(
         receipt,
@@ -538,17 +539,16 @@ mod tests {
     }
 
     #[test]
-    fn unknown_preset_is_rejected() {
-        assert!(Palette::for_preset(ThemePreset::EditorLight).is_err());
+    fn undeclared_presets_are_rejected() {
+        // Cyberpunk's complete-scene proof owns its actual recipe, not this palette-only profile.
+        for preset in [ThemePreset::EditorLight, ThemePreset::Cyberpunk] {
+            assert!(Palette::for_preset(preset).is_err());
+        }
     }
 
     #[test]
     fn flowchart_contract_rejects_missing_or_changed_terminals() {
-        for preset in [
-            ThemePreset::Brutalist,
-            ThemePreset::Spotless,
-            ThemePreset::Cyberpunk,
-        ] {
+        for preset in [ThemePreset::Brutalist, ThemePreset::Spotless] {
             assert_changed_terminals_rejected(preset);
         }
     }

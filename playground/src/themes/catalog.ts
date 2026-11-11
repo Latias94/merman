@@ -1,6 +1,6 @@
 import risoRecipe from "./recipes/riso.theme.json?raw";
 import readingRecipe from "./recipes/reading.theme.json?raw";
-import type { ThemeAppearance } from "@mermanjs/web";
+import type { ThemeAppearance, ThemeCatalog } from "@mermanjs/web";
 import phosphorRecipe from "./recipes/phosphor.theme.json?raw";
 import field_notesRecipe from "./recipes/field-notes.theme.json?raw";
 import blueprintRecipe from "./recipes/blueprint.theme.json?raw";
@@ -21,6 +21,7 @@ import chalkRecipe from "./recipes/chalk.theme.json?raw";
 import prismRecipe from "./recipes/prism.theme.json?raw";
 import monographRecipe from "./recipes/monograph.theme.json?raw";
 import { CORE_THEME_SAMPLE_IDS, THEME_SAMPLE_IDS, type ThemeStyleId } from "./families";
+import { presetLibraryDesigns } from "./preset-library";
 
 const previewAssets = import.meta.glob<string>("./previews/*.svg", { query: "?url", import: "default", eager: true });
 
@@ -42,11 +43,13 @@ export interface ExplorationTheme {
   readonly recipeJson: string;
   readonly previews: Readonly<Partial<Record<ThemeSampleId, string>>> | null;
   readonly families: readonly ThemeSampleId[];
+  readonly sharedFamilies?: readonly ThemeSampleId[];
   readonly featuredSample?: ThemeSampleId;
   readonly sampleNotes?: readonly {
     readonly familyId: ThemeSampleId;
     readonly appearance: ThemeAppearance;
-    readonly messageKey: string;
+    readonly messageKey?: string;
+    readonly message?: string;
   }[];
   readonly styles: readonly ThemeStyleId[];
   readonly appearances?: readonly {
@@ -59,6 +62,16 @@ export interface ExplorationTheme {
 export function explorationAppearance(theme: ExplorationTheme, appearance: ThemeAppearance) {
   return theme.appearances?.find((entry) => entry.appearance === appearance) ??
     { appearance: theme.appearance, colors: theme.colors };
+}
+
+export function themeDesignLibrary(catalog: ThemeCatalog | null, exportPreset: (id: string) => unknown): readonly ExplorationTheme[] {
+  return [...EXPLORATION_THEMES, ...presetLibraryDesigns(EXPLORATION_THEMES, catalog, exportPreset).map((theme) => ({
+    ...theme,
+    previews: previewsFor(theme.id),
+    ...(theme.appearances ? { appearances: theme.appearances.map((entry) => ({
+      ...entry, previews: previewsFor(`${theme.id}-${entry.appearance}`),
+    })) } : {}),
+  }))];
 }
 
 export const EXPLORATION_THEMES: readonly ExplorationTheme[] = [

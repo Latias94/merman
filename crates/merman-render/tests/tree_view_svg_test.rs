@@ -1931,6 +1931,125 @@ fn tree_view_legacy_marker_winner_outranks_typed_edge_icon_fallback() {
     );
 }
 
+fn assert_tree_view_marker_clear_blocks_edge_icon_fallback(stroke: bool) {
+    for source_owned in [true, false] {
+        let source = if source_owned {
+            "---\nconfig:\n  themeVariables:\n    treeView:\n      iconColor: '#abcdef'\n---\ntreeView-beta\nRoot icon(folder)\n"
+        } else {
+            "treeView-beta\nRoot icon(folder)\n"
+        };
+        for clear in [false, true] {
+            let mut rules = vec![
+                ThemeRule::new(
+                    ThemeTarget::Edge,
+                    ThemeStylePatch::default().with_stroke(CanvasPaint::solid("#00ff00").unwrap()),
+                )
+                .for_family(DiagramFamilyId::TREE_VIEW),
+            ];
+            if clear {
+                let mut marker = ThemeStylePatch::default();
+                if stroke {
+                    marker.stroke.paint = Specified::Clear;
+                } else {
+                    marker.paint.fill = Specified::Clear;
+                }
+                rules.push(
+                    ThemeRule::new(ThemeTarget::Marker, marker)
+                        .for_family(DiagramFamilyId::TREE_VIEW),
+                );
+            }
+            let theme = tree_view_rules_theme(rules);
+            let engine = || {
+                MermaidEngine::new().with_site_config(
+                    merman_core::presentation::SourcePresentationConfig::from_value(
+                        serde_json::json!({"theme": "default"}),
+                    ),
+                )
+            };
+            let (layout, rendered) = try_render_tree_view_with_theme_and_environment(
+                source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::BestEffort,
+                &RenderEnvironment::deterministic(),
+                "tree-view-marker-clear",
+            )
+            .expect("render real Tree View Marker omission/Clear terminals");
+            assert!(!layout.lines.is_empty());
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let icon = tree_view_icon_group_for_label(&document, "Root");
+            assert!(icon.descendants().any(|node| {
+                node.has_tag_name("path") && node.attribute("fill") == Some("currentColor")
+            }));
+            assert!(document.descendants().any(|node| {
+                node.has_tag_name("line") && node.attribute("class") == Some("treeView-node-line")
+            }));
+            let stylesheet = tree_view_stylesheet(rendered.svg());
+            assert!(
+                tree_view_css_rule(&stylesheet, ".treeView-node-line").contains("stroke: #00ff00;")
+            );
+            drop(document);
+            let completion = rendered.into_completion();
+            assert_eq!(
+                completion
+                    .report()
+                    .theme_diagnostics()
+                    .iter()
+                    .filter(|diagnostic| {
+                        diagnostic.target() == Some(ThemeTarget::Marker)
+                            && diagnostic.code() == "unsupported-paint"
+                    })
+                    .count(),
+                usize::from(clear),
+                "stroke={stroke}, clear={clear}, source_owned={source_owned}"
+            );
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 1 + usize::from(clear));
+            assert_eq!(evidence.accounted_count(), 1 + usize::from(clear));
+            assert_eq!(evidence.applied_count(), 1);
+            assert_eq!(evidence.theme_residual_count(), usize::from(clear));
+            let strict = try_render_tree_view_svg_with_theme_requirement_and_engine(
+                source,
+                &theme,
+                engine(),
+                ThemePortabilityRequirement::RequirePortable,
+            );
+            if clear {
+                let error = strict.expect_err("Marker paint Clear must remain unsupported");
+                assert_eq!(
+                    error.unverified_family_theme(),
+                    Some((DiagramFamilyId::TREE_VIEW, 1)),
+                    "stroke={stroke}, source_owned={source_owned}"
+                );
+            } else {
+                strict.expect("omitting Marker paint must retain portable Edge fallback");
+            }
+            let expected_color = if source_owned {
+                "#abcdef"
+            } else if clear {
+                "#546e7a"
+            } else {
+                "#00ff00"
+            };
+            assert!(
+                tree_view_css_rule(&stylesheet, ".treeView-node-icon")
+                    .contains(&format!("color: {expected_color};")),
+                "stroke={stroke}, clear={clear}, source_owned={source_owned}: {stylesheet}"
+            );
+        }
+    }
+}
+
+#[test]
+fn tree_view_marker_fill_clear_blocks_edge_icon_fallback() {
+    assert_tree_view_marker_clear_blocks_edge_icon_fallback(false);
+}
+
+#[test]
+fn tree_view_marker_stroke_clear_blocks_edge_icon_fallback() {
+    assert_tree_view_marker_clear_blocks_edge_icon_fallback(true);
+}
+
 #[test]
 fn tree_view_typed_marker_paint_reaches_icon_terminal_and_portable_evidence() {
     let source = "treeView-beta\nRoot icon(folder)\n";

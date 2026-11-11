@@ -444,7 +444,7 @@ pub(crate) fn render_timeline_diagram_svg_model(
         let event_theme = event_emission.theme;
         let node_palette_slot = event_theme.palette_slot_for_section(&n.section_class);
         let palette_fill =
-            node_palette_slot.and_then(|slot| event_theme.palette_fill_for_slot(slot));
+            node_palette_slot.and_then(|slot| event_theme.palette_fill_for_node(slot, event_index));
         let palette_line_stroke =
             node_palette_slot.and_then(|slot| event_theme.palette_line_stroke_for_slot(slot));
         let direct_fill =

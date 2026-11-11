@@ -33,6 +33,9 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   const recipe = currentRecipeIdentity(workspace, explorations, t("appearance.importedTheme"));
   const selectedKey = selectedThemeKey(workspace, EXPLORATION_THEMES, catalog);
   const selectedExploration = selectedExplorationTheme(workspace, EXPLORATION_THEMES, catalog);
+  const selectedPreset = selectedPresetCatalogEntry(catalog, workspace.themePresetId);
+  const appearancePreference = workspace.themeAppearance ?? "default";
+  const showcaseAppearance = selectedPreset?.pinned ?? appearancePreference;
   const recipePreset = recipe && selectedExploration
     ? selectedPresetCatalogEntry(catalog, selectedExploration.presetId ?? null) : null;
   const entries: ThemeCatalogChoice[] = [
@@ -115,7 +118,7 @@ export default function ThemeGallery({ workspace, mermaidThemes, presets, catalo
   }).filter((group) => group.choices.length > 0);
 
   return <div className="min-w-0 space-y-3" data-testid="theme-catalog">
-    <ThemeShowcaseLauncher panel themeId={selectedExploration?.id} />
+    <ThemeShowcaseLauncher panel themeId={selectedExploration?.id ?? selectedPreset?.preset.id} appearance={showcaseAppearance} />
     <div className="relative min-w-0">
       <label htmlFor={searchId} className="sr-only">{t("appearance.searchThemes")}</label>
       <Search className="pointer-events-none absolute left-2.5 top-2.5 size-3.5 text-muted-foreground" aria-hidden="true" />

@@ -38,6 +38,7 @@ import treeViewSource from "./samples/treeView.mmd?raw";
 import treeViewConfig from "./samples/treeView.config.json?raw";
 
 import type { ThemeSampleId } from "./families";
+import { themeSampleIds } from "../lib/theme-library";
 export type { ThemeSampleId } from "./families";
 
 export const THEME_SAMPLES: readonly {
@@ -66,7 +67,8 @@ export const THEME_SAMPLES: readonly {
   { id: "treeView", source: treeViewSource, configJson: treeViewConfig },
 ];
 
-export function samplesForTheme(theme: { readonly families: readonly ThemeSampleId[]; readonly featuredSample?: ThemeSampleId }) {
-  return THEME_SAMPLES.filter((sample) => theme.families.includes(sample.id))
+export function samplesForTheme(theme: { readonly families: readonly ThemeSampleId[]; readonly sharedFamilies?: readonly ThemeSampleId[]; readonly featuredSample?: ThemeSampleId }) {
+  const ids = themeSampleIds(theme);
+  return THEME_SAMPLES.filter((sample) => ids.includes(sample.id))
     .toSorted((left, right) => Number(right.id === theme.featuredSample) - Number(left.id === theme.featuredSample));
 }

@@ -1065,17 +1065,22 @@ fn render_state_cluster(
         .unwrap_or(label_div_prefix);
     let radius_override = node_style.and_then(crate::state::StateNodeStylePlan::radius_override);
     let body_rect_style = state_rect_style(body_style, radius_override);
-    let header_rect_style = state_rect_style(header_style, radius_override);
-    let radius_attrs = node_style
-        .and_then(crate::state::StateNodeStylePlan::radius_override)
-        .map(|radius| {
-            format!(
-                r#" rx="{}" ry="{}""#,
-                fmt(radius.max(0.0)),
-                fmt(radius.max(0.0))
-            )
-        })
-        .unwrap_or_default();
+    let outer_radius_override =
+        node_style.and_then(crate::state::StateNodeStylePlan::composite_outer_radius_override);
+    let header_rect_style = state_rect_style(header_style, outer_radius_override);
+    let radius_attributes = |radius: Option<f64>| {
+        radius
+            .map(|radius| {
+                format!(
+                    r#" rx="{}" ry="{}""#,
+                    fmt(radius.max(0.0)),
+                    fmt(radius.max(0.0))
+                )
+            })
+            .unwrap_or_default()
+    };
+    let radius_attrs = radius_attributes(radius_override);
+    let outer_radius_attrs = radius_attributes(outer_radius_override);
 
     let _ = write!(out, r#"<g class="{}""#, escape_attr(class));
     if pass == StateRenderPass::Depth && shape != "divider" {
@@ -1257,7 +1262,7 @@ fn render_state_cluster(
             format!(
                 r#"<rect class="outer" style="{}"{} x="{}" y="{}" width="{}" height="{}" data-look="{}"/>"#,
                 escape_attr(&header_rect_style),
-                radius_attrs,
+                outer_radius_attrs,
                 fmt(x),
                 fmt(y),
                 fmt(cluster.width.max(1.0)),

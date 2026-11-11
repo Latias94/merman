@@ -61,9 +61,22 @@ system fonts, classic Flowchart and Sequence looks, Dagre for Flowchart, the ori
 recipe and default resource limits. Successful observations remain **HostDependent**. State is not
 part of this profile.
 
+The current design uses dark (`#161F25`) Flowchart and actor panels with warning-yellow
+lettering and contours (`#F3E600`). The same primary ink remains visible on exterior glyph names.
+Bright canvas ink (`#EAF4F0`) and secondary XY ink (`#A5BCC0`) remain
+independent of cyan signals (`#29F3EC`) and red contours (`#FF4564`); labels have no glow.
+The canvas is near black (`#080D11`), shared bodies use `#161F25`, secondary surfaces use
+`#253139`, and notes pair a dark-red surface (`#351C29`) with pale lettering (`#FFE9EF`).
+Body outlines and selected connectors are 1.5px; supported panel corners are square.
+Body depth combines independent zero-blur red (-3px, 0px, 0.8 opacity) and cyan
+(4px, 4px, 0.85 opacity) offsets. Edges use a 1.2px halo at 0.25 opacity; Sequence loops use
+1px at 0.14 and notes use 1.5px at 0.18. XY bars use 1.25px outlines and 0.85 fill opacity;
+lines use 2px strokes. Both use 1px halos at 0.18. Three screen canvas layers retain their
+geometry with a 0.04 yellow radial wash and 0.035 cyan grid ink.
+
 The private runner observes its actual immutable SVG and checks canvas paint, gradient/grid geometry and compositing;
 family-specific surfaces, borders, typography, series order, markers and label ownership; and
-the bound glow primitives, colors and composition chain. Internal filter-result names may change
+the bound signal/depth primitives, colors and composition. Internal filter-result names may change
 when their connections remain equivalent. Flowchart node and Sequence actor depth must match the
 foreground body geometry and appear below connections. Their final filter merge emits only shadows;
 intermediate cascade results may include the source, while the separate foreground body remains
@@ -71,8 +84,9 @@ unfiltered. Missing depth, mismatched silhouettes, changed layer order and sourc
 depth merge are rejected. These are fixed writer/scenario checks, not a general
 CSS cascade or arbitrary-source validator.
 
-The runner also checks actual PNG contributions by independently removing 34 labels, 62 effects,
-five arrowheads and nine canvas layers across the scenes. Glyph checks disable all effects first
+The runner also checks actual PNG contributions by independently removing 34 labels, 30 effects
+(seven Flowchart, thirteen Sequence and ten XY), five arrowheads and nine canvas layers across
+the scenes. Glyph checks disable all effects first
 so glow cannot replace missing text ink. Every removal must change pixels without changing output
 dimensions; the mutation export path must first reproduce the public facade PNG exactly. Recipe
 export/import regressions separately require identical SVG and PNG bytes.

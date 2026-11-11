@@ -277,7 +277,22 @@ fn write_label(
         out.push_str("</g>");
     }
     if !plan.text.trim().is_empty() {
-        plan.theme_style.record_emitted(receipt);
+        plan.theme_style.record_text_emitted(receipt, || {
+            let font_size =
+                crate::text::visible_text_font_size_after_style(Some(plan.style.font_size), &css);
+            if let Some(content) = &plan.html {
+                crate::text::VisibleTextStyleFacts::from_xhtml_fragment_at_font_size(
+                    &content.xhtml,
+                    font_size,
+                )
+            } else if plan.label_type == UsecaseLabelType::Markdown {
+                crate::text::VisibleTextStyleFacts::from_svg_markdown_projection_at_font_size(
+                    &plan.text, font_size,
+                )
+            } else {
+                crate::text::VisibleTextStyleFacts::plain_text_at_font_size(&plan.text, font_size)
+            }
+        });
     }
 }
 

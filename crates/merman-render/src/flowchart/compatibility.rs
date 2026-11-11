@@ -15,6 +15,7 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) node_text_color: String,
     pub(crate) title_color: String,
     pub(crate) stroke_width: String,
+    pub(crate) stroke_width_configured: bool,
     pub(crate) error_bkg: String,
     pub(crate) error_text: String,
     pub(crate) edge_label_background: String,
@@ -32,7 +33,9 @@ pub(crate) struct FlowchartCompatibilityBinding {
     pub(crate) html_labels: bool,
     pub(crate) node_stroke_width: f32,
     pub(crate) node_corner_radius: f64,
+    pub(crate) node_corner_radius_configured: bool,
     pub(crate) rounded_rect_radius: Value,
+    pub(crate) rounded_rect_radius_configured: bool,
     pub(crate) rounded_rect_radius_truthy: bool,
     pub(crate) rounded_rect_radius_numeric: Option<f64>,
     pub(crate) note_fill: String,
@@ -43,18 +46,24 @@ pub(crate) struct FlowchartCompatibilityBinding {
 }
 
 impl FlowchartCompatibilityBinding {
+    pub(crate) fn title_color_source(config: &Value) -> (Option<&'static str>, &str) {
+        crate::config::selected_config_string(
+            config,
+            &["themeVariables.titleColor", "themeVariables.textColor"],
+        )
+        .map_or((None, "#333"), |(path, color)| (Some(path), color))
+    }
+
     pub(crate) fn resolve(config: &Value) -> Self {
         let theme = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
-        };
-        let css = |key: &str, fallback: &str| {
-            config_css_number_or_string(config, &["themeVariables", key])
-                .unwrap_or_else(|| fallback.to_owned())
         };
         let text_color = theme("textColor", "#333");
         let line_color = theme("lineColor", "#333333");
         let cluster_border = theme("clusterBorder", "#aaaa33");
         let node_border = theme("nodeBorder", "#9370DB");
+        let stroke_width = config_css_number_or_string(config, &["themeVariables", "strokeWidth"]);
+        let node_corner_radius = crate::config::config_f64(config, &["themeVariables", "radius"]);
         let rounded_rect_radius = config
             .get("themeVariables")
             .and_then(|theme| theme.get("radius"))
@@ -69,6 +78,10 @@ impl FlowchartCompatibilityBinding {
             look: crate::config::config_diagram_look(config).into_static(),
             hand_drawn_seed: config.get("handDrawnSeed").and_then(Value::as_f64),
             look_defs: crate::svg::PreparedLookDefs::new(config),
+            rounded_rect_radius_configured: node_corner_radius.is_some()
+                || rounded_rect_radius
+                    .as_str()
+                    .is_some_and(|value| !value.trim().is_empty()),
             rounded_rect_radius,
             rounded_rect_radius_truthy,
             rounded_rect_radius_numeric,
@@ -83,12 +96,13 @@ impl FlowchartCompatibilityBinding {
             ),
             arrowhead_color: theme("arrowheadColor", &line_color),
             node_text_color: theme("nodeTextColor", &text_color),
-            title_color: theme("titleColor", &text_color),
+            title_color: Self::title_color_source(config).1.to_owned(),
             text_color,
             line_color,
             node_border,
             main_bkg: theme("mainBkg", "#ECECFF"),
-            stroke_width: css("strokeWidth", "1"),
+            stroke_width_configured: stroke_width.is_some(),
+            stroke_width: stroke_width.unwrap_or_else(|| "1".to_owned()),
             error_bkg: theme("errorBkgColor", "#552222"),
             error_text: theme("errorTextColor", "#552222"),
             edge_label_background: theme("edgeLabelBackground", "rgba(232,232,232, 0.8)"),
@@ -139,9 +153,8 @@ impl FlowchartCompatibilityBinding {
             .filter(|value| value.is_finite() && *value >= 0.0 && *value <= f32::MAX as f64)
             .map(|value| value as f32)
             .unwrap_or(1.3),
-            node_corner_radius: crate::config::config_f64(config, &["themeVariables", "radius"])
-                .unwrap_or(5.0)
-                .max(0.0),
+            node_corner_radius: node_corner_radius.unwrap_or(5.0).max(0.0),
+            node_corner_radius_configured: node_corner_radius.is_some(),
         }
     }
 }

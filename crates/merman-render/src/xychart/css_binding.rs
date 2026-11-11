@@ -28,6 +28,7 @@ pub(super) struct XyChartCssBinding {
     pub(super) y_axis_tick_color: String,
     pub(super) y_axis_line_color: String,
     pub(super) plot_color_palette: Vec<String>,
+    plot_color_palette_source: Option<&'static str>,
 }
 
 impl XyChartCssBinding {
@@ -58,14 +59,11 @@ impl XyChartCssBinding {
     }
 
     pub(super) fn resolve(config: &Value) -> Self {
-        let variables = config.get("themeVariables");
-        let nested = |key: &str| {
-            variables
-                .and_then(|variables| variables.get("xyChart"))
-                .and_then(|variables| variables.get(key))
-                .and_then(Value::as_str)
-        };
         let role = |key| Self::color(config, key).color.to_owned();
+        let palette = crate::config::selected_config_string(
+            config,
+            &["themeVariables.xyChart.plotColorPalette"],
+        );
         Self {
             background_color: role("backgroundColor"),
             title_color: role("titleColor"),
@@ -83,9 +81,15 @@ impl XyChartCssBinding {
                     .get("theme")
                     .and_then(Value::as_str)
                     .unwrap_or("default"),
-                nested("plotColorPalette"),
+                palette.map(|(_, value)| value),
             ),
+            plot_color_palette_source: palette.map(|(path, _)| path),
         }
+    }
+
+    pub(super) fn config_owns_plot_palette(&self, config: &PresentationConfig) -> bool {
+        self.plot_color_palette_source
+            .is_some_and(|path| config.config_paint_overrides_typed_default(path))
     }
 }
 

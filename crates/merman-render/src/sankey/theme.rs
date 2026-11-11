@@ -93,6 +93,11 @@ pub(crate) struct SankeyTypographyThemePlan {
     terminal_receipt: OnceLock<SankeyTypographyTerminalSeal>,
 }
 
+fn config_owns_text_fill(config: &PresentationConfig) -> bool {
+    crate::config::selected_config_string(config.as_value(), &["themeVariables.textColor"])
+        .is_some_and(|(path, _)| config.config_paint_overrides_typed_default(path))
+}
+
 impl SankeyTypographyThemePlan {
     pub(crate) fn resolve(
         theme: Option<&ResolvedDiagramTheme>,
@@ -100,8 +105,7 @@ impl SankeyTypographyThemePlan {
         label_count: usize,
         work_meter: &OperationWorkMeter,
     ) -> Result<Self, OperationWorkError> {
-        let config_owns_text_fill =
-            effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
+        let config_owns_text_fill = config_owns_text_fill(effective_config);
         let mut text_fill = None;
         let mut text_rules = BTreeMap::<usize, Vec<SankeyTextRuleObservation>>::new();
         let mut has_ordinals = false;
@@ -687,10 +691,7 @@ impl SankeyNodePalettePlan {
             .map(|(index, _)| (index + 1, ThemeVariant::Default))
             .collect::<Vec<_>>();
         let source_owned_text_fill =
-            vec![
-                effective_config.config_paint_overrides_typed_default("themeVariables.textColor");
-                layout.nodes.len()
-            ];
+            vec![config_owns_text_fill(effective_config); layout.nodes.len()];
         reconcile_unsupported_terminal_domains(
             theme,
             &mut plan.evidence,

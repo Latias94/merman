@@ -247,8 +247,7 @@ impl XyChartSeriesPaintPlan {
         if routes.is_empty() && plan.palette.is_none() && plan.effect_binding.is_none() {
             return Ok(plan);
         }
-        let source_colors =
-            config.config_paint_overrides_typed_default("themeVariables.xyChart.plotColorPalette");
+        let source_colors = plan.css.config_owns_plot_palette(config);
         let mut effects: BTreeMap<String, Option<Arc<SvgShadowEffect>>> = BTreeMap::new();
         for (index, paint) in plan.paints.iter_mut().enumerate() {
             let mut style = theme.style_with_work_meter(

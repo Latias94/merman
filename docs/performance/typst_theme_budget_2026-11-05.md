@@ -120,3 +120,55 @@ since the historical controls above; individual functions and recipes were not i
 binary attribution. All four independent gates and the complete plugin/package smoke remain
 required. The matching-source functional checks are recorded with the PR; this reassessment
 establishes size acceptance without making a latency, memory or release-publication claim.
+
+## Configuration ownership reassessment, 2026-11-11
+
+[PR 302's Typst job](https://github.com/Latias94/merman/actions/runs/42999583348/job/130452570314)
+measures head `2e05fdaaf820b1fa95a27833047007e9f059aa14` through tested merge
+`b188aacf76a4141ef8ab48fe24958d2277be2734`, with main
+`d265db7ed0ac2aad4941b53b896b9c90381442cb`. The Linux recipe uses Rust 1.99.1,
+Binaryen 133 and wasm-tools 1.263.0 with the unchanged complete publish capability set,
+Cargo profile, optimizer arguments and compression settings.
+
+| Metric | Linux measurement | Previous ceiling | Selected ceiling |
+| --- | ---: | ---: | ---: |
+| Raw bytes | 26,365,651 | 27,133,000 | 27,133,000 |
+| Stripped bytes | 13,244,374 | 13,635,000 | 13,635,000 |
+| Gzip bytes | 4,997,611 | 4,996,000 | 5,148,000 |
+| Brotli bytes | 3,726,020 | 3,810,000 | 3,810,000 |
+
+Only gzip exceeds its prior ceiling, by 1,611 bytes. The existing metric-specific rule gives
+`((4997611 * 103 + 99999) // 100000) * 1000 = 5148000`. The other three ceilings remain
+unchanged. The source adds selected paint-source ownership across diagram families; the
+follow-up also repairs typography, width, radius and opacity selection and its terminal evidence.
+This observation includes intervening source changes and does not isolate their binary costs.
+No equivalent redundancy has been established that would justify removing behavior, diagnostics
+or capabilities to recover the small excess.
+
+The recorded Linux job fails before package validation and real Typst smoke. The corrected
+source must pass those owners and all four size checks independently. This is acceptance of
+bounded implementation growth under the existing policy, without a size-optimization, latency,
+memory or release-qualification claim.
+
+The final-source Windows 11 x86-64 control uses Rust 1.99.1, Binaryen 133 and wasm-tools
+1.263.0, with two Cargo build jobs and `BINARYEN_CORES=2`. Its 1,541 production input files
+have the fingerprint `a99d592222e70d218c7b0d3b96376c2c679979c8586a29e5fe1ec9fca8505688`.
+The raw artifact SHA-256 is
+`639980b613b0b88813f6ffee3edab405d7b205a75ef3566f2c9700b48af64d34`, and the final
+stripped artifact SHA-256 is
+`189b9e3aaf209aa0ce098052093739f38ad25e7b1724c5fd6b62044e8cc67837`.
+The generated manifest retains the complete source and tool fingerprints. Host and source
+differences prevent binary cost attribution between this control and the Linux job above.
+
+| Metric | Final-source Windows measurement | Selected ceiling |
+| --- | ---: | ---: |
+| Raw bytes | 26,360,290 | 27,133,000 |
+| Stripped bytes | 13,251,634 | 13,635,000 |
+| Gzip bytes | 4,997,736 | 5,148,000 |
+| Brotli bytes | 3,727,226 | 3,810,000 |
+
+All four gates pass. The final gzip measurement also yields 5,148,000 under the existing
+3% rule. Matching-source plugin tests pass both defaults-off (18 tests) and the complete
+capability recipe (47 tests). The package validates its exports and shared theme vectors
+(`support=32`, `materialization=2`, `errors=3`); real Typst 0.15.1 smoke compiles 24 fixtures
+and verifies 13 expected failures with the same source-verified WASM.

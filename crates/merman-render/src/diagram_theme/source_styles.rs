@@ -219,6 +219,10 @@ impl PreparedSourceStyleDeclaration {
         self.analysis.is_single_component()
     }
 
+    pub(crate) const fn has_dynamic_reference_function(&self) -> bool {
+        self.analysis.has_dynamic_reference_function()
+    }
+
     pub(crate) fn svg_number_or_px(&self) -> Option<f64> {
         self.analysis.svg_number_or_px()
     }
@@ -272,6 +276,10 @@ impl SourceStyleDeclaration {
 
     pub(crate) fn is_single_component_value(&self) -> bool {
         self.prepared.is_single_component_value()
+    }
+
+    pub(crate) fn has_dynamic_reference_function(&self) -> bool {
+        self.prepared.has_dynamic_reference_function()
     }
 
     pub(crate) fn svg_number_or_px(&self) -> Option<f64> {

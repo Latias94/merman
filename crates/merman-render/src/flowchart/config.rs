@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string, normalize_css_font_family};
+use crate::config::{config_bool, config_f64, config_string};
 use crate::text::{TextStyle, WrapMode};
 use serde_json::Value;
 
@@ -28,6 +28,7 @@ pub(crate) struct FlowchartTypographyConfigOwnership {
 pub(crate) fn flowchart_typography_config_ownership(
     config: &merman_model::presentation::PresentationConfig,
 ) -> FlowchartTypographyConfigOwnership {
+    let view = FlowchartConfigView::new(config.as_value());
     let raw_weight = config
         .explicit_config_owns_path("fontWeight")
         .then(|| config.get_str("fontWeight"))
@@ -36,9 +37,11 @@ pub(crate) fn flowchart_typography_config_ownership(
     FlowchartTypographyConfigOwnership {
         font_weight,
         invalid_font_weight: raw_weight.is_some() && font_weight.is_none(),
-        font_stack: config.explicit_config_owns_path("themeVariables.fontFamily")
-            || config.explicit_config_owns_path("fontFamily"),
-        font_size: config.explicit_config_owns_path("themeVariables.fontSize"),
+        font_stack: view
+            .font_family_source(Some(config))
+            .is_some_and(|(_, path)| config.explicit_config_owns_path(path)),
+        font_size: view.theme_font_size_px().is_some()
+            && config.explicit_config_owns_path("themeVariables.fontSize"),
     }
 }
 
@@ -102,18 +105,37 @@ impl<'a> FlowchartConfigView<'a> {
     }
 
     pub(crate) fn font_family(&self) -> String {
+        self.font_family_source(None).map_or_else(
+            || DEFAULT_FLOWCHART_FONT_FAMILY.to_owned(),
+            |(font, _)| font,
+        )
+    }
+
+    pub(crate) fn font_family_source(
+        &self,
+        origins: Option<&merman_model::presentation::PresentationConfig>,
+    ) -> Option<(String, &'static str)> {
         let theme_font_family = self
             .theme_string("fontFamily")
-            .map(|s| normalize_css_font_family(&s));
+            .and_then(|s| crate::config::normalized_config_font_family(&s));
         let top_font_family = self
             .root_string("fontFamily")
-            .map(|s| normalize_css_font_family(&s));
+            .and_then(|s| crate::config::normalized_config_font_family(&s));
 
         match (top_font_family, theme_font_family) {
-            (Some(top), Some(theme)) if theme == DEFAULT_FLOWCHART_FONT_FAMILY => top,
-            (_, Some(theme)) => theme,
-            (Some(top), None) => top,
-            (None, None) => DEFAULT_FLOWCHART_FONT_FAMILY.to_string(),
+            // Only a generated default mirrors the root font. An authored default
+            // remains an explicit theme font, just like every other authored stack.
+            (Some(top), Some(theme))
+                if theme == DEFAULT_FLOWCHART_FONT_FAMILY
+                    && origins.is_none_or(|config| {
+                        !config.explicit_config_owns_path("themeVariables.fontFamily")
+                    }) =>
+            {
+                Some((top, "fontFamily"))
+            }
+            (_, Some(theme)) => Some((theme, "themeVariables.fontFamily")),
+            (Some(top), None) => Some((top, "fontFamily")),
+            (None, None) => None,
         }
     }
 

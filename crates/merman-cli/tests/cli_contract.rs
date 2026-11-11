@@ -819,11 +819,12 @@ fn edited_theme_recipe_preserves_scoped_paints_clear_and_source_ownership() {
         .find(|node| node.attribute("data-id") == Some("A"))
         .expect("Flowchart node terminal group");
     assert!(
-        node.descendants().any(|child| {
-            child.attribute("fill") == Some("#051423")
-                || child
-                    .attribute("style")
-                    .is_some_and(|style| style.contains("fill:#051423"))
+        node.children().any(|child| {
+            child.has_tag_name("rect")
+                && (child.attribute("fill") == Some("#161F25")
+                    || child
+                        .attribute("style")
+                        .is_some_and(|style| style.contains("fill:#161F25")))
         }),
         "Class transparent fill must not replace Flowchart fill: {svg}"
     );

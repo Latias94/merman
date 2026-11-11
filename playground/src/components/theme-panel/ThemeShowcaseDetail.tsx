@@ -139,7 +139,7 @@ export function ThemeShowcaseDetail({ theme, selected, selection, sampleId, onSa
   return <div className="min-w-0 space-y-4 p-4 sm:space-y-6 sm:p-6" data-testid="theme-showcase-detail" data-theme-design={theme.id}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <Button type="button" variant="ghost" size="sm" onClick={onBack} className="-ml-2"><ArrowLeft className="size-4" aria-hidden="true" />{t("themeShowcase.back")}</Button>
-      <span className="text-[11px] text-muted-foreground">{t("themeLibrary.customTheme")}</span>
+      <span className="text-[11px] text-muted-foreground">{t(theme.presetId ? "appearance.sources.builtin" : "themeLibrary.customTheme")}</span>
     </div>
     <div className="flex flex-wrap items-start justify-between gap-5">
       <div className="min-w-0 max-w-2xl space-y-2">

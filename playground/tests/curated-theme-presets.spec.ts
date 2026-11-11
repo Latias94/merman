@@ -62,6 +62,8 @@ for (const [id, name, variant] of themes) {
     expect(snapshot.themeRecipeJson).toBeNull();
     await page.locator("[data-theme-launcher]:visible").click();
     const panel = page.locator("#theme-panel");
+    await expect(panel.locator('[data-theme-group="builtin"]')).toHaveCount(1);
+    await expect(panel.locator(`[data-theme-preset="${id}"]`)).toHaveCount(1);
     await expect(panel.locator(`[data-theme-choice="preset:${id}"]`)).toHaveAttribute("aria-pressed", "true");
     await expect(panel.locator(`[data-theme-choice="exploration:${id}"]`)).toHaveCount(0);
     await panel.getByRole("button", { name: "Theme designs", exact: true }).click();

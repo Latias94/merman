@@ -449,31 +449,32 @@
           },
           {
             "family_id": "flowchart",
-            "treatment": "base_only"
+            "treatment": "dedicated"
           },
           {
             "family_id": "sequence",
-            "treatment": "base_only"
+            "treatment": "dedicated"
           },
           {
             "family_id": "xychart",
-            "treatment": "base_only"
+            "treatment": "dedicated"
           }
         ],
         "preview_colors": [
-          "#051423",
-          "#00f2ff",
-          "#22d3ee",
-          "#f472b6",
-          "#a3e635",
-          "#facc15",
-          "#c084fc"
+          "#080D11",
+          "#161F25",
+          "#EAF4F0",
+          "#F3E600",
+          "#29F3EC",
+          "#FFB0BE",
+          "#C8BFFF",
+          "#9BE8C8"
         ],
         "application_notes": [
           {
-            "id": "flowchart-basic-glow",
+            "id": "flowchart-basic-signal-depth",
             "family_id": "flowchart",
-            "message": "Node glow works with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
+            "message": "Hard cyan/red panel offsets work with supported basic shapes (rectangles, rounded rectangles, diamonds, circles and double circles) in Classic and Neo. Hand-drawn and other shapes may leave effects unapplied. Source styles take precedence.",
             "recommended_config": null
           }
         ],
@@ -502,18 +503,34 @@
         "availability_reason_ids": [],
         "family_designs": [
           {
+            "family_id": "class",
+            "treatment": "base_only"
+          },
+          {
+            "family_id": "flowchart",
+            "treatment": "dedicated"
+          },
+          {
             "family_id": "pie",
+            "treatment": "dedicated"
+          },
+          {
+            "family_id": "sequence",
+            "treatment": "dedicated"
+          },
+          {
+            "family_id": "xychart",
             "treatment": "dedicated"
           }
         ],
         "preview_colors": [
-          "#FDF6E3",
-          "#FFFFFF",
-          "#3A2E2C",
-          "#FFF3E0",
-          "#E8F5E9",
-          "#E6E6E6",
-          "#FFDFAD"
+          "#FAF5E8",
+          "#EEF3E3",
+          "#314A3E",
+          "#F8E6BE",
+          "#E6EEEA",
+          "#EAE3EE",
+          "#F0EDCC"
         ],
         "application_notes": [],
         "qualified_cells": []

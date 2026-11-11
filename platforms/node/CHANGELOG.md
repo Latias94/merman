@@ -26,6 +26,7 @@ Cumulative changes since the latest stable Node package group, `0.9.3`. The pack
 
 ### Changed and fixed
 
+- Refine Cyberpunk with clear neutral text and restrained neon contours, and Ghibli with warm paper, sage surfaces and independent chart inks. Both add dedicated Flowchart, Sequence and XY Chart styling while retaining editable recipe export. [#302](https://github.com/Latias94/merman/pull/302)
 - Advance from Mermaid `12.1.0` to `12.3.0`, including timed Flowchart Step edges, numbered badges, nine `bpmn-*` shapes, and updated Swimlane and Usecase behavior. Static SVG retains Step edges and badges without browser animation. Review snapshots for ELK `0.12.1` routing, label clearance, containers, and packing; see the [Mermaid migration](../../docs/migrations/mermaid-12-3.md). [#277](https://github.com/Latias94/merman/pull/277)
 - Correct Class, Sequence, and State source handling and label geometry, including rich Class relationship labels and Sequence frames. Review affected SVG snapshots. [#282](https://github.com/Latias94/merman/pull/282), [#286](https://github.com/Latias94/merman/pull/286), [#294](https://github.com/Latias94/merman/pull/294), [#297](https://github.com/Latias94/merman/pull/297)
 - Enforce JSON byte, member, token, and string limits consistently in native and Node-WASM engine construction, including defaults and shared values, without mutating caller input or invoking getters or `toJSON`. [#277](https://github.com/Latias94/merman/pull/277)

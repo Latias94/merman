@@ -18,9 +18,11 @@ const expandedDesigns = [
   { id: "monograph", extraSamples: ["requirement", "treeView"] },
 ] as const satisfies readonly { id: string; extraSamples: readonly ThemeSampleId[] }[];
 
+const legacyDesignIds = ["brutalist", "cyberpunk", "ghibli", "spotless", "editor", "one-dark", "gruvbox", "ayu"];
 const designIds = [
   "riso", "pop-art", "metro", "carbon-copy", "signal", "field-notes", "lacquer", "paper-cut", "aurora", "phosphor",
   "letterpress", "grove", "reading", "atlas", "nightfall", "blueprint", "porcelain", "chalk", "prism", "monograph",
+  ...legacyDesignIds,
 ];
 
 const sampleText: Readonly<Record<ThemeSampleId, string | RegExp>> = {
@@ -94,10 +96,11 @@ async function expectRenderedSample(expanded: Locator, sample: ThemeSampleId, ap
   await expect(preview.getByRole("alert")).toHaveCount(0);
 }
 
-test("new family filters expose exactly the reviewed designs and preserve two supported companion previews", async ({ page }) => {
+test("new family filters retain reviewed authored and canonical designs with honest coverage and companion previews", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = monitorBrowserErrors(page);
   const library = await start(page);
+  await chooseThemeOption(page, library.getByRole("combobox", { name: "Diagram family filter", exact: true }), "");
   const cards = library.locator("[data-theme-design-card]");
   await expect(cards).toHaveCount(designIds.length);
   expect((await cards.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-design-card")))).sort()).toEqual([...designIds].sort());
@@ -109,17 +112,27 @@ test("new family filters expose exactly the reviewed designs and preserve two su
     for (const sample of design.extraSamples) {
       await chooseThemeOption(page, family, sample);
       const matchingDesigns = expandedDesigns.filter((candidate) => candidate.extraSamples.some((id) => id === sample));
-      await expect(cards).toHaveCount(matchingDesigns.length);
-      expect((await cards.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-design-card")))).sort())
-        .toEqual(matchingDesigns.map((candidate) => candidate.id).sort());
       for (const matching of matchingDesigns) {
-        const card = library.locator(`[data-theme-design-card="${matching.id}"]`);
+        await expect(library.locator(`[data-theme-design-card="${matching.id}"]`)).toHaveCount(1);
+      }
+      const visibleIds = await cards.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-design-card")!));
+      expect(visibleIds.filter((id) => !legacyDesignIds.includes(id)).sort())
+        .toEqual(matchingDesigns.map((candidate) => candidate.id).sort());
+      for (const id of visibleIds) {
+        expect(designIds).toContain(id);
+        const card = library.locator(`[data-theme-design-card="${id}"]`);
         await expect(card).toHaveAttribute("data-theme-design-family", sample);
+        await expect(card.locator("[data-theme-coverage]")).toHaveAttribute("data-theme-coverage", /^(dedicated|base_only)$/u);
         await expect(card.locator('[data-theme-card-primary="true"]')).toHaveAttribute("data-theme-card-sample", sample);
-        await expect(card.locator('[data-theme-card-primary="false"]')).toHaveCount(2);
         const samples = await card.locator("[data-theme-card-sample]").evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-card-sample")));
-        expect(new Set(samples).size).toBe(3);
-        for (const id of samples) expect([...CORE_THEME_SAMPLE_IDS, ...matching.extraSamples]).toContain(id);
+        expect(samples.length).toBeGreaterThan(0);
+        expect(samples.length).toBeLessThanOrEqual(3);
+        expect(new Set(samples).size).toBe(samples.length);
+        const matching = matchingDesigns.find((candidate) => candidate.id === id);
+        if (matching) await expect(card.locator('[data-theme-card-primary="false"]')).toHaveCount(2);
+        for (const companion of samples) {
+          expect(matching ? [...CORE_THEME_SAMPLE_IDS, ...matching.extraSamples] : THEME_SAMPLE_IDS).toContain(companion);
+        }
       }
       await expect(library.getByTestId("theme-library-family-chip")).toBeVisible();
     }
@@ -128,8 +141,8 @@ test("new family filters expose exactly the reviewed designs and preserve two su
   await expect(family).toHaveAttribute("data-value", "");
   await expect(cards).toHaveCount(designIds.length);
   await library.getByRole("button", { name: "Light + dark", exact: true }).click();
-  await expect(cards).toHaveCount(2);
-  expect((await cards.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-design-card")))).sort()).toEqual(["prism", "reading"]);
+  expect((await cards.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-theme-design-card")))).sort())
+    .toEqual(["ayu", "editor", "gruvbox", "prism", "reading"]);
   errors.assertNone();
 });
 
@@ -287,8 +300,13 @@ for (const manualSample of [null, "sankey"] as const) {
       expect(adoptedSource).toContain(sampleText[selected]);
       await detail.getByRole("button", { name: "All designs", exact: true }).click();
       await expect(collectionFamily).toHaveAttribute("data-value", "quadrantChart");
-      await expect(library.locator("[data-theme-design-card]")).toHaveCount(1);
-      await expect(library.locator("[data-theme-design-card]")).toHaveAttribute("data-theme-design-card", "prism");
+      const cards = library.locator("[data-theme-design-card]");
+      await expect(library.locator('[data-theme-design-card="prism"]')).toHaveCount(1);
+      for (const card of await cards.all()) {
+        await expect(card).toHaveAttribute("data-theme-design-family", "quadrantChart");
+        await expect(card.locator("[data-theme-coverage]")).toHaveAttribute("data-theme-coverage", /^(dedicated|base_only)$/u);
+        await expect(card.locator('[data-theme-card-primary="true"]')).toHaveAttribute("data-theme-card-sample", "quadrantChart");
+      }
       await library.getByTestId("theme-library-family-chip").getByRole("button").click();
       await expect(collectionFamily).toHaveAttribute("data-value", "");
       await library.getByRole("button", { name: "Close theme designs", exact: true }).click();

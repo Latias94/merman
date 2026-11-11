@@ -352,6 +352,8 @@ fn state_js_truthy(value: &Value) -> bool {
 #[derive(Debug, Clone)]
 pub(crate) struct StateCompatibilityPlan {
     pub(crate) redux_palette: Vec<(String, Option<String>)>,
+    palette_fill_owned: bool,
+    palette_stroke_owned: bool,
     pub(crate) palette_look: String,
     pub(crate) serialized_look: String,
     pub(crate) root_font_family_css: String,
@@ -396,6 +398,7 @@ pub(crate) struct StateCompatibilityPlan {
     pub(crate) gradient_start: String,
     pub(crate) gradient_stop: String,
     pub(crate) neo_radius: f64,
+    pub(crate) neo_radius_config_owned: bool,
     pub(crate) rect_radius: f64,
     pub(crate) node_shadow: bool,
     terminal_source_owned: u32,
@@ -579,9 +582,9 @@ impl StateCompatibilityPlan {
                 gradient_start.clone()
             })
         });
-        let neo_radius = resolver
-            .direct_css_px(&["themeVariables.radius"], 5.0)
-            .map(|value| value.max(0.0));
+        let neo_radius = resolver.direct_css_px(&["themeVariables.radius"], 5.0);
+        let neo_radius_config_owned = neo_radius.source_owned;
+        let neo_radius = neo_radius.map(|value| value.max(0.0));
         let rect_radius = if resolver
             .value
             .pointer("/themeVariables/radius")
@@ -732,6 +735,8 @@ impl StateCompatibilityPlan {
             .unwrap_or_else(|| "classic".to_owned());
         Self {
             redux_palette,
+            palette_fill_owned: resolver.paint_path_is_owned("themeVariables.bkgColorArray"),
+            palette_stroke_owned: resolver.paint_path_is_owned("themeVariables.borderColorArray"),
             palette_look,
             serialized_look: crate::config::config_diagram_look(resolver.value)
                 .serialized()
@@ -782,6 +787,7 @@ impl StateCompatibilityPlan {
             gradient_start: gradient_start.value,
             gradient_stop: gradient_stop.value,
             neo_radius: neo_radius.value,
+            neo_radius_config_owned,
             rect_radius,
             node_shadow,
             terminal_source_owned,
@@ -1010,6 +1016,50 @@ impl StateCompatibilityPlan {
     ) -> bool {
         self.terminal_paint(surface, property)
             .is_some_and(|selection| selection.source_owned())
+    }
+
+    pub(crate) fn node_paint_owned(
+        &self,
+        node: &StateDiagramRenderNode,
+        surface: StateTerminalSurface,
+        property: StateTerminalPaintProperty,
+    ) -> bool {
+        use StateTerminalPaintProperty::{Fill, Stroke};
+        use StateTerminalSurface::*;
+
+        // Hand-drawn paths retain scalar paint inline, above the palette stylesheet.
+        let palette_slot = node
+            .color_index
+            .filter(|_| {
+                !self.is_hand_drawn()
+                    && !self.redux_palette.is_empty()
+                    && self.serialized_look.trim() == self.palette_look
+            })
+            .and_then(|index| self.redux_palette.get(index % self.redux_palette.len()));
+        if let Some((_, fill)) = palette_slot {
+            match (surface, property) {
+                (
+                    CompositeBodyClassic
+                    | CompositeBodyClassicAlt
+                    | CompositeBodyNeo
+                    | CompositeBodyNeoAlt
+                    | CompositeDividerClassic
+                    | CompositeDividerNeo
+                    | CompositeHeaderClassic
+                    | CompositeHeaderNeo,
+                    Stroke,
+                ) => return self.palette_stroke_owned,
+                (
+                    CompositeHeaderClassic
+                    | CompositeHeaderNeo
+                    | CompositeDividerClassic
+                    | CompositeDividerNeo,
+                    Fill,
+                ) if fill.is_some() => return self.palette_fill_owned,
+                _ => {}
+            }
+        }
+        self.owns(surface, property)
     }
 
     pub(crate) fn source_shape_property_reaches(

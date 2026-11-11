@@ -4169,3 +4169,104 @@ fn treemap_svg_preserves_db_accessibility_text() {
         common::assert_svg_accessibility(&svg, expected_title, expected_description);
     }
 }
+
+#[test]
+fn treemap_css_binding_preserves_selected_label_fallback_owners() {
+    let theme = DiagramThemeCompiler::new()
+        .compile(
+            DiagramThemeSpec::new().with_styles(
+                ThemeRuleSet::default().with_rule(
+                    ThemeRule::new(
+                        ThemeTarget::NodeLabel,
+                        ThemeStylePatch::default()
+                            .with_fill(CanvasPaint::solid("#c2188b").unwrap()),
+                    )
+                    .for_family(DiagramFamilyId::TREEMAP),
+                ),
+            ),
+        )
+        .unwrap();
+    for (site_theme, variables, spellings, applied) in [
+        (
+            "dark",
+            serde_json::json!({"cScaleLabel0": false, "scaleLabelColor": "#125634"}),
+            ["#125634", "rgb(18, 86, 52)"],
+            0,
+        ),
+        (
+            "base",
+            serde_json::json!({"cScaleLabel0": false, "labelTextColor": "#125634"}),
+            ["#eda9cb", "rgb(237, 169, 203)"],
+            0,
+        ),
+        (
+            "neutral",
+            serde_json::json!({"cScaleLabel0": false, "cScale1": "#125634"}),
+            ["#125634", "rgb(18, 86, 52)"],
+            0,
+        ),
+        (
+            "dark",
+            serde_json::json!({"cScaleLabel0": "#345678", "scaleLabelColor": "#125634"}),
+            ["#345678", "rgb(52, 86, 120)"],
+            0,
+        ),
+        (
+            "dark",
+            serde_json::json!({"cScaleLabel0": false}),
+            ["#c2188b", "rgb(194, 24, 139)"],
+            1,
+        ),
+    ] {
+        let config = serde_json::json!({"themeVariables": variables});
+        let source = format!("---\nconfig: {config}\n---\ntreemap\n\"Leaf\": 42\n");
+        let rendered = render_treemap_with_theme(
+            &source,
+            &theme,
+            MermaidEngine::new().with_site_config(
+                merman_core::presentation::SourcePresentationConfig::from_value(
+                    serde_json::json!({"theme": site_theme}),
+                ),
+            ),
+        );
+        let effective = &rendered.metadata().effective_config;
+        assert_eq!(effective.get_str("theme"), Some(site_theme));
+        assert_eq!(
+            effective.as_value()["themeVariables"]["cScaleLabel0"],
+            variables["cScaleLabel0"],
+            "the selected label input must survive materialization"
+        );
+        let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+        for (class, text) in [("treemapLabel", "Leaf"), ("treemapValue", "42")] {
+            let terminal = document
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("text")
+                        && node.attribute("class") == Some(class)
+                        && node.text() == Some(text)
+                        && !node
+                            .attribute("style")
+                            .unwrap_or_default()
+                            .contains("display: none")
+                })
+                .expect("the selected label paint must reach visible leaf text");
+            let style = terminal.attribute("style").unwrap();
+            assert!(
+                style
+                    .split(';')
+                    .filter_map(|declaration| declaration.split_once(':'))
+                    .any(|(property, color)| {
+                        property.trim() == "fill" && spellings.contains(&color.trim())
+                    }),
+                "{site_theme}, {config}, {class}: {style}"
+            );
+        }
+        let evidence =
+            merman_render::__private::family_evidence(rendered.into_completion().report());
+        assert_eq!(evidence.required_count(), 1);
+        assert_eq!(evidence.accounted_count(), 1);
+        assert_eq!(evidence.applied_count(), applied, "{site_theme}: {config}");
+        assert_eq!(evidence.not_applicable_count(), 1 - applied);
+        assert_eq!(evidence.theme_residual_count(), 0);
+    }
+}

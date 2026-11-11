@@ -28,6 +28,7 @@ pub(super) struct PreparedNodeSelection {
     pub(super) typed_radius: Option<f32>,
     pub(super) source_radii: [Option<f64>; 2],
     pub(super) configured_radius: Option<f64>,
+    pub(super) radius_config_override: bool,
     pub(super) typed_label_fill: Option<String>,
     pub(super) typed_fill_selected: bool,
     pub(super) typed_stroke_selected: bool,
@@ -273,6 +274,7 @@ impl PreparedNodeSelection {
         source: &FlowchartCompiledStyles,
         style: &FlowchartNodeThemeStyle,
         terminal_sources: &FlowchartNodeTerminalSourceOwnership,
+        radius_config_override: bool,
     ) -> Self {
         let fill = style.fill_value(
             FlowchartFacetPrecedence::new(
@@ -309,7 +311,7 @@ impl PreparedNodeSelection {
         let typed_radius = style.radius_value(
             FlowchartFacetPrecedence::new(
                 source.source_radius_status().merge(terminal_sources.radius),
-                ctx.node_corner_radius_config_override,
+                radius_config_override,
             ),
             true,
         );
@@ -393,6 +395,7 @@ impl PreparedNodeSelection {
             source_radii: source.rectangle_source_radii(),
             configured_radius: (ctx.look.is_neo() && ctx.node_corner_radius_config_override)
                 .then_some(ctx.node_corner_radius),
+            radius_config_override,
             typed_label_fill: typed_label_fill.map(str::to_owned),
             typed_fill_selected: fill.is_some(),
             typed_stroke_selected: stroke.is_some(),
@@ -422,6 +425,7 @@ pub(super) struct NodeSelectionInputs<'a> {
     node_border_config_override: bool,
     node_stroke_width_config_override: bool,
     node_corner_radius_config_override: bool,
+    rounded_rect_radius_config_override: bool,
     node_label_fill_config_override: bool,
     node_typography_config_ownership: crate::flowchart::FlowchartTypographyConfigOwnership,
     node_fill_color: &'a str,
@@ -444,6 +448,7 @@ impl<'a> NodeSelectionInputs<'a> {
             node_border_config_override: render_config.node_border_config_override,
             node_stroke_width_config_override: render_config.node_stroke_width_config_override,
             node_corner_radius_config_override: render_config.node_corner_radius_config_override,
+            rounded_rect_radius_config_override: render_config.rounded_rect_radius_config_override,
             node_label_fill_config_override: render_config.node_label_fill_config_override,
             node_typography_config_ownership: render_config.node_typography_config_ownership,
             node_fill_color: &compatibility.main_bkg,
@@ -492,7 +497,24 @@ impl PreparedNodeTerminal {
             &source,
             work,
         )?;
-        let selection = PreparedNodeSelection::prepare(inputs, &source, &style, &terminal_sources);
+        // Radius configuration reaches RoundedRectangle in every look, but only Neo's
+        // Process writer consumes the numeric compatibility radius.
+        let radius_config_override = match terminal_shape
+            .and_then(|shape| FlowchartShape::resolve(shape).ok())
+        {
+            Some(FlowchartShape::RoundedRectangle) => inputs.rounded_rect_radius_config_override,
+            Some(FlowchartShape::Process) if inputs.look.is_neo() => {
+                inputs.node_corner_radius_config_override
+            }
+            _ => false,
+        };
+        let selection = PreparedNodeSelection::prepare(
+            inputs,
+            &source,
+            &style,
+            &terminal_sources,
+            radius_config_override,
+        );
         let rough_group_style = if inputs.look.is_hand_drawn() {
             prepare_hand_drawn_shape_group_style(source_styles.1)
         } else {
