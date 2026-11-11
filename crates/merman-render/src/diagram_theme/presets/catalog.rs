@@ -50,7 +50,6 @@ const CARBON_COPY_DESIGNS: &[(&str, &str)] = &[
     ("state", "dedicated"),
     ("xychart", "dedicated"),
 ];
-const NO_IDS: &[&str] = &[];
 type PresetRecipeBuilder = fn(PresetPalette) -> ThemeDesignV1;
 
 #[derive(Clone, Copy)]
@@ -117,12 +116,8 @@ pub(super) struct PresetCatalogEntry {
     family_designs: &'static [(&'static str, &'static str)],
     qualified_cells: &'static [ThemePresetQualifiedCell],
     export_kind: &'static str,
-    required_feature_ids: &'static [&'static str],
-    bundled_resource_ids: &'static [&'static str],
-    allowed_residual_ids: &'static [&'static str],
     license_expression: &'static str,
     required_attribution: Option<&'static str>,
-    retained: bool,
 }
 
 impl PresetCatalogEntry {
@@ -222,26 +217,6 @@ impl PresetCatalogEntry {
         }
     }
 
-    #[cfg(test)]
-    pub(super) const fn required_feature_ids(&self) -> &'static [&'static str] {
-        self.required_feature_ids
-    }
-
-    #[cfg(test)]
-    pub(super) const fn bundled_resource_ids(&self) -> &'static [&'static str] {
-        self.bundled_resource_ids
-    }
-
-    #[cfg(test)]
-    pub(super) const fn allowed_residual_ids(&self) -> &'static [&'static str] {
-        self.allowed_residual_ids
-    }
-
-    #[cfg(test)]
-    pub(super) const fn retained(&self) -> bool {
-        self.retained
-    }
-
     fn recipe(&self) -> ThemeDesignV1 {
         match self.recipe_source {
             PresetRecipeSource::Generated { builder, palette } => {
@@ -337,12 +312,8 @@ const fn catalog_entry(
         family_designs,
         qualified_cells: NO_QUALIFIED_CELLS,
         export_kind: "design",
-        required_feature_ids: NO_IDS,
-        bundled_resource_ids: NO_IDS,
-        allowed_residual_ids: NO_IDS,
         license_expression: PROJECT_LICENSE,
         required_attribution: None,
-        retained: true,
     }
 }
 
@@ -895,28 +866,22 @@ const fn descriptor_projection() -> [ThemePresetDescriptor; PRESET_CATALOG.len()
     descriptors
 }
 
-const DISCOVERABLE_DESCRIPTORS: [ThemePresetDescriptor; PRESET_CATALOG.len()] =
-    descriptor_projection();
+const DESCRIPTORS: [ThemePresetDescriptor; PRESET_CATALOG.len()] = descriptor_projection();
 
 pub(super) const fn descriptors() -> &'static [ThemePresetDescriptor] {
-    &DISCOVERABLE_DESCRIPTORS
+    &DESCRIPTORS
 }
 
 pub(super) const fn entry_at(index: usize) -> &'static PresetCatalogEntry {
     &PRESET_CATALOG[index]
 }
 
-pub(super) fn entry_for_preset(preset: ThemePreset) -> &'static PresetCatalogEntry {
-    PRESET_CATALOG
-        .iter()
-        .find(|entry| entry.preset == preset && is_discoverable(entry))
-        .expect("every ThemePreset projection must resolve through the catalog")
+pub(super) const fn entry_for_preset(preset: ThemePreset) -> &'static PresetCatalogEntry {
+    entry_at(preset as usize)
 }
 
 pub(super) fn entry_for_id(id: &str) -> Option<&'static PresetCatalogEntry> {
-    PRESET_CATALOG
-        .iter()
-        .find(|entry| entry.id == id && is_discoverable(entry))
+    PRESET_CATALOG.iter().find(|entry| entry.id == id)
 }
 
 #[cfg(test)]
@@ -933,10 +898,6 @@ pub(crate) fn materialize_spec_wire(
 /// Builds the editable source; its caller admits the design before export or compilation.
 pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
     let entry = entry_for_preset(preset);
-    debug_assert!(
-        entry.allowed_residual_ids.is_empty(),
-        "unqualified alpha presets must not inherit qualification residual allowances"
-    );
     let mut design = entry.recipe();
     if entry.profile == PresetRecipeProfile::RetainedMermaidCompatibility {
         // Choose a fallback without claiming derived variables that would shadow typed paint.
@@ -947,10 +908,6 @@ pub(crate) fn build_design(preset: ThemePreset) -> ThemeDesignV1 {
         });
     }
     design
-}
-
-fn is_discoverable(entry: &PresetCatalogEntry) -> bool {
-    entry.retained && entry.required_feature_ids.is_empty() && entry.bundled_resource_ids.is_empty()
 }
 
 pub(super) fn build_cross_family_recipe(palette: PresetPalette) -> ThemeDesignV1 {

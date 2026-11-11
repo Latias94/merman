@@ -514,10 +514,6 @@ mod tests {
                 "{} family designs must be sorted and unique",
                 descriptor.id(),
             );
-            assert!(entry.required_feature_ids().is_empty());
-            assert!(entry.bundled_resource_ids().is_empty());
-            assert!(entry.allowed_residual_ids().is_empty());
-            assert!(entry.retained());
         }
     }
 
