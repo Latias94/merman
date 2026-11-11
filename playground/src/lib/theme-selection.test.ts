@@ -11,9 +11,15 @@ import { utf8ByteLength } from "./utf8.ts";
 import { currentRecipeIdentity, explorationThemeChoice, galleryExplorations, importedThemeName, selectedExplorationTheme, selectedThemeKey } from "../components/theme-panel/theme-selection.ts";
 import { themeCatalogFixture } from "./theme-appearance.test-fixture.ts";
 import { themeChoiceFields } from "./diagram-appearance.ts";
+import { decodeShareHash, encodeShareHash } from "./share.ts";
+import type { DiagramThemeChoice } from "./diagram-appearance.ts";
+import type { WorkspaceSnapshot } from "./workspace-snapshot.ts";
 import type { ThemeCatalog } from "@mermanjs/web";
 import type { ExplorationTheme } from "../themes/catalog.ts";
 import type { ThemeCatalogChoice } from "../components/theme-panel/ThemeChoiceCards.tsx";
+import type { MermanDomainFacade, MermanRuntimeState } from "../runtime/merman-core.ts";
+import type { ThemeShowcaseProps } from "../components/theme-panel/ThemeShowcase.tsx";
+import type { ThemeShowcaseDetail } from "../components/theme-panel/ThemeShowcaseDetail.tsx";
 
 const explorations = [{ id: "atlas", name: "Atlas", recipeJson: "{\n  \"kind\": \"design\"\n}\n" }];
 const curatedThemes: readonly ExplorationTheme[] = ["paper-cut", "carbon-copy", "pop-art"].map((id) => ({
@@ -199,7 +205,10 @@ test("rendered gallery deduplicates curated choices and keeps old recipe snapsho
     export const observed = [];
     export function ThemeChoiceCards(props) { observed.push(props); return createElement(Cards, props); }
   `);
-  const launcherUrl = moduleUrl("export function ThemeShowcaseLauncher() { return null; }");
+  const launcherUrl = moduleUrl(`
+    export const observedLaunchers = [];
+    export function ThemeShowcaseLauncher(props) { observedLaunchers.push(props); return null; }
+  `);
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       if (specifier === "react-i18next") return { url: translationUrl, shortCircuit: true };
@@ -223,9 +232,11 @@ test("rendered gallery deduplicates curated choices and keeps old recipe snapsho
   try { ({ default: ThemeGallery } = await import(galleryUrl)); }
   finally { hooks.deregister(); }
   const observed: { entries: readonly ThemeCatalogChoice[] }[] = (await import(observedCardsUrl)).observed;
+  const observedLaunchers: { themeId?: string; appearance?: string }[] = (await import(launcherUrl)).observedLaunchers;
 
   function choices(workspace = DEFAULT_WORKSPACE_SNAPSHOT, catalog: ThemeCatalog | null = curatedCatalog()) {
     observed.length = 0;
+    observedLaunchers.length = 0;
     const html = renderToStaticMarkup(createElement(ThemeGallery, {
       workspace, catalog, presets: catalog?.presets ?? [], mermaidThemes: ["auto"], selectedAppearance: "light",
       catalogReady: true, familyId: "flowchart", pending: false, canSelectRecipes: true, onSelect() {},
@@ -239,6 +250,19 @@ test("rendered gallery deduplicates curated choices and keeps old recipe snapsho
     for (const theme of curatedThemes) {
       assert.equal(entries.filter((entry) => entry.key === `preset:${theme.presetId}`).length, 1);
       assert.equal(entries.filter((entry) => entry.key === `exploration:${theme.id}`).length, 0);
+    }
+  });
+
+  await context.test("the panel launcher retains canonical preferences and pinned concrete appearances", () => {
+    for (const themePresetId of ["editor", "editor-dark", "editor-light"]) {
+      for (const preference of ["default", "follow", "light", "dark"] as const) {
+        choices({ ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId, themeAppearance: preference }, themeCatalogFixture());
+        assert.deepEqual(observedLaunchers[0], {
+          panel: true, themeId: "editor",
+          appearance: themePresetId === "editor" ? preference
+            : themePresetId === "editor-dark" ? "dark" : "light",
+        });
+      }
     }
   });
 
@@ -298,4 +322,183 @@ test("rendered gallery deduplicates curated choices and keeps old recipe snapsho
       assert.match(entries.find((entry) => entry.key === `exploration:${theme.id}`)!.button, /\bdisabled=/u);
     }
   });
+});
+
+test("showcase entries retain workspace appearance and expose runtime recovery", async (context) => {
+  const showcaseUrl = new URL("../components/theme-panel/ThemeShowcase.tsx", import.meta.url).href;
+  const catalog = themeCatalogFixture();
+  const recipe = JSON.stringify({
+    schema_version: 1, kind: "design",
+    design: { default_appearance: "light", appearances: { light: {}, dark: {} } },
+  }, null, 2);
+  const editor: ExplorationTheme = {
+    id: "editor", presetId: "editor", name: "Editor", recipeJson: recipe,
+    appearance: "light", colors: ["#ffffff"], families: [], sharedFamilies: ["class"],
+    styles: ["reading"], previews: null, appearances: [
+      { appearance: "light", colors: ["#ffffff"] }, { appearance: "dark", colors: ["#151515"] },
+    ],
+  };
+  const authored: ExplorationTheme = {
+    id: "reading", name: "Reading", recipeJson: recipe, appearance: "light",
+    colors: ["#ffffff"], families: ["class"], styles: ["reading"], previews: null,
+    appearances: editor.appearances,
+  };
+  const facade = {
+    themeCatalog: () => catalog, exportThemePreset: () => JSON.parse(recipe),
+    diagramFamilyCapabilities: () => [],
+  };
+  type DetailProps = Parameters<typeof ThemeShowcaseDetail>[0];
+  const probe: {
+    runtime: MermanRuntimeState;
+    workspace: WorkspaceSnapshot & { resolvedTheme: "light" | "dark" };
+    details: DetailProps[];
+    buttons: { children?: unknown; onClick?: () => unknown }[];
+    cards: string[];
+    applied: DiagramThemeChoice[];
+    retries: number;
+    reloads: number;
+  } = {
+    runtime: { status: "ready", suspended: false, facade: facade as unknown as MermanDomainFacade },
+    workspace: { ...DEFAULT_WORKSPACE_SNAPSHOT, resolvedTheme: "light" },
+    details: [], buttons: [], cards: [], applied: [], retries: 0, reloads: 0,
+  };
+  const probeKey = "__themeShowcaseTestProbe";
+  Object.defineProperty(globalThis, probeKey, { value: probe, configurable: true });
+  const previousWindow = Object.getOwnPropertyDescriptor(globalThis, "window");
+  Object.defineProperty(globalThis, "window", { configurable: true, value: {
+    location: { reload() { probe.reloads += 1; } },
+  } });
+  const moduleUrl = (source: string) => `data:text/javascript,${encodeURIComponent(source)}`;
+  const uiUrl = moduleUrl(`
+    import { createElement } from ${JSON.stringify(import.meta.resolve("react"))};
+    const Part = props => createElement("div", { role: props.role }, props.children);
+    export const Button = props => {
+      globalThis.${probeKey}.buttons.push(props);
+      return createElement("button", { type: "button" }, props.children);
+    };
+    export { Part as Dialog, Part as DialogClose, Part as DialogContent, Part as DialogDescription, Part as DialogHeader, Part as DialogTitle };
+  `);
+  const modules: Record<string, string> = {
+    "react-i18next": moduleUrl(`export const useTranslation = () => ({ t: key => key, i18n: { resolvedLanguage: "en" } });`),
+    "zustand/react/shallow": moduleUrl(`export const useShallow = selector => selector;`),
+    "@/src/runtime/use-merman-runtime": moduleUrl(`
+      export const selectMermanFacade = state => state.status === "ready" ? state.facade : null;
+      export const selectMermanFailure = state => state.status === "error" ? state.error : null;
+      export const useMermanRuntime = selector => selector(globalThis.${probeKey}.runtime);
+    `),
+    "@/src/runtime/merman": moduleUrl(`export async function retryMermanRuntime() { globalThis.${probeKey}.retries += 1; }`),
+    "@/src/store": moduleUrl(`
+      export const DEFAULT_WORKSPACE_SNAPSHOT = ${JSON.stringify(DEFAULT_WORKSPACE_SNAPSHOT)};
+      export const selectWorkspaceSnapshot = state => state;
+      export const useAppStore = selector => selector(globalThis.${probeKey}.workspace);
+      useAppStore.getState = () => ({ selectTheme: choice => globalThis.${probeKey}.applied.push(choice) });
+    `),
+    "@/src/themes/catalog": moduleUrl(`
+      export const EXPLORATION_THEMES = ${JSON.stringify([authored])};
+      export function themeDesignLibrary() { return ${JSON.stringify([authored, editor])}; }
+    `),
+    "@/src/themes/samples": moduleUrl(`export const THEME_SAMPLES = [{ id: "class" }];`),
+    "./ThemeDesignCard": moduleUrl(`export function ThemeDesignCard(props) { globalThis.${probeKey}.cards.push(props.theme.id); return null; }`),
+    "./ThemeShowcaseDetail": moduleUrl(`export function ThemeShowcaseDetail(props) { globalThis.${probeKey}.details.push(props); return null; }`),
+    "./ThemeShowcaseFilters": moduleUrl(`export const ThemeShowcaseFilters = () => null;`),
+    "./ThemeShowcaseUse": moduleUrl(`export const createThemeShowcaseUseState = () => ({ tab: "theme" });`),
+  };
+  const hooks = registerHooks({
+    resolve(specifier, moduleContext, nextResolve) {
+      if (moduleContext.parentURL === showcaseUrl) {
+        if (modules[specifier]) return { url: modules[specifier], shortCircuit: true };
+        if (specifier.startsWith("@/components/ui/")) return { url: uiUrl, shortCircuit: true };
+        if (specifier.startsWith("@/")) return nextResolve(new URL(`../../${specifier.slice(2)}.ts`, import.meta.url).href, moduleContext);
+        if (specifier === "./theme-selection") return nextResolve(new URL("../components/theme-panel/theme-selection.ts", import.meta.url).href, moduleContext);
+      }
+      return nextResolve(specifier, moduleContext);
+    },
+    load(url, moduleContext, nextLoad) {
+      if (url !== showcaseUrl) return nextLoad(url, moduleContext);
+      return { format: "module", shortCircuit: true, source: transpileModule(readFileSync(new URL(url), "utf8"), {
+        compilerOptions: { jsx: JsxEmit.ReactJSX, module: ModuleKind.ESNext },
+      }).outputText };
+    },
+  });
+  try {
+    const { default: ThemeShowcase } = await import(showcaseUrl);
+    const props: ThemeShowcaseProps = {
+      open: true, onOpenChange() {}, restoreFocus() {}, initialThemeId: "editor",
+      filters: { query: "", familyId: null, appearance: "all", style: "all" },
+      onFiltersChange() {}, currentFamilyId: "class",
+    };
+    function render(overrides: Partial<ThemeShowcaseProps> = {}) {
+      probe.details = [];
+      probe.buttons = [];
+      probe.cards = [];
+      probe.applied = [];
+      return renderToStaticMarkup(createElement(ThemeShowcase, { ...props, ...overrides }));
+    }
+
+    await context.test("a URL-selected dark preset survives entering its current design", () => {
+      for (const themePresetId of ["editor", "editor-dark"]) {
+        const workspace = decodeShareHash(encodeShareHash({
+          ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId,
+          ...(themePresetId === "editor" ? { themeAppearance: "dark" as const } : {}),
+        }))!;
+        probe.workspace = { ...workspace, resolvedTheme: "light" };
+        render({ initialAppearance: "dark" });
+        const detail = probe.details[0];
+        assert.equal(detail.selected, true);
+        assert.equal(detail.selection.appearance, "dark");
+        detail.onApply();
+        assert.deepEqual(probe.applied, [{ kind: "preset", presetId: "editor", appearance: "dark" }]);
+      }
+    });
+
+    await context.test("follow and document default remain preferences instead of concrete appearances", () => {
+      for (const preference of ["follow", "default"] as const) {
+        probe.workspace = { ...DEFAULT_WORKSPACE_SNAPSHOT, themePresetId: "editor", themeAppearance: preference, resolvedTheme: "dark" };
+        render({ initialAppearance: preference });
+        const detail = probe.details[0];
+        assert.equal(detail.selection.preference, preference);
+        assert.equal(detail.selection.appearance, preference === "follow" ? "dark" : "light");
+        detail.onApply();
+        assert.deepEqual(probe.applied, [{ kind: "preset", presetId: "editor", appearance: preference }]);
+      }
+    });
+
+    await context.test("collection browsing keeps its appearance filter", () => {
+      render({ initialAppearance: undefined, filters: { ...props.filters, appearance: "dark" } });
+      assert.equal(probe.details[0].selection.appearance, "dark");
+    });
+
+    await context.test("pending preset links show catalog status and recover into their requested detail", () => {
+      probe.runtime = { status: "loading", stage: "wasm-fetch", suspended: false };
+      const html = render();
+      assert.match(html, /role="status"[^>]*>appearance.catalogPending/);
+      assert.equal(probe.details.length, 0);
+      probe.runtime = { status: "ready", suspended: false, facade: facade as unknown as MermanDomainFacade };
+      render();
+      assert.equal(probe.details[0].theme.id, "editor");
+    });
+
+    await context.test("failed preset links expose retry or reload and retain authored designs", async () => {
+      for (const recovery of ["retry", "reload"] as const) {
+        probe.runtime = { status: "error", suspended: false, error: {
+          cause: new Error("WASM fetch failed"), detail: null, message: "WASM fetch failed", recovery, stage: "wasm-fetch",
+        } };
+        const html = render();
+        assert.match(html, /role="alert"/);
+        assert.match(html, /WASM fetch failed/);
+        const button = probe.buttons.find((entry) => entry.children === `wasm.${recovery}`);
+        assert.ok(button?.onClick);
+        await button.onClick();
+        assert.deepEqual(probe.cards, ["reading"]);
+        assert.equal(probe.details.length, 0);
+      }
+      assert.equal(probe.retries, 1);
+      assert.equal(probe.reloads, 1);
+    });
+  } finally {
+    hooks.deregister();
+    Reflect.deleteProperty(globalThis, probeKey);
+    if (previousWindow) Object.defineProperty(globalThis, "window", previousWindow);
+    else Reflect.deleteProperty(globalThis, "window");
+  }
 });

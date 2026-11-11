@@ -504,6 +504,14 @@
       "treeView": "Tree View"
     },
     "themes": {
+      "brutalist": "Bold color blocks, hard black outlines, and offset shadows give diagrams the direct weight of a printed sign.",
+      "cyberpunk": "Layered dark surfaces and focused neon accents give diagrams the atmosphere of a night-time control panel.",
+      "ghibli": "Botanical colors, warm painted-paper surfaces, and soft ink contours bring the feel of an illustrated field journal.",
+      "spotless": "Cream paper, fine ruled lines, and measured dark ink recall a carefully drafted technical manual.",
+      "editor": "A restrained reading pair with neutral surfaces and focused color accents for light and dark editor workspaces.",
+      "one-dark": "A restrained dark editor palette with charcoal surfaces, soft text, and measured color accents.",
+      "gruvbox": "Warm cream and charcoal surfaces with earthy accents form a restrained light/dark pair for document reading.",
+      "ayu": "Calm neutral surfaces, clear text, and warm amber accents form a restrained light/dark reading pair.",
       "prism": "A paired analytical design with distinct category colors, quiet axes, and coordinated light and dark data surfaces.",
       "monograph": "Black ink, white paper, and measured gray layers for technical documents, requirements, and monochrome diagrams.",
       "porcelain": "Warm porcelain surfaces, fine cobalt contours, and restrained terracotta annotations for clear reports and presentations.",
@@ -798,7 +806,7 @@
   },
   "themeShowcase": {
     "title": "Theme designs",
-    "recipeBadge": "CUSTOM THEME EXAMPLES",
+    "recipeBadge": "BUILT-IN PRESETS & EDITABLE RECIPES",
     "description": "Explore complete visual designs across diagrams. Copy an editable theme or take the code to your project.",
     "close": "Close theme designs",
     "search": "Search designs",
@@ -812,6 +820,14 @@
     "collectionTitle": "Find a visual language.",
     "collectionHint": "Each design previews several diagrams. A diagram filter brings that type forward while keeping other examples in view.",
     "mechanisms": {
+      "brutalist": "Hard outlines · bold color blocks · offset shadows",
+      "cyberpunk": "Layered dark surfaces · focused neon · selective glow",
+      "ghibli": "Botanical palette · painted-paper warmth · soft ink contours",
+      "spotless": "Cream paper · ruled lines · technical lettering",
+      "editor": "Neutral reading surfaces · restrained accents · paired light/dark",
+      "one-dark": "Charcoal surfaces · muted accents · dark editor palette",
+      "gruvbox": "Warm neutrals · earthy accents · paired light/dark",
+      "ayu": "Calm surfaces · amber accents · paired light/dark",
       "prism": "Distinct data series · quiet structure · coordinated light/dark categories",
       "monograph": "Black ink · white paper · grayscale hierarchy",
       "porcelain": "Cobalt contours · warm porcelain · restrained glaze highlights",
@@ -881,7 +897,8 @@
     "exampleOptions": "Example layout options · optional",
     "exampleOptionsHint": "These inputs reproduce the selected gallery example. The JSON here is Mermaid diagram configuration, not the theme recipe. Generated code already applies it through the example's source directive. Keep your own source and layout settings when adopting only the theme.",
     "coverageHint": "This design has dedicated styling for {{count}} diagram families. Other families are unreviewed unless listed as shared styling. Previewing a diagram does not verify every effect or export format.",
-    "runtimeFailed": "Code examples need the rendering runtime. You can still copy the theme JSON and optional example settings."
+    "runtimeFailed": "Code examples need the rendering runtime. You can still copy the theme JSON and optional example settings.",
+    "catalogRuntimeFailed": "The rendering runtime could not load. Built-in designs are unavailable; standalone recipes remain available."
   },
   "themeLibrary": {
     "setup": {
@@ -920,7 +937,7 @@
     "familyCount": "{{count}} diagram families",
     "empty": {
       "title": "No matching designs",
-      "family": "No dedicated designs match these filters for {{family}} yet. Clear the filters to explore other designs and try one with your diagram.",
+      "family": "No reviewed designs match these filters for {{family}} yet. Clear the filters to explore other designs and try one with your diagram.",
       "hint": "Try another appearance or style to find a design for your diagram.",
       "searchHint": "Clearing filters keeps your search text. You can clear the search separately."
     },

@@ -11,7 +11,8 @@ import { chooseThemeOption } from "./helpers/theme-select";
 import { readSavedThemeRecipe } from "./helpers/theme-recipe";
 
 const changelogDesignIds = ["riso", "pop-art", "metro", "carbon-copy", "signal", "field-notes", "lacquer", "paper-cut", "aurora", "phosphor", "letterpress", "grove", "atlas", "nightfall", "blueprint"];
-const designIds = [...changelogDesignIds, "reading", "porcelain", "chalk", "prism", "monograph"];
+const authoredDesignIds = [...changelogDesignIds, "reading", "porcelain", "chalk", "prism", "monograph"];
+const designIds = [...authoredDesignIds, "brutalist", "cyberpunk", "ghibli", "spotless", "editor", "one-dark", "gruvbox", "ayu"];
 const expandedSamples: Readonly<Record<string, readonly ThemeSampleId[]>> = {
   metro: ["gitGraph"], "carbon-copy": ["kanban"], signal: ["gantt"], "field-notes": ["timeline"], blueprint: ["architecture"],
   prism: ["radar", "quadrantChart", "sankey", "treemap"], monograph: ["requirement", "treeView"],
@@ -84,6 +85,9 @@ test("invalid design links retain lazy loading and unknown designs open the coll
   await page.goto(`./?theme-design=unknown-design${encodeShareHash(workspace)}`, { waitUntil: "domcontentloaded" });
   const gallery = page.getByTestId("theme-showcase");
   await expect(gallery.getByTestId("theme-showcase-detail")).toHaveCount(0);
+  const family = gallery.getByRole("combobox", { name: "Diagram family filter", exact: true });
+  await expect(family).toHaveAttribute("data-value", "flowchart");
+  await chooseThemeOption(page, family, "");
   await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
   errors.assertNone();
 });
@@ -99,9 +103,11 @@ test("theme designs load on demand and browsing eight families preserves the wor
   const launcher = page.locator("[data-theme-showcase-launcher]:visible");
   await launcher.click();
   const gallery = page.getByTestId("theme-showcase");
+  await chooseThemeOption(page, gallery.getByRole("combobox", { name: "Diagram family filter", exact: true }), "");
   await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(designIds.length);
   await expect(gallery.locator("[data-theme-design-card]").first()).toHaveAttribute("data-theme-design-card", "riso");
-  await expect(gallery.locator("[data-theme-design-card]").last()).toHaveAttribute("data-theme-design-card", "monograph");
+  expect((await gallery.locator("[data-theme-design-card]").evaluateAll((elements) =>
+    elements.map((element) => element.getAttribute("data-theme-design-card")))).sort()).toEqual([...designIds].sort());
   expect(requests.some((url) => url.endsWith(output))).toBe(true);
   await gallery.getByRole("button", { name: "Explore Riso", exact: true }).click();
   await expect(gallery.getByTestId("theme-showcase-detail")).toHaveAttribute("data-theme-design", "riso");
@@ -124,13 +130,19 @@ test("theme designs load on demand and browsing eight families preserves the wor
   errors.assertNone();
 });
 
-test("design search and canvas filters reveal independent recipes across the collection", async ({ page }) => {
+test("design search and canvas filters reveal authored and canonical designs across the collection", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   await start(page);
   await page.getByRole("button", { name: "Theme designs", exact: true }).click();
   const gallery = page.getByTestId("theme-showcase");
+  await chooseThemeOption(page, gallery.getByRole("combobox", { name: "Diagram family filter", exact: true }), "");
   await gallery.getByRole("button", { name: "Dark", exact: true }).click();
-  await expect(gallery.locator("[data-theme-design-card]")).toHaveCount(9);
+  const darkCards = gallery.locator("[data-theme-design-card]");
+  const darkIds = await darkCards.evaluateAll((elements) => elements.map((element) => element.getAttribute("data-theme-design-card")));
+  expect(darkIds).toEqual(expect.arrayContaining(["metro", "lacquer", "aurora", "phosphor", "reading", "nightfall", "blueprint", "chalk", "prism", "cyberpunk", "editor"]));
+  for (const card of await darkCards.all()) {
+    await expect(card.locator("[data-theme-preview-appearance]").first()).toHaveAttribute("data-theme-preview-appearance", "dark");
+  }
   await expect(gallery.locator('[data-theme-design-card="phosphor"]')).toBeVisible();
   await expect(gallery.locator('[data-theme-design-card="prism"]')).toHaveCount(1);
   await gallery.getByRole("button", { name: "All designs", exact: true }).click();
@@ -146,13 +158,14 @@ test("design search and canvas filters reveal independent recipes across the col
   errors.assertNone();
 });
 
-test("every design downloads its original JSON and sample links carry the actual source and configuration", async ({ page }) => {
+test("all twenty authored designs download their original JSON and sample links carry the actual source and configuration", async ({ page }) => {
   test.setTimeout(90_000);
   const errors = monitorBrowserErrors(page);
   await start(page);
   await page.getByRole("button", { name: "Theme designs", exact: true }).click();
   const gallery = page.getByTestId("theme-showcase");
-  for (const id of designIds) {
+  expect(authoredDesignIds).toHaveLength(20);
+  for (const id of authoredDesignIds) {
     await gallery.locator(`[data-explore-theme="${id}"]`).click();
     const download = page.waitForEvent("download");
     await gallery.getByRole("button", { name: "Download theme JSON", exact: true }).click();

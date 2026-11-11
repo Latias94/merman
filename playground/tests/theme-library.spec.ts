@@ -111,6 +111,9 @@ test("visible family, appearance and style filters compose while clearing preser
   expect(new Set(previews).size).toBe(3);
   await filters.getByRole("button", { name: "Light + dark", exact: true }).click();
   await chooseThemeOption(page, filters.getByRole("combobox", { name: "Design style filter", exact: true }), "technical");
+  await expect(library.locator("[data-theme-design-card]")).toHaveCount(1);
+  await expect(library.locator('[data-theme-design-card="editor"]')).toBeVisible();
+  await chooseThemeOption(page, filters.getByRole("combobox", { name: "Design style filter", exact: true }), "print");
   const empty = library.getByTestId("theme-library-empty");
   await expect(empty).toBeVisible();
   await empty.getByRole("button", { name: "Clear filters", exact: true }).click();
@@ -119,7 +122,9 @@ test("visible family, appearance and style filters compose while clearing preser
   await expect(family).toHaveAttribute("data-value", "");
   await expect(filters.getByRole("combobox", { name: "Design style filter", exact: true })).toHaveAttribute("data-value", "all");
   await expect(filters.getByRole("button", { name: "All designs", exact: true })).toHaveAttribute("aria-pressed", "true");
-  await expect(library.locator("[data-theme-design-card]")).toHaveCount(1);
+  await expect(library.locator("[data-theme-design-card]")).toHaveCount(4);
+  expect(await library.locator("[data-theme-design-card]").evaluateAll((cards) =>
+    cards.map((card) => card.getAttribute("data-theme-design-card")).sort())).toEqual(["ayu", "editor", "gruvbox", "reading"]);
   await filters.getByRole("button", { name: "Clear search", exact: true }).click();
   await expect.poll(() => library.locator("[data-theme-design-card]").count()).toBeGreaterThan(1);
   await expectNoDocumentOverflow(page);
@@ -501,14 +506,14 @@ test("current-diagram inspection is isolated until Apply and supports source, fi
   errors.assertNone();
 });
 
-test("a search without a dedicated design for the current family offers a clear action without claiming unsupported rendering", async ({ page }) => {
+test("a search without a reviewed design for the current family offers a clear action without claiming unsupported rendering", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const library = await start(page, { ...workspace, code: "gantt\n title Delivery\n dateFormat YYYY-MM-DD\n section Plan\n Design :a, 2026-11-01, 2d" });
   const family = library.getByRole("combobox", { name: "Diagram family filter", exact: true });
   await expect(family).toHaveAttribute("data-value", "gantt");
   await library.getByRole("searchbox", { name: "Search designs", exact: true }).fill("Riso");
   const empty = library.getByTestId("theme-library-empty");
-  await expect(empty).toContainText("No dedicated designs");
+  await expect(empty).toContainText("No reviewed designs");
   await expect(empty).not.toContainText(/unsupported/i);
   await empty.getByRole("button", { name: "Clear filters", exact: true }).click();
   await expect(family).toHaveAttribute("data-value", "");

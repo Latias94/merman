@@ -25,8 +25,9 @@ Flowchart, Pie, Sequence, Class, and XY Chart. Brutalist, Spotless, Cyberpunk, a
 visual design references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid);
 the [gallery credits](theme-gallery/README.md#design-references-and-license) retain the source
 revision and MIT notice.
-Ghibli has a dedicated Pie design. Brutalist has dedicated Flowchart, Sequence and XY Chart
-designs and a base palette adaptation for Class. The catalog records each preset's scope;
+Ghibli has dedicated Flowchart, Sequence, XY Chart and Pie designs. Brutalist, Spotless and
+Cyberpunk have dedicated Flowchart, Sequence and XY Chart designs. All four have reviewed
+shared styling for Class. The catalog records each preset's scope;
 unlisted families are **not yet reviewed**. A dedicated design does not guarantee every shape,
 effect or export format. Review the actual preview outcome for your diagram.
 
@@ -593,12 +594,20 @@ These two local display preferences are remembered separately.
 
 ### Standalone explorations and example scenes
 
-Open **Theme designs** from the toolbar or the Appearance panel to browse standalone
-recipes. Reading and Prism provide coordinated Light/Dark examples. Riso, Pop Art, Metro, Carbon Copy
+Open **Theme designs** from the toolbar or the Appearance panel to browse built-in presets and
+standalone editable recipes. A complete current runtime exposes **28 designs**: the existing 20
+plus Brutalist, Cyberpunk, Ghibli, Spotless, Editor, One Dark, Gruvbox and Ayu. The preset catalog
+remains **11 groups with 14 concrete appearances**; Editor, Gruvbox and Ayu each occupy one library
+entry with Light/Dark choices. All available preset groups are browsable, and the added entries
+follow the loaded runtime catalog.
+
+Reading and Prism provide coordinated Light/Dark examples. Riso, Pop Art, Metro, Carbon Copy
 and Signal have distinct artistic treatments, alongside Field Notes,
 Lacquer, Paper Cut, Aurora, Phosphor, Letterpress, Grove, Atlas, Nightfall, Blueprint, Porcelain, Chalk and Monograph.
 The first visit uses the detected current diagram as a visible family filter in the search area.
-Change the family selector or remove its chip to browse other diagrams. Search text, appearance
+The family filter includes dedicated designs and reviewed shared styles, excluding only
+unreviewed entries while preserving distinct coverage labels. Change the family selector or
+remove its chip to browse other diagrams. Search text, appearance
 and style filters combine; **Clear filters** keeps the search text. Returning from detail or
 reopening the library preserves explicit filter choices and browsing position. Closing and
 reopening a detail also retains preview controls, adoption target and selected project file.
@@ -607,11 +616,15 @@ Cards combine a large primary diagram with two supporting previews, each labeled
 A family filter makes that sample primary across designs for direct comparison while retaining
 the other previews. Without a family filter, each card uses its representative example where
 declared, such as Metro's Git Graph or Blueprint's Architecture diagram. Opening a design defaults
-to **Diagram gallery**, a responsive gallery showing that design's reviewed families together.
-All designs include Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap. Metro adds
+to **Diagram gallery**, a responsive gallery showing that design's listed family samples together.
+The existing 20 entries include Flowchart, Sequence, Class, XY Chart, Pie, State, ER and Mindmap. Metro adds
 Git Graph, Signal adds Gantt, Carbon Copy adds Kanban, Field Notes adds Timeline, and Blueprint
 adds Architecture. Prism adds Radar, Quadrant Chart, Sankey and Treemap; Monograph adds Requirement
-and Tree View. Entering from a family filter highlights its tile while keeping the design's
+and Tree View. Added preset entries take their dedicated and shared/base sample classifications
+from the active runtime catalog. **Shared styling** samples use the common appearance and remain
+distinct from **Designed for this diagram** samples with dedicated family styling. A listed
+sample or saved preview does not establish output qualification.
+Entering from a family filter highlights its tile while keeping the design's
 other examples available. Click a diagram to inspect it in an expanded preview with zoom, fit and source/configuration
 controls. The expanded preview's family selector and **Previous example** / **Next example** buttons
 switch examples; **Close expanded preview** returns focus and scroll position to the tile you opened.
@@ -626,9 +639,16 @@ depends on the diagram and viewport. **Reset view** restores 100% and centers th
 Showing source and returning to the inline diagram preserves its zoom and position.
 Browsing does not change the workspace. **Apply to my diagram**
 uses the selected design on the current source and configuration, with an explicit appearance choice.
-Paper Cut, Carbon Copy and Pop Art select their built-in IDs when the runtime catalog provides them.
-Their project examples use the preset directly; the JSON tab still exposes the complete editable
-configuration. Other designs and edited recipes use CLI `--theme-file`, Rust `compile_document`,
+Available built-in designs select their catalog preset IDs, and their project examples use those
+presets directly. The added preset entries expose the canonical complete v1 recipe JSON exported by
+the active runtime, retaining both appearances for a paired design. Paper Cut, Carbon Copy and
+Pop Art share their canonical recipes with the built-in presets. The JSON tab keeps these complete
+documents editable. Cyberpunk uses neutral text over layered dark panels, with restrained cyan
+and magenta glow on contours and connections. Ghibli pairs warm paper and fine fibers with sage
+surfaces, forest ink and independent chart pigments. Both have dedicated Flowchart, Sequence and
+XY Chart styling, and Ghibli retains dedicated Pie styling. Brutalist keeps its bold outlines and
+hard shadows. Inclusion in the library does not establish output qualification.
+Standalone designs and edited recipes use CLI `--theme-file`, Rust `compile_document`,
 or Web `theme: {recipe, appearance}`. Names and source labels remain display metadata; use the
 runtime catalog and render evidence for availability and family support.
 
@@ -672,7 +692,7 @@ The shared samples, configurations, gallery recipes and SVGs live in
 [`playground/src/themes`](../../playground/src/themes/). Paper Cut, Carbon Copy and Pop Art use
 canonical recipes in [`crates/merman-render/assets/themes`](../../crates/merman-render/assets/themes/),
 imported directly by the Playground and embedded by the core catalog. The sample inventory covers 19 families;
-each catalog entry declares its own dedicated design scope. Monograph uses a grayscale design;
+each catalog entry distinguishes dedicated family styling from reviewed shared samples. Monograph uses a grayscale design;
 Prism keeps category identity across its two appearances. These design intentions do not certify
 black-and-white printing, accessibility, or output portability. Other families and targets need
 their own review. Source styles and
@@ -699,6 +719,10 @@ Class compartments and chart legends need actual font measurement. Browser previ
 Playground's host measurer and available browser fonts. The categorical readability refresh uses
 native measurement with explicitly loaded Windows font files for 54 affected saved SVGs; unchanged
 examples retain their earlier exports. The Atlas example above uses Segoe UI regular and semibold.
+The original preset groups add 45 saved previews across their reviewed families and appearances,
+also measured with explicit native font files and system discovery disabled.
+Ghibli's new SVG previews load static Open Sans faces at weights 400, 500 and 600; the native
+PNG gallery records its own Open Sans and Inter font conditions.
 For other recipes, supply checked files matching their actual font roles and weights with repeatable
 `--font-file` arguments and `--font-system off`. Match the faces selected by the viewer, including
 user-installed fonts such as Menlo, rather than assuming the first loaded fallback is displayed.
@@ -908,7 +932,7 @@ interfaces. Every child of a grouped design shares the complete-document availab
 One passing appearance cannot make an invalid pair available. Inspect the matching appearance's
 swatches and family notes when explaining a selection.
 
-The catalog records dedicated design scope for Brutalist, Spotless, Ghibli, Paper Cut, Carbon Copy
+The catalog records dedicated design scope for Brutalist, Spotless, Cyberpunk, Ghibli, Paper Cut, Carbon Copy
 and Pop Art. It does not claim pixel parity with Modern Mermaid. A successful SVG render is not proof of readable dense
 labels, complete effects, or PNG/PDF portability. Cyberpunk carries a layered canvas and scoped
 effects with bounded Flowchart, Sequence and XY Chart SVG/PNG/PDF observations. Larger scenes may
@@ -916,9 +940,10 @@ exceed native export budgets. Brutalist now provides bold borders, ordinal accen
 shadows with unfiltered labels; Spotless provides a two-axis paper grid and family-scoped font weights
 without filters. Its Flowchart and Sequence labels and XY Chart titles use the default letter
 spacing; these targets do not support typed letter-spacing rules.
-Ghibli adds a warm, textured canvas and a twelve-color muted Pie palette with typed title,
+Ghibli adds fine paper fibers, sage node and actor surfaces, authored contours and label weights,
+six darker chart inks and a separate twelve-color muted Pie palette with typed title,
 percentage and legend text sizes. Its fonts resolve on the receiving host. The paper texture
-uses tiled gradients; this does not imply generic pattern or every effect primitive is supported.
+uses a tiled gradient; this does not imply generic pattern or every effect primitive is supported.
 
 Flowchart Classic and the default Neo look both apply supported node, edge and label glow/shadow
 effects with ELK or Dagre. Node body effects cover rectangles, rounded rectangles, diamonds,
@@ -1464,13 +1489,15 @@ Unsupported effect primitives retain residuals; SVG emission alone does not cert
 export target.
 
 The public Cyberpunk recipe uses these kind selectors and a three-color cycle: cyan
-`#6cc6cb`, purple `#c77dff`, green `#7ce38b`. Bars have 20% fill opacity, a 2px border and an
-8px shadow; lines have a 3px stroke and a 6px shadow. The cycle follows global series order
+`#53DCE4`, magenta `#F28BCB`, amber `#E8C078`. Bars have 35% fill opacity, a 1.25px border and
+a restrained glow with Gaussian sigma 2px; lines have a 2px stroke and sigma 1.5px glow.
+The cycle follows global series order
 and repeats after the third series. Saving the preset includes these rules and effect graphs.
-The recipe also scopes cyan (`#00f2ff`) text to the XY Chart title (18px, weight 700), axis
-titles (13px), and legend (12px). Tick-label sizes retain their baseline. These values survive
-preset export and fresh import. Scoped text glow has bounded SVG/PNG/PDF scene observations;
-these do not qualify every input or the full Cyberpunk design. Public qualification cells remain empty.
+The title uses neutral ink (`#E2EFF7`, 18px, weight 600); axes and the 12px legend use muted
+ink (`#92A9BF`). Axis titles use 13px at weight 500. Tick-label sizes retain their baseline.
+Labels have no glow. These values survive preset export and fresh import. Bounded scene
+observations do not qualify every input or the full Cyberpunk design. Public qualification
+cells remain empty.
 
 ## Style XY Chart text roles
 

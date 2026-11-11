@@ -133,7 +133,7 @@ export function ThemeShowcaseUse({ theme, appearance, sampleId, onSampleChange, 
           <label className="flex flex-wrap items-center gap-2 text-xs" htmlFor={`${id}-sample`}>
             <span className="font-medium">{t("themeShowcase.integrationExample")}</span>
             <Select value={sample.id} onValueChange={(value) => {
-              if (isThemeSampleId(value) && theme.families.includes(value)) {
+              if (isThemeSampleId(value) && samples.some((entry) => entry.id === value)) {
                 onSampleChange(value);
                 onStateChange({ ...state, selectedFile: null });
                 setAction(null);

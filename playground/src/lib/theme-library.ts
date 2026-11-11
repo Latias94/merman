@@ -33,14 +33,19 @@ export function themeDesignTreatment(theme: Pick<ThemeLibraryDesign, "families" 
 }
 
 export function themeSampleFor(
-  theme: { readonly families: readonly ThemeSampleId[]; readonly featuredSample?: ThemeSampleId },
+  theme: { readonly families: readonly ThemeSampleId[]; readonly sharedFamilies?: readonly ThemeSampleId[]; readonly featuredSample?: ThemeSampleId },
   familyId: string | null,
   fallback?: ThemeSampleId,
 ): ThemeSampleId {
-  return theme.families.find((id) => id === familyId)
-    ?? theme.families.find((id) => id === fallback)
-    ?? theme.families.find((id) => id === theme.featuredSample)
-    ?? theme.families[0] ?? "flowchart";
+  const samples = themeSampleIds(theme);
+  return samples.find((id) => id === familyId)
+    ?? samples.find((id) => id === fallback)
+    ?? samples.find((id) => id === theme.featuredSample)
+    ?? samples[0] ?? "flowchart";
+}
+
+export function themeSampleIds(theme: { readonly families: readonly ThemeSampleId[]; readonly sharedFamilies?: readonly ThemeSampleId[] }): ThemeSampleId[] {
+  return [...new Set([...theme.families, ...(theme.sharedFamilies ?? [])])];
 }
 
 export function filterThemeLibrary<T extends ThemeLibraryDesign>(
@@ -51,7 +56,7 @@ export function filterThemeLibrary<T extends ThemeLibraryDesign>(
 ): T[] {
   const query = filters.query.trim().toLocaleLowerCase(locale);
   return themes.filter((theme) => {
-    if (filters.familyId !== null && themeDesignTreatment(theme, filters.familyId) !== "dedicated") return false;
+    if (filters.familyId !== null && themeDesignTreatment(theme, filters.familyId) === "unreviewed") return false;
     const appearances = theme.appearances?.map((entry) => entry.appearance) ?? [theme.appearance];
     if (filters.appearance === "paired" ? appearances.length < 2
       : filters.appearance !== "all" && !appearances.includes(filters.appearance)) return false;

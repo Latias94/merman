@@ -6,12 +6,13 @@ import type { ThemeAppearance } from "@mermanjs/web";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { clearThemeLibraryFilters, filterThemeLibrary, themeSampleFor, type ThemeLibraryFilters } from "@/src/lib/theme-library";
+import { clearThemeLibraryFilters, filterThemeLibrary, themeSampleFor, themeSampleIds, type ThemeLibraryFilters } from "@/src/lib/theme-library";
 import { inspectThemeRecipe, resolveThemeSelection, type ThemeAppearancePreference } from "@/src/lib/theme-appearance";
 import { projectError } from "@/src/runtime/error-projection";
-import { selectMermanFacade, useMermanRuntime } from "@/src/runtime/use-merman-runtime";
+import { retryMermanRuntime } from "@/src/runtime/merman";
+import { selectMermanFacade, selectMermanFailure, useMermanRuntime } from "@/src/runtime/use-merman-runtime";
 import { DEFAULT_WORKSPACE_SNAPSHOT, selectWorkspaceSnapshot, useAppStore } from "@/src/store";
-import { EXPLORATION_THEMES, type ExplorationTheme } from "@/src/themes/catalog";
+import { EXPLORATION_THEMES, themeDesignLibrary, type ExplorationTheme } from "@/src/themes/catalog";
 import { isThemeSampleId, THEME_SAMPLE_IDS, type ThemeSampleId } from "@/src/themes/families";
 import { THEME_SAMPLES } from "@/src/themes/samples";
 import { ThemeDesignCard } from "./ThemeDesignCard";
@@ -25,6 +26,7 @@ export interface ThemeShowcaseProps {
   onOpenChange(open: boolean): void;
   restoreFocus(): void;
   readonly initialThemeId?: string;
+  readonly initialAppearance?: ThemeAppearancePreference;
   readonly filters: ThemeLibraryFilters;
   onFiltersChange(filters: ThemeLibraryFilters): void;
   readonly currentFamilyId: string | null;
@@ -33,7 +35,7 @@ export interface ThemeShowcaseProps {
 
 type BrowseFocus = { readonly kind: "control"; readonly id: string } | { readonly kind: "card"; readonly id: string };
 
-export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initialThemeId, filters, onFiltersChange, currentFamilyId, initialSampleId }: ThemeShowcaseProps) {
+export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initialThemeId, initialAppearance, filters, onFiltersChange, currentFamilyId, initialSampleId }: ThemeShowcaseProps) {
   const { t, i18n } = useTranslation();
   const filtersId = useId();
   const search = useRef<HTMLInputElement>(null);
@@ -46,26 +48,31 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
   const browseFocus = useRef<BrowseFocus | null>(null);
   const searchSelection = useRef<{ start: number | null; end: number | null } | null>(null);
   const facade = useMermanRuntime(selectMermanFacade);
-  const { catalog, error: catalogError } = useMemo(() => {
-    if (!facade) return { catalog: null, error: null };
-    try { return { catalog: facade.themeCatalog(), error: null }; }
-    catch (cause) { return { catalog: null, error: projectError(cause).summary }; }
+  const failure = useMermanRuntime(selectMermanFailure);
+  const { catalog, library, error: catalogError } = useMemo(() => {
+    if (!facade) return { catalog: null, library: EXPLORATION_THEMES, error: null };
+    try {
+      const catalog = facade.themeCatalog();
+      return { catalog, library: themeDesignLibrary(catalog, (id) => facade.exportThemePreset(id)), error: null };
+    } catch (cause) {
+      return { catalog: null, library: EXPLORATION_THEMES, error: projectError(cause).summary };
+    }
   }, [facade]);
   const workspace = useAppStore(useShallow(selectWorkspaceSnapshot));
   const hostAppearance = useAppStore((state) => state.resolvedTheme);
   const [detailId, setDetailId] = useState<string | null>(initialThemeId ?? null);
   const [sampleId, setSampleId] = useState<ThemeSampleId | null>(initialSampleId ?? null);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [detailPreference, setDetailPreference] = useState<ThemeAppearancePreference>(() => initialAppearance(filters));
+  const [detailPreference, setDetailPreference] = useState<ThemeAppearancePreference>(() => initialAppearance ?? filterAppearance(filters));
   const [previewState, setPreviewState] = useState<ThemeShowcasePreviewState>({ mode: "sample", showSource: false });
   const [adoptionState, setAdoptionState] = useState(createThemeShowcaseUseState);
-  const detail = EXPLORATION_THEMES.find((theme) => theme.id === detailId);
-  const selected = selectedExplorationTheme(workspace, EXPLORATION_THEMES, catalog);
+  const detail = library.find((theme) => theme.id === detailId);
+  const selected = selectedExplorationTheme(workspace, library, catalog);
   const detailChoice = detail ? explorationThemeChoice(detail, catalog, detailPreference) : null;
   const availabilityError = detail?.presetId && !detailChoice
     ? catalogError ?? (catalog ? t("appearance.unavailableChoice") : null) : null;
-  const themes = filterThemeLibrary(EXPLORATION_THEMES, filters, (theme) =>
-    `${t(`themeGallery.themes.${theme.id}`)} ${t(`themeShowcase.mechanisms.${theme.id}`)} ${theme.families.map((family) => `${family} ${t(`themeGallery.samples.${family}`)}`).join(" ")}`,
+  const themes = filterThemeLibrary(library, filters, (theme) =>
+    `${t(`themeGallery.themes.${theme.id}`)} ${t(`themeShowcase.mechanisms.${theme.id}`)} ${themeSampleIds(theme).map((family) => `${family} ${t(`themeGallery.samples.${family}`)}`).join(" ")}`,
   i18n.resolvedLanguage);
   const families = useMemo(() => [...new Set([...THEME_SAMPLE_IDS, ...(facade?.diagramFamilyCapabilities().map((entry) => entry.family_id) ?? [])])], [facade]);
   const detailSelection = resolveThemeSelection({
@@ -110,7 +117,7 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
     detailFocus.current = null;
     setSampleId(null);
     setDetailId(theme.id);
-    setDetailPreference(initialAppearance(filters));
+    setDetailPreference(filterAppearance(filters));
     setPreviewState({ mode: "sample", showSource: false });
     setAdoptionState(createThemeShowcaseUseState());
     setActionError(null);
@@ -164,6 +171,15 @@ export default function ThemeShowcase({ open, onOpenChange, restoreFocus, initia
         <DialogDescription className="max-w-3xl text-xs leading-relaxed sm:text-sm">{t("themeShowcase.description")}</DialogDescription>
         <DialogClose asChild><Button type="button" variant="ghost" size="icon" className="absolute right-3 top-3" aria-label={t("themeShowcase.close")}><X className="size-5" aria-hidden="true" /></Button></DialogClose>
       </DialogHeader>
+      {failure ? <div role="alert" className="shrink-0 space-y-2 border-b px-4 py-3 text-xs sm:px-6">
+        <p className="break-words text-destructive">{t("themeShowcase.catalogRuntimeFailed")}</p>
+        <p className="break-words text-muted-foreground">{failure.message}</p>
+        <Button type="button" size="sm" variant="outline" onClick={() => {
+          if (failure.recovery === "reload") window.location.reload();
+          else void retryMermanRuntime().catch(() => undefined);
+        }}>{t(failure.recovery === "reload" ? "wasm.reload" : "wasm.retry")}</Button>
+      </div> : !facade && <p role="status" className="shrink-0 border-b px-4 py-3 text-xs text-muted-foreground sm:px-6">{t("appearance.catalogPending")}</p>}
+      {catalogError && <p role="alert" className="px-4 pt-3 text-xs text-destructive">{t("themePanel.catalogError", { error: catalogError })}</p>}
       <div className={detail ? "hidden" : "flex min-h-0 flex-1 flex-col"} onFocusCapture={rememberFocus}
         onBlurCapture={(event) => {
           if (event.target === search.current) searchSelection.current = { start: search.current.selectionStart, end: search.current.selectionEnd };
@@ -213,7 +229,7 @@ function focusIdentity(element: HTMLElement): string {
   ]);
 }
 
-function initialAppearance(filters: ThemeLibraryFilters): ThemeAppearancePreference {
+function filterAppearance(filters: ThemeLibraryFilters): ThemeAppearancePreference {
   return filters.appearance === "light" || filters.appearance === "dark" ? filters.appearance : "follow";
 }
 
