@@ -6,118 +6,56 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [0.10.0] - 2026-11-12
 
-Cumulative changes since stable [0.9.3](#093---2026-10-30), including features first published in alpha.1 and alpha.2. This release brings reusable visual themes, prepared rendering and Mermaid `12.3.0` to the `0.10` line. Choose matching packages through the [host installation guide](docs/release/PREBUILT_PRODUCTS.md).
-
-### Choose your upgrade path
-
-| Installed version | Start here |
-| --- | --- |
-| `0.9.3` or another `0.9.x` release | [Consolidated stable upgrade guide](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md): final theme, Rust, font, resource and binding contracts; no intermediate alpha API migration required |
-| `0.10.0-alpha.1` | [Remaining alpha upgrade actions](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha): Mermaid 12.3, model changes, appearance selection and matching runtime artifacts |
-| `0.10.0-alpha.2` | [Remaining alpha upgrade actions](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha): paired appearances, current discovery contracts, typography and Sequence geometry |
-
-### Breaking changes and upgrade actions
-
-- **Theme and binding options:** replace the Presentation API's profile inputs with Options JSON schema `3` and its top-level `theme` selection. Use `raster.matte` and `pdf.page_paint` for export backgrounds. Deploy matching wrappers, generated glue and runtime artifacts: the final Web transport API is `10`, CLI contract is `7`, analysis facts schema is `3`, and theme execution evidence schema is `2`. Theme recipes remain schema `1`. See the [contract migration](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md#replace-presentation-options-and-update-bindings). [#178](https://github.com/Latias94/merman/pull/178), [#241](https://github.com/Latias94/merman/pull/241), [#284](https://github.com/Latias94/merman/pull/284)
-- **Rust models and source processing:** import shared family data from `merman_model::families` or `merman::model::families`; use canonical semantic parsing for inspection and `PresentationDiagram` for graphical handoffs. Select `editor-facts`, `presentation` and `compat-json` for the workflows that need them. Fix generation now requires both the `fixes` feature and `FixGeneration::Generate`. Direct model/layout constructors also need the final numeric, Flowchart and Sequence field migrations; see the [Rust upgrade table](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md#update-rust-integrations). [#258](https://github.com/Latias94/merman/pull/258), [#277](https://github.com/Latias94/merman/pull/277), [#287](https://github.com/Latias94/merman/pull/287)
-- **Math and font features:** Rust source defaults and `complete-svg` / `complete-svg-elk` require explicit `math`, including source-built CLI installations. `merman-export` codec features no longer select `system-fonts`; enable it explicitly or provide font bytes. Prebuilt capability recipes and available versions are documented in the [host guide](docs/release/PREBUILT_PRODUCTS.md). [#241](https://github.com/Latias94/merman/pull/241), [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
-- **Custom text measurers and resource policies:** handle the new `html-line-height` operation (`22`) with a `length` result, or leave it unhandled for fallback measurement; Rust exhaustive matches need `HtmlLineHeight`. Geometry queries now use `max_geometry_json_bytes` instead of SVG output limits. Constrained policy rejects formulas even when math is compiled. See [measurement and resource actions](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md#update-text-measurement-and-resource-policies). [#178](https://github.com/Latias94/merman/pull/178), [#224](https://github.com/Latias94/merman/pull/224), [#249](https://github.com/Latias94/merman/pull/249)
+Changes since stable [0.9.3](#093---2026-10-30), including the 0.10 alphas. This release adds reusable diagram themes, prepared rendering and Mermaid `12.3.0` support.
 
 ### Designed themes, ready to customize
 
-Apply reusable colors, typography, canvas patterns, gradients, category palettes and supported shadows or glows without rewriting diagram source. The built-in catalog has **11 designs and 14 concrete appearances**: Paper Cut, Carbon Copy, Pop Art, Brutalist, Ghibli, Spotless, Cyberpunk, One Dark, and paired Editor, Gruvbox and Ayu designs. Core color and typography consumers span all 34 diagram families; dedicated design scope and effects vary by family. The [theme guide](docs/rendering/custom-diagram-themes.md) explains source-style priority, font loading and render evidence. [#178](https://github.com/Latias94/merman/pull/178), [#253](https://github.com/Latias94/merman/pull/253), [#278](https://github.com/Latias94/merman/pull/278), [#284](https://github.com/Latias94/merman/pull/284)
+Choose a built-in design or edit its exported JSON to customize colors, typography and backgrounds. Browse themes and try them on your diagrams in the [Playground](https://frankorz.com/merman/). Core colors and typography cover all diagram families; effects vary by family and output. Theme authoring and presets remain alpha. [#178](https://github.com/Latias94/merman/pull/178), [#223](https://github.com/Latias94/merman/pull/223), [#253](https://github.com/Latias94/merman/pull/253), [#278](https://github.com/Latias94/merman/pull/278), [#279](https://github.com/Latias94/merman/pull/279), [#284](https://github.com/Latias94/merman/pull/284), [#295](https://github.com/Latias94/merman/pull/295), [#301](https://github.com/Latias94/merman/pull/301), [#302](https://github.com/Latias94/merman/pull/302)
 
-The Playground's **Theme designs** library contains **28 designs in a complete current runtime**, with all **11 built-in preset groups (14 concrete appearances)** browsable alongside standalone recipes. Eight original preset groups join the existing 20 designs; Editor, Gruvbox and Ayu each remain one design with Light/Dark choices. The added entries expose canonical complete v1 recipe JSON exported by the loaded runtime, preserving both appearances where declared. Paper Cut, Carbon Copy and Pop Art use the same recipe as their built-in presets; Reading and Prism demonstrate authored Light/Dark pairs. Family filters include dedicated and reviewed shared/base styles with distinct coverage labels. Browse family previews, try a theme on your current diagram, customize the JSON, and download Rust, CLI or Web project examples. Availability and previews do not establish output qualification. The hosted Playground follows its deployed build. [#223](https://github.com/Latias94/merman/pull/223), [#279](https://github.com/Latias94/merman/pull/279), [#295](https://github.com/Latias94/merman/pull/295), [#301](https://github.com/Latias94/merman/pull/301), [#302](https://github.com/Latias94/merman/pull/302)
-
-**Cyberpunk** is redesigned with warning-yellow names and contours, sharp dark panels, cyan signals and hard red/cyan registration edges over a technical grid. Primary names remain readable inside panels and outside actor or diagram glyphs; annotations use bright neutral ink without text glow. Filled categories use a separate lighter palette for readable Pie and Treemap labels. **Ghibli** combines warm paper, sage surfaces, forest ink, fine fibers and separate colors for filled categories and chart lines. Both include dedicated Flowchart, Sequence and XY Chart treatments; Ghibli also retains its dedicated Pie design. Class notes in ten library recipes now pair their text with the intended note background and border, including the dark Reading and Prism appearances. [#302](https://github.com/Latias94/merman/pull/302)
-
-Custom theme colors now follow the Mermaid values actually used by each diagram. Unused fallback variables and ignored non-string color inputs no longer disable supported paint rules in Flowchart, Class, ER, Mindmap and affected charts; selected colors and category arrays retain their priority, including State and Block composite nodes. State, Timeline and Tree View no longer reapply palette or Edge colors after the matching paint is explicitly cleared; transparent paint remains an explicit choice. [#302](https://github.com/Latias94/merman/pull/302)
-
-Compare the same Flowchart, Sequence and Pie scenes in four designs. Each card keeps a fixed canvas and preserves the diagrams' proportions; select a preview to explore its full-size examples in the Playground.
+Explore Riso, Pop Art, Carbon Copy and Paper Cut across Flowchart, Sequence and Pie. Select a card to open its Playground preview.
 
 <p align="center">
-  <a href="https://frankorz.com/merman/?theme-design=riso"><img width="440" alt="Riso: blue and red ink on cream paper, with a Flowchart on the left and Sequence and Pie on the right" src="docs/rendering/theme-gallery/showcase/riso.svg"></a>
-  <a href="https://frankorz.com/merman/?theme-design=pop-art"><img width="440" alt="Pop Art: yellow and pink poster colors, black contours and hard ink offsets, shown across Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/pop-art.svg"></a>
-  <a href="https://frankorz.com/merman/?theme-design=carbon-copy"><img width="440" alt="Carbon Copy: violet duplicate impressions and red notes on ruled paper, shown across Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/carbon-copy.svg"></a>
-  <a href="https://frankorz.com/merman/?theme-design=paper-cut"><img width="440" alt="Paper Cut: coral and teal layers with lifted paper shadows, shown across Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/paper-cut.svg"></a>
+  <a href="https://frankorz.com/merman/?theme-design=riso"><img width="440" alt="Riso: blue and red ink on cream paper, with Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/riso.svg"></a>
+  <a href="https://frankorz.com/merman/?theme-design=pop-art"><img width="440" alt="Pop Art: vivid poster colors and hard ink offsets, with Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/pop-art.svg"></a>
+  <a href="https://frankorz.com/merman/?theme-design=carbon-copy"><img width="440" alt="Carbon Copy: violet duplicate impressions on ruled paper, with Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/carbon-copy.svg"></a>
+  <a href="https://frankorz.com/merman/?theme-design=paper-cut"><img width="440" alt="Paper Cut: coral and teal paper layers, with Flowchart, Sequence and Pie" src="docs/rendering/theme-gallery/showcase/paper-cut.svg"></a>
 </p>
 
-Editable JSON: [Riso](playground/src/themes/recipes/riso.theme.json) (gallery recipe), [Pop Art](crates/merman-render/assets/themes/pop-art.theme.json) (preset `pop-art`), [Carbon Copy](crates/merman-render/assets/themes/carbon-copy.theme.json) (preset `carbon-copy`), and [Paper Cut](crates/merman-render/assets/themes/paper-cut.theme.json) (preset `paper-cut`).
+Editable recipes: [Riso](playground/src/themes/recipes/riso.theme.json), [Pop Art](crates/merman-render/assets/themes/pop-art.theme.json), [Carbon Copy](crates/merman-render/assets/themes/carbon-copy.theme.json) and [Paper Cut](crates/merman-render/assets/themes/paper-cut.theme.json).
 
-For paired Light/Dark appearances, explore [Reading](https://frankorz.com/merman/?theme-design=reading) and its [single editable recipe](playground/src/themes/recipes/reading.theme.json). These maintained SVG assets illustrate their saved scenes; they do not qualify every shape, family or PNG/JPEG/PDF output. The [native PNG gallery](docs/rendering/theme-gallery/README.md) also shows Brutalist's bold outlines and Ghibli's warm-paper Pie design. Preset maturity remains alpha, and catalog availability is separate from output qualification. Fonts resolve on the host, and finite category palettes repeat after their final entry. Review [theme coverage](docs/rendering/diagram-theme-coverage.md) and each render's evidence for production use.
-
-Install the CLI with math support, then try the gallery sources from a matching repository checkout:
-
-```text
-cargo install merman-cli --version 0.10.0 --locked --features math
-merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset paper-cut -o paper-cut.svg
-merman-cli render docs/rendering/theme-gallery/ghibli.mmd --theme-preset ghibli -o ghibli.svg
-merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-preset editor --theme-appearance dark -o editor.svg
-```
-
-In Rust, select a built-in design and attach it to a render request:
+Apply a preset in Rust:
 
 ```rust
 use merman::diagram_theme::{DiagramThemeCompiler, ThemePreset};
-use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::PaperCut)?;
-    let output = Renderer::new().render(
-        RenderRequest::svg(
-            "flowchart LR\n  Source --> Theme[Paper Cut] --> SVG",
-            OperationControl::new(),
-            SvgRequest::default(),
-        )
-        .with_theme(theme),
-    )?;
-    let RenderOutput::Svg(Some(svg)) = output else {
-        return Err("no Mermaid diagram detected".into());
-    };
-    print!("{}", svg.svg());
-    Ok(())
-}
+let theme = DiagramThemeCompiler::new().compile_preset(ThemePreset::PaperCut)?;
+let request = request.with_theme(theme);
 ```
 
-The maintained [preset example](crates/merman/examples/theme_preset.rs) defaults to Paper Cut and accepts a preset ID plus optional Light/Dark selection. The [recipe example](crates/merman/examples/theme_recipe.rs) exports Paper Cut's complete JSON, changes its shared `surface` token to `#DCEAF7`, imports the saved document and renders the customized SVG:
+See the [complete Rust example](crates/merman/examples/theme_preset.rs) and [theme guide](docs/rendering/custom-diagram-themes.md) for CLI use, Light/Dark appearances, JSON customization and font requirements.
 
-```text
-cargo run --locked -p merman --features svg --example theme_preset -- pop-art > pop-art.svg
-cargo run --locked -p merman --features svg --example theme_preset -- carbon-copy > carbon-copy.svg
-cargo run --locked -p merman --features svg --example theme_preset -- editor dark > editor-dark.svg
-cargo run --locked -p merman --features svg --example theme_recipe -- target/theme-recipe
-merman-cli theme inspect target/theme-recipe/theme.json
-merman-cli render docs/rendering/theme-gallery/brutalist.mmd --theme-file target/theme-recipe/theme.json -o custom.svg
-```
+### Rendering and integrations
 
-The recipe example writes `paper-cut.json`, `theme.json` and `diagram.svg` under `target/theme-recipe`. For an application, use `DiagramThemeCompiler::compile_preset(ThemePreset::PaperCut)` or `compile_preset_selection("editor", Some(ThemeAppearance::Dark))`, then attach the compiled theme with `RenderRequest::with_theme(...)`. Export `export_preset_document("editor")` to keep both appearances; concrete IDs such as `editor-dark` retain their fixed appearance. See the [complete customization workflow](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md#try-and-edit-a-theme-from-source).
+- **Reuse source across outputs:** prepare a diagram once with Rust `prepare_source` or Web `prepareSource`, then render it repeatedly. Web `mountDiagram` also manages resizing, font refresh and cleanup. [#224](https://github.com/Latias94/merman/pull/224)
+- **Mermaid 12.3 and updated ELK layouts:** Flowchart gains timed Step groups, numbered badges and nine BPMN shapes. Mindmap depth coloring and Agentflow, Usecase and Swimlane behavior follow the new baseline. Layouts may change; see the [Mermaid migration](docs/migrations/mermaid-12-3.md). [#196](https://github.com/Latias94/merman/pull/196), [#277](https://github.com/Latias94/merman/pull/277)
+- **More readable diagrams:** fixes improve label wrapping, font sizes and fallback, theme colors, padding and export bounds across diagram families, including labels previously clipped in image/PDF exports. [#278](https://github.com/Latias94/merman/pull/278), [#283](https://github.com/Latias94/merman/pull/283), [#285](https://github.com/Latias94/merman/pull/285), [#286](https://github.com/Latias94/merman/pull/286), [#288](https://github.com/Latias94/merman/pull/288), [#289](https://github.com/Latias94/merman/pull/289), [#291](https://github.com/Latias94/merman/pull/291), [#292](https://github.com/Latias94/merman/pull/292), [#293](https://github.com/Latias94/merman/pull/293), [#298](https://github.com/Latias94/merman/pull/298), [#299](https://github.com/Latias94/merman/pull/299), [#302](https://github.com/Latias94/merman/pull/302)
+- **More reliable authoring:** parsing better preserves quoted and multiline labels, Unicode whitespace and source locations. Terminal diagrams handle branching routes more clearly; editor previews, cancellation and Markdown accessibility output are more reliable. [#276](https://github.com/Latias94/merman/issues/276), [#277](https://github.com/Latias94/merman/pull/277), [#282](https://github.com/Latias94/merman/pull/282), [#283](https://github.com/Latias94/merman/pull/283), [#287](https://github.com/Latias94/merman/pull/287), [#294](https://github.com/Latias94/merman/pull/294), [#295](https://github.com/Latias94/merman/pull/295), [#297](https://github.com/Latias94/merman/pull/297)
+- **Broader native package coverage:** Node adds Linux ARM64 packages; Python wheels cover five targets, with glibc 2.28 required on Linux. See the [installation guide](docs/release/PREBUILT_PRODUCTS.md) for host packages and capabilities. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 
-Playground and VS Code offer **Follow app/editor**, **Light** and **Dark**. Follow resolves to an authored appearance before rendering; CLI and runtime APIs accept concrete choices. Whole-document validation also checks inactive appearances, so an invalid unused branch rejects import rather than silently changing the result.
+### Upgrading
 
-### Reuse source and integrate with hosts
+- **Rust and binding integrations:** theme selection replaces Presentation profiles, and model imports and some direct constructors change. Update wrappers and runtime artifacts together; the [0.9.3 → 0.10.0 upgrade guide](docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) covers stable and alpha migrations, including custom text measurers and resource limits. [#178](https://github.com/Latias94/merman/pull/178), [#224](https://github.com/Latias94/merman/pull/224), [#241](https://github.com/Latias94/merman/pull/241), [#249](https://github.com/Latias94/merman/pull/249), [#258](https://github.com/Latias94/merman/pull/258), [#277](https://github.com/Latias94/merman/pull/277), [#284](https://github.com/Latias94/merman/pull/284), [#287](https://github.com/Latias94/merman/pull/287)
+- **Math and fonts:** source-built Rust/CLI applications must enable `math` explicitly to retain formula support. `merman-export` users must enable `system-fonts` for host font discovery or supply font bytes. [#241](https://github.com/Latias94/merman/pull/241), [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
 
-- **Prepare once, render several outputs:** Rust `Renderer::prepare_source` / `render_prepared` and Web `prepareSource` retain parsed source, configuration and theme across outputs. Each output gets fresh resource and cancellation checks; preparation does not cache a finished layout. Geometry queries obtain painted edge routes without generating an intermediate SVG. [#224](https://github.com/Latias94/merman/pull/224)
-- **Maintain interactive Web diagrams:** `mountDiagram` manages resizing, font refresh and cleanup, retaining the last successful diagram when an update fails. Opt into browser text measurement for page fonts and `layout.adaptation: "fit-width"` for Kanban column packing. All five Web packages expose their matching `./wasm` asset. See the [Web lifecycle guide](platforms/web/README.md#maintain-a-mounted-diagram).
-- **Choose Rust packages by input:** `merman-model` provides shared typed data without source parsers; model-to-ASCII, model-to-layout/SVG and SVG-to-image/PDF consumers can select their output packages independently. Source-consuming applications retain `merman` or `merman-core`. Rustdoc attributes can be re-exported through a facade using `crate_path`. See the [package migration](docs/migrations/model-source-boundaries.md) and [Rustdoc example](crates/merman-rustdoc/README.md#re-exporting-the-attribute). [#241](https://github.com/Latias94/merman/pull/241), [#258](https://github.com/Latias94/merman/pull/258)
-- **Use the updated host products:** target artifact recipes add SVG math to Apple, Android, Python, Flutter and Node products. Integration changes include local SwiftPM and Maven archives, five Python wheel targets with manylinux 2.28 on Linux, Flutter target-specific native downloads, and native Node GNU/musl Linux ARM64 packages. Use the [host guide](docs/release/PREBUILT_PRODUCTS.md) for package requirements, actual delivery and offline options. [#265](https://github.com/Latias94/merman/pull/265), [#266](https://github.com/Latias94/merman/pull/266)
-- **Typst themes and larger layouts:** independently versioned wrapper **0.6.0**, bundling Merman **0.10.0**, accepts `theme-preset`, `theme-recipe` and `theme-appearance` on render, figure and raw-block helpers. SVG defaults to **14,100,000 layout work units**, sharing the interactive allowance while retaining other constrained ceilings. An explicit finite `resources.limits.max_layout_work_units` can lower or raise that allowance; an explicit `constrained` profile keeps **125,000** unless overridden. See the [Typst guide](distribution/typst/merman/README.md). [#300](https://github.com/Latias94/merman/issues/300)
-
-### Mermaid, layout and rendering fixes
-
-- **Mermaid 12.3 and ELK 0.12.1:** advance from stable 0.9.3's Mermaid 12.1 baseline. Flowchart adds timed Step groups, numbered badges and nine `bpmn-*` shapes; Mindmap gains depth coloring, and Agentflow, Usecase and Swimlane follow the selected behavior. ELK updates compound containers, labels, self-loops and packing. Browser Step motion honors reduced motion; static SVG and image/PDF exports retain edges and badges without animation. Review layout snapshots with the [Mermaid migration](docs/migrations/mermaid-12-3.md) and [ELK scope](crates/merman-elk-layered/MERMAID_12_3_DELTA.md). [#196](https://github.com/Latias94/merman/pull/196), [#277](https://github.com/Latias94/merman/pull/277)
-- **Readable labels and complete exports:** source and theme typography now reach the text actually drawn, including rich HTML sizes, relative units, inherited weights, code fonts and long-word wrapping. Class namespace/note padding, ER relationship wrapping, Requirement stereotypes, Kanban overflow and enlarged Flowchart subgraphs contribute their proper geometry and export bounds. Class labels also measure zero and fractional pixel font sizes consistently with their SVG output. Native font fallback excludes OpenType Last Resort placeholder faces. Review text and image snapshots with the fonts used by the destination host. [#283](https://github.com/Latias94/merman/pull/283), [#286](https://github.com/Latias94/merman/pull/286), [#288](https://github.com/Latias94/merman/pull/288), [#291](https://github.com/Latias94/merman/pull/291), [#293](https://github.com/Latias94/merman/pull/293), [#298](https://github.com/Latias94/merman/pull/298), [#299](https://github.com/Latias94/merman/pull/299), [#302](https://github.com/Latias94/merman/pull/302)
-- **Consistent theme application:** source colors keep priority, while omitted or ignored values no longer block supported theme styling. Font, size, stroke and radius fixes cover Flowchart, Class, Sequence, Usecase and Event Modeling; role-specific fonts retain their actual configuration owners. Labels and backgrounds stay paired across categorical and relationship roles; Pie has independent category and percentage colors, with twelve finite category colors in generated presets. State preserves valid opacity under invalid source declarations and keeps Neo outer-frame radius settings; reports retain unsupported hand-drawn Composite geometry. State shadows retain body opacity and nested geometry, and Paper Cut's layered shadows fit the existing native filter limits without changing compositing. Reports distinguish applied settings from hidden, unsupported or unresolved text. [#278](https://github.com/Latias94/merman/pull/278), [#285](https://github.com/Latias94/merman/pull/285), [#289](https://github.com/Latias94/merman/pull/289), [#292](https://github.com/Latias94/merman/pull/292), [#299](https://github.com/Latias94/merman/pull/299), [#302](https://github.com/Latias94/merman/pull/302)
-- **Source fidelity and editor accuracy:** grouped parser fixes preserve quoted and multiline labels, Unicode/ECMAScript whitespace, comment boundaries, accessibility text, interaction targets and original editor ranges across diagram families. Fractional and large numeric values retain JavaScript Number behavior in models, labels and compatibility output. Header-only Class programs now reject; use a direction statement for an empty diagram. These are source-backed semantic changes, not a claim of complete parser or pixel parity. [#294](https://github.com/Latias94/merman/pull/294), [#297](https://github.com/Latias94/merman/pull/297)
-- **More useful terminal and native geometry output:** ASCII/Unicode Flowchart routes branching review/retry feedback around reserved geometry, and Sequence text supports `and` inside `par_over`. Sequence layout exports final control frames, section dividers, activations, participant boxes and titles for native painters. [#287](https://github.com/Latias94/merman/pull/287)
-- **Reliable authoring and cancellation:** Playground example adoption keeps its own undo step; VS Code retains current copy/export output across theme imports, configuration refreshes and cancelled renders. Theme canvas paint is preserved independently of the viewer backing. Markdown batch output uses `accDescr` for alt text, Typst diagnostics retain source locations, and long wrapping/native work responds to cancellation. [#276](https://github.com/Latias94/merman/issues/276), [#277](https://github.com/Latias94/merman/pull/277), [#282](https://github.com/Latias94/merman/pull/282), [#283](https://github.com/Latias94/merman/pull/283), [#295](https://github.com/Latias94/merman/pull/295)
+Typst Universe remains on wrapper **0.5.0**; wrapper **0.6.0** will follow separately.
 
 ### Security
 
-- Require `pulldown-cmark 0.13.6` or later for [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's existing Markdown entrypoints do not enable the affected Wikilinks option.
+- Require `pulldown-cmark 0.13.6` or later for [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's Markdown entrypoints do not enable the affected Wikilinks option.
 
 ### Contributors and design references
 
-Thanks [@Latias94](https://github.com/Latias94) for the implementation and [@malte-laukoetter](https://github.com/malte-laukoetter) for the Markdown accessibility report. Brutalist, Spotless, Cyberpunk and Ghibli adapt visual references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid); thanks to the Modern Mermaid Team. The [gallery credits](docs/rendering/theme-gallery/README.md#design-references-and-license) retain the reference revision and MIT notice.
+Thanks [@Latias94](https://github.com/Latias94) for the implementation and [@malte-laukoetter](https://github.com/malte-laukoetter) for the Markdown accessibility report. Some themes adapt visual references from [Modern Mermaid by gotoailab](https://github.com/gotoailab/modern_mermaid); see the [gallery credits](docs/rendering/theme-gallery/README.md#design-references-and-license) for attribution and license details.
 
 ## [0.10.0-alpha.2] - 2026-11-06
 
