@@ -55,7 +55,13 @@ passed 50 jobs at `91531bd081b1347a0bce3c297957a9389481c99d`. Its Apple package 
 correctly refused an output directory restored from the Cargo target cache. Apple preflight and
 publication now keep packages, consumer qualification and cleanup receipts under `RUNNER_TEMP`.
 The workflow repair also updates the cleanup behavior test and covers both publication owners.
-A new successful source-matched full preflight is still required before the workspace tag.
+The subsequent complete [release preflight 43128985617](https://github.com/Latias94/merman/actions/runs/43128985617)
+passed at `e0e75bcab2fa8e39dd7a09465b7f2e035eda82ef`, tree
+`2f114f04e6cdd3a7262ec67de04b13cccf32ba14`. The immutable `v0.10.0` and
+`flutter-v0.10.0` tags retain that source; later documentation and publication-observation
+repairs do not change accepted artifacts. Both the [release-source CI](https://github.com/Latias94/merman/actions/runs/43128958148)
+and [documentation follow-up CI](https://github.com/Latias94/merman/actions/runs/43157839001)
+completed successfully.
 
 | Independent surface | Observed result | Owner / source |
 | --- | --- | --- |
@@ -63,6 +69,19 @@ A new successful source-matched full preflight is still required before the work
 | Typst `0.6.0` | Deferred. [PR #6378](https://github.com/typst/packages/pull/6378) was closed unmerged at the maintainer's request on 2026-11-12. Its optimized WASM is 13,251,634 bytes, versus 8,822,440 bytes in published `0.5.0`. The retained candidate passed the interpreter and full minimum/current Typst checks, but requires size optimization before a new submission. Public `0.5.0` still resolves; `0.6.0` returns HTTP 404. | Frozen runtime source `99d1d589f9682ef1c159d5e00865f20ae1a6a275`; closed submission `1db91eac9aff8f36cf90b72aae1da344834418cd` |
 | Pages | Available from the successful exact-source deployment. A public browser showed runtime `0.10.0`, build `91531bd08` and a rendered diagram. | [43056701858](https://github.com/Latias94/merman/actions/runs/43056701858); source `91531bd081b1347a0bce3c297957a9389481c99d` |
 | Nixpkgs preparation | Real Nix prefetch, three-platform evaluation and native builds/installed SVG/PNG/JPEG/PDF checks passed on both Linux systems and ARM64 Darwin. The required personal review remains pending; the existing external PR is unchanged. This proof does not qualify a different source archive. | [43056896455](https://github.com/Latias94/merman/actions/runs/43056896455); candidate source `91531bd081b1347a0bce3c297957a9389481c99d` |
+
+### Workspace publication observations — 2026-11-12
+
+| Surface | Verified delivery | Owner / source |
+| --- | --- | --- |
+| Flutter `0.10.0` | pub.dev serves the exact frozen facade: all file paths, executable bits, sizes and bytes match the original producer, and the archive SHA-256 is `77ffc13a42cff6253fda3139babeb7b76c1281bed5272bb6ab7b5f420614bd45`. The owning publisher verified all eleven manifest-pinned public native downloads before OIDC. | [43156695050](https://github.com/Latias94/merman/actions/runs/43156695050), successful attempt 2; facade and native source `e0e75bcab2fa8e39dd7a09465b7f2e035eda82ef` |
+
+Flutter's first attempt uploaded successfully at `2026-11-12T06:01:30Z`, then queried the
+package index before the version became visible. The server explicitly allowed up to ten
+minutes for propagation. After exact public reconciliation against the original producing
+artifact, only the original failed publication job was rerun. Its pre-upload check observed
+the accepted package, skipped credentials and upload, and its final comparison passed. This
+was observation recovery; neither package bytes nor release tags changed.
 
 ## 0.10.0-alpha.2 publication
 
