@@ -10,9 +10,8 @@ use crate::diagram_theme::{
     ResolvedDiagramTheme, ResolvedProperty, ResolvedStyleProperty, ResolvedThemeEffect,
     ResolvedThemeStyle, SourceStyleChannel, SourceStyleDeclaration, SourceStyleOrigin,
     SourceStyleProvenance, SourceStyleResidual, SourceStyleResidualReason, Specified,
-    TextStylePatch, ThemeCapability, ThemeColorValue, ThemeResourcePolicy, ThemeRule, ThemeTarget,
-    ThemeTextStyle, ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities,
-    paint_capability,
+    ThemeCapability, ThemeColorValue, ThemeResourcePolicy, ThemeRule, ThemeTarget, ThemeTextStyle,
+    ThemeTypographyProperty, ThemeVariant, collect_effect_graph_capabilities, paint_capability,
 };
 use crate::family::{FamilyThemeEvidence, FamilyThemeOutcomes, FamilyThemeResidualReason};
 use crate::mermaid_style::{
@@ -590,7 +589,6 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
         if self.base_typography_properties.is_empty() {
             return;
         }
-        let patch = semantic.map(|style| style.typography_resolution().patch());
         for property in &self.base_typography_properties {
             // Empty/image line boxes consume size and retain unsupported line-height requests
             // even without text runs.
@@ -605,8 +603,8 @@ impl<'a> StateThemeEvidenceBuilder<'a> {
             let resolved_property = ResolvedStyleProperty::Typography(*property);
             if self.config_typography_owned.contains(property)
                 || shadowed_source_properties.contains(&resolved_property)
-                || patch.is_some_and(|patch| {
-                    semantic_typography_property_overridden(patch, resolved_property)
+                || semantic.is_some_and(|style| {
+                    semantic_typography_property_overridden(style, resolved_property)
                 })
             {
                 continue;
@@ -760,9 +758,10 @@ fn configured_base_typography_properties(
 }
 
 fn semantic_typography_property_overridden(
-    patch: &TextStylePatch,
+    style: &ResolvedThemeStyle,
     property: ResolvedStyleProperty,
 ) -> bool {
+    let patch = style.typography_resolution().patch();
     let ResolvedStyleProperty::Typography(property) = property else {
         return false;
     };
@@ -1648,7 +1647,7 @@ impl StateThemeEvidenceBuilder<'_> {
         &mut self,
         use_id: StateThemeUseId,
         target: ThemeTarget,
-        property: &ResolvedProperty<String>,
+        property: ResolvedProperty<'_, String>,
         resolved: Option<ResolvedThemeEffect<'_>>,
         surface_supported: bool,
         effects: &mut StateEffectPlan,
@@ -1709,7 +1708,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn accept_property<T>(
         &mut self,
         use_id: StateThemeUseId,
-        property: &ResolvedProperty<T>,
+        property: ResolvedProperty<'_, T>,
         kind: ResolvedStyleProperty,
     ) {
         if let Some(origin) = property.winner() {
@@ -1903,7 +1902,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn consume_paint(
         &mut self,
         use_id: StateThemeUseId,
-        property: &ResolvedProperty<CanvasPaint>,
+        property: ResolvedProperty<'_, CanvasPaint>,
         kind: ResolvedStyleProperty,
         supported: bool,
     ) {
@@ -1931,7 +1930,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn consume_shape_property<T>(
         &mut self,
         use_id: StateThemeUseId,
-        property: &ResolvedProperty<T>,
+        property: ResolvedProperty<'_, T>,
         kind: ResolvedStyleProperty,
     ) {
         match property.specified() {
@@ -1980,7 +1979,7 @@ impl StateThemeEvidenceBuilder<'_> {
 
     fn consume_simple_typography(&mut self, use_id: StateThemeUseId, style: &ResolvedThemeStyle) {
         let patch = style.typography_resolution().patch();
-        match &patch.font_stack {
+        match patch.font_stack {
             Specified::Unspecified => {}
             Specified::Value(_) => {
                 self.pending_typography(use_id, style, ThemeTypographyProperty::FontStack);
@@ -2114,7 +2113,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn pending_property<T>(
         &mut self,
         use_id: StateThemeUseId,
-        property: &ResolvedProperty<T>,
+        property: ResolvedProperty<'_, T>,
         kind: ResolvedStyleProperty,
     ) {
         if let Some(origin) = property.winner() {
@@ -2130,7 +2129,7 @@ impl StateThemeEvidenceBuilder<'_> {
     fn reject_property<T>(
         &mut self,
         use_id: StateThemeUseId,
-        property: &ResolvedProperty<T>,
+        property: ResolvedProperty<'_, T>,
         kind: ResolvedStyleProperty,
         reason: FamilyThemeResidualReason,
     ) {
@@ -3716,11 +3715,11 @@ fn resolve_semantic_text_style(
         return style;
     };
     let patch = resolved.typography_resolution().patch();
-    if let Specified::Value(stack) = &patch.font_stack {
+    if let Specified::Value(stack) = patch.font_stack {
         style.font_family = Some(stack.as_css());
     }
     if let Specified::Value(size) = patch.font_size_px {
-        style.font_size = f64::from(size);
+        style.font_size = f64::from(*size);
     }
     if let Specified::Value(weight) = patch.font_weight {
         style.font_weight = Some(weight.to_string());
@@ -4008,11 +4007,11 @@ fn append_semantic_shape_emission(
     }
 }
 
-fn paint_allows_palette_fallback(property: Option<&ResolvedProperty<CanvasPaint>>) -> bool {
+fn paint_allows_palette_fallback(property: Option<ResolvedProperty<'_, CanvasPaint>>) -> bool {
     property.is_none_or(|property| matches!(property.specified(), Specified::Unspecified))
 }
 
-fn shape_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
+fn shape_paint_value(property: ResolvedProperty<'_, CanvasPaint>) -> Option<String> {
     match property.value()? {
         CanvasPaint::Transparent => Some("none".to_string()),
         CanvasPaint::Solid(color) => Some(color.as_css()),
@@ -4022,7 +4021,7 @@ fn shape_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String>
     }
 }
 
-fn text_paint_value(property: &ResolvedProperty<CanvasPaint>) -> Option<String> {
+fn text_paint_value(property: ResolvedProperty<'_, CanvasPaint>) -> Option<String> {
     match property.value()? {
         CanvasPaint::Transparent => Some("transparent".to_string()),
         CanvasPaint::Solid(color) => Some(color.as_css()),
@@ -4045,11 +4044,11 @@ fn append_semantic_text_emission(
     out: &mut IndexMap<String, EmittedDeclaration>,
 ) {
     let patch = style.typography_resolution().patch();
-    if let Specified::Value(stack) = &patch.font_stack {
+    if let Specified::Value(stack) = patch.font_stack {
         insert_emitted(out, "font-family", stack.as_css());
     }
     if let Specified::Value(size) = patch.font_size_px {
-        insert_emitted(out, "font-size", format!("{}px", f64::from(size)));
+        insert_emitted(out, "font-size", format!("{}px", f64::from(*size)));
     }
     if let Specified::Value(weight) = patch.font_weight {
         insert_emitted(out, "font-weight", weight.to_string());
@@ -4061,14 +4060,14 @@ fn append_semantic_text_emission(
         insert_emitted(
             out,
             "letter-spacing",
-            format!("{}px", f64::from(letter_spacing_px)),
+            format!("{}px", f64::from(*letter_spacing_px)),
         );
     }
     if let Specified::Value(word_spacing_px) = patch.word_spacing_px {
         insert_emitted(
             out,
             "word-spacing",
-            format!("{}px", f64::from(word_spacing_px)),
+            format!("{}px", f64::from(*word_spacing_px)),
         );
     }
 }

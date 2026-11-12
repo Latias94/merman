@@ -117,11 +117,10 @@ impl SequencePreparedStaticRectTheme {
             .flatten();
         let stroke_width = style.as_ref().and_then(|style| style.stroke_width());
         let radius = style.as_ref().and_then(|style| style.radius());
-        let default_effect_resolution = Default::default();
         let resolution = style
             .as_ref()
             .map(|style| style.effect_resolution())
-            .unwrap_or(&default_effect_resolution);
+            .unwrap_or_default();
         let SequencePreparedEffect {
             effect,
             effect_requested,

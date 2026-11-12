@@ -37,6 +37,62 @@ pub(crate) use text::{
 };
 use title::ClassTitleThemePlan;
 
+/// Background fill and unsupported sibling origins share the first static resolution.
+#[derive(Debug, Clone, Default)]
+struct ClassEdgeLabelBackgroundPlan {
+    config_owned_fill: bool,
+    paint: Option<outcomes::ClassSelectedPaint>,
+    static_winners: BTreeMap<ResolvedStyleProperty, usize>,
+}
+
+impl ClassEdgeLabelBackgroundPlan {
+    fn resolve(
+        theme: &ResolvedDiagramTheme,
+        config: &merman_model::presentation::PresentationConfig,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<Self, OperationWorkError> {
+        let mut plan = Self {
+            config_owned_fill: paint::ClassConfigPaint::background(config.as_value())
+                .config_owned(config),
+            ..Self::default()
+        };
+        // Source-owned backgrounds have no prepared style; completion still resolves
+        // their unsupported siblings without claiming the source-owned fill.
+        if plan.config_owned_fill {
+            return Ok(plan);
+        }
+        let style = theme.style_with_work_meter(
+            ThemeTarget::EdgeLabelBackground,
+            ThemeVariant::Default,
+            None,
+            work_meter,
+        )?;
+        plan.static_winners = style
+            .winner_rule_properties()
+            .map(|(property, origin)| (property, origin.rule_index()))
+            .collect();
+        plan.paint = resolve_direct_static_fill(
+            theme,
+            &style,
+            &[ThemeTarget::EdgeLabelBackground],
+            DirectStaticSelectorDomain::Default,
+        )
+        .map(|paint| {
+            let (css, rule_index, _) = paint.into_parts();
+            outcomes::ClassSelectedPaint {
+                target: ThemeTarget::EdgeLabelBackground,
+                rule_index,
+                css: css.into_string(),
+            }
+        });
+        Ok(plan)
+    }
+
+    fn static_winner_rule(&self, property: ResolvedStyleProperty) -> Option<usize> {
+        self.static_winners.get(&property).copied()
+    }
+}
+
 /// Prepared final Class relation paint winner shared by bounds, SVG emission, and evidence.
 /// Node resolution stays behind the same crate-private handle for existing renderer callers.
 #[derive(Debug, Clone, Default)]
@@ -52,8 +108,7 @@ pub(crate) struct ClassRelationThemePlan {
     namespace_title_plan: ClassTitleThemePlan,
     diagram_title_plan: ClassTitleThemePlan,
     track_edge_label_backgrounds: bool,
-    mermaid_owns_edge_label_background: bool,
-    edge_label_background: Option<outcomes::ClassSelectedPaint>,
+    edge_label_background: ClassEdgeLabelBackgroundPlan,
 }
 
 impl ClassRelationThemePlan {
@@ -104,33 +159,8 @@ impl ClassRelationThemePlan {
                 }
             )
         });
-        let mermaid_owns_edge_label_background =
-            paint::ClassConfigPaint::background(effective_config.as_value())
-                .config_owned(effective_config);
-        let edge_label_background = if mermaid_owns_edge_label_background {
-            None
-        } else {
-            let style = theme.style_with_work_meter(
-                ThemeTarget::EdgeLabelBackground,
-                ThemeVariant::Default,
-                None,
-                work_meter,
-            )?;
-            resolve_direct_static_fill(
-                theme,
-                &style,
-                &[ThemeTarget::EdgeLabelBackground],
-                DirectStaticSelectorDomain::Default,
-            )
-            .map(|paint| {
-                let (css, rule_index, _) = paint.into_parts();
-                outcomes::ClassSelectedPaint {
-                    target: ThemeTarget::EdgeLabelBackground,
-                    rule_index,
-                    css: css.into_string(),
-                }
-            })
-        };
+        let edge_label_background =
+            ClassEdgeLabelBackgroundPlan::resolve(theme, effective_config, work_meter)?;
         let style = theme.style_with_work_meter(
             ThemeTarget::Edge,
             ThemeVariant::Default,
@@ -240,13 +270,13 @@ impl ClassRelationThemePlan {
             namespace_title_plan: ClassTitleThemePlan::default(),
             diagram_title_plan,
             track_edge_label_backgrounds,
-            mermaid_owns_edge_label_background,
             edge_label_background,
         })
     }
 
     pub(crate) fn edge_label_background(&self) -> Option<(usize, &str)> {
         self.edge_label_background
+            .paint
             .as_ref()
             .map(|paint| (paint.rule_index, paint.css.as_str()))
     }

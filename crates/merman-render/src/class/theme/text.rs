@@ -238,7 +238,7 @@ impl ClassTextThemePlan {
                         .as_ref()
                         .expect("theme has a static style")
                         .clone();
-                    // ResolvedProperty::merge_from preserves rule-index order, as does
+                    // ResolvedThemeStyle::merge_from preserves rule-index order, as does
                     // text_style_with_work_meter; this is not a role-specific overlay.
                     style.merge_from(&theme.style(
                         ThemeTarget::EdgeLabel,

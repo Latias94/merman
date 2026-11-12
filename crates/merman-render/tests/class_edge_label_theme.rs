@@ -231,6 +231,62 @@ fn edge_label_and_shared_text_fill_keep_authored_order() {
 }
 
 #[test]
+fn equal_background_colors_preserve_nonpaint_winners_under_source_ownership() {
+    let mut mixed = ThemeStylePatch::default().with_fill(CanvasPaint::solid(INK).unwrap());
+    mixed.typography.font_weight = Specified::Value(600);
+    let theme = compile([
+        ThemeRule::new(ThemeTarget::EdgeLabelBackground, mixed),
+        rule(
+            ThemeTarget::EdgeLabelBackground,
+            CanvasPaint::solid(INK).unwrap(),
+        ),
+    ]);
+    for html in [false, true] {
+        for source_override in [false, true] {
+            let source = if source_override {
+                format!("---\nconfig:\n  themeVariables: {{mainBkg: '{INK}'}}\n---\n{MINIMAL}")
+            } else {
+                MINIMAL.to_owned()
+            };
+            let rendered = render(
+                &source,
+                &theme,
+                config(html, "dagre"),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            let document = roxmltree::Document::parse(rendered.svg()).unwrap();
+            let background = document
+                .descendants()
+                .find(|node| {
+                    if html {
+                        node.has_tag_name("div") && has_class(*node, "labelBkg")
+                    } else {
+                        node.has_tag_name("rect") && has_class(*node, "background")
+                    }
+                })
+                .expect("visible relationship label background");
+            let property = if html { "background-color" } else { "fill" };
+            assert_eq!(
+                background
+                    .attribute("style")
+                    .unwrap_or_default()
+                    .contains(&format!("{property}:{INK} !important;")),
+                !source_override,
+            );
+            // Source fill ownership must preserve the earlier font-weight residual,
+            // even though both recipe fills and the authored token are identical.
+            assert_evidence(
+                rendered,
+                usize::from(!source_override),
+                usize::from(source_override),
+                1,
+            );
+        }
+    }
+}
+
+#[test]
 fn unsupported_or_absent_edge_label_requests_are_fully_accounted() {
     let mut mixed = ThemeStylePatch::default().with_fill(CanvasPaint::solid(INK).unwrap());
     mixed.typography.font_weight = Specified::Value(600);

@@ -66,13 +66,13 @@ impl DiagramThemeCompiler {
             Some(catalog) => catalog.clone().compile(&self.resources)?,
             None => FontCatalog::system_fonts(),
         };
-        let root_plan = Arc::new(RootThemePlan::from_spec(&spec));
+        let spec = Arc::new(spec);
+        let root_plan = Arc::new(RootThemePlan::from_spec(Arc::clone(&spec)));
         let inferred_capabilities = infer_required_capabilities(&spec, &root_plan);
         let effective_requirements = spec
             .requirements()
             .clone()
             .with_required_capabilities(inferred_capabilities);
-        let spec = Arc::new(spec);
         let mermaid_config = super::mermaid_compatibility::compile(&spec);
         let family_programs = Arc::new(super::family_program::FamilyThemeProgramCache::new(
             Arc::clone(&spec),

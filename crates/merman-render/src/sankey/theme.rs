@@ -1073,7 +1073,7 @@ struct SankeyNodeRuleObservation {
 
 fn sankey_node_paint(
     theme: &ResolvedDiagramTheme,
-    resolution: &crate::diagram_theme::ResolvedProperty<CanvasPaint>,
+    resolution: crate::diagram_theme::ResolvedProperty<'_, CanvasPaint>,
     facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
     baseline: &str,
 ) -> Option<DirectPaintExpectation> {

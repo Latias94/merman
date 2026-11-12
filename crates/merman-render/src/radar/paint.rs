@@ -14,7 +14,7 @@ use crate::resources::{OperationWorkError, OperationWorkMeter};
 /// The bounded scalar paint domain shared by Radar's series and legend label writers.
 pub(super) fn static_paint(
     theme: &ResolvedDiagramTheme,
-    resolution: &ResolvedProperty<CanvasPaint>,
+    resolution: ResolvedProperty<'_, CanvasPaint>,
     target: ThemeTarget,
     property: ResolvedStyleProperty,
     baseline: &str,

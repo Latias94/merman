@@ -118,17 +118,33 @@ pub(crate) struct RootThemeReport {
 ///
 /// A plan is deliberately not a report: parsing a theme can identify applicable mechanisms, but
 /// only the root consumer may freeze applied or residual evidence.
-#[derive(Debug, Clone, Default, PartialEq)]
+#[derive(Clone, Default)]
 pub(crate) struct RootThemePlan {
     requirements: Vec<RootThemeRequirement>,
-    canvas: CanvasSpec,
+    spec: Option<Arc<DiagramThemeSpec>>,
+}
+
+impl std::fmt::Debug for RootThemePlan {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("RootThemePlan")
+            .field("requirements", &self.requirements)
+            .field("canvas", self.canvas())
+            .finish()
+    }
+}
+
+impl PartialEq for RootThemePlan {
+    fn eq(&self, other: &Self) -> bool {
+        self.requirements == other.requirements && self.canvas() == other.canvas()
+    }
 }
 
 impl RootThemePlan {
-    pub(crate) fn from_spec(spec: &DiagramThemeSpec) -> Self {
+    pub(crate) fn from_spec(spec: Arc<DiagramThemeSpec>) -> Self {
         Self {
-            requirements: root_theme_requirements(spec),
-            canvas: spec.canvas().clone(),
+            requirements: root_theme_requirements(&spec),
+            spec: Some(spec),
         }
     }
 
@@ -146,8 +162,12 @@ impl RootThemePlan {
             .flat_map(RootThemeRequirement::capabilities)
     }
 
-    pub(crate) const fn canvas(&self) -> &CanvasSpec {
-        &self.canvas
+    pub(crate) fn canvas(&self) -> &CanvasSpec {
+        static EMPTY: OnceLock<CanvasSpec> = OnceLock::new();
+        match &self.spec {
+            Some(spec) => spec.canvas(),
+            None => EMPTY.get_or_init(CanvasSpec::default),
+        }
     }
 
     /// A family backdrop must not cover an explicit root canvas unless authored config owns it.
@@ -156,7 +176,7 @@ impl RootThemePlan {
         config: &merman_model::presentation::PresentationConfig,
         family_background_path: &str,
     ) -> bool {
-        (self.canvas.has_explicit_base() || !self.canvas.layers().is_empty())
+        (self.canvas().has_explicit_base() || !self.canvas().layers().is_empty())
             && !config.config_paint_overrides_typed_default("themeVariables.background")
             && !config.config_paint_overrides_typed_default(family_background_path)
     }
@@ -442,13 +462,17 @@ mod tests {
 
     #[test]
     fn compiled_root_plan_is_shared_but_application_evidence_is_operation_local() {
+        let canvas = CanvasSpec::solid("#123456").unwrap();
         let theme = super::super::DiagramThemeCompiler::new()
-            .compile(DiagramThemeSpec::new().with_canvas(CanvasSpec::solid("#123456").unwrap()))
+            .compile(DiagramThemeSpec::new().with_canvas(canvas.clone()))
             .unwrap();
         let first = RootThemePlan::from_theme(Some(&theme));
         let second = RootThemePlan::from_theme(Some(&theme));
         assert!(Arc::ptr_eq(&first, &second));
         assert!(Arc::ptr_eq(&first, theme.root_plan()));
+        assert!(std::ptr::eq(first.canvas(), theme.spec().canvas()));
+        drop(theme);
+        assert_eq!(first.canvas(), &canvas);
         assert!(Arc::ptr_eq(
             &RootThemePlan::from_theme(None),
             &RootThemePlan::from_theme(None)
@@ -469,9 +493,70 @@ mod tests {
     }
 
     #[test]
+    fn root_plan_equality_compares_canvas_and_requirements_across_spec_owners() {
+        use super::super::{CanvasPaint, ThemeRule, ThemeRuleSet, ThemeStylePatch};
+
+        let canvas = CanvasSpec::solid("#123456")
+            .unwrap()
+            .with_layer(solid_layer())
+            .unwrap();
+        let spec = Arc::new(DiagramThemeSpec::new().with_canvas(canvas));
+        let plan = RootThemePlan::from_spec(Arc::clone(&spec));
+        let family_rule = ThemeRule::new(
+            ThemeTarget::Node,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+        );
+        let other_spec = Arc::new(
+            spec.as_ref()
+                .clone()
+                .with_styles(ThemeRuleSet::default().with_rule(family_rule)),
+        );
+        assert!(!Arc::ptr_eq(&spec, &other_spec));
+        let other_plan = RootThemePlan::from_spec(other_spec);
+        assert_eq!(plan, other_plan);
+        assert_eq!(format!("{plan:?}"), format!("{other_plan:?}"));
+
+        let different_canvas = RootThemePlan::from_spec(Arc::new(
+            spec.as_ref()
+                .clone()
+                .with_canvas(CanvasSpec::solid("#654321").unwrap()),
+        ));
+        assert_ne!(plan, different_canvas);
+
+        let root_rule = ThemeRule::new(
+            ThemeTarget::Canvas,
+            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+        );
+        let different_requirements = RootThemePlan::from_spec(Arc::new(
+            spec.as_ref()
+                .clone()
+                .with_styles(ThemeRuleSet::default().with_rule(root_rule)),
+        ));
+        assert_eq!(plan.canvas(), different_requirements.canvas());
+        assert_ne!(plan, different_requirements);
+    }
+
+    #[test]
+    fn empty_root_plan_shares_its_canvas_and_preserves_explicit_transparency() {
+        let empty = RootThemePlan::default();
+        let another_empty = RootThemePlan::default();
+        assert!(std::ptr::eq(empty.canvas(), another_empty.canvas()));
+        let implicit = RootThemePlan::from_spec(Arc::new(DiagramThemeSpec::new()));
+        assert_eq!(empty, implicit);
+
+        let explicit = RootThemePlan::from_spec(Arc::new(
+            DiagramThemeSpec::new().with_canvas(CanvasSpec::transparent()),
+        ));
+        assert_eq!(empty.canvas().base(), explicit.canvas().base());
+        assert!(!empty.canvas().has_explicit_base());
+        assert!(explicit.canvas().has_explicit_base());
+        assert_ne!(empty, explicit);
+    }
+
+    #[test]
     fn root_application_rejects_unknown_keys_and_capabilities_without_losing_partial_emission() {
         let canvas = CanvasSpec::default().with_layer(solid_layer()).unwrap();
-        let plan = RootThemePlan::from_spec(&DiagramThemeSpec::new().with_canvas(canvas));
+        let plan = RootThemePlan::from_spec(Arc::new(DiagramThemeSpec::new().with_canvas(canvas)));
         let mut application = plan.begin_svg_application();
         assert!(!application.mark_applied(
             &RootThemeMechanismKey::CanvasBase,
@@ -503,7 +588,7 @@ mod tests {
     #[test]
     fn repeated_root_marks_replace_previous_emission() {
         let canvas = CanvasSpec::default().with_layer(solid_layer()).unwrap();
-        let plan = RootThemePlan::from_spec(&DiagramThemeSpec::new().with_canvas(canvas));
+        let plan = RootThemePlan::from_spec(Arc::new(DiagramThemeSpec::new().with_canvas(canvas)));
         let key = RootThemeMechanismKey::CanvasLayer { index: 0 };
         let full = [ThemeCapability::LayeredCanvas, ThemeCapability::SolidPaint];
         for applied in [Vec::new(), vec![ThemeCapability::SolidPaint], full.to_vec()] {
@@ -539,7 +624,7 @@ mod tests {
             .unwrap()
             .with_layer(solid_layer())
             .unwrap();
-        let plan = RootThemePlan::from_spec(&DiagramThemeSpec::new().with_canvas(canvas));
+        let plan = RootThemePlan::from_spec(Arc::new(DiagramThemeSpec::new().with_canvas(canvas)));
         let mut application = plan.begin_svg_application();
         assert!(application.mark_applied(
             &RootThemeMechanismKey::CanvasBase,

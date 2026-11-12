@@ -216,8 +216,14 @@ impl ComposedDesign {
     }
 }
 
-struct SelectedDocument {
-    theme: DiagramTheme,
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum DocumentConsumer {
+    Compile,
+    Inspect,
+    Materialize,
+}
+
+struct SelectedMaterialization {
     spec: DiagramThemeSpecWireV1,
     appearance: Option<ThemeAppearance>,
     references: Vec<ThemeRecipeReferenceUseV1>,
@@ -225,12 +231,15 @@ struct SelectedDocument {
 
 struct AdmittedDocument {
     inspection: ThemeRecipeInspectionV1,
-    selected: Option<SelectedDocument>,
+    selected_theme: Option<DiagramTheme>,
+    selected_materialization: Option<SelectedMaterialization>,
 }
 
 impl AdmittedDocument {
     fn into_materialized(self) -> MaterializedThemeRecipeV1 {
-        let selected = self.selected.expect("selected document admitted");
+        let selected = self
+            .selected_materialization
+            .expect("selected materialization admitted");
         MaterializedThemeRecipeV1::new(
             &self.inspection,
             selected.appearance,
@@ -265,8 +274,8 @@ impl DiagramThemeCompiler {
         recipe: ThemeRecipeV1,
         appearance: Option<ThemeAppearance>,
     ) -> Result<DiagramTheme, ThemeDesignCompileError> {
-        self.admit_document(&recipe, appearance, true)
-            .map(|admitted| admitted.selected.expect("selected document admitted").theme)
+        self.admit_document(&recipe, appearance, DocumentConsumer::Compile)
+            .map(|admitted| admitted.selected_theme.expect("selected theme admitted"))
     }
 
     /// Inspects all declared bindings after admitting the entire document without a host mode.
@@ -274,7 +283,7 @@ impl DiagramThemeCompiler {
         &self,
         recipe: &ThemeRecipeV1,
     ) -> Result<ThemeRecipeInspectionV1, ThemeDesignCompileError> {
-        self.admit_document(recipe, None, false)
+        self.admit_document(recipe, None, DocumentConsumer::Inspect)
             .map(|admitted| admitted.inspection)
     }
 
@@ -284,7 +293,7 @@ impl DiagramThemeCompiler {
         recipe: &ThemeRecipeV1,
         appearance: Option<ThemeAppearance>,
     ) -> Result<MaterializedThemeRecipeV1, ThemeDesignCompileError> {
-        self.admit_document(recipe, appearance, true)
+        self.admit_document(recipe, appearance, DocumentConsumer::Materialize)
             .map(AdmittedDocument::into_materialized)
     }
 
@@ -297,29 +306,33 @@ impl DiagramThemeCompiler {
             design,
         )
         .map_err(encoding_error)?;
-        self.admit_document_input(DocumentInput::Design(design), None, true)
-            .map(AdmittedDocument::into_materialized)
+        self.admit_document_input(
+            DocumentInput::Design(design),
+            None,
+            DocumentConsumer::Materialize,
+        )
+        .map(AdmittedDocument::into_materialized)
     }
 
     fn admit_document(
         &self,
         recipe: &ThemeRecipeV1,
         requested: Option<ThemeAppearance>,
-        retain_selected: bool,
+        consumer: DocumentConsumer,
     ) -> Result<AdmittedDocument, ThemeDesignCompileError> {
         super::definition_admission::check_typed_input_encoded_bytes(
             self.resource_policy(),
             recipe,
         )
         .map_err(encoding_error)?;
-        self.admit_document_input(recipe.into(), requested, retain_selected)
+        self.admit_document_input(recipe.into(), requested, consumer)
     }
 
     fn admit_document_input(
         &self,
         input: DocumentInput<'_>,
         requested: Option<ThemeAppearance>,
-        retain_selected: bool,
+        consumer: DocumentConsumer,
     ) -> Result<AdmittedDocument, ThemeDesignCompileError> {
         let (supported, default) = document_appearances(input)?;
         let effective = requested.or(default);
@@ -338,8 +351,13 @@ impl DiagramThemeCompiler {
         } else {
             supported.iter().copied().map(Some).collect()
         };
-        let mut selected = None;
-        let mut inspections = Vec::with_capacity(modes.len());
+        let mut selected_theme = None;
+        let mut selected_materialization = None;
+        let mut inspections = if consumer == DocumentConsumer::Inspect {
+            Vec::with_capacity(modes.len())
+        } else {
+            Vec::new()
+        };
         for appearance in modes {
             let composition = match input {
                 DocumentInput::Design(design) => Some(match appearance {
@@ -362,8 +380,12 @@ impl DiagramThemeCompiler {
                     self.materialize_composition(composition.as_ref().expect("design composition"))?
                 }
             };
+            // Only materialization returns the lossless wire after compiler admission.
+            let retained_spec = (consumer == DocumentConsumer::Materialize
+                && appearance == effective)
+                .then(|| spec.clone());
             let theme = self
-                .compile_spec_wire_with_sources_located(spec.clone(), sources)
+                .compile_spec_wire_with_sources_located(spec, sources)
                 .map_err(|error| match input {
                     DocumentInput::Design(_) => {
                         let path = if error.path.starts_with("/design/") {
@@ -382,18 +404,23 @@ impl DiagramThemeCompiler {
                     _ => ThemeDesignCompileError::Compilation(error.error),
                 })?
                 .with_selected_appearance(appearance);
-            if retain_selected && appearance == effective {
-                selected = Some(SelectedDocument {
-                    theme,
-                    spec,
+            match consumer {
+                DocumentConsumer::Compile if appearance == effective => {
+                    selected_theme = Some(theme);
+                }
+                DocumentConsumer::Inspect => inspections.push(ThemeAppearanceInspectionV1 {
                     appearance,
-                    references: references.clone(),
-                });
+                    references,
+                }),
+                DocumentConsumer::Materialize if appearance == effective => {
+                    selected_materialization = Some(SelectedMaterialization {
+                        spec: retained_spec.expect("selected wire retained"),
+                        appearance,
+                        references,
+                    });
+                }
+                _ => {}
             }
-            inspections.push(ThemeAppearanceInspectionV1 {
-                appearance,
-                references,
-            });
         }
         Ok(AdmittedDocument {
             inspection: ThemeRecipeInspectionV1::new(
@@ -402,7 +429,8 @@ impl DiagramThemeCompiler {
                 default,
                 inspections,
             ),
-            selected,
+            selected_theme,
+            selected_materialization,
         })
     }
 
@@ -519,4 +547,263 @@ fn bounded_path(mut path: String) -> String {
         path.truncate(end);
     }
     path
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagram_theme::{ThemeResourceLimitId, ThemeResourcePolicy};
+    use serde_json::json;
+
+    #[test]
+    fn complete_spec_materialization_preserves_wire_presence_and_raw_values() {
+        let spec: DiagramThemeSpecWireV1 = serde_json::from_value(json!({
+            "typography":{},
+            "styles":[{"kind":"rule","target":"node","style":{
+                "fill":{"kind":"solid","color":"#AbCdEf"},"radius":null
+            }}],
+            "canvas":{"base":"#fEfEfE","layers":[]},
+            "effects":[]
+        }))
+        .unwrap();
+        let recipe = ThemeRecipeV1::CompleteSpec {
+            complete_spec: spec.clone(),
+        };
+        let compiler = DiagramThemeCompiler::new();
+        let materialized = compiler.materialize_document(&recipe, None).unwrap();
+        assert_eq!(materialized.spec, spec);
+        assert_eq!(
+            materialized.spec.canonical_json_bytes().unwrap(),
+            spec.canonical_json_bytes().unwrap()
+        );
+        assert_eq!(materialized.effective_appearance, None);
+        assert!(materialized.references.is_empty());
+        let inspection = compiler.inspect_document(&recipe).unwrap();
+        assert!(inspection.supported_appearances.is_empty());
+        assert_eq!(inspection.appearances.len(), 1);
+        assert_eq!(inspection.appearances[0].appearance, None);
+        assert!(inspection.appearances[0].references.is_empty());
+        let compiled = compiler.compile_document(recipe, None).unwrap();
+        assert_eq!(compiled.selected_appearance(), None);
+        assert_eq!(
+            compiled.recipe_fingerprint(),
+            compiler
+                .compile_spec_wire(spec)
+                .unwrap()
+                .recipe_fingerprint()
+        );
+        assert_eq!(compiled.source_map().rule(0).unwrap().paths, ["/styles/0"]);
+    }
+
+    #[test]
+    fn appearance_consumers_preserve_references_sources_and_fingerprints() {
+        let recipe: ThemeRecipeV1 = serde_json::from_value(json!({
+            "schema_version":1,"kind":"design","design":{
+                "styles":{"node":{"fill":{"ref":"surface/ink~"}}},
+                "canvas":{"base":{"ref":"surface/ink~"}},
+                "appearances":{
+                    "light":{
+                        "tokens":{"surface/ink~":{"type":"paint","value":"#fafbfc"}},
+                        "styles":{"node":{"opacity":0.75}}
+                    },
+                    "dark":{
+                        "tokens":{"surface/ink~":{"type":"paint","value":"#20242c"}},
+                        "styles":{"node":{"opacity":0.5}}
+                    }
+                },
+                "default_appearance":"dark"
+            }
+        }))
+        .unwrap();
+        let compiler = DiagramThemeCompiler::new();
+        let inspection = compiler.inspect_document(&recipe).unwrap();
+        assert_eq!(inspection.supported_appearances, ThemeAppearance::ALL);
+        assert_eq!(
+            inspection
+                .appearances
+                .iter()
+                .map(|entry| entry.appearance)
+                .collect::<Vec<_>>(),
+            [Some(ThemeAppearance::Light), Some(ThemeAppearance::Dark)]
+        );
+        for requested in [
+            None,
+            Some(ThemeAppearance::Light),
+            Some(ThemeAppearance::Dark),
+        ] {
+            let effective = requested.unwrap_or(ThemeAppearance::Dark);
+            let materialized = compiler.materialize_document(&recipe, requested).unwrap();
+            assert_eq!(materialized.supported_appearances, ThemeAppearance::ALL);
+            assert_eq!(materialized.default_appearance, Some(ThemeAppearance::Dark));
+            assert_eq!(materialized.effective_appearance, Some(effective));
+            let inspected = inspection
+                .appearances
+                .iter()
+                .find(|entry| entry.appearance == Some(effective))
+                .unwrap();
+            assert_eq!(materialized.references, inspected.references);
+            assert_eq!(materialized.references.len(), 2);
+            for reference in &materialized.references {
+                assert_eq!(
+                    reference.token_path,
+                    format!("/design/appearances/{effective}/tokens/surface~1ink~0")
+                );
+            }
+            let compiled = compiler
+                .compile_document(recipe.clone(), requested)
+                .unwrap();
+            assert_eq!(compiled.selected_appearance(), Some(effective));
+            assert_eq!(
+                compiled.recipe_fingerprint(),
+                compiler
+                    .compile_spec_wire(materialized.spec)
+                    .unwrap()
+                    .recipe_fingerprint()
+            );
+            assert_eq!(compiled.source_map().document().unwrap().id(), "design");
+            assert_eq!(
+                compiled.source_map().rule(0).unwrap().paths,
+                ["/design/styles/node"]
+            );
+            assert_eq!(
+                compiled.source_map().rule(1).unwrap().paths,
+                [format!("/design/appearances/{effective}/styles/node")]
+            );
+            assert_eq!(
+                compiled.source_map().canvas_base().unwrap().paths,
+                ["/design/canvas/base"]
+            );
+        }
+    }
+
+    #[test]
+    fn every_consumer_compiles_inactive_appearances_in_admission_order() {
+        let compiler = DiagramThemeCompiler::new();
+        for invalid_light in [false, true] {
+            let mut input = json!({
+                "schema_version":1,"kind":"design","design":{
+                    "appearances":{
+                        "light":{},
+                        "dark":{"styles":{"future-node":{}}}
+                    },
+                    "default_appearance":"light"
+                }
+            });
+            let (requested, path) = if invalid_light {
+                input["design"]["appearances"]["light"]["styles"] = json!({"future-node":{}});
+                input["design"]["appearances"]["dark"]["styles"] =
+                    json!({"node":{"fill":{"ref":"missing"}}});
+                (
+                    ThemeAppearance::Dark,
+                    "/design/appearances/light/styles/future-node",
+                )
+            } else {
+                (
+                    ThemeAppearance::Light,
+                    "/design/appearances/dark/styles/future-node",
+                )
+            };
+            let recipe = serde_json::from_value(input).unwrap();
+            let errors = [
+                compiler.inspect_document(&recipe).map(|_| ()),
+                compiler
+                    .materialize_document(&recipe, Some(requested))
+                    .map(|_| ()),
+                compiler
+                    .compile_document(recipe, Some(requested))
+                    .map(|_| ()),
+            ]
+            .map(|result| {
+                let ThemeDesignCompileError::Materialization(error) = result.unwrap_err() else {
+                    panic!("design errors retain their authoring diagnostic");
+                };
+                assert_eq!(error.diagnostic().path(), path);
+                error
+            });
+            assert_eq!(errors[0], errors[1]);
+            assert_eq!(errors[0], errors[2]);
+        }
+    }
+
+    #[test]
+    fn document_byte_limit_precedes_selection_for_every_consumer() {
+        let recipe: ThemeRecipeV1 = serde_json::from_value(json!({
+            "schema_version":1,"kind":"design","design":{}
+        }))
+        .unwrap();
+        let bytes = serde_json::to_vec(&recipe).unwrap().len();
+        let resources = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, bytes - 1)
+            .unwrap();
+        let compiler = DiagramThemeCompiler::new().with_resource_policy(resources);
+        let errors = [
+            compiler.inspect_document(&recipe).map(|_| ()),
+            compiler
+                .materialize_document(&recipe, Some(ThemeAppearance::Light))
+                .map(|_| ()),
+            compiler
+                .compile_document(recipe, Some(ThemeAppearance::Light))
+                .map(|_| ()),
+        ]
+        .map(|result| {
+            let ThemeDesignCompileError::Materialization(error) = result.unwrap_err() else {
+                panic!("document bytes are admitted before appearance selection");
+            };
+            assert_eq!(error.diagnostic().path(), "");
+            assert_eq!(
+                error.diagnostic().limit_id(),
+                Some("max_theme_encoded_bytes")
+            );
+            assert_eq!(error.diagnostic().actual(), Some(bytes as u64));
+            assert_eq!(error.diagnostic().max(), Some((bytes - 1) as u64));
+            error
+        });
+        assert_eq!(errors[0], errors[1]);
+        assert_eq!(errors[0], errors[2]);
+    }
+
+    #[test]
+    fn every_consumer_checks_inactive_compiler_resource_limits() {
+        let recipe: ThemeRecipeV1 = serde_json::from_value(json!({
+            "schema_version":1,"kind":"design","design":{
+                "appearances":{
+                    "light":{},
+                    "dark":{"styles":{"node":{"effect":{
+                        "kind":"graph","primitives":[{"kind":"gaussian-blur","std_deviation":2}]
+                    }}}}
+                },
+                "default_appearance":"light"
+            }
+        }))
+        .unwrap();
+        let resources = ThemeResourcePolicy::interactive()
+            .with_limit(ThemeResourceLimitId::MaxEffectBlurMagnitude, 1)
+            .unwrap();
+        let compiler = DiagramThemeCompiler::new().with_resource_policy(resources);
+        let errors = [
+            compiler.inspect_document(&recipe).map(|_| ()),
+            compiler
+                .materialize_document(&recipe, Some(ThemeAppearance::Light))
+                .map(|_| ()),
+            compiler
+                .compile_document(recipe, Some(ThemeAppearance::Light))
+                .map(|_| ()),
+        ]
+        .map(|result| {
+            let ThemeDesignCompileError::Materialization(error) = result.unwrap_err() else {
+                panic!("inactive compiler failures retain authoring diagnostics");
+            };
+            assert_eq!(
+                error.diagnostic().limit_id(),
+                Some("max_effect_blur_magnitude")
+            );
+            assert_eq!(error.diagnostic().actual(), Some(2));
+            assert_eq!(error.diagnostic().max(), Some(1));
+            // This compiler-wide resource rejection is attributed to the composed document.
+            assert_eq!(error.diagnostic().path(), "/design");
+            error
+        });
+        assert_eq!(errors[0], errors[1]);
+        assert_eq!(errors[0], errors[2]);
+    }
 }

@@ -11,7 +11,7 @@ use super::family_mechanism_matrix::{
     compile_base_typography_routes, compile_effect_binding_route, compile_ordinal_palette_route,
     compile_rule_routes,
 };
-use super::resolved::{ResolvedThemeStyle, ThemeRuleOrigin};
+use super::resolved::{ResolvedThemeStyle, ThemeRuleOrigin, ThemeStyleRuleWinners};
 use super::semantic::{ThemeTarget, ThemeVariant};
 use super::typography::TextStyle;
 
@@ -22,6 +22,7 @@ use super::typography::TextStyle;
 #[derive(Debug)]
 pub(crate) struct FamilyThemeProgram {
     spec: Arc<DiagramThemeSpec>,
+    family: DiagramFamilyId,
     base_typography: TextStyle,
     rule_indices: Box<[usize]>,
     slots: BTreeMap<ThemeTarget, FamilyRuleSlot>,
@@ -79,10 +80,10 @@ impl FamilyThemeProgramCache {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 struct FamilyRuleSlot {
-    common_static: ResolvedThemeStyle,
-    variant_static: BTreeMap<ThemeVariant, ResolvedThemeStyle>,
+    common_static: ThemeStyleRuleWinners,
+    variant_static: BTreeMap<ThemeVariant, ThemeStyleRuleWinners>,
     common_ordinal: Vec<ThemeRuleOrigin>,
     variant_ordinal: BTreeMap<ThemeVariant, Vec<ThemeRuleOrigin>>,
 }
@@ -106,7 +107,7 @@ impl FamilyThemeProgram {
             mechanism_routes.extend(compile_rule_routes(family, rule_index, rule));
             slots
                 .entry(rule.target())
-                .or_insert_with(|| FamilyRuleSlot::new(base_typography.clone()))
+                .or_default()
                 .compile_rule(ThemeRuleOrigin::new(rule_index, rule), rule.style());
         }
 
@@ -162,6 +163,7 @@ impl FamilyThemeProgram {
 
         Self {
             spec,
+            family,
             base_typography,
             rule_indices: rule_indices.into_boxed_slice(),
             slots,
@@ -271,13 +273,18 @@ impl FamilyThemeProgram {
         ordinal: Option<usize>,
         work_meter: Option<&OperationWorkMeter>,
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
-        let mut resolved = ResolvedThemeStyle::new(self.base_typography.clone());
+        let mut winners = ThemeStyleRuleWinners::default();
         if let Some(slot) = self.slots.get(&target) {
             charge_ordinal_candidates(work_meter, ordinal, slot.ordinal_candidate_count(variant))?;
-            slot.apply_static(&mut resolved, variant);
-            slot.apply_ordinal(&self.spec, &mut resolved, variant, ordinal);
+            slot.select_static(&mut winners, variant);
+            slot.select_ordinal(&self.spec, &mut winners, variant, ordinal);
         }
-        Ok(resolved)
+        Ok(ResolvedThemeStyle::from_rule_winners(
+            Arc::clone(&self.spec),
+            self.family,
+            &self.base_typography,
+            winners,
+        ))
     }
 
     #[cfg(test)]
@@ -326,7 +333,7 @@ impl FamilyThemeProgram {
         ordinal: Option<usize>,
         work_meter: Option<&OperationWorkMeter>,
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
-        let mut resolved = ResolvedThemeStyle::new(self.base_typography.clone());
+        let mut winners = ThemeStyleRuleWinners::default();
         let ordinal_candidate_count = self.ordinal_candidate_count(ThemeTarget::Text, variant)
             + if target == ThemeTarget::Text {
                 0
@@ -334,11 +341,16 @@ impl FamilyThemeProgram {
                 self.ordinal_candidate_count(target, variant)
             };
         charge_ordinal_candidates(work_meter, ordinal, ordinal_candidate_count)?;
-        self.apply_text_target(ThemeTarget::Text, &mut resolved, variant, ordinal);
+        self.select_text_target(ThemeTarget::Text, &mut winners, variant, ordinal);
         if target != ThemeTarget::Text {
-            self.apply_text_target(target, &mut resolved, variant, ordinal);
+            self.select_text_target(target, &mut winners, variant, ordinal);
         }
-        Ok(resolved)
+        Ok(ResolvedThemeStyle::from_rule_winners(
+            Arc::clone(&self.spec),
+            self.family,
+            &self.base_typography,
+            winners,
+        ))
     }
 
     fn ordinal_candidate_count(&self, target: ThemeTarget, variant: ThemeVariant) -> usize {
@@ -347,31 +359,22 @@ impl FamilyThemeProgram {
             .map_or(0, |slot| slot.ordinal_candidate_count(variant))
     }
 
-    fn apply_text_target(
+    fn select_text_target(
         &self,
         target: ThemeTarget,
-        resolved: &mut ResolvedThemeStyle,
+        winners: &mut ThemeStyleRuleWinners,
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) {
         let Some(slot) = self.slots.get(&target) else {
             return;
         };
-        slot.apply_static(resolved, variant);
-        slot.apply_ordinal(&self.spec, resolved, variant, ordinal);
+        slot.select_static(winners, variant);
+        slot.select_ordinal(&self.spec, winners, variant, ordinal);
     }
 }
 
 impl FamilyRuleSlot {
-    fn new(base_typography: TextStyle) -> Self {
-        Self {
-            common_static: ResolvedThemeStyle::new(base_typography),
-            variant_static: BTreeMap::new(),
-            common_ordinal: Vec::new(),
-            variant_ordinal: BTreeMap::new(),
-        }
-    }
-
     fn compile_rule(&mut self, origin: ThemeRuleOrigin, patch: &super::semantic::ThemeStylePatch) {
         match (origin.variant(), origin.ordinal()) {
             (variant, Some(_)) => match variant {
@@ -385,20 +388,16 @@ impl FamilyRuleSlot {
             (Some(variant), None) => self
                 .variant_static
                 .entry(variant)
-                .or_insert_with(|| {
-                    ResolvedThemeStyle::new(
-                        self.common_static.typography_resolution().base().clone(),
-                    )
-                })
-                .apply(patch, origin),
-            (None, None) => self.common_static.apply(patch, origin),
+                .or_default()
+                .select_rule(patch, origin.rule_index()),
+            (None, None) => self.common_static.select_rule(patch, origin.rule_index()),
         }
     }
 
-    fn apply_static(&self, resolved: &mut ResolvedThemeStyle, variant: ThemeVariant) {
-        resolved.merge_from(&self.common_static);
-        if let Some(style) = self.variant_static.get(&variant) {
-            resolved.merge_from(style);
+    fn select_static(&self, winners: &mut ThemeStyleRuleWinners, variant: ThemeVariant) {
+        winners.merge_from(&self.common_static);
+        if let Some(variant_winners) = self.variant_static.get(&variant) {
+            winners.merge_from(variant_winners);
         }
     }
 
@@ -406,10 +405,10 @@ impl FamilyRuleSlot {
         self.common_ordinal.len() + self.variant_ordinal.get(&variant).map_or(0, Vec::len)
     }
 
-    fn apply_ordinal(
+    fn select_ordinal(
         &self,
         spec: &DiagramThemeSpec,
-        resolved: &mut ResolvedThemeStyle,
+        winners: &mut ThemeStyleRuleWinners,
         variant: ThemeVariant,
         ordinal: Option<usize>,
     ) {
@@ -426,7 +425,7 @@ impl FamilyRuleSlot {
                 .ordinal()
                 .expect("compiled ordinal rule must retain its selector");
             if selector.matches(ordinal) {
-                resolved.apply(rules[origin.rule_index()].style(), *origin);
+                winners.select_rule(rules[origin.rule_index()].style(), origin.rule_index());
             }
         }
     }
@@ -503,6 +502,8 @@ mod tests {
 
         assert!(Arc::ptr_eq(&first, &second));
         assert!(!Arc::ptr_eq(&first, &state));
+        assert!(Arc::ptr_eq(&first.spec, &cache.spec));
+        assert!(Arc::ptr_eq(&state.spec, &cache.spec));
         let requested = first.shared_requested_mechanisms().unwrap();
         assert!(Arc::ptr_eq(
             &requested,

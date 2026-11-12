@@ -495,6 +495,7 @@ impl TextStylePatch {
         Ok(())
     }
 
+    #[cfg(test)]
     pub(crate) fn apply_to(&self, style: &mut TextStyle, base: &TextStyle) {
         apply_specified(&self.font_stack, &mut style.font_stack, &base.font_stack);
         apply_specified(
@@ -520,6 +521,72 @@ impl TextStylePatch {
         apply_specified(&self.text_align, &mut style.text_align, &base.text_align);
         apply_specified(&self.white_space, &mut style.white_space, &base.white_space);
         apply_specified(&self.wrap, &mut style.wrap, &base.wrap);
+    }
+}
+
+/// Transient property borrows into a terminal style's immutable spec owner.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct SelectedTextStylePatch<'a> {
+    pub font_stack: &'a Specified<FontStack>,
+    pub font_size_px: &'a Specified<f32>,
+    pub font_weight: &'a Specified<u16>,
+    pub font_style: &'a Specified<crate::diagram_theme::FontStyle>,
+    pub line_height: &'a Specified<LineHeight>,
+    pub letter_spacing_px: &'a Specified<f32>,
+    pub word_spacing_px: &'a Specified<f32>,
+    pub transform: &'a Specified<TextTransform>,
+    pub decoration: &'a Specified<TextDecoration>,
+    pub text_align: &'a Specified<TextAlign>,
+    pub white_space: &'a Specified<WhiteSpace>,
+    pub wrap: &'a Specified<WrapMode>,
+}
+
+#[cfg(test)]
+impl<'a> From<&'a TextStylePatch> for SelectedTextStylePatch<'a> {
+    fn from(patch: &'a TextStylePatch) -> Self {
+        Self {
+            font_stack: &patch.font_stack,
+            font_size_px: &patch.font_size_px,
+            font_weight: &patch.font_weight,
+            font_style: &patch.font_style,
+            line_height: &patch.line_height,
+            letter_spacing_px: &patch.letter_spacing_px,
+            word_spacing_px: &patch.word_spacing_px,
+            transform: &patch.transform,
+            decoration: &patch.decoration,
+            text_align: &patch.text_align,
+            white_space: &patch.white_space,
+            wrap: &patch.wrap,
+        }
+    }
+}
+
+impl SelectedTextStylePatch<'_> {
+    pub(super) fn apply_to(self, style: &mut TextStyle, base: &TextStyle) {
+        apply_specified(self.font_stack, &mut style.font_stack, &base.font_stack);
+        apply_specified(
+            self.font_size_px,
+            &mut style.font_size_px,
+            &base.font_size_px,
+        );
+        apply_specified(self.font_weight, &mut style.font_weight, &base.font_weight);
+        apply_specified(self.font_style, &mut style.font_style, &base.font_style);
+        apply_specified(self.line_height, &mut style.line_height, &base.line_height);
+        apply_specified(
+            self.letter_spacing_px,
+            &mut style.letter_spacing_px,
+            &base.letter_spacing_px,
+        );
+        apply_specified(
+            self.word_spacing_px,
+            &mut style.word_spacing_px,
+            &base.word_spacing_px,
+        );
+        apply_specified(self.transform, &mut style.transform, &base.transform);
+        apply_specified(self.decoration, &mut style.decoration, &base.decoration);
+        apply_specified(self.text_align, &mut style.text_align, &base.text_align);
+        apply_specified(self.white_space, &mut style.white_space, &base.white_space);
+        apply_specified(self.wrap, &mut style.wrap, &base.wrap);
     }
 }
 

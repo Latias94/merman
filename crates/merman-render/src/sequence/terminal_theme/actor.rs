@@ -120,11 +120,10 @@ impl SequencePreparedActorTheme {
             .and_then(|s| s.stroke_width())
             .filter(|_| !width_overridden);
         let radius = style.as_ref().and_then(|s| s.radius());
-        let default_effect_resolution = Default::default();
         let effect_resolution = style
             .as_ref()
             .map(|style| style.effect_resolution())
-            .unwrap_or(&default_effect_resolution);
+            .unwrap_or_default();
         let SequencePreparedEffect {
             effect,
             effect_requested,
