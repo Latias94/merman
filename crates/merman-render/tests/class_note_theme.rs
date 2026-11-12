@@ -4,9 +4,9 @@ mod common;
 
 use merman_core::{MermaidEngine, ParseOptions, presentation::SourcePresentationConfig};
 use merman_render::diagram_theme::{
-    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalSelector, Specified,
-    ThemeAppearance, ThemePortabilityRequirement, ThemePreset, ThemeRule, ThemeRuleSet,
-    ThemeStylePatch, ThemeTarget, ThemeVariant,
+    CanvasPaint, DiagramTheme, DiagramThemeCompiler, DiagramThemeSpec, OrdinalPalette,
+    OrdinalSelector, Specified, ThemeAppearance, ThemeColorValue, ThemePortabilityRequirement,
+    ThemePreset, ThemeRule, ThemeRuleSet, ThemeStylePatch, ThemeTarget, ThemeVariant,
 };
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
@@ -548,6 +548,120 @@ fn emitted_note_fill_does_not_certify_unsupported_sibling_facets() {
                 );
             }
             assert_evidence(rendered, 0, 0, 1);
+        }
+    }
+}
+
+#[test]
+fn equal_note_colors_keep_distinct_rule_and_source_origins_for_unsupported_siblings() {
+    let theme = recipe(json!([
+        {"target":"note","style":{"fill":FILL,"typography":{"font_weight":600}}},
+        {"target":"note","style":{"fill":FILL,"stroke":{"paint":STROKE}}}
+    ]));
+    for html in [false, true] {
+        for source_override in [false, true] {
+            let source = if source_override {
+                format!(
+                    "---\nconfig:\n  themeVariables: {{noteBkgColor: '{FILL}', noteBorderColor: '{STROKE}'}}\n---\n{SOURCE}"
+                )
+            } else {
+                SOURCE.to_owned()
+            };
+            let rendered = render(
+                &source,
+                Some(&theme),
+                config(html),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert_note_surface(rendered.svg(), FILL, STROKE);
+            // Equal CSS must still suppress the later paint rule when source-owned,
+            // while the earlier rule's font weight remains an unsupported winner.
+            let completion = rendered.into_completion();
+            let evidence = merman_render::__private::family_evidence(completion.report());
+            assert_eq!(evidence.required_count(), 2);
+            assert_eq!(evidence.accounted_count(), 2);
+            assert_eq!(evidence.applied_count(), usize::from(!source_override));
+            assert_eq!(
+                evidence.not_applicable_count(),
+                usize::from(source_override)
+            );
+            assert_eq!(evidence.theme_residual_count(), 1);
+            let diagnostics = completion.report().theme_diagnostics();
+            assert_eq!(diagnostics.len(), 1);
+            let diagnostic = &diagnostics[0];
+            assert_eq!(diagnostic.code(), "unsupported-typography");
+            assert_eq!(diagnostic.subject(), "rule");
+            assert_eq!(diagnostic.target(), Some(ThemeTarget::Note));
+            assert_eq!(diagnostic.property(), None);
+            assert_eq!(diagnostic.source_document(), Some("design"));
+            assert_eq!(diagnostic.source_paths(), ["/design/rules/0/style"]);
+            assert!(!diagnostic.generated());
+        }
+    }
+}
+
+#[test]
+fn note_clear_retains_its_origin_and_blocks_palette_fallback_until_shadowed() {
+    let mut clear = ThemeStylePatch::default();
+    clear.paint.fill = Specified::Clear;
+    clear.stroke.paint = Specified::Clear;
+    let clear_rule = ThemeRule::new(ThemeTarget::Note, clear);
+    let set_rule = ThemeRule::new(
+        ThemeTarget::Note,
+        ThemeStylePatch::default()
+            .with_fill(CanvasPaint::solid(FILL).unwrap())
+            .with_stroke(CanvasPaint::solid(STROKE).unwrap()),
+    );
+    for clear_last in [false, true] {
+        let rules = if clear_last {
+            [set_rule.clone(), clear_rule.clone()]
+        } else {
+            [clear_rule.clone(), set_rule.clone()]
+        };
+        let styles = rules.into_iter().fold(
+            ThemeRuleSet::default().with_ordinal_palette(
+                ThemeTarget::Note,
+                OrdinalPalette::new([ThemeColorValue::parse(AUTHORED).unwrap()]).unwrap(),
+            ),
+            |set, rule| set.with_rule(rule),
+        );
+        let theme = DiagramThemeCompiler::new()
+            .compile(DiagramThemeSpec::new().with_styles(styles))
+            .unwrap();
+        for html in [false, true] {
+            let mut config = config(html);
+            config["look"] = json!("classic");
+            let rendered = render(
+                SOURCE,
+                Some(&theme),
+                config.clone(),
+                ThemePortabilityRequirement::BestEffort,
+            )
+            .unwrap();
+            assert_note_surface(
+                rendered.svg(),
+                if clear_last { "#fff5ad" } else { FILL },
+                // Class inherits Mermaid's scoped redux-color compatibility defaults.
+                if clear_last { "#FACC15" } else { STROKE },
+            );
+            // Neither Clear nor an explicit paint permits the ordinal palette fallback.
+            assert_evidence(
+                rendered,
+                usize::from(!clear_last),
+                2,
+                usize::from(clear_last),
+            );
+            assert_eq!(
+                render(
+                    SOURCE,
+                    Some(&theme),
+                    config,
+                    ThemePortabilityRequirement::RequirePortable,
+                )
+                .is_err(),
+                clear_last,
+            );
         }
     }
 }

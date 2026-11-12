@@ -174,7 +174,7 @@ fn check_theme_json_input(
         .map_err(|error| invalid_options(format!("invalid theme JSON: {error}")))?;
     let spec = if probe.kind.is_none() && probe.schema_version.is_none() {
         if let Some(recipe) = probe.recipe {
-            check_theme_recipe_json_input(compiler, recipe.get().as_bytes())?;
+            check_theme_recipe_envelope_after_structure(recipe)?;
         }
         // Preserve the selection owner's null-payload diagnostic and error position.
         probe.spec.filter(|raw| raw.get() != "null")
@@ -205,12 +205,17 @@ pub(crate) fn check_theme_json_structure(
     })
 }
 
-pub(crate) fn check_theme_recipe_json_input(
-    compiler: &DiagramThemeCompiler,
-    bytes: &[u8],
+/// Checks recipe versions and complete-spec shapes after containing-input structural admission.
+///
+/// `recipe` must be the exact, unchanged `RawValue` subtree borrowed from the original input that
+/// `check_theme_json_input` or `theme_design::materialize_theme_json_with` has already admitted
+/// under the caller's same resource policy. That containing check covers byte/structural bounds
+/// and duplicate keys for this subtree. Normalized, reserialized, or composed input needs its own
+/// structural admission.
+pub(crate) fn check_theme_recipe_envelope_after_structure(
+    recipe: &RawValue,
 ) -> Result<(), BindingError> {
-    check_theme_json_structure(compiler, bytes)?;
-    let probe: ThemeInputProbe<'_> = serde_json::from_slice(bytes)
+    let probe: ThemeInputProbe<'_> = serde_json::from_slice(recipe.get().as_bytes())
         .map_err(|error| invalid_options(format!("invalid theme recipe JSON: {error}")))?;
     check_recipe_version(
         probe
@@ -979,6 +984,37 @@ mod tests {
     }
 
     #[test]
+    fn nested_recipe_keeps_outer_structure_and_byte_error_precedence() {
+        let recipe = r#"{"schema_version":2,"schema_\u0076ersion":1,"kind":"complete_spec","complete_spec":{"future_field":true}}"#;
+        let selection = format!(r#"{{"recipe":{recipe}}}"#);
+        let options = format!(r#"{{"theme":{selection}}}"#);
+        for (limit, status) in [
+            (selection.len(), BindingStatus::OptionsJsonError),
+            (selection.len() - 1, BindingStatus::ResourceLimitExceeded),
+        ] {
+            assert!(
+                recipe.len() <= limit,
+                "the nested recipe fits the byte limit"
+            );
+            let compiler = DiagramThemeCompiler::new().with_resource_policy(
+                ThemeResourcePolicy::constrained()
+                    .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, limit)
+                    .unwrap(),
+            );
+            let expected = check_theme_json_structure(&compiler, selection.as_bytes()).unwrap_err();
+            assert_eq!(expected.status(), status);
+            assert_eq!(
+                compile_theme_selection_json_with(&compiler, selection.as_bytes()).unwrap_err(),
+                expected
+            );
+            assert_eq!(
+                validate_theme_input_json_with(&compiler, options.as_bytes()).unwrap_err(),
+                expected
+            );
+        }
+    }
+
+    #[test]
     fn paired_recipe_uses_whole_selection_replacement_in_reusable_engines() {
         let source = b"flowchart LR\nA-->B\n";
         let base = serde_json::json!({
@@ -1071,6 +1107,12 @@ mod tests {
             let error = crate::common::parse_options(input.as_bytes()).unwrap_err();
             assert_eq!(error.status(), BindingStatus::OptionsJsonError);
             assert!(error.message().contains(expected), "{input}: {error:?}");
+            let wrapped = format!(r#"{{"theme":{{"recipe":{theme}}}{suffix}}}"#);
+            assert_eq!(
+                crate::common::parse_options(wrapped.as_bytes()).unwrap_err(),
+                error,
+                "{wrapped}"
+            );
         }
     }
 

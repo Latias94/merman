@@ -22,10 +22,9 @@ impl SequencePreparedTextEffect {
         let Some(theme) = theme else {
             return Self::default();
         };
-        let default_effect_resolution = Default::default();
         let resolution = style
             .map(|style| style.effect_resolution())
-            .unwrap_or(&default_effect_resolution);
+            .unwrap_or_default();
         let prepared = prepare_sequence_effect(theme, role.target(), resolution);
         Self {
             effect: prepared.effect,

@@ -394,7 +394,15 @@ impl ValidatedArtifactContract {
     ) -> Result<Vec<u8>, BindingError> {
         let compiler =
             merman::svg::DiagramThemeCompiler::new().with_resource_policy(policy.clone());
-        self.metadata_json_with_theme_compiler(MetadataKey::ThemeCatalog.id(), &compiler)
+        let key = MetadataKey::ThemeCatalog;
+        if !self.exposes_metadata(key) {
+            return Err(BindingError::unsupported_operation(format!(
+                "binding metadata catalog `{}` is not exposed by target `{}`",
+                key.id(),
+                self.target().id()
+            )));
+        }
+        theme_catalog_json_for_compiler(self, &compiler)
     }
 
     #[cfg(feature = "svg")]

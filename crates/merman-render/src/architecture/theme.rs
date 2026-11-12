@@ -329,7 +329,7 @@ fn mechanism_targets_cluster(mechanism: FamilyThemeMechanism) -> bool {
 
 fn typed_paint_css(
     theme: &ResolvedDiagramTheme,
-    resolution: &crate::diagram_theme::ResolvedProperty<CanvasPaint>,
+    resolution: crate::diagram_theme::ResolvedProperty<'_, CanvasPaint>,
     facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
 ) -> Option<String> {
     let origin = resolution.winner()?;

@@ -108,6 +108,93 @@ smoke and installed-consumer checks alongside size reporting. The [semantic base
 and [binding refresh](binding_wasm_budget_2026-11-01.md) retain historical size decisions; restoring math to
 Web full/render changes capabilities and is not an equal-capability size optimization.
 
+## Typst theme runtime — 2026-11-12
+
+The unpublished Typst `0.6.0` candidate retains all diagram families, SVG, analysis, Cytoscape
+and ELK. The theme runtime now keeps property winners into its existing immutable spec rather
+than copying selected paint, dash and effect payloads. Document compilation and inspection
+move temporary wire values into admission; only materialization retains the selected lossless
+wire. Every appearance still passes compilation and resource validation. An exact nested recipe
+reuses its containing document's structural admission while retaining recipe-version and complete-spec
+checks. Compound text queries combine rule winners before one final style and typography
+materialization, preserving separate ordered work charges and cancellation checkpoints. Typst's
+fixed render and analysis entries share engine admission without constructing an authoring variant;
+the catalog retains its checked serializer.
+
+The matched Windows x64 build uses Rust `1.99.1`, the locked `wasm-size` profile with defaults
+disabled and `all-diagrams,analysis,layout-cytoscape,layout-elk,svg`, Binaryen `133 -Oz` and
+`wasm-tools 1.263.0 strip --all`. The control is release source
+`e0e75bcab2fa8e39dd7a09465b7f2e035eda82ef`; the candidate starts at the code-equivalent
+`f89b2f89180d86867b94b903caba19e37ea6d436` plus the runtime and dispatch changes introducing
+this checkpoint. Compression uses Python zlib `1.3.1`, gzip level 9 with timestamp zero, and
+Brotli `1.2.0`, quality 11, window 22.
+
+| Delivered bytes | Control | Candidate | Reduction |
+| --- | ---: | ---: | ---: |
+| Final stripped WASM | 13,251,634 | 13,003,170 | 248,464 (1.875%) |
+| gzip | 4,990,891 | 4,922,150 | 68,741 |
+| Brotli | 3,721,972 | 3,669,372 | 52,600 |
+
+Final module SHA-256 values are
+`e99a4ebb17e6db5056afbeeb3b4f232d7433e1b24efa8825e894f1c5945250f2` and
+`454a1e87d4d44fb08b51bb583043233737943cc02f50ca4464dcbf2dce99dfc9` respectively.
+All 111 paired WASM calls return identical bytes. Actual wrapper examples and tests pass on
+Typst `0.15.0` and `0.15.1`: 48 successful PDF pairs are byte-identical and all 26 expected-failure
+pairs retain their required diagnostics. These checks do not constitute package publication.
+
+A separate native requested-allocation probe compiles a fresh Editor Light, Cyberpunk or authored
+theme, prepares Class then Flowchart, renders each prepared source three more times, and drops
+the owners. Theme compilation allocates 1,287,333 / 1,962,861 / 178,816 bytes, down from
+1,408,075 / 2,132,928 / 190,603. First-family-use retained bytes fall by 10,304–41,902 across the
+six cases. SVG bytes, dimensions, fingerprints and public evidence match; allocator damage flags
+remain clear. This measures neither latency, RSS nor WASM linear memory.
+
+The ownership-only candidate grew by 27,364 final bytes; its allocation benefit is not a size
+reduction. The integrated result above includes the independently measured dispatch change.
+The 10,000,000-byte Typst objective remains open.
+
+A separate counterfactual at `8caa62cbdc6b20c762fc6ab762666c6e6b0ac13a` disables extended-theme
+input, catalog and authoring roots while retaining all diagrams, analysis, layouts and official
+Mermaid theme configuration. Closing only direct transport and option roots yields 12,874,021
+bytes. The shared prepared-operation executor still references its authoring branch; closing that
+indirect dispatcher yields 11,984,528 bytes, 1,018,642 below the current full module. The latter
+removes 909,187 code-section bytes and 106,274 data-section bytes. Same-codec gzip and Brotli
+are 4,580,376 and 3,439,082 bytes. Thirty-eight existing family fixtures and configuration/backend
+controls produce 87 exact paired responses, while six extended-theme calls explicitly fail.
+This is capability attribution, not an admitted optimization or the entire theme subsystem's
+size. Cross-family theme application remains linked, the isolated source path differs, and the
+diagnostic artifacts must not be published. It does not qualify exact error or authoring parity.
+
+The subsequent boundary refactor at `1633a9608a946be33f0bf1dacd4c821df062eaa3` is compared with
+`c35b30de39c16ca8c040e95b4c43d5f2ec983a3b` built at the same absolute worktree path, retaining
+the complete capability set, lock, toolchain, profile and codecs above. This isolates the follow-up
+from embedded source-path differences in earlier artifacts. One build and optimizer run per side
+produces:
+
+| Delivered bytes | Same-path control | Boundary refactor | Reduction |
+| --- | ---: | ---: | ---: |
+| Final stripped WASM | 13,003,234 | 13,001,743 | 1,491 (0.0115%) |
+| gzip | 4,922,324 | 4,921,341 | 983 |
+| Brotli | 3,669,526 | 3,669,565 | -39 |
+
+Final SHA-256 values are
+`ef566480093aef5c3436b8844b2f92c05fd379a39c197407237e2e2630068003` and
+`bf397746ae60e3644220690a1717e456dcb7e2c8cc2c98a93aadf5046bdd1f70` respectively. All 263
+paired optimized-WASM responses match exactly, including authoring/error contracts and 38 family
+fixtures with default/light/dark rendering and analysis. The complete wrapper corpus on Typst
+`0.15.0` and `0.15.1` retains 48 byte-identical successful PDF pairs and 26 expected-error pairs.
+These repairs remove redundant admission, dispatch coupling and intermediate text materialization;
+they do not recover the counterfactual theme-removal difference or establish a latency improvement.
+
+Further size work needs source-backed attribution of the remaining complete compiler/runtime and
+dependency closure. The full product still accepts authored themes, so separating fixed execution
+does not eliminate theme compilation. An authoring-export switch alone also leaves compiler roots
+through rendering inputs. Preserve source ownership, actual terminal proof, evidence order and
+resource charges in family changes. Current audits do not establish a removable second compiler
+or renderer; effect payload sharing and the confirmed small outcome reductions are not demonstrated
+bulk size wins. Raw builds, patches and comparisons remain under ignored
+`target/bench/experiments/theme-internal-consolidation/` and `typst-theme-boundaries/`.
+
 ## Retained revalidation contracts
 
 These are condensed historical receipts from `alpha6_current_class_2026-09-21.md` and

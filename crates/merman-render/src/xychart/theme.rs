@@ -106,7 +106,7 @@ impl XyChartTypographyThemePlan {
                 if size_rule.is_some()
                     && let Specified::Value(size) = typography.patch().font_size_px
                 {
-                    font.size = PreparedFontSize::new(f64::from(size), root_size);
+                    font.size = PreparedFontSize::new(f64::from(*size), root_size);
                 }
                 font.weight = weight_rule.and_then(|_| match typography.patch().font_weight {
                     Specified::Value(weight) => Some(weight.to_string()),

@@ -492,7 +492,7 @@ fn typed_radius_token(
 
 fn typed_paint(
     theme: &ResolvedDiagramTheme,
-    resolution: &crate::diagram_theme::ResolvedProperty<CanvasPaint>,
+    resolution: crate::diagram_theme::ResolvedProperty<'_, CanvasPaint>,
     facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
 ) -> Option<C4TypedPaint> {
     let origin = resolution.winner()?;

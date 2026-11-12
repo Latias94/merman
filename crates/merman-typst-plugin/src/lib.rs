@@ -4,8 +4,10 @@
 //! convenient render, analysis, and theme-authoring helpers, but every plugin operation returns the
 //! same closed transport envelope so hosts can handle failures without depending on trap behavior.
 
+#[cfg(any(test, not(feature = "svg")))]
+use merman_bindings_core::BindingOperationRequest;
 use merman_bindings_core::{
-    ArtifactContractSpec, BindingOperationRequest, BindingTransportKey, CapabilityKey, MetadataKey,
+    ArtifactContractSpec, BindingEngineServices, BindingTransportKey, CapabilityKey, MetadataKey,
     OperationKey, RuntimePolicyExposure, TargetKey, ValidatedArtifactContract,
 };
 use serde_json::{json, Value};
@@ -125,7 +127,12 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
         Ok(options_json) => options_json,
         Err(error) => return typst_binding_error_payload(RENDER_OPERATION, &error),
     };
-    match execute_typst_operation("svg", source, &options_json) {
+    match typst_artifact_contract().render_svg_once_data_with_services(
+        source,
+        &options_json,
+        BindingEngineServices::new(),
+        None,
+    ) {
         Ok(svg) => match std::str::from_utf8(&svg) {
             Ok(svg) => typst_success_payload(RENDER_OPERATION, json!({ "svg": svg })),
             Err(error) => typst_internal_error_payload(
@@ -143,7 +150,12 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
         Ok(options_json) => options_json,
         Err(error) => return typst_binding_error_payload(ANALYZE_OPERATION, &error),
     };
-    match execute_typst_operation("analysis-json", source, &options_json) {
+    match typst_artifact_contract().analyze_json_once_data_with_services(
+        source,
+        &options_json,
+        BindingEngineServices::new(),
+        None,
+    ) {
         Ok(analysis_json) => match serde_json::from_slice::<Value>(&analysis_json) {
             Ok(analysis) => {
                 typst_success_payload(ANALYZE_OPERATION, json!({ "analysis": analysis }))
@@ -205,7 +217,9 @@ pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u
             Ok(options_json) => options_json,
             Err(error) => return typst_binding_error_payload(operation.id(), &error),
         };
-        execute_typst_operation(operation.id(), input, &options_json)
+        typst_artifact_contract().execute_once_data(
+            BindingOperationRequest::new(operation.id(), input).with_options_json(&options_json),
+        )
     };
 
     match output {
@@ -275,16 +289,6 @@ fn typst_success_payload(operation: &str, data: Value) -> Vec<u8> {
         Some(data),
     ))
     .expect("Typst result envelope is serializable")
-}
-
-fn execute_typst_operation(
-    operation_id: &str,
-    source: &[u8],
-    options_json: &[u8],
-) -> Result<Vec<u8>, merman_bindings_core::BindingError> {
-    typst_artifact_contract().execute_once_data(
-        BindingOperationRequest::new(operation_id, source).with_options_json(options_json),
-    )
 }
 
 fn typst_binding_error_payload(
@@ -627,7 +631,11 @@ mod tests {
 
     #[test]
     fn typst_execution_is_bound_to_the_closed_operation_set() {
-        let error = execute_typst_operation("semantic-json", b"flowchart TD\nA --> B", b"")
+        let error = typst_artifact_contract()
+            .execute_once_data(BindingOperationRequest::new(
+                "semantic-json",
+                b"flowchart TD\nA --> B",
+            ))
             .expect_err("the Typst transport must not inherit the Rust semantic operation");
 
         assert_eq!(
@@ -639,21 +647,44 @@ mod tests {
 
     #[test]
     fn typst_data_execution_matches_full_errors() {
-        for (operation_id, options_json) in [
-            ("unknown-operation", b"{".as_slice()),
-            ("semantic-json", b"".as_slice()),
-            ("svg", b"{".as_slice()),
-            ("svg", b"".as_slice()),
-            ("analysis-json", b"{".as_slice()),
+        for (operation, export, transport_operation) in [
+            (
+                OperationKey::Svg,
+                render_svg_json as fn(&[u8], &[u8]) -> Vec<u8>,
+                RENDER_OPERATION,
+            ),
+            (OperationKey::AnalysisJson, analyze_json, ANALYZE_OPERATION),
         ] {
-            let full_error = typst_artifact_contract()
-                .execute_once(
-                    BindingOperationRequest::new(operation_id, b"").with_options_json(options_json),
-                )
-                .expect_err("invalid request must fail through the full executor");
-            let data_error = execute_typst_operation(operation_id, b"", options_json)
-                .expect_err("invalid request must fail through the data executor");
-            assert_eq!(data_error, full_error, "{operation_id}");
+            for (source, options) in [
+                (b"".as_slice(), b"{".as_slice()),
+                (b"\xff".as_slice(), b"".as_slice()),
+                (
+                    b"flowchart TD\nA --> B".as_slice(),
+                    br#"{"resources":{"limits":{"max_source_bytes":-1}}}"#.as_slice(),
+                ),
+            ] {
+                let full_error = match typst_options_json(operation, options) {
+                    Ok(options) => typst_artifact_contract()
+                        .execute_once(
+                            BindingOperationRequest::new(operation.id(), source)
+                                .with_options_json(&options),
+                        )
+                        .expect_err("invalid request must fail through the full executor"),
+                    Err(error) => error,
+                };
+                let payload: Value = serde_json::from_slice(&export(source, options)).unwrap();
+                let expected: Value = serde_json::from_slice(&typst_binding_error_payload(
+                    transport_operation,
+                    &full_error,
+                ))
+                .unwrap();
+                assert_eq!(payload, expected, "{}", operation.id());
+                assert_error_envelope(
+                    &payload,
+                    transport_operation,
+                    full_error.status().code_name(),
+                );
+            }
         }
     }
 
@@ -671,7 +702,10 @@ mod tests {
                 BindingOperationRequest::new("svg", source).with_options_json(&options_json),
             )
             .unwrap();
-        let data = execute_typst_operation("svg", source, &options_json).unwrap();
+        let payload: Value =
+            serde_json::from_slice(&render_svg_json(source, &options_json)).unwrap();
+        assert_success_envelope(&payload, RENDER_OPERATION);
+        let data = payload["data"]["svg"].as_str().unwrap().as_bytes();
         assert_eq!(data, full.data());
         assert_eq!(full.metadata().operation_id(), "svg");
         assert_eq!(full.metadata().byte_length(), data.len() as u64);
@@ -686,9 +720,13 @@ mod tests {
                 BindingOperationRequest::new("svg", source).with_options_json(&limited_options),
             )
             .unwrap_err();
-        let data_error = execute_typst_operation("svg", source, &limited_options).unwrap_err();
-        assert_eq!(data_error, full_error);
-        let resource = data_error
+        let payload: Value =
+            serde_json::from_slice(&render_svg_json(source, &limited_options)).unwrap();
+        let expected: Value =
+            serde_json::from_slice(&typst_binding_error_payload(RENDER_OPERATION, &full_error))
+                .unwrap();
+        assert_eq!(payload, expected);
+        let resource = full_error
             .resource_details()
             .expect("source resource limit");
         assert_eq!(resource.limit_id, "max_source_bytes");
@@ -1493,14 +1531,24 @@ mod tests {
     #[cfg(feature = "layout-elk")]
     #[test]
     fn render_svg_json_renders_flowchart_elk_from_default_artifact() {
-        let payload: Value = serde_json::from_slice(&render_svg_json(
-            b"flowchart-elk TD\nA[Hello] --> B[World]",
-            b"",
-        ))
-        .expect("valid JSON payload");
+        for source in [
+            b"flowchart-elk TD\nA[Hello] --> B[World]".as_slice(),
+            b"---\nconfig:\n  layout: elk\n---\nflowchart TD\nA[Hello] --> B[World]".as_slice(),
+        ] {
+            let payload: Value =
+                serde_json::from_slice(&render_svg_json(source, b"")).expect("valid JSON payload");
 
-        assert_success_envelope(&payload, RENDER_OPERATION);
-        assert!(payload["data"]["svg"].as_str().unwrap().contains("Hello"));
+            assert_success_envelope(&payload, RENDER_OPERATION);
+            let svg = payload["data"]["svg"].as_str().unwrap();
+            assert!(svg.contains("Hello"));
+            let options = typst_options_json(OperationKey::Svg, b"").unwrap();
+            let full = typst_artifact_contract()
+                .execute_once(
+                    BindingOperationRequest::new("svg", source).with_options_json(&options),
+                )
+                .unwrap();
+            assert_eq!(svg.as_bytes(), full.data());
+        }
     }
 
     #[cfg(feature = "layout-cytoscape")]
@@ -1586,7 +1634,10 @@ mod tests {
         assert_eq!(raised["ok"], true, "{raised}");
         assert_success_envelope(&raised, RENDER_OPERATION);
         assert_eq!(default["data"]["svg"], raised["data"]["svg"]);
-        let reference = execute_typst_operation("svg", source.as_bytes(), &options)
+        let reference = typst_artifact_contract()
+            .execute_once_data(
+                BindingOperationRequest::new("svg", source.as_bytes()).with_options_json(&options),
+            )
             .expect("same finite policy through the shared engine");
         assert_eq!(
             raised["data"]["svg"].as_str().unwrap().as_bytes(),
@@ -1727,17 +1778,36 @@ mod tests {
     #[cfg(feature = "analysis")]
     #[test]
     fn analyze_json_returns_the_shared_success_envelope() {
-        let payload: Value = serde_json::from_slice(&analyze_json(b"flowchart TD\nA --> B", b""))
-            .expect("valid JSON payload");
+        for (options, valid) in [
+            (b"".as_slice(), true),
+            (
+                br#"{"analysis":{"resources":{"limits":{"max_source_bytes":1}}}}"#.as_slice(),
+                false,
+            ),
+        ] {
+            let payload: Value =
+                serde_json::from_slice(&analyze_json(b"flowchart TD\nA --> B", options))
+                    .expect("valid JSON payload");
 
-        assert_success_envelope(&payload, ANALYZE_OPERATION);
-        let analysis = &payload["data"]["analysis"];
-        assert_eq!(
-            analysis["version"],
-            merman_bindings_core::ANALYSIS_PAYLOAD_VERSION
-        );
-        assert_eq!(analysis["valid"], true);
-        assert!(analysis["diagnostics"].as_array().is_some());
+            assert_success_envelope(&payload, ANALYZE_OPERATION);
+            let analysis = &payload["data"]["analysis"];
+            assert_eq!(
+                analysis["version"],
+                merman_bindings_core::ANALYSIS_PAYLOAD_VERSION
+            );
+            assert_eq!(analysis["valid"], valid);
+            assert!(analysis["diagnostics"].as_array().is_some());
+
+            let options = typst_options_json(OperationKey::AnalysisJson, options).unwrap();
+            let full = typst_artifact_contract()
+                .execute_once(
+                    BindingOperationRequest::new("analysis-json", b"flowchart TD\nA --> B")
+                        .with_options_json(&options),
+                )
+                .unwrap();
+            let expected: Value = serde_json::from_slice(full.data()).unwrap();
+            assert_eq!(analysis, &expected);
+        }
     }
 
     #[cfg(feature = "analysis")]

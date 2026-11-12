@@ -78,7 +78,7 @@ pub(crate) fn resolve_direct_static_stroke(
 
 fn resolve_direct_static_paint(
     theme: &ResolvedDiagramTheme,
-    resolution: &ResolvedProperty<CanvasPaint>,
+    resolution: ResolvedProperty<'_, CanvasPaint>,
     facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
     accepted_targets: &[ThemeTarget],
     selector_domain: DirectStaticSelectorDomain,

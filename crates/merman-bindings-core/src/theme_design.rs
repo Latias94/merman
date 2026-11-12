@@ -84,7 +84,7 @@ pub(crate) fn materialize_theme_json_with(
     if let Some(version) = probe.schema_version {
         check_authoring_request_version(version)?;
         if let Some(recipe) = probe.recipe {
-            crate::theme::check_theme_recipe_json_input(compiler, recipe.get().as_bytes())?;
+            crate::theme::check_theme_recipe_envelope_after_structure(recipe)?;
         }
         let request: ThemeAuthoringRequestV1 = serde_json::from_slice(bytes).map_err(|error| {
             BindingError::invalid_options_json(format!("invalid theme authoring request: {error}"))
@@ -566,6 +566,37 @@ mod tests {
             assert_eq!(
                 error.theme_authoring_details().unwrap().diagnostic().path(),
                 "/design/appearances/dark/styles/node/fill/color"
+            );
+        }
+    }
+
+    #[test]
+    fn versioned_authoring_keeps_outer_structure_and_byte_error_precedence() {
+        let recipe = r#"{"schema_version":2,"schema_\u0076ersion":1,"kind":"complete_spec","complete_spec":{"future_field":true}}"#;
+        let input = format!(r#"{{"schema_version":2,"action":"inspect","recipe":{recipe}}}"#);
+        for (limit, status) in [
+            (input.len(), BindingStatus::OptionsJsonError),
+            (input.len() - 1, BindingStatus::ResourceLimitExceeded),
+        ] {
+            assert!(
+                recipe.len() <= limit,
+                "the nested recipe fits the byte limit"
+            );
+            let compiler = DiagramThemeCompiler::new().with_resource_policy(
+                ThemeResourcePolicy::constrained()
+                    .with_limit(ThemeResourceLimitId::MaxThemeEncodedBytes, limit)
+                    .unwrap(),
+            );
+            let expected = materialization_error(
+                compiler.resource_policy(),
+                compiler
+                    .check_design_json_input(input.as_bytes())
+                    .unwrap_err(),
+            );
+            assert_eq!(expected.status(), status);
+            assert_eq!(
+                materialize_theme_json_with(&compiler, input.as_bytes()).unwrap_err(),
+                expected
             );
         }
     }

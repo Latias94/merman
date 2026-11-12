@@ -1028,7 +1028,7 @@ fn resolve_label_theme_style(
                 resolved.font_stack = resolve_typography(
                     theme,
                     rule_index,
-                    &style.typography_resolution().patch().font_stack,
+                    style.typography_resolution().patch().font_stack,
                     ThemeTypographyProperty::FontStack,
                 );
             }
@@ -1036,7 +1036,7 @@ fn resolve_label_theme_style(
                 resolved.font_size = resolve_typography(
                     theme,
                     rule_index,
-                    &style.typography_resolution().patch().font_size_px,
+                    style.typography_resolution().patch().font_size_px,
                     ThemeTypographyProperty::FontSize,
                 );
             }
@@ -1044,7 +1044,7 @@ fn resolve_label_theme_style(
                 resolved.font_weight = resolve_typography(
                     theme,
                     rule_index,
-                    &style.typography_resolution().patch().font_weight,
+                    style.typography_resolution().patch().font_weight,
                     ThemeTypographyProperty::FontWeight,
                 );
             }
@@ -1124,7 +1124,7 @@ fn resolve_label_theme_style(
 fn resolve_padding(
     theme: &ResolvedDiagramTheme,
     rule_index: usize,
-    property: &ResolvedProperty<crate::diagram_theme::InsetsPx>,
+    property: ResolvedProperty<'_, crate::diagram_theme::InsetsPx>,
 ) -> Option<FlowchartPaddingOutcome> {
     let facet = match property.specified() {
         Specified::Unspecified => return None,
@@ -1151,7 +1151,7 @@ fn resolve_padding(
 fn resolve_paint(
     theme: &ResolvedDiagramTheme,
     rule_index: usize,
-    property: &ResolvedProperty<CanvasPaint>,
+    property: ResolvedProperty<'_, CanvasPaint>,
     facet: fn(&Specified<CanvasPaint>) -> Option<FamilyThemeRuleFacet>,
 ) -> Option<FlowchartPaintOutcome> {
     let facet = facet(property.specified())?;
@@ -1186,7 +1186,7 @@ fn resolve_paint(
 fn resolve_stroke_width(
     theme: &ResolvedDiagramTheme,
     rule_index: usize,
-    property: &ResolvedProperty<f32>,
+    property: ResolvedProperty<'_, f32>,
 ) -> Option<FlowchartScalarOutcome> {
     let facet = match property.specified() {
         Specified::Unspecified => return None,
@@ -1213,7 +1213,7 @@ fn resolve_stroke_width(
 fn resolve_stroke_dasharray(
     theme: &ResolvedDiagramTheme,
     rule_index: usize,
-    property: &ResolvedProperty<Vec<f32>>,
+    property: ResolvedProperty<'_, Vec<f32>>,
 ) -> Option<FlowchartDasharrayOutcome> {
     let facet = match property.specified() {
         Specified::Unspecified => return None,
@@ -1246,7 +1246,7 @@ fn resolve_stroke_dasharray(
 fn resolve_radius(
     theme: &ResolvedDiagramTheme,
     rule_index: usize,
-    property: &ResolvedProperty<f32>,
+    property: ResolvedProperty<'_, f32>,
 ) -> Option<FlowchartScalarOutcome> {
     let facet = match property.specified() {
         Specified::Unspecified => return None,
@@ -1306,7 +1306,7 @@ fn resolve_typography<T>(
 fn resolve_effect_for_target(
     theme: &ResolvedDiagramTheme,
     target: ThemeTarget,
-    property: &ResolvedProperty<String>,
+    property: ResolvedProperty<'_, String>,
 ) -> Option<FlowchartEffectOutcome> {
     let (key, graph, disposition) = match theme.resolve_effect(target, property)? {
         ResolvedThemeEffect::ClearedByRule => {

@@ -29,7 +29,7 @@ pub(super) struct SequencePreparedEffect {
 pub(super) fn prepare_sequence_effect(
     theme: &ResolvedDiagramTheme,
     target: ThemeTarget,
-    resolution: &crate::diagram_theme::ResolvedProperty<String>,
+    resolution: crate::diagram_theme::ResolvedProperty<'_, String>,
 ) -> SequencePreparedEffect {
     use crate::diagram_theme::{ResolvedThemeEffect, SvgShadowEffect};
 

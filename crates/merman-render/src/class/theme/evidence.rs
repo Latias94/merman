@@ -77,45 +77,45 @@ impl ClassThemeEvidenceRecorder {
         let note_count = receipt
             .map(ClassThemeOutcomeSummary::note_count)
             .unwrap_or(self.expected_note_paths);
-        let mut note_winners = BTreeSet::new();
+        let mut note_ordinal_winners = BTreeSet::new();
         let has_note_ordinals = theme
             .family_rules()
             .any(|(_, rule)| rule.target() == ThemeTarget::Note && rule.ordinal().is_some());
-        for ordinal in 1..=if has_note_ordinals {
-            note_count
-        } else {
-            usize::from(note_count > 0)
-        } {
-            let style = theme.style_with_work_meter(
-                ThemeTarget::Note,
-                ThemeVariant::Default,
-                has_note_ordinals.then_some(ordinal),
-                work_meter,
-            )?;
-            note_winners.extend(
-                style
-                    .winner_rule_properties()
-                    .filter_map(|(property, origin)| {
+        if has_note_ordinals {
+            for ordinal in 1..=note_count {
+                let style = theme.style_with_work_meter(
+                    ThemeTarget::Note,
+                    ThemeVariant::Default,
+                    Some(ordinal),
+                    work_meter,
+                )?;
+                note_ordinal_winners.extend(style.winner_rule_properties().filter_map(
+                    |(property, origin)| {
                         (!plan.note_plan.property_overridden(property))
                             .then_some((origin.rule_index(), property))
-                    }),
-            );
+                    },
+                ));
+            }
         }
-        if let Some(count) = background_count.filter(|count| *count > 0) {
-            let has_ordinals = theme.family_rules().any(|(_, rule)| {
+        let has_background_ordinals = background_count.is_some_and(|count| count > 0)
+            && theme.family_rules().any(|(_, rule)| {
                 rule.target() == ThemeTarget::EdgeLabelBackground && rule.ordinal().is_some()
             });
-            for ordinal in 1..=if has_ordinals { count } else { 1 } {
+        let use_prepared_background =
+            !has_background_ordinals && !plan.edge_label_background.config_owned_fill;
+        if !use_prepared_background && let Some(count) = background_count.filter(|count| *count > 0)
+        {
+            for ordinal in 1..=if has_background_ordinals { count } else { 1 } {
                 let style = theme.style_with_work_meter(
                     ThemeTarget::EdgeLabelBackground,
                     ThemeVariant::Default,
-                    has_ordinals.then_some(ordinal),
+                    has_background_ordinals.then_some(ordinal),
                     work_meter,
                 )?;
                 background_winners.extend(style.winner_rule_properties().filter_map(
                     |(property, origin)| {
                         (!(property == ResolvedStyleProperty::Fill
-                            && plan.mermaid_owns_edge_label_background))
+                            && plan.edge_label_background.config_owned_fill))
                             .then_some((origin.rule_index(), property))
                     },
                 ));
@@ -143,14 +143,27 @@ impl ClassThemeEvidenceRecorder {
                     let observation = rules.entry((rule_index, target)).or_default();
                     let property = resolved_style_property_for_facet(facet);
                     let route_applies = match target {
-                        ThemeTarget::Note => note_winners.contains(&(rule_index, property)),
+                        ThemeTarget::Note => {
+                            note_count != 0
+                                && if has_note_ordinals {
+                                    note_ordinal_winners.contains(&(rule_index, property))
+                                } else {
+                                    plan.note_plan.static_winner_rule(property) == Some(rule_index)
+                                }
+                        }
                         ThemeTarget::EdgeLabelBackground => {
                             if background_count.is_none() {
                                 observation.applicable = true;
                                 observation.incomplete = true;
                                 continue;
                             }
-                            background_winners.contains(&(rule_index, property))
+                            background_count.is_some_and(|count| count > 0)
+                                && if use_prepared_background {
+                                    plan.edge_label_background.static_winner_rule(property)
+                                        == Some(rule_index)
+                                } else {
+                                    background_winners.contains(&(rule_index, property))
+                                }
                         }
                         ThemeTarget::Edge => {
                             let has_static_note_paint = self.expected_note_paths != 0
@@ -413,7 +426,7 @@ impl ClassThemeEvidenceRecorder {
                     ThemeTarget::EdgeLabelBackground,
                     TerminalVariantDomain::uniform(count, ThemeVariant::Default),
                 )
-                .with_fill_fully_overridden(plan.mermaid_owns_edge_label_background),
+                .with_fill_fully_overridden(plan.edge_label_background.config_owned_fill),
             );
         }
         unsupported_domains.push(UnsupportedTerminalDomain::fallbacks_only(
