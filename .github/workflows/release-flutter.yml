@@ -360,12 +360,27 @@ jobs:
         run: dart pub publish --force --from-archive "$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz"
 
       - name: Reconcile exact public package after publication
+        timeout-minutes: 11
         working-directory: trusted
         env:
           VERSION: ${{ needs.validate-inputs.outputs.version }}
         run: |
           set -euo pipefail
-          state="$(python3 -m scripts.reconcile_pub_package \
-            --archive "$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz" \
-            --package merman --version "$VERSION")"
-          test "$state" = exact
+          # pub.dev may take up to ten minutes to list an accepted upload.
+          deadline=$((SECONDS + 600))
+          while true; do
+            state="$(python3 -m scripts.reconcile_pub_package \
+              --archive "$GITHUB_WORKSPACE/target/flutter-package/merman-flutter-package.tar.gz" \
+              --package merman --version "$VERSION")"
+            case "$state" in
+              exact) break ;;
+              missing) ;;
+              *) echo "::error::Unexpected pub.dev reconciliation state: $state" >&2; exit 1 ;;
+            esac
+            if (( SECONDS >= deadline )); then
+              echo '::error::Timed out waiting for the exact public pub.dev package.' >&2
+              exit 1
+            fi
+            echo 'Waiting for pub.dev package propagation...'
+            sleep 30
+          done

@@ -385,6 +385,80 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertNotIn("flutter pub get", publish)
         self.assertFalse((WORKFLOW_ROOT / "release-crates-bootstrap.yml").exists())
 
+    @unittest.skipUnless(BASH, "workflow execution requires Bash")
+    def test_flutter_post_publication_only_waits_for_missing_without_resending(self) -> None:
+        publish = workflow_job(read(WORKFLOW_ROOT / "release-flutter.yml"), "publish")
+        upload = publish.split("      - name: Publish to pub.dev\n", 1)[1].split("\n      - ", 1)[0]
+        upload_command = upload.split("        run: ", 1)[1].strip()
+        observe = publish.split("      - name: Reconcile exact public package after publication\n", 1)[1]
+        self.assertIn("timeout-minutes: 11", observe)
+        self.assertIn("working-directory: trusted", observe)
+        command = textwrap.dedent(observe.split("        run: |\n", 1)[1])
+        stubs = """
+        dart() { printf 'publish %s\\n' "$*" >> "$TEST_LOG"; }
+        python3() {
+          printf 'reconcile %s\\n' "$*" >> "$TEST_LOG"
+          if [[ "$TEST_INITIAL_MISSING" == true && ! -e "$TEST_SEEN" ]]; then
+            touch "$TEST_SEEN"
+            echo missing
+            return 0
+          fi
+          printf '%s\\n' "$TEST_STATE"
+          if [[ "$TEST_STATUS" != 0 ]]; then
+            echo 'pub.dev reconciliation failed' >&2
+          fi
+          return "$TEST_STATUS"
+        }
+        sleep() {
+          printf 'sleep %s\\n' "$*" >> "$TEST_LOG"
+          SECONDS=$((SECONDS + $1))
+        }
+        """
+        cases = (
+            ("exact", False, "exact", 0, 0, 1, 0),
+            ("missing-then-exact", True, "exact", 0, 0, 2, 1),
+            ("timeout", False, "missing", 0, 1, 21, 20),
+            ("unexpected-state", True, "unexpected", 0, 1, 2, 1),
+            ("reconcile-error", True, "exact", 7, 7, 2, 1),
+            ("content-mismatch", True, "", 1, 1, 2, 1),
+        )
+        for scenario, initial_missing, state, status, expected_status, polls, waits in cases:
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as temporary:
+                root = Path(temporary)
+                trusted = root / "trusted"
+                trusted.mkdir()
+                log = root / "calls.log"
+                environment = dict(
+                    os.environ, GITHUB_WORKSPACE=root.as_posix(), VERSION="0.10.0",
+                    TEST_LOG=log.as_posix(), TEST_SEEN=(root / "seen").as_posix(),
+                    TEST_INITIAL_MISSING=str(initial_missing).lower(),
+                    TEST_STATE=state, TEST_STATUS=str(status),
+                )
+                result = subprocess.run(
+                    [BASH, "-c", textwrap.dedent(stubs) + upload_command + "\n" + command],
+                    cwd=trusted, env=environment, capture_output=True, text=True, timeout=15,
+                )
+                self.assertEqual(result.returncode, expected_status, result.stderr)
+                calls = log.read_text().splitlines()
+                archive = f"{root.as_posix()}/target/flutter-package/merman-flutter-package.tar.gz"
+                self.assertEqual(
+                    [call for call in calls if call.startswith("publish ")],
+                    [f"publish pub publish --force --from-archive {archive}"],
+                )
+                self.assertEqual(
+                    [call for call in calls if call.startswith("reconcile ")],
+                    [f"reconcile -m scripts.reconcile_pub_package --archive {archive} "
+                     "--package merman --version 0.10.0"] * polls,
+                )
+                self.assertEqual([call for call in calls if call.startswith("sleep ")],
+                                 ["sleep 30"] * waits)
+                if scenario == "timeout":
+                    self.assertIn("Timed out waiting", result.stderr)
+                elif scenario == "unexpected-state":
+                    self.assertIn("Unexpected pub.dev reconciliation state", result.stderr)
+                elif status:
+                    self.assertIn("pub.dev reconciliation failed", result.stderr)
+
     def test_apple_floor_uses_real_swift_59_and_retains_apple_consumers(self) -> None:
         workflow = read(CI_WORKFLOW)
         floor = workflow_job(workflow, "apple-swift-5-9-smoke")
