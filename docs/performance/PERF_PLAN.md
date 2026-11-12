@@ -108,6 +108,51 @@ smoke and installed-consumer checks alongside size reporting. The [semantic base
 and [binding refresh](binding_wasm_budget_2026-11-01.md) retain historical size decisions; restoring math to
 Web full/render changes capabilities and is not an equal-capability size optimization.
 
+## Typst theme runtime — 2026-11-12
+
+The unpublished Typst `0.6.0` candidate retains all diagram families, SVG, analysis, Cytoscape
+and ELK. The theme runtime now keeps property winners into its existing immutable spec rather
+than copying selected paint, dash and effect payloads. Document compilation and inspection
+move temporary wire values into admission; only materialization retains the selected lossless
+wire. Every appearance still passes compilation and resource validation. Typst's fixed render,
+analysis and catalog entries share admission with the general binding executor and call their
+execution leaves directly.
+
+The matched Windows x64 build uses Rust `1.99.1`, the locked `wasm-size` profile with defaults
+disabled and `all-diagrams,analysis,layout-cytoscape,layout-elk,svg`, Binaryen `133 -Oz` and
+`wasm-tools 1.263.0 strip --all`. The control is release source
+`e0e75bcab2fa8e39dd7a09465b7f2e035eda82ef`; the candidate starts at the code-equivalent
+`f89b2f89180d86867b94b903caba19e37ea6d436` plus the runtime and dispatch changes introducing
+this checkpoint. Compression uses Python zlib `1.3.1`, gzip level 9 with timestamp zero, and
+Brotli `1.2.0`, quality 11, window 22.
+
+| Delivered bytes | Control | Candidate | Reduction |
+| --- | ---: | ---: | ---: |
+| Final stripped WASM | 13,251,634 | 13,003,170 | 248,464 (1.875%) |
+| gzip | 4,990,891 | 4,922,150 | 68,741 |
+| Brotli | 3,721,972 | 3,669,372 | 52,600 |
+
+Final module SHA-256 values are
+`e99a4ebb17e6db5056afbeeb3b4f232d7433e1b24efa8825e894f1c5945250f2` and
+`454a1e87d4d44fb08b51bb583043233737943cc02f50ca4464dcbf2dce99dfc9` respectively.
+All 111 paired WASM calls return identical bytes. Actual wrapper examples and tests pass on
+Typst `0.15.0` and `0.15.1`: 48 successful PDF pairs are byte-identical and all 26 expected-failure
+pairs retain their required diagnostics. These checks do not constitute package publication.
+
+A separate native requested-allocation probe compiles a fresh Editor Light, Cyberpunk or authored
+theme, prepares Class then Flowchart, renders each prepared source three more times, and drops
+the owners. Theme compilation allocates 1,287,333 / 1,962,861 / 178,816 bytes, down from
+1,408,075 / 2,132,928 / 190,603. First-family-use retained bytes fall by 10,304–41,902 across the
+six cases. SVG bytes, dimensions, fingerprints and public evidence match; allocator damage flags
+remain clear. This measures neither latency, RSS nor WASM linear memory.
+
+The ownership-only candidate grew by 27,364 final bytes; its allocation benefit is not a size
+reduction. The integrated result above includes the independently measured dispatch change.
+The 10,000,000-byte Typst objective remains open. Further work should examine repeated effect
+graph ownership and family evidence preparation while preserving the editable theme language,
+all operations and resource accounting. Raw builds, patches and comparisons remain under ignored
+`target/bench/experiments/theme-internal-consolidation/`.
+
 ## Retained revalidation contracts
 
 These are condensed historical receipts from `alpha6_current_class_2026-09-21.md` and
