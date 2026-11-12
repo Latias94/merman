@@ -30,6 +30,8 @@ jobs:
     if: ${{ inputs.mode == 'nixpkgs-review' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      NIXPKGS_PR_HEAD: ac83b821d77099b69bc14924ef22b30dbb3e1276
     steps:
       - uses: actions/checkout@v7.0.1
         with:
