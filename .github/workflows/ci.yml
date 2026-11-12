@@ -364,8 +364,8 @@ jobs:
                 rustVersion = pkgs.rustc.version;
                 awsLcVersion = pkgs.aws-lc.version;
                 systemAwsLc = package.env.AWS_LC_SYS_USE_SYSTEM;
-                awsLcBuildInput = builtins.elem "aws-lc" (map pkgs.lib.getName package.buildInputs);
-                pkgConfigBuildInput = builtins.elem "pkg-config" (map pkgs.lib.getName package.nativeBuildInputs);
+                awsLcBuildInput = builtins.elem (pkgs.lib.getName pkgs.aws-lc) (map pkgs.lib.getName package.buildInputs);
+                pkgConfigBuildInput = builtins.elem (pkgs.lib.getName pkgs.pkg-config) (map pkgs.lib.getName package.nativeBuildInputs);
                 drvPath = package.drvPath;
               }
             " > "candidate/eval-$system.json"
