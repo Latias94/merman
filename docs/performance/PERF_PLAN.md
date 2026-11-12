@@ -114,9 +114,12 @@ The unpublished Typst `0.6.0` candidate retains all diagram families, SVG, analy
 and ELK. The theme runtime now keeps property winners into its existing immutable spec rather
 than copying selected paint, dash and effect payloads. Document compilation and inspection
 move temporary wire values into admission; only materialization retains the selected lossless
-wire. Every appearance still passes compilation and resource validation. Typst's fixed render,
-analysis and catalog entries share admission with the general binding executor and call their
-execution leaves directly.
+wire. Every appearance still passes compilation and resource validation. An exact nested recipe
+reuses its containing document's structural admission while retaining recipe-version and complete-spec
+checks. Compound text queries combine rule winners before one final style and typography
+materialization, preserving separate ordered work charges and cancellation checkpoints. Typst's
+fixed render and analysis entries share engine admission without constructing an authoring variant;
+the catalog retains its checked serializer.
 
 The matched Windows x64 build uses Rust `1.99.1`, the locked `wasm-size` profile with defaults
 disabled and `all-diagrams,analysis,layout-cytoscape,layout-elk,svg`, Binaryen `133 -Oz` and
@@ -162,14 +165,35 @@ This is capability attribution, not an admitted optimization or the entire theme
 size. Cross-family theme application remains linked, the isolated source path differs, and the
 diagnostic artifacts must not be published. It does not qualify exact error or authoring parity.
 
-Prioritize the boundary between fixed execution, the generic operation interpreter, theme
-language/compilation and immutable runtime application. An authoring-export switch alone does
-not exclude compilation while another input or shared interpreter still references it. Further
-family work must preserve source ownership, actual terminal proof, evidence order and resource
-charges. Current source audits do not establish a removable second compiler or renderer; effect
-payload sharing and the confirmed small outcome reductions are not demonstrated bulk size wins.
-Raw builds, patches and comparisons remain under ignored
-`target/bench/experiments/theme-internal-consolidation/`.
+The subsequent boundary refactor at `1633a9608a946be33f0bf1dacd4c821df062eaa3` is compared with
+`c35b30de39c16ca8c040e95b4c43d5f2ec983a3b` built at the same absolute worktree path, retaining
+the complete capability set, lock, toolchain, profile and codecs above. This isolates the follow-up
+from embedded source-path differences in earlier artifacts. One build and optimizer run per side
+produces:
+
+| Delivered bytes | Same-path control | Boundary refactor | Reduction |
+| --- | ---: | ---: | ---: |
+| Final stripped WASM | 13,003,234 | 13,001,743 | 1,491 (0.0115%) |
+| gzip | 4,922,324 | 4,921,341 | 983 |
+| Brotli | 3,669,526 | 3,669,565 | -39 |
+
+Final SHA-256 values are
+`ef566480093aef5c3436b8844b2f92c05fd379a39c197407237e2e2630068003` and
+`bf397746ae60e3644220690a1717e456dcb7e2c8cc2c98a93aadf5046bdd1f70` respectively. All 263
+paired optimized-WASM responses match exactly, including authoring/error contracts and 38 family
+fixtures with default/light/dark rendering and analysis. The complete wrapper corpus on Typst
+`0.15.0` and `0.15.1` retains 48 byte-identical successful PDF pairs and 26 expected-error pairs.
+These repairs remove redundant admission, dispatch coupling and intermediate text materialization;
+they do not recover the counterfactual theme-removal difference or establish a latency improvement.
+
+Further size work needs source-backed attribution of the remaining complete compiler/runtime and
+dependency closure. The full product still accepts authored themes, so separating fixed execution
+does not eliminate theme compilation. An authoring-export switch alone also leaves compiler roots
+through rendering inputs. Preserve source ownership, actual terminal proof, evidence order and
+resource charges in family changes. Current audits do not establish a removable second compiler
+or renderer; effect payload sharing and the confirmed small outcome reductions are not demonstrated
+bulk size wins. Raw builds, patches and comparisons remain under ignored
+`target/bench/experiments/theme-internal-consolidation/` and `typst-theme-boundaries/`.
 
 ## Retained revalidation contracts
 
