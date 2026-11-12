@@ -133,14 +133,18 @@ class WorkflowSimulatorLifecycleTests(unittest.TestCase):
         failure = subprocess.TimeoutExpired(["xcrun", "simctl", "shutdown", "workflow-simulator"], 60)
         with tempfile.TemporaryDirectory() as directory, chdir(directory):
             Path("target").mkdir()
-            with (mock.patch.dict(os.environ, SIMULATOR_UDID="workflow-simulator"),
+            runner_temp = Path(directory) / "runner temp"
+            runner_temp.mkdir()
+            with (mock.patch.dict(os.environ, SIMULATOR_UDID="workflow-simulator",
+                                  RUNNER_TEMP=str(runner_temp)),
                   mock.patch.object(subprocess, "run", side_effect=failure),
                   redirect_stdout(io.StringIO()) as diagnostic):
                 exec(compile(script, "release-apple.yml:simulator-cleanup", "exec"), {})
-            report = json.loads(Path("target/apple-simulator-cleanup.json").read_text())
+            report = json.loads((runner_temp / "apple-simulator-cleanup.json").read_text())
             self.assertEqual(report["status"], "cleanup-warning")
             self.assertEqual(report["error"], str(failure))
             self.assertIn("::warning::", diagnostic.getvalue())
+            self.assertFalse(Path("target/apple-simulator-cleanup.json").exists())
 
 
 class InstalledPackageFlowTests(unittest.TestCase):
@@ -208,11 +212,11 @@ class InstalledPackageFlowTests(unittest.TestCase):
             if self.remote_url:
                 self.assertIn(f'.package(url: "{self.remote_url}"', manifest)
                 self.assertIn(f'revision: "{self.remote_revision}"', manifest)
-                self.assertNotIn(str(expected_package), manifest)
+                self.assertNotIn(json.dumps(str(expected_package), ensure_ascii=False), manifest)
                 self.assertNotIn(".package(name: \"Merman\", path:", manifest)
                 self.assertIn("--cache-path", command)
             else:
-                self.assertIn(str(expected_package), manifest)
+                self.assertIn(json.dumps(str(expected_package), ensure_ascii=False), manifest)
             binary_dir = project.parent / "bin"
             binary_dir.mkdir(exist_ok=True)
             (binary_dir / "InstalledConsumer").write_text("consumer binary")

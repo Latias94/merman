@@ -28,13 +28,16 @@ On 2026-11-11, the maintainer authorized all delivery surfaces and direct prepar
 | Node npm | Selected: the complete nine-member `0.10.0` group under `latest` | Existing names and alpha.2 group, including both Linux ARM64 members |
 | Python / PyPI | Selected: all five `0.10.0` wheels and matching GitHub downloads | Five alpha.2 wheels; preserve the native target and glibc floor checks |
 | Flutter / pub.dev | Selected: `0.10.0` facade and all eleven native assets | Existing `flutter-v{{version}}` publisher; push the authentication tag only after the primary Release exists |
+| CLI container | Selected: GHCR `0.10.0` images for AMD64/ARM64 and their manifest index | The existing container owner verifies the stable Release archives before building; public availability of the new images remains unverified |
+| GitHub setup Action | Selected: source action from the immutable workspace tag | No separate registry upload |
 | Apple | Selected: complete local SwiftPM, XCFramework and all seven owner assets | Existing alpha.2 local package; separately track public Git-URL package setup |
 | Android | Selected: AAR and complete local Maven repository at `io.merman:merman-android:0.10.0` | Existing alpha.2 assets; Central namespace/signing/submission remain separate prerequisites |
 | Tree-sitter Mermaid | Selected: `0.3.4` Cargo/npm and standalone GitHub source/WASM release | Published `0.3.3`; registry visibility must precede the coupled LSP upload |
 | Roughr | Reuse published `roughr-merman 0.12.6`; no implementation delta or new upload | Exact version is already non-yanked in the official registry |
-| Typst Universe | Selected: independent wrapper `0.6.0` with Merman `0.10.0`, ABI `3`, minimum Typst `0.15.0` | Registry directory `0.5.0` exists and upstream PR #6098 is merged; qualify the final package on minimum and current compilers before submitting |
+| Typst Universe | Deferred by the maintainer on 2026-11-12 pending WASM size optimization below 10 MB | Published wrapper `0.5.0` remains available with Merman `0.9.0`; `0.6.0` has not been published |
 | VS Code | Selected: source-matched platform VSIX packaging; Marketplace delivery requested | Marketplace credentials and a publishing owner must exist before claiming installation availability |
 | Pages and external package managers | Selected: reviewed Pages deployment and updates through each existing upstream owner | Verify current Homebrew/Scoop/WinGet/Conda-forge/Nixpkgs versions, existing PRs and contribution rules before writing |
+| Arch / AUR | Requested; public package/publisher setup has not been established | The public AUR lookup returned no `merman-cli` package; the source recipe remains `0.9.0` |
 | Public remote SwiftPM and Maven Central | Requested; pending verification of delivery repository, namespace and protected credentials | Local SwiftPM/Maven assets do not establish these independent public repository channels; availability has not been verified for `0.10.0` |
 
 The 2026-11-11 registry prerequisite observation found all 26 target Cargo versions absent and all 26 preceding alpha.2 versions non-yanked with matching API/sparse-index checksums. All 14 Web/Node npm names already exist with alpha.2 integrity and attestation metadata; no first-name bootstrap is needed. The `npm` environment exists without a reviewer hold; the actual trusted exchange remains part of publication.
@@ -47,12 +50,19 @@ External observations on 2026-11-11: Homebrew, Scoop, and Conda-forge serve `0.9
 
 The first frozen candidate was `99d1d589f9682ef1c159d5e00865f20ae1a6a275`, tree `837dff0a4d9c8bb1b1ad9c511be519f1e4839d04`. Its [release preflight 43042051855](https://github.com/Latias94/merman/actions/runs/43042051855) and [main CI 43042052129](https://github.com/Latias94/merman/actions/runs/43042052129) encountered repeated Ubuntu archive DNS failures before the affected checks could run. The CI transport repair preserves Ubuntu signing keys, package recipes and all test gates, and selects a separately hosted mirror. The workspace release must qualify the resulting new source; the earlier run does not qualify it. No `v0.10.0` or `flutter-v0.10.0` tag has been created at this stage.
 
+The subsequent [preflight 43056702928](https://github.com/Latias94/merman/actions/runs/43056702928)
+passed 50 jobs at `91531bd081b1347a0bce3c297957a9389481c99d`. Its Apple package step
+correctly refused an output directory restored from the Cargo target cache. Apple preflight and
+publication now keep packages, consumer qualification and cleanup receipts under `RUNNER_TEMP`.
+The workflow repair also updates the cleanup behavior test and covers both publication owners.
+A new successful source-matched full preflight is still required before the workspace tag.
+
 | Independent surface | Observed result | Owner / source |
 | --- | --- | --- |
 | Grammar `0.3.4` | Available on Cargo/npm and the standalone GitHub Release. Cargo API, sparse index and public archive agree; Trusted Publishing identifies the exact source and run. npm `latest`, integrity, original tarball, signatures and attestations agree. All six GitHub assets match the producer bytes and their source/workflow-bound attestations. | [43042149229](https://github.com/Latias94/merman/actions/runs/43042149229), attempt 1; immutable `tree-sitter-mermaid-v0.3.4` at `99d1d589f9682ef1c159d5e00865f20ae1a6a275`; published 2026-11-11 |
-| Typst `0.6.0` | Submitted as [PR #6378](https://github.com/typst/packages/pull/6378). Production budgets, interpreter and dependency closure passed; Typst 0.15.0 and 0.15.1 each passed 24 compiled fixtures and 13 expected diagnostics. The final submission passed upstream Lint/Test; preview and acceptance remain pending. A README permalink correction retained all other 58 files and the frozen WASM. | Runtime source `99d1d589f9682ef1c159d5e00865f20ae1a6a275`; submission `1db91eac9aff8f36cf90b72aae1da344834418cd` |
-| Pages | Available from the successful exact-source deployment. A public browser showed runtime `0.10.0`, build `99d1d589f` and a rendered diagram; the loaded script matches the producing artifact. | [43042051616](https://github.com/Latias94/merman/actions/runs/43042051616); deployment `7714417628`; source `99d1d589f9682ef1c159d5e00865f20ae1a6a275` |
-| Nixpkgs preparation | Real Nix prefetch, three-platform evaluation and both Linux native builds/installed output checks passed. Darwin qualification and the required personal review remain pending; the existing external PR is unchanged. This proof predates the CI transport repair and does not qualify a different source archive. | [43047634520](https://github.com/Latias94/merman/actions/runs/43047634520); candidate source `99d1d589f9682ef1c159d5e00865f20ae1a6a275` |
+| Typst `0.6.0` | Deferred. [PR #6378](https://github.com/typst/packages/pull/6378) was closed unmerged at the maintainer's request on 2026-11-12. Its optimized WASM is 13,251,634 bytes, versus 8,822,440 bytes in published `0.5.0`. The retained candidate passed the interpreter and full minimum/current Typst checks, but requires size optimization before a new submission. Public `0.5.0` still resolves; `0.6.0` returns HTTP 404. | Frozen runtime source `99d1d589f9682ef1c159d5e00865f20ae1a6a275`; closed submission `1db91eac9aff8f36cf90b72aae1da344834418cd` |
+| Pages | Available from the successful exact-source deployment. A public browser showed runtime `0.10.0`, build `91531bd08` and a rendered diagram. | [43056701858](https://github.com/Latias94/merman/actions/runs/43056701858); source `91531bd081b1347a0bce3c297957a9389481c99d` |
+| Nixpkgs preparation | Real Nix prefetch, three-platform evaluation and native builds/installed SVG/PNG/JPEG/PDF checks passed on both Linux systems and ARM64 Darwin. The required personal review remains pending; the existing external PR is unchanged. This proof does not qualify a different source archive. | [43056896455](https://github.com/Latias94/merman/actions/runs/43056896455); candidate source `91531bd081b1347a0bce3c297957a9389481c99d` |
 
 ## 0.10.0-alpha.2 publication
 

@@ -150,10 +150,16 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
         self.assertIn("scripts/apple_package.py", build)
         self.assertIn("scripts/apple_qualify.py", build)
         self.assertIn("--simulator --compare-original", build)
-        self.assertIn('--output-dir "$RUNNER_TEMP/apple-package"', build)
-        self.assertIn('--work-dir "$RUNNER_TEMP/apple-qualification"', build)
-        self.assertNotIn("target/apple-package", build)
-        self.assertNotIn("target/apple-qualification", build)
+        preflight = workflow_job(read(WORKFLOW_ROOT / "release-preflight.yml"), "apple-xcframework")
+        for owner, job in (("release", build), ("preflight", preflight)):
+            with self.subTest(owner=owner):
+                self.assertIn('--output-dir "$RUNNER_TEMP/apple-package"', job)
+                self.assertIn('--work-dir "$RUNNER_TEMP/apple-qualification"', job)
+                self.assertIn('--work-dir "$RUNNER_TEMP/apple-https-qualification"', job)
+                self.assertIn("${{ runner.temp }}/apple-https-qualification/qualification.json", job)
+                self.assertNotIn("target/apple-package", job)
+                self.assertNotIn("target/apple-qualification", job)
+                self.assertNotIn("target/apple-https-qualification", job)
 
     def test_native_candidates_keep_write_and_oidc_access_in_explicit_publish_jobs(self) -> None:
         owners = {

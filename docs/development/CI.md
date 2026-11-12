@@ -59,6 +59,10 @@ The platform owner separates compiler compatibility from Apple SDK integration:
   of the minimum supported OS. The same owner, release preflight and Apple candidates compare
   matched original/cleaned XCFramework compression and equivalent macOS consumer output.
 
+Apple package archives and qualification work directories live under `RUNNER_TEMP`, outside
+restored Cargo target caches. Packaging retains its refusal to overwrite existing outputs;
+workflow artifact paths and simulator-cleanup receipts use the same temporary root.
+
 GitHub's [macOS 14 retirement](https://github.com/actions/runner-images/issues/13518) removed
 the hosted Xcode 15.2 lane. The Linux compiler check does **not** validate Apple Foundation,
 the published Darwin module map, or Xcode 15.2's iOS 17.2 SDK with Swift 5.9. Before claiming
