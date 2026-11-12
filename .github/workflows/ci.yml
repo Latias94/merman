@@ -20,7 +20,8 @@ concurrency:
 
 env:
   MERMAN_RELEASE_SOURCE: e0e75bcab2fa8e39dd7a09465b7f2e035eda82ef
-  NIXPKGS_REVIEW_SOURCE: 98e793b844161d178a9a34ca243568388a91001d
+  NIXPKGS_REVIEW_SOURCE: 9afba8d00acec3255736355f5f178d83ee76372b
+  NIXPKGS_REVIEW_BASE: 91c1f074170063316bb81ffc34c46a4611595923
   NIXPKGS_PR_HEAD: 7eb4f73927ab25e4b47706654b6a2d6cab449a3f
   NIXPKGS_TOOLING_SOURCE: 407405087ccd86e4c86d7e081d1a18dcbd5e3a3a
 
@@ -70,7 +71,15 @@ jobs:
           assert pr["base"]["ref"] == "master"
           assert pr["merge_commit_sha"] and pr["mergeable"] is True
           (proof / "pr.json").write_text(json.dumps(pr, indent=2) + "\n")
-          print(f"PR #570822: base {pr['base']['sha']}, head {pr['head']['sha']}")
+          request = urllib.request.Request(
+              f"https://api.github.com/repos/NixOS/nixpkgs/git/commits/{pr['merge_commit_sha']}",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}"},
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              merge = json.load(response)
+          assert len(merge["parents"]) == 2 and merge["parents"][1]["sha"] == pr["head"]["sha"]
+          (proof / "merge.json").write_text(json.dumps(merge, indent=2) + "\n")
+          print(f"PR #570822: merge base {merge['parents'][0]['sha']}, head {pr['head']['sha']}")
           print(f"Frozen merge: {pr['merge_commit_sha']}")
       - name: Install the pinned stable nixpkgs-review and capture its help
         shell: python
@@ -210,18 +219,20 @@ jobs:
           assert {item["name"] for item in result["built"]} == {"merman-cli"}, result
           assert {item["name"] for item in result["tests"]} == {"merman-cli.tests.version"}, result
           merge = pr["merge_commit_sha"]
-          for parent, expected in (("^1", pr["base"]["sha"]), ("^2", os.environ["NIXPKGS_PR_HEAD"])):
+          merge_metadata = json.loads((proof / "merge.json").read_text())
+          base = merge_metadata["parents"][0]["sha"]
+          for parent, expected in (("^1", base), ("^2", os.environ["NIXPKGS_PR_HEAD"])):
               actual = subprocess.check_output(["git", "rev-parse", merge + parent], text=True).strip()
               assert actual == expected, (parent, actual, expected)
           for name in ("package.nix", "Cargo.lock"):
               merged = subprocess.check_output(["git", "show", f"{merge}:pkgs/by-name/me/merman-cli/{name}"])
               assert merged == (proof / name).read_bytes(), name
           provenance = json.loads((proof / "provenance.json").read_text())
-          provenance.update(nixpkgs_base=pr["base"]["sha"], nixpkgs_merge=merge, review_exit_status=status)
+          provenance.update(nixpkgs_base=base, nixpkgs_pr_recorded_base=pr["base"]["sha"], nixpkgs_merge=merge, review_exit_status=status)
           (proof / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
           summary = (
               "# nixpkgs-review 4.0.0: PR #570822\n\n"
-              f"- Base: `{pr['base']['sha']}`\n- Head: `{pr['head']['sha']}`\n- Merge: `{merge}`\n"
+              f"- Merge base: `{base}`\n- Head: `{pr['head']['sha']}`\n- Merge: `{merge}`\n"
               f"- Merman release source: `{provenance['release_source']}`\n"
               "- Native x86_64-linux: merman-cli and merman-cli.tests.version built successfully.\n"
               "- Source NAR, release profile, byte-identical Cargo.lock and unchanged merged package verified.\n"
@@ -248,9 +259,10 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@v7.0.1
         with:
-          repository: Latias94/nixpkgs
+          repository: NixOS/nixpkgs
           ref: ${{ env.NIXPKGS_REVIEW_SOURCE }}
           path: nixpkgs
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-python@v7.0.0
         with:
@@ -282,19 +294,20 @@ jobs:
           workspace = tomllib.loads((source / "Cargo.toml").read_text())
           assert workspace["workspace"]["package"]["version"] == "0.10.0"
           package = Path("nixpkgs/pkgs/by-name/me/merman-cli/package.nix").read_text()
-          # Amend the existing PR recipe; keep its native build and install checks.
+          assert hashlib.sha256(package.encode()).hexdigest() == "8616748b717035dd5bdb8f97b2ca6d5b895e41bfe56538b47447bdf922f49cfb"
+          # Follow the current Nixpkgs system-library policy on the frozen PR merge.
           replacements = (
-              ('version = "0.9.3";', 'version = "0.10.0";'),
-              ('rev = "3b915f69c02d55b873d252cf6c8a6048e7f3427d";',
-               f'rev = "{os.environ["MERMAN_RELEASE_SOURCE"]}";'),
-              ('hash = "sha256-hkOC1Y+nVE35bY2issYNoAKTFESH59y6wSwuwd9IlKs=";',
-               f'hash = "{receipt["hash"]}";'),
-              ('    "ascii"\n    "icons"', '    "ascii"\n    "fixes"\n    "icons"'),
+              ('  cmake,\n  perl,', '  pkg-config,\n  aws-lc,'),
+              ('    cmake\n    perl', '    pkg-config'),
+              ('  env.AWS_LC_SYS_USE_SYSTEM = "0";',
+               '  buildInputs = [ aws-lc ];\n\n  env.AWS_LC_SYS_USE_SYSTEM = true;'),
           )
           for before, after in replacements:
               assert package.count(before) == 1, before
               package = package.replace(before, after)
+          assert hashlib.sha256(package.encode()).hexdigest() == "b76ac2773dc3ea799ae0f806271fa6a4e8c99be271b8133ab2faa47522e160c7"
           (candidate / "package.nix").write_text(package)
+          assert Path("nixpkgs/pkgs/by-name/me/merman-cli/Cargo.lock").read_bytes() == (source / "Cargo.lock").read_bytes()
           shutil.copyfile(source / "Cargo.lock", candidate / "Cargo.lock")
           descriptor = json.loads((source / "capabilities/artifact-profiles-v2.json").read_text())
           profile = next(p for p in descriptor["profiles"] if p["id"] == "cli-release")
@@ -307,8 +320,11 @@ jobs:
               "release_source": os.environ["MERMAN_RELEASE_SOURCE"],
               "source_url": f"https://github.com/Latias94/merman/archive/{os.environ['MERMAN_RELEASE_SOURCE']}.tar.gz",
               "source_nar_hash": receipt["hash"],
-              "nixpkgs_repository": "Latias94/nixpkgs",
+              "nixpkgs_repository": "NixOS/nixpkgs",
               "nixpkgs_source": os.environ["NIXPKGS_REVIEW_SOURCE"],
+              "nixpkgs_base": os.environ["NIXPKGS_REVIEW_BASE"],
+              "nixpkgs_pr_head": os.environ["NIXPKGS_PR_HEAD"],
+              "qualification": "unpublished system AWS-LC candidate on the frozen PR merge",
               "workflow_source": os.environ["GITHUB_SHA"],
               "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
               "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
@@ -321,8 +337,11 @@ jobs:
           print(f"Release source: {os.environ['MERMAN_RELEASE_SOURCE']}")
           print(f"Nix source hash: {receipt['hash']}")
           print(f"Cargo.lock SHA-256: {provenance['cargo_lock_sha256']}")
-      - name: Apply the candidate to the existing Nixpkgs PR head
+      - name: Apply the candidate to the frozen Nixpkgs PR merge
         run: |
+          test "$(git -C nixpkgs rev-parse HEAD)" = "$NIXPKGS_REVIEW_SOURCE"
+          test "$(git -C nixpkgs rev-parse HEAD^1)" = "$NIXPKGS_REVIEW_BASE"
+          test "$(git -C nixpkgs rev-parse HEAD^2)" = "$NIXPKGS_PR_HEAD"
           cp candidate/package.nix candidate/Cargo.lock nixpkgs/pkgs/by-name/me/merman-cli/
           git -C nixpkgs diff --binary -- \
             pkgs/by-name/me/merman-cli/package.nix \
@@ -343,6 +362,10 @@ jobs:
                 inherit (package) version buildFeatures buildType buildNoDefaultFeatures;
                 inherit (package.meta) platforms;
                 rustVersion = pkgs.rustc.version;
+                awsLcVersion = pkgs.aws-lc.version;
+                systemAwsLc = package.env.AWS_LC_SYS_USE_SYSTEM;
+                awsLcBuildInput = builtins.elem "aws-lc" (map pkgs.lib.getName package.buildInputs);
+                pkgConfigBuildInput = builtins.elem "pkg-config" (map pkgs.lib.getName package.nativeBuildInputs);
                 drvPath = package.drvPath;
               }
             " > "candidate/eval-$system.json"
@@ -364,13 +387,17 @@ jobs:
               assert result["buildType"] == profile["profile"], result
               assert result["buildNoDefaultFeatures"] == (not profile["default_features"]), result
               assert set(result["platforms"]) == systems, result
+              assert result["systemAwsLc"] is True and result["awsLcBuildInput"] and result["pkgConfigBuildInput"], result
               print(f"{system}: Rust {result['rustVersion']}, {result['drvPath']}")
           provenance = json.loads((candidate / "provenance.json").read_text())
           summary = (
               "# Nixpkgs merman-cli 0.10.0 candidate\n\n"
               f"- Release source: `{provenance['release_source']}`\n"
               f"- Workflow source: `{provenance['workflow_source']}`\n"
-              f"- Nixpkgs PR head: `{provenance['nixpkgs_source']}`\n"
+              f"- Nixpkgs merge: `{provenance['nixpkgs_source']}`\n"
+              f"- Merge base: `{provenance['nixpkgs_base']}`\n"
+              f"- Original PR head: `{provenance['nixpkgs_pr_head']}`\n"
+              "- Unpublished candidate: system AWS-LC and pkg-config; source, lock and release features unchanged.\n"
               f"- Source NAR hash (Nix prefetch): `{provenance['source_nar_hash']}`\n"
               f"- Cargo.lock SHA-256: `{provenance['cargo_lock_sha256']}`\n"
               "- cli-release: 23 features, dist, defaults disabled; 17 man pages\n"
@@ -406,7 +433,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
-          repository: Latias94/nixpkgs
+          repository: NixOS/nixpkgs
           ref: ${{ env.NIXPKGS_REVIEW_SOURCE }}
           path: nixpkgs
           persist-credentials: false
@@ -425,6 +452,73 @@ jobs:
       - name: Apply the exact prepared package
         run: |
           cp candidate/package.nix candidate/Cargo.lock nixpkgs/pkgs/by-name/me/merman-cli/
+      - name: Review the unpublished Linux candidate with nixpkgs-review wip
+        if: ${{ matrix.system == 'x86_64-linux' }}
+        working-directory: nixpkgs
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+
+          proof = Path("../candidate-review").resolve()
+          proof.mkdir()
+          output = subprocess.check_output(
+              ["nix-build", "--no-out-link", "-A", "nixpkgs-review", "."], text=True,
+          ).strip()
+          binary = str(Path(output) / "bin/nixpkgs-review")
+          version = subprocess.check_output([binary, "--version"], text=True).strip()
+          assert version == "nixpkgs-review 4.0.0", version
+          (proof / "tool-version.txt").write_text(version + "\n")
+          (proof / "tool-help.txt").write_text(subprocess.check_output([binary, "wip", "--help"], text=True))
+          environment = os.environ.copy()
+          for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OAUTH_TOKEN", "GITHUB_TOKEN_CMD"):
+              environment.pop(name, None)
+          environment["NIXPKGS_REVIEW_CACHE_DIR"] = os.environ["RUNNER_TEMP"]
+          command = [
+              binary, "wip", "--branch", os.environ["NIXPKGS_REVIEW_SOURCE"],
+              "--no-shell", "--print-result", "--systems", "x86_64-linux",
+              "--package", "merman-cli", "--tests", "--num-eval-workers", "2",
+              "--option", "max-jobs", "2", "--option", "cores", "2", "--option", "sandbox", "true",
+              "--token", "",
+          ]
+          (proof / "command.json").write_text(json.dumps(command, indent=2) + "\n")
+          print(" ".join(command), flush=True)
+          with (proof / "review.log").open("w") as log:
+              process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+              for line in process.stdout:
+                  print(line, end="", flush=True)
+                  log.write(line)
+              status = process.wait()
+          (proof / "exit-status.txt").write_text(str(status) + "\n")
+          review = Path(os.environ["RUNNER_TEMP"]) / f"nixpkgs-review/rev-{os.environ['NIXPKGS_REVIEW_SOURCE']}-dirty"
+          for name in ("report.json", "report.md"):
+              if (review / name).is_file():
+                  shutil.copyfile(review / name, proof / name)
+          if (review / "logs").is_dir():
+              shutil.copytree(review / "logs", proof / "logs")
+          assert status == 0, status
+          report = json.loads((proof / "report.json").read_text())
+          assert report["pr"] is None and report["commit"] is None
+          assert set(report["result"]) == {"x86_64-linux"}
+          result = report["result"]["x86_64-linux"]
+          for category in ("failed", "broken", "non-existent", "blacklisted"):
+              assert result[category] == [], (category, result[category])
+          assert {item["name"] for item in result["built"]} == {"merman-cli"}, result
+          assert {item["name"] for item in result["tests"]} == {"merman-cli.tests.version"}, result
+          shutil.copyfile("../candidate/provenance.json", proof / "provenance.json")
+          summary = (
+              "# nixpkgs-review wip: unpublished system AWS-LC candidate\n\n"
+              f"- Frozen PR merge: `{os.environ['NIXPKGS_REVIEW_SOURCE']}`\n"
+              f"- Original PR head remains unchanged: `{os.environ['NIXPKGS_PR_HEAD']}`\n"
+              "- Only merman-cli and its version test were reviewed on x86_64-linux.\n"
+              "- This tests a local candidate patch, not the published PR head.\n\n"
+              + (proof / "report.md").read_text()
+          )
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write(summary)
       - name: Build the Nixpkgs expression and its install checks
         run: |
           native_system="$(nix-instantiate --eval --strict --json --expr builtins.currentSystem)"
@@ -479,6 +573,12 @@ jobs:
                   "- Native build and installed-CLI contract passed (17 man pages).\n"
                   "- Installed SVG/PNG/JPEG/PDF rendering passed.\n"
               )
+      - uses: actions/upload-artifact@v7.0.2
+        if: ${{ always() && matrix.system == 'x86_64-linux' }}
+        with:
+          name: nixpkgs-review-wip-merman-system-aws-lc-x86_64-linux
+          path: candidate-review
+          if-no-files-found: error
       - uses: actions/upload-artifact@v7.0.2
         with:
           name: nixpkgs-merman-0.10.0-${{ matrix.system }}-proof
