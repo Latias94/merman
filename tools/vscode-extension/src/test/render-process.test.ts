@@ -354,46 +354,55 @@ describe("render process lifecycle", () => {
     }
   });
 
-  it("force kills a render process that ignores graceful timeout termination", async () => {
-    if (process.platform === "win32") {
-      return;
-    }
-
-    const tempDir = tempDirPath();
-    const cliPath = path.join(tempDir, "merman-cli");
-    const readyPath = path.join(tempDir, "ready");
-    const termPath = path.join(tempDir, "term");
-    fs.writeFileSync(
-      cliPath,
-      [
-        "#!/usr/bin/env node",
-        "const fs = require('node:fs');",
-        `const ready = ${JSON.stringify(readyPath)};`,
-        `const term = ${JSON.stringify(termPath)};`,
-        "process.on('SIGTERM', () => { fs.writeFileSync(term, 'ignored'); });",
-        "fs.writeFileSync(ready, 'ready');",
-        "process.stdin.resume();",
-        "setInterval(() => {}, 1000);",
-      ].join("\n"),
-    );
-    fs.chmodSync(cliPath, 0o755);
-
-    const render = runRenderProcess({
-      invocation: {
-        command: process.execPath,
-        args: [cliPath],
-        source: "explicit",
-        label: "test cli",
-      },
-      source: "flowchart TD\nA --> B\n",
-      timeoutMs: 500,
-      killGraceMs: 20,
+  it("force kills a render process that ignores graceful timeout termination", {
+    skip: process.platform === "win32",
+  }, async () => {
+    const cliSource = [
+      "process.on('SIGTERM', () => {});",
+      "process.stdin.resume();",
+      "setInterval(() => {}, 1000);",
+      "process.stdout.write('ready');",
+    ].join("\n");
+    const child = spawn(process.execPath, ["-e", cliSource], {
+      detached: true,
+      stdio: "pipe",
+      windowsHide: true,
     });
-    const rejected = assert.rejects(render, /timed out/);
-    await waitUntil(() => fs.existsSync(readyPath));
+    let ready = false;
+    let closed = false;
+    let spawnError: Error | undefined;
+    child.stdout.once("data", () => { ready = true; });
+    child.once("close", () => { closed = true; });
+    child.once("error", (error) => { spawnError = error; });
 
-    await rejected;
-    assert.equal(fs.readFileSync(termPath, "utf8"), "ignored");
+    try {
+      await waitUntil(() => {
+        assert.ifError(spawnError);
+        return ready;
+      });
+      await assert.rejects(
+        runRenderProcess({
+          invocation: {
+            command: process.execPath,
+            args: ["-e", cliSource],
+            source: "explicit",
+            label: "test cli",
+          },
+          source: "flowchart TD\nA --> B\n",
+          timeoutMs: 500,
+          killGraceMs: 20,
+          spawnProcess: () => child,
+        }),
+        /timed out/,
+      );
+      await waitUntil(() => closed);
+      assert.equal(child.signalCode, "SIGKILL");
+    } finally {
+      if (!closed) {
+        child.kill("SIGKILL");
+      }
+      await waitUntil(() => closed);
+    }
   });
 
   it("reclaims a real POSIX descendant that holds pipes after its root exits", {
