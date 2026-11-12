@@ -336,16 +336,18 @@ impl BindingOperationExecution {
     }
 }
 
+struct PreparedEngineExecution {
+    engine: BindingEngine,
+    admitted: AdmittedArtifactOperation,
+    control: OperationControl,
+}
+
 #[allow(
     clippy::large_enum_variant,
     reason = "Execution variants retain the engine or compiler state required by their operation."
 )]
 enum PreparedOneShotExecution {
-    Engine {
-        engine: BindingEngine,
-        admitted: AdmittedArtifactOperation,
-        control: OperationControl,
-    },
+    Engine(PreparedEngineExecution),
     #[cfg(feature = "svg")]
     ThemeAuthoring {
         operation: BindingOperationKind,
@@ -362,11 +364,11 @@ impl PreparedOneShotExecution {
         uri: Option<&[u8]>,
     ) -> Result<BindingOperationResult, BindingError> {
         match self {
-            Self::Engine {
+            Self::Engine(PreparedEngineExecution {
                 engine,
                 admitted,
                 control,
-            } => engine.execute_admitted(admitted, source, uri, control),
+            }) => engine.execute_admitted(admitted, source, uri, control),
             #[cfg(feature = "svg")]
             Self::ThemeAuthoring {
                 operation,
@@ -383,29 +385,12 @@ impl PreparedOneShotExecution {
     }
 
     fn execute_data(self, source: &[u8], uri: Option<&[u8]>) -> Result<Vec<u8>, BindingError> {
-        self.execute_data_with(source, |engine, admitted, control| {
-            engine.execute_admitted_data(admitted, source, uri, control)
-        })
-    }
-
-    fn execute_data_with(
-        self,
-        source: &[u8],
-        execute_engine: impl FnOnce(
-            &BindingEngine,
-            AdmittedArtifactOperation,
-            OperationControl,
-        ) -> Result<Vec<u8>, BindingError>,
-    ) -> Result<Vec<u8>, BindingError> {
-        #[cfg(not(feature = "svg"))]
-        let _ = source;
-
         match self {
-            Self::Engine {
+            Self::Engine(PreparedEngineExecution {
                 engine,
                 admitted,
                 control,
-            } => execute_engine(&engine, admitted, control),
+            }) => engine.execute_admitted_data(admitted, source, uri, control),
             #[cfg(feature = "svg")]
             Self::ThemeAuthoring {
                 operation,
@@ -1332,11 +1317,7 @@ impl ValidatedArtifactContract {
         request: &BindingOperationRequest<'_>,
         services: BindingEngineServices,
     ) -> Result<PreparedOneShotExecution, BindingError> {
-        let operation = resolve_operation_request(request)?;
-        let control = request.control_or_default();
-        control
-            .checkpoint_at(OperationPhase::Admission)
-            .map_err(BindingError::cancelled)?;
+        let (operation, control) = resolve_one_shot_request(request)?;
 
         #[cfg(feature = "svg")]
         if matches!(
@@ -1362,16 +1343,27 @@ impl ValidatedArtifactContract {
             });
         }
 
+        self.prepare_engine_execution(operation, request.options_json, services, control)
+            .map(PreparedOneShotExecution::Engine)
+    }
+
+    fn prepare_engine_execution(
+        &self,
+        operation: BindingOperationKind,
+        options_json: &[u8],
+        services: BindingEngineServices,
+        control: OperationControl,
+    ) -> Result<PreparedEngineExecution, BindingError> {
         crate::common::validate_one_shot_resource_options(
-            request.options_json,
+            options_json,
             operation.resource_scope(),
         )?;
-        let engine = self.create_engine_with_services(request.options_json, services)?;
+        let engine = self.create_engine_with_services(options_json, services)?;
         control
             .checkpoint_at(OperationPhase::Admission)
             .map_err(BindingError::cancelled)?;
         let admitted = self.admit_operation(operation)?;
-        Ok(PreparedOneShotExecution::Engine {
+        Ok(PreparedEngineExecution {
             engine,
             admitted,
             control,
@@ -1411,13 +1403,14 @@ impl ValidatedArtifactContract {
             operation_control,
             ..BindingOperationRequest::new("svg", source).with_options_json(options_json)
         };
-        self.prepare_one_shot_execution(&request, services)?
-            .execute_data_with(source, |engine, _admitted, control| {
-                execute_controlled_output(&control, || {
-                    engine.render_svg_output(source, control.clone(), false)
-                })
-                .map(BindingOperationOutput::into_data)
-            })
+        let (operation, control) = resolve_one_shot_request(&request)?;
+        let PreparedEngineExecution {
+            engine, control, ..
+        } = self.prepare_engine_execution(operation, options_json, services, control)?;
+        execute_controlled_output(&control, || {
+            engine.render_svg_output(source, control.clone(), false)
+        })
+        .map(BindingOperationOutput::into_data)
     }
 
     /// Executes only diagram analysis JSON, without the general operation dispatcher.
@@ -1435,15 +1428,16 @@ impl ValidatedArtifactContract {
             operation_control,
             ..BindingOperationRequest::new("analysis-json", source).with_options_json(options_json)
         };
-        self.prepare_one_shot_execution(&request, services)?
-            .execute_data_with(source, |engine, _admitted, control| {
-                execute_controlled_output(&control, || {
-                    engine
-                        .analyze_json_data(source, &control)
-                        .map(BindingOperationOutput::plain)
-                })
-                .map(BindingOperationOutput::into_data)
-            })
+        let (operation, control) = resolve_one_shot_request(&request)?;
+        let PreparedEngineExecution {
+            engine, control, ..
+        } = self.prepare_engine_execution(operation, options_json, services, control)?;
+        execute_controlled_output(&control, || {
+            engine
+                .analyze_json_data(source, &control)
+                .map(BindingOperationOutput::plain)
+        })
+        .map(BindingOperationOutput::into_data)
     }
 }
 
@@ -1653,6 +1647,17 @@ pub(crate) fn operation_result(
         data,
         metadata,
     })
+}
+
+fn resolve_one_shot_request(
+    request: &BindingOperationRequest<'_>,
+) -> Result<(BindingOperationKind, OperationControl), BindingError> {
+    let operation = resolve_operation_request(request)?;
+    let control = request.control_or_default();
+    control
+        .checkpoint_at(OperationPhase::Admission)
+        .map_err(BindingError::cancelled)?;
+    Ok((operation, control))
 }
 
 fn resolve_operation_request(
@@ -2444,6 +2449,37 @@ mod tests {
                     phase: "admission",
                 }),
             );
+        }
+    }
+
+    #[cfg(all(feature = "analysis", feature = "diagram-flowchart"))]
+    #[test]
+    fn narrow_analysis_execution_preserves_results_and_diagnostics_without_metadata() {
+        let contract = crate::artifact_contract::default_artifact_contract();
+        for (source, options) in [
+            (b"flowchart TD\nA --> B".as_slice(), b"".as_slice()),
+            (b"not a diagram".as_slice(), b"".as_slice()),
+            (b"flowchart TD\nA[unfinished".as_slice(), b"".as_slice()),
+            (
+                b"flowchart TD\nA --> B".as_slice(),
+                br#"{"resources":{"limits":{"max_source_bytes":4}}}"#.as_slice(),
+            ),
+            (b"flowchart TD\nA --> B".as_slice(), b"{".as_slice()),
+        ] {
+            let expected = contract.execute_once_data(
+                BindingOperationRequest::new("analysis-json", source).with_options_json(options),
+            );
+            reset_metadata_serialization_count();
+            assert_eq!(
+                contract.analyze_json_once_data_with_services(
+                    source,
+                    options,
+                    BindingEngineServices::new(),
+                    None,
+                ),
+                expected,
+            );
+            assert_eq!(metadata_serialization_count(), 0);
         }
     }
 
