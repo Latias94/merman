@@ -2,6 +2,14 @@ name: Nixpkgs CLI review build
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: Run nixpkgs-review or refresh the native package qualification
+        type: choice
+        default: nixpkgs-review
+        options:
+          - nixpkgs-review
+          - native-builds
 
 permissions:
   contents: read
@@ -13,9 +21,225 @@ concurrency:
 env:
   MERMAN_RELEASE_SOURCE: e0e75bcab2fa8e39dd7a09465b7f2e035eda82ef
   NIXPKGS_REVIEW_SOURCE: 98e793b844161d178a9a34ca243568388a91001d
+  NIXPKGS_PR_HEAD: 7eb4f73927ab25e4b47706654b6a2d6cab449a3f
+  NIXPKGS_TOOLING_SOURCE: 407405087ccd86e4c86d7e081d1a18dcbd5e3a3a
 
 jobs:
+  nixpkgs-review:
+    if: ${{ inputs.mode == 'nixpkgs-review' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: NixOS/nixpkgs
+          ref: ${{ env.NIXPKGS_TOOLING_SOURCE }}
+          path: nixpkgs
+          persist-credentials: false
+      - uses: actions/setup-python@v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: DeterminateSystems/determinate-nix-action@v3.23.1
+        with:
+          extra-conf: |
+            max-jobs = 2
+            cores = 2
+            sandbox = true
+      - name: Freeze the external PR snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import urllib.request
+
+          proof = Path("proof")
+          proof.mkdir()
+          request = urllib.request.Request(
+              "https://api.github.com/repos/NixOS/nixpkgs/pulls/570822",
+              headers={"Authorization": f"Bearer {os.environ['GH_TOKEN']}"},
+          )
+          with urllib.request.urlopen(request, timeout=60) as response:
+              pr = json.load(response)
+          assert pr["number"] == 570822 and pr["state"] == "open"
+          assert pr["head"]["sha"] == os.environ["NIXPKGS_PR_HEAD"], pr["head"]["sha"]
+          assert pr["head"]["repo"]["full_name"] == "Latias94/nixpkgs"
+          assert pr["base"]["repo"]["full_name"] == "NixOS/nixpkgs"
+          assert pr["base"]["ref"] == "master"
+          assert pr["merge_commit_sha"] and pr["mergeable"] is True
+          (proof / "pr.json").write_text(json.dumps(pr, indent=2) + "\n")
+          print(f"PR #570822: base {pr['base']['sha']}, head {pr['head']['sha']}")
+          print(f"Frozen merge: {pr['merge_commit_sha']}")
+      - name: Install the pinned stable nixpkgs-review and capture its help
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+
+          proof = Path("proof")
+          output = subprocess.check_output(
+              ["nix-build", "--no-out-link", "-A", "nixpkgs-review", "./nixpkgs"], text=True,
+          ).strip()
+          binary = str(Path(output) / "bin/nixpkgs-review")
+          version = subprocess.check_output([binary, "--version"], text=True).strip()
+          assert version == "nixpkgs-review 4.0.0", version
+          (proof / "tool-version.txt").write_text(version + "\n")
+          (proof / "tool-help.txt").write_text(subprocess.check_output([binary, "pr", "--help"], text=True))
+          (proof / "nix-version.txt").write_text(subprocess.check_output(["nix", "--version"], text=True))
+          (proof / "tooling.json").write_text(json.dumps({
+              "nixpkgs_source": os.environ["NIXPKGS_TOOLING_SOURCE"],
+              "nixpkgs_review_version": version,
+              "nixpkgs_review_source": "87a0e80e95e3371764984895b178a329782d7f35",
+              "tool_output": output,
+          }, indent=2) + "\n")
+          with open(os.environ["GITHUB_PATH"], "a") as path:
+              path.write(str(Path(output) / "bin") + "\n")
+          print(version)
+      - uses: actions/checkout@v7.0.1
+        with:
+          repository: Latias94/nixpkgs
+          ref: ${{ env.NIXPKGS_PR_HEAD }}
+          path: nixpkgs
+          persist-credentials: false
+      - name: Verify the unchanged PR package against the immutable release
+        shell: python
+        run: |
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          import tomllib
+
+          proof = Path("proof")
+          head = subprocess.check_output(["git", "-C", "nixpkgs", "rev-parse", "HEAD"], text=True).strip()
+          assert head == os.environ["NIXPKGS_PR_HEAD"], head
+          source_url = f"https://github.com/Latias94/merman/archive/{os.environ['MERMAN_RELEASE_SOURCE']}.tar.gz"
+          source = json.loads(subprocess.check_output([
+              "nix", "store", "prefetch-file", "--unpack", "--name", "source", "--json", source_url,
+          ], text=True))
+          (proof / "source.json").write_text(json.dumps(source, indent=2) + "\n")
+          source_root = Path(source["storePath"])
+          workspace = tomllib.loads((source_root / "Cargo.toml").read_text())
+          assert workspace["workspace"]["package"]["version"] == "0.10.0"
+          package_root = Path("nixpkgs/pkgs/by-name/me/merman-cli")
+          lock = (package_root / "Cargo.lock").read_bytes()
+          assert lock == (source_root / "Cargo.lock").read_bytes()
+          expression = '''let pkgs = import ./nixpkgs { system = "x86_64-linux"; };
+            package = pkgs.merman-cli; in {
+              inherit (package) version buildFeatures buildType buildNoDefaultFeatures doInstallCheck;
+              inherit (package.src) rev outputHash;
+            }'''
+          evaluated = json.loads(subprocess.check_output([
+              "nix-instantiate", "--eval", "--strict", "--json", "--expr", expression,
+          ], text=True))
+          descriptor = json.loads((source_root / "capabilities/artifact-profiles-v2.json").read_text())
+          profile = next(item["cargo"] for item in descriptor["profiles"] if item["id"] == "cli-release")
+          assert evaluated["version"] == "0.10.0"
+          assert evaluated["rev"] == os.environ["MERMAN_RELEASE_SOURCE"]
+          assert evaluated["outputHash"] == source["hash"]
+          assert evaluated["buildFeatures"] == profile["features"]
+          assert evaluated["buildType"] == profile["profile"]
+          assert evaluated["buildNoDefaultFeatures"] == (not profile["default_features"])
+          assert evaluated["doInstallCheck"] is True
+          for name in ("package.nix", "Cargo.lock"):
+              (proof / name).write_bytes((package_root / name).read_bytes())
+          provenance = {
+              "release_source": os.environ["MERMAN_RELEASE_SOURCE"],
+              "source_url": source_url,
+              "source_nar_hash": source["hash"],
+              "nixpkgs_pr_head": head,
+              "workflow_source": os.environ["GITHUB_SHA"],
+              "run_url": f"{os.environ['GITHUB_SERVER_URL']}/{os.environ['GITHUB_REPOSITORY']}/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+              "run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+              "cargo_lock_sha256": hashlib.sha256(lock).hexdigest(),
+              "package_sha256": hashlib.sha256((proof / "package.nix").read_bytes()).hexdigest(),
+              "evaluated_package": evaluated,
+          }
+          (proof / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+          print(json.dumps(provenance, indent=2))
+      - name: Run nixpkgs-review on only merman-cli and its passthru tests
+        working-directory: nixpkgs
+        shell: python
+        run: |
+          import json
+          import os
+          from pathlib import Path
+          import shutil
+          import subprocess
+
+          proof = Path("../proof").resolve()
+          pr = json.loads((proof / "pr.json").read_text())
+          environment = os.environ.copy()
+          for name in ("GITHUB_TOKEN", "GH_TOKEN", "GITHUB_OAUTH_TOKEN", "GITHUB_TOKEN_CMD"):
+              environment.pop(name, None)
+          environment["NIXPKGS_REVIEW_CACHE_DIR"] = os.environ["RUNNER_TEMP"]
+          command = [
+              "nixpkgs-review", "pr", "570822", "--no-shell", "--no-pr-info", "--print-result",
+              "--eval", "local", "--checkout", "merge", "--systems", "x86_64-linux",
+              "--package", "merman-cli", "--tests", "--num-eval-workers", "2",
+              "--option", "max-jobs", "2", "--option", "cores", "2", "--option", "sandbox", "true",
+              "--token", "", "--pr-json", json.dumps(pr),
+          ]
+          (proof / "command.json").write_text(json.dumps(command, indent=2) + "\n")
+          print(" ".join(command[:-1]) + "<frozen pr.json>", flush=True)
+          with (proof / "review.log").open("w") as log:
+              process = subprocess.Popen(command, env=environment, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+              for line in process.stdout:
+                  print(line, end="", flush=True)
+                  log.write(line)
+              status = process.wait()
+          (proof / "exit-status.txt").write_text(str(status) + "\n")
+          review = Path(os.environ["RUNNER_TEMP"]) / "nixpkgs-review/pr-570822"
+          for name in ("report.json", "report.md"):
+              if (review / name).is_file():
+                  shutil.copyfile(review / name, proof / name)
+          if (review / "logs").is_dir():
+              shutil.copytree(review / "logs", proof / "logs")
+          assert status == 0, status
+          report = json.loads((proof / "report.json").read_text())
+          assert report["pr"] == 570822 and report["commit"] == os.environ["NIXPKGS_PR_HEAD"]
+          assert report["checkout"] == "merge" and set(report["result"]) == {"x86_64-linux"}
+          result = report["result"]["x86_64-linux"]
+          for category in ("failed", "broken", "non-existent", "blacklisted"):
+              assert result[category] == [], (category, result[category])
+          assert {item["name"] for item in result["built"]} == {"merman-cli"}, result
+          assert {item["name"] for item in result["tests"]} == {"merman-cli.tests.version"}, result
+          merge = pr["merge_commit_sha"]
+          for parent, expected in (("^1", pr["base"]["sha"]), ("^2", os.environ["NIXPKGS_PR_HEAD"])):
+              actual = subprocess.check_output(["git", "rev-parse", merge + parent], text=True).strip()
+              assert actual == expected, (parent, actual, expected)
+          for name in ("package.nix", "Cargo.lock"):
+              merged = subprocess.check_output(["git", "show", f"{merge}:pkgs/by-name/me/merman-cli/{name}"])
+              assert merged == (proof / name).read_bytes(), name
+          provenance = json.loads((proof / "provenance.json").read_text())
+          provenance.update(nixpkgs_base=pr["base"]["sha"], nixpkgs_merge=merge, review_exit_status=status)
+          (proof / "provenance.json").write_text(json.dumps(provenance, indent=2) + "\n")
+          summary = (
+              "# nixpkgs-review 4.0.0: PR #570822\n\n"
+              f"- Base: `{pr['base']['sha']}`\n- Head: `{pr['head']['sha']}`\n- Merge: `{merge}`\n"
+              f"- Merman release source: `{provenance['release_source']}`\n"
+              "- Native x86_64-linux: merman-cli and merman-cli.tests.version built successfully.\n"
+              "- Source NAR, release profile, byte-identical Cargo.lock and unchanged merged package verified.\n"
+              "- No review shell, comments, approval or merge requested; GitHub credentials excluded from review.\n\n"
+              + (proof / "report.md").read_text()
+          )
+          (proof / "summary.md").write_text(summary)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output:
+              output.write(summary)
+      - uses: actions/upload-artifact@v7.0.2
+        if: ${{ always() }}
+        with:
+          name: nixpkgs-review-pr-570822-x86_64-linux
+          path: proof
+          if-no-files-found: error
+
   prepare:
+    if: ${{ inputs.mode == 'native-builds' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
