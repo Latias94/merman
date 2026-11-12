@@ -148,9 +148,27 @@ remain clear. This measures neither latency, RSS nor WASM linear memory.
 
 The ownership-only candidate grew by 27,364 final bytes; its allocation benefit is not a size
 reduction. The integrated result above includes the independently measured dispatch change.
-The 10,000,000-byte Typst objective remains open. Further work should examine repeated effect
-graph ownership and family evidence preparation while preserving the editable theme language,
-all operations and resource accounting. Raw builds, patches and comparisons remain under ignored
+The 10,000,000-byte Typst objective remains open.
+
+A separate counterfactual at `8caa62cbdc6b20c762fc6ab762666c6e6b0ac13a` disables extended-theme
+input, catalog and authoring roots while retaining all diagrams, analysis, layouts and official
+Mermaid theme configuration. Closing only direct transport and option roots yields 12,874,021
+bytes. The shared prepared-operation executor still references its authoring branch; closing that
+indirect dispatcher yields 11,984,528 bytes, 1,018,642 below the current full module. The latter
+removes 909,187 code-section bytes and 106,274 data-section bytes. Same-codec gzip and Brotli
+are 4,580,376 and 3,439,082 bytes. Thirty-eight existing family fixtures and configuration/backend
+controls produce 87 exact paired responses, while six extended-theme calls explicitly fail.
+This is capability attribution, not an admitted optimization or the entire theme subsystem's
+size. Cross-family theme application remains linked, the isolated source path differs, and the
+diagnostic artifacts must not be published. It does not qualify exact error or authoring parity.
+
+Prioritize the boundary between fixed execution, the generic operation interpreter, theme
+language/compilation and immutable runtime application. An authoring-export switch alone does
+not exclude compilation while another input or shared interpreter still references it. Further
+family work must preserve source ownership, actual terminal proof, evidence order and resource
+charges. Current source audits do not establish a removable second compiler or renderer; effect
+payload sharing and the confirmed small outcome reductions are not demonstrated bulk size wins.
+Raw builds, patches and comparisons remain under ignored
 `target/bench/experiments/theme-internal-consolidation/`.
 
 ## Retained revalidation contracts
