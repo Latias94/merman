@@ -196,7 +196,7 @@ macro_rules! define_theme_style_selections {
                 typography_changed
             }
 
-            fn overlay_role(&mut self, other: &Self) -> bool {
+            pub(super) fn overlay_role(&mut self, other: &Self) -> bool {
                 $( self.$field = other.$field.or(self.$field); )+
                 let mut typography_changed = false;
                 $(
@@ -946,13 +946,9 @@ impl ResolvedDiagramTheme {
         ordinal: Option<usize>,
         work_meter: &crate::resources::OperationWorkMeter,
     ) -> Result<ResolvedThemeStyle, crate::resources::OperationWorkError> {
-        let mut style = self.text_style_with_work_meter(target, fallback, ordinal, work_meter)?;
-        if variant != fallback {
-            style.merge_from(
-                &self.text_style_with_work_meter(target, variant, ordinal, work_meter)?,
-            );
-        }
-        Ok(style)
+        self.program.resolve_text_style_with_variant_fallback(
+            target, variant, fallback, ordinal, work_meter,
+        )
     }
 
     /// Preserve the existing Text/fallback author order, then override specified role facets.
@@ -1027,7 +1023,7 @@ mod tests {
     use crate::diagram_theme::{
         CanvasSpec, DiagramEffectSet, DiagramThemeCompiler, DiagramThemeSpec, EffectBinding,
         EffectGraph, EffectInput, EffectPrimitive, OrdinalPalette, OrdinalSelector, ThemeRule,
-        ThemeRuleSet,
+        ThemeRuleSet, TypographySpec,
     };
     use crate::resources::{OperationWorkMeter, RenderResourcePolicy, ResourceLimitId};
 
@@ -1835,6 +1831,119 @@ mod tests {
     }
 
     #[test]
+    fn variant_fallback_preserves_author_order_clear_and_ordinal_winners() {
+        let fill = CanvasPaint::solid("#123456").unwrap();
+        let mut primary = ThemeStylePatch::default()
+            .with_fill(fill.clone())
+            .with_stroke(CanvasPaint::solid("#abcdef").unwrap());
+        primary.typography.font_size_px = Specified::Value(27.0);
+        primary.typography.font_weight = Specified::Value(700);
+        let mut fallback = ThemeStylePatch::default();
+        fallback.paint.fill = Specified::Clear;
+        fallback.typography.font_size_px = Specified::Clear;
+        let mut ordinal_patch = ThemeStylePatch::default().with_fill(fill);
+        ordinal_patch.stroke.dasharray = Specified::Clear;
+        ordinal_patch.effects.effect = Specified::Clear;
+        ordinal_patch.typography.font_weight = Specified::Clear;
+        let base = TextStyle::default().with_font_size_px(19.0).unwrap();
+
+        for fallback_last in [false, true] {
+            let mut rules = vec![
+                ThemeRule::new(ThemeTarget::NodeLabel, primary.clone())
+                    .with_variant(ThemeVariant::Primary),
+                ThemeRule::new(ThemeTarget::Text, fallback.clone())
+                    .with_variant(ThemeVariant::Default),
+            ];
+            if !fallback_last {
+                rules.reverse();
+            }
+            rules.push(
+                ThemeRule::new(ThemeTarget::NodeLabel, ordinal_patch.clone())
+                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+            );
+            rules.push(
+                ThemeRule::new(
+                    ThemeTarget::NodeLabel,
+                    ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                )
+                .with_variant(ThemeVariant::Selected),
+            );
+            let rules = rules
+                .into_iter()
+                .fold(ThemeRuleSet::default(), |set, rule| set.with_rule(rule));
+            let theme = DiagramThemeCompiler::new()
+                .compile(
+                    DiagramThemeSpec::new()
+                        .with_typography(TypographySpec::default().with_default(base.clone()))
+                        .with_styles(rules),
+                )
+                .unwrap();
+            let resolved = theme.resolve(DiagramFamilyId::FLOWCHART);
+            let meter =
+                OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+            for (variant, fallback_variant) in [
+                (ThemeVariant::Primary, ThemeVariant::Default),
+                (ThemeVariant::Default, ThemeVariant::Primary),
+                (ThemeVariant::Primary, ThemeVariant::Primary),
+                (ThemeVariant::Default, ThemeVariant::Default),
+            ] {
+                for ordinal in [None, Some(1), Some(2), Some(99)] {
+                    let actual = resolved
+                        .text_style_with_variant_fallback(
+                            ThemeTarget::NodeLabel,
+                            variant,
+                            fallback_variant,
+                            ordinal,
+                            &meter,
+                        )
+                        .unwrap();
+                    let expected = resolve_matching_rules(
+                        &base,
+                        theme
+                            .spec()
+                            .styles()
+                            .rules()
+                            .iter()
+                            .enumerate()
+                            .filter(|(_, rule)| {
+                                matches!(rule.target(), ThemeTarget::Text | ThemeTarget::NodeLabel)
+                                    && (rule.applies_to(
+                                        DiagramFamilyId::FLOWCHART,
+                                        variant,
+                                        ordinal,
+                                    ) || rule.applies_to(
+                                        DiagramFamilyId::FLOWCHART,
+                                        fallback_variant,
+                                        ordinal,
+                                    ))
+                            }),
+                    );
+                    assert_eq!(actual, expected);
+                    assert_eq!(
+                        actual.winner_rule_properties().collect::<Vec<_>>(),
+                        expected.winner_rule_properties().collect::<Vec<_>>()
+                    );
+                    if ordinal == Some(2) {
+                        assert_eq!(actual.fill_resolution().winner().unwrap().rule_index(), 2);
+                        assert_eq!(actual.effect_resolution().specified(), &Specified::Clear);
+                        assert_eq!(actual.typography().font_weight(), base.font_weight());
+                    }
+                    if variant != fallback_variant {
+                        assert_eq!(
+                            actual.typography().font_size_px(),
+                            if fallback_last {
+                                base.font_size_px()
+                            } else {
+                                27.0
+                            }
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn role_override_keeps_clear_equal_value_origins_and_unspecified_siblings() {
         let fill = CanvasPaint::solid("#123456").unwrap();
         let stroke = CanvasPaint::solid("#abcdef").unwrap();
@@ -1847,23 +1956,41 @@ mod tests {
         text.paint.opacity = Specified::Value(0.6);
         text.typography.font_size_px = Specified::Value(22.0);
         text.typography.font_weight = Specified::Value(700);
+        let mut ordinal_role = ThemeStylePatch::default();
+        ordinal_role.paint.fill = Specified::Clear;
+        ordinal_role.typography.font_size_px = Specified::Clear;
+        let family_base = TextStyle::default()
+            .with_font_size_px(19.0)
+            .unwrap()
+            .with_font_weight(500)
+            .unwrap();
         let theme = DiagramThemeCompiler::new()
             .compile(
-                DiagramThemeSpec::new().with_styles(
-                    ThemeRuleSet::default()
-                        .with_rule(
-                            ThemeRule::new(ThemeTarget::ClusterLabel, role.clone())
-                                .with_variant(ThemeVariant::Default),
-                        )
-                        .with_rule(
-                            ThemeRule::new(ThemeTarget::ClusterLabel, {
-                                role.paint.fill = Specified::Value(fill.clone());
-                                role
-                            })
-                            .with_variant(ThemeVariant::Active),
-                        )
-                        .with_rule(ThemeRule::new(ThemeTarget::Text, text)),
-                ),
+                DiagramThemeSpec::new()
+                    .with_typography(
+                        TypographySpec::default()
+                            .with_family_style(DiagramFamilyId::FLOWCHART, family_base.clone()),
+                    )
+                    .with_styles(
+                        ThemeRuleSet::default()
+                            .with_rule(
+                                ThemeRule::new(ThemeTarget::ClusterLabel, role.clone())
+                                    .with_variant(ThemeVariant::Default),
+                            )
+                            .with_rule(
+                                ThemeRule::new(ThemeTarget::ClusterLabel, {
+                                    role.paint.fill = Specified::Value(fill.clone());
+                                    role
+                                })
+                                .with_variant(ThemeVariant::Active),
+                            )
+                            .with_rule(ThemeRule::new(ThemeTarget::Text, text))
+                            .with_rule(
+                                ThemeRule::new(ThemeTarget::ClusterLabel, ordinal_role)
+                                    .with_variant(ThemeVariant::Default)
+                                    .with_ordinal(OrdinalSelector::exact(2).unwrap()),
+                            ),
+                    ),
             )
             .unwrap()
             .resolve(DiagramFamilyId::FLOWCHART);
@@ -1907,7 +2034,7 @@ mod tests {
             assert_eq!(overlaid.typography().font_size_px(), 22.0);
             assert_eq!(
                 overlaid.typography().font_weight(),
-                TextStyle::default().font_weight()
+                family_base.font_weight()
             );
             assert_eq!(
                 overlaid
@@ -1919,6 +2046,45 @@ mod tests {
             );
         }
         assert_eq!(meter.used(), 0);
+
+        for ordinal in [1, 2] {
+            let mut expected =
+                theme.text_style(ThemeTarget::Title, ThemeVariant::Default, Some(ordinal));
+            expected.overlay_role(theme.style(
+                ThemeTarget::ClusterLabel,
+                ThemeVariant::Default,
+                Some(ordinal),
+            ));
+            let actual = theme
+                .text_style_with_role_override(
+                    ThemeTarget::Title,
+                    ThemeTarget::ClusterLabel,
+                    ThemeVariant::Default,
+                    Some(ordinal),
+                    &meter,
+                )
+                .unwrap();
+            assert_eq!(actual, expected);
+            assert_eq!(
+                actual.winner_rule_properties().collect::<Vec<_>>(),
+                expected.winner_rule_properties().collect::<Vec<_>>()
+            );
+            assert_eq!(actual.typography().font_weight(), family_base.font_weight());
+            assert_eq!(
+                actual.typography().font_size_px(),
+                if ordinal == 2 {
+                    family_base.font_size_px()
+                } else {
+                    22.0
+                }
+            );
+            assert_eq!(actual.fill_resolution().specified(), &Specified::Clear);
+            assert_eq!(
+                actual.fill_resolution().winner().unwrap().rule_index(),
+                if ordinal == 2 { 3 } else { 0 }
+            );
+        }
+        assert_eq!(meter.used(), 2);
     }
 
     #[test]

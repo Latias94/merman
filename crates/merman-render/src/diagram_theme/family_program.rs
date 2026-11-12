@@ -273,18 +273,24 @@ impl FamilyThemeProgram {
         ordinal: Option<usize>,
         work_meter: Option<&OperationWorkMeter>,
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
+        let winners = self.select_style(target, variant, ordinal, work_meter)?;
+        Ok(self.materialize_style(winners))
+    }
+
+    fn select_style(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: Option<&OperationWorkMeter>,
+    ) -> Result<ThemeStyleRuleWinners, OperationWorkError> {
         let mut winners = ThemeStyleRuleWinners::default();
         if let Some(slot) = self.slots.get(&target) {
             charge_ordinal_candidates(work_meter, ordinal, slot.ordinal_candidate_count(variant))?;
             slot.select_static(&mut winners, variant);
             slot.select_ordinal(&self.spec, &mut winners, variant, ordinal);
         }
-        Ok(ResolvedThemeStyle::from_rule_winners(
-            Arc::clone(&self.spec),
-            self.family,
-            &self.base_typography,
-            winners,
-        ))
+        Ok(winners)
     }
 
     #[cfg(test)]
@@ -308,6 +314,24 @@ impl FamilyThemeProgram {
         self.resolve_text_style_internal(target, variant, ordinal, Some(work_meter))
     }
 
+    pub(super) fn resolve_text_style_with_variant_fallback(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        fallback: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: &OperationWorkMeter,
+    ) -> Result<ResolvedThemeStyle, OperationWorkError> {
+        let mut winners = self.select_text_style(target, fallback, ordinal, Some(work_meter))?;
+        if variant != fallback {
+            // Preserve the second debit and checkpoint, even when it has no ordinal candidates.
+            let variant_winners =
+                self.select_text_style(target, variant, ordinal, Some(work_meter))?;
+            winners.merge_from(&variant_winners);
+        }
+        Ok(self.materialize_style(winners))
+    }
+
     pub(super) fn resolve_text_style_with_role_override(
         &self,
         fallback_target: ThemeTarget,
@@ -316,14 +340,13 @@ impl FamilyThemeProgram {
         ordinal: Option<usize>,
         work_meter: &OperationWorkMeter,
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
-        let mut resolved =
-            self.resolve_text_style_with_work_meter(fallback_target, variant, ordinal, work_meter)?;
+        let mut winners =
+            self.select_text_style(fallback_target, variant, ordinal, Some(work_meter))?;
         if self.slots.contains_key(&override_target) {
-            let role =
-                self.resolve_style_with_work_meter(override_target, variant, ordinal, work_meter)?;
-            resolved.overlay_role(role);
+            let role = self.select_style(override_target, variant, ordinal, Some(work_meter))?;
+            winners.overlay_role(&role);
         }
-        Ok(resolved)
+        Ok(self.materialize_style(winners))
     }
 
     fn resolve_text_style_internal(
@@ -333,6 +356,17 @@ impl FamilyThemeProgram {
         ordinal: Option<usize>,
         work_meter: Option<&OperationWorkMeter>,
     ) -> Result<ResolvedThemeStyle, OperationWorkError> {
+        let winners = self.select_text_style(target, variant, ordinal, work_meter)?;
+        Ok(self.materialize_style(winners))
+    }
+
+    fn select_text_style(
+        &self,
+        target: ThemeTarget,
+        variant: ThemeVariant,
+        ordinal: Option<usize>,
+        work_meter: Option<&OperationWorkMeter>,
+    ) -> Result<ThemeStyleRuleWinners, OperationWorkError> {
         let mut winners = ThemeStyleRuleWinners::default();
         let ordinal_candidate_count = self.ordinal_candidate_count(ThemeTarget::Text, variant)
             + if target == ThemeTarget::Text {
@@ -345,12 +379,16 @@ impl FamilyThemeProgram {
         if target != ThemeTarget::Text {
             self.select_text_target(target, &mut winners, variant, ordinal);
         }
-        Ok(ResolvedThemeStyle::from_rule_winners(
+        Ok(winners)
+    }
+
+    fn materialize_style(&self, winners: ThemeStyleRuleWinners) -> ResolvedThemeStyle {
+        ResolvedThemeStyle::from_rule_winners(
             Arc::clone(&self.spec),
             self.family,
             &self.base_typography,
             winners,
-        ))
+        )
     }
 
     fn ordinal_candidate_count(&self, target: ThemeTarget, variant: ThemeVariant) -> usize {
@@ -476,9 +514,203 @@ fn charge_ordinal_candidates(
 mod tests {
     use super::*;
     use crate::diagram_theme::{
-        CanvasPaint, DiagramThemeCompiler, Specified, ThemeColorValue, ThemeRule, ThemeRuleSet,
-        ThemeStylePatch,
+        CanvasPaint, DiagramThemeCompiler, OrdinalSelector, Specified, ThemeColorValue, ThemeRule,
+        ThemeRuleSet, ThemeStylePatch,
     };
+    use crate::resources::{RenderResourcePolicy, ResourceLimitId};
+    use merman_model::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn compound_text_queries_preserve_separate_ordered_ordinal_charges() {
+        let mut rules = ThemeRuleSet::default();
+        for (target, variant, ordinal) in [
+            (ThemeTarget::Text, None, 1),
+            (ThemeTarget::Title, Some(ThemeVariant::Default), 2),
+            (ThemeTarget::Title, Some(ThemeVariant::Primary), 3),
+            (ThemeTarget::Title, Some(ThemeVariant::Primary), 4),
+            (ThemeTarget::ClusterLabel, None, 1),
+            (ThemeTarget::ClusterLabel, None, 2),
+            (ThemeTarget::ClusterLabel, Some(ThemeVariant::Default), 3),
+        ] {
+            let mut rule = ThemeRule::new(
+                target,
+                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+            )
+            .with_ordinal(OrdinalSelector::exact(ordinal).unwrap());
+            if let Some(variant) = variant {
+                rule = rule.with_variant(variant);
+            }
+            rules = rules.with_rule(rule);
+        }
+        let program = FamilyThemeProgram::compile(
+            Arc::new(DiagramThemeSpec::new().with_styles(rules)),
+            DiagramFamilyId::FLOWCHART,
+        );
+        for role_override in [false, true] {
+            // Neither branch matches ordinal 99, but their candidate debits are still 2 then 3.
+            let resolve = |meter: &OperationWorkMeter| {
+                if role_override {
+                    program.resolve_text_style_with_role_override(
+                        ThemeTarget::Title,
+                        ThemeTarget::ClusterLabel,
+                        ThemeVariant::Default,
+                        Some(99),
+                        meter,
+                    )
+                } else {
+                    program.resolve_text_style_with_variant_fallback(
+                        ThemeTarget::Title,
+                        ThemeVariant::Primary,
+                        ThemeVariant::Default,
+                        Some(99),
+                        meter,
+                    )
+                }
+            };
+            for limit in [1, 2, 4, 5] {
+                let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
+                    .unwrap();
+                let meter = OperationWorkMeter::new(policy);
+                let result = resolve(&meter);
+                if limit == 5 {
+                    result.unwrap();
+                    assert_eq!(meter.used(), 5);
+                } else {
+                    let attempted = if limit < 2 { 2 } else { 5 };
+                    assert_eq!(
+                        result.unwrap_err(),
+                        OperationWorkError::ResourceLimitExceeded(
+                            policy.check_layout_work_units(attempted).unwrap_err()
+                        )
+                    );
+                    assert_eq!(meter.used(), if limit < 2 { 0 } else { 2 });
+                }
+            }
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(1);
+            let meter = OperationWorkMeter::new_with_control(
+                RenderResourcePolicy::unbounded_for_trusted_input(),
+                control,
+            );
+            assert!(matches!(
+                resolve(&meter),
+                Err(OperationWorkError::Cancelled(error))
+                    if error.phase == OperationPhase::Layout
+                        && error.reason == CancelReason::Requested
+            ));
+            assert_eq!(meter.used(), 2);
+        }
+
+        for (target, variant, expected) in [
+            (ThemeTarget::Title, ThemeVariant::Default, 2),
+            (ThemeTarget::Text, ThemeVariant::Primary, 2),
+        ] {
+            let meter = OperationWorkMeter::new(
+                RenderResourcePolicy::unbounded_for_trusted_input()
+                    .with_limit(ResourceLimitId::MaxLayoutWorkUnits, expected)
+                    .unwrap(),
+            );
+            program
+                .resolve_text_style_with_variant_fallback(
+                    target,
+                    variant,
+                    ThemeVariant::Default,
+                    Some(99),
+                    &meter,
+                )
+                .unwrap();
+            assert_eq!(meter.used(), expected);
+        }
+    }
+
+    #[test]
+    fn compound_text_queries_keep_zero_charge_checkpoints_and_role_slot_gate() {
+        let program = FamilyThemeProgram::compile(
+            Arc::new(
+                DiagramThemeSpec::new().with_styles(
+                    ThemeRuleSet::default()
+                        .with_rule(ThemeRule::new(
+                            ThemeTarget::Text,
+                            ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                        ))
+                        .with_rule(
+                            ThemeRule::new(
+                                ThemeTarget::ClusterLabel,
+                                ThemeStylePatch::default().with_fill(CanvasPaint::Transparent),
+                            )
+                            .with_variant(ThemeVariant::Active),
+                        ),
+                ),
+            ),
+            DiagramFamilyId::FLOWCHART,
+        );
+        for (variant, ordinal, checkpoints) in [
+            (ThemeVariant::Primary, Some(99), 2),
+            (ThemeVariant::Default, Some(99), 1),
+            (ThemeVariant::Primary, None, 0),
+        ] {
+            for allowed in 0..=checkpoints {
+                let control = OperationControl::new();
+                control.cancel_after_checkpoints(allowed);
+                let meter = OperationWorkMeter::new_with_control(
+                    RenderResourcePolicy::unbounded_for_trusted_input(),
+                    control.clone(),
+                );
+                let result = program.resolve_text_style_with_variant_fallback(
+                    ThemeTarget::Title,
+                    variant,
+                    ThemeVariant::Default,
+                    ordinal,
+                    &meter,
+                );
+                if allowed < checkpoints {
+                    assert!(matches!(
+                        result,
+                        Err(OperationWorkError::Cancelled(error))
+                            if error.phase == OperationPhase::Layout
+                    ));
+                } else {
+                    assert_eq!(result.unwrap().fill(), Some(&CanvasPaint::Transparent));
+                    assert!(control.checkpoint_at(OperationPhase::Layout).is_err());
+                }
+                assert_eq!(meter.used(), 0);
+            }
+        }
+        // An existing slot still checkpoints when its only rule has a different variant.
+        for (target, ordinal, checkpoints) in [
+            (ThemeTarget::ClusterLabel, Some(99), 2),
+            (ThemeTarget::NodeLabel, Some(99), 1),
+            (ThemeTarget::ClusterLabel, None, 0),
+        ] {
+            for allowed in 0..=checkpoints {
+                let control = OperationControl::new();
+                control.cancel_after_checkpoints(allowed);
+                let meter = OperationWorkMeter::new_with_control(
+                    RenderResourcePolicy::unbounded_for_trusted_input(),
+                    control.clone(),
+                );
+                let result = program.resolve_text_style_with_role_override(
+                    ThemeTarget::Title,
+                    target,
+                    ThemeVariant::Default,
+                    ordinal,
+                    &meter,
+                );
+                if allowed < checkpoints {
+                    assert!(matches!(
+                        result,
+                        Err(OperationWorkError::Cancelled(error))
+                            if error.phase == OperationPhase::Layout
+                    ));
+                } else {
+                    assert_eq!(result.unwrap().fill(), Some(&CanvasPaint::Transparent));
+                    assert!(control.checkpoint_at(OperationPhase::Layout).is_err());
+                }
+                assert_eq!(meter.used(), 0);
+            }
+        }
+    }
 
     #[test]
     fn cache_reuses_the_same_program_for_one_recipe_family() {
