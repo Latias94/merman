@@ -135,16 +135,17 @@ impl XyChartPaintPlan {
         if accounting.routes.is_empty() {
             return Ok(plan);
         }
-        let text_styles = [
+        let mut text_styles = BTreeMap::new();
+        for target in [
             ThemeTarget::Text,
             ThemeTarget::Title,
             ThemeTarget::AxisTitle,
             ThemeTarget::AxisLabel,
             ThemeTarget::Legend,
-        ]
-        .into_iter()
-        .map(|target| resolve_text_style(theme, target, work_meter).map(|style| (target, style)))
-        .collect::<std::result::Result<BTreeMap<_, _>, _>>()?;
+        ] {
+            let style = resolve_text_style(theme, target, work_meter)?;
+            text_styles.insert(target, style);
+        }
         // Axis geometry never inherits generic Text paint.
         let line_style = theme.style_with_work_meter(
             ThemeTarget::Axis,
@@ -656,7 +657,10 @@ impl<'a> PaintAccounting<'a> {
                     None
                 }
             })
-            .collect();
+            .fold(BTreeMap::new(), |mut map, (key, value)| {
+                map.insert(key, value);
+                map
+            });
         let has_ordinal = routes.iter().any(|route| {
             matches!(
                 route.mechanism(),

@@ -4,6 +4,8 @@
 
 mod appearances;
 mod canonical_json;
+#[doc(hidden)]
+pub mod compact_json;
 mod design;
 mod facet;
 mod finite;

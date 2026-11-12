@@ -67,19 +67,88 @@ impl Node {
     }
 }
 
-struct State<E> {
+/// Keep caller-specific errors outside the HTML5 parser's concrete types. Admission
+/// combines its checkpoint and storage check without changing their order, and the
+/// final serialization callback keeps the parser alive through output generation.
+trait ParseCallbacks {
+    fn checkpoint(&self) -> Result<(), ()>;
+    fn admit(&self, input_bytes: usize, nodes: usize, retained: usize) -> Result<(), ()>;
+    fn charge_parse_work(&self, additional: usize) -> Result<(), ()>;
+    fn parse_work_limit(&self, input_bytes: usize) -> Option<usize>;
+    fn serialize(
+        &self,
+        nodes: &mut [Node],
+        root: usize,
+        cfg: Option<&DompurifyEffectiveConfig>,
+        output: Output,
+    ) -> Result<String, ()>;
+}
+
+/// Moves the original sink error back to the caller without requiring boxing,
+/// cloning, or a `'static` error lifetime.
+struct ParseAdapter<'a, S: SanitizeOutputSink> {
+    sink: &'a S,
+    error: RefCell<Option<SanitizeFailure<S::Error>>>,
+}
+
+impl<S: SanitizeOutputSink> ParseAdapter<'_, S> {
+    fn record<T>(&self, result: Result<T, SanitizeFailure<S::Error>>) -> Result<T, ()> {
+        result.map_err(|error| {
+            *self.error.borrow_mut() = Some(error);
+        })
+    }
+}
+
+impl<S: SanitizeOutputSink> ParseCallbacks for ParseAdapter<'_, S> {
+    fn checkpoint(&self) -> Result<(), ()> {
+        self.record(self.sink.checkpoint().map_err(SanitizeFailure::Output))
+    }
+
+    fn admit(&self, input_bytes: usize, nodes: usize, retained: usize) -> Result<(), ()> {
+        self.record(
+            self.sink
+                .checkpoint()
+                .and_then(|()| self.sink.check_parse_storage(input_bytes, nodes, retained))
+                .map_err(SanitizeFailure::Output),
+        )
+    }
+
+    fn charge_parse_work(&self, additional: usize) -> Result<(), ()> {
+        self.record(
+            self.sink
+                .charge_parse_work(additional)
+                .map_err(SanitizeFailure::Output),
+        )
+    }
+
+    fn parse_work_limit(&self, input_bytes: usize) -> Option<usize> {
+        self.sink.parse_work_limit(input_bytes)
+    }
+
+    fn serialize(
+        &self,
+        nodes: &mut [Node],
+        root: usize,
+        cfg: Option<&DompurifyEffectiveConfig>,
+        output: Output,
+    ) -> Result<String, ()> {
+        self.record(serialize(nodes, root, cfg, self.sink, output))
+    }
+}
+
+struct State {
     nodes: Vec<Node>,
     retained: usize,
-    error: Option<SanitizeFailure<E>>,
+    failed: bool,
     merged_attribute_names: HashMap<usize, HashSet<QualName>>,
     parse_work: usize,
     total_parse_work: usize,
     parse_work_limit: Option<usize>,
 }
 
-struct Builder<'a, S: SanitizeOutputSink> {
-    state: RefCell<State<S::Error>>,
-    sink: &'a S,
+struct Builder<'a> {
+    state: RefCell<State>,
+    sink: &'a dyn ParseCallbacks,
     input_bytes: usize,
 }
 
@@ -89,19 +158,19 @@ struct Builder<'a, S: SanitizeOutputSink> {
 /// tokenizer running through every remaining token in the chunk. This adapter uses
 /// html5ever's public `TokenSink` boundary. Resource admission observes token kinds
 /// but does not implement HTML parsing, recovery, or scope rules of its own.
-struct StoppingTreeBuilder<'a, S: SanitizeOutputSink> {
-    inner: TreeBuilder<Handle, Builder<'a, S>>,
+struct StoppingTreeBuilder<'a> {
+    inner: TreeBuilder<Handle, Builder<'a>>,
     stopped: std::cell::Cell<bool>,
     complete_token: std::cell::Cell<bool>,
 }
 
-struct FormattingWork<'a, 'b, S: SanitizeOutputSink> {
-    builder: &'a Builder<'b, S>,
+struct FormattingWork<'a, 'b> {
+    builder: &'a Builder<'b>,
     tag: &'a html5ever::tokenizer::Tag,
     attribute_bytes: usize,
 }
 
-impl<S: SanitizeOutputSink> Tracer for FormattingWork<'_, '_, S> {
+impl Tracer for FormattingWork<'_, '_> {
     type Handle = Handle;
 
     fn trace_handle(&self, handle: &Handle) {
@@ -144,7 +213,7 @@ impl<S: SanitizeOutputSink> Tracer for FormattingWork<'_, '_, S> {
     }
 }
 
-impl<S: SanitizeOutputSink> TokenSink for StoppingTreeBuilder<'_, S> {
+impl TokenSink for StoppingTreeBuilder<'_> {
     type Handle = Handle;
 
     fn process_token(
@@ -205,9 +274,9 @@ impl<S: SanitizeOutputSink> TokenSink for StoppingTreeBuilder<'_, S> {
     }
 }
 
-impl<S: SanitizeOutputSink> Builder<'_, S> {
+impl Builder<'_> {
     fn failed(&self) -> bool {
-        self.state.borrow().error.is_some()
+        self.state.borrow().failed
     }
 
     /// Charge TreeSink callbacks in bounded batches. html5ever's tree builder
@@ -222,11 +291,11 @@ impl<S: SanitizeOutputSink> Builder<'_, S> {
         let charge = {
             let mut state = self.state.borrow_mut();
             let Some(total) = state.total_parse_work.checked_add(additional) else {
-                state.error = Some(SanitizeFailure::RejectedInput);
+                state.failed = true;
                 return false;
             };
             if state.parse_work_limit.is_some_and(|limit| total > limit) {
-                state.error = Some(SanitizeFailure::RejectedInput);
+                state.failed = true;
                 return false;
             }
             state.total_parse_work = total;
@@ -240,10 +309,8 @@ impl<S: SanitizeOutputSink> Builder<'_, S> {
             }
         };
 
-        if charge != 0
-            && let Err(error) = self.sink.charge_parse_work(charge)
-        {
-            self.state.borrow_mut().error = Some(SanitizeFailure::Output(error));
+        if charge != 0 && self.sink.charge_parse_work(charge).is_err() {
+            self.state.borrow_mut().failed = true;
             return false;
         }
         true
@@ -259,10 +326,8 @@ impl<S: SanitizeOutputSink> Builder<'_, S> {
             state.parse_work = 0;
             charge
         };
-        if charge != 0
-            && let Err(error) = self.sink.charge_parse_work(charge)
-        {
-            self.state.borrow_mut().error = Some(SanitizeFailure::Output(error));
+        if charge != 0 && self.sink.charge_parse_work(charge).is_err() {
+            self.state.borrow_mut().failed = true;
             return false;
         }
         true
@@ -284,16 +349,12 @@ impl<S: SanitizeOutputSink> Builder<'_, S> {
             .input_bytes
             .saturating_add(3)
             .saturating_mul(record_bytes);
-        let result = self.sink.checkpoint().and_then(|()| {
-            self.sink
-                .check_parse_storage(self.input_bytes, nodes, retained)
-        });
-        if let Err(error) = result {
-            state.error = Some(SanitizeFailure::Output(error));
+        if self.sink.admit(self.input_bytes, nodes, retained).is_err() {
+            state.failed = true;
             return false;
         }
         if retained > ceiling {
-            state.error = Some(SanitizeFailure::RejectedInput);
+            state.failed = true;
             return false;
         }
         state.retained = retained;
@@ -307,7 +368,7 @@ impl<S: SanitizeOutputSink> Builder<'_, S> {
         }
         let mut state = self.state.borrow_mut();
         if state.nodes.try_reserve(1).is_err() {
-            state.error = Some(SanitizeFailure::RejectedInput);
+            state.failed = true;
             return NONE;
         }
         let index = state.nodes.len();
@@ -409,7 +470,7 @@ fn container_name() -> QualName {
     QualName::new(None, ns!(html), LocalName::from("html"))
 }
 
-impl<S: SanitizeOutputSink> TreeSink for Builder<'_, S> {
+impl TreeSink for Builder<'_> {
     type Handle = Handle;
     type Output = Self;
     type ElemName<'a>
@@ -602,14 +663,32 @@ pub(super) fn parse_and_serialize<S: SanitizeOutputSink>(
     output: Output,
     context: Namespace,
 ) -> Result<String, SanitizeFailure<S::Error>> {
-    sink.checkpoint().map_err(SanitizeFailure::Output)?;
-    sink.check_parse_storage(text.len(), 0, 0)
-        .map_err(SanitizeFailure::Output)?;
+    let adapter = ParseAdapter {
+        sink,
+        error: RefCell::new(None),
+    };
+    let result = parse_and_serialize_with_callbacks(text, cfg, &adapter, output, context);
+    // The parser only needs to know whether to stop. Its adapter retains output
+    // errors; a stop without one is the core parser's structural rejection.
+    match adapter.error.into_inner() {
+        Some(error) => Err(error),
+        None => result.map_err(|()| SanitizeFailure::RejectedInput),
+    }
+}
+
+fn parse_and_serialize_with_callbacks(
+    text: &str,
+    cfg: Option<&DompurifyEffectiveConfig>,
+    sink: &dyn ParseCallbacks,
+    output: Output,
+    context: Namespace,
+) -> Result<String, ()> {
+    sink.admit(text.len(), 0, 0)?;
     let builder = Builder {
         state: RefCell::new(State {
             nodes: vec![Node::new(Kind::Container)],
             retained: std::mem::size_of::<Node>(),
-            error: None,
+            failed: false,
             merged_attribute_names: HashMap::new(),
             parse_work: 0,
             total_parse_work: 0,
@@ -647,7 +726,7 @@ pub(super) fn parse_and_serialize<S: SanitizeOutputSink>(
     let mut cursor = 0;
     let mut pending_token_bytes: usize = 0;
     while cursor < text.len() {
-        sink.checkpoint().map_err(SanitizeFailure::Output)?;
+        sink.checkpoint()?;
         let mut end = (cursor + CHUNK_BYTES).min(text.len());
         while !text.is_char_boundary(end) {
             end -= 1;
@@ -667,8 +746,8 @@ pub(super) fn parse_and_serialize<S: SanitizeOutputSink>(
             );
         parser.sink.inner.sink.charge_parse_work(token_work);
         parser.sink.inner.sink.flush_parse_work();
-        if let Some(error) = parser.sink.inner.sink.state.borrow_mut().error.take() {
-            return Err(error);
+        if parser.sink.inner.sink.failed() {
+            return Err(());
         }
         parser.sink.complete_token.set(false);
         input_queue.push_back(StrTendril::from_slice(&text[cursor..end]));
@@ -685,8 +764,8 @@ pub(super) fn parse_and_serialize<S: SanitizeOutputSink>(
         // names/identity until the current HTML5 token completes; subsequent tokens
         // are not forwarded to the tree builder. The tokenizer only drains this
         // bounded chunk before the parser is discarded without EOF or unwinding.
-        if let Some(error) = parser.sink.inner.sink.state.borrow_mut().error.take() {
-            return Err(error);
+        if parser.sink.inner.sink.failed() {
+            return Err(());
         }
         cursor = end;
     }
@@ -717,13 +796,13 @@ pub(super) fn parse_and_serialize<S: SanitizeOutputSink>(
         }
     }
     let mut state = builder.state.into_inner();
-    if let Some(error) = state.error {
-        return Err(error);
+    if state.failed {
+        return Err(());
     }
     if root == NONE {
         return Ok(String::new());
     }
-    serialize(&mut state.nodes, root, cfg, sink, output)
+    sink.serialize(&mut state.nodes, root, cfg, output)
 }
 
 fn qualified_name(name: &QualName) -> Cow<'_, str> {
@@ -1122,19 +1201,90 @@ mod tests {
     use super::*;
 
     #[test]
+    fn parser_adapter_preserves_the_original_borrowed_error() {
+        struct RejectParse<'a> {
+            error: RefCell<Option<&'a mut u8>>,
+            storage: bool,
+        }
+        impl<'a> SanitizeOutputSink for RejectParse<'a> {
+            type Error = &'a mut u8;
+
+            fn charge_parse_work(&self, _: usize) -> Result<(), Self::Error> {
+                if self.storage {
+                    Ok(())
+                } else {
+                    self.error.borrow_mut().take().map_or(Ok(()), Err)
+                }
+            }
+            fn check_parse_storage(
+                &self,
+                _: usize,
+                nodes: usize,
+                _: usize,
+            ) -> Result<(), Self::Error> {
+                if self.storage && nodes != 0 {
+                    self.error.borrow_mut().take().map_or(Ok(()), Err)
+                } else {
+                    Ok(())
+                }
+            }
+            fn checked_output_len(
+                &self,
+                current: usize,
+                additional: usize,
+            ) -> Result<usize, Self::Error> {
+                Ok(current + additional)
+            }
+            fn string_with_capacity(&self, _: usize) -> Result<String, Self::Error> {
+                Ok(String::new())
+            }
+            fn output_buffer(&self, _: usize) -> Result<Vec<u8>, Self::Error> {
+                Ok(Vec::new())
+            }
+            fn push_output_chunk(
+                &self,
+                output: &mut Vec<u8>,
+                chunk: &[u8],
+            ) -> Result<(), Self::Error> {
+                output.extend_from_slice(chunk);
+                Ok(())
+            }
+        }
+
+        for storage in [false, true] {
+            let mut token = 0;
+            let expected = std::ptr::from_mut(&mut token);
+            let sink = RejectParse {
+                error: RefCell::new(Some(&mut token)),
+                storage,
+            };
+            let result = parse_and_serialize("<b>text</b>", None, &sink, Output::Xhtml, ns!(html));
+            let Err(SanitizeFailure::Output(error)) = result else {
+                panic!("expected the original sink error");
+            };
+            assert_eq!(std::ptr::from_mut(error), expected);
+            assert!(sink.error.borrow().is_none());
+        }
+    }
+
+    #[test]
     fn rejected_tree_does_not_process_subsequent_tokens() {
         let output_sink = super::super::StringOutputSink;
+        let adapter = ParseAdapter {
+            sink: &output_sink,
+            error: RefCell::new(None),
+        };
         let builder = Builder {
             state: RefCell::new(State {
                 nodes: vec![Node::new(Kind::Container)],
                 retained: std::mem::size_of::<Node>(),
-                error: None,
+                failed: false,
                 merged_attribute_names: HashMap::new(),
                 parse_work: 0,
                 total_parse_work: 0,
                 parse_work_limit: None,
             }),
-            sink: &output_sink,
+            sink: &adapter,
             input_bytes: 64,
         };
         let stopping = StoppingTreeBuilder {
@@ -1156,7 +1306,7 @@ mod tests {
             let state = stopping.inner.sink.state.borrow();
             (state.nodes.len(), state.total_parse_work)
         };
-        stopping.inner.sink.state.borrow_mut().error = Some(SanitizeFailure::RejectedInput);
+        stopping.inner.sink.state.borrow_mut().failed = true;
         for _ in 0..8 {
             assert!(matches!(
                 stopping.process_token(token(), 1),
@@ -1167,6 +1317,6 @@ mod tests {
         let state = stopping.inner.sink.state.borrow();
         assert!(stopping.stopped.get());
         assert_eq!((state.nodes.len(), state.total_parse_work), before);
-        assert!(matches!(state.error, Some(SanitizeFailure::RejectedInput)));
+        assert!(state.failed);
     }
 }

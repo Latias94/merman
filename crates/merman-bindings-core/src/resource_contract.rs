@@ -65,7 +65,10 @@ pub fn binding_resource_contract() -> BindingResourceContract {
                             .expect("compiled resource descriptors must have profile values"),
                     )
                 })
-                .collect(),
+                .fold(BTreeMap::new(), |mut map, (key, value)| {
+                    map.insert(key, value);
+                    map
+                }),
         })
         .collect();
 

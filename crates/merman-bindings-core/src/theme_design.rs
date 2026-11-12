@@ -4,7 +4,7 @@ use merman::diagram_theme::{
     materialize_theme_design_json_with_bindings,
 };
 use merman::svg::{DiagramTheme, DiagramThemeCompiler, ThemeResourceLimitId, ThemeResourcePolicy};
-use merman_theme_contract::{ThemeAppearance, ThemeRecipeV1};
+use merman_theme_contract::{ThemeAppearance, ThemeRecipeV1, compact_json};
 use serde::Deserialize;
 use serde_json::value::RawValue;
 
@@ -102,20 +102,20 @@ pub(crate) fn materialize_theme_json_with(
                 let inspection = compiler
                     .inspect_document(&request.recipe)
                     .map_err(|error| design_compile_error(compiler.resource_policy(), error))?;
-                serde_json::to_vec(&inspection).map_err(crate::common::internal_json_error)
+                compact_json::to_vec(&inspection).map_err(crate::common::internal_json_error)
             }
             ThemeAuthoringAction::Materialize => {
                 let materialized = compiler
                     .materialize_document(&request.recipe, request.appearance)
                     .map_err(|error| design_compile_error(compiler.resource_policy(), error))?;
-                serde_json::to_vec(&materialized).map_err(crate::common::internal_json_error)
+                compact_json::to_vec(&materialized).map_err(crate::common::internal_json_error)
             }
         };
     }
     let policy = compiler.resource_policy();
     let materialized = materialize_theme_design_json_with_bindings(bytes, policy)
         .map_err(|error| materialization_error(policy, error))?;
-    serde_json::to_vec(&materialized).map_err(crate::common::internal_json_error)
+    compact_json::to_vec(&materialized).map_err(crate::common::internal_json_error)
 }
 
 fn check_authoring_request_version(version: &RawValue) -> Result<(), BindingError> {
@@ -162,7 +162,7 @@ pub fn describe_theme_support_json_with_resource_policy(
             BindingError::invalid_options_json(format!("invalid theme support query JSON: {error}"))
         })?;
         let descriptor = describe_theme_support_with_renderer(&query);
-        serde_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
+        compact_json::to_vec(&descriptor).map_err(crate::common::internal_json_error)
     } else {
         Err(BindingError::invalid_options_json(format!(
             "unsupported theme support query schema version {}",
@@ -204,7 +204,7 @@ pub fn export_theme_preset_json_with(
     let export = compiler
         .export_preset_document(id)
         .map_err(|error| design_compile_error(compiler.resource_policy(), error))?;
-    serde_json::to_vec(&export).map_err(crate::common::internal_json_error)
+    compact_json::to_vec(&export).map_err(crate::common::internal_json_error)
 }
 
 /// Compiles one editable design with the general binding resource profile.
