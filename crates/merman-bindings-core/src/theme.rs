@@ -187,7 +187,7 @@ fn check_theme_json_input(
         probe.complete_spec
     };
     if let Some(spec) = spec {
-        serde_json::from_str::<DiagramThemeSpecWireV1>(spec.get())
+        serde_json::from_slice::<DiagramThemeSpecWireV1>(spec.get().as_bytes())
             .map_err(|error| invalid_options(format!("invalid complete theme spec: {error}")))?;
     }
     Ok(())
@@ -223,7 +223,7 @@ pub(crate) fn check_theme_recipe_envelope_after_structure(
             .and_then(|raw| serde_json::from_str::<u64>(raw.get()).ok()),
     )?;
     if let Some(spec) = probe.complete_spec {
-        serde_json::from_str::<DiagramThemeSpecWireV1>(spec.get())
+        serde_json::from_slice::<DiagramThemeSpecWireV1>(spec.get().as_bytes())
             .map_err(|error| invalid_options(format!("invalid complete theme spec: {error}")))?;
     }
     Ok(())

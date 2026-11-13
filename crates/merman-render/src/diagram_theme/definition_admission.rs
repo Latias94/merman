@@ -4,7 +4,9 @@ use std::borrow::Cow;
 use std::collections::HashSet;
 use std::{fmt, io};
 
-use merman_theme_contract::{ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1};
+use merman_theme_contract::{
+    ThemeMaterializationDiagnosticV1, ThemeMaterializationErrorV1, compact_json,
+};
 use serde::de::{self, DeserializeSeed, Deserializer, MapAccess, SeqAccess, Visitor};
 
 use super::{ThemeResourceLimitExceeded, ThemeResourcePolicy};
@@ -65,7 +67,7 @@ pub(super) fn measure_typed_input_encoded_bytes(
     input: &impl serde::Serialize,
 ) -> Result<usize, ThemeInputEncodingError> {
     let mut writer = BoundedCountingWriter::new(resources);
-    let encoded = serde_json::to_writer(&mut writer, input);
+    let encoded = compact_json::to_writer(&mut writer, input);
     if let Some(error) = writer.take_resource_error() {
         return Err(ThemeInputEncodingError::ResourceLimit(error));
     }

@@ -144,7 +144,10 @@ impl FamilyThemeProgram {
                 | FamilyThemeMechanism::OrdinalPalette { .. }
                 | FamilyThemeMechanism::EffectBinding { .. } => None,
             })
-            .collect();
+            .fold(BTreeMap::new(), |mut map, (key, value)| {
+                map.insert(key, value);
+                map
+            });
 
         let mut requested_mechanisms = Vec::new();
         let mut requested_index = BTreeSet::new();

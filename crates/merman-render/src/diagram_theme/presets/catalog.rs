@@ -225,8 +225,8 @@ impl PresetCatalogEntry {
                 design
             }
             PresetRecipeSource::Document { json, .. } => {
-                let ThemeRecipeV1::Design { design } =
-                    serde_json::from_str(json).expect("bundled preset recipe must be valid")
+                let ThemeRecipeV1::Design { design } = serde_json::from_slice(json.as_bytes())
+                    .expect("bundled preset recipe must be valid")
                 else {
                     unreachable!("bundled presets must retain editable designs")
                 };
