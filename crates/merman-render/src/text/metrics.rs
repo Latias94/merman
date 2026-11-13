@@ -17,7 +17,7 @@ use crate::environment::{
 
 mod unwrapped_xhtml;
 
-#[cfg(feature = "diagram-block")]
+#[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
 pub(crate) fn measure_unwrapped_xhtml_label_fragment(
     measurer: &dyn TextMeasurer,
     fragment: &str,
@@ -3477,7 +3477,7 @@ fn measure_html_with_inline_styles_and_terminal_fonts<M: TextMeasurer + ?Sized>(
                 explicit_line_boxes,
             );
         }
-        // Unstyled Block markup retains the existing callback and primitive-font behavior.
+        // Unstyled XHTML retains the existing callback and primitive-font behavior.
         for run in inline_runs_by_line.iter_mut().flatten() {
             run.terminal_style = None;
         }

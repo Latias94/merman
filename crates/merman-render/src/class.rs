@@ -1863,7 +1863,8 @@ pub(crate) fn class_html_measure_note_metrics(
     mermaid_config: &merman_core::MermaidConfig,
 ) -> crate::text::TextMetrics {
     let html = class_note_html_fragment(note_src, mermaid_config);
-    crate::text::measure_html_with_inline_styles(measurer, &html, style, None, WrapMode::HtmlLike)
+    // XHTML rem resolves against the host document, independently of diagram typography.
+    crate::text::measure_unwrapped_xhtml_label_fragment(measurer, &html, style, 16.0)
 }
 
 pub(crate) fn analyze_class_svg_markdown(text: &str) -> MermaidMarkdownAnalysis {
@@ -2157,7 +2158,7 @@ fn note_dimensions(
     } else {
         ClassSvgNoteLabel::new(&label).metrics(measurer, text_style)
     };
-    (m.width + p, m.height + p, m)
+    (m.width + p * 2.0, m.height + p * 2.0, m)
 }
 
 fn label_metrics(
@@ -2182,6 +2183,51 @@ fn label_metrics(
     )
     .unwrap_or_else(|| measurer.measure_wrapped(&t, text_style, None, wrap_mode));
     (m.width.max(0.0), m.height.max(0.0))
+}
+
+pub(crate) fn class_cardinality_html_fragment(
+    text: &str,
+    mermaid_config: &merman_core::MermaidConfig,
+) -> String {
+    // Keep serialized entities until the XHTML parser's single decoding step. Cardinalities
+    // use createText's non-Markdown branch, including explicit HTML and escaped line breaks.
+    let label = crate::graph_label::flowchart_non_markdown_label_for_html(text, "text");
+    let html = crate::text::replace_fontawesome_icons(&format!("<p>{label}</p>"));
+    merman_core::sanitize::sanitize_xhtml(&html, mermaid_config)
+}
+
+fn class_cardinality_label_metrics(
+    text: &str,
+    measurer: &dyn TextMeasurer,
+    text_style: &TextStyle,
+    wrap_mode: WrapMode,
+    mermaid_config: &merman_core::MermaidConfig,
+    math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
+) -> (f64, f64) {
+    if !matches!(wrap_mode, WrapMode::HtmlLike) || text.trim().is_empty() {
+        return label_metrics(
+            text,
+            measurer,
+            text_style,
+            wrap_mode,
+            mermaid_config,
+            math_renderer,
+        );
+    }
+    let decoded = decode_entities_minimal(text);
+    let metrics = class_math_label_metrics(
+        &decoded,
+        measurer,
+        text_style,
+        None,
+        mermaid_config,
+        math_renderer,
+    )
+    .unwrap_or_else(|| {
+        let xhtml = class_cardinality_html_fragment(text, mermaid_config);
+        crate::text::measure_unwrapped_xhtml_label_fragment(measurer, &xhtml, text_style, 16.0)
+    });
+    (metrics.width.max(0.0), metrics.height.max(0.0))
 }
 
 fn prepare_edge_title(
@@ -2389,7 +2435,7 @@ fn measure_class_diagram(
                 measurer,
                 text_style,
                 wrap_mode_note,
-                class_padding,
+                settings.note_padding,
                 note_html_config,
                 math_renderer,
             );
@@ -2558,7 +2604,7 @@ fn measure_class_diagram(
         let start_text = rel.relation_title_1.clone().unwrap_or_default();
         let end_text = rel.relation_title_2.clone().unwrap_or_default();
 
-        let (srw, srh) = label_metrics(
+        let (srw, srh) = class_cardinality_label_metrics(
             &start_text,
             measurer,
             &terminal_text_style,
@@ -2566,7 +2612,7 @@ fn measure_class_diagram(
             mermaid_config,
             math_renderer,
         );
-        let (elw, elh) = label_metrics(
+        let (elw, elh) = class_cardinality_label_metrics(
             &end_text,
             measurer,
             &terminal_text_style,
@@ -4485,6 +4531,19 @@ mod tests {
     }
 
     #[test]
+    fn class_html_cardinality_keeps_math_renderer_geometry() {
+        let metrics = super::class_cardinality_label_metrics(
+            "$$x^2$$",
+            &ClassMathGeometryMeasurer,
+            &default_style(),
+            WrapMode::HtmlLike,
+            &merman_core::MermaidConfig::default(),
+            Some(&ClassMathGeometryRenderer),
+        );
+        assert_eq!(metrics, (123.0, 37.0));
+    }
+
+    #[test]
     fn class_svg_math_note_keeps_math_renderer_width_in_note_geometry() {
         let config = merman_core::MermaidConfig::default();
         let style = default_style();
@@ -4501,8 +4560,8 @@ mod tests {
 
         assert_eq!(metrics.width, 123.0);
         assert_eq!(metrics.height, 37.0);
-        assert_eq!(width, 131.0);
-        assert_eq!(height, 45.0);
+        assert_eq!(width, 139.0);
+        assert_eq!(height, 53.0);
     }
 }
 

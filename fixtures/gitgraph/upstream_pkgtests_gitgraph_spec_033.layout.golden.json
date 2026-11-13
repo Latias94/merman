@@ -21,28 +21,28 @@
           "index": 0.0,
           "pos": 0.0,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "testBranch",
           "index": 1.0,
           "pos": 90.0,
           "bbox_width": 71.52,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "testBranch2",
           "index": 2.0,
           "pos": 180.0,
           "bbox_width": 80.48,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "testBranch3",
           "index": 3.0,
           "pos": 270.0,
           "bbox_width": 80.48,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         }
       ],
       "commits": [

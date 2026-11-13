@@ -1,4 +1,4 @@
-//! Terminal fonts for Block's sanitized, unwrapped XHTML labels.
+//! Terminal fonts for sanitized, unwrapped XHTML labels.
 
 use std::sync::Arc;
 
@@ -25,7 +25,7 @@ pub(super) struct TerminalFonts {
 }
 
 impl TerminalFonts {
-    #[cfg(feature = "diagram-block")]
+    #[cfg(any(feature = "diagram-block", feature = "diagram-class"))]
     pub(super) fn new(style: &TextStyle, root_font_size: f64) -> Self {
         Self {
             root_font_size,
@@ -129,7 +129,7 @@ impl TerminalFonts {
                     .map(|run| {
                         let style = run.terminal_style.as_deref().unwrap_or(base);
                         // Use the routed terminal measurement for host-specific vertical metrics.
-                        // Block's inherited 1.5 line height still supplies the CSS line-box floor.
+                        // The inherited 1.5 line height still supplies the CSS line-box floor.
                         measurer
                             .measure_html_line_height_px(&run.text, style)
                             .max(style.font_size.max(1.0) * 1.5)

@@ -576,7 +576,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
         .as_deref()
         .is_some_and(gitgraph_theme_is_redux_geometry);
 
-    // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths while the
+    // Upstream gitGraph uses SVG `getBBox()` probes for branch label widths and heights while the
     // `drawText(...)` nodes inherit Mermaid's global font config.
     let font_family = crate::config::config_font_family_css(effective_config);
     let font_size = config_f64_css_px(effective_config, &["themeVariables", "fontSize"])
@@ -595,7 +595,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
     let mut branch_index: HashMap<&str, usize> = HashMap::new();
     let mut pos = 0.0;
     for (i, b) in model.branches.iter().enumerate() {
-        let metrics = measurer.measure(&b.name, &label_style);
+        let bbox_h = measurer.measure_svg_tspan_text_bbox_height_px(&b.name, &label_style);
         let bbox_w = branch_label_bbox_width_px(&b.name, &label_style, measurer);
         branch_pos.insert(b.name.as_str(), pos);
         branch_index.insert(b.name.as_str(), i);
@@ -605,7 +605,7 @@ pub(crate) fn layout_gitgraph_diagram_typed(
             index: i as i64,
             pos,
             bbox_width: bbox_w.max(0.0),
-            bbox_height: metrics.height.max(0.0),
+            bbox_height: bbox_h.max(0.0),
         });
 
         pos += 50.0

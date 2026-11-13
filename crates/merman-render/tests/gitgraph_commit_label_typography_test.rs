@@ -44,6 +44,12 @@ impl WeightSensitiveMeasurer {
             Some("725") => (90.0, 20.0),
             _ => (30.0, 9.0),
         };
+        // General line metrics must not stand in for the rendered tspan bbox.
+        let height = if operation == TextMeasurementOperation::Measure {
+            2.0
+        } else {
+            height
+        };
         TextMetrics {
             width,
             height,
@@ -167,6 +173,52 @@ fn render_source(
     (svg, measurer)
 }
 
+#[test]
+fn gitgraph_branch_rows_use_tspan_height_without_changing_prelayout_weight() {
+    for host in [true, false] {
+        for theme in ["default", "redux"] {
+            for (direction, header) in [
+                ("LR", "gitGraph"),
+                ("TB", "gitGraph TB:"),
+                ("BT", "gitGraph BT:"),
+            ] {
+                let (svg, measurer) = render_source(
+                    json!({
+                        "theme": theme,
+                        "gitGraph": {"showCommitLabel": false, "rotateCommitLabel": false},
+                        "themeVariables": {"fontSize": "32px", "noteFontWeight": "bold"}
+                    }),
+                    host,
+                    &format!("{header}\nbranch \"top\"\ncommit id:\"A\"\n"),
+                );
+                let (width, height) = if theme == "redux" {
+                    (114.0, 34.0)
+                } else {
+                    (48.0, 13.0)
+                };
+                for class in ["branchLabelBkg label0", "branchLabelBkg label1"] {
+                    assert_geometry(&svg, class, width, height);
+                }
+                let requests = measurer.requests.lock().unwrap();
+                for text in ["main", "top"] {
+                    assert!(
+                        requests.iter().any(|(row, operation, style)| {
+                            row == text
+                                && *operation == TextMeasurementOperation::TspanBBoxHeight
+                                && style.font_size == 32.0
+                                && style.font_weight.is_none()
+                        }),
+                        "{theme}, host={host}, {direction}: {requests:?}"
+                    );
+                    assert!(requests.iter().all(|(row, operation, _)| {
+                        row != text || *operation != TextMeasurementOperation::Measure
+                    }));
+                }
+            }
+        }
+    }
+}
+
 fn rule<'a>(svg: &'a str, selector: &str) -> &'a str {
     svg.split_once(&format!("#git-weight {selector}{{"))
         .unwrap()
@@ -260,8 +312,10 @@ fn gitgraph_commit_label_weight_reaches_host_and_probe_geometry() {
                     }
                     let branch_probes: Vec<_> = requests
                         .iter()
-                        .filter(|(text, operation, _)| {
-                            text == "main" && *operation == TextMeasurementOperation::Measure
+                        .filter(|(text, operation, style)| {
+                            text == "main"
+                                && *operation == TextMeasurementOperation::TspanBBoxHeight
+                                && style.font_weight.is_none()
                         })
                         .collect();
                     assert!(

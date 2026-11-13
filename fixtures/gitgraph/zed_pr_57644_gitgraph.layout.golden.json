@@ -21,28 +21,28 @@
           "index": 0.0,
           "pos": 0.0,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "feature/auth",
           "index": 1.0,
           "pos": 90.0,
           "bbox_width": 80.96,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "feature/database",
           "index": 2.0,
           "pos": 180.0,
           "bbox_width": 108.48,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "hotfix/security",
           "index": 3.0,
           "pos": 270.0,
           "bbox_width": 98.72,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         }
       ],
       "commits": [

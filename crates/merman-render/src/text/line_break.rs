@@ -38,8 +38,9 @@ pub(crate) fn mermaid_html_breaks_to_newlines(text: &str) -> std::borrow::Cow<'_
 /// `unicode_linebreak` supplies the UAX #14 soft and mandatory opportunities. Chromium's CSS
 /// line breaker suppresses the library's soft opportunity immediately after `/`; this keeps path
 /// and URI components together while retaining opportunities after characters such as `-` and
-/// `?`. CSS `white-space: break-spaces` additionally permits a break after every preserved U+0020,
-/// so runs of spaces are divided without discarding the spaces themselves.
+/// `?`. CSS also permits a break after an ASCII letter/digit followed by `-` and an ASCII digit,
+/// where UAX #14 keeps the hyphen attached to the number. CSS `white-space: break-spaces`
+/// additionally permits a break after every preserved U+0020 without discarding the spaces.
 pub(crate) fn html_break_spaces_segments(text: &str) -> Vec<&str> {
     match html_break_spaces_segments_with_checkpoints(text, &mut || {
         Ok::<(), std::convert::Infallible>(())
@@ -213,10 +214,20 @@ fn push_break_spaces_segments<'a, E>(
         if iteration.is_multiple_of(64) {
             checkpoint()?;
         }
-        if ch != ' ' {
+        let part_end = start + offset + ch.len_utf8();
+        // CSS breaks after an ASCII letter/digit followed by '-' and an ASCII digit.
+        // A leading sign, including one after punctuation or whitespace, stays attached.
+        // UTF-8 continuation bytes cannot satisfy either ASCII predicate.
+        let numeric_hyphen = ch == '-'
+            && part_end >= 2
+            && text.as_bytes()[part_end - 2].is_ascii_alphanumeric()
+            && text
+                .as_bytes()
+                .get(part_end)
+                .is_some_and(u8::is_ascii_digit);
+        if ch != ' ' && !numeric_hyphen {
             continue;
         }
-        let part_end = start + offset + ch.len_utf8();
         segments.push(HtmlBreakSegment {
             text: &text[part_start..part_end],
             end: if part_end == end {
@@ -290,12 +301,39 @@ mod tests {
     }
 
     #[test]
+    fn numeric_hyphens_follow_css_ascii_context_without_splitting_number_signs() {
+        for (text, expected) in [
+            ("DOC-12345", vec!["DOC-", "12345"]),
+            ("ID: DOC-12345", vec!["ID: ", "DOC-", "12345"]),
+            ("12-345", vec!["12-", "345"]),
+            ("A-1B", vec!["A-", "1B"]),
+            ("A-1-2", vec!["A-", "1-", "2"]),
+            (
+                "https://example.com/id-123?x=4",
+                vec!["https://example.com/id-", "123?", "x=4"],
+            ),
+            ("-12345", vec!["-12345"]),
+            ("ID: -12345", vec!["ID: ", "-12345"]),
+            ("(-12345)", vec!["(-12345)"]),
+            ("12.345", vec!["12.345"]),
+            ("a=-12345", vec!["a=-12345"]),
+            ("a_-12345", vec!["a_-12345"]),
+            ("é-12345", vec!["é-12345"]),
+            ("A\u{301}-12345", vec!["A\u{301}-12345"]),
+        ] {
+            assert_eq!(html_break_spaces_segments(text), expected, "{text}");
+        }
+    }
+
+    #[test]
     fn reports_soft_breaks_from_the_same_browser_segments() {
         assert!(!html_has_soft_break_opportunity(""));
         assert!(!html_has_soft_break_opportunity("unbroken"));
         assert!(!html_has_soft_break_opportunity("https://x.test/(alpha)/z"));
         assert!(html_has_soft_break_opportunity("alpha beta"));
         assert!(html_has_soft_break_opportunity("alpha-beta"));
+        assert!(html_has_soft_break_opportunity("DOC-12345"));
+        assert!(!html_has_soft_break_opportunity("-12345"));
         assert!(html_has_soft_break_opportunity("负责人审批"));
         assert!(html_has_soft_break_opportunity(
             "https://example.com/api/v1/some(very-long)/resource-name?query=foo_bar&baz=qux"
@@ -325,6 +363,7 @@ mod tests {
         // These include contexts that cannot be restarted safely at a fixed chunk boundary.
         for text in [
             "unbreakable".repeat(1024),
+            "DOC-12345".repeat(1024),
             format!("a{}b", "\u{0301}".repeat(1024)),
             "\u{200d}".repeat(1024),
             "🇦".repeat(1024),
@@ -427,6 +466,31 @@ mod tests {
                 text: "alpha\u{00ad}",
                 end: HtmlBreakKind::Mandatory,
             }]
+        );
+        assert_eq!(
+            html_break_spaces_segments_with_metadata_and_checkpoints(
+                "DOC-12345\r\nA-1",
+                &mut checkpoint
+            )
+            .unwrap(),
+            [
+                HtmlBreakSegment {
+                    text: "DOC-",
+                    end: HtmlBreakKind::Ordinary,
+                },
+                HtmlBreakSegment {
+                    text: "12345\r\n",
+                    end: HtmlBreakKind::Mandatory,
+                },
+                HtmlBreakSegment {
+                    text: "A-",
+                    end: HtmlBreakKind::Ordinary,
+                },
+                HtmlBreakSegment {
+                    text: "1",
+                    end: HtmlBreakKind::Mandatory,
+                },
+            ]
         );
     }
 }

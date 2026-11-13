@@ -409,6 +409,12 @@ impl SvgPipeline {
             }
             Err(error) => return Err(error),
         };
+        for stage in preset::builtin_stages_before_postprocessors(self.preset) {
+            execution.checkpoint()?;
+            current = stage.apply(current, metadata, execution, structure)?;
+            execution.checkpoint()?;
+            execution.preflight_svg_byte_count(current.len())?;
+        }
         if self.isolate_ids {
             current = embedding::normalize_renderer_ids(current, metadata, execution)?;
         }

@@ -8,6 +8,7 @@ pub(crate) mod id_suffix;
 pub(crate) mod presentation_fallback;
 pub mod root_background;
 pub mod scoped_css;
+pub(crate) mod timeline_marker;
 pub(crate) mod util;
 
 pub use css_override::{CssOverridePolicy, CssOverridePostprocessor};

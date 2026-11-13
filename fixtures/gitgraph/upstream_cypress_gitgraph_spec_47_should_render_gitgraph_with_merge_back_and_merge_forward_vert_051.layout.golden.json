@@ -21,21 +21,21 @@
           "index": 0.0,
           "pos": 0.0,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch-A",
           "index": 1.0,
           "pos": 105.36,
           "bbox_width": 56.16,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch-B",
           "index": 2.0,
           "pos": 223.44,
           "bbox_width": 56.16,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         }
       ],
       "commits": [

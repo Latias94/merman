@@ -21,21 +21,21 @@
           "index": 0.0,
           "pos": 0.0,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "feature-001",
           "index": 1.0,
           "pos": 105.36,
           "bbox_width": 80.32,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "feature-002",
           "index": 2.0,
           "pos": 235.52,
           "bbox_width": 80.32,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         }
       ],
       "commits": [
