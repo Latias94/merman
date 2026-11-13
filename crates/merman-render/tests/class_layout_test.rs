@@ -53,6 +53,43 @@ fn layout_class_text(text: &str) -> (ClassDiagramLayout, ParsedDiagramRender) {
     (layout, parsed)
 }
 
+#[test]
+fn class_note_padding_expands_each_side_in_both_label_modes() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for html in [false, true] {
+            let note_size = |padding: Option<f64>| {
+                let padding = padding
+                    .map(|padding| format!("  class:\n    padding: {padding}\n"))
+                    .unwrap_or_default();
+                let source = format!(
+                    "---\nconfig:\n  layout: {layout}\n  htmlLabels: {html}\n{padding}---\nclassDiagram\nnote \"Retry on failure\"\n"
+                );
+                let (layout, _) = layout_class_text(&source);
+                let note = layout.nodes.iter().find(|node| node.id == "note0").unwrap();
+                (note.width, note.height)
+            };
+            let (width, height) = note_size(Some(0.0));
+            assert_eq!(note_size(None), note_size(Some(6.0)), "{layout}/{html}");
+            for padding in [6.0, 30.0] {
+                let padded = note_size(Some(padding));
+                assert!(
+                    (padded.0 - width - 2.0 * padding).abs() < 1e-6,
+                    "{layout}/{html}/{padding}: width {} vs {width}",
+                    padded.0
+                );
+                assert!(
+                    (padded.1 - height - 2.0 * padding).abs() < 1e-6,
+                    "{layout}/{html}/{padding}: height {} vs {height}",
+                    padded.1
+                );
+            }
+        }
+    }
+}
+
 fn nested_class_namespace_text(depth: usize) -> String {
     let mut lines = vec!["classDiagram".to_string()];
     for i in 0..depth {
@@ -155,6 +192,63 @@ fn class_namespaces_contain_member_classes() {
         assert!(
             rect_contains(rect_from_cluster(cluster), rect_from_node(node), 0.01),
             "cluster {parent} should contain {id}"
+        );
+    }
+}
+
+#[test]
+fn class_namespace_contains_internal_composition_label_and_cardinalities() {
+    let source = r#"classDiagram
+    direction TB
+    class Resource {
+        <<abstract>>
+        +String id
+    }
+    namespace Publishing {
+        class Document {
+            +String title
+            +addSection(title: String) void
+            +renderSummary() String
+        }
+        class Section {
+            +String heading
+            +wordCount() int
+        }
+    }
+    Resource <|-- Document
+    Document "1" *-- "1..*" Section : contains
+"#;
+    let (layout, _) = layout_class_text(source);
+    let namespace = layout
+        .clusters
+        .iter()
+        .find(|cluster| cluster.id == "Publishing")
+        .expect("Publishing namespace");
+    let composition = layout
+        .edges
+        .iter()
+        .find(|edge| edge.from == "Document" && edge.to == "Section")
+        .expect("internal composition");
+    for label in [
+        composition.label.as_ref().expect("contains label"),
+        composition
+            .start_label_right
+            .as_ref()
+            .expect("1 cardinality"),
+        composition
+            .end_label_left
+            .as_ref()
+            .expect("1..* cardinality"),
+    ] {
+        let bounds = (
+            label.x - label.width / 2.0,
+            label.y - label.height / 2.0,
+            label.x + label.width / 2.0,
+            label.y + label.height / 2.0,
+        );
+        assert!(
+            rect_contains(rect_from_cluster(namespace), bounds, 0.01),
+            "Publishing should contain its internal relation labels: {bounds:?}"
         );
     }
 }

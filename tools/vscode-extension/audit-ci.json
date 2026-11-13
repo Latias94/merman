@@ -1,0 +1,15 @@
+{
+  "package-manager": "npm",
+  "low": true,
+  "skip-dev": true,
+  "pass-enoaudit": false,
+  "allowlist": [
+    {
+      "GHSA-g3hv-75wg-m249|vscode-languageclient>minimatch": {
+        "active": true,
+        "expiry": "2027-02-11T00:00:00Z",
+        "notes": "Maintainer-approved exception for the unpublished extension: vscode-languageclient 11.0.0 requires minimatch 10.2.6; patched minimatch 11 removes makeRe(), which the client still uses. Remove before publication or when a compatible upstream repair is admitted. See docs/DEPENDENCY_POLICY.md."
+      }
+    }
+  ]
+}

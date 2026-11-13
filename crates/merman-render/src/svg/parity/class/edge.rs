@@ -684,8 +684,12 @@ fn render_class_edge_terminals(
             [&edge.end_label_left, &edge.end_label_right],
         )
     };
-    let decoded = decode_entities_minimal_cow(text);
-    let text = decoded.trim();
+    let text = if ctx.edge_use_html_labels && ctx.mermaid_config.is_some() {
+        std::borrow::Cow::Borrowed(text)
+    } else {
+        decode_entities_minimal_cow(text)
+    };
+    let text = text.trim();
     if text.is_empty() {
         return;
     }
@@ -757,8 +761,11 @@ fn render_class_terminal_label(
     mermaid_config: Option<&merman_core::MermaidConfig>,
     math_renderer: Option<&(dyn crate::math::MathRenderer + Send + Sync)>,
 ) {
-    if let Some(math_html) = class_math_html_label(text, mermaid_config, math_renderer) {
+    let decoded = decode_entities_minimal_cow(text);
+    if let Some(math_html) = class_math_html_label(&decoded, mermaid_config, math_renderer) {
         out.push_str(&math_html);
+    } else if let Some(config) = mermaid_config {
+        out.push_str(&crate::class::class_cardinality_html_fragment(text, config));
     } else {
         out.push_str("<p>");
         escape_xml_into(out, text);
@@ -872,6 +879,36 @@ pub(super) fn class_edge_render_order<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug)]
+    struct CardinalityMathRenderer;
+
+    impl crate::math::MathRenderer for CardinalityMathRenderer {
+        fn render_html_label(
+            &self,
+            text: &str,
+            _config: &merman_core::MermaidConfig,
+        ) -> Option<String> {
+            assert_eq!(text, "$$x < 2$$");
+            Some("<span>formula</span>".to_owned())
+        }
+    }
+
+    #[test]
+    fn class_html_cardinality_decodes_math_before_selecting_the_renderer() {
+        let config = merman_core::MermaidConfig::from_value(serde_json::json!({
+            "htmlLabels": true,
+            "securityLevel": "loose"
+        }));
+        let mut output = String::new();
+        render_class_terminal_label(
+            &mut output,
+            "$$x &lt; 2$$",
+            Some(&config),
+            Some(&CardinalityMathRenderer),
+        );
+        assert_eq!(output, "<span>formula</span>");
+    }
 
     fn label_at(x: f64, y: f64) -> LayoutLabel {
         LayoutLabel {

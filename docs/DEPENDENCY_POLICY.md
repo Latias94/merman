@@ -12,6 +12,8 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 
 | Dependency surface | Selected policy | Reason and review boundary |
 | --- | --- | --- |
+| `pulldown-cmark` | Compatible 0.13.6 minimum | Includes the [RUSTSEC-2026-0433 repair](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's Markdown entrypoints do not enable the affected Wikilinks option. Keep the patched minimum for fresh consumers and refresh the governed lockfiles. |
+| `rustix` | Compatible 1.1.6 minimum | Includes the [RUSTSEC-2026-0486 repair](https://rustsec.org/advisories/RUSTSEC-2026-0486.html) for zero-length extended-attribute buffers. Merman's direct Unix output path uses descriptor-relative file operations, not extended-attribute queries. Keep the patched minimum for fresh consumers and transitive tooling. |
 | `libm` | Exact 0.2.16 | Iterative layout uses reproducible math instead of host-dependent transcendental results. [The introducing change](https://github.com/Latias94/merman/commit/f5e557f85cfa03992ba367cd970605258e060ea6) ties this choice to deterministic geometry. A change requires source-backed layout and parity evidence. |
 | NAPI runtime / derive / build | Exact 3.15.0 / 3.6.13 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
 | Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar package 0.3.1 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |
@@ -43,6 +45,17 @@ The supported 6.0.1 probe still reports a high-severity advisory chain, while th
 override graph passes npm audit. Revisit when the parent admits a patched supported version;
 a clean advisory report alone does not prove authentication compatibility. This tooling
 path is not part of the bundled extension runtime.
+
+The unpublished VS Code extension has a maintainer-approved production audit exception for
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), limited to
+`vscode-languageclient 11.0.0 -> minimatch 10.2.6`. The 2026-11-13 registry check found no patched 10.x release;
+minimatch 11.0.1 removes `makeRe()`, which the current language client uses for file-operation
+and glob filters. A forced override would break those paths. The extension is not a published
+Merman package surface. Remove this exception before its first publication or when a compatible
+upstream repair is admitted; it expires on 2027-02-11 UTC. The dependency version guard requires
+review on parent or matcher changes. Pinned `audit-ci 7.1.0` admits only that exact advisory path
+at the existing low-or-higher production threshold. Other packages retain their unmodified
+production audit, and the complete tooling graph still fails on high or critical findings.
 
 ## Node build compatibility
 

@@ -71,6 +71,20 @@ impl TextMeasurer for FontMeasurer {
 }
 
 fn render_class(layout: &str, node_style: &str) -> (String, Arc<FontRequests>) {
+    render_class_source_with_font_size(
+        layout,
+        &format!(
+            "classDiagram\nclass Vehicle[\"<i>Vehicle</i>\"] {{\n+owner\n+drive()*\n}}\nclass Driver\nVehicle --> Driver\n{node_style}\n"
+        ),
+        24,
+    )
+}
+
+fn render_class_source_with_font_size(
+    layout: &str,
+    source: &str,
+    font_size: u32,
+) -> (String, Arc<FontRequests>) {
     let requests = Arc::new(FontRequests::default());
     let profile = TextMeasurementProfile::new(
         TextMeasurementProfileIdentity::new(
@@ -91,15 +105,10 @@ fn render_class(layout: &str, node_style: &str) -> (String, Arc<FontRequests>) {
             "fontSize": 18,
             "themeVariables": {
                 "fontFamily": "\"Visible; Face\", serif;",
-                "fontSize": "24px"
+                "fontSize": format!("{font_size}px")
             }
         })))
-        .parse_diagram_for_render_model_sync(
-            &format!(
-                "classDiagram\nclass Vehicle[\"<i>Vehicle</i>\"] {{\n+owner\n+drive()*\n}}\nclass Driver\nVehicle --> Driver\n{node_style}\n"
-            ),
-            ParseOptions::default(),
-        )
+        .parse_diagram_for_render_model_sync(source, ParseOptions::default())
         .unwrap()
         .unwrap();
     let artifact = family::prepare(
@@ -195,4 +204,95 @@ fn class_html_node_span_fonts_follow_group_inheritance_before_xhtml_measurement(
     }
     assert!(svg.contains("font-size:150%"));
     assert!(svg.contains("font-weight:lighter"));
+}
+
+#[test]
+fn class_html_notes_resolve_rem_against_the_document_root_before_sizing() {
+    fn note_dimensions(svg: &str) -> (f64, f64) {
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let label = document
+            .descendants()
+            .find(|node| node.has_tag_name("foreignObject"))
+            .unwrap();
+        (
+            label.attribute("width").unwrap().parse().unwrap(),
+            label.attribute("height").unwrap().parse().unwrap(),
+        )
+    }
+
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for font_size in [14, 24] {
+            let render = |size: &str| {
+                render_class_source_with_font_size(
+                    layout,
+                    &format!(
+                        "classDiagram\nnote \"<span style='font-size:{size}'>AccountAccount</span>\"\n"
+                    ),
+                    font_size,
+                )
+            };
+            let (relative, requests) = render("2rem");
+            let (pixels, _) = render("32px");
+            assert_eq!(
+                note_dimensions(&relative),
+                note_dimensions(&pixels),
+                "{layout}, diagram font size {font_size}px"
+            );
+            let displayed = requests.displayed.lock().unwrap();
+            assert!(
+                displayed
+                    .iter()
+                    .any(|(text, style)| text == "AccountAccount" && style.font_size == 32.0),
+                "{layout}/{font_size}: {displayed:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn class_html_cardinalities_measure_inline_fonts_before_sizing() {
+    for layout in ["dagre", "elk"]
+        .into_iter()
+        .filter(|layout| *layout != "elk" || cfg!(feature = "layout-elk"))
+    {
+        for font_size in [14, 24] {
+            for (content, expected_size) in [
+                ("<span style='font-size:32px'>many</span>", 32.0),
+                ("<span style='font-size:2rem'>many</span>", 32.0),
+                (
+                    "<span style='font-size:32px'><span style='font-size:150%'>many</span></span>",
+                    48.0,
+                ),
+            ] {
+                let (svg, requests) = render_class_source_with_font_size(
+                    layout,
+                    &format!("classDiagram\nA \"{content}\" --> B\n"),
+                    font_size,
+                );
+                let displayed = requests.displayed.lock().unwrap();
+                assert!(
+                    displayed.iter().any(|(text, style)| {
+                        text == "many" && style.font_size == expected_size
+                    }),
+                    "{layout}/{font_size}/{content}: {displayed:?}"
+                );
+                let document = roxmltree::Document::parse(&svg).unwrap();
+                let terminal = document
+                    .descendants()
+                    .find(|node| {
+                        node.has_tag_name("foreignObject")
+                            && node.descendants().any(|child| child.text() == Some("many"))
+                    })
+                    .unwrap();
+                let height: f64 = terminal.attribute("height").unwrap().parse().unwrap();
+                assert!(
+                    height >= expected_size * 1.5,
+                    "{layout}/{content}: height={height}"
+                );
+            }
+        }
+    }
 }

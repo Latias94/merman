@@ -63,7 +63,12 @@ class ReleaseVersion:
         return version
 
     def to_npm_dist_tag(self) -> str:
-        return self.prerelease_channel or "latest"
+        if self.prerelease_channel is not None:
+            return self.prerelease_channel
+        # Preserve the frozen publication identity of releases through 0.9.3.
+        if self.major == 0 and self.minor == 9 and self.patch >= 4:
+            return "maintenance-0-9"
+        return "latest"
 
 
 def parse_release_version(value: str, *, allow_v_prefix: bool = True) -> ReleaseVersion:

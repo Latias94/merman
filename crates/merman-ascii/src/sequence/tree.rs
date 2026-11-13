@@ -429,7 +429,12 @@ impl SequenceTreeBuilder {
                 .copied()
                 .ok_or_else(invalid_control_ordering)?;
             let control = self.body.control(open.item)?;
-            if control.kind != kind || kind.separator_keyword().is_none() {
+            let matching_kind = control.kind == kind
+                || matches!(
+                    (control.kind, kind),
+                    (SequenceControlKind::ParOver, SequenceControlKind::Par)
+                );
+            if !matching_kind || kind.separator_keyword().is_none() {
                 return Err(invalid_control_ordering());
             }
             let next_section = control.sections.len();

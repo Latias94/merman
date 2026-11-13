@@ -21,70 +21,70 @@
           "index": 0.0,
           "pos": 0.0,
           "bbox_width": 30.72,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch1",
           "index": 1.0,
           "pos": 90.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch2",
           "index": 2.0,
           "pos": 180.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch3",
           "index": 3.0,
           "pos": 270.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch4",
           "index": 4.0,
           "pos": 360.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch5",
           "index": 5.0,
           "pos": 450.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch6",
           "index": 6.0,
           "pos": 540.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch7",
           "index": 7.0,
           "pos": 630.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch8",
           "index": 8.0,
           "pos": 720.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         },
         {
           "name": "branch9",
           "index": 9.0,
           "pos": 810.0,
           "bbox_width": 50.24,
-          "bbox_height": 17.6
+          "bbox_height": 19.0
         }
       ],
       "commits": [

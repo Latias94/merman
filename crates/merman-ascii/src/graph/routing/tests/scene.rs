@@ -211,6 +211,194 @@ fn prepared_route_scene_prefers_a_clear_direct_route_over_extra_marker_berths() 
 }
 
 #[test]
+fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let graph = obstacle_aware_feedback_graph();
+    let layout = layout_graph(&graph, &options);
+    let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let mut measured = ResourceContext::new(unbounded);
+    let scene =
+        prepare_route_scene_with_resources(&graph, &layout, &graph.edges, &charset, &mut measured)
+            .expect("the feedback must find a safe path outside its opposite branch");
+    let feedback = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.from == "D" && route.owner.to == "B")
+        .unwrap();
+    let outgoing = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.from == "B" && route.owner.to == "D")
+        .unwrap();
+    let attachments = feedback.plan.attachments.unwrap();
+    let target = layout.nodes.iter().find(|node| node.id == "B").unwrap();
+    let marker = feedback
+        .plan
+        .terminal_candidate(MarkerEndpoint::End, "flowchart")
+        .unwrap();
+    assert!(attachments.end.allows_escape(marker.coord));
+    assert_eq!(marker.point_direction, attachments.end.outward.opposite());
+    assert!(
+        (target.x..=target.right()).contains(&attachments.end.contact.x)
+            && (target.y..=target.bottom()).contains(&attachments.end.contact.y),
+        "the feedback must enter Review, not its sibling or source"
+    );
+    let feedback_transit = feedback
+        .plan
+        .active_cells()
+        .map(|(_, cell)| cell.coord)
+        .filter(|coord| *coord != attachments.start.contact && *coord != attachments.end.contact)
+        .collect::<rustc_hash::FxHashSet<_>>();
+    assert!(
+        outgoing
+            .plan
+            .active_cells()
+            .all(|(_, cell)| !feedback_transit.contains(&cell.coord)),
+        "opposite authored edges must not share a transit path"
+    );
+
+    let exact = measured.layout_work_used();
+    let exact_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
+        .unwrap();
+    let mut admitted = ResourceContext::new(exact_policy);
+    prepare_route_scene_with_resources(&graph, &layout, &graph.edges, &charset, &mut admitted)
+        .expect("exact work must include every obstacle-aware frontier and parent admission");
+    assert_eq!(admitted.layout_work_used(), exact);
+
+    let below_policy = unbounded
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+        .unwrap();
+    let mut rejected = ResourceContext::new(below_policy);
+    let error = match prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &charset,
+        &mut rejected,
+    ) {
+        Ok(_) => panic!("one work unit below the complete obstacle-aware scene must fail"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
+}
+
+#[test]
+fn scene_aware_grid_cancellation_precedes_projected_cell_work_debit() {
+    use path::{Port, PortPair, RouteObstacles, route_grid_path_avoiding_obstacles};
+
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &options);
+    let from = layout.nodes.iter().find(|node| node.id == "a").unwrap();
+    let to = layout.nodes.iter().find(|node| node.id == "b").unwrap();
+    assert!(layout.groups.is_empty());
+    assert_eq!(from.grid.y, to.grid.y);
+    assert!(from.grid.x + 3 < to.grid.x);
+
+    let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let mut work_at_projection = None;
+    // Measure cancellation at the first projected cell, repeat with exactly that budget,
+    // then keep the scene active to verify that the pending protected-geometry debit fails.
+    for cancel_scene in [true, true, false] {
+        let policy = work_at_projection.map_or(unbounded, |work| {
+            unbounded
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, work)
+                .unwrap()
+        });
+        let scene_control = OperationControl::new();
+        let search_control = OperationControl::new();
+        let mut setup = ResourceContext::new(unbounded);
+        let occupancy = SceneOccupancy::try_new_for_routes(
+            &layout,
+            1,
+            options
+                .flowchart_layout()
+                .graph_policy()
+                .edge_label_lane_radius,
+            &mut setup,
+            AsciiExecution::new(&scene_control, &unbounded),
+        )
+        .unwrap();
+        assert_eq!(occupancy.protected.len(), layout.nodes.len());
+        let mut resources = ResourceContext::new(policy);
+        // Coarse search and resource accounting stay active independently of the scene.
+        // With no groups, the scene control is first checked inside projected cell inspection.
+        if cancel_scene {
+            scene_control.cancel_after_checkpoints(0);
+        }
+        let error = route_grid_path_avoiding_obstacles(
+            &layout,
+            from,
+            to,
+            PortPair::new(Port::Right, Port::Left),
+            &charset,
+            RouteObstacles {
+                scene: &occupancy,
+                routes: &[],
+                owner: &owner,
+            },
+            &mut resources,
+            AsciiExecution::new(&search_control, &policy),
+        )
+        .expect_err("projected-cell failures must propagate instead of returning a grid path");
+
+        assert_eq!(scene_control.is_cancelled(), cancel_scene);
+        assert!(!search_control.is_cancelled());
+        let work = resources.layout_work_used();
+        if cancel_scene {
+            assert!(matches!(error, AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested));
+        } else {
+            assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.max == work
+                    && details.actual == work + occupancy.protected.len()));
+        }
+        if let Some(expected) = work_at_projection {
+            assert_eq!(work, expected);
+        } else {
+            assert!(work > 0, "coarse search must run before scene cancellation");
+            work_at_projection = Some(work);
+        }
+    }
+}
+
+fn obstacle_aware_feedback_graph() -> AsciiGraph {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("A", "Start");
+    graph.add_node_with_shape_and_style(
+        "B",
+        "Review?",
+        GraphNodeShape::Diamond,
+        Default::default(),
+    );
+    graph.add_node("C", "Merge");
+    graph.add_node("D", "Fix");
+    graph.add_edge("A", "B");
+    for (target, label) in [("C", "ok"), ("D", "ng")] {
+        graph.add_edge_with_attrs(
+            "B",
+            target,
+            GraphEdgeAttrs {
+                label: Some(label.to_string()),
+                ..Default::default()
+            },
+        );
+    }
+    graph.add_edge("D", "B");
+    graph
+}
+
+#[test]
 fn prepare_route_scene_reports_missing_endpoint_layouts_before_painting() {
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
     graph.add_node("a", "A");

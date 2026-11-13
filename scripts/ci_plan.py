@@ -162,6 +162,8 @@ _SCRIPT_EXACT_OWNER_RULES = {
     ),
     "scripts/strict_json.py": frozenset({"hygiene", "security"}),
     "scripts/test_audit_plan.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/verify_vscode_audit_scope.py": frozenset({"hygiene", "npm", "security"}),
+    "scripts/test_verify_vscode_audit_scope.py": frozenset({"hygiene", "npm", "security"}),
     "scripts/test_build_android.py": frozenset({"hygiene", "platform"}),
     "scripts/test_publish.py": frozenset({"hygiene"}),
     "scripts/test_release_surface_contract.py": frozenset(

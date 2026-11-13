@@ -90,6 +90,8 @@ impl<'a> ClassConfigView<'a> {
             wrap_mode_note: wrap_mode_node,
             class_padding: self.class_compat_f64("padding").unwrap_or(12.0),
             namespace_padding: self.flowchart_compat_f64("padding").unwrap_or(15.0),
+            // ClassDB gives notes per-side padding, consumed twice by the note shape.
+            note_padding: self.class_compat_f64("padding").unwrap_or(6.0),
             hide_empty_members_box: self.class_bool("hideEmptyMembersBox").unwrap_or(false),
             text_style,
             html_calc_text_style,
@@ -221,6 +223,7 @@ pub(super) struct ClassLayoutSettings {
     pub(super) wrap_mode_note: WrapMode,
     pub(super) class_padding: f64,
     pub(super) namespace_padding: f64,
+    pub(super) note_padding: f64,
     pub(super) hide_empty_members_box: bool,
     pub(super) text_style: TextStyle,
     pub(super) html_calc_text_style: TextStyle,
@@ -280,6 +283,7 @@ mod tests {
         assert_eq!(settings.wrap_mode_label, WrapMode::SvgLike);
         assert_eq!(settings.wrap_mode_note, WrapMode::SvgLike);
         assert_eq!(settings.class_padding, 30.0);
+        assert_eq!(settings.note_padding, 30.0);
         assert_eq!(settings.namespace_padding, 17.0);
         assert!(settings.hide_empty_members_box);
         assert_eq!(

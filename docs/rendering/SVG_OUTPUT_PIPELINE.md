@@ -74,6 +74,11 @@ not provide general CSS3 support.
 
 ### Fallback typography boundary
 
+The renderer-owned native Timeline policy resolves the vertical renderer's mismatched
+arrowhead reference before ID isolation and rebasing. It retains output byte limits
+and cancellation checks. Parity and readable SVG keep the selected upstream shape;
+the repair is specific to the resource-closed native export path.
+
 The fallback stage resolves supported typography against the original SVG and XHTML source context
 before it removes `foreignObject`. It does not flatten stylesheet class tokens: selector ancestry,
 element type, attributes, cascade priority, and inheritance are retained for the admitted subset.

@@ -5,11 +5,19 @@ use usvg::fontdb::{Database, FaceInfo, Family, ID, Query, Stretch, Style, Weight
 
 #[derive(Clone, Copy, Default)]
 enum FaceClass {
+    LastResort,
     Symbolic,
+    Monospace,
     Serif,
     Sans,
     #[default]
     Unclassified,
+}
+
+impl FaceClass {
+    fn allows_implicit_text(self) -> bool {
+        !matches!(self, Self::Symbolic | Self::LastResort)
+    }
 }
 
 #[derive(Clone, Default)]
@@ -38,7 +46,7 @@ impl FontSelectionPolicy {
     pub(crate) fn allows_implicit(&self, id: ID) -> bool {
         self.classes
             .get(&id)
-            .is_some_and(|class| !matches!(class, FaceClass::Symbolic))
+            .is_some_and(|class| class.allows_implicit_text())
     }
 
     pub(crate) fn configure_generics(&self, database: &mut Database) {
@@ -107,12 +115,25 @@ impl FontSelectionPolicy {
             Family::SansSerif => {
                 !face.monospaced && matches!(self.classes.get(&face.id), Some(FaceClass::Sans))
             }
-            Family::Monospace => face.monospaced,
+            Family::Monospace => {
+                face.monospaced || matches!(self.classes.get(&face.id), Some(FaceClass::Monospace))
+            }
             _ => true,
         };
         let face = database
             .faces()
             .find(|face| self.allows_implicit(face.id) && compatible(face))
+            .or_else(|| {
+                if matches!(family, Family::Serif | Family::SansSerif) {
+                    database.faces().find(|face| {
+                        self.allows_implicit(face.id)
+                            && !face.monospaced
+                            && matches!(self.classes.get(&face.id), Some(FaceClass::Unclassified))
+                    })
+                } else {
+                    None
+                }
+            })
             .or_else(|| database.faces().find(|face| self.allows_implicit(face.id)))?;
         face.families
             .first()
@@ -198,16 +219,54 @@ pub(crate) fn allows_implicit_binary_face(face: &FaceInfo) -> bool {
     let usvg::fontdb::Source::Binary(bytes) = &face.source else {
         return false;
     };
-    !matches!(
-        classify(bytes.as_ref().as_ref(), face.index),
-        FaceClass::Symbolic
-    )
+    ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index)
+        .ok()
+        .is_none_or(|face| classify_family(&face).allows_implicit_text())
 }
 
 fn classify(bytes: &[u8], index: u32) -> FaceClass {
     let Ok(face) = ttf_parser::Face::parse(bytes, index) else {
         return FaceClass::Unclassified;
     };
+    let class = classify_family(&face);
+    if class.allows_implicit_text() && !face.is_monospaced() && has_fixed_latin_advances(&face) {
+        FaceClass::Monospace
+    } else {
+        class
+    }
+}
+
+fn has_fixed_latin_advances(face: &ttf_parser::Face<'_>) -> bool {
+    let mut expected = None;
+    for character in b' '..=b'~' {
+        let Some(advance) = face
+            .glyph_index(char::from(character))
+            .filter(|glyph| glyph.0 != 0)
+            .and_then(|glyph| face.glyph_hor_advance(glyph))
+            .filter(|advance| *advance != 0)
+        else {
+            return false;
+        };
+        if expected.is_some_and(|expected| expected != advance) {
+            return false;
+        }
+        expected = Some(advance);
+    }
+    true
+}
+
+fn classify_family(face: &ttf_parser::Face<'_>) -> FaceClass {
+    // OpenType head.flags bit 14 marks generic code-point-range placeholders,
+    // whose nonzero cmap glyphs do not establish readable character coverage.
+    // https://learn.microsoft.com/en-us/typography/opentype/spec/head
+    if face
+        .raw_face()
+        .table(ttf_parser::Tag::from_bytes(b"head"))
+        .and_then(|head| head.get(16..18))
+        .is_some_and(|flags| u16::from_be_bytes([flags[0], flags[1]]) & (1 << 14) != 0)
+    {
+        return FaceClass::LastResort;
+    }
     if face.tables().cmap.is_some_and(|cmap| {
         cmap.subtables.into_iter().any(|subtable| {
             subtable.platform_id == ttf_parser::PlatformId::Windows && subtable.encoding_id == 0

@@ -15,6 +15,7 @@ import {
   type PreviewSnapshot,
   type PreviewSourceKey,
   previewSourceKeyId,
+  samePreviewRenderKey,
   samePreviewSourceKey,
 } from "./preview-model.js";
 import {
@@ -55,12 +56,16 @@ export class PreviewInstance implements vscode.Disposable {
   private panel: vscode.WebviewPanel | undefined;
   private renderTimer: NodeJS.Timeout | undefined;
   private readonly renderQueue = new PreviewRenderQueue();
+  private pendingRender: { snapshot: PreviewSnapshot } | undefined;
   private readonly session: PreviewSession;
   private readonly webviewClient: PreviewWebviewClient;
   private readonly panelDisposables: vscode.Disposable[] = [];
   private readonly activeRenderedExports = new Set<string>();
   private disposed = false;
   private renderedOutputStale = false;
+  // An invalidation permits one recovery attempt even if its render inputs are unchanged.
+  private renderRecoveryPending = false;
+  private pendingWebviewPost = Promise.resolve();
   private openGeneration = 0;
 
   constructor(
@@ -144,9 +149,11 @@ export class PreviewInstance implements vscode.Disposable {
     }
     const alreadyStale = this.renderedOutputStale;
     this.renderedOutputStale = true;
+    this.renderRecoveryPending = true;
     if (!alreadyStale) {
       this.webviewClient.invalidateRenderedOutput();
     }
+    this.pendingRender = undefined;
     const requestId = this.renderQueue.cancelPending();
     void this.postMessage({ type: "renderInvalidated", requestId, reason }).catch((error: unknown) => {
       this.handleRefreshError(error);
@@ -277,8 +284,10 @@ export class PreviewInstance implements vscode.Disposable {
 
   private disposePanelState(): void {
     this.clearPendingRender();
+    this.pendingRender = undefined;
     this.renderQueue.cancelPending();
     this.renderedOutputStale = false;
+    this.renderRecoveryPending = false;
     this.panel = undefined;
     this.session.reset();
     this.webviewClient.reset();
@@ -336,60 +345,124 @@ export class PreviewInstance implements vscode.Disposable {
 
     this.ensureWebviewHtml(panel);
     const snapshot = this.createSnapshot();
-    const actions = planPreviewUpdate(this.session.snapshot, snapshot, reason);
+    const actions = planPreviewUpdate(
+      this.session.snapshot,
+      snapshot,
+      reason,
+      this.renderRecoveryPending && !!snapshot && !this.hasPendingRender(snapshot),
+    );
     if (!snapshot) {
       panel.title = PREVIEW_TITLE;
       this.session.clearSource();
+      this.pendingRender = undefined;
       this.renderQueue.cancelPending();
       await this.applyActions(actions);
       return;
     }
 
     panel.title = `${PREVIEW_TITLE}: ${snapshot.input.title}`;
+    if (actions.some((action) => action.type === "renderRequested")) {
+      this.invalidateRenderedOutput(reason);
+    }
     this.session.rememberSnapshot(snapshot);
     await this.applyActions(actions);
   }
 
   private async applyActions(actions: readonly PreviewAction[]): Promise<void> {
-    for (const action of actions) {
-      switch (action.type) {
-        case "showEmpty":
-          await this.postMessage({
-            type: "showEmpty",
-            requestId: this.renderQueue.currentRequestId(),
-            heading: "No Mermaid source available",
-            detail:
-              "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
-          });
-          break;
-        case "sourceListUpdated":
-        case "selectionChanged":
-        case "diagnosticsUpdated":
-        case "settingsUpdated":
-          await this.postMessage({
-            type: action.type,
-            snapshot: snapshotMessagePayload(action.snapshot),
-          });
-          break;
-        case "renderRequested":
-          await this.renderSnapshot(action.snapshot, action.reason);
-          break;
+    const postUpdates = async () => {
+      const requestId = this.renderQueue.currentRequestId();
+      for (const action of actions) {
+        if (!this.panel || !this.renderQueue.isCurrentRequest(requestId)) {
+          return;
+        }
+        if ("snapshot" in action && action.snapshot !== this.session.snapshot) {
+          return;
+        }
+        switch (action.type) {
+          case "showEmpty":
+            await this.postMessage({
+              type: "showEmpty",
+              requestId,
+              heading: "No Mermaid source available",
+              detail:
+                "Focus a .mmd, .mermaid, or Markdown document with a Mermaid fence, then run Merman: Open Preview.",
+            });
+            break;
+          case "sourceListUpdated":
+          case "selectionChanged":
+          case "diagnosticsUpdated":
+          case "settingsUpdated":
+            await this.postMessage({
+              type: action.type,
+              snapshot: snapshotMessagePayload(action.snapshot),
+            });
+            break;
+        }
       }
+    };
+    const render = actions.find((action) => action.type === "renderRequested");
+    if (render) {
+      await this.renderSnapshot(render.snapshot, render.reason, postUpdates);
+    } else {
+      await postUpdates();
     }
   }
 
-  private async renderSnapshot(snapshot: PreviewSnapshot, reason: PreviewUpdateReason): Promise<void> {
-    await this.renderQueue.render(snapshot, reason, {
-      renderContent: (renderedSnapshot, signal) => this.renderContent(renderedSnapshot, signal),
-      postMessage: (message) => this.postMessage(message),
-      info: (message) => this.outputChannel.info(message),
-      error: (message) => this.outputChannel.error(message),
-      isCurrentRequest: (requestId) => !!this.panel && this.renderQueue.isCurrentRequest(requestId),
-      markRendered: (_requestId, renderedSnapshot, content) => {
-        this.renderedOutputStale = false;
-        this.webviewClient.markRendered(renderedSnapshot, content);
-      },
-    });
+  private hasPendingRender(snapshot: PreviewSnapshot): boolean {
+    return !!this.pendingRender && samePreviewRenderKey(this.pendingRender.snapshot, snapshot);
+  }
+
+  private async renderSnapshot(
+    snapshot: PreviewSnapshot,
+    reason: PreviewUpdateReason,
+    beforeRender?: () => Promise<void>,
+  ): Promise<void> {
+    if (
+      !this.session.snapshot ||
+      !samePreviewRenderKey(snapshot, this.session.snapshot) ||
+      this.hasPendingRender(snapshot)
+    ) {
+      return;
+    }
+    const isCurrentRequest = (requestId: number) =>
+      !!this.panel &&
+      this.renderQueue.isCurrentRequest(requestId) &&
+      !!this.session.snapshot &&
+      samePreviewRenderKey(snapshot, this.session.snapshot);
+    const pending = { snapshot };
+    this.pendingRender = pending;
+    this.renderedOutputStale = true;
+    this.renderRecoveryPending = false;
+    try {
+      await this.renderQueue.render(snapshot, reason, {
+        renderContent: (renderedSnapshot, signal) => this.renderContent(renderedSnapshot, signal),
+        postMessage: async (message) => {
+          if (message.type === "renderStarted") {
+            await beforeRender?.();
+            if (!isCurrentRequest(message.requestId)) {
+              return;
+            }
+          }
+          const currentSnapshot = this.session.snapshot;
+          await this.postMessage(
+            currentSnapshot && "snapshot" in message && samePreviewRenderKey(snapshot, currentSnapshot)
+              ? { ...message, snapshot: snapshotMessagePayload(currentSnapshot) }
+              : message,
+          );
+        },
+        info: (message) => this.outputChannel.info(message),
+        error: (message) => this.outputChannel.error(message),
+        isCurrentRequest,
+        markRendered: (_requestId, renderedSnapshot, content) => {
+          this.renderedOutputStale = false;
+          this.webviewClient.markRendered(renderedSnapshot, content);
+        },
+      });
+    } finally {
+      if (this.pendingRender === pending) {
+        this.pendingRender = undefined;
+      }
+    }
   }
 
   private createSnapshot(): PreviewSnapshot | undefined {
@@ -423,7 +496,47 @@ export class PreviewInstance implements vscode.Disposable {
   }
 
   private async postMessage(message: PreviewToWebviewMessage): Promise<void> {
-    await this.webviewClient.post(this.panel, message);
+    const panel = this.panel;
+    await this.orderWebviewPost(async () => {
+      if (panel && panel === this.panel) {
+        await this.webviewClient.post(panel, message);
+      }
+    });
+  }
+
+  private orderWebviewPost(post: () => Promise<void>): Promise<void> {
+    const next = this.pendingWebviewPost.then(post);
+    this.pendingWebviewPost = next.catch(() => {});
+    return next;
+  }
+
+  private async acceptWebviewReady(): Promise<void> {
+    let snapshotToRender: PreviewSnapshot | undefined;
+    await this.orderWebviewPost(async () => {
+      let replayedSnapshotUi = false;
+      await this.webviewClient.acceptReady(
+        this.panel,
+        this.session.snapshot,
+        async (snapshot) => {
+          replayedSnapshotUi = true;
+          for (const type of ["sourceListUpdated", "diagnosticsUpdated", "settingsUpdated"] as const) {
+            await this.webviewClient.post(this.panel, { type, snapshot: snapshotMessagePayload(snapshot) });
+          }
+        },
+        // Rendering posts lifecycle messages through the same ordered path, after this drain.
+        async (snapshot) => { snapshotToRender = snapshot; },
+      );
+      if (!replayedSnapshotUi && this.session.snapshot) {
+        // Buffered lifecycle snapshots can predate settings changes with the same render key.
+        await this.webviewClient.post(this.panel, {
+          type: "settingsUpdated",
+          snapshot: snapshotMessagePayload(this.session.snapshot),
+        });
+      }
+    });
+    if (snapshotToRender) {
+      await this.renderSnapshot(snapshotToRender, "panel-visible");
+    }
   }
 
   private clearPendingRender(): void {
@@ -439,17 +552,7 @@ export class PreviewInstance implements vscode.Disposable {
     }
     switch (message.type) {
       case "ready":
-        await this.webviewClient.acceptReady(
-          this.panel,
-          this.session.snapshot,
-          (snapshot) =>
-            this.applyActions([
-              { type: "sourceListUpdated", snapshot },
-              { type: "diagnosticsUpdated", snapshot },
-              { type: "settingsUpdated", snapshot },
-            ]),
-          (snapshot) => this.renderSnapshot(snapshot, "panel-visible"),
-        );
+        await this.acceptWebviewReady();
         return;
       case "refresh":
         this.forceRefresh();
@@ -506,7 +609,6 @@ export class PreviewInstance implements vscode.Disposable {
     ) {
       return;
     }
-    this.invalidateRenderedOutput("source-select");
     this.scheduleRefresh("source-select", true);
   }
 
@@ -514,7 +616,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!isPreviewDiagramTheme(theme) || !this.session.setDiagramTheme(theme)) {
       return;
     }
-    this.invalidateRenderedOutput("diagram-theme");
     this.scheduleRefresh("diagram-theme", true);
   }
 
@@ -522,7 +623,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!isPreviewDisplayMode(displayMode) || !this.session.setDisplayMode(displayMode)) {
       return;
     }
-    this.invalidateRenderedOutput("display-mode");
     this.scheduleRefresh("display-mode", true);
   }
 
@@ -530,7 +630,6 @@ export class PreviewInstance implements vscode.Disposable {
     if (!this.session.setBackground(background)) {
       return;
     }
-    this.invalidateRenderedOutput("background");
     this.scheduleRefresh("background", true);
   }
 

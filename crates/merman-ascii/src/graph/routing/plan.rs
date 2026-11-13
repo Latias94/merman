@@ -13,8 +13,7 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 mod attachment;
 mod boundary;
-use attachment::NodeAttachment;
-pub(super) use attachment::NodeAttachments;
+pub(super) use attachment::{NodeAttachment, NodeAttachments};
 mod candidates;
 mod compound;
 mod edges;
@@ -24,6 +23,7 @@ mod same_rank;
 mod select;
 mod top_down;
 
+pub(super) use candidates::plan_obstacle_aware_edge_route;
 pub(super) use candidates::{EdgeRouteCandidates, plan_edge_route_candidates_with_topology};
 #[cfg(test)]
 pub(super) use select::EdgeRoutePlan;

@@ -4,6 +4,26 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+Maintenance fixes on the Mermaid 12.1.0 line. Review layout and image/PDF snapshots after adopting the text and font corrections below.
+
+### Fixed
+
+- Keep Last Resort placeholder fonts out of implicit native font selection and missing-glyph fallback, while retaining explicitly named fonts. Recognize fixed-width Latin metrics when a font omits its monospace flag. [#284](https://github.com/Latias94/merman/pull/284), [#298](https://github.com/Latias94/merman/pull/298)
+- Restore vertical Timeline arrowheads in native exports, apply Class note padding on each side, preserve HTML cardinality line breaks and styles, and size GitGraph branch backgrounds from their displayed text. Numeric identifiers such as `DOC-12345` can wrap after their hyphen without splitting a leading minus sign. [#283](https://github.com/Latias94/merman/pull/283), [#288](https://github.com/Latias94/merman/pull/288), [#289](https://github.com/Latias94/merman/pull/289), [#299](https://github.com/Latias94/merman/pull/299)
+- Preserve Class relationship operators adjacent to names and keep generic class references and renames aligned. Accept `par_over` parallel branches in Sequence parsing and terminal output, and retain embedded `#` and `%%` in unquoted Requirement tokens. [#282](https://github.com/Latias94/merman/pull/282), [#283](https://github.com/Latias94/merman/pull/283), [#287](https://github.com/Latias94/merman/pull/287), [#297](https://github.com/Latias94/merman/pull/297)
+- Read Markdown image accessibility text from the SVG root and ignore Mermaid fences inside HTML comments across analysis, LSP and VS Code preview discovery. [#277](https://github.com/Latias94/merman/pull/277)
+- Route terminal feedback edges around reserved diagram geometry, including wide-character labels and mirrored layouts. [#287](https://github.com/Latias94/merman/pull/287)
+- Reject duplicate parent edges and shared descendants before Mindmap tidy-tree expansion for caller-supplied models. [#258](https://github.com/Latias94/merman/pull/258)
+- Keep editor worker cancellation request-local, retain pending configuration and restart work, and recover VS Code previews without stale settings or repeated failed renders. [#277](https://github.com/Latias94/merman/pull/277), [#285](https://github.com/Latias94/merman/pull/285)
+- Write SDK archive checksum files with LF on every producer platform.
+
+### Security
+
+- Require `pulldown-cmark 0.13.6` or later for [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's Markdown entrypoints do not enable the affected Wikilinks option.
+- Require `rustix 1.1.6` or later for [RUSTSEC-2026-0486](https://rustsec.org/advisories/RUSTSEC-2026-0486.html). Merman's direct Unix output path does not use the affected extended-attribute queries.
+
 ## [0.9.3] - 2026-10-30
 
 This release adds native C and WASI SDKs and improves diagram text and native exports on the Mermaid 12.1.0 line. Review SVG and image/PDF snapshots after upgrading.

@@ -532,7 +532,7 @@ impl FontLoader {
         let default_family = selection.default_family(metadata).unwrap_or_default();
         loader
             .hash
-            .update(b"merman-native-text-v3/usvg-0.47/resolver-v2");
+            .update(b"merman-native-text-v3/usvg-0.47/resolver-v3");
         #[cfg(all(
             feature = "experimental-system-font-query",
             not(target_family = "wasm")

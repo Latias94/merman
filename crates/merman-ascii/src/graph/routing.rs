@@ -42,7 +42,7 @@ use path::StepDirection;
 use plan::plan_edge_route;
 use plan::{
     EdgeRouteCandidates, EdgeRouteRequest, MarkerEndpoint, PlannedRouteCellKind, RoutePlan,
-    plan_edge_route_candidates_with_topology,
+    plan_edge_route_candidates_with_topology, plan_obstacle_aware_edge_route,
 };
 #[cfg(test)]
 use plan::{LabelAnchor, PlannedRouteSegment};
@@ -398,17 +398,18 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 feature: "edges with missing endpoint layouts",
             });
         };
+        let request = EdgeRouteRequest {
+            graph,
+            graph_layout,
+            edges: &canonical_edges,
+            from: &from,
+            to: &to,
+            edge_index,
+            edge,
+            charset,
+        };
         let candidates = match plan_edge_route_candidates_with_topology(
-            EdgeRouteRequest {
-                graph,
-                graph_layout,
-                edges: &canonical_edges,
-                from: &from,
-                to: &to,
-                edge_index,
-                edge,
-                charset,
-            },
+            request,
             topology.as_ref(),
             label_plans.descriptor(edge_index),
             resources,
@@ -434,14 +435,16 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
             execution.checkpoint(merman_core::OperationPhase::Layout)?;
-            let Some(plan) = plan.resolve_node_attachments(&from, &to, charset, resources)? else {
-                continue;
-            };
-            let plan = plan
-                .with_marker_requests(edge.start_marker, edge.end_marker, graph.diagram_type())?
-                .with_style(edge.style);
-            let Some(score) =
-                occupancy.score_route(&routes, &plan, &owner, resources, graph.diagram_type())?
+            let Some((score, plan)) = admit_route_candidate(
+                request,
+                path::RouteObstacles {
+                    scene: &occupancy,
+                    routes: &routes,
+                    owner: &owner,
+                },
+                plan,
+                resources,
+            )?
             else {
                 continue;
             };
@@ -454,11 +457,24 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
-        let Some((_, _, plan)) = selected else {
-            return Err(AsciiError::UnsupportedFeature {
+        let plan = match selected {
+            Some((_, _, plan)) => plan,
+            None => plan_obstacle_aware_edge_route(
+                request,
+                topology.as_ref(),
+                path::RouteObstacles {
+                    scene: &occupancy,
+                    routes: &routes,
+                    owner: &owner,
+                },
+                label_plans.descriptor(edge_index),
+                resources,
+                execution,
+            )?
+            .ok_or(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
                 feature: "routes crossing reserved graph geometry",
-            });
+            })?,
         };
         let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
         occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
@@ -507,6 +523,34 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         planned_cell_count,
         labels: label_plans,
     })
+}
+
+fn admit_route_candidate(
+    request: EdgeRouteRequest<'_>,
+    obstacles: path::RouteObstacles<'_>,
+    plan: RoutePlan,
+    resources: &mut ResourceContext,
+) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+    let Some(plan) =
+        plan.resolve_node_attachments(request.from, request.to, request.charset, resources)?
+    else {
+        return Ok(None);
+    };
+    let plan = plan
+        .with_marker_requests(
+            request.edge.start_marker,
+            request.edge.end_marker,
+            request.graph.diagram_type(),
+        )?
+        .with_style(request.edge.style);
+    let score = obstacles.scene.score_route(
+        obstacles.routes,
+        &plan,
+        obstacles.owner,
+        resources,
+        request.graph.diagram_type(),
+    )?;
+    Ok(score.map(|score| (score, plan)))
 }
 
 fn route_boundary_group_indices(

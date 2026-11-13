@@ -315,6 +315,7 @@ system-timing = ["merman/system-timing", "merman-analysis?/system-timing"]
 # Tool leaves own both their user-visible surface and their direct dependency.
 icons = ["svg", "dep:url"]
 markdown = [
+    "dep:roxmltree",
     "svg",
     "dep:atomic-write-file",
     "dep:rustix",
@@ -347,6 +348,7 @@ merman-analysis = { workspace = true, optional = true, default-features = false 
 merman-render = { workspace = true, optional = true }
 merman-doc = { workspace = true, optional = true }
 rayon = { workspace = true, optional = true }
+roxmltree = { workspace = true, optional = true }
 reqwest = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true

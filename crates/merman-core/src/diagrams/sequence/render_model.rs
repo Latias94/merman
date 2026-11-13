@@ -307,9 +307,9 @@ impl SequenceControlKind {
     pub fn separator_keyword(self) -> Option<&'static str> {
         match self {
             Self::Alt => Some("else"),
-            Self::Par => Some("and"),
+            Self::Par | Self::ParOver => Some("and"),
             Self::Critical => Some("option"),
-            Self::Loop | Self::Opt | Self::Break | Self::Rect | Self::ParOver => None,
+            Self::Loop | Self::Opt | Self::Break | Self::Rect => None,
         }
     }
 

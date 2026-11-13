@@ -7,8 +7,9 @@ use super::super::label::{
     routed_label_right_of_vertical_route_placement_for_descriptor,
 };
 use super::super::path::{
-    GridPathPortPolicy, Port, PortPair, StepDirection,
-    route_grid_path_for_layout_with_resources_and_execution, step_direction,
+    GridPathPortPolicy, GridPathRoute, Port, PortPair, RouteObstacles, StepDirection,
+    route_grid_path_avoiding_obstacles, route_grid_path_for_layout_with_resources_and_execution,
+    step_direction,
 };
 use super::{
     MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
@@ -219,6 +220,62 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
     else {
         return Ok(None);
     };
+    plan_grid_path_route(
+        graph_layout,
+        route,
+        edge,
+        label,
+        charset,
+        options,
+        resources,
+        execution,
+    )
+}
+
+pub(super) fn plan_obstacle_aware_grid_route(
+    request: super::select::EdgeRouteRequest<'_>,
+    ports: PortPair,
+    obstacles: RouteObstacles<'_>,
+    label: Option<RoutedLabelDescriptor>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<RoutePlan>> {
+    let Some(route) = route_grid_path_avoiding_obstacles(
+        request.graph_layout,
+        request.from,
+        request.to,
+        ports,
+        request.charset,
+        obstacles,
+        resources,
+        execution,
+    )?
+    else {
+        return Ok(None);
+    };
+    plan_grid_path_route(
+        request.graph_layout,
+        route,
+        request.edge,
+        label,
+        request.charset,
+        GridRouteOptions::with_fixed_ports(ports.start(), ports.end()),
+        resources,
+        execution,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_grid_path_route(
+    graph_layout: &GraphLayout,
+    route: GridPathRoute,
+    edge: &AsciiGraphEdge,
+    label: Option<RoutedLabelDescriptor>,
+    charset: &GraphCharset,
+    options: GridRouteOptions,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<RoutePlan>> {
     let path = route.path;
     let start_port = route.ports.start();
     let end_port = route.ports.end();

@@ -4,6 +4,12 @@ The extension has not yet been published. These entries remain `Unreleased` for 
 
 ## Unreleased
 
+### Fixed
+
+- Preserve configuration and restart requests during overlapping language-client lifecycle changes, and bound render process cleanup after cancellation or timeout.
+- Ignore Mermaid fences inside HTML comments and preserve Class generic names and adjacent relationship operators during navigation and rename.
+- Keep preview settings in delivery order, recover invalidated output, and avoid retrying failed renders on unchanged cursor or diagnostics events.
+
 ### Added
 
 - Added the initial Merman VS Code preview extension with local Mermaid diagnostics, completion, hover, symbols, references, rename, code actions, Tree-sitter-backed syntax highlighting, preview, SVG/PNG export, and copy actions.

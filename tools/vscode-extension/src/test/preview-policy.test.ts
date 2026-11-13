@@ -74,6 +74,15 @@ describe("preview update policy", () => {
     );
   });
 
+  it("recovers invalidated output even when the render key is unchanged", () => {
+    const previous = snapshot({ documentVersion: 1 });
+    const next = snapshot({ documentVersion: 2 });
+
+    const actions = planPreviewUpdate(previous, next, "document-change", true);
+
+    assert.deepEqual(actions, [{ type: "renderRequested", snapshot: next, reason: "document-change" }]);
+  });
+
   it("requests a render when the diagram theme changes", () => {
     const previous = snapshot({ diagramTheme: "source" });
     const next = snapshot({ diagramTheme: "forest" });

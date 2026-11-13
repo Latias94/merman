@@ -1,4 +1,6 @@
 import * as assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import * as path from "node:path";
 import { describe, it } from "node:test";
 import type * as vscode from "vscode";
 
@@ -8,6 +10,86 @@ import {
   listPreviewInputsFromText,
   previewSourceIdentity,
 } from "../preview-source.js";
+
+interface HostFenceCase {
+  name: string;
+  language: string;
+  text: string;
+  fences: {
+    start_line: number;
+    end_line: number;
+    body: string;
+    closing: string | null;
+  }[];
+}
+
+const hostFenceCases: HostFenceCase[] = JSON.parse(readFileSync(
+  path.resolve(__dirname, "../../../../crates/merman-analysis/tests/fixtures/editor_host_fences.json"),
+  "utf8",
+)).cases;
+
+describe("shared editor-host fence contract", () => {
+  for (const fixture of hostFenceCases) {
+    it(fixture.name, () => {
+      const expected = fixture.fences
+        .map((fence, index) => ({
+          sourceId: `fence-${index + 1}`,
+          source: fence.closing === null
+            ? fence.body.replace(/\r\n|\r/g, "\n")
+            : fence.body.replace(/\r\n|\r/g, "\n").replace(/\n$/, ""),
+          sourceRange: { startLine: fence.start_line, endLine: fence.end_line },
+          diagnosticRange: {
+            startLine: fence.start_line + 1,
+            endLine: fence.closing === null
+              ? fence.end_line
+              : Math.max(fence.end_line - 1, fence.start_line),
+          },
+        }))
+        .filter((input) => input.source.trim().length > 0);
+      const project = (inputs: ReturnType<typeof listPreviewInputsFromText>) => inputs.map(
+        ({ sourceId, source, sourceRange, diagnosticRange }) => ({
+          sourceId, source, sourceRange, diagnosticRange,
+        }),
+      );
+      const fileName = `/workspace/notes.${fixture.language === "mdx" ? "mdx" : "md"}`;
+      const inputs = listPreviewInputsFromText({
+        text: fixture.text,
+        languageId: fixture.language,
+        fileName,
+      });
+      assert.deepEqual(project(inputs), expected);
+
+      const lines = fixture.text.split(/\r\n|[\r\n]/);
+      const document = {
+        languageId: fixture.language,
+        fileName,
+        uri: { fsPath: fileName },
+        lineCount: lines.length,
+        lineAt: (lineIndex: number) => ({ text: lines[lineIndex] ?? "" }),
+        getText: () => {
+          throw new Error("Markdown previews must scan original document lines");
+        },
+      } as unknown as vscode.TextDocument;
+      assert.deepEqual(project(listPreviewInputsFromDocument(document)), expected);
+    });
+  }
+
+  it("hides and reveals existing preview identities when host comments change", () => {
+    const body = "```mermaid\r\nsequenceDiagram\r\nAlice->>Bob: 😀\r\n```\r\n";
+    const source = { text: body, languageId: "markdown", fileName: "/workspace/notes.md" };
+    const visible = listPreviewInputsFromText(source);
+    assert.equal(visible.length, 1);
+    const sourceIdentity = previewSourceIdentity(visible[0]!);
+    assert.equal(extractPreviewInputFromText({
+      ...source, text: `<!--\r\n${body}`, sourceIdentity,
+    }), null);
+    const revealed = extractPreviewInputFromText({
+      ...source, text: `<!-- closed -->\r\n${body}`, sourceIdentity,
+    });
+    assert.equal(revealed?.source, "sequenceDiagram\nAlice->>Bob: 😀");
+    assert.deepEqual(revealed?.sourceRange, { startLine: 1, endLine: 4 });
+  });
+});
 
 describe("preview source extraction", () => {
   it("extracts Mermaid files as whole-document sources", () => {

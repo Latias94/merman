@@ -66,7 +66,7 @@ lalrpop-util = { version = "0.23.2", default-features = false }
 libc = "0.2.191"
 # Pin numerical kernels so deterministic geometry changes are reviewed explicitly.
 libm = { version = "=0.2.16", default-features = false }
-pulldown-cmark = { version = "0.13.5", default-features = false }
+pulldown-cmark = { version = "0.13.6", default-features = false }
 ratex-font = "0.1.15"
 ratex-layout = "0.1.15"
 ratex-parser = "0.1.15"
@@ -86,7 +86,7 @@ roughr = { package = "roughr-merman", path = "crates/roughr", version = "0.12.4"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 same-file = "1.0.6"
-rustix = { version = "1.1.5", default-features = false, features = ["fs", "std"] }
+rustix = { version = "1.1.6", default-features = false, features = ["fs", "std"] }
 sha2 = "0.11.1"
 similar = { version = "3.2.1", default-features = false, features = ["std", "text"] }
 tokio = { version = "1.54.1", default-features = false }

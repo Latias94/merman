@@ -31,6 +31,7 @@ export function planPreviewUpdate(
   previous: PreviewSnapshot | undefined,
   next: PreviewSnapshot | undefined,
   reason: PreviewUpdateReason,
+  recoverRenderedOutput = false,
 ): PreviewAction[] {
   if (!next) {
     return [{ type: "showEmpty" }];
@@ -71,10 +72,7 @@ export function planPreviewUpdate(
     actions.push({ type: "selectionChanged", snapshot: next });
   }
 
-  if (!sameRenderKey) {
-    actions.push({ type: "renderRequested", snapshot: next, reason });
-  }
-  if (sameRenderKey && reason === "manual-refresh") {
+  if (!sameRenderKey || recoverRenderedOutput || reason === "manual-refresh") {
     actions.push({ type: "renderRequested", snapshot: next, reason });
   }
 
