@@ -852,13 +852,9 @@ impl<'a> ClassEditorFactCollector<'a> {
     fn push_symbol(
         &mut self,
         facts: &mut EditorSemanticFacts,
-        symbol: ClassTokenSymbol,
+        mut symbol: ClassTokenSymbol,
         expected: ExpectedClassName,
     ) {
-        if symbol.name.is_empty() {
-            return;
-        }
-
         let detail = match expected {
             ExpectedClassName::Class => "class",
             ExpectedClassName::Namespace => "namespace",
@@ -879,6 +875,20 @@ impl<'a> ClassEditorFactCollector<'a> {
             | ExpectedClassName::InlineClassReference => EditorSemanticKind::Property,
             _ => EditorSemanticKind::Class,
         };
+        if matches!(
+            expected,
+            ExpectedClassName::Class
+                | ExpectedClassName::MemberOwner
+                | ExpectedClassName::AnnotationName
+                | ExpectedClassName::ClickTarget
+                | ExpectedClassName::RelationTarget
+        ) {
+            // ClassDb stores the generic type separately from the canonical class id.
+            symbol.name.truncate(canonical_class_id(&symbol.name).len());
+        }
+        if symbol.name.is_empty() {
+            return;
+        }
         let selection = selection_span_for_class_name(self.code, &symbol.name, symbol.span);
         match expected {
             ExpectedClassName::Class => {
@@ -1015,13 +1025,14 @@ impl<'a> ClassEditorFactCollector<'a> {
             if leading < trailing {
                 let id_start = cursor + leading;
                 let id_end = cursor + trailing;
-                let id = &value[id_start..id_end];
-                let selection = SourceSpan::new(body_start + id_start, body_start + id_end);
+                let id = canonical_class_id(&value[id_start..id_end]);
+                let span = SourceSpan::new(body_start + id_start, body_start + id_end);
+                let selection = selection_span_for_class_name(self.code, id, span);
                 facts.push_symbol(EditorSemanticSymbol::reference(
                     id,
                     Some(detail.to_string()),
                     EditorSemanticKind::Class,
-                    selection,
+                    span,
                     selection,
                 ));
             }
@@ -1132,23 +1143,32 @@ fn is_class_interaction_action_prefix(value: &str) -> bool {
             .any(|action| action.starts_with(value))
 }
 
+fn canonical_class_id(name: &str) -> &str {
+    name.split_once('~').map_or(name, |(id, _)| id)
+}
+
 fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> SourceSpan {
-    if let Some(raw) = name.strip_prefix(MERMAID_DOM_ID_PREFIX) {
-        if let Some(source) = code.get(span.start..span.end)
-            && source.starts_with('`')
-            && source.ends_with('`')
-            && span.end >= span.start + raw.len() + 2
-        {
-            return SourceSpan::new(span.start + 1, span.start + 1 + raw.len());
-        }
-        return SourceSpan::new(span.start, span.start + raw.len());
-    }
-
-    if span.end > span.start + 1 {
-        return SourceSpan::new(span.start, span.end);
-    }
-
-    span
+    let Some(source) = code.get(span.start..span.end) else {
+        return span;
+    };
+    let (source_name, start) = if let Some(quoted) = source.strip_prefix('`') {
+        (
+            quoted.split_once('`').map_or(quoted, |(name, _)| name),
+            span.start + 1,
+        )
+    } else {
+        (source, span.start)
+    };
+    let authored_name = if source_name
+        .as_bytes()
+        .first()
+        .is_some_and(u8::is_ascii_digit)
+    {
+        name.strip_prefix(MERMAID_DOM_ID_PREFIX).unwrap_or(name)
+    } else {
+        name
+    };
+    SourceSpan::new(start, start + authored_name.len().min(source_name.len()))
 }
 
 fn class_member_selection(member: &str, span: SourceSpan) -> Option<(String, SourceSpan)> {

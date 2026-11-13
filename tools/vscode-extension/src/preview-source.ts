@@ -1,5 +1,5 @@
 import * as path from "node:path";
-import * as vscode from "vscode";
+import type * as vscode from "vscode";
 
 export interface PreviewInput {
   sourceId: string;
@@ -289,11 +289,17 @@ function collectMermaidFences(
 ): MermaidFence[] {
   const fences: MermaidFence[] = [];
   let ordinal = 0;
+  let inComment = false;
 
   for (let lineIndex = 0; lineIndex < lineCount; lineIndex += 1) {
     const line = lineAt(lineIndex);
+    if (inComment) {
+      inComment = commentStateAfterLine(line, inComment);
+      continue;
+    }
     const delimiter = markdownFenceDelimiter(line);
     if (!delimiter) {
+      inComment = commentStateAfterLine(line, inComment);
       continue;
     }
     if (!delimiter.isMermaid) {
@@ -333,6 +339,20 @@ function collectMermaidFences(
   return fences;
 }
 
+function commentStateAfterLine(line: string, inComment: boolean): boolean {
+  let cursor = 0;
+  while (cursor < line.length) {
+    const marker = inComment ? "-->" : "<!--";
+    const next = line.indexOf(marker, cursor);
+    if (next === -1) {
+      break;
+    }
+    inComment = !inComment;
+    cursor = next + marker.length;
+  }
+  return inComment;
+}
+
 function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
   const trimmed = trimFenceIndent(line);
   if (trimmed === null) {
@@ -348,7 +368,7 @@ function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
     return null;
   }
 
-  const rest = trimmed.slice(length).trimStart();
+  const rest = trimmed.slice(length).replace(/^\p{White_Space}+/u, "");
   if (rest.length === 0) {
     return { marker, length, isMermaid: false };
   }
@@ -356,7 +376,7 @@ function markdownFenceDelimiter(line: string): MermaidFenceDelimiter | null {
   const tail = rest.slice("mermaid".length);
   const isMermaid =
     language.toLowerCase() === "mermaid" &&
-    (tail.length === 0 || /\s/.test(tail[0] ?? ""));
+    (tail.length === 0 || /^\p{White_Space}/u.test(tail));
 
   return { marker, length, isMermaid };
 }
@@ -367,7 +387,7 @@ function isMatchingClosingFence(line: string, delimiter: MermaidFenceDelimiter):
     return false;
   }
   const length = repeatedMarkerLength(trimmed, delimiter.marker);
-  return length >= delimiter.length && trimmed.slice(length).trim().length === 0;
+  return length >= delimiter.length && /^\p{White_Space}*$/u.test(trimmed.slice(length));
 }
 
 function skipMarkdownFence(
@@ -435,5 +455,5 @@ function collectDocumentText(lineCount: number, lineAt: (lineIndex: number) => s
 }
 
 function splitLines(text: string): string[] {
-  return text.split(/\r?\n/);
+  return text.split(/\r\n|[\r\n]/);
 }

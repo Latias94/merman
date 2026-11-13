@@ -1,5 +1,5 @@
 use crate::line_index::{LineIndex, LineIndexBudget, LineIndexCache};
-use merman_analysis::AnalysisCancellationToken;
+use merman_analysis::{AnalysisCancellationToken, locate_editor_host_fences_cancellable};
 use merman_editor_core::DocumentKind;
 use std::ops::{ControlFlow, Range};
 use std::sync::{Arc, OnceLock};
@@ -307,16 +307,18 @@ fn parse_document(
         }
         DocumentKind::Markdown | DocumentKind::Mdx => {
             let mut parser = parser()?;
-            let bodies = scan_mermaid_fences(source);
+            let located = locate_editor_host_fences_cancellable(source, cancellation)
+                .map_err(|_| SyntaxHighlightError::Cancelled)?;
             let previous_fences = previous.and_then(|state| match &state.parsed {
                 ParsedDocument::Host(fences) => Some((state.source.as_ref(), fences.as_slice())),
                 ParsedDocument::Diagram(_) => None,
             });
-            let mut fences = Vec::with_capacity(bodies.len());
-            for (index, body) in bodies.into_iter().enumerate() {
+            let mut fences = Vec::with_capacity(located.len());
+            for (index, fence) in located.into_iter().enumerate() {
                 if cancellation.is_cancelled() {
                     return Err(SyntaxHighlightError::Cancelled);
                 }
+                let body = fence.body;
                 let text = &source[body.clone()];
                 let previous_tree = previous_fences.and_then(|(previous_source, previous)| {
                     let previous = previous.get(index)?;
@@ -543,150 +545,238 @@ fn intersect_ranges(left: &Range<usize>, right: &Range<usize>) -> Option<Range<u
     (start < end).then_some(start..end)
 }
 
-#[derive(Debug, Clone, Copy)]
-struct FenceDelimiter {
-    marker: u8,
-    len: usize,
-}
-
-#[derive(Debug, Clone, Copy)]
-struct FenceOpening {
-    delimiter: FenceDelimiter,
-    is_mermaid: bool,
-}
-
-fn scan_mermaid_fences(source: &str) -> Vec<Range<usize>> {
-    let mut bodies = Vec::new();
-    let mut cursor = 0usize;
-    while cursor < source.len() {
-        let line_end = next_line_end(source, cursor);
-        let line = trim_line_ending(&source[cursor..line_end]);
-        let Some(opening) = fence_opening(line) else {
-            cursor = line_end;
-            continue;
-        };
-        if !opening.is_mermaid {
-            cursor = skip_fence(source, line_end, opening.delimiter);
-            continue;
-        }
-
-        let body_start = line_end;
-        let mut search_start = body_start;
-        let mut closed = false;
-        while search_start < source.len() {
-            let closing_end = next_line_end(source, search_start);
-            let closing_line = trim_line_ending(&source[search_start..closing_end]);
-            if matching_closing_fence(closing_line, opening.delimiter) {
-                bodies.push(body_start..search_start);
-                cursor = closing_end;
-                closed = true;
-                break;
-            }
-            search_start = closing_end;
-        }
-        if !closed {
-            bodies.push(body_start..source.len());
-            break;
-        }
-    }
-    bodies
-}
-
-fn next_line_end(source: &str, start: usize) -> usize {
-    let bytes = source.as_bytes();
-    let mut cursor = start;
-    while cursor < bytes.len() {
-        match bytes[cursor] {
-            b'\n' => return cursor + 1,
-            b'\r' if bytes.get(cursor + 1) == Some(&b'\n') => return cursor + 2,
-            b'\r' => return cursor + 1,
-            _ => cursor += 1,
-        }
-    }
-    source.len()
-}
-
-fn trim_line_ending(line: &str) -> &str {
-    line.strip_suffix("\r\n")
-        .or_else(|| line.strip_suffix('\n'))
-        .or_else(|| line.strip_suffix('\r'))
-        .unwrap_or(line)
-}
-
-fn fence_opening(line: &str) -> Option<FenceOpening> {
-    let trimmed = trim_fence_indent(line)?;
-    let marker = *trimmed.as_bytes().first()?;
-    if !matches!(marker, b'`' | b'~' | b':') {
-        return None;
-    }
-    let len = repeated_marker_len(trimmed.as_bytes(), marker);
-    if len < 3 {
-        return None;
-    }
-    let rest = trimmed[len..].trim_start_matches(char::is_whitespace);
-    if rest.is_empty() {
-        return Some(FenceOpening {
-            delimiter: FenceDelimiter { marker, len },
-            is_mermaid: false,
-        });
-    }
-    let language = "mermaid";
-    let Some(prefix) = rest.get(..language.len()) else {
-        return Some(FenceOpening {
-            delimiter: FenceDelimiter { marker, len },
-            is_mermaid: false,
-        });
-    };
-    let tail = &rest[language.len()..];
-    Some(FenceOpening {
-        delimiter: FenceDelimiter { marker, len },
-        is_mermaid: prefix.eq_ignore_ascii_case(language)
-            && (tail.is_empty() || tail.chars().next().is_some_and(char::is_whitespace)),
-    })
-}
-
-fn matching_closing_fence(line: &str, delimiter: FenceDelimiter) -> bool {
-    let Some(trimmed) = trim_fence_indent(line) else {
-        return false;
-    };
-    let len = repeated_marker_len(trimmed.as_bytes(), delimiter.marker);
-    len >= delimiter.len && trimmed[len..].chars().all(char::is_whitespace)
-}
-
-fn skip_fence(source: &str, mut cursor: usize, delimiter: FenceDelimiter) -> usize {
-    while cursor < source.len() {
-        let line_end = next_line_end(source, cursor);
-        let line = trim_line_ending(&source[cursor..line_end]);
-        if matching_closing_fence(line, delimiter) {
-            return line_end;
-        }
-        cursor = line_end;
-    }
-    source.len()
-}
-
-fn trim_fence_indent(line: &str) -> Option<&str> {
-    let mut spaces = 0usize;
-    for (index, byte) in line.bytes().enumerate() {
-        match byte {
-            b' ' if spaces < 3 => spaces += 1,
-            b' ' | b'\t' => return None,
-            _ => return Some(&line[index..]),
-        }
-    }
-    Some("")
-}
-
-fn repeated_marker_len(bytes: &[u8], marker: u8) -> usize {
-    bytes.iter().take_while(|byte| **byte == marker).count()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn cancellation() -> AnalysisCancellationToken {
         AnalysisCancellationToken::new()
+    }
+
+    #[derive(serde::Deserialize)]
+    struct HostFenceFixtures {
+        cases: Vec<HostFenceCase>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct HostFenceCase {
+        name: String,
+        language: String,
+        text: String,
+        fences: Vec<HostFenceExpectation>,
+    }
+
+    #[derive(serde::Deserialize)]
+    struct HostFenceExpectation {
+        start_line: usize,
+        body: String,
+    }
+
+    fn host_fence_cases() -> Vec<HostFenceCase> {
+        serde_json::from_str::<HostFenceFixtures>(include_str!(
+            "../../merman-analysis/tests/fixtures/editor_host_fences.json"
+        ))
+        .unwrap()
+        .cases
+    }
+
+    #[test]
+    fn editor_host_fence_contract_drives_trees_and_projected_tokens() {
+        let cancellation = cancellation();
+        let profile = crate::client_profile::ClientProtocolProfile::permissive();
+        let budget = LineIndexBudget::new(0);
+        for fixture in host_fence_cases() {
+            let kind = if fixture.language == "mdx" {
+                DocumentKind::Mdx
+            } else {
+                DocumentKind::Markdown
+            };
+            let source_map = merman_analysis::SourceMap::new(fixture.text.as_str());
+            let bodies: Vec<_> = fixture
+                .fences
+                .iter()
+                .map(|expected| {
+                    let start = source_map
+                        .line_start(expected.start_line + 1)
+                        .unwrap_or(fixture.text.len());
+                    start..start + expected.body.len()
+                })
+                .collect();
+            let state = SyntaxDocumentState::parse(
+                1,
+                kind,
+                Arc::from(fixture.text.as_str()),
+                &cancellation,
+            )
+            .unwrap();
+            assert_eq!(state.tree_count(), fixture.fences.len(), "{}", fixture.name);
+            let captures = state.captures(None, &cancellation).unwrap();
+            assert!(
+                captures.iter().all(|capture| bodies.iter().any(|body| {
+                    body.start <= capture.start_byte && capture.end_byte <= body.end
+                })),
+                "{}",
+                fixture.name
+            );
+            assert_eq!(
+                captures
+                    .iter()
+                    .filter(|capture| {
+                        &fixture.text[capture.start_byte..capture.end_byte] == "sequenceDiagram"
+                    })
+                    .count(),
+                fixture
+                    .fences
+                    .iter()
+                    .filter(|expected| { expected.body.starts_with("sequenceDiagram") })
+                    .count(),
+                "{}",
+                fixture.name
+            );
+
+            let plan = crate::semantic_tokens::semantic_token_plan_for_document_with_profile(
+                &state,
+                &cancellation,
+                &profile,
+                &budget,
+            )
+            .unwrap()
+            .unwrap();
+            let mut line = 0;
+            let mut column = 0;
+            for words in plan.packed().chunks_exact(5) {
+                line += words[0] as usize;
+                column = if words[0] == 0 {
+                    column + words[1] as usize
+                } else {
+                    words[1] as usize
+                };
+                let start = source_map
+                    .byte_offset_for_utf16_position(merman_analysis::Utf16Position {
+                        line,
+                        character: column,
+                    })
+                    .unwrap();
+                let end = source_map
+                    .byte_offset_for_utf16_position(merman_analysis::Utf16Position {
+                        line,
+                        character: column + words[2] as usize,
+                    })
+                    .unwrap();
+                assert!(
+                    bodies
+                        .iter()
+                        .any(|body| body.start <= start && end <= body.end),
+                    "{}: {line}:{column}",
+                    fixture.name
+                );
+            }
+            if fixture.fences.is_empty() {
+                assert!(plan.packed().is_empty(), "{}", fixture.name);
+            }
+            if let Some(first) = fixture.fences.first().filter(|first| first.start_line > 0) {
+                use tower_lsp_server::ls_types::{Position, Range as LspRange};
+
+                let prefix =
+                    crate::semantic_tokens::semantic_token_plan_for_document_range_with_profile(
+                        &state,
+                        LspRange::new(
+                            Position::new(0, 0),
+                            Position::new(first.start_line as u32, 0),
+                        ),
+                        &cancellation,
+                        &profile,
+                        &budget,
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert!(prefix.packed().is_empty(), "{}", fixture.name);
+            }
+        }
+    }
+
+    #[test]
+    fn editor_host_comment_filter_projects_crlf_unicode_tokens_at_host_positions() {
+        let fixture = host_fence_cases()
+            .into_iter()
+            .find(|fixture| fixture.name == "crlf_and_unicode_host_coordinates")
+            .unwrap();
+        let cancellation = cancellation();
+        let state = SyntaxDocumentState::parse(
+            1,
+            DocumentKind::Mdx,
+            Arc::from(fixture.text),
+            &cancellation,
+        )
+        .unwrap();
+        let profile = crate::client_profile::ClientProtocolProfile::permissive();
+        let plan = crate::semantic_tokens::semantic_token_plan_for_document_with_profile(
+            &state,
+            &cancellation,
+            &profile,
+            &LineIndexBudget::new(0),
+        )
+        .unwrap()
+        .unwrap();
+        let mut line = 0;
+        let mut column = 0;
+        let mut tokens = Vec::new();
+        for words in plan.packed().chunks_exact(5) {
+            line += words[0];
+            column = if words[0] == 0 {
+                column + words[1]
+            } else {
+                words[1]
+            };
+            tokens.push((line, column, words[2]));
+        }
+        assert!(tokens.contains(&(7, 0, 15)), "{tokens:?}");
+        assert!(
+            tokens.iter().all(|(line, _, _)| (7..=8).contains(line)),
+            "{tokens:?}"
+        );
+        assert!(
+            tokens.iter().any(|&(line, column, length)| {
+                line == 8 && column <= 13 && column + length == 17
+            }),
+            "the Unicode message must end at UTF-16 column 17: {tokens:?}"
+        );
+    }
+
+    #[test]
+    fn editor_host_comment_edits_remove_and_restore_fence_trees() {
+        let cancellation = cancellation();
+        let source = "```mermaid\nsequenceDiagram\nAlice->>Bob: 😀\n```\n";
+        let initial =
+            SyntaxDocumentState::parse(1, DocumentKind::Markdown, Arc::from(source), &cancellation)
+                .unwrap();
+        assert_eq!(initial.tree_count(), 1);
+        let hidden = initial
+            .update(
+                2,
+                DocumentKind::Markdown,
+                Arc::from(format!("<!--\n{source}")),
+                &cancellation,
+            )
+            .unwrap();
+        assert_eq!(hidden.tree_count(), 0);
+        assert!(hidden.captures(None, &cancellation).unwrap().is_empty());
+        let reopened: Arc<str> = Arc::from(format!("<!-- closed -->\r\n{source}"));
+        let updated = hidden
+            .update(
+                3,
+                DocumentKind::Markdown,
+                Arc::clone(&reopened),
+                &cancellation,
+            )
+            .unwrap();
+        let fresh =
+            SyntaxDocumentState::parse(3, DocumentKind::Markdown, reopened, &cancellation).unwrap();
+        assert_eq!(updated.tree_count(), 1);
+        assert_eq!(
+            updated.captures(None, &cancellation).unwrap(),
+            fresh.captures(None, &cancellation).unwrap()
+        );
     }
 
     #[test]

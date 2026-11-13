@@ -371,13 +371,32 @@ fn rename_edits(
     new_name: &str,
 ) -> Option<EditorWorkspaceEdit> {
     let spans = fence.text_index().reference_spans_for_item(item);
+    let class_name = item.kind == EditorSemanticKind::Class
+        && fence
+            .diagram_type()
+            .and_then(merman_core::diagram_type_family_kind)
+            == Some("class");
     let mut edits = spans
         .into_iter()
-        .filter_map(|span| range_from_span(snapshot.source_map(), absolute_span(fence, span)))
-        .map(|range| EditorTextEdit {
-            fact_source: fence.text_index().source(),
-            range,
-            new_text: new_name.to_string(),
+        .filter_map(|span| {
+            let span = absolute_span(fence, span);
+            let range = range_from_span(snapshot.source_map(), span)?;
+            // Keep the parser's token boundary when an adjacent word could join the new name.
+            let needs_separator = class_name
+                && snapshot
+                    .text()
+                    .get(span.end..)
+                    .and_then(|suffix| suffix.chars().next())
+                    .is_some_and(char::is_alphanumeric);
+            Some(EditorTextEdit {
+                fact_source: fence.text_index().source(),
+                range,
+                new_text: if needs_separator {
+                    format!("{new_name} ")
+                } else {
+                    new_name.to_string()
+                },
+            })
         })
         .collect::<Vec<_>>();
     if edits.is_empty() {

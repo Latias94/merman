@@ -1173,3 +1173,184 @@ fn parse_class_editor_facts_continue_after_advancing_lexer_error() {
     );
     assert_eq!(diagnostic.span_kind(), ParseDiagnosticSpanKind::Exact);
 }
+
+#[test]
+fn parse_diagram_class_adjacent_operators_preserve_relationship_types() {
+    let engine = Engine::new();
+    for (relation, source_id, type1, type2, line_type) in [
+        ("A*--B", "A", 2, -1, 0),
+        ("A*..B", "A", 2, -1, 1),
+        ("A--*B", "A", -1, 2, 0),
+        ("A<|--B", "A", 1, -1, 0),
+        ("A--|>B", "A", -1, 1, 0),
+        ("A<|..B", "A", 1, -1, 1),
+        ("A..|>B", "A", -1, 1, 1),
+        ("`A*`*--B", "A*", 2, -1, 0),
+        ("A-o--B", "A-", 0, -1, 0),
+        ("A-o..B", "A-", 0, -1, 1),
+        ("A.o--B", "A.", 0, -1, 0),
+        ("A~T~o--B", "A", 0, -1, 0),
+        ("类o--B", "类", 0, -1, 0),
+        ("Afoo--B", "Afoo", -1, -1, 0),
+        ("`A-o`--B", "A-o", -1, -1, 0),
+    ] {
+        let text = format!("classDiagram\n{relation}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            parsed.model["classes"].as_object().unwrap().len(),
+            2,
+            "{relation}"
+        );
+        assert!(parsed.model["classes"][source_id].is_object(), "{relation}");
+        assert!(parsed.model["classes"]["B"].is_object(), "{relation}");
+        let edge = &parsed.model["relations"][0];
+        assert_eq!(edge["id1"], source_id, "{relation}");
+        assert_eq!(edge["id2"], "B", "{relation}");
+        assert_eq!(
+            edge["relation"],
+            json!({"type1": type1, "type2": type2, "lineType": line_type}),
+            "{relation}"
+        );
+    }
+}
+
+#[test]
+fn parse_diagram_class_adjacent_lollipops_create_interfaces() {
+    let engine = Engine::new();
+    for (relation, id1, id2, type1, type2) in [
+        ("I()--A", "interface0", "A", 4, -1),
+        ("A--()I", "A", "interface0", -1, 4),
+    ] {
+        let text = format!("classDiagram\n{relation}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        assert_eq!(parsed.model["classes"].as_object().unwrap().len(), 1);
+        assert!(parsed.model["classes"]["A"].is_object());
+        assert_eq!(parsed.model["interfaces"].as_array().unwrap().len(), 1);
+        assert_eq!(parsed.model["interfaces"][0]["id"], "interface0");
+        assert_eq!(parsed.model["interfaces"][0]["label"], "I");
+        let edge = &parsed.model["relations"][0];
+        assert_eq!(edge["id1"], id1, "{relation}");
+        assert_eq!(edge["id2"], id2, "{relation}");
+        assert_eq!(edge["relation"]["type1"], type1, "{relation}");
+        assert_eq!(edge["relation"]["type2"], type2, "{relation}");
+    }
+}
+
+#[test]
+fn parse_diagram_class_quoted_generic_names_keep_types_and_bodies() {
+    let engine = Engine::new();
+    for declaration in [
+        "class `Car~T~`",
+        "class Car~T~",
+        "class `Car~T~` {\n+drive()\n}",
+    ] {
+        let text = format!("classDiagram\n{declaration}\n");
+        let parsed = engine
+            .parse_diagram_sync(&text, ParseOptions::strict())
+            .unwrap()
+            .unwrap();
+        let class = &parsed.model["classes"]["Car"];
+        assert_eq!(class["type"], "T");
+        assert_eq!(class["text"], "Car&lt;T&gt;");
+        if declaration.contains("drive") {
+            assert_eq!(class["methods"][0]["displayText"], "+drive()");
+        }
+    }
+}
+
+#[test]
+fn parse_class_editor_facts_canonicalize_generic_class_identity_and_selections() {
+    let engine = Engine::new();
+    for (declaration, reference, id, spelling) in [
+        ("`Car~T~`", "Car", "Car", "Car"),
+        ("Car~T~", "`Car`", "Car", "Car"),
+        ("Car~T~", "Car~U~", "Car", "Car"),
+        ("`123~类型~`", "123", "classId-123", "123"),
+        ("123~类型~", "`123`", "classId-123", "123"),
+        ("`名𠀀~类型~`", "`名𠀀`", "名𠀀", "名𠀀"),
+        (
+            "`classId-Car~T~`",
+            "classId-Car",
+            "classId-Car",
+            "classId-Car",
+        ),
+    ] {
+        let text = format!("classDiagram\nclass {declaration}\n{reference} --> Wheel\n");
+        let snapshot = engine
+            .parse_diagram_snapshot_with_type_sync("classDiagram", &text)
+            .unwrap()
+            .unwrap();
+        let model = snapshot.outcome().parsed_model().unwrap();
+        assert!(model["classes"][id].is_object(), "{declaration}");
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("generic Class snapshot must retain editor facts");
+        };
+        assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+        let occurrences = facts
+            .symbols
+            .iter()
+            .filter(|symbol| symbol.kind == EditorSemanticKind::Class && symbol.name == id)
+            .collect::<Vec<_>>();
+        assert_eq!(occurrences.len(), 2, "{declaration}: {reference}");
+        assert_eq!(occurrences[0].role, EditorSemanticRole::Entity);
+        assert_eq!(occurrences[1].role, EditorSemanticRole::Reference);
+        assert_eq!(
+            &text[occurrences[0].span.start..occurrences[0].span.end],
+            declaration
+        );
+        assert_eq!(
+            &text[occurrences[1].span.start..occurrences[1].span.end],
+            reference
+        );
+        for symbol in occurrences {
+            assert_eq!(
+                &text[symbol.selection.start..symbol.selection.end],
+                spelling
+            );
+            assert!(symbol.span.start <= symbol.selection.start);
+            assert!(symbol.selection.end <= symbol.span.end);
+        }
+    }
+}
+
+#[test]
+fn parse_class_editor_facts_canonicalize_generic_class_targets() {
+    let text = concat!(
+        "classDiagram\n",
+        "class Car~T~\n",
+        "Car~U~: +drive()\n",
+        "<<interface>> Car~U~\n",
+        "note for Car \"note\"\n",
+        "style Car fill:red\n",
+        "click Car~U~ href \"https://example.com\"\n",
+        "cssClass \"Car~U~, Other\" hot\n",
+    );
+    let facts = Engine::new()
+        .parse_editor_semantic_facts_with_type_sync("classDiagram", text)
+        .unwrap()
+        .unwrap();
+    assert_eq!(facts.completeness, EditorSemanticCompleteness::Complete);
+    for (detail, authored) in [
+        ("class member owner", "Car~U~"),
+        ("class annotation target", "Car~U~"),
+        ("class note target", "Car"),
+        ("class style target", "Car"),
+        ("class interaction target", "Car~U~"),
+        ("class css target", "Car~U~"),
+    ] {
+        let symbol = facts
+            .symbols
+            .iter()
+            .find(|symbol| symbol.name == "Car" && symbol.detail.as_deref() == Some(detail))
+            .unwrap_or_else(|| panic!("missing generic Class reference: {detail}"));
+        assert_eq!(symbol.role, EditorSemanticRole::Reference);
+        assert_eq!(&text[symbol.span.start..symbol.span.end], authored);
+        assert_eq!(&text[symbol.selection.start..symbol.selection.end], "Car");
+    }
+}
