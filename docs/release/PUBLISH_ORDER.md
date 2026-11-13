@@ -1,13 +1,32 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-10-31 (Asia/Shanghai)
+Last updated: 2026-11-13 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Published maintenance release: `0.9.3` on `release/0.9.x`, based on immutable `v0.9.2`. The workspace Rust crates, CLI/LSP, native C/WASI SDK archives, and Apple XCFramework backfill are verified below. Other registries and platform packages retain their separately verified versions. Main's development changes and independently versioned packages remain on their own release tracks.
+Selected maintenance release: `0.9.4` on `release/0.9.x`, based on immutable `v0.9.3`. This publication selects workspace Rust crates and CLI/LSP. Manual platform and SDK publishers remain deferred. Main's `v0.10.0` remains the latest release; independently versioned packages retain their own release tracks.
+
+## 0.9.4 publication
+
+Scope selected on 2026-11-13 (Asia/Shanghai): the maintainer authorized merging the maintenance backports and publishing the patch release. [PR #307](https://github.com/Latias94/merman/pull/307) merged at `40a9e79fb5ff5dc89389749efdfa916f7752fd5b`, with the same implementation tree as reviewed head `f0a85d6584e303e631df6d47ab76f208481a91fe`. Its [CI run 43364273369](https://github.com/Latias94/merman/actions/runs/43364273369) passed all 57 selected jobs, including the Linux workspace suite, 37-family SVG comparison, and Chromium root-containment oracle. Version projection, dated notes, CLI assets, Playground catalog, Rustdoc fragments, 13 Rust license reports, and 406 legal-material projections are prepared and passed their local owner checks. The focused version/changelog suite passed 29 tests and the memory contract suite passed 80 tests. Exact-source immutable preflight remains required; no 0.9.4 tag or registry acceptance is asserted at this preparation checkpoint.
+
+| Channel | Selected scope and independently observed availability on 2026-11-13 |
+| --- | --- |
+| Rust workspace | Selected for `0.9.4`; [crates.io](https://crates.io/api/v1/crates/merman) currently reports latest `0.10.0` and newest maintenance `0.9.3`. Exact source-matched preflight and per-batch registry receipts are required. |
+| CLI and LSP | Selected for `0.9.4`; the primary [GitHub Release](https://github.com/Latias94/merman/releases/tag/v0.10.0) is `v0.10.0`, while `v0.9.3` remains the newest maintenance release. The maintenance publisher uses `--latest=false`. |
+| Native C and WASI SDKs | Deferred; all 18 `0.9.3` archives and 18 checksum sidecars remain attached to [v0.9.3](https://github.com/Latias94/merman/releases/tag/v0.9.3). The `v0.10.0` Release also has its 18-archive SDK matrix. Preflight qualification does not publish 0.9.4 downloads. |
+| Web npm group | Deferred; independent registry queries confirm all five members have `0.9.3` and `latest=0.10.0`. No member has `0.9.4` or a `maintenance-0-9` tag. [Default package](https://registry.npmjs.org/@mermanjs/web). |
+| Node npm group | Deferred; independent registry queries confirm all seven members have `0.9.3` and `latest=0.10.0`. No member has `0.9.4` or a `maintenance-0-9` tag. [Loader](https://registry.npmjs.org/@mermanjs/node). |
+| Python | Deferred; [PyPI](https://pypi.org/pypi/merman/json) reports latest `0.10.0` and also exposes maintenance `0.9.3`. |
+| Flutter | Deferred; [pub.dev](https://pub.dev/api/packages/merman) reports latest `0.10.0` and also exposes maintenance `0.9.3`. No `flutter-v0.9.4` tag is selected. |
+| Android AAR | Deferred; public `merman-android-v0.9.3.aar` and `merman-android-v0.10.0.aar` assets remain available on their matching Releases. |
+| Apple XCFramework | Deferred; public `Merman.xcframework-v0.9.3.zip` and `Merman.xcframework-v0.10.0.zip` archives and sidecars remain available on their matching Releases. |
+| VS Code, independent packages, Pages, external package managers | Deferred; the extension remains unpublished by maintainer choice. No independent package publication, site deployment, or external registry submission is selected. |
+
+The [0.9.4 changelog](../../CHANGELOG.md#094---2026-11-13) describes the compatible maintenance delta. Mermaid 12.1.0, MSRV 1.95, the Presentation API, Options JSON schema 2, Web transport 5, measurement operations `0..21`, and the existing native ABI prefixes remain intact. The Rust 1.100 follow-up in [PR #308](https://github.com/Latias94/merman/pull/308) targets `main` independently.
 
 ## 0.9.3 publication
 

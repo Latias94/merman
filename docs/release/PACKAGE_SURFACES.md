@@ -5,14 +5,15 @@ and native or WASM artifacts to the same Merman version.
 
 ## Release versions
 
-Merman `0.9.3` targets Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for that release line's API and output changes, and the [workspace changelog](../../CHANGELOG.md) for the 0.9.3 fixes and SDK profiles. The published host text-measurement protocol retains operations `0..21`.
+Merman `0.9.4` targets Mermaid `12.1.0`, parser `2.0.1`, and reference CLI `12.0.0`. See the [0.8.0 to 0.9.0 upgrade guide](V080_TO_V090_UPGRADE_GUIDE.md) for that release line's API and output changes, and the [workspace changelog](../../CHANGELOG.md) for the 0.9.4 fixes. The published host text-measurement protocol retains operations `0..21`.
 
 Independently versioned packages include `roughr-merman 0.12.4` and Tree-sitter `0.3.1`. Typst wrapper `0.5.0` bundles Merman `0.9.0`; wrapper `0.4.0` bundles `0.8.0`. See the [dependency policy](../DEPENDENCY_POLICY.md) for compatible version requirements and intentional upgrade exceptions.
 
-The Rust crates, CLI/LSP, native C/WASI SDKs, and Apple XCFramework are published at `0.9.3`.
-Web, Node, Python, Flutter, and Android retain their separately published `0.9.2` packages.
-Use each channel's verified artifact version and the matching source tag; see the
-[publication record](PUBLISH_ORDER.md#093-publication).
+The 0.9.4 release selects Rust crates and CLI/LSP. Native C/WASI SDKs, Apple, Android, Web, Node,
+Python, and Flutter retain their separately published `0.9.3` maintenance artifacts. Their latest
+release is `0.10.0`; use an explicit version to stay on the 0.9 line. Match every wrapper and binary
+to its source tag and consult the [publication record](PUBLISH_ORDER.md#094-publication) for verified
+channel delivery.
 
 ## Choose A Surface
 
