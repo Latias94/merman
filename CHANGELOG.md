@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.9.4] - 2026-11-13
 
 Maintenance fixes on the Mermaid 12.1.0 line. Review layout and image/PDF snapshots after adopting the text and font corrections below.
 

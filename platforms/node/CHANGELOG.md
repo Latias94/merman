@@ -2,6 +2,15 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.9.4] - 2026-11-13
+
+These are `0.9.4` source changes only; npm publication is deferred. The latest verified `0.9` maintenance package group remains `0.9.3`; `0.10.0` remains the latest overall release.
+
+- Restore vertical Timeline arrowheads in `resvg-safe` SVG, apply Class note padding per side, preserve HTML cardinality line breaks and styles, and size GitGraph branch backgrounds from displayed text. Numeric identifiers can wrap after hyphens without splitting leading minus signs. [#283](https://github.com/Latias94/merman/pull/283), [#288](https://github.com/Latias94/merman/pull/288), [#289](https://github.com/Latias94/merman/pull/289), [#299](https://github.com/Latias94/merman/pull/299)
+- Preserve Class relationship operators adjacent to names and align generic references and renames. Accept Sequence `par_over` branches and retain embedded `#` and `%%` in unquoted Requirement tokens. [#282](https://github.com/Latias94/merman/pull/282), [#283](https://github.com/Latias94/merman/pull/283), [#287](https://github.com/Latias94/merman/pull/287), [#297](https://github.com/Latias94/merman/pull/297)
+
+Review SVG snapshots when adopting these source fixes. See the [workspace changelog](../../CHANGELOG.md) for the complete maintenance delta.
+
 ## [0.9.3] - 2026-10-30
 
 These changes are available in the `v0.9.3` source. The published npm package group remains at `0.9.2`.

@@ -4,6 +4,23 @@ All notable changes to the Apple Swift package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.9.4] - 2026-11-13
+
+These are `0.9.4` source changes only; Swift/XCFramework publication is deferred. The latest verified `0.9` maintenance release remains `0.9.3`; `0.10.0` remains the latest overall release.
+
+- Restore vertical Timeline arrowheads in `resvg-safe` SVG, apply Class note padding per side, preserve HTML cardinality line breaks and styles, and size GitGraph branch backgrounds from displayed text. Numeric identifiers can wrap after hyphens without splitting leading minus signs. [#283](https://github.com/Latias94/merman/pull/283), [#288](https://github.com/Latias94/merman/pull/288), [#289](https://github.com/Latias94/merman/pull/289), [#299](https://github.com/Latias94/merman/pull/299)
+- Preserve Class relationship operators adjacent to names and align generic references and renames. Accept Sequence `par_over` branches in parsing and terminal output, and retain embedded `#` and `%%` in unquoted Requirement tokens. [#282](https://github.com/Latias94/merman/pull/282), [#283](https://github.com/Latias94/merman/pull/283), [#287](https://github.com/Latias94/merman/pull/287), [#297](https://github.com/Latias94/merman/pull/297)
+- Route terminal feedback edges around reserved geometry, including wide-character labels and mirrored layouts. [#287](https://github.com/Latias94/merman/pull/287)
+- Document analysis ignores Mermaid fences inside Markdown HTML comments. [#277](https://github.com/Latias94/merman/pull/277)
+- Custom artifacts with native image/PDF export support exclude Last Resort fonts from implicit selection and missing-glyph fallback while retaining explicitly named fonts, and recognize fixed-width Latin metrics when a monospace flag is missing. [#284](https://github.com/Latias94/merman/pull/284), [#298](https://github.com/Latias94/merman/pull/298)
+
+### Security
+
+- Require `pulldown-cmark 0.13.6` or later for [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's Markdown entrypoints do not enable the affected Wikilinks option.
+- Require `rustix 1.1.6` or later for [RUSTSEC-2026-0486](https://rustsec.org/advisories/RUSTSEC-2026-0486.html) in dependency graphs that include it.
+
+Review layout and SVG snapshots when adopting these source fixes, plus image/PDF snapshots for custom export artifacts. See the [workspace changelog](../../CHANGELOG.md) for the complete maintenance delta.
+
 ## [0.9.3] - 2026-10-30
 
 The matching XCFramework archive and checksum are available on the
