@@ -27,6 +27,8 @@ use merman_model::families::class as class_typed;
 use merman_model::text::is_ecmascript_whitespace;
 #[cfg(feature = "compat-json")]
 use serde_json::Value;
+#[cfg(feature = "editor-facts")]
+use std::borrow::Cow;
 #[cfg(test)]
 use std::cell::Cell;
 #[cfg(feature = "editor-facts")]
@@ -63,12 +65,12 @@ struct ClassSyntaxOutcome {
     editor_facts: Option<EditorSemanticFacts>,
 }
 
-struct ClassSyntax {
-    events: Vec<ClassLexicalEvent>,
+pub(super) struct ClassSyntax {
+    pub(super) events: Vec<ClassLexicalEvent>,
 }
 
 impl ClassSyntax {
-    fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
+    pub(super) fn lex(code: &str, control: &OperationControl) -> OperationControlResult<Self> {
         #[cfg(test)]
         CLASS_SYNTAX_CONSTRUCTION_COUNT.set(CLASS_SYNTAX_CONSTRUCTION_COUNT.get() + 1);
 
@@ -440,6 +442,64 @@ pub(crate) fn parse_class_json_and_editor_facts(
 }
 
 #[cfg(feature = "editor-facts")]
+pub(super) fn class_editor_events<'a>(
+    events: &'a [ClassLexicalEvent],
+    code: &'a str,
+    control: &'a OperationControl,
+) -> impl Iterator<Item = OperationControlResult<Cow<'a, ClassLexicalEvent>>> {
+    let mut cursor = 0;
+    let mut interaction_target = false;
+    std::iter::from_fn(move || {
+        let event = events.get(cursor)?;
+        cursor += 1;
+        let is_target = interaction_target;
+        interaction_target = matches!(
+            event,
+            Ok((_, Tok::ClickKw | Tok::LinkKw | Tok::CallbackKw, _))
+        );
+        if is_target
+            && let Ok((start, Tok::Name(name), end)) = event
+            && !code[*start..*end].contains('`')
+        {
+            let mut last = *end;
+            let mut value = None::<String>;
+            let target_events_start = cursor;
+            while let [Err(comma), Ok((next_start, Tok::Name(next), next_end)), ..] =
+                &events[cursor..]
+            {
+                if (cursor - target_events_start).is_multiple_of(128)
+                    && let Err(cancelled) = control.checkpoint()
+                {
+                    return Some(Err(cancelled));
+                }
+                if code.get(comma.span.start..comma.span.end) != Some(",")
+                    || !code[last..comma.span.start]
+                        .chars()
+                        .all(is_ecmascript_whitespace)
+                    || !code[comma.span.end..*next_start]
+                        .chars()
+                        .all(is_ecmascript_whitespace)
+                    || code[*next_start..*next_end].contains('`')
+                {
+                    break;
+                }
+                let value = value.get_or_insert_with(|| name.clone());
+                value.push(',');
+                value.push_str(next);
+                last = *next_end;
+                cursor += 2;
+            }
+            if let Some(value) = value {
+                // Bare comma lists are incomplete Class syntax. Recover their references as a
+                // single target container without changing the events supplied to the grammar.
+                return Some(Ok(Cow::Owned(Ok((*start, Tok::Name(value), last)))));
+            }
+        }
+        Some(Ok(Cow::Borrowed(event)))
+    })
+}
+
+#[cfg(feature = "editor-facts")]
 fn collect_class_editor_facts_from_events(
     events: &[ClassLexicalEvent],
     code: &str,
@@ -450,11 +510,15 @@ fn collect_class_editor_facts_from_events(
     let mut facts = EditorSemanticFacts::new();
     let mut collector = ClassEditorFactCollector::new(code);
 
-    for (index, event) in events.iter().enumerate() {
+    for (index, event) in class_editor_events(events, code, control).enumerate() {
+        let event = event?;
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        match event {
+        if matches!(&event, Cow::Owned(_)) {
+            facts.mark_recovered();
+        }
+        match event.as_ref() {
             Ok((start, token, end)) => collector.accept(token, *start, *end, &mut facts),
             Err(error) => {
                 facts.mark_recovered();
@@ -494,9 +558,53 @@ struct ClassEditorFactCollector<'a> {
 
 #[derive(Debug, Clone)]
 #[cfg(feature = "editor-facts")]
-struct ClassTokenSymbol {
-    name: String,
+pub(super) struct ClassTokenSymbol {
+    pub(super) name: String,
+    pub(super) span: SourceSpan,
+}
+
+#[cfg(feature = "editor-facts")]
+pub(super) fn recover_interaction_action(
+    code: &str,
+    name: &str,
     span: SourceSpan,
+) -> Option<(ClassTokenSymbol, SourceSpan)> {
+    let source = code.get(span.start..span.end)?;
+    // Quoted and generic terminals complete className rather than prefixing a bare action.
+    // Incomplete literals retain that ownership through EOF.
+    if source.contains(['`', '~']) {
+        return None;
+    }
+    let separator = source.rfind(|ch: char| ch.is_ascii_whitespace())?;
+    let action = &source[separator + 1..];
+    if !is_class_interaction_action_prefix(action)
+        || !code[span.end..]
+            .chars()
+            .take_while(|ch| !matches!(ch, '\r' | '\n'))
+            .all(|ch| {
+                #[cfg(test)]
+                CLASS_ACTION_RECOVERY_INSPECTIONS.update(|count| count + 1);
+                is_ecmascript_whitespace(ch)
+            })
+    {
+        return None;
+    }
+    // className concatenates adjacent terminals, including a partially typed action.
+    // Recover only a bare final action prefix; completed interactions keep that grammar rule.
+    let target_name = name.strip_suffix(action)?;
+    let target_len = source[..separator]
+        .trim_end_matches(|ch: char| ch.is_ascii_whitespace())
+        .len();
+    if target_name.is_empty() || target_len == 0 {
+        return None;
+    }
+    Some((
+        ClassTokenSymbol {
+            name: target_name.to_string(),
+            span: SourceSpan::new(span.start, span.start + target_len),
+        },
+        SourceSpan::new(span.start + separator + 1, span.end),
+    ))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -670,7 +778,7 @@ impl<'a> ClassEditorFactCollector<'a> {
                         matches!(expected.kind, ExpectedClassName::ClickTarget)
                     })
                     && let Some((target, action_span)) =
-                        self.recover_interaction_action(name, SourceSpan::new(start, end))
+                        recover_interaction_action(self.code, name, SourceSpan::new(start, end))
                 {
                     self.expected_name = None;
                     self.interaction_target_end = Some(target.span.end);
@@ -1043,49 +1151,6 @@ impl<'a> ClassEditorFactCollector<'a> {
             EditorExpectedSyntaxKind::InteractionAction,
             SourceSpan::new(start, end),
         ));
-    }
-
-    fn recover_interaction_action(
-        &self,
-        name: &str,
-        span: SourceSpan,
-    ) -> Option<(ClassTokenSymbol, SourceSpan)> {
-        let source = self.code.get(span.start..span.end)?;
-        // Quoted and generic terminals complete className rather than prefixing a bare action.
-        // Incomplete literals retain that ownership through EOF.
-        if source.contains(['`', '~']) {
-            return None;
-        }
-        let separator = source.rfind(|ch: char| ch.is_ascii_whitespace())?;
-        let action = &source[separator + 1..];
-        if !is_class_interaction_action_prefix(action)
-            || !self.code[span.end..]
-                .chars()
-                .take_while(|ch| !matches!(ch, '\r' | '\n'))
-                .all(|ch| {
-                    #[cfg(test)]
-                    CLASS_ACTION_RECOVERY_INSPECTIONS.update(|count| count + 1);
-                    is_ecmascript_whitespace(ch)
-                })
-        {
-            return None;
-        }
-        // className concatenates adjacent terminals, including a partially typed action.
-        // Recover only a bare final action prefix; completed interactions keep that grammar rule.
-        let target_name = name.strip_suffix(action)?;
-        let target_len = source[..separator]
-            .trim_end_matches(|ch: char| ch.is_ascii_whitespace())
-            .len();
-        if target_name.is_empty() || target_len == 0 {
-            return None;
-        }
-        Some((
-            ClassTokenSymbol {
-                name: target_name.to_string(),
-                span: SourceSpan::new(span.start, span.start + target_len),
-            },
-            SourceSpan::new(span.start + separator + 1, span.end),
-        ))
     }
 
     fn push_interaction_payload_expected_syntax(
@@ -1487,6 +1552,12 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
     }
     // A className can concatenate terminals separated by whitespace or backticks. Rename
     // the complete authored name in that case, leaving its generic suffix in place.
+    let end = class_name_base_end(source);
+    SourceSpan::new(span.start, span.start + end)
+}
+
+#[cfg(feature = "editor-facts")]
+pub(super) fn class_name_base_end(source: &str) -> usize {
     let mut quoted = false;
     let end = source
         .char_indices()
@@ -1497,10 +1568,9 @@ fn selection_span_for_class_name(code: &str, name: &str, span: SourceSpan) -> So
             (ch == '~' && !quoted).then_some(offset)
         })
         .unwrap_or(source.len());
-    let end = source[..end]
+    source[..end]
         .trim_end_matches(is_ecmascript_whitespace)
-        .len();
-    SourceSpan::new(span.start, span.start + end)
+        .len()
 }
 
 #[cfg(feature = "editor-facts")]

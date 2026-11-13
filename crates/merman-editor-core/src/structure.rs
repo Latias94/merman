@@ -362,7 +362,23 @@ pub fn rename(
         .text_index()
         .reference_item_at_offset(offset)
         .ok_or(RenameError::NoRenameableSymbol)?;
-    if !rename_group_allows(fence, item, |policy| policy.accepts(new_name)) {
+    let class_name = fence.diagram_type().and_then(diagram_type_family_id)
+        == Some(DiagramFamilyId::CLASS)
+        && matches!(
+            item.kind,
+            EditorSemanticKind::Class | EditorSemanticKind::Namespace
+        );
+    if class_name {
+        merman_core::editor::class_name_requires_backticks(new_name)
+            .ok_or(RenameError::InvalidName)?;
+    }
+    if !rename_group_allows(fence, item, |policy| {
+        if class_name && policy == EditorRenamePolicy::Identifier {
+            true
+        } else {
+            policy.accepts(new_name)
+        }
+    }) {
         return Err(RenameError::InvalidName);
     }
     Ok(rename_edits(snapshot, fence, item, new_name))
@@ -376,8 +392,39 @@ fn rename_edits(
 ) -> Option<EditorWorkspaceEdit> {
     let spans = fence.text_index().reference_spans_for_item(item);
     let family = fence.diagram_type().and_then(diagram_type_family_id);
-    let class_name =
-        item.kind == EditorSemanticKind::Class && family == Some(DiagramFamilyId::CLASS);
+    if family == Some(DiagramFamilyId::CLASS)
+        && matches!(
+            item.kind,
+            EditorSemanticKind::Class | EditorSemanticKind::Namespace
+        )
+    {
+        let selections = spans
+            .into_iter()
+            .map(|span| SourceSpan::new(span.start, span.end))
+            .collect::<Vec<_>>();
+        let edits = merman_core::editor::class_rename_edits(fence.text(), &selections, new_name)?
+            .into_iter()
+            .map(|(span, new_text)| {
+                Some(EditorTextEdit {
+                    fact_source: fence.text_index().source(),
+                    range: range_from_span(
+                        snapshot.source_map(),
+                        absolute_source_span(fence, span),
+                    )?,
+                    new_text,
+                })
+            })
+            .collect::<Option<Vec<_>>>()?;
+        if edits.is_empty() {
+            return None;
+        }
+        let mut changes = HashMap::new();
+        changes.insert(snapshot.uri().clone(), edits);
+        return Some(EditorWorkspaceEdit {
+            fact_source: fence.text_index().source(),
+            changes,
+        });
+    }
     let er_name = item.kind == EditorSemanticKind::Struct && family == Some(DiagramFamilyId::ER);
     let er_boundaries = er_name.then(|| {
         fence
@@ -431,20 +478,11 @@ fn rename_edits(
                     .is_some_and(|quoted| quoted.contains(&span.start));
             let span = absolute_span(fence, span);
             let range = range_from_span(snapshot.source_map(), span)?;
-            // Keep the parser's token boundary when an adjacent word could join the new name.
-            let needs_separator = class_name
-                && snapshot
-                    .text()
-                    .get(span.end..)
-                    .and_then(|suffix| suffix.chars().next())
-                    .is_some_and(char::is_alphanumeric);
             Some(EditorTextEdit {
                 fact_source: fence.text_index().source(),
                 range,
                 new_text: if needs_quotes {
                     format!("\"{new_name}\"")
-                } else if needs_separator {
-                    format!("{new_name} ")
                 } else {
                     new_name.to_string()
                 },

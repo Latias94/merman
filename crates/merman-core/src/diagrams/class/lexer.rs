@@ -121,6 +121,30 @@ pub(super) struct Lexer<'input> {
 
 pub(super) type ClassLexicalEvent = std::result::Result<(usize, Tok, usize), LexError>;
 
+#[cfg(feature = "editor-facts")]
+pub(crate) fn editor_name_requires_backticks(name: &str) -> Option<bool> {
+    if name.is_empty()
+        || !name.chars().all(|ch| {
+            if ch.is_ascii() {
+                ch.is_ascii_alphanumeric() || matches!(ch, '_' | '-')
+            } else {
+                !is_ecmascript_whitespace(ch) && !ch.is_control()
+            }
+        })
+    {
+        return None;
+    }
+
+    // Backticks admit non-ASCII names outside the pinned UNICODE_TEXT ranges. Use the
+    // lexer itself to distinguish those names and reserved tokens from an ordinary Name.
+    let mut lexer = Lexer::new(name);
+    let unquoted = matches!(
+        lexer.next(),
+        Some(Ok((0, Tok::Name(value), end))) if end == name.len() && value == name
+    ) && lexer.next().is_none();
+    Some(!unquoted)
+}
+
 impl<'input> Lexer<'input> {
     pub(super) fn new(input: &'input str) -> Self {
         Self {

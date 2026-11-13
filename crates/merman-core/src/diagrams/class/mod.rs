@@ -11,6 +11,8 @@ pub(crate) use merman_model::families::class::{
 
 mod ast;
 mod db;
+#[cfg(feature = "editor-facts")]
+mod editor;
 mod lexer;
 mod parse;
 pub(crate) mod source_data;
@@ -29,6 +31,10 @@ pub(crate) use parse::parse_class_typed_with_render_context_controlled;
 pub(crate) use parse::{class_syntax_construction_count, reset_class_syntax_construction_count};
 
 pub(crate) use ast::{Action, Relation, RelationData};
+#[cfg(feature = "editor-facts")]
+pub(crate) use editor::editor_rename_edits;
+#[cfg(feature = "editor-facts")]
+pub(crate) use lexer::editor_name_requires_backticks;
 pub(crate) use lexer::{LexError, Tok};
 
 #[cfg(feature = "compat-json")]

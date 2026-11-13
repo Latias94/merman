@@ -38,6 +38,44 @@ pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
     }
 }
 
+/// Whether a Class or Class namespace rename needs backticks under the compiled family lexer.
+///
+/// ASCII names retain the identifier alphabet; non-ASCII names may use the family's quoted
+/// form without depending on the compiler's Unicode letter classification. Returns `None` for
+/// invalid names or when the Class grammar is not compiled.
+pub fn class_name_requires_backticks(name: &str) -> Option<bool> {
+    #[cfg(feature = "diagram-class")]
+    {
+        crate::diagrams::class::editor_name_requires_backticks(name)
+    }
+    #[cfg(not(feature = "diagram-class"))]
+    {
+        let _ = name;
+        None
+    }
+}
+
+/// Builds Class name edits from reference selections in the original diagram source.
+///
+/// The family preprocesses and maps its syntax before deciding whether to quote a name or an
+/// entire target list. Authored quotes and generic suffixes are preserved. Returned edits are
+/// sorted and do not overlap; unavailable syntax or an inexact source mapping returns `None`.
+pub fn class_rename_edits(
+    source: &str,
+    selections: &[SourceSpan],
+    new_name: &str,
+) -> Option<Vec<(SourceSpan, String)>> {
+    #[cfg(feature = "diagram-class")]
+    {
+        crate::diagrams::class::editor_rename_edits(source, selections, new_name)
+    }
+    #[cfg(not(feature = "diagram-class"))]
+    {
+        let _ = (source, selections, new_name);
+        None
+    }
+}
+
 /// Protocol-independent symbol classification for editor-facing consumers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EditorSemanticKind {
