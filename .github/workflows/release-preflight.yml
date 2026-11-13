@@ -162,17 +162,17 @@ jobs:
         uses: Swatinem/rust-cache@v2.9.3
 
       - name: Install cargo-about
-        uses: taiki-e/install-action@v2.90.1
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-about@0.9.3
 
       - name: Install cargo-semver-checks
-        uses: taiki-e/install-action@v2.90.1
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: cargo-semver-checks@0.51.0
 
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@c509219cf42fba86913069efd0ade2458c59337b # v2.90.1
+        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
         with:
           tool: nextest@0.9.151
 
@@ -866,7 +866,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install wasm-tools
-        uses: taiki-e/install-action@v2.90.1
+        uses: taiki-e/install-action@v2.90.3
         with:
           tool: wasm-tools@1.263.0
 
