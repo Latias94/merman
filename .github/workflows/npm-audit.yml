@@ -59,9 +59,19 @@ jobs:
         env:
           AUDIT_PACKAGE_DIRECTORY: ${{ matrix.directory }}
         run: |
-          npm audit --package-lock-only --omit=dev --audit-level=low \
-            --registry=https://registry.npmjs.org \
-            --prefix "$AUDIT_PACKAGE_DIRECTORY"
+          if [[ "$AUDIT_PACKAGE_DIRECTORY" == "tools/vscode-extension" ]]; then
+            python3 scripts/verify_vscode_audit_scope.py
+            npm exec --yes --ignore-scripts --registry=https://registry.npmjs.org \
+              --package=audit-ci@7.1.0 -- audit-ci \
+              --directory "$AUDIT_PACKAGE_DIRECTORY" \
+              --config tools/vscode-extension/audit-ci.json \
+              --extra-args=--package-lock-only \
+              --registry=https://registry.npmjs.org
+          else
+            npm audit --package-lock-only --omit=dev --audit-level=low \
+              --registry=https://registry.npmjs.org \
+              --prefix "$AUDIT_PACKAGE_DIRECTORY"
+          fi
           npm audit --package-lock-only --audit-level=high \
             --registry=https://registry.npmjs.org \
             --prefix "$AUDIT_PACKAGE_DIRECTORY"

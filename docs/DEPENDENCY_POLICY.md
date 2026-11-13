@@ -46,6 +46,17 @@ override graph passes npm audit. Revisit when the parent admits a patched suppor
 a clean advisory report alone does not prove authentication compatibility. This tooling
 path is not part of the bundled extension runtime.
 
+The unpublished VS Code extension has a maintainer-approved production audit exception for
+[GHSA-g3hv-75wg-m249](https://github.com/advisories/GHSA-g3hv-75wg-m249), limited to
+`vscode-languageclient 11.0.0 -> minimatch 10.2.6`. The 2026-11-13 registry check found no patched 10.x release;
+minimatch 11.0.1 removes `makeRe()`, which the current language client uses for file-operation
+and glob filters. A forced override would break those paths. The extension is not a published
+Merman package surface. Remove this exception before its first publication or when a compatible
+upstream repair is admitted; it expires on 2027-02-11 UTC. The dependency version guard requires
+review on parent or matcher changes. Pinned `audit-ci 7.1.0` admits only that exact advisory path
+at the existing low-or-higher production threshold. Other packages retain their unmodified
+production audit, and the complete tooling graph still fails on high or critical findings.
+
 ## Node build compatibility
 
 The native GNU builder retains Node 24.13.1 on Bullseye because that container defines the selected Linux compatibility baseline; a newer host tool does not by itself admit a newer glibc requirement. The musl candidate uses Node 24.21.0 on Alpine 3.23. Keep each container identity and its package-tool provenance with the owner artifact evidence, and verify native loading/package smoke after a builder change. These are distinct preparation choices, not proof that the final package has passed its native owner gates.
