@@ -1,4 +1,4 @@
-ARG RUST_IMAGE=rust:1.99.1-bookworm
+ARG RUST_IMAGE=rust:1.100.0-bookworm
 ARG NODE_IMAGE=node:24.13.1-bullseye
 
 FROM ${RUST_IMAGE} AS rust-toolchain

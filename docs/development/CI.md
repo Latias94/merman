@@ -4,6 +4,30 @@ Merman separates pull-request feedback, scheduled maintenance, and release evide
 in the earliest layer that can justify its cost, but it should not be repeated in every later job
 unless that job produces an independently releasable artifact.
 
+## Rust Toolchains
+
+`rust-toolchain.toml` pins development and ordinary CI/release builds to Rust **1.100.0**, with
+`rustfmt` and `clippy`. Maintained workflow toolchain references track this pin; SHA-pinned
+`dtolnay/rust-toolchain` steps use the commit for that exact release.
+
+The minimum supported Rust version (MSRV) remains **1.95**. Keep explicit MSRV/compiler-floor
+recipes on their declared versions. Toolchain upgrades preserve dated compatibility receipts and
+performance baselines; fuzzing retains its separately pinned nightly.
+
+Cargo 1.100 changes the internal build-directory layout. Tools that discover test or benchmark
+executables must read `compiler-artifact` JSON messages instead of reconstructing paths under
+`deps`, `build`, or `.fingerprint`. Final binaries and libraries in the target directory retain
+their ordinary output paths. Keep the existing shared-target freeze and provenance checks.
+
+Rust 1.100 uses Unicode 18.0 in the standard library. Parser and text-layout regressions remain
+part of the toolchain upgrade checks; a compiler upgrade does not authorize refreshing SVG or
+layout baselines without reviewing the semantic difference. New standard-library APIs must remain
+available at the declared MSRV before entering library code.
+
+The operation-context thread-local key already has a const initializer. Clippy 1.100 reports
+`missing_const_for_thread_local` from the standard library's TLS fallback on Android. Keep the
+allowance on that declaration until an admitted compiler update handles the expansion correctly.
+
 ## Runtime and job dependencies
 
 The core, native Node, and SVG/browser owners publish separate same-run results to `pr-gate`:
@@ -450,6 +474,11 @@ Do not enable this cfg globally or use it for release builds. Public Cargo featu
 feature unification, cannot enable it. Producer manifests exclude the independent acceptance
 modules from Cargo packages, so forcing the cfg cannot reconstruct those modules from a published
 crate. The private harness itself has `publish = false`.
+
+With the cfg disabled, Cargo 1.100 can report the harness's `merman` dependency as unused.
+That dependency supplies the public render operations exercised by the enabled harness. Validate
+it through the launcher above; its presence is intentional even when ordinary workspace checks
+compile an empty harness.
 
 ```text
 python3 scripts/verify_theme_acceptance_boundary.py

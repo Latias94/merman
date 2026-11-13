@@ -81,7 +81,7 @@ jobs:
           printf 'source_sha=%s\n' "$source_sha" >> "$GITHUB_OUTPUT"
           echo "Verified source commit: $source_sha"
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
       - name: Install cargo-semver-checks
         uses: taiki-e/install-action@v2.90.1
         with:
@@ -173,7 +173,7 @@ jobs:
             exit 1
           }
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
       - name: Inspect independent crate publication state
         id: crate-state
         env:

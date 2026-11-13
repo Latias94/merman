@@ -173,7 +173,7 @@ jobs:
           repository: ${{ inputs.head_repository || github.repository }}
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Check Python performance scripts
         if: github.event_name != 'pull_request'
@@ -300,7 +300,7 @@ jobs:
         run: git checkout --detach HEAD^
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Read the base revision's performance recipe
         id: base-recipe
@@ -469,7 +469,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Install mermaid-rs-renderer toolchain
         shell: bash

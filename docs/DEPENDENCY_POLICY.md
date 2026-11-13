@@ -29,6 +29,15 @@ The [upstream language adapter](https://github.com/tree-sitter/tree-sitter/blob/
 
 Wasmi 2 tooling explicitly enables `validate`, `stable`, `simd`, and `auto-dispatch` while disabling defaults. `auto-dispatch` selects loop dispatch for unoptimized host builds, where native tail-call optimization is unavailable; omitting it can overflow the host stack during ordinary plugin execution. The long-loop interpreter regression and actual Typst package smoke cover this migration.
 
+Typst uses `wasm-minimal-protocol 0.2.1`, the latest release observed on 2026-11-13. Its
+[macro](https://docs.rs/crate/wasm-minimal-protocol/0.2.1/source/src/lib.rs)
+generates an error-formatting branch for infallible exports. Rust 1.100 makes `Infallible` an
+alias of `!` and diagnoses that generated branch as unreachable. Keep the `unreachable_code`
+allowance confined to the seven forwarding wrappers in `merman-typst-plugin/src/wasm_exports.rs`;
+the public Rust functions retain their infallible return types and ordinary diagnostics. Remove
+the allowance when an admitted protocol-macro release handles the never type. The fixed WASM
+exports and real Typst plugin smoke remain the compatibility checks.
+
 The 2026-11-06 audit selected JNI 0.22.4, the latest stable release. Its [native-method macro](https://docs.rs/crate/jni-macros/0.22.4/source/src/native_method.rs) emits `AtomicBool::fetch_update`, deprecated on the selected Rust 1.99 toolchain in favor of `try_update`. Keep the dependency's ABI checks enabled and limit the deprecation allowance to the three generated JNI method tables. Android-target Clippy still denies warnings for the transport; remove these allowances when an admitted JNI release updates the generated call.
 
 ## Reference tools and JavaScript compatibility
@@ -62,7 +71,7 @@ The 2026-11-06 VS Code packaging-tool update removes the old `@azure/msal-node` 
 
 ## Node build compatibility
 
-Host and musl builders select Node 26.13.0 and npm 12.2.2. The native GNU builder retains Node 24.13.1 on Bullseye because that container defines the selected glibc 2.31 compatibility baseline; the newer official Node images do not provide that distribution. It copies the Rust 1.99.1 toolchain from the official Bookworm image while retaining the Bullseye target linker and sysroot. The musl candidate uses Alpine 3.24. Keep each container identity and its package-tool provenance with the owner artifact evidence, and verify native loading/package smoke after a builder change. These are distinct preparation choices, not proof that the final package has passed its native owner gates.
+Host and musl builders select Node 26.13.0 and npm 12.2.2. The native GNU builder retains Node 24.13.1 on Bullseye because that container defines the selected glibc 2.31 compatibility baseline; the newer official Node images do not provide that distribution. It copies the Rust 1.100.0 toolchain from the official Bookworm image while retaining the Bullseye target linker and sysroot. The musl candidate uses Alpine 3.24. Keep each container identity and its package-tool provenance with the owner artifact evidence, and verify native loading/package smoke after a builder change. These are distinct preparation choices, not proof that the final package has passed its native owner gates.
 
 ## GitHub Actions
 

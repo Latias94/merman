@@ -224,7 +224,7 @@ jobs:
           python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: wasm32-unknown-unknown
 
@@ -363,7 +363,7 @@ jobs:
 
       - name: Install Rust toolchain
         if: ${{ !startsWith(matrix.target, 'linux-') }}
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: ${{ matrix.rust_target }}
 
