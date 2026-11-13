@@ -4,6 +4,16 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
+## [Unreleased]
+
+### Changed
+
+- Select Rust 1.100.0 for repository development, CI and release builders while retaining library MSRV 1.95. Update layout code for the stricter Clippy checks and remove unused workspace dependency aliases and redundant Cargo package metadata.
+
+### Fixed
+
+- Preserve valid Class and namespace source when renaming to Unicode names or reserved words that require backticks. Existing quotes, generic suffixes and relationship targets remain intact.
+
 ## [0.10.0] - 2026-11-12
 
 Changes since stable [0.9.3](#093---2026-10-30), including the 0.10 alphas. This release adds reusable diagram themes, prepared rendering and Mermaid `12.3.0` support.

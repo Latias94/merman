@@ -948,7 +948,7 @@ Web artifact size is reported without byte ceilings; package integrity and funct
 required for publication.
 Typst package builds additionally require Binaryen `wasm-opt version 133` and `wasm-tools`
 (CI pins 1.263.0); the post-link optimizer and stripper versions are recorded in the artifact
-manifest. CI uses Rust 1.99.1 with `wasm32-unknown-unknown`, Typst 0.15.1 for the current consumer,
+manifest. CI uses Rust 1.100.0 with `wasm32-unknown-unknown`, Typst 0.15.1 for the current consumer,
 and Typst 0.15.0 for the compatibility consumer.
 `merman-typst-plugin` is the Typst-compatible transport and must remain separate from
 browser/wasm-bindgen artifacts. Cargo defaults are intentionally empty. The sole public package

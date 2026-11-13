@@ -1,4 +1,4 @@
-ARG RUST_IMAGE=rust:1.99.1-alpine3.24
+ARG RUST_IMAGE=rust:1.100.0-alpine3.24
 ARG NODE_IMAGE=node:26.13.0-alpine3.24
 
 FROM ${RUST_IMAGE} AS rust-toolchain

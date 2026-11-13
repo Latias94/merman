@@ -2463,25 +2463,22 @@ pub fn sort_end_labels(graph: &mut LGraph) {
         .map(|edge| end_label_sort_key(graph, edge))
         .collect::<Vec<_>>();
 
-    for node in 0..graph.layerless_nodes.len() {
-        let port_count = graph.layerless_nodes[node].ports.len();
-        for port in 0..port_count {
-            if graph.layerless_nodes[node].ports[port].labels.len() < 2 {
+    for node in &mut graph.layerless_nodes {
+        for port in &mut node.ports {
+            if port.labels.len() < 2 {
                 continue;
             }
-            graph.layerless_nodes[node].ports[port]
-                .labels
-                .sort_by(|a, b| {
-                    let a_key = a
-                        .end_label_edge
-                        .and_then(|edge| edge_sort_keys.get(edge).copied())
-                        .unwrap_or((usize::MAX, usize::MAX, usize::MAX));
-                    let b_key = b
-                        .end_label_edge
-                        .and_then(|edge| edge_sort_keys.get(edge).copied())
-                        .unwrap_or((usize::MAX, usize::MAX, usize::MAX));
-                    a_key.cmp(&b_key)
-                });
+            port.labels.sort_by(|a, b| {
+                let a_key = a
+                    .end_label_edge
+                    .and_then(|edge| edge_sort_keys.get(edge).copied())
+                    .unwrap_or((usize::MAX, usize::MAX, usize::MAX));
+                let b_key = b
+                    .end_label_edge
+                    .and_then(|edge| edge_sort_keys.get(edge).copied())
+                    .unwrap_or((usize::MAX, usize::MAX, usize::MAX));
+                a_key.cmp(&b_key)
+            });
         }
     }
 }

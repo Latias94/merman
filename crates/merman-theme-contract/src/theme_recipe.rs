@@ -15,9 +15,12 @@ pub const THEME_RECIPE_SCHEMA_VERSION_V1: u32 = 1;
 /// version 1 complete specification. The `kind` tag is authoritative; payload kinds are never
 /// inferred from missing fields.
 #[derive(Debug, Clone, PartialEq)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "A theme recipe is a single exchange value, not a dense collection; retain its by-value payload"
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::large_enum_variant,
+        reason = "A theme recipe is a single exchange value, not a dense collection; retain its by-value payload"
+    )
 )]
 pub enum ThemeRecipeV1 {
     /// An editable authoring design retaining shared-value bindings.
@@ -99,9 +102,12 @@ impl<'de> Deserialize<'de> for RecipeSchemaVersionV1 {
 
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "Decode the single exchanged recipe without introducing a boxed public payload"
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::large_enum_variant,
+        reason = "Decode the single exchanged recipe without introducing a boxed public payload"
+    )
 )]
 enum ThemeRecipeV1Decode {
     Design {

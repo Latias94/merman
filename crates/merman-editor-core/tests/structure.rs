@@ -771,6 +771,657 @@ fn class_generic_navigation_and_rename_preserve_quotes_and_type_suffixes() {
 
 #[cfg(feature = "diagram-class")]
 #[test]
+fn class_unicode_rename_preserves_names_generics_and_adjacent_relations_after_reparse() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    let parser = SemanticParser::new();
+    for (new_name, unquoted_replacement, adjacent_reference) in [
+        ("\u{0558}", "`\u{0558}`", "`\u{0558}`o--B"),
+        ("\u{10400}", "`\u{10400}`", "`\u{10400}`o--B"),
+        ("中文", "中文", "中文 o--B"),
+        ("namespace", "`namespace`", "`namespace`o--B"),
+        ("o", "`o`", "`o`o--B"),
+    ] {
+        for (old_name, declaration, reference, expected_declaration, expected_reference) in [
+            (
+                "Old",
+                "Old",
+                "Old --> B",
+                unquoted_replacement.to_string(),
+                format!("{unquoted_replacement} --> B"),
+            ),
+            (
+                "Old",
+                "`Old` \t~T~",
+                "Old~T~o--B",
+                format!("`{new_name}` \t~T~"),
+                format!("{unquoted_replacement}~T~o--B"),
+            ),
+            (
+                "名𠀀",
+                "`名𠀀`~T~",
+                "`名𠀀`~T~o--B",
+                format!("`{new_name}`~T~"),
+                format!("`{new_name}`~T~o--B"),
+            ),
+            (
+                "类",
+                "类",
+                "类o--B",
+                unquoted_replacement.to_string(),
+                adjacent_reference.to_string(),
+            ),
+        ] {
+            let source = format!(
+                "classDiagram\nclass {declaration}\nclass B\n{reference}\n\
+                 click `{old_name}~V~,B~W~,{old_name}~X~` href \"https://example.com/\"\n"
+            );
+            let snapshot = harness
+                .analyze(
+                    "file:///tmp/class-unicode-rename.mmd",
+                    1,
+                    source.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            assert_eq!(
+                snapshot.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{source}"
+            );
+            let SemanticDiagramModel::Class(original) =
+                parser.parse_diagram_sync(&source).unwrap().model
+            else {
+                panic!("expected a Class semantic model");
+            };
+            let declaration_start = 6 + declaration[..declaration.find(old_name).unwrap()]
+                .encode_utf16()
+                .count();
+            let edits = rename(&snapshot, Position::new(1, declaration_start), new_name)
+                .expect("Class names can be represented with backticks")
+                .unwrap();
+            assert_eq!(edits.changes[snapshot.uri()].len(), 4, "{source}");
+            let mut changed = source.clone();
+            for edit in edits.changes[snapshot.uri()].iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            assert_eq!(
+                changed,
+                format!(
+                    "classDiagram\nclass {expected_declaration}\nclass B\n{expected_reference}\n\
+                     click `{new_name}~V~,B~W~,{new_name}~X~` href \"https://example.com/\"\n"
+                ),
+                "authored quotes and interaction-list quotes must not be duplicated"
+            );
+            let reparsed = harness
+                .analyze(
+                    snapshot.uri().clone(),
+                    2,
+                    changed.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            assert_eq!(
+                reparsed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{changed}"
+            );
+            let SemanticDiagramModel::Class(renamed) =
+                parser.parse_diagram_sync(&changed).unwrap().model
+            else {
+                panic!("expected a renamed Class semantic model");
+            };
+            assert_eq!(renamed.classes.len(), 2, "{changed}");
+            assert!(!renamed.classes.contains_key(old_name), "{changed}");
+            assert_eq!(
+                renamed.classes[new_name].type_param, original.classes[old_name].type_param,
+                "{changed}"
+            );
+            assert_eq!(renamed.classes["B"], original.classes["B"], "{changed}");
+            let mut expected_relation = original.relations[0].clone();
+            expected_relation.id1 = new_name.to_string();
+            assert_eq!(renamed.relations, [expected_relation], "{changed}");
+            let renamed_start = 6 + expected_declaration
+                [..expected_declaration.find(new_name).unwrap()]
+                .encode_utf16()
+                .count();
+            let position = Position::new(1, renamed_start);
+            assert_eq!(
+                prepare_rename(&reparsed, position).unwrap().placeholder,
+                new_name,
+                "{changed}"
+            );
+            assert_eq!(
+                references(&reparsed, position, true).unwrap().len(),
+                4,
+                "{changed}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_namespace_unicode_rename_preserves_members_and_authored_quotes_after_reparse() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    let parser = SemanticParser::new();
+    for (new_name, unquoted_replacement) in [
+        ("\u{0558}", "`\u{0558}`"),
+        ("\u{10400}", "`\u{10400}`"),
+        ("中文", "中文"),
+        ("namespace", "`namespace`"),
+        ("o", "`o`"),
+    ] {
+        for (old_name, declaration, expected_declaration) in [
+            ("Old", "Old", unquoted_replacement.to_string()),
+            ("名𠀀", "`名𠀀`", format!("`{new_name}`")),
+            ("A~T~", "A~T~", unquoted_replacement.to_string()),
+            ("A~T~", "`A~T~`", format!("`{new_name}`")),
+        ] {
+            let source = format!(
+                "classDiagram\nnamespace {declaration} {{\nclass Old\n}}\n\
+                 namespace `{old_name}` {{\nclass B\n}}\nOld --> B\n"
+            );
+            let snapshot = harness
+                .analyze(
+                    "file:///tmp/class-namespace-unicode-rename.mmd",
+                    1,
+                    source.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            assert_eq!(
+                snapshot.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{source}"
+            );
+            let SemanticDiagramModel::Class(original) =
+                parser.parse_diagram_sync(&source).unwrap().model
+            else {
+                panic!("expected a Class semantic model");
+            };
+            let declaration_start = 10 + usize::from(declaration.starts_with('`'));
+            let position = Position::new(1, declaration_start);
+            assert_eq!(
+                prepare_rename(&snapshot, position).unwrap().placeholder,
+                old_name
+            );
+            let edits = rename(&snapshot, position, new_name)
+                .expect("Class namespace names can be represented with backticks")
+                .unwrap();
+            assert_eq!(edits.changes[snapshot.uri()].len(), 2, "{source}");
+            let mut changed = source.clone();
+            for edit in edits.changes[snapshot.uri()].iter().rev() {
+                let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+                let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+                changed.replace_range(start..end, &edit.new_text);
+            }
+            assert_eq!(
+                changed,
+                format!(
+                    "classDiagram\nnamespace {expected_declaration} {{\nclass Old\n}}\n\
+                     namespace `{new_name}` {{\nclass B\n}}\nOld --> B\n"
+                )
+            );
+            let reparsed = harness
+                .analyze(
+                    snapshot.uri().clone(),
+                    2,
+                    changed.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            assert_eq!(
+                reparsed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{changed}"
+            );
+            let SemanticDiagramModel::Class(renamed) =
+                parser.parse_diagram_sync(&changed).unwrap().model
+            else {
+                panic!("expected a renamed Class namespace model");
+            };
+            assert_eq!(renamed.namespaces.len(), 1, "{changed}");
+            assert!(renamed.namespaces.contains_key(new_name), "{changed}");
+            assert!(!renamed.namespaces.contains_key(old_name), "{changed}");
+            assert_eq!(renamed.classes.len(), 2, "{changed}");
+            for id in ["Old", "B"] {
+                assert_eq!(
+                    renamed.classes[id].parent.as_deref(),
+                    Some(new_name),
+                    "{changed}"
+                );
+                assert_eq!(
+                    renamed.classes[id].type_param, original.classes[id].type_param,
+                    "{changed}"
+                );
+            }
+            assert_eq!(renamed.relations, original.relations, "{changed}");
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_rename_preserves_relation_kind_when_candidate_suffix_joins_adjacent_operator() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    let parser = SemanticParser::new();
+    for (new_name, solid_separator, dotted_separator) in [
+        ("A-o", " ", " "),
+        ("类o", " ", " "),
+        ("A-", " ", ""),
+        ("Ao", "", ""),
+        ("A_o", "", ""),
+        ("中文", "", ""),
+    ] {
+        for (operator, separator) in [("-->", solid_separator), ("..>", dotted_separator)] {
+            let source = format!("classDiagram\nclass A\nA{operator}B\n");
+            let snapshot = harness
+                .analyze(
+                    "file:///tmp/class-rename-operator-boundary.mmd",
+                    1,
+                    source.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            let SemanticDiagramModel::Class(original) =
+                parser.parse_diagram_sync(&source).unwrap().model
+            else {
+                panic!("expected an original Class semantic model");
+            };
+            let (changed, edit_count) =
+                apply_class_rename(&snapshot, Position::new(1, 6), new_name);
+            assert_eq!(edit_count, 2, "{source}");
+            assert_eq!(
+                changed,
+                format!("classDiagram\nclass {new_name}\n{new_name}{separator}{operator}B\n"),
+                "only a changed token boundary needs a separator"
+            );
+            let SemanticDiagramModel::Class(renamed) =
+                parser.parse_diagram_sync(&changed).unwrap().model
+            else {
+                panic!("expected a renamed Class semantic model");
+            };
+            assert_eq!(renamed.classes.len(), 2, "{changed}");
+            assert!(renamed.classes.contains_key(new_name), "{changed}");
+            assert!(!renamed.classes.contains_key("A"), "{changed}");
+            assert_eq!(renamed.classes["B"], original.classes["B"], "{changed}");
+            let mut expected_relation = original.relations[0].clone();
+            expected_relation.id1 = new_name.to_string();
+            assert_eq!(renamed.relations, [expected_relation], "{changed}");
+            let reparsed = harness
+                .analyze(
+                    snapshot.uri().clone(),
+                    2,
+                    changed.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            assert_eq!(
+                reparsed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{changed}"
+            );
+            let position = Position::new(2, 0);
+            assert_eq!(
+                prepare_rename(&reparsed, position).unwrap().placeholder,
+                new_name
+            );
+            assert_eq!(references(&reparsed, position, true).unwrap().len(), 2);
+            assert_eq!(
+                goto_definition(&reparsed, position).unwrap().range.start,
+                Position::new(1, 6)
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_rename_preserves_quoted_names_across_frontmatter_and_markdown_source_maps() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    for line_ending in ["\n", "\r\n"] {
+        for markdown in [false, true] {
+            let diagram = concat!(
+                "---\ntitle: |\n  accDescr {\n---\n",
+                "%%{init: {'theme': 'default'}}%%\n%% 前言😀\n",
+                "classDiagram\nclass `Old` \t~T~\nclass B\n",
+                "`Old`~U~ --> B\ncssClass \"Old\" hot\n",
+            );
+            let (source, kind) = if markdown {
+                (
+                    format!("前言😀\n\n```mermaid\n{diagram}```\n"),
+                    DocumentKind::Markdown,
+                )
+            } else {
+                (diagram.to_string(), DocumentKind::Diagram)
+            };
+            let source = source.replace('\n', line_ending);
+            let snapshot = harness
+                .analyze("file:///tmp/class-preamble.md", 1, source.clone(), kind)
+                .unwrap();
+            assert_eq!(
+                snapshot.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{source}"
+            );
+            let offset = source.find("`Old`").unwrap() + 1;
+            let position = snapshot.source_map().utf16_position(offset).unwrap();
+            let (changed, _) = apply_class_rename(
+                &snapshot,
+                Position::new(position.line, position.character),
+                "namespace",
+            );
+            assert_eq!(changed, source.replace("Old", "namespace"));
+            let reparsed = harness
+                .analyze(snapshot.uri().clone(), 2, changed.clone(), kind)
+                .unwrap();
+            assert_eq!(
+                reparsed.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserComplete,
+                "{changed}"
+            );
+            let SemanticDiagramModel::Class(model) = SemanticParser::new()
+                .parse_diagram_sync(reparsed.fences()[0].text())
+                .unwrap()
+                .model
+            else {
+                panic!("expected a Class semantic model");
+            };
+            assert_eq!(model.classes.len(), 2);
+            assert_eq!(model.classes["namespace"].type_param, "T");
+            assert!(model.classes["namespace"].css_classes.contains("hot"));
+            assert_eq!(model.relations[0].id1, "namespace");
+            assert_eq!(model.relations[0].id2, "B");
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_rename_preserves_css_style_link_and_callback_bindings_in_string_targets() {
+    let source = concat!(
+        "%%{init: {'securityLevel': 'loose'}}%%\nclassDiagram\n",
+        "class A~T~[\"Shown\"]\nclass B[\"Peer\"]\n",
+        "classDef hot fill:#f00\ncssClass \"A,B,A~V~\" hot\n",
+        "style A fill:#abc,stroke:#def\n",
+        "click A href \"https://example.com/click\"\n",
+        "click A call open(value)\n",
+        "link A \"https://example.com/link\" \"link tip\" _self\n",
+        "callback A \"open\" \"callback tip\"\n",
+    );
+    for new_name in ["namespace", "\u{0558}"] {
+        let snapshot = SnapshotHarness::new()
+            .analyze(
+                "file:///tmp/class-bindings.mmd",
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        assert_eq!(
+            snapshot.fences()[0].text_index().source(),
+            FenceTextIndexSource::ParserComplete
+        );
+        let (changed, _) = apply_class_rename(&snapshot, Position::new(2, 6), new_name);
+        assert!(changed.contains(&format!("cssClass \"{new_name},B,{new_name}~V~\" hot")));
+        assert!(changed.contains(&format!("style `{new_name}` fill:#abc,stroke:#def")));
+        assert_class_rename_preserves_bindings(source, &changed, "A", new_name);
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_rename_preserves_interaction_targets_in_external_generic_containers() {
+    for (command, payload) in [
+        ("click", " href \"https://example.com/\" \"tip\" _self"),
+        ("click", " call open(value) \"tip\""),
+        ("link", " \"https://example.com/\" \"tip\" _self"),
+        ("callback", " \"open\" \"tip\""),
+    ] {
+        for (base, separator) in [("`A`", ""), ("`A`", " \t"), ("A", ""), ("A", " \t")] {
+            for targets in ["T,B", "T,B,B"] {
+                let source = format!(
+                    "classDiagram\nclass A[\"First\"]\nclass B[\"Second\"]\n\
+                     {command} {base}{separator}~{targets}~{payload}\n"
+                );
+                let snapshot = SnapshotHarness::new()
+                    .analyze(
+                        "file:///tmp/class-generic-container.mmd",
+                        1,
+                        source.clone(),
+                        DocumentKind::Diagram,
+                    )
+                    .unwrap();
+                assert_eq!(
+                    snapshot.fences()[0].text_index().source(),
+                    FenceTextIndexSource::ParserComplete,
+                    "{source}"
+                );
+                let (changed, _) = apply_class_rename(&snapshot, Position::new(2, 6), "namespace");
+                assert_eq!(
+                    changed,
+                    format!(
+                        "classDiagram\nclass A[\"First\"]\nclass `namespace`[\"Second\"]\n\
+                         {command} {base}{separator}~{}~{payload}\n",
+                        targets.replace('B', "namespace"),
+                    )
+                );
+                assert_class_rename_preserves_bindings(&source, &changed, "B", "namespace");
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_rename_quotes_whole_recovered_target_lists_and_coalesces_repeated_references() {
+    for (targets, quoted_targets, renamed_targets, occurrences) in [
+        ("A,B", "`A,B`", "`namespace,B`", 1),
+        ("A,A,B", "`A,A,B`", "`namespace,namespace,B`", 2),
+        ("A,B~T~", "`A,B`~T~", "`namespace,B`~T~", 1),
+        (
+            "A~T~,B,A~U~",
+            "`A~T~,B,A~U~`",
+            "`namespace~T~,B,namespace~U~`",
+            2,
+        ),
+    ] {
+        for (command, payload) in [
+            ("click", " href \"https://example.com/\""),
+            ("click", " call open(value)"),
+            ("link", " \"https://example.com/\""),
+            ("callback", " \"open\""),
+        ] {
+            let header = "classDiagram\nclass A[\"Shown\"]\nclass B[\"Peer\"]\n";
+            let source = format!("{header}{command} {targets}{payload}\n");
+            let snapshot = SnapshotHarness::new()
+                .analyze(
+                    "file:///tmp/class-recovered-list.mmd",
+                    1,
+                    source.clone(),
+                    DocumentKind::Diagram,
+                )
+                .unwrap();
+            assert_eq!(
+                snapshot.fences()[0].text_index().source(),
+                FenceTextIndexSource::ParserRecovered,
+                "bare lists must remain recovery syntax: {source}"
+            );
+            let position = Position::new(1, 6);
+            assert_eq!(
+                references(&snapshot, position, true).unwrap().len(),
+                1 + occurrences,
+                "all occurrences in a recovered list must remain references: {source}"
+            );
+            let (changed, edit_count) = apply_class_rename(&snapshot, position, "namespace");
+            assert_eq!(edit_count, 2, "one edit per declaration/list: {source}");
+            assert_eq!(
+                changed,
+                format!(
+                    "classDiagram\nclass `namespace`[\"Shown\"]\nclass B[\"Peer\"]\n\
+                     {command} {renamed_targets}{payload}\n"
+                )
+            );
+            // Compare against the same authored targets in their legal quoted container.
+            let original = format!("{header}{command} {quoted_targets}{payload}\n");
+            assert_class_rename_preserves_bindings(&original, &changed, "A", "namespace");
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_rename_keeps_partial_interaction_actions_outside_recovered_target_lists() {
+    for prefix in ["h", "hr", "hre", "c", "ca", "cal"] {
+        let source =
+            format!("classDiagram\nclass A[\"First\"]\nclass B[\"Second\"]\nclick A,B {prefix}\n");
+        let snapshot = SnapshotHarness::new()
+            .analyze(
+                "file:///tmp/class-partial-list-action.mmd",
+                1,
+                source,
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        assert_eq!(
+            snapshot.fences()[0].text_index().source(),
+            FenceTextIndexSource::ParserRecovered
+        );
+        let (changed, count) = apply_class_rename(&snapshot, Position::new(2, 6), "namespace");
+        assert_eq!(count, 2);
+        assert_eq!(
+            changed,
+            format!(
+                "classDiagram\nclass A[\"First\"]\nclass `namespace`[\"Second\"]\nclick `A,namespace` {prefix}\n"
+            )
+        );
+        let reparsed = SnapshotHarness::new()
+            .analyze(
+                snapshot.uri().clone(),
+                2,
+                changed.clone(),
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        assert_eq!(
+            references(&reparsed, Position::new(2, 7), true)
+                .unwrap()
+                .len(),
+            2,
+            "partial action must remain outside the target name: {changed}"
+        );
+        for action in ["href \"https://example.com/\"", "call open(value)"] {
+            let completed = changed.replace(&format!(" {prefix}\n"), &format!(" {action}\n"));
+            let original = format!(
+                "classDiagram\nclass A[\"First\"]\nclass B[\"Second\"]\nclick `A,B` {action}\n"
+            );
+            assert_class_rename_preserves_bindings(&original, &completed, "B", "namespace");
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+fn apply_class_rename(
+    snapshot: &merman_editor_core::DocumentSnapshot,
+    position: Position,
+    new_name: &str,
+) -> (String, usize) {
+    let edits = rename(snapshot, position, new_name).unwrap().unwrap();
+    let changes = &edits.changes[snapshot.uri()];
+    let offsets = changes
+        .iter()
+        .map(|edit| {
+            (
+                snapshot.byte_offset_for_position(edit.range.start).unwrap(),
+                snapshot.byte_offset_for_position(edit.range.end).unwrap(),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert!(
+        offsets.windows(2).all(|pair| pair[0].1 <= pair[1].0),
+        "family edits must be sorted and must not overlap: {changes:?}"
+    );
+    let mut changed = snapshot.text().to_string();
+    for (edit, &(start, end)) in changes.iter().zip(&offsets).rev() {
+        changed.replace_range(start..end, &edit.new_text);
+    }
+    (changed, changes.len())
+}
+
+#[cfg(feature = "diagram-class")]
+fn assert_class_rename_preserves_bindings(
+    before: &str,
+    after: &str,
+    old_name: &str,
+    new_name: &str,
+) {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let parser = SemanticParser::new();
+    let SemanticDiagramModel::Class(original) = parser.parse_diagram_sync(before).unwrap().model
+    else {
+        panic!("expected an original Class semantic model");
+    };
+    let SemanticDiagramModel::Class(renamed) = parser.parse_diagram_sync(after).unwrap().model
+    else {
+        panic!("expected a renamed Class semantic model");
+    };
+    assert_eq!(original.classes.len(), renamed.classes.len(), "{after}");
+    assert!(!renamed.classes.contains_key(old_name), "{after}");
+    assert!(
+        original.classes[old_name].link.is_some() || original.classes[old_name].have_callback,
+        "test input must actually bind the renamed target: {before}"
+    );
+    for (id, node) in &original.classes {
+        if id == old_name {
+            let mut expected = node.clone();
+            expected.id = new_name.to_string();
+            assert_eq!(renamed.classes[new_name], expected, "{after}");
+        } else {
+            assert_eq!(renamed.classes[id], *node, "{after}");
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_and_namespace_rename_rejects_name_and_generic_delimiters() {
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///tmp/class-invalid-rename.mmd",
+            1,
+            "classDiagram\nnamespace Old {\nclass A\n}\n",
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    for position in [Position::new(1, 10), Position::new(2, 6)] {
+        for new_name in ["", "`Name`", "Name~T~", "Name,Other", "Name\nOther"] {
+            assert_eq!(
+                rename(&snapshot, position, new_name),
+                Err(RenameError::InvalidName),
+                "{new_name:?}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
 fn class_aggregation_navigation_and_rename_preserve_adjacent_operator_semantics() {
     use merman_core::SemanticParser;
     use merman_model::SemanticDiagramModel;

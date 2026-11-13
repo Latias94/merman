@@ -263,7 +263,7 @@ function writePackageMetadata(metadata, outputRoot) {
   if (!packageInfo) {
     throw new Error(`Cargo metadata is missing the merman-wasm package: ${manifestPath}`);
   }
-  for (const field of ["description", "license", "repository", "homepage"]) {
+  for (const field of ["description", "license", "repository"]) {
     if (typeof packageInfo[field] !== "string" || packageInfo[field].length === 0) {
       throw new Error(`Cargo metadata field merman-wasm.${field} is missing.`);
     }
@@ -281,7 +281,10 @@ function writePackageMetadata(metadata, outputRoot) {
     repository: { type: "git", url: packageInfo.repository },
     files: ["merman_wasm_bg.wasm", "merman_wasm.js", "merman_wasm.d.ts"],
     main: "merman_wasm.js",
-    homepage: packageInfo.homepage,
+    homepage:
+      typeof packageInfo.homepage === "string" && packageInfo.homepage.length > 0
+        ? packageInfo.homepage
+        : packageInfo.repository,
     types: "merman_wasm.d.ts",
     sideEffects: ["./snippets/*"],
     keywords: packageInfo.keywords,

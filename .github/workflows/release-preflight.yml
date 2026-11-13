@@ -154,7 +154,7 @@ jobs:
           persist-credentials: false
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: aarch64-linux-android,wasm32-unknown-unknown,wasm32-wasip1
 
@@ -349,7 +349,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        uses: dtolnay/rust-toolchain@9522411a9bce8484da960823fc2f46e52f981f71 # 1.100.0
 
       - name: Rust cache
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -457,7 +457,7 @@ jobs:
           python-version: '3.15.2'
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.3
@@ -670,7 +670,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v6.4.1
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: aarch64-linux-android,x86_64-linux-android
 
@@ -773,7 +773,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           components: llvm-tools-preview
           targets: aarch64-apple-ios,aarch64-apple-ios-sim,x86_64-apple-ios,aarch64-apple-darwin,x86_64-apple-darwin
@@ -848,7 +848,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: wasm32-unknown-unknown
 
@@ -998,7 +998,7 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: wasm32-unknown-unknown
 
@@ -1121,7 +1121,7 @@ jobs:
 
       - name: Install Rust toolchain
         if: ${{ !startsWith(matrix.target, 'linux-') }}
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
         with:
           targets: ${{ matrix.rust_target }}
 
@@ -1414,7 +1414,7 @@ jobs:
         run: python scripts/release-version.py check --version "$VERSION"
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2.9.3

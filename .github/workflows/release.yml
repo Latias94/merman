@@ -519,7 +519,7 @@ jobs:
           path: target/verified-release-assets
       - name: Install Rust for native preset qualification
         if: env.QUALIFY_PRESETS == 'true'
-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        uses: dtolnay/rust-toolchain@9522411a9bce8484da960823fc2f46e52f981f71 # 1.100.0
       - name: Checkout Ubuntu package transport tooling
         if: env.QUALIFY_PRESETS == 'true'
         uses: actions/checkout@v7.0.1

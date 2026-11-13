@@ -25,7 +25,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Install cargo-nextest
         uses: taiki-e/install-action@v2.90.1
@@ -173,7 +173,7 @@ jobs:
         run: npm install --global --ignore-scripts --registry=https://registry.npmjs.org/ npm@12.2.2
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@1.99.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Build local release shape
         run: |

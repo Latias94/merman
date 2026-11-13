@@ -63,7 +63,20 @@ static ARTIFACT_CONTRACT: ValidatedArtifactContract =
         .materialize();
 
 #[cfg(target_arch = "wasm32")]
-wasm_minimal_protocol::initiate_protocol!();
+mod wasm_exports;
+
+// Preserve the Rust paths previously emitted at the crate root by the protocol macro.
+#[cfg(target_arch = "wasm32")]
+#[doc(hidden)]
+pub use wasm_exports::{
+    __wasm_minimal_protocol_internal_function_abi_version,
+    __wasm_minimal_protocol_internal_function_analyze_json,
+    __wasm_minimal_protocol_internal_function_capabilities_json,
+    __wasm_minimal_protocol_internal_function_package_version,
+    __wasm_minimal_protocol_internal_function_render_svg_json,
+    __wasm_minimal_protocol_internal_function_theme_catalog_json,
+    __wasm_minimal_protocol_internal_function_theme_operation_json,
+};
 
 include!("generated/typst_plugin_abi.rs");
 
@@ -75,23 +88,19 @@ compile_error!(
     "Typst layout features must enable the crate `svg` feature so constrained resources cannot be bypassed"
 );
 
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn abi_version() -> &'static [u8] {
     TYPST_PLUGIN_ABI_VERSION_BYTES
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn package_version() -> Vec<u8> {
     env!("CARGO_PKG_VERSION").as_bytes().to_vec()
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn capabilities_json() -> Vec<u8> {
     typst_capabilities_json()
 }
 
 /// Returns the shared theme catalog under the plugin's fixed resource ceiling.
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn theme_catalog_json() -> Vec<u8> {
     let operation = MetadataKey::ThemeCatalog.id();
     #[cfg(feature = "svg")]
@@ -121,7 +130,6 @@ fn typst_capabilities_json() -> Vec<u8> {
     serde_json::to_vec(&catalog).expect("the checked Typst capability catalog is serializable")
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
     let options_json = match typst_options_json(OperationKey::Svg, options_json) {
         Ok(options_json) => options_json,
@@ -144,7 +152,6 @@ pub fn render_svg_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
     }
 }
 
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
     let options_json = match typst_options_json(OperationKey::AnalysisJson, options_json) {
         Ok(options_json) => options_json,
@@ -173,7 +180,6 @@ pub fn analyze_json(source: &[u8], options_json: &[u8]) -> Vec<u8> {
 ///
 /// The operation ID is restricted to the three theme-authoring rows advertised by the Typst
 /// artifact. Rendering and analysis keep their dedicated exports.
-#[cfg_attr(target_arch = "wasm32", wasm_minimal_protocol::wasm_func)]
 pub fn theme_operation_json(operation_id: &[u8], input: &[u8], options_json: &[u8]) -> Vec<u8> {
     let operation_id = match admit_typst_operation_id(operation_id) {
         Ok(operation_id) => operation_id,

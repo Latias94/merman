@@ -143,7 +143,7 @@ jobs:
           test "$(git rev-parse 'HEAD^{commit}')" = "$SOURCE_SHA"
           test "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE"
       - name: Install the pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        uses: dtolnay/rust-toolchain@9522411a9bce8484da960823fc2f46e52f981f71 # 1.100.0
         with:
           # Install rust-toolchain.toml components up front, before Cargo activates the override.
           components: ${{ matrix.platform.kind == 'native' && !contains(matrix.platform.target, 'windows') && 'rustfmt, clippy, llvm-tools-preview' || 'rustfmt, clippy' }}
@@ -205,7 +205,7 @@ jobs:
         with:
           python-version: "3.15.2"
       - name: Install the pinned Rust toolchain
-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
+        uses: dtolnay/rust-toolchain@9522411a9bce8484da960823fc2f46e52f981f71 # 1.100.0
         with:
           components: rustfmt, clippy
       - name: Build the descriptor-owned CLI release recipe once
