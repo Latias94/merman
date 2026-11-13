@@ -3,6 +3,10 @@ import Module from "node:module";
 import type * as vscode from "vscode";
 import { describe, it } from "node:test";
 
+import type { PreviewSnapshotMessagePayload } from "../preview-messages.js";
+import type { PreviewDiagnosticInput } from "../preview-diagnostics.js";
+import { loadPreviewApp, type PreviewAppHarness } from "./preview-webview-test-harness.js";
+
 type CommandHandler = (target?: unknown) => Promise<void> | void;
 
 interface FakeDisposable {
@@ -61,6 +65,8 @@ class FakePreviewHost {
   readonly errors: string[] = [];
   readonly informationMessages: string[] = [];
   readonly outputErrors: string[] = [];
+  readonly diagnostics: PreviewDiagnosticInput[] = [];
+  renderFailure: Error | undefined;
   readonly revealCalls: Array<{ viewColumn: number; preserveFocus?: boolean }> = [];
   readonly showTextDocumentCalls: Array<{
     documentUri: string;
@@ -87,6 +93,8 @@ class FakePreviewHost {
   );
   private readonly disposables: FakeDisposable[] = [];
   private readonly activeTextEditorListeners: Array<() => void> = [];
+  private readonly selectionListeners: Array<(event: { textEditor: vscode.TextEditor }) => void> = [];
+  private readonly diagnosticsListeners: Array<(event: { uris: vscode.Uri[] }) => void> = [];
   private readonly textDocumentChangeListeners: Array<(event: { document: vscode.TextDocument }) => void> = [];
   private readonly documents = new Map<string, vscode.TextDocument>();
   private readonly deferredDocumentOpens = new Map<string, { promise: Promise<void>; release: () => void }>();
@@ -161,7 +169,10 @@ class FakePreviewHost {
           host.activeTextEditorListeners.push(listener);
           return host.disposable();
         },
-        onDidChangeTextEditorSelection: () => host.disposable(),
+        onDidChangeTextEditorSelection: (listener: (event: { textEditor: vscode.TextEditor }) => void) => {
+          host.selectionListeners.push(listener);
+          return host.disposable();
+        },
         showTextDocument: async (
           document: vscode.TextDocument,
           options: { preserveFocus?: boolean; selection?: unknown } = {},
@@ -251,8 +262,11 @@ class FakePreviewHost {
         },
       },
       languages: {
-        getDiagnostics: () => [],
-        onDidChangeDiagnostics: () => host.disposable(),
+        getDiagnostics: () => host.diagnostics,
+        onDidChangeDiagnostics: (listener: (event: { uris: vscode.Uri[] }) => void) => {
+          host.diagnosticsListeners.push(listener);
+          return host.disposable();
+        },
       },
       env: {
         clipboard: {
@@ -290,6 +304,22 @@ class FakePreviewHost {
   fireDocumentChange(document: vscode.TextDocument): void {
     for (const listener of this.textDocumentChangeListeners) {
       listener({ document });
+    }
+  }
+
+  fireSelectionChange(line: number): void {
+    this.activeEditor = {
+      ...this.activeEditor,
+      selection: { active: { line } },
+    } as vscode.TextEditor;
+    for (const listener of this.selectionListeners) {
+      listener({ textEditor: this.activeEditor });
+    }
+  }
+
+  fireDiagnosticsChange(): void {
+    for (const listener of this.diagnosticsListeners) {
+      listener({ uris: [this.activeEditor.document.uri] });
     }
   }
 
@@ -718,6 +748,390 @@ describe("preview manager", () => {
     ]);
   });
 
+  it("keeps matching source selection ready for copy and SVG/PNG export", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSnapshot(panel).sourceKey;
+    const renderCount = host.renderCalls.length;
+    panel.postedMessages.splice(0);
+
+    await panel.receive({ type: "selectSource", sourceId: sourceKey.sourceId });
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, renderCount);
+    assert.deepEqual(panel.postedMessages.map((message) => (message as { type: string }).type), ["settingsUpdated"]);
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    assert.equal(host.renderCalls.length, renderCount);
+    assert.deepEqual(lastRenderedSnapshot(panel).sourceKey, sourceKey);
+    await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await flushPreviewWork();
+    await panel.receive({ type: "exportRendered", format: "png", sourceKey });
+    await flushPreviewWork();
+
+    assert.deepEqual(host.clipboardWrites, ["<svg></svg>"]);
+    assert.equal(host.writtenFiles.length, 1);
+    assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format), ["svg", "svg", "png"]);
+    assert.deepEqual(host.warnings, []);
+    assert.deepEqual(host.errors, []);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("recovers invalidated output when an edit outside the active fence leaves render inputs unchanged", async () => {
+    const host = new FakePreviewHost();
+    const original = textDocument(
+      "file:///workspace/notes.md", "notes.md", "Before\n```mermaid\nflowchart LR\nA --> B\n```\n", "markdown", 1,
+    );
+    host.setActiveDocument(original);
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(original.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSnapshot(panel).sourceKey;
+    const renderCount = host.renderCalls.length;
+    const edited = textDocument(
+      "file:///workspace/notes.md", "notes.md", "After\n```mermaid\nflowchart LR\nA --> B\n```\n", "markdown", 2,
+    );
+    host.setActiveDocument(edited);
+    host.fireDocumentChange(edited);
+    panel.postedMessages.splice(0);
+
+    await panel.receive({ type: "selectSource", sourceId: sourceKey.sourceId });
+    await flushPreviewWork();
+
+    assert.equal(host.renderCalls.length, renderCount + 1);
+    assert.deepEqual(lastRenderedSnapshot(panel).sourceKey, sourceKey);
+    assert.equal((panel.postedMessages.at(-1) as { type: string }).type, "renderSucceeded");
+    await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey });
+    await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+    await flushPreviewWork();
+    assert.deepEqual(host.clipboardWrites, ["<svg></svg>"]);
+    assert.equal(host.writtenFiles.length, 1);
+    assert.deepEqual(host.warnings, []);
+    assert.deepEqual(host.errors, []);
+    for (const subscription of host.subscriptions) subscription.dispose();
+  });
+
+  it("does not retry failed recovery on same-input selection or diagnostics", async (t) => {
+    const host = new FakePreviewHost();
+    host.setActiveDocument(host.targetDocument);
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    const app = connectPreviewApp(panel);
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const sourceKey = lastRenderedSnapshot(panel).sourceKey;
+    const renderCount = host.renderCalls.length;
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    try {
+      host.renderFailure = new Error("render unavailable");
+      host.fireDocumentChange(host.targetDocument);
+      await panel.receive({ type: "selectSource", sourceId: sourceKey.sourceId });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.length, renderCount + 1);
+      assert.equal((panel.postedMessages.at(-1) as { type: string }).type, "renderFailed");
+
+      for (const line of [1, 0]) {
+        host.fireSelectionChange(line);
+        t.mock.timers.runAll();
+        await flushPreviewWork();
+        assert.equal(host.renderCalls.length, renderCount + 1);
+        host.diagnostics.splice(0, host.diagnostics.length, {
+          range: { start: { line, character: 0 }, end: { line, character: 1 } },
+          severity: 1,
+          source: "merman",
+          message: "warning",
+          data: { documentVersion: 1 },
+        });
+        host.fireDiagnosticsChange();
+        t.mock.timers.runAll();
+        await flushPreviewWork();
+        assert.equal(host.renderCalls.length, renderCount + 1);
+        await panel.receive({ type: "selectSource", sourceId: sourceKey.sourceId });
+        await flushPreviewWork();
+        assert.equal(host.renderCalls.length, renderCount + 1);
+      }
+      assert.ok(panel.postedMessages.some((message) => (message as { type: string }).type === "selectionChanged"));
+      assert.ok(panel.postedMessages.some((message) => (message as { type: string }).type === "diagnosticsUpdated"));
+      assert.equal(app.document.frame.dataset.renderState, "stale");
+      assert.equal(app.document.copySvg.disabled, true);
+      assert.equal(app.document.exportSvg.disabled, true);
+      assert.equal(app.document.exportPng.disabled, true);
+      await panel.receive({ type: "copySvg", svg: "<svg></svg>", sourceKey });
+      await panel.receive({ type: "exportRendered", format: "svg", sourceKey });
+      assert.deepEqual(host.clipboardWrites, []);
+      assert.deepEqual(host.writtenFiles, []);
+      assert.equal(host.renderCalls.length, renderCount + 1);
+      assert.equal(host.warnings.length, 2);
+
+      host.fireDocumentChange(host.targetDocument);
+      t.mock.timers.runAll();
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.length, renderCount + 2);
+
+      host.setActiveDocument(textDocument(
+        host.targetDocument.uri.toString(), "example.mmd", "flowchart TD\nA --> C\n", "mermaid", 2,
+      ));
+      t.mock.timers.runAll();
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.length, renderCount + 3);
+
+      await panel.receive({ type: "refresh" });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.length, renderCount + 4);
+      assert.equal(app.document.frame.dataset.renderState, "stale");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("keeps a matching in-flight render when only preview lock metadata changes", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const renderCount = host.renderCalls.length;
+    const releaseRender = host.deferNextRender();
+    try {
+      await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+      await waitUntil(() => host.renderCalls.length > renderCount);
+      const signal = host.renderSignals.at(-1)!;
+      const started = panel.postedMessages.at(-1) as { type: string; requestId: number };
+      assert.equal(started.type, "renderStarted");
+      panel.postedMessages.splice(0);
+
+      await panel.receive({ type: "setLocked", locked: true });
+      await flushPreviewWork();
+
+      assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format), ["ascii"]);
+      assert.equal(signal.aborted, false);
+      assert.deepEqual(panel.postedMessages.map((message) => (message as { type: string }).type), ["settingsUpdated"]);
+      releaseRender();
+      await flushPreviewWork();
+      assert.equal(lastRenderedSnapshot(panel).displayMode, "ascii");
+      assert.equal(lastRenderedSnapshot(panel).locked, true);
+      assert.equal((panel.postedMessages.at(-1) as { requestId: number }).requestId, started.requestId);
+      await panel.receive({ type: "ready" });
+      await flushPreviewWork();
+      assert.equal(host.renderCalls.length, renderCount + 1);
+      assert.equal(lastRenderedSnapshot(panel).locked, true);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseRender();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("keeps a matching render queued while its settings update is still posting", async () => {
+    const host = new FakePreviewHost();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+    const panel = host.panels[0]!;
+    const app = connectPreviewApp(panel);
+    await panel.receive({ type: "ready" });
+    await flushPreviewWork();
+    const renderCount = host.renderCalls.length;
+    panel.postedMessages.splice(0);
+    let releaseSettings: () => void = () => {};
+    const settingsDelay = new Promise<void>((resolve) => { releaseSettings = resolve; });
+    const postMessage = panel.webview.postMessage;
+    let settingsPending = false;
+    panel.webview.postMessage = async (message) => {
+      const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+      if (!settingsPending && update.type === "settingsUpdated" && update.snapshot?.displayMode === "ascii") {
+        settingsPending = true;
+        await settingsDelay;
+      }
+      return postMessage(message);
+    };
+    try {
+      await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+      await waitUntil(() => settingsPending);
+      await panel.receive({ type: "setLocked", locked: true });
+      await flushPreviewWork();
+
+      assert.equal(host.renderCalls.length, renderCount);
+      releaseSettings();
+      await flushPreviewWork();
+
+      assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format), ["ascii"]);
+      assert.equal(lastRenderedSnapshot(panel).displayMode, "ascii");
+      assert.equal(lastRenderedSnapshot(panel).locked, true);
+      assertPreviewControls(app, "ascii", true);
+      assert.deepEqual(settingsMessages(panel).map(({ displayMode, locked }) => [displayMode, locked]), [
+        ["ascii", false], ["ascii", true],
+      ]);
+      assert.equal(panel.postedMessages.filter((message) => (message as { type: string }).type === "renderStarted").length, 1);
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseSettings();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  it("keeps current lock controls when ready drains an older matching render start", async () => {
+    const host = new FakePreviewHost();
+    const releaseRender = host.deferNextRender();
+    const { registerPreview } = loadPreviewModule(host);
+    registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+    try {
+      await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+      const panel = host.panels[0]!;
+      const app = connectPreviewApp(panel);
+      await flushPreviewWork();
+      await panel.receive({ type: "setLocked", locked: true });
+      await flushPreviewWork();
+
+      await panel.receive({ type: "ready" });
+      await flushPreviewWork();
+
+      assert.equal(host.renderCalls.length, 1);
+      assert.equal(host.renderSignals[0]?.aborted, false);
+      assertPreviewControls(app, "svg", true);
+      assert.equal(app.document.frame.dataset.renderState, "loading");
+      releaseRender();
+      await flushPreviewWork();
+      assertPreviewControls(app, "svg", true);
+      assert.equal(app.document.frame.dataset.renderState, "ready");
+      assert.deepEqual(host.errors, []);
+    } finally {
+      releaseRender();
+      for (const subscription of host.subscriptions) subscription.dispose();
+    }
+  });
+
+  for (const readyBeforeUpdates of [true, false]) {
+    it(`orders delayed ASCII settings ${readyBeforeUpdates ? "after ready" : "during ready drain"}`, async () => {
+      const host = new FakePreviewHost();
+      const { registerPreview } = loadPreviewModule(host);
+      registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+      await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+      const panel = host.panels[0]!;
+      const app = connectPreviewApp(panel);
+      if (readyBeforeUpdates) await panel.receive({ type: "ready" });
+      await flushPreviewWork();
+      const renderCount = host.renderCalls.length;
+      panel.postedMessages.splice(0);
+      let releaseSettings: () => void = () => {};
+      const settingsDelay = new Promise<void>((resolve) => { releaseSettings = resolve; });
+      const postMessage = panel.webview.postMessage;
+      let settingsPending = false;
+      panel.webview.postMessage = async (message) => {
+        const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+        if (update.type === "settingsUpdated" && update.snapshot?.displayMode === "ascii") {
+          settingsPending = true;
+          await settingsDelay;
+        }
+        return postMessage(message);
+      };
+      try {
+        await panel.receive({ type: "setDisplayMode", mode: "ascii" });
+        if (!readyBeforeUpdates) {
+          await flushPreviewWork();
+          await panel.receive({ type: "ready" });
+        }
+        await waitUntil(() => settingsPending);
+
+        await panel.receive({ type: "setDisplayMode", mode: "unicode" });
+        await panel.receive({ type: "setLocked", locked: true });
+        await flushPreviewWork();
+        const newerSnapshotOvertookSettings = panel.postedMessages.some((message) => {
+          const update = message as { snapshot?: PreviewSnapshotMessagePayload };
+          return update.snapshot?.displayMode === "unicode";
+        });
+        releaseSettings();
+        await flushPreviewWork();
+
+        assertPreviewControls(app, "unicode", true);
+        assert.equal(newerSnapshotOvertookSettings, false, "Newer snapshot delivery must wait for the older settings post");
+        assert.deepEqual(host.renderCalls.slice(renderCount).map((call) => call.format),
+          readyBeforeUpdates ? ["unicode"] : ["ascii", "unicode"]);
+        assert.equal(lastRenderedSnapshot(panel).displayMode, "unicode");
+        assert.equal(lastRenderedSnapshot(panel).locked, true);
+        const settings = settingsMessages(panel);
+        assert.equal(settings[0]?.displayMode, "ascii");
+        const unicodeIndex = settings.findIndex(({ displayMode }) => displayMode === "unicode");
+        assert.ok(unicodeIndex > 0);
+        assert.ok(settings.slice(unicodeIndex).every(({ displayMode }) => displayMode === "unicode"));
+        assert.equal(panel.postedMessages.some((message) => {
+          const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+          return update.type === "renderStarted" && update.snapshot?.displayMode === "ascii";
+        }), !readyBeforeUpdates);
+        assert.deepEqual(host.errors, []);
+      } finally {
+        releaseSettings();
+        for (const subscription of host.subscriptions) subscription.dispose();
+      }
+    });
+
+    it(`orders old lock settings with the same render key ${readyBeforeUpdates ? "after ready" : "during ready drain"}`, async () => {
+      const host = new FakePreviewHost();
+      const { registerPreview } = loadPreviewModule(host);
+      registerPreview({ extensionUri: uri("file:///extension"), subscriptions: host.subscriptions } as unknown as vscode.ExtensionContext);
+      await host.commands.get("merman.openPreview")?.(host.targetDocument.uri);
+      const panel = host.panels[0]!;
+      const app = connectPreviewApp(panel);
+      if (readyBeforeUpdates) await panel.receive({ type: "ready" });
+      await flushPreviewWork();
+      const renderCount = host.renderCalls.length;
+      panel.postedMessages.splice(0);
+      let releaseSettings: () => void = () => {};
+      const settingsDelay = new Promise<void>((resolve) => { releaseSettings = resolve; });
+      const postMessage = panel.webview.postMessage;
+      let settingsPending = false;
+      panel.webview.postMessage = async (message) => {
+        const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+        if (!settingsPending && update.type === "settingsUpdated" && !update.snapshot?.locked) {
+          settingsPending = true;
+          await settingsDelay;
+        }
+        return postMessage(message);
+      };
+      try {
+        if (readyBeforeUpdates) {
+          await panel.receive({ type: "selectSource", sourceId: "document" });
+        } else {
+          await panel.receive({ type: "ready" });
+        }
+        await waitUntil(() => settingsPending);
+        await panel.receive({ type: "setLocked", locked: true });
+        await flushPreviewWork();
+        const settingsBeforeRelease = settingsMessages(panel).length;
+        releaseSettings();
+        await flushPreviewWork();
+
+        assertPreviewControls(app, "svg", true);
+        assert.equal(settingsBeforeRelease, 0, "The newer lock update must not overtake the pending post");
+        const settings = settingsMessages(panel);
+        assert.deepEqual(settings.map(({ locked }) => locked), readyBeforeUpdates ? [false, true] : [false, true, true]);
+        for (const snapshot of settings) assert.deepEqual(snapshot.sourceKey, settings[0]!.sourceKey);
+        assert.equal(host.renderCalls.length, renderCount);
+        assert.equal(app.document.copySvg.disabled, false);
+        assert.equal(app.document.exportSvg.disabled, false);
+        assert.equal(app.document.exportPng.disabled, false);
+        assert.deepEqual(host.errors, []);
+      } finally {
+        releaseSettings();
+        for (const subscription of host.subscriptions) subscription.dispose();
+      }
+    });
+  }
+
   it("reveals source for the preview that sends a webview showSource message", async () => {
     const host = new FakePreviewHost();
     const { registerPreview } = loadPreviewModule(host);
@@ -1024,6 +1438,9 @@ function loadPreviewModule(host: FakePreviewHost): typeof import("../preview.js"
           if (deferred) {
             await deferred.promise;
           }
+          if (host.renderFailure) {
+            throw host.renderFailure;
+          }
           return {
             stdout: Buffer.from("<svg viewBox=\"0 0 10 10\"></svg>"),
             stderr: "",
@@ -1066,13 +1483,14 @@ function textDocument(
   fileName: string,
   text: string,
   languageId = "mermaid",
+  version = 1,
 ): vscode.TextDocument {
   const lines = text.split(/\r?\n/);
   return {
     uri: uri(uriValue, fileName),
     fileName,
     languageId,
-    version: 1,
+    version,
     lineCount: lines.length,
     getText: () => text,
     lineAt: (lineIndex: number) => ({
@@ -1083,6 +1501,35 @@ function textDocument(
 
 function sameUri(first: vscode.Uri, second: vscode.Uri): boolean {
   return first.toString() === second.toString();
+}
+
+function connectPreviewApp(panel: FakePanel): PreviewAppHarness {
+  const app = loadPreviewApp();
+  const postMessage = panel.webview.postMessage;
+  panel.webview.postMessage = async (message) => {
+    const accepted = await postMessage(message);
+    if (accepted) app.dispatch(message);
+    return accepted;
+  };
+  return app;
+}
+
+function settingsMessages(panel: FakePanel): PreviewSnapshotMessagePayload[] {
+  return panel.postedMessages.flatMap((message) => {
+    const update = message as { type: string; snapshot?: PreviewSnapshotMessagePayload };
+    return update.type === "settingsUpdated" && update.snapshot ? [update.snapshot] : [];
+  });
+}
+
+function assertPreviewControls(app: PreviewAppHarness, mode: string, locked: boolean): void {
+  assert.equal(app.persistedState.displayMode, mode);
+  assert.equal(app.document.frame.dataset.displayMode, mode);
+  assert.equal(app.document.displayMode.value, mode);
+  assert.equal(app.document.outputControls.hidden, mode !== "svg");
+  assert.equal(app.persistedState.locked, locked);
+  assert.equal(app.document.frame.dataset.locked, String(locked));
+  assert.equal(app.document.lock.textContent, locked ? "Locked" : "Follow");
+  assert.equal(app.document.lock.getAttribute("aria-pressed"), String(locked));
 }
 
 async function flushPreviewWork(): Promise<void> {
@@ -1100,14 +1547,18 @@ async function waitUntil(predicate: () => boolean): Promise<void> {
 }
 
 function lastRenderedSourceKey(panel: FakePanel | undefined): unknown {
+  return lastRenderedSnapshot(panel).sourceKey;
+}
+
+function lastRenderedSnapshot(panel: FakePanel | undefined): PreviewSnapshotMessagePayload {
   assert.ok(panel, "Expected preview panel");
   for (let index = panel.postedMessages.length - 1; index >= 0; index -= 1) {
     const message = panel.postedMessages[index] as {
       type?: string;
-      snapshot?: { sourceKey?: unknown };
+      snapshot?: PreviewSnapshotMessagePayload;
     };
     if (message.type === "renderSucceeded" && message.snapshot?.sourceKey) {
-      return message.snapshot.sourceKey;
+      return message.snapshot;
     }
   }
   assert.fail("Expected a renderSucceeded message with a sourceKey");

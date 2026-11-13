@@ -2,7 +2,8 @@ import * as assert from "node:assert/strict";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
-import { EventEmitter } from "node:events";
+import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { EventEmitter, getEventListeners } from "node:events";
 import { Readable, Writable } from "node:stream";
 import { afterEach, describe, it } from "node:test";
 
@@ -133,6 +134,186 @@ describe("render process lifecycle", () => {
     assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
   });
 
+  it("escalates after the root exits while descendant pipes remain open", async () => {
+    const abortController = new AbortController();
+    const signals: NodeJS.Signals[] = [];
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+      stdout: new Readable({ read() {} }),
+      stderr: new Readable({ read() {} }),
+      exitCode: null as number | null,
+      signalCode: null,
+      kill: () => true,
+    });
+    const render = runRenderProcess({
+      invocation: { command: "merman-cli", args: [], source: "explicit", label: "test cli" },
+      source: "flowchart TD\nA --> B\n",
+      signal: abortController.signal,
+      killGraceMs: 5,
+      spawnProcess: () => child as unknown as import("node:child_process").ChildProcessWithoutNullStreams,
+      terminateProcessTree: (_child, signal) => {
+        signals.push(signal);
+        if (signal === "SIGTERM") {
+          child.exitCode = 0;
+          child.emit("exit", 0, null);
+        }
+      },
+    });
+    const rejected = assert.rejects(render, /superseded/);
+    abortController.abort();
+    try {
+      await waitUntil(() => signals.length === 2);
+      assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+    } finally {
+      child.emit("close", 0, null);
+      await rejected;
+    }
+  });
+
+  for (const termination of ["abort", "timeout", "output-limit"] as const) {
+    it(`bounds ${termination} settlement and releases pipes when forced termination never closes the transport`, async () => {
+      const abortController = new AbortController();
+      const signals: NodeJS.Signals[] = [];
+      let unreferenced = false;
+      let settled = false;
+      const child = Object.assign(new EventEmitter(), {
+        stdin: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+        stdout: new Readable({ read() {} }),
+        stderr: new Readable({ read() {} }),
+        exitCode: 0,
+        signalCode: null,
+        kill: () => true,
+        unref: () => { unreferenced = true; },
+      });
+      const render = runRenderProcess({
+        invocation: { command: "merman-cli", args: [], source: "explicit", label: "test cli" },
+        source: "flowchart TD\nA --> B\n",
+        signal: abortController.signal,
+        timeoutMs: termination === "timeout" ? 5 : 30000,
+        killGraceMs: 5,
+        killDrainMs: 5,
+        maxStdoutBytes: 1,
+        spawnProcess: () => child as unknown as ChildProcessWithoutNullStreams,
+        terminateProcessTree: (_child, signal) => { signals.push(signal); },
+      });
+      const errorPattern = termination === "timeout" ? /timed out/
+        : termination === "output-limit" ? /output exceeded/ : /superseded/;
+      const rejected = assert.rejects(render, errorPattern).then(() => { settled = true; });
+      if (termination === "abort") {
+        abortController.abort();
+      } else if (termination === "output-limit") {
+        child.stdout.emit("data", Buffer.from("xx"));
+      }
+      try {
+        await waitUntil(() => settled);
+        assert.deepEqual(signals, ["SIGTERM", "SIGKILL"]);
+        assert.equal(child.stdin.destroyed, true);
+        assert.equal(child.stdout.destroyed, true);
+        assert.equal(child.stderr.destroyed, true);
+        assert.equal(unreferenced, true);
+        assert.deepEqual(getEventListeners(abortController.signal, "abort"), []);
+      } finally {
+        child.emit("close", 0, null);
+        await rejected;
+      }
+    });
+  }
+
+  it("does not signal the tree after close even when an abort arrives later", async () => {
+    const abortController = new AbortController();
+    const signals: NodeJS.Signals[] = [];
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+      stdout: new Readable({ read() {} }),
+      stderr: new Readable({ read() {} }),
+      exitCode: null,
+      signalCode: null,
+      kill: () => true,
+    });
+    const render = runRenderProcess({
+      invocation: { command: "merman-cli", args: [], source: "explicit", label: "test cli" },
+      source: "flowchart TD\nA --> B\n",
+      signal: abortController.signal,
+      killGraceMs: 5,
+      maxStdoutBytes: 1,
+      spawnProcess: () => child as unknown as ChildProcessWithoutNullStreams,
+      terminateProcessTree: (_child, signal) => { signals.push(signal); },
+    });
+    child.emit("close", 0, null);
+    await render;
+    abortController.abort();
+    child.stdout.emit("data", Buffer.from("xx"));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    assert.deepEqual(signals, []);
+  });
+
+  it("does not retry a missing POSIX group or signal its exited root PID", {
+    skip: process.platform === "win32",
+  }, async (context) => {
+    const groupSignals: Array<{ pid: number; signal: NodeJS.Signals | number | undefined }> = [];
+    const rootSignals: NodeJS.Signals[] = [];
+    context.mock.method(process, "kill", (pid: number, signal?: NodeJS.Signals | number) => {
+      groupSignals.push({ pid, signal });
+      throw Object.assign(new Error("process group is gone"), { code: "ESRCH" });
+    });
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+      stdout: new Readable({ read() {} }),
+      stderr: new Readable({ read() {} }),
+      pid: 12345,
+      exitCode: 0,
+      signalCode: null,
+      kill: (signal: NodeJS.Signals) => { rootSignals.push(signal); return true; },
+      unref() {},
+    });
+    const abortController = new AbortController();
+    const render = runRenderProcess({
+      invocation: { command: "merman-cli", args: [], source: "explicit", label: "test cli" },
+      source: "flowchart TD\nA --> B\n",
+      signal: abortController.signal,
+      killGraceMs: 5,
+      killDrainMs: 5,
+      spawnProcess: () => child as unknown as ChildProcessWithoutNullStreams,
+    });
+    const rejected = assert.rejects(render, /superseded/);
+    abortController.abort();
+    await rejected;
+    assert.deepEqual(groupSignals, [{ pid: -12345, signal: "SIGTERM" }]);
+    assert.deepEqual(rootSignals, []);
+  });
+
+  it("still force kills a live root when its POSIX group is missing", {
+    skip: process.platform === "win32",
+  }, async (context) => {
+    context.mock.method(process, "kill", () => {
+      throw Object.assign(new Error("process group is gone"), { code: "ESRCH" });
+    });
+    const rootSignals: NodeJS.Signals[] = [];
+    const child = Object.assign(new EventEmitter(), {
+      stdin: new Writable({ write(_chunk, _encoding, callback) { callback(); } }),
+      stdout: new Readable({ read() {} }),
+      stderr: new Readable({ read() {} }),
+      pid: 12345,
+      exitCode: null,
+      signalCode: null,
+      kill: (signal: NodeJS.Signals) => { rootSignals.push(signal); return true; },
+      unref() {},
+    });
+    const abortController = new AbortController();
+    const render = runRenderProcess({
+      invocation: { command: "merman-cli", args: [], source: "explicit", label: "test cli" },
+      source: "flowchart TD\nA --> B\n",
+      signal: abortController.signal,
+      killGraceMs: 5,
+      killDrainMs: 5,
+      spawnProcess: () => child as unknown as ChildProcessWithoutNullStreams,
+    });
+    const rejected = assert.rejects(render, /superseded/);
+    abortController.abort();
+    await rejected;
+    assert.deepEqual(rootSignals, ["SIGTERM", "SIGKILL"]);
+  });
+
   it("terminates an in-flight render when the abort signal fires", async () => {
     const tempDir = tempDirPath();
     const cliPath = path.join(tempDir, "merman-cli");
@@ -213,6 +394,67 @@ describe("render process lifecycle", () => {
 
     await rejected;
     assert.equal(fs.readFileSync(termPath, "utf8"), "ignored");
+  });
+
+  it("reclaims a real POSIX descendant that holds pipes after its root exits", {
+    skip: process.platform === "win32",
+  }, async () => {
+    const tempDir = tempDirPath();
+    const readyPath = path.join(tempDir, "descendant-ready");
+    const termPath = path.join(tempDir, "descendant-term");
+    const cleanupPath = path.join(tempDir, "descendant-cleanup");
+    const descendantSource = [
+      "const fs = require('node:fs');",
+      `process.on('SIGTERM', () => fs.writeFileSync(${JSON.stringify(termPath)}, 'ignored'));`,
+      `fs.writeFileSync(${JSON.stringify(readyPath)}, String(process.pid));`,
+      `setInterval(() => { if (fs.existsSync(${JSON.stringify(cleanupPath)})) process.exit(0); }, 10);`,
+    ].join("\n");
+    const rootSource = [
+      "const { spawn } = require('node:child_process');",
+      "process.on('SIGTERM', () => process.exit(0));",
+      `spawn(process.execPath, ['-e', ${JSON.stringify(descendantSource)}], { stdio: 'inherit' });`,
+      "setInterval(() => {}, 1000);",
+    ].join("\n");
+    const abortController = new AbortController();
+    let root: ChildProcessWithoutNullStreams | undefined;
+    let transportClosed = false;
+    let rootExited = false;
+    let settled = false;
+    let descendantPid: number | undefined;
+    const render = runRenderProcess({
+      invocation: { command: process.execPath, args: ["-e", rootSource], source: "explicit", label: "test tree" },
+      source: "flowchart TD\nA --> B\n",
+      signal: abortController.signal,
+      killGraceMs: 100,
+      spawnProcess: (command, args, options) => {
+        root = spawn(command, [...args], options);
+        root.on("exit", () => { rootExited = true; });
+        root.on("close", () => { transportClosed = true; });
+        return root;
+      },
+    });
+    const rejected = assert.rejects(render, /superseded/).then(() => { settled = true; });
+    try {
+      await waitUntil(() => fs.existsSync(readyPath));
+      descendantPid = Number(fs.readFileSync(readyPath, "utf8"));
+      assert.ok(Number.isSafeInteger(descendantPid) && descendantPid > 1);
+      abortController.abort();
+      await waitUntil(() => rootExited);
+      assert.equal(root?.exitCode, 0);
+      assert.equal(transportClosed, false);
+      assert.equal(process.kill(descendantPid, 0), true);
+      await waitUntil(() => settled);
+      assert.equal(transportClosed, true);
+      assert.equal(fs.readFileSync(termPath, "utf8"), "ignored");
+      await waitUntil(() => processHasExited(descendantPid!));
+    } finally {
+      abortController.abort();
+      fs.writeFileSync(cleanupPath, "cleanup");
+      await rejected;
+      if (descendantPid !== undefined) {
+        await waitUntil(() => processHasExited(descendantPid!));
+      }
+    }
   });
 
   it("terminates renders that exceed the stdout size limit", async () => {
@@ -352,6 +594,16 @@ function tempDirPath(): string {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "merman-vscode-renderer-"));
   tempDirs.push(dir);
   return dir;
+}
+
+function processHasExited(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return false;
+  } catch (error) {
+    assert.equal((error as NodeJS.ErrnoException).code, "ESRCH");
+    return true;
+  }
 }
 
 async function waitUntil(predicate: () => boolean): Promise<void> {

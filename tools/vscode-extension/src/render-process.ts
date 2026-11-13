@@ -8,6 +8,7 @@ export interface RenderProcessRequest {
   signal?: AbortSignal;
   timeoutMs?: number;
   killGraceMs?: number;
+  killDrainMs?: number;
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
   spawnProcess?: RenderProcessSpawner;
@@ -44,6 +45,7 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
     let terminationReason: "abort" | "timeout" | "output-limit" | undefined;
     let timeoutTimer: NodeJS.Timeout | undefined;
     let killTimer: NodeJS.Timeout | undefined;
+    let drainTimer: NodeJS.Timeout | undefined;
     let stdinError: Error | undefined;
     let sawClose = false;
     let stdoutBytes = 0;
@@ -61,7 +63,25 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         windowsHide: true,
       },
     );
-    const terminateProcess = request.terminateProcessTree ?? terminateRenderProcessTree;
+    let windowsTreeKillStarted = false;
+    let processGroupGone = false;
+    const terminateProcess: RenderProcessTerminator = request.terminateProcessTree ??
+      ((activeChild, signal) => {
+        if (process.platform === "win32") {
+          if (!windowsTreeKillStarted) {
+            windowsTreeKillStarted = true;
+            terminateWindowsRenderProcessTree(
+              activeChild,
+              () => !settled && !sawClose,
+              (request.killGraceMs ?? 1000) + (request.killDrainMs ?? 1000),
+            );
+          }
+        } else if (!processGroupGone) {
+          processGroupGone = !terminateRenderProcessGroup(activeChild, signal);
+        } else if (activeChild.exitCode === null && activeChild.signalCode === null) {
+          activeChild.kill(signal);
+        }
+      });
     const clearTimers = (): void => {
       if (timeoutTimer) {
         clearTimeout(timeoutTimer);
@@ -71,6 +91,10 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         clearTimeout(killTimer);
         killTimer = undefined;
       }
+      if (drainTimer) {
+        clearTimeout(drainTimer);
+        drainTimer = undefined;
+      }
     };
     const rejectOnce = (error: Error): void => {
       if (settled) {
@@ -78,6 +102,7 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       }
       settled = true;
       clearTimers();
+      request.signal?.removeEventListener("abort", abort);
       reject(error);
     };
     const resolveOnce = (result: RenderProcessResult): void => {
@@ -86,34 +111,57 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       }
       settled = true;
       clearTimers();
+      request.signal?.removeEventListener("abort", abort);
       resolve(result);
     };
+    const terminationError = (): Error | undefined => {
+      switch (terminationReason) {
+        case "timeout":
+          return new Error("Merman render timed out.");
+        case "output-limit":
+          return new Error("Merman render output exceeded the size limit.");
+        case "abort":
+          return new Error("Render was superseded by a newer update.");
+        default:
+          return undefined;
+      }
+    };
     const terminate = (reason: "abort" | "timeout" | "output-limit"): void => {
-      if (terminationReason) {
+      if (settled || sawClose || terminationReason) {
         return;
       }
       terminationReason = reason;
       terminateProcess(child, "SIGTERM");
+      if (settled || sawClose) {
+        return;
+      }
       killTimer = setTimeout(() => {
-        if (!settled && child.exitCode === null && child.signalCode === null) {
-          terminateProcess(child, "SIGKILL");
+        killTimer = undefined;
+        if (settled || sawClose) {
+          return;
         }
+        terminateProcess(child, "SIGKILL");
+        if (settled || sawClose) {
+          return;
+        }
+        drainTimer = setTimeout(() => {
+          rejectOnce(terminationError()!);
+          child.stdin.destroy();
+          child.stdout.destroy();
+          child.stderr.destroy();
+          child.unref();
+        }, request.killDrainMs ?? 1000);
       }, request.killGraceMs ?? 1000);
     };
     const abort = (): void => {
       terminate("abort");
     };
-    if (request.signal?.aborted) {
-      abort();
-    } else {
-      request.signal?.addEventListener("abort", abort, { once: true });
-    }
-    timeoutTimer = setTimeout(() => {
-      terminate("timeout");
-    }, request.timeoutMs ?? 30000);
     const stdoutChunks: Buffer[] = [];
     const stderrChunks: Buffer[] = [];
     child.stdout?.on("data", (chunk: Buffer | string) => {
+      if (settled) {
+        return;
+      }
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       stdoutBytes += buffer.byteLength;
       if (stdoutBytes > maxStdoutBytes) {
@@ -123,6 +171,9 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       stdoutChunks.push(buffer);
     });
     child.stderr?.on("data", (chunk: Buffer | string) => {
+      if (settled) {
+        return;
+      }
       const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
       stderrBytes += buffer.byteLength;
       if (stderrBytes > maxStderrBytes) {
@@ -132,7 +183,6 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
       stderrChunks.push(buffer);
     });
     child.on("error", (error) => {
-      request.signal?.removeEventListener("abort", abort);
       rejectOnce(error);
     });
     child.stdin.on("error", (error) => {
@@ -140,17 +190,16 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
     });
     child.on("close", (code, signal) => {
       sawClose = true;
-      request.signal?.removeEventListener("abort", abort);
-      clearTimers();
+      if (settled) {
+        return;
+      }
       const stdout = Buffer.concat(stdoutChunks);
       const stderr = Buffer.concat(stderrChunks).toString("utf8");
-      if (terminationReason === "timeout") {
-        return rejectOnce(new Error("Merman render timed out."));
+      const terminated = terminationError();
+      if (terminated) {
+        return rejectOnce(terminated);
       }
-      if (terminationReason === "output-limit") {
-        return rejectOnce(new Error("Merman render output exceeded the size limit."));
-      }
-      if (terminationReason === "abort" || request.signal?.aborted || signal === "SIGTERM") {
+      if (request.signal?.aborted || signal === "SIGTERM") {
         return rejectOnce(new Error("Render was superseded by a newer update."));
       }
       if (code !== 0) {
@@ -167,6 +216,14 @@ export function runRenderProcess(request: RenderProcessRequest): Promise<RenderP
         invocation: request.invocation,
       });
     });
+    timeoutTimer = setTimeout(() => {
+      terminate("timeout");
+    }, request.timeoutMs ?? 30000);
+    if (request.signal?.aborted) {
+      abort();
+    } else {
+      request.signal?.addEventListener("abort", abort, { once: true });
+    }
     child.stdin.end(request.source, "utf8");
   });
 }
@@ -179,33 +236,62 @@ function spawnRenderProcess(
   return cp.spawn(command, [...args], options);
 }
 
-function terminateRenderProcessTree(
+function terminateRenderProcessGroup(
   child: cp.ChildProcessWithoutNullStreams,
   signal: NodeJS.Signals,
-): void {
-  if (child.pid === undefined) {
-    child.kill(signal);
-    return;
-  }
-
-  if (process.platform === "win32") {
-    const args = ["/PID", String(child.pid), "/T"];
-    if (signal === "SIGKILL") {
-      args.push("/F");
-    }
-    const killer = cp.spawn("taskkill", args, {
-      stdio: "ignore",
-      windowsHide: true,
-    });
-    killer.on("error", () => {
+): boolean {
+  if (child.pid === undefined || child.pid <= 1) {
+    if (child.exitCode === null && child.signalCode === null) {
       child.kill(signal);
-    });
-    return;
+    }
+    return false;
   }
 
   try {
     process.kill(-child.pid, signal);
-  } catch {
-    child.kill(signal);
+    return true;
+  } catch (error) {
+    if (child.exitCode === null && child.signalCode === null) {
+      child.kill(signal);
+    }
+    return (error as NodeJS.ErrnoException).code !== "ESRCH";
   }
+}
+
+function terminateWindowsRenderProcessTree(
+  child: cp.ChildProcessWithoutNullStreams,
+  canSignalRoot: () => boolean,
+  timeoutMs: number,
+): void {
+  const killLiveRoot = (): void => {
+    if (canSignalRoot() && child.exitCode === null && child.signalCode === null) {
+      child.kill("SIGKILL");
+    }
+  };
+  if (child.exitCode !== null || child.signalCode !== null) {
+    return;
+  }
+  if (child.pid === undefined || child.pid <= 1) {
+    killLiveRoot();
+    return;
+  }
+  const killer = cp.spawn("taskkill", ["/PID", String(child.pid), "/T", "/F"], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  const timer = setTimeout(() => {
+    if (killer.exitCode === null && killer.signalCode === null) {
+      killer.kill("SIGKILL");
+    }
+    killLiveRoot();
+  }, timeoutMs);
+  timer.unref();
+  killer.unref();
+  killer.on("error", killLiveRoot);
+  killer.on("exit", (code) => {
+    if (code !== 0) {
+      killLiveRoot();
+    }
+  });
+  killer.on("close", () => clearTimeout(timer));
 }

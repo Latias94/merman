@@ -30,6 +30,7 @@ import {
   languageClientWorkspaceTrustAction,
   languageIntelligenceDisabledMessage,
   type LanguageClientLifecycleAction,
+  type LanguageIntelligenceSettings,
 } from "./language-intelligence.js";
 import { ensureLanguageServerOutputChannel } from "./language-server-output.js";
 import { startLanguageClientWithCleanup } from "./language-client-start.js";
@@ -43,6 +44,9 @@ let statusItem: vscode.StatusBarItem | undefined;
 let lifecycleGeneration = 0;
 let lifecycleQueue: Promise<void> = Promise.resolve();
 let isDeactivating = false;
+let desiredLanguageIntelligenceSettings: LanguageIntelligenceSettings = { enabled: false };
+let stopRequired = false;
+let configurationRequired = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   isDeactivating = false;
@@ -63,7 +67,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       return runRestartLanguageServerCommand({
         settings: getLanguageIntelligenceSettings(),
         updateDisabledStatus,
-        runRestart: () => runLanguageClientAction(context, "restart"),
+        runRestart: () => requestLanguageClientReconcile(context, "restart"),
         showWarningMessage: (message) => vscode.window.showWarningMessage(message),
         showInformationMessage: (message) => vscode.window.showInformationMessage(message),
       });
@@ -114,7 +118,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         client?.diagnostics?.clear();
       }
 
-      await runLanguageClientAction(
+      await requestLanguageClientReconcile(
         context,
         languageClientConfigurationAction({
           affectsMerman: true,
@@ -132,7 +136,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   context.subscriptions.push(
     vscode.workspace.onDidGrantWorkspaceTrust(async () => {
-      await runLanguageClientAction(
+      await requestLanguageClientReconcile(
         context,
         languageClientWorkspaceTrustAction(getLanguageIntelligenceSettings(), Boolean(client)),
       ).catch(() => undefined);
@@ -177,14 +181,17 @@ async function stopClientInstance(activeClient: LanguageClient): Promise<void> {
   await activeClient.stop();
 }
 
-function runLanguageClientAction(
+function requestLanguageClientReconcile(
   context: vscode.ExtensionContext,
   action: LanguageClientLifecycleAction,
 ): Promise<void> {
-  const generation = ++lifecycleGeneration;
+  desiredLanguageIntelligenceSettings = getLanguageIntelligenceSettings();
+  stopRequired ||= action === "restart" || action === "stopAndDisable";
+  configurationRequired ||= action === "pushConfiguration";
+  lifecycleGeneration += 1;
   const run = lifecycleQueue
     .catch(() => undefined)
-    .then(() => applyLanguageClientAction(context, action, generation));
+    .then(() => applyLanguageClientConfiguration(context));
   lifecycleQueue = run.catch(() => undefined);
   return run;
 }
@@ -193,16 +200,8 @@ function isCurrentLifecycleGeneration(generation: number): boolean {
   return generation === lifecycleGeneration;
 }
 
-async function restartClient(context: vscode.ExtensionContext, generation: number): Promise<void> {
-  await deactivateClient();
-  if (!isCurrentLifecycleGeneration(generation)) {
-    return;
-  }
-  await startClient(context, "Restarting language server", generation);
-}
-
 async function reconcileLanguageClient(context: vscode.ExtensionContext): Promise<void> {
-  await runLanguageClientAction(
+  await requestLanguageClientReconcile(
     context,
     languageClientReconcileAction(getLanguageIntelligenceSettings(), Boolean(client)),
   ).catch(() => undefined);
@@ -280,43 +279,49 @@ async function startClient(
   });
 }
 
-async function applyLanguageClientAction(
-  context: vscode.ExtensionContext,
-  action: LanguageClientLifecycleAction,
-  generation: number,
-): Promise<void> {
+async function applyLanguageClientConfiguration(context: vscode.ExtensionContext): Promise<void> {
+  if (isDeactivating) {
+    return;
+  }
+  const generation = lifecycleGeneration;
+  const restarting = stopRequired;
+  if (stopRequired || !desiredLanguageIntelligenceSettings.enabled) {
+    stopRequired = false;
+    try {
+      await deactivateClient();
+    } catch (error) {
+      stopRequired = true;
+      throw error;
+    }
+  }
   if (!isCurrentLifecycleGeneration(generation)) {
     return;
   }
-  switch (action) {
-    case "ignore":
-      return;
-    case "showDisabledStatus":
-      updateDisabledStatus();
-      return;
-    case "stopAndDisable":
-      await deactivateClient();
-      if (isCurrentLifecycleGeneration(generation)) {
-        updateDisabledStatus();
-      }
-      return;
-    case "start":
-      await startClient(context, "Starting language server", generation);
-      return;
-    case "restart":
-      await restartClient(context, generation);
-      return;
-    case "pushConfiguration": {
-      const activeClient = client;
-      const contract = analysisConfigContract;
-      if (!activeClient || !isCurrentLifecycleGeneration(generation)) {
-        return;
-      }
-      if (!contract) {
-        throw new Error("Merman analysis config schema was not negotiated.");
-      }
-      await pushConfiguration(activeClient, contract);
-      return;
+  if (!desiredLanguageIntelligenceSettings.enabled) {
+    configurationRequired = false;
+    updateDisabledStatus();
+    return;
+  }
+  if (!client) {
+    configurationRequired = false;
+    await startClient(
+      context,
+      restarting ? "Restarting language server" : "Starting language server",
+      generation,
+    );
+    return;
+  }
+  if (configurationRequired) {
+    const contract = analysisConfigContract;
+    if (!contract) {
+      throw new Error("Merman analysis config schema was not negotiated.");
+    }
+    configurationRequired = false;
+    try {
+      await pushConfiguration(client, contract);
+    } catch (error) {
+      configurationRequired = true;
+      throw error;
     }
   }
 }

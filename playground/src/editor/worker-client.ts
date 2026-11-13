@@ -52,11 +52,13 @@ export interface MermanLanguageWorkerStartup {
 }
 
 export interface EditorWorkerClientOptions {
+  readonly queryCapacity?: number;
   readonly requestTimeoutMs?: number;
   readonly tombstoneLimit?: number;
 }
 
 const DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS = 30_000;
+const DEFAULT_EDITOR_WORKER_QUERY_CAPACITY = 256;
 const DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT = 256;
 
 export interface EditorLanguageIdentity {
@@ -68,23 +70,20 @@ type EditorSnapshotIdentity = EditorDocumentIdentity;
 
 type PendingExpected = "queryResult" | "ready" | "result";
 
-interface PendingRequest {
+interface RequestSettlement {
+  readonly resolve: (value: unknown) => void;
+  readonly reject: (error: Error) => void;
+}
+
+interface TransportRequest {
   readonly document?: EditorSnapshotIdentity;
   readonly expected: PendingExpected;
   readonly label: string;
   readonly query?: EditorWorkerQuery;
-  readonly resolve: (value: unknown) => void;
-  readonly reject: (error: Error) => void;
+  settlement: RequestSettlement | null;
   cancellation?: { dispose(): void };
   deadline?: ReturnType<typeof setTimeout>;
   sent: boolean;
-}
-
-interface RequestTombstone {
-  readonly document?: EditorSnapshotIdentity;
-  readonly expected: PendingExpected;
-  readonly query?: EditorWorkerQuery;
-  readonly reason: "cancelled" | "completed";
 }
 
 interface Deferred<Value> {
@@ -161,8 +160,10 @@ export function startMermanLanguageWorkerClient(
 
 class WorkerClient implements MermanLanguageWorkerClient {
   private readonly failureListeners = new Set<(error: Error) => void>();
-  private readonly pending = new Map<number, PendingRequest>();
-  private readonly tombstones: RequestTombstoneLedger;
+  private readonly outstanding = new Map<number, TransportRequest>();
+  private readonly completed: CompletedRequestLedger;
+  private readonly queryCapacity: number;
+  private outstandingQueries = 0;
   private currentDocument: EditorDocumentIdentity | null = null;
   private disposed = false;
   private failure: Error | null = null;
@@ -205,21 +206,11 @@ class WorkerClient implements MermanLanguageWorkerClient {
       return;
     }
 
-    const pending = this.pending.get(response.requestId);
+    const pending = this.outstanding.get(response.requestId);
     if (!pending) {
       this.handleResponseWithoutPending(response);
       return;
     }
-    if (response.type !== "error" && response.type !== pending.expected) {
-      this.poison(
-        new EditorWorkerProtocolError(
-          `Editor worker returned ${response.type} while ${pending.expected} was required.`,
-          "PROTOCOL_MISMATCH",
-        ),
-      );
-      return;
-    }
-
     if (response.type === "error") {
       const failure = workerResponseError(
         response.code,
@@ -227,17 +218,24 @@ class WorkerClient implements MermanLanguageWorkerClient {
         response.detail,
         response.nativeCode,
       );
+      const settlement = pending.settlement;
       this.completePending(response.requestId, pending);
-      pending.reject(failure);
+      settlement?.reject(failure);
       if (isFatalWorkerError(response.code)) this.poison(failure);
       return;
     }
 
     try {
+      const result = projectRequestResult(pending, response);
+      const settlement = pending.settlement;
+      if (!settlement) {
+        this.completePending(response.requestId, pending);
+        return;
+      }
       switch (response.type) {
         case "ready":
           this.completePending(response.requestId, pending);
-          pending.resolve(
+          settlement.resolve(
             Object.freeze({
               completionTriggerCharacters: Object.freeze([
                 ...response.completionTriggerCharacters,
@@ -248,25 +246,19 @@ class WorkerClient implements MermanLanguageWorkerClient {
           return;
         case "result":
           this.completePending(response.requestId, pending);
-          pending.resolve(undefined);
+          settlement.resolve(undefined);
           return;
         case "queryResult": {
           if (
             !pending.document ||
-            !pending.query ||
-            !sameSnapshotIdentity(pending.document, response) ||
             !this.isCurrentDocument(pending.document)
           ) {
             this.completePending(response.requestId, pending);
-            pending.reject(new StaleLanguageSnapshotError());
+            settlement.reject(new StaleLanguageSnapshotError());
             return;
           }
-          const result = projectEditorWorkerQueryResult(
-            pending.query,
-            response.result,
-          );
           this.completePending(response.requestId, pending);
-          pending.resolve(result);
+          settlement.resolve(result);
           return;
         }
       }
@@ -289,12 +281,16 @@ class WorkerClient implements MermanLanguageWorkerClient {
       options.requestTimeoutMs ?? DEFAULT_EDITOR_WORKER_REQUEST_TIMEOUT_MS,
       "editor worker request timeout",
     );
+    this.queryCapacity = positiveOption(
+      options.queryCapacity ?? DEFAULT_EDITOR_WORKER_QUERY_CAPACITY,
+      "editor worker query capacity",
+    );
     const tombstoneLimit = positiveOption(
       options.tombstoneLimit ?? DEFAULT_EDITOR_WORKER_TOMBSTONE_LIMIT,
       "editor worker tombstone limit",
     );
     this.worker = worker;
-    this.tombstones = new RequestTombstoneLedger(tombstoneLimit);
+    this.completed = new CompletedRequestLedger(tombstoneLimit);
     worker.addEventListener("error", this.handleError);
     worker.addEventListener("message", this.handleMessage);
     worker.addEventListener("messageerror", this.handleMessageError);
@@ -550,18 +546,29 @@ class WorkerClient implements MermanLanguageWorkerClient {
     },
   ): Promise<Result> {
     this.assertActive();
+    if (options.query && this.outstandingQueries >= this.queryCapacity) {
+      return Promise.reject(
+        new EditorWorkerProtocolError(
+          `The editor worker query capacity of ${this.queryCapacity} is exhausted.`,
+          "OPERATION_REJECTED",
+        ),
+      );
+    }
 
     return new Promise<Result>((resolve, reject) => {
-      const pending: PendingRequest = {
+      const pending: TransportRequest = {
         document: options.document,
         expected: options.expected,
         label: options.label,
         query: options.query,
-        resolve: (value) => resolve(value as Result),
-        reject,
+        settlement: {
+          resolve: (value) => resolve(value as Result),
+          reject,
+        },
         sent: false,
       };
-      this.pending.set(options.requestId, pending);
+      this.outstanding.set(options.requestId, pending);
+      if (pending.query) this.outstandingQueries += 1;
 
       if (options.cancellation) {
         let cancelledWhileSubscribing = false;
@@ -576,7 +583,7 @@ class WorkerClient implements MermanLanguageWorkerClient {
             },
           );
         } catch (error) {
-          this.pending.delete(options.requestId);
+          this.releaseRequest(options.requestId, pending);
           reject(asError(error));
           return;
         }
@@ -587,98 +594,62 @@ class WorkerClient implements MermanLanguageWorkerClient {
           this.cancelRequest(options.requestId, pending);
         }
       }
-      if (this.pending.get(options.requestId) !== pending) return;
+      if (this.outstanding.get(options.requestId) !== pending) return;
 
       pending.sent = true;
       pending.deadline = setTimeout(() => {
-        if (this.pending.get(options.requestId) !== pending) return;
-        this.pending.delete(options.requestId);
-        disposePending(pending);
+        if (this.outstanding.get(options.requestId) !== pending) return;
         const failure = new EditorWorkerProtocolError(
           `Merman editor worker ${pending.label} timed out after ${this.requestTimeoutMs} ms.`,
         );
-        pending.reject(failure);
         this.poison(failure);
       }, this.requestTimeoutMs);
 
       try {
         this.worker.postMessage(message);
       } catch (error) {
-        this.pending.delete(options.requestId);
-        disposePending(pending);
         const failure = asError(error);
-        pending.reject(failure);
         this.poison(failure);
       }
     });
   }
 
-  private cancelRequest(requestId: number, pending: PendingRequest): void {
-    if (this.pending.get(requestId) !== pending) return;
-    this.pending.delete(requestId);
-    disposePending(pending);
-    if (pending.sent) {
-      this.tombstones.add(
-        requestId,
-        tombstoneFromPending(pending, "cancelled"),
-      );
+  private cancelRequest(requestId: number, pending: TransportRequest): void {
+    if (this.outstanding.get(requestId) !== pending || !pending.settlement) {
+      return;
     }
-    pending.reject(abortError());
+    const settlement = pending.settlement;
+    pending.settlement = null;
+    if (pending.sent) {
+      pending.cancellation?.dispose();
+      pending.cancellation = undefined;
+    } else {
+      this.releaseRequest(requestId, pending);
+    }
+    settlement.reject(abortError());
   }
 
-  private completePending(requestId: number, pending: PendingRequest): void {
-    this.pending.delete(requestId);
-    disposePending(pending);
-    this.tombstones.add(requestId, tombstoneFromPending(pending, "completed"));
+  private releaseRequest(requestId: number, pending: TransportRequest): void {
+    if (this.outstanding.get(requestId) !== pending) return;
+    this.outstanding.delete(requestId);
+    if (pending.query) this.outstandingQueries -= 1;
+    disposeRequest(pending);
+  }
+
+  private completePending(requestId: number, pending: TransportRequest): void {
+    this.releaseRequest(requestId, pending);
+    this.completed.add(requestId);
   }
 
   private handleResponseWithoutPending(response: EditorWorkerResponse): void {
-    const tombstone = this.tombstones.get(response.requestId);
-    if (!tombstone) {
-      this.poison(
-        new EditorWorkerProtocolError(
-          `Editor worker returned an unknown request ID ${response.requestId}.`,
-          "PROTOCOL_MISMATCH",
-        ),
-      );
-      return;
-    }
-    if (tombstone.reason !== "cancelled") {
-      this.poison(
-        new EditorWorkerProtocolError(
-          `Editor worker returned a duplicate response for request ${response.requestId}.`,
-          "PROTOCOL_MISMATCH",
-        ),
-      );
-      return;
-    }
-    if (response.type === "error" && isFatalWorkerError(response.code)) {
-      this.poison(
-        workerResponseError(
-          response.code,
-          response.message,
-          response.detail,
-          response.nativeCode,
-        ),
-      );
-      return;
-    }
-    try {
-      assertTombstoneResponse(tombstone, response);
-    } catch (error) {
-      this.poison(
-        protocolProjectionError(
-          error,
-          "late editor worker response",
-          "PROTOCOL_MISMATCH",
-        ),
-      );
-      return;
-    }
-    this.tombstones.add(response.requestId, {
-      ...tombstone,
-      reason: "completed",
-    });
+    this.poison(
+      new EditorWorkerProtocolError(
+        this.completed.has(response.requestId)
+          ? `Editor worker returned a duplicate response for request ${response.requestId}.`
+          : `Editor worker returned an unknown request ID ${response.requestId}.`,
+        "PROTOCOL_MISMATCH",
+      ),
+    );
   }
 
   private isCurrentDocument(
@@ -705,11 +676,12 @@ class WorkerClient implements MermanLanguageWorkerClient {
   }
 
   private failAll(error: Error): void {
-    for (const pending of this.pending.values()) {
-      disposePending(pending);
-      pending.reject(error);
+    for (const [requestId, pending] of this.outstanding) {
+      const settlement = pending.settlement;
+      pending.settlement = null;
+      this.releaseRequest(requestId, pending);
+      settlement?.reject(error);
     }
-    this.pending.clear();
   }
 
   private poison(error: Error): void {
@@ -744,17 +716,16 @@ class WorkerClient implements MermanLanguageWorkerClient {
   }
 }
 
-class RequestTombstoneLedger {
-  private readonly entries = new Map<number, RequestTombstone>();
+class CompletedRequestLedger {
+  private readonly entries = new Set<number>();
   private readonly limit: number;
 
   constructor(limit: number) {
     this.limit = limit;
   }
 
-  add(requestId: number, tombstone: RequestTombstone): void {
-    this.entries.delete(requestId);
-    this.entries.set(requestId, tombstone);
+  add(requestId: number): void {
+    this.entries.add(requestId);
     while (this.entries.size > this.limit) {
       const oldest = this.entries.keys().next().value as number | undefined;
       if (oldest === undefined) return;
@@ -762,8 +733,8 @@ class RequestTombstoneLedger {
     }
   }
 
-  get(requestId: number): RequestTombstone | undefined {
-    return this.entries.get(requestId);
+  has(requestId: number): boolean {
+    return this.entries.has(requestId);
   }
 }
 
@@ -832,46 +803,33 @@ function sameSnapshotIdentity(
   );
 }
 
-function disposePending(pending: PendingRequest): void {
+function disposeRequest(pending: TransportRequest): void {
   if (pending.deadline !== undefined) clearTimeout(pending.deadline);
   pending.cancellation?.dispose();
 }
 
-function tombstoneFromPending(
-  pending: PendingRequest,
-  reason: RequestTombstone["reason"],
-): RequestTombstone {
-  return {
-    document: pending.document,
-    expected: pending.expected,
-    query: pending.query,
-    reason,
-  };
-}
-
-function assertTombstoneResponse(
-  tombstone: RequestTombstone,
-  response: EditorWorkerResponse,
-): void {
-  if (response.type === "error") return;
-  if (response.type !== tombstone.expected) {
+function projectRequestResult(
+  pending: TransportRequest,
+  response: Exclude<EditorWorkerResponse, { type: "error" }>,
+): unknown {
+  if (response.type !== pending.expected) {
     throw new EditorWorkerProtocolError(
-      `Late editor worker response ${response.type} does not match ${tombstone.expected}.`,
+      `Editor worker returned ${response.type} while ${pending.expected} was required.`,
       "PROTOCOL_MISMATCH",
     );
   }
   if (response.type !== "queryResult") return;
   if (
-    !tombstone.document ||
-    !tombstone.query ||
-    !sameSnapshotIdentity(tombstone.document, response)
+    !pending.document ||
+    !pending.query ||
+    !sameSnapshotIdentity(pending.document, response)
   ) {
     throw new EditorWorkerProtocolError(
-      "Late editor worker query result has the wrong snapshot identity.",
+      "Editor worker query result has the wrong snapshot identity.",
       "PROTOCOL_MISMATCH",
     );
   }
-  projectEditorWorkerQueryResult(tombstone.query, response.result);
+  return projectEditorWorkerQueryResult(pending.query, response.result);
 }
 
 async function waitForCancellation<Value>(
