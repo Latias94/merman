@@ -6,8 +6,8 @@ use super::cell::{
 };
 use super::path::StepDirection;
 use super::plan::{
-    LabelAnchor, MAX_MARKER_CANDIDATES, MarkerCandidate, MarkerEndpoint, PlannedCellId,
-    PlannedRouteCellKind, PlannedRouteSegment, RoutePlan,
+    LabelAnchor, MAX_MARKER_CANDIDATES, MarkerCandidate, MarkerEndpoint, NodeAttachments,
+    PlannedCellId, PlannedRouteCellKind, PlannedRouteSegment, RoutePlan,
 };
 use super::{PreparedRoute, RouteOwner, layout_allocation_failed};
 use crate::error::{AsciiError, Result};
@@ -479,118 +479,17 @@ impl<'layout> SceneOccupancy<'layout> {
         let mut shared_cells = 0usize;
 
         for (_, cell) in plan.active_cells() {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(self.protected.len().max(1))?;
-            let mut crosses_reserved = false;
-            for (protected_index, protected) in self.protected.iter().enumerate() {
-                self.checkpoint_layout_scan(protected_index)?;
-                let is_endpoint_port = protected.allows_endpoint_port(&owner.from, cell.coord)
-                    || protected.allows_endpoint_port(&owner.to, cell.coord);
-                let is_owned_group_border = protected.kind == ProtectedKind::GroupBorder
-                    && protected.group_index.is_some_and(|group_index| {
-                        owner
-                            .boundary_group_indices
-                            .binary_search(&group_index)
-                            .is_ok()
-                    })
-                    && protected
-                        .shape
-                        .transverse_border_directions(cell.coord, route_char_directions(cell.ch))
-                        .is_some();
-                if let (ProtectedKind::Node, ProtectedShape::Rect(rect), Some(attachments)) =
-                    (protected.kind, protected.shape, plan.attachments)
-                {
-                    let in_reading_margin = cell.coord.x >= rect.x.saturating_sub(1)
-                        && cell.coord.x <= rect.right
-                        && cell.coord.y >= rect.y.saturating_sub(1)
-                        && cell.coord.y <= rect.bottom;
-                    if in_reading_margin
-                        && !(protected.owner_id == owner.from
-                            && attachments.start.allows_escape(cell.coord)
-                            || protected.owner_id == owner.to
-                                && attachments.end.allows_escape(cell.coord))
-                    {
-                        crosses_reserved = true;
-                        break;
-                    }
-                }
-                let is_own_terminal_escape = protected.kind == ProtectedKind::Node
-                    && plan.attachments.is_some_and(|attachments| {
-                        protected.owner_id == owner.from
-                            && attachments.start.allows_escape(cell.coord)
-                            || protected.owner_id == owner.to
-                                && attachments.end.allows_escape(cell.coord)
-                    });
-                if protected.shape.contains(cell.coord)
-                    && !is_endpoint_port
-                    && !is_own_terminal_escape
-                    && !is_owned_group_border
-                {
-                    crosses_reserved = true;
-                    break;
-                }
-            }
-            if crosses_reserved {
+            if !self.route_cell_is_clear(
+                existing_routes,
+                owner,
+                plan.attachments,
+                cell.coord,
+                route_char_directions(cell.ch),
+                resources,
+            )? {
                 return Ok(None);
             }
-            if let Some(marker) = self.markers.get(&cell.coord) {
-                self.checkpoint_layout()?;
-                resources.charge_layout_work(1)?;
-                let existing = &existing_routes[marker.route_index];
-                let existing_endpoint = existing.owner.endpoint_id(marker.endpoint);
-                let existing_attachment = existing.plan.attachments.map(|attachments| match marker
-                    .endpoint
-                {
-                    MarkerEndpoint::Start => attachments.start,
-                    MarkerEndpoint::End => attachments.end,
-                });
-                let shares_terminal = plan.attachments.is_some_and(|attachments| {
-                    [
-                        (owner.from.as_str(), attachments.start),
-                        (owner.to.as_str(), attachments.end),
-                    ]
-                    .into_iter()
-                    .any(|(endpoint, attachment)| {
-                        endpoint == existing_endpoint
-                            && existing_attachment.is_some_and(|existing_attachment| {
-                                attachment.contact == existing_attachment.contact
-                                    && attachment.outward == existing_attachment.outward
-                                    && attachment.allows_escape(cell.coord)
-                            })
-                    })
-                });
-                if !shares_terminal {
-                    return Ok(None);
-                }
-            }
-            if let Some(claims) = self.terminal_claims.get(&cell.coord)
-                && !terminal_claims_allow_route_cell(
-                    existing_routes,
-                    owner,
-                    claims,
-                    resources,
-                    &self.control,
-                )?
-            {
-                return Ok(None);
-            }
-            if let Some(occupied) = self.route_cells.get(&cell.coord) {
-                self.checkpoint_layout()?;
-                resources.charge_layout_work(occupied.owners.len().max(1))?;
-                for shared_owner in &occupied.owners {
-                    let existing = &existing_routes[shared_owner.route_index];
-                    let reverse_pair = owner.from != owner.to
-                        && existing.owner.from == owner.to
-                        && existing.owner.to == owner.from;
-                    let shared_contact = plan.attachments.is_some_and(|ports| {
-                        cell.coord == ports.start.contact || cell.coord == ports.end.contact
-                    });
-                    if reverse_pair && !shared_contact {
-                        // Opposite authored edges need distinct transit paths. Sharing the
-                        // same stroke would erase which edge owns each direction and label.
-                        return Ok(None);
-                    }
-                }
+            if self.route_cells.contains_key(&cell.coord) {
                 shared_cells = resources.checked_work_add(shared_cells, 1)?;
             }
         }
@@ -657,6 +556,126 @@ impl<'layout> SceneOccupancy<'layout> {
             cell_count,
             marker_pressure,
         }))
+    }
+
+    // Candidate admission and obstacle-aware search use the same cell-level semantic guards.
+    // Search only supplies straight segment directions; final admission also checks corners,
+    // labels, and independent marker berths before any route is committed.
+    pub(super) fn route_cell_is_clear(
+        &self,
+        existing_routes: &[PreparedRoute],
+        owner: &RouteOwner,
+        attachments: Option<NodeAttachments>,
+        coord: CanvasCoord,
+        directions: u8,
+        resources: &mut ResourceContext,
+    ) -> Result<bool> {
+        self.checkpoint_layout()?;
+        resources.charge_layout_work(self.protected.len().max(1))?;
+        for (protected_index, protected) in self.protected.iter().enumerate() {
+            self.checkpoint_layout_scan(protected_index)?;
+            let is_endpoint_port = protected.allows_endpoint_port(&owner.from, coord)
+                || protected.allows_endpoint_port(&owner.to, coord);
+            let is_owned_group_border = protected.kind == ProtectedKind::GroupBorder
+                && protected.group_index.is_some_and(|group_index| {
+                    owner
+                        .boundary_group_indices
+                        .binary_search(&group_index)
+                        .is_ok()
+                })
+                && protected
+                    .shape
+                    .transverse_border_directions(coord, directions)
+                    .is_some();
+            if let (ProtectedKind::Node, ProtectedShape::Rect(rect), Some(attachments)) =
+                (protected.kind, protected.shape, attachments)
+            {
+                let in_reading_margin = coord.x >= rect.x.saturating_sub(1)
+                    && coord.x <= rect.right
+                    && coord.y >= rect.y.saturating_sub(1)
+                    && coord.y <= rect.bottom;
+                if in_reading_margin
+                    && !(protected.owner_id == owner.from && attachments.start.allows_escape(coord)
+                        || protected.owner_id == owner.to && attachments.end.allows_escape(coord))
+                {
+                    return Ok(false);
+                }
+            }
+            let is_own_terminal_escape = protected.kind == ProtectedKind::Node
+                && attachments.is_some_and(|attachments| {
+                    protected.owner_id == owner.from && attachments.start.allows_escape(coord)
+                        || protected.owner_id == owner.to && attachments.end.allows_escape(coord)
+                });
+            if protected.shape.contains(coord)
+                && !is_endpoint_port
+                && !is_own_terminal_escape
+                && !is_owned_group_border
+            {
+                return Ok(false);
+            }
+        }
+        if let Some(marker) = self.markers.get(&coord) {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            let existing = &existing_routes[marker.route_index];
+            let existing_endpoint = existing.owner.endpoint_id(marker.endpoint);
+            let existing_attachment =
+                existing
+                    .plan
+                    .attachments
+                    .map(|attachments| match marker.endpoint {
+                        MarkerEndpoint::Start => attachments.start,
+                        MarkerEndpoint::End => attachments.end,
+                    });
+            let shares_terminal = attachments.is_some_and(|attachments| {
+                [
+                    (owner.from.as_str(), attachments.start),
+                    (owner.to.as_str(), attachments.end),
+                ]
+                .into_iter()
+                .any(|(endpoint, attachment)| {
+                    endpoint == existing_endpoint
+                        && existing_attachment.is_some_and(|existing_attachment| {
+                            attachment.contact == existing_attachment.contact
+                                && attachment.outward == existing_attachment.outward
+                                && attachment.allows_escape(coord)
+                        })
+                })
+            });
+            if !shares_terminal {
+                return Ok(false);
+            }
+        }
+        if let Some(claims) = self.terminal_claims.get(&coord)
+            && !terminal_claims_allow_route_cell(
+                existing_routes,
+                owner,
+                claims,
+                resources,
+                &self.control,
+            )?
+        {
+            return Ok(false);
+        }
+        if let Some(occupied) = self.route_cells.get(&coord) {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(occupied.owners.len().max(1))?;
+            for shared_owner in &occupied.owners {
+                let existing = &existing_routes[shared_owner.route_index];
+                let reverse_pair = owner.from != owner.to
+                    && existing.owner.from == owner.to
+                    && existing.owner.to == owner.from;
+                let shared_contact = attachments.is_some_and(|ports| {
+                    coord == ports.start.contact || coord == ports.end.contact
+                });
+                if reverse_pair && !shared_contact {
+                    // Opposite authored edges need distinct transit paths. Sharing the
+                    // same stroke would erase which edge owns each direction and label.
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
     }
 
     fn plan_labels_have_clear_candidate(

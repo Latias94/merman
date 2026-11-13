@@ -7,6 +7,7 @@ use super::compound::{
 use super::edges::parallel_edge_index;
 use super::grid::{
     GridRouteOptions, plan_left_right_grid_path_route_with_options_resources_and_execution,
+    plan_obstacle_aware_grid_route,
 };
 use super::left_right::plan_left_right_self_loop_route_with_resources;
 use super::same_rank::plan_same_rank_bottom_lane_route_with_index_and_resources;
@@ -15,7 +16,7 @@ use super::select::{
 };
 use crate::error::{AsciiError, Result};
 use crate::graph::routing::label::RoutedLabelDescriptor;
-use crate::graph::routing::path::Port;
+use crate::graph::routing::path::{Port, PortPair, RouteObstacles};
 use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
 use crate::resource::AsciiResourceLimitPhase;
@@ -153,6 +154,51 @@ const PORT_PAIRS: [(Port, Port); 8] = [
     (Port::Down, Port::Down),
     (Port::Up, Port::Up),
 ];
+
+pub(in crate::graph::routing) fn plan_obstacle_aware_edge_route(
+    request: EdgeRouteRequest<'_>,
+    topology: Option<&GraphGroupTopology<'_>>,
+    obstacles: RouteObstacles<'_>,
+    label: Option<RoutedLabelDescriptor>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<RoutePlan>> {
+    if request.from.id == request.to.id || !endpoints_are_nodes(request, topology) {
+        return Ok(None);
+    }
+    // Every cardinal port pair is considered once inside the existing finite routing margin.
+    // Keep this search behind ordinary candidate admission so valid canonical output is stable.
+    const PORTS: [Port; 4] = [Port::Right, Port::Left, Port::Down, Port::Up];
+    let mut selected = None;
+    for start in PORTS {
+        for end in PORTS {
+            execution.checkpoint(merman_core::OperationPhase::Layout)?;
+            let Some(plan) = plan_obstacle_aware_grid_route(
+                request,
+                PortPair::new(start, end),
+                obstacles,
+                label,
+                resources,
+                execution,
+            )?
+            else {
+                continue;
+            };
+            let Some((score, plan)) =
+                super::super::admit_route_candidate(request, obstacles, plan, resources)?
+            else {
+                continue;
+            };
+            if selected
+                .as_ref()
+                .is_none_or(|(best_score, _)| score < *best_score)
+            {
+                selected = Some((score, plan));
+            }
+        }
+    }
+    Ok(selected.map(|(_, plan)| plan))
+}
 
 fn endpoints_are_nodes(
     request: EdgeRouteRequest<'_>,
