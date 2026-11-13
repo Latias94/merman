@@ -2545,7 +2545,6 @@ dependencies = [
 name = "merman-fixture-render-context"
 version = "0.10.0"
 dependencies = [
- "data-encoding",
  "json5",
  "serde",
  "serde-saphyr",

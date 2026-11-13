@@ -22,7 +22,6 @@ autoexamples = false
 autotests = false
 autobenches = false
 description = "Fork of roughr (roughjs port) used by merman for Mermaid parity"
-homepage = "https://github.com/Latias94/merman"
 documentation = "https://docs.rs/roughr-merman"
 readme = "README.md"
 keywords = [

@@ -4,7 +4,6 @@ version.workspace = true
 edition.workspace = true
 authors.workspace = true
 license = "EPL-2.0"
-homepage.workspace = true
 repository.workspace = true
 rust-version.workspace = true
 description = "Source-backed Eclipse ELK layered layout port for merman."

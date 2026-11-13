@@ -5,7 +5,6 @@ edition.workspace = true
 authors.workspace = true
 license = "MIT"
 repository.workspace = true
-homepage.workspace = true
 rust-version.workspace = true
 description = "Tolerant Tree-sitter grammar and editor queries for Mermaid"
 keywords = ["incremental", "mermaid", "parser", "tree-sitter"]
