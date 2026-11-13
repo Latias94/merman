@@ -219,9 +219,9 @@ pub(crate) fn allows_implicit_binary_face(face: &FaceInfo) -> bool {
     let usvg::fontdb::Source::Binary(bytes) = &face.source else {
         return false;
     };
-    !ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index)
+    ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index)
         .ok()
-        .is_some_and(|face| !classify_family(&face).allows_implicit_text())
+        .is_none_or(|face| classify_family(&face).allows_implicit_text())
 }
 
 fn classify(bytes: &[u8], index: u32) -> FaceClass {

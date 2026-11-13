@@ -124,10 +124,10 @@ pub(crate) fn visit_editor_host_fences<B>(
         } else if let Some(opening) = fence_opening(line, cancellation)? {
             let marker_start = cursor + opening.marker_offset;
             let opening_marker = marker_start..marker_start + opening.delimiter.marker_len();
-            if opening.is_mermaid {
-                if let ControlFlow::Break(value) = visit_opening(opening_marker.clone()) {
-                    return Ok(ControlFlow::Break(value));
-                }
+            if opening.is_mermaid
+                && let ControlFlow::Break(value) = visit_opening(opening_marker.clone())
+            {
+                return Ok(ControlFlow::Break(value));
             }
             active = Some(ActiveFence {
                 start: cursor,
