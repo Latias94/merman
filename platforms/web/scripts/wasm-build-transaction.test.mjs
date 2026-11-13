@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { spawn } from "node:child_process";
+import childProcess, { spawn } from "node:child_process";
 import { once } from "node:events";
 import {
   existsSync,
@@ -14,10 +14,11 @@ import {
 } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, it } from "node:test";
+import { syncBuiltinESMExports } from "node:module";
+import { afterEach, describe, it, mock } from "node:test";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-import { wasmPackEnvironment } from "./wasm-build/build.mjs";
+import { buildWasm, wasmPackEnvironment } from "./wasm-build/build.mjs";
 import {
   acquireOutputLock,
   acquireWorkspaceWasmBuildLock,
@@ -31,6 +32,8 @@ import {
   publishStagedOutput,
   recoverOutputTransaction,
 } from "./wasm-build/output-transaction.mjs";
+import { repositoryRoot } from "./wasm-build/paths.mjs";
+import { defaultWebPackage } from "./wasm-build/web-surface-descriptor.mjs";
 
 const roots = [];
 const lockModuleUrl = pathToFileURL(
@@ -48,6 +51,40 @@ afterEach(() => {
 });
 
 describe("WASM output transaction", () => {
+  for (const [label, fields, expectedHomepage] of [
+    ["absent", {}, "https://github.com/example/merman"],
+    ["null", { homepage: null }, "https://github.com/example/merman"],
+    ["empty", { homepage: "" }, "https://github.com/example/merman"],
+    ["explicit", { homepage: "https://example.com/merman" }, "https://example.com/merman"],
+  ]) {
+    it(`publishes the npm homepage from ${label} Cargo homepage metadata`, () => {
+      const output = buildPackageFixture(fields);
+      const packageJson = JSON.parse(read(output, "package.json"));
+
+      assert.equal(packageJson.homepage, expectedHomepage);
+      assert.deepEqual(packageJson.repository, {
+        type: "git",
+        url: "https://github.com/example/merman",
+      });
+      const manifest = JSON.parse(read(output, "merman_wasm_inputs.json"));
+      assert.ok(manifest.artifacts.some((entry) => entry.path === "package.json"));
+      assert.equal(read(output, "merman_wasm.js"), "export {};\n");
+      assert.equal(existsSync(path.join(output, "old.txt")), false);
+      assert.equal(existsSync(outputBackupDirectory(output)), false);
+      assert.equal(lockExists(output), false);
+      assert.deepEqual(readdirSync(path.dirname(output)), [path.basename(output)]);
+    });
+  }
+
+  for (const field of ["description", "license", "repository"]) {
+    it(`rejects missing Cargo ${field} even with an explicit homepage`, () => {
+      assert.throws(
+        () => buildPackageFixture({ [field]: "", homepage: "https://example.com/merman" }),
+        { message: `Cargo metadata field merman-wasm.${field} is missing.` },
+      );
+    });
+  }
+
   it("atomically replaces one package-owned artifact directory", () => {
     const root = fixtureRoot();
     const output = path.join(root, "pkg", "full");
@@ -272,6 +309,88 @@ describe("WASM output transaction", () => {
     );
   });
 });
+
+function buildPackageFixture(fields) {
+  const root = fixtureRoot();
+  const output = path.join(root, "pkg", "full");
+  const targetDirectory = path.join(root, "target");
+  const packageInfo = {
+    id: "merman-wasm",
+    name: "merman-wasm",
+    version: "1.0.0",
+    source: null,
+    manifest_path: path.join(repositoryRoot, "crates", "merman-wasm", "Cargo.toml"),
+    description: "WASM build transaction fixture",
+    license: "MIT OR Apache-2.0",
+    repository: "https://github.com/example/merman",
+    authors: [],
+    keywords: [],
+    ...fields,
+  };
+  write(output, "old.txt", "old artifact");
+  const commands = [];
+  // Intercept every external tool call; no Cargo or WASM compiler process is launched.
+  const tool = mock.method(childProcess, "spawnSync", (command, args, options) => {
+    commands.push(`${command} ${args[0]}`);
+    if (command === "cargo" && args[0] === "metadata") {
+      return {
+        status: 0,
+        stdout: JSON.stringify({
+          packages: [
+            {
+              id: "probe",
+              name: "merman-wasm-freshness-probe",
+              version: "0.0.0",
+              manifest_path: args[args.indexOf("--manifest-path") + 1],
+            },
+            packageInfo,
+          ],
+          resolve: { root: "probe", nodes: [] },
+        }),
+      };
+    }
+    if (command === "cargo" && args[0] === "tree") {
+      return { status: 0, stdout: "merman-wasm-freshness-probe v0.0.0\nmerman-wasm v1.0.0\n" };
+    }
+    assert.equal(command, "wasm-pack");
+    assert.equal(args[0], "build");
+    assert.equal(options.env.CARGO_TARGET_DIR, targetDirectory);
+    const stage = args[args.indexOf("--out-dir") + 1];
+    for (const name of ["merman_wasm.js", "merman_wasm.d.ts", "merman_wasm_bg.wasm.d.ts"]) {
+      write(stage, name, "export {};\n");
+    }
+    write(stage, "merman_wasm_bg.wasm", Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]));
+    write(stage, ".gitignore", "*\n");
+    write(
+      targetDirectory,
+      "wasm32-unknown-unknown/wasm-size/merman_wasm.d",
+      "merman_wasm.wasm: crates/merman-wasm/src/lib.rs\n",
+    );
+    return { status: 0 };
+  });
+  const previousTargetDirectory = process.env.CARGO_TARGET_DIR;
+  process.env.CARGO_TARGET_DIR = targetDirectory;
+  syncBuiltinESMExports();
+  try {
+    buildWasm({
+      outputDir: { absolute: output },
+      descriptor: defaultWebPackage,
+      repositoryMetadata: { packages: [packageInfo], target_directory: targetDirectory },
+      toolVersions: { cargo: "fixture", node: process.version, rustc: "fixture", wasm_pack: "fixture" },
+    });
+  } finally {
+    tool.mock.restore();
+    syncBuiltinESMExports();
+    if (previousTargetDirectory === undefined) delete process.env.CARGO_TARGET_DIR;
+    else process.env.CARGO_TARGET_DIR = previousTargetDirectory;
+  }
+  assert.deepEqual(commands, ["cargo metadata", "cargo tree", "wasm-pack build"]);
+  assert.equal(
+    existsSync(workspaceWasmBuildLockDirectory(repositoryRoot, { cargoTargetDirectory: targetDirectory })),
+    false,
+  );
+  return output;
+}
 
 function lockChild(output, holdMs) {
   const source = [
