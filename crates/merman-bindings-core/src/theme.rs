@@ -14,9 +14,12 @@ pub(crate) enum BindingThemeOptionsJson {
 }
 
 #[derive(Debug)]
-#[expect(
-    clippy::large_enum_variant,
-    reason = "One decoded selection retains its complete typed recipe or specification"
+#[cfg_attr(
+    target_pointer_width = "64",
+    expect(
+        clippy::large_enum_variant,
+        reason = "One decoded selection retains its complete typed recipe or specification"
+    )
 )]
 pub(crate) enum ThemeSelectionJson {
     Preset {

@@ -18,6 +18,10 @@ use merman_model::time::{CivilDateTime, OffsetDateTime};
 use std::cell::RefCell;
 
 thread_local! {
+    #[allow(
+        clippy::missing_const_for_thread_local,
+        reason = "Clippy 1.100 flags the standard library TLS fallback even though this initializer is const"
+    )]
     static OPERATION_CONTEXT: RefCell<Option<OperationContext>> = const { RefCell::new(None) };
 }
 

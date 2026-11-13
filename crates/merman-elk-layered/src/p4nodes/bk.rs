@@ -1159,8 +1159,7 @@ fn node_order_for_direction(nodes: &[usize], vdir: VDirection) -> Vec<usize> {
 
 fn blocks(layout: &BKAlignedLayout) -> HashMap<usize, Vec<usize>> {
     let mut blocks: HashMap<usize, Vec<usize>> = HashMap::new();
-    for node in 0..layout.root.len() {
-        let root = layout.root[node];
+    for (node, &root) in layout.root.iter().enumerate() {
         if root != usize::MAX {
             blocks.entry(root).or_default().push(node);
         }

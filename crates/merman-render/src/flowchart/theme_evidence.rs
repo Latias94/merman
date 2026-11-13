@@ -719,18 +719,6 @@ impl FlowchartClusterThemeStyle {
             .flatten()
     }
 
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Inline terminal styles receive distinct source ownership decisions"
-    )]
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Inline terminal styles receive distinct source ownership decisions"
-    )]
-    #[allow(
-        clippy::too_many_arguments,
-        reason = "Emits each independently owned Flowchart paint facet with its evidence state."
-    )]
     pub(crate) fn append_inline_style(
         &self,
         out: &mut String,

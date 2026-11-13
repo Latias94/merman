@@ -356,17 +356,17 @@ impl<'a> ClassClusterHierarchy<'a> {
         }
 
         let depth_delta = self.depth[lhs] - self.depth[rhs];
-        for level in 0..self.ancestor_jumps.len() {
+        for (level, ancestors) in self.ancestor_jumps.iter().enumerate() {
             if depth_delta & (1 << level) != 0 {
-                lhs = self.ancestor_jumps[level][lhs];
+                lhs = ancestors[lhs];
             }
         }
         if lhs == rhs {
             return Some(lhs);
         }
-        for level in (0..self.ancestor_jumps.len()).rev() {
-            let lhs_ancestor = self.ancestor_jumps[level][lhs];
-            let rhs_ancestor = self.ancestor_jumps[level][rhs];
+        for ancestors in self.ancestor_jumps.iter().rev() {
+            let lhs_ancestor = ancestors[lhs];
+            let rhs_ancestor = ancestors[rhs];
             if lhs_ancestor != rhs_ancestor {
                 lhs = lhs_ancestor;
                 rhs = rhs_ancestor;

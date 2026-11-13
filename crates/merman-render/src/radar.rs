@@ -347,11 +347,11 @@ pub(crate) fn layout_radar_diagram_typed_with_work_meter(
         }
         let mut points: Vec<LayoutPoint> = Vec::new();
         if axis_count > 0 {
-            for i in 0..axis_count {
+            for (i, &entry) in curve.entries.iter().enumerate() {
                 work_meter.checkpoint(OperationPhase::Layout)?;
                 let angle = -std::f64::consts::FRAC_PI_2
                     + (i as f64) * (std::f64::consts::TAU / (axis_count as f64));
-                let radius = relative_radius(curve.entries[i], min_value, max_value, base_radius);
+                let radius = relative_radius(entry, min_value, max_value, base_radius);
                 points.push(polar_xy(radius, angle));
             }
         }
