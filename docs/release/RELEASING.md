@@ -31,6 +31,14 @@ In particular, maintenance retains its legacy constrained math admission rather 
 adopting main's newer rejection policy. Each SDK profile still requires its own preflight
 and actual host qualification before publication.
 
+Starting with 0.9.4, stable Web and Node groups publish under `maintenance-0-9`.
+Their frozen package-group manifests carry that tag from preparation through
+registry reconciliation. Main's `latest` tag remains on the 0.10 line. Releases
+through 0.9.3 retain their historical `latest` projection for exact-artifact recovery;
+prerelease channels retain their existing names. Install a maintenance version
+explicitly, for example `npm install @mermanjs/web@maintenance-0-9` after publication.
+The maintenance CLI/LSP publisher creates GitHub Releases with `--latest=false`.
+
 The branch name does not publish a version. Historical release notes may retain the branch name used at the time of publication.
 
 ## Release Workflows

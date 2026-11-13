@@ -79,6 +79,12 @@ def assert_no_npm_provenance_disable(test_case: unittest.TestCase, text: str) ->
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
+    def test_maintenance_workspace_release_preserves_main_latest(self) -> None:
+        publish = workflow_job(read(WORKFLOW_ROOT / "release.yml"), "host")
+        arguments = publish.split("release_args=(", 1)[1].split(")", 1)[0]
+        self.assertIn("--latest=false", arguments)
+        self.assertIn("--verify-tag", arguments)
+
     def test_apple_floor_uses_real_swift_59_and_retains_apple_consumers(self) -> None:
         workflow = read(CI_WORKFLOW)
         floor = workflow_job(workflow, "apple-swift-5-9-smoke")

@@ -299,6 +299,34 @@ class SdkArchiveTests(unittest.TestCase):
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "symlink"):
             self.package(runtime_catalog=self.artifacts / "linked/runtime-catalog.json")
 
+    def test_checksum_sidecars_use_lf_with_windows_text_defaults(self):
+        self.configure(target="x86_64-pc-windows-msvc")
+        original_open = Path.open
+
+        def windows_text_open(path, mode="r", *args, **kwargs):
+            if path.suffix == ".sha256" and mode == "x" and kwargs.get("newline") is None:
+                kwargs["newline"] = "\r\n"
+            return original_open(path, mode, *args, **kwargs)
+
+        with mock.patch.object(Path, "open", windows_text_open):
+            archive = self.package()
+            archive_bytes = archive.read_bytes()
+            checksum = Path(str(archive) + ".sha256")
+            expected = f"{sdk_archive.sha256_file(archive)}  {archive.name}\n".encode("ascii")
+            with self.subTest(sidecar="producer"):
+                self.assertEqual(checksum.read_bytes(), expected)
+
+            verified = self.root / "verified"
+            verified.mkdir()
+            destination = sdk_archive.verify_sdk_archive(
+                repo_root=self.repo, profile=self.profile, target=self.target,
+                archive=archive, checksum=checksum, source_commit=self.commit,
+                version=self.version, descriptor=self.descriptor, verified_output_dir=verified,
+            )
+            self.assertEqual(destination.read_bytes(), archive_bytes)
+            with self.subTest(sidecar="verified"):
+                self.assertEqual(Path(str(destination) + ".sha256").read_bytes(), expected)
+
     def test_catalog_and_scope_reject_duplicate_keys_and_unsafe_members(self):
         self.catalog_path.write_text('{"schema_version":1,"schema_version":1}')
         with self.assertRaisesRegex(sdk_archive.ArchiveVerificationError, "duplicate"):

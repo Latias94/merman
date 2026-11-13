@@ -156,6 +156,18 @@ class RepositoryViewTests(unittest.TestCase):
 class ReleaseProjectionTests(unittest.TestCase):
     ROOT = Path(__file__).resolve().parents[1]
 
+    def test_maintenance_npm_channel_preserves_main_and_historical_releases(self) -> None:
+        for version, expected in (
+            ("0.9.3", "latest"),
+            ("v0.9.4", "maintenance-0-9"),
+            ("0.9.12", "maintenance-0-9"),
+            ("0.9.4+build.1", "maintenance-0-9"),
+            ("0.9.4-rc.1", "rc"),
+            ("0.10.0", "latest"),
+        ):
+            with self.subTest(version=version):
+                self.assertEqual(release_version_script.npm_dist_tag(version), expected)
+
     def test_workspace_dependency_requirement_is_exact_only_for_prereleases(self) -> None:
         self.assertEqual(
             release_projection.workspace_dependency_requirement(
