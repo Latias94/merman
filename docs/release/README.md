@@ -6,7 +6,7 @@ Use this index to choose an upgrade path by the version you have installed. The 
 
 `release/0.9.x` carries compatible patch releases. Version 0.9.4 retains Mermaid 12.1.0, the Presentation API, and Options JSON schema 2; the compiled-theme migration and Mermaid upgrades remain on `main`. See the [0.9.4 changelog](../../CHANGELOG.md#094---2026-11-13) for the selected fixes and the [maintenance policy](RELEASING.md#maintenance-branches) for backport and tag ownership. Published releases remain identified by their immutable version tags.
 
-The 0.9.4 release selects Rust crates and CLI/LSP. Native C/WASI SDKs, Apple, Android, Web, Node,
+Rust crates and CLI/LSP are published at `0.9.4`. Native C/WASI SDKs, Apple, Android, Web, Node,
 Python, and Flutter retain their separately published `0.9.3` maintenance artifacts. Their latest
 release is `0.10.0`; use an explicit version to stay on the 0.9 line. See the
 [publication snapshot](PUBLISH_ORDER.md#094-publication) for verified channel delivery.
