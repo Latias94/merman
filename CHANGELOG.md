@@ -22,6 +22,7 @@ Maintenance fixes on the Mermaid 12.1.0 line. Review layout and image/PDF snapsh
 ### Security
 
 - Require `pulldown-cmark 0.13.6` or later for [RUSTSEC-2026-0433](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's Markdown entrypoints do not enable the affected Wikilinks option.
+- Require `rustix 1.1.6` or later for [RUSTSEC-2026-0486](https://rustsec.org/advisories/RUSTSEC-2026-0486.html). Merman's direct Unix output path does not use the affected extended-attribute queries.
 
 ## [0.9.3] - 2026-10-30
 
