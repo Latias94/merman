@@ -92,7 +92,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target",
     "offline": true,
-    "cargo_lock_sha256": "f75f40faedb60874cd6bdbf50d58fc3f8ebe357e9ee1988e8f51b043d82b98bd",
+    "cargo_lock_sha256": "070dd100490de73ad2196ad198dee2076d260e9e2445c48d1b7445e578f8ab8c",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "595b6a269a641859bd50bf48ccee5722b282b88318f0ac6c379af67c83f60ca1"
   },
@@ -101,12 +101,12 @@
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 127,
-      "packages_sha256": "460613eba439f644fa9c32a4296c22ab330f70780e42d1314b973998ad7275c8"
+      "packages_sha256": "23af1dcaa507c46eaaa2da51e3a917100bce78cfc1a81427aeedede807873cf8"
     }
   ],
   "dependency_closure": {
     "package_count": 127,
-    "packages_sha256": "460613eba439f644fa9c32a4296c22ab330f70780e42d1314b973998ad7275c8"
+    "packages_sha256": "23af1dcaa507c46eaaa2da51e3a917100bce78cfc1a81427aeedede807873cf8"
   },
   "licenses": [
     {
@@ -1184,7 +1184,7 @@
       "packages": [
         {
           "name": "pulldown-cmark",
-          "version": "0.13.5",
+          "version": "0.13.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

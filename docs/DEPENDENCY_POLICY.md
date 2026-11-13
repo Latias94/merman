@@ -12,6 +12,7 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 
 | Dependency surface | Selected policy | Reason and review boundary |
 | --- | --- | --- |
+| `pulldown-cmark` | Compatible 0.13.6 minimum | Includes the [RUSTSEC-2026-0433 repair](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman's Markdown entrypoints do not enable the affected Wikilinks option. Keep the patched minimum for fresh consumers and refresh the governed lockfiles. |
 | `libm` | Exact 0.2.16 | Iterative layout uses reproducible math instead of host-dependent transcendental results. [The introducing change](https://github.com/Latias94/merman/commit/f5e557f85cfa03992ba367cd970605258e060ea6) ties this choice to deterministic geometry. A change requires source-backed layout and parity evidence. |
 | NAPI runtime / derive / build | Exact 3.15.0 / 3.6.13 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
 | Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar package 0.3.1 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |

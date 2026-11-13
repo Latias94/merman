@@ -84,6 +84,15 @@ then pass through Mermaid's global `decodeEntities` cleanup before the strict-li
 check. The resvg-safe source scanner consumes serialized attribute text, while terminal XML
 validation consumes parsed values; neither layer reinterprets the other's entity encoding.
 
+## Model Layout Admission
+
+Mindmap's tidy-tree layout requires each internal node to have at most one incoming
+edge. Models supplied by custom parsers or lower-level integrations reject shared
+descendants and duplicate parent edges before subtree expansion. Admission observes
+the operation's existing cancellation and resource outcome without charging the
+prepaid adapter work again. Repeated authored names or labels on distinct internal
+nodes remain valid.
+
 ## Output Resource Boundaries
 
 Output type determines the relevant allocation policy:

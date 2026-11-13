@@ -508,6 +508,7 @@ fn layout_mindmap_diagram_model(
             &model.nodes,
             &model.edges,
             &edge_indices,
+            work_meter.as_ref(),
         )?)
     } else {
         #[cfg(feature = "layout-cytoscape")]

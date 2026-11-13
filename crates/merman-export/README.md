@@ -33,8 +33,13 @@ This does not promise browser pixel parity or arbitrary HTML/CSS typography.
 Direct exporters set
 the same context with `RasterOptions::with_font_context` or
 `PdfOptions::with_font_context`. Without a context, export uses the installed system fonts.
-Implicit generic and default families exclude symbolic and pictorial faces; an
-explicit named family can still select those faces. The same rule applies to
+Implicit generic and default families exclude symbolic, pictorial, and OpenType
+Last Resort faces; an explicit named family can still select those faces. Glyph
+fallback uses the same exclusion, so placeholder glyphs do not replace readable text.
+When a font omits its monospace flag, complete, nonzero, uniform printable ASCII
+advances can establish monospace compatibility. Unclassified proportional faces
+precede a monospace fallback for generic serif and sans-serif requests.
+The same rule applies to
 closed native, bounded system, and platform query contexts. With `system-fonts` compiled, the new context supports
 bounded system discovery through `NativeFontOptions::with_system_fonts(true)`;
 library callers opt in explicitly. Selected bytes are snapshotted and verified

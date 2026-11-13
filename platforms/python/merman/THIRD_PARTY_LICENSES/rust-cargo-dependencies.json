@@ -100,7 +100,7 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-target-union",
     "offline": true,
-    "cargo_lock_sha256": "f75f40faedb60874cd6bdbf50d58fc3f8ebe357e9ee1988e8f51b043d82b98bd",
+    "cargo_lock_sha256": "070dd100490de73ad2196ad198dee2076d260e9e2445c48d1b7445e578f8ab8c",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_bundle_sha256": "ffaa752f5f8893a9bfe30ff4a90481ca6ef6da58b411f0a4c1bb94aa2fd78aba"
   },
@@ -109,24 +109,24 @@
       "artifact_profile_id": "python-uniffi-native",
       "target": "aarch64-apple-darwin",
       "package_count": 127,
-      "packages_sha256": "460613eba439f644fa9c32a4296c22ab330f70780e42d1314b973998ad7275c8"
+      "packages_sha256": "23af1dcaa507c46eaaa2da51e3a917100bce78cfc1a81427aeedede807873cf8"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-pc-windows-msvc",
       "package_count": 126,
-      "packages_sha256": "da5516cd6b64d334363d7d1078676499bc5fd2baab8f6375da8b8d2fa59f01a2"
+      "packages_sha256": "f4dbffa87e5bd2376392e9a556432eac471b82a1371862d2a2b18cfdb6184331"
     },
     {
       "artifact_profile_id": "python-uniffi-native",
       "target": "x86_64-unknown-linux-gnu",
       "package_count": 127,
-      "packages_sha256": "ca0286fe1ea6a8e9df0f9923d8856bf769182d91bcc422fec35bb271638bb235"
+      "packages_sha256": "d5a51bb0232d4f68ea33a402815a58e3cad7218db7106890dad61b4fb7477fd9"
     }
   ],
   "dependency_closure": {
     "package_count": 130,
-    "packages_sha256": "fd7293b67f76d21ba05461b2930637244e46b5b294eb3c6b78ee7b8666ca87be"
+    "packages_sha256": "be66b76c487254f45871168955253eb0f8b0254ef831a1daebd9beedf2e181f9"
   },
   "licenses": [
     {
@@ -1248,7 +1248,7 @@
       "packages": [
         {
           "name": "pulldown-cmark",
-          "version": "0.13.5",
+          "version": "0.13.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [

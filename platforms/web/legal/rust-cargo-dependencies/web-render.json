@@ -76,13 +76,13 @@
     "version": "0.9.2",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "f75f40faedb60874cd6bdbf50d58fc3f8ebe357e9ee1988e8f51b043d82b98bd",
+    "cargo_lock_sha256": "070dd100490de73ad2196ad198dee2076d260e9e2445c48d1b7445e578f8ab8c",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "caaa99d16f01ecc804757b206a5d4d1eaf3d4f0d6c7e22ac4a27e239ee7a0dd1"
   },
   "dependency_closure": {
     "package_count": 168,
-    "packages_sha256": "23662e621f3395ca08ed9d25b6a55f06579757670330c03edadef8a176846deb"
+    "packages_sha256": "e96c232f53729c8f27be0f5133e4f0ae19d7cd47b388dcd151925be751771f60"
   },
   "licenses": [
     {
@@ -1647,7 +1647,7 @@
       "packages": [
         {
           "name": "pulldown-cmark",
-          "version": "0.13.5",
+          "version": "0.13.6",
           "source": "registry+https://github.com/rust-lang/crates.io-index",
           "license_expression": "MIT",
           "authors": [
