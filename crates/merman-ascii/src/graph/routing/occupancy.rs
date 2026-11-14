@@ -970,7 +970,13 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<MarkerCandidateDisposition> {
-        if !self.marker_reading_clearance_is_clear(candidate, resources)? {
+        if !self.marker_reading_clearance_is_clear(
+            existing_routes,
+            owner,
+            endpoint,
+            candidate,
+            resources,
+        )? {
             return Ok(MarkerCandidateDisposition::Blocked);
         }
         let endpoint_id = owner.endpoint_id(endpoint);
@@ -1062,6 +1068,9 @@ impl<'layout> SceneOccupancy<'layout> {
 
     fn marker_reading_clearance_is_clear(
         &self,
+        routes: &[PreparedRoute],
+        owner: &RouteOwner,
+        endpoint: MarkerEndpoint,
         candidate: MarkerCandidate,
         resources: &ResourceContext,
     ) -> Result<bool> {
@@ -1082,6 +1091,44 @@ impl<'layout> SceneOccupancy<'layout> {
                     x,
                     ..candidate.coord
                 }) {
+                    return Ok(false);
+                }
+            }
+        }
+        let neighbors = match candidate.point_direction {
+            StepDirection::Left | StepDirection::Right => [
+                candidate.coord.x.checked_sub(1).map(|x| CanvasCoord {
+                    x,
+                    ..candidate.coord
+                }),
+                candidate.coord.x.checked_add(1).map(|x| CanvasCoord {
+                    x,
+                    ..candidate.coord
+                }),
+            ],
+            StepDirection::Up | StepDirection::Down => [
+                candidate.coord.y.checked_sub(1).map(|y| CanvasCoord {
+                    y,
+                    ..candidate.coord
+                }),
+                candidate.coord.y.checked_add(1).map(|y| CanvasCoord {
+                    y,
+                    ..candidate.coord
+                }),
+            ],
+        };
+        for coord in neighbors.into_iter().flatten() {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if let Some(marker) = self.markers.get(&coord) {
+                let existing = &routes[marker.route_index].owner;
+                if marker_occupant_is_compatible(
+                    routes,
+                    *marker,
+                    owner.endpoint_id(endpoint),
+                    candidate.point_direction,
+                ) && (owner.from != existing.from || owner.to != existing.to)
+                {
                     return Ok(false);
                 }
             }
@@ -1408,7 +1455,13 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<MarkerCandidateDisposition> {
-        if !self.marker_reading_clearance_is_clear(candidate, resources)? {
+        if !self.marker_reading_clearance_is_clear(
+            routes,
+            &routes[route_index].owner,
+            endpoint,
+            candidate,
+            resources,
+        )? {
             return Ok(MarkerCandidateDisposition::Blocked);
         }
         let endpoint_id = routes[route_index].owner.endpoint_id(endpoint);

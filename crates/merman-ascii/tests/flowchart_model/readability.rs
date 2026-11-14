@@ -136,6 +136,37 @@ fn wide_fan_in_and_marked_fan_out_keep_independent_heads_at_zero_padding() {
 }
 
 #[test]
+fn dense_marked_fanout_keeps_every_head_readable_across_profiles_and_padding() {
+    for count in [12, 14] {
+        for direction in ["TD", "BT", "LR", "RL"] {
+            let mut source = format!("flowchart {direction}\n");
+            for index in 1..=count {
+                source.push_str(&format!("S[SOURCE] <--> N{index:02}[N{index:02}]\n"));
+            }
+            for options in readability_options() {
+                for zero_padding in [false, true] {
+                    let options = if zero_padding {
+                        options.with_graph_padding_x(0).with_graph_padding_y(0)
+                    } else {
+                        options
+                    };
+                    let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
+                        panic!("{count} marked branches, {direction}, {options:?}: {error}")
+                    });
+                    assert_readable_target_heads(&rendered, count * 2);
+                    assert_labels_once(&rendered, &["SOURCE"]);
+                    for index in 1..=count {
+                        let label = format!("N{index:02}");
+                        assert_labels_once(&rendered, &[&label]);
+                        assert_node_order(&rendered, direction, &["SOURCE", &label]);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn six_way_branch_and_merge_preserves_all_twelve_target_heads() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(

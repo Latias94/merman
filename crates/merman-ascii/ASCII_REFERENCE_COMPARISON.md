@@ -60,11 +60,15 @@ contacts, and keeps port pairs lazy rather than materializing their Cartesian pr
 compare the generated priority order with exhaustive sorting and protect cancellation, work limits,
 diamond restrictions, and recovery after the three central contacts are occupied. Covered merges
 now include eight and twelve incoming edges at zero preferred padding; two-ended fan-out through
-ten edges checks source-marker symmetry. Unused alternate marker positions admit transverse
+fourteen edges checks source-marker symmetry. Unused alternate marker positions admit transverse
 crossings without weakening protection of actual markers or primary terminals. Later marker
 allocation cannot cover those crossings. Branch clearance follows the actually applied local
 direction and reserves a real separator outside endpoint content. Neither reference supplies an
 independent-marker oracle for arbitrary degree, and dense marked fan-out remains bounded.
+Boundary endpoints reserve exterior transit space when marked demand exceeds their reachable
+shape-valid contacts. Complete scene translation preserves ranks, node sizes, compound frames,
+and the coarse-grid origin. Different branches at the same endpoint cannot form an adjacent
+pointing-axis marker chain; same-pair parallel edges retain their independent contiguous markers.
 The expanded search also exposed repeated futile searches through sealed frame approaches and
 quadratic duplicate scans while generating label positions. Recovery now traces required straight
 corridors before opening its path frontier, and label-position deduplication preserves the ordered

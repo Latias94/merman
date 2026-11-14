@@ -110,13 +110,19 @@ reference implementation is only an implementation aid.
   rank axis without expanding any node's content bands. Source markers participate in port-reuse
   scoring; open starts may share their stems. Actual markers and primary terminals remain
   protected, while unused alternate marker positions allow transverse crossings. Marker allocation
-  rejects those positions after a crossing takes them. Covered two-ended-marker fans through ten
+  rejects those positions after a crossing takes them. Covered two-ended-marker fans through fourteen
   edges retain independent, unstacked heads in every root direction, including at zero graph padding.
+  If the top or left canvas boundary hides contacts needed by marked endpoint demand, layout
+  reserves an exterior reading margin and turn cell by translating the entire scene, including
+  compound frames, divider spans, and the coarse-grid origin. Node sizes and relative ranks stay
+  unchanged. Endpoints with multiple markers also include the escape corridors of their unmarked
+  ends when reserving that space. Marker admission rejects adjacent pointing-axis heads belonging
+  to different branches at one endpoint; same-pair parallel marker chains keep distinct owners.
   Optional quality repair has a fixed expansion cap across lazily generated port pairs; required
   recovery is bounded by scene extent and the shared work ledger. Full contour enumeration does
   not guarantee independent routes for arbitrary degree. Dense two-ended-marker fan-out can still
-  exhaust recovery or the work budget; a twelve-edge case can stack source heads, and its TD/BT
-  zero-padding variants can exhaust the Interactive work budget.
+  exhaust recovery or the work budget; sixteen-edge TD/BT cases can exhaust the Interactive work
+  budget at default and zero preferred graph padding.
   Alternate candidates and recovery still run
   when the primary route family is unavailable. Candidate exhaustion produces `UnsupportedFeature`;
   resource and cancellation failures remain terminal errors rather than a partial drawing.

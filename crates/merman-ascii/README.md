@@ -126,7 +126,13 @@ choices before scene admission.
 Actual endpoint markers and primary terminal positions remain protected. Unused alternate marker
 positions admit transverse route crossings; later marker allocation rejects any position occupied
 by such a crossing. This keeps alternate choices from sealing an entire branch corridor, including
-covered two-ended-marker fans through ten edges at zero preferred graph padding.
+covered two-ended-marker fans through fourteen edges at zero preferred graph padding.
+When marked endpoint demand exceeds the shape-valid contacts reachable at the top or left canvas
+boundary, layout reserves an exterior reading margin and a turn cell. It translates the complete
+scene and coarse-grid origin together, preserving node dimensions, ranks, and group containment.
+Endpoints with multiple markers also account for the escape corridors of their unmarked ends.
+Different branches at one endpoint cannot stack marker heads along their pointing axis; parallel
+edges with the same directed node pair retain their independently owned contiguous marker chain.
 Colliding or congested node-to-node edges can additionally use terminal-cell search over every
 non-corner contact accepted by the endpoint shape, including across nested compound frames. This
 separates branch/merge heads and skip-edge lanes without changing Dagre ranks. Coarse-grid and

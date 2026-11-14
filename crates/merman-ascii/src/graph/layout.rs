@@ -7,6 +7,7 @@ use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 
+mod clearance;
 mod grid;
 mod groups;
 
@@ -160,7 +161,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
         execution,
     )?;
     checkpoint_layout(execution)?;
-    let (laid_out_groups, group_offset_x, group_offset_y) = if graph.groups.is_empty() {
+    let (mut laid_out_groups, group_offset_x, group_offset_y) = if graph.groups.is_empty() {
         (
             groups::LaidOutGroups {
                 items: Vec::new(),
@@ -181,14 +182,20 @@ pub(super) fn layout_graph_with_resources_and_execution(
             execution,
         )?
     };
+    let (exterior_x, exterior_y) = clearance::reserve_exterior_routing(
+        graph,
+        &mut nodes,
+        &mut laid_out_groups.items,
+        resources,
+    )?;
     let offset_x = nodes
         .first()
         .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
-        .unwrap_or(group_offset_x);
+        .unwrap_or(resources.checked_grid_add(group_offset_x, exterior_x)?);
     let offset_y = nodes
         .first()
         .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
-        .unwrap_or(group_offset_y);
+        .unwrap_or(resources.checked_grid_add(group_offset_y, exterior_y)?);
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
@@ -278,6 +285,54 @@ mod tests {
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_model::resources::ResourceProfile;
     use merman_model::{CancelReason, OperationControl, OperationPhase};
+
+    #[test]
+    fn dense_marked_fanout_translates_scene_and_grid_without_changing_node_dimensions() {
+        use crate::graph::model::GraphEdgeMarker;
+        for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("S", "SOURCE");
+            for index in 1..=12 {
+                let id = format!("N{index:02}");
+                graph.add_node(&id, &id);
+                graph.add_edge_with_attrs(
+                    "S",
+                    &id,
+                    GraphEdgeAttrs {
+                        start_marker: GraphEdgeMarker::Point,
+                        ..Default::default()
+                    },
+                );
+            }
+            let options = AsciiRenderOptions::ascii()
+                .with_graph_padding_x(0)
+                .with_graph_padding_y(0);
+            let marked = layout_graph(&graph, &options);
+            for edge in &mut graph.edges {
+                edge.start_marker = GraphEdgeMarker::Open;
+            }
+            let baseline = layout_graph(&graph, &options);
+            for (marked_node, base_node) in marked.nodes.iter().zip(&baseline.nodes) {
+                assert_eq!(
+                    (marked_node.width, marked_node.height, marked_node.grid),
+                    (base_node.width, base_node.height, base_node.grid)
+                );
+                assert_eq!(
+                    (marked_node.x, marked_node.y),
+                    (base_node.x + 2, base_node.y + 2)
+                );
+                let marked_coord = marked.grid_to_canvas(marked_node.grid);
+                let base_coord = baseline.grid_to_canvas(base_node.grid);
+                assert_eq!(
+                    marked_coord,
+                    CanvasCoord {
+                        x: base_coord.x + 2,
+                        y: base_coord.y + 2
+                    }
+                );
+            }
+        }
+    }
 
     fn compact_two_groups(direction: GraphDirection, nested: bool) -> GraphLayout {
         let mut graph = AsciiGraph::new(direction);
