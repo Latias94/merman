@@ -54,6 +54,9 @@ and visible connections, including when the preferred padding is zero. Edge spac
 envelopes use the same whitespace trimming as routed text; omitted blank labels reserve no label
 space.
 
+Labeled reciprocal parallel edges retain independent target heads. Opposite-directed edges may
+cross perpendicularly while keeping their collinear transit strokes separate.
+
 ## Explicitly Unsupported
 
 These features return `AsciiError::UnsupportedFeature` instead of silently dropping semantics:

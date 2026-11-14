@@ -782,9 +782,10 @@ impl<'layout> SceneOccupancy<'layout> {
                     // here so another lane can be tried before emission starts.
                     return Ok(false);
                 }
-                if reverse_pair && !shared_contact {
+                if reverse_pair && !shared_contact && !transverse {
                     // Opposite authored edges need distinct transit paths. Sharing the
-                    // same stroke would erase which edge owns each direction and label.
+                    // same stroke would erase which edge owns each direction and label;
+                    // a perpendicular crossing preserves both independent paths.
                     return Ok(false);
                 }
             }

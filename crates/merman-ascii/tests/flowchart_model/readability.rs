@@ -317,6 +317,32 @@ fn multiline_parallel_feedback_keeps_labels_and_heads_with_zero_preferred_paddin
 }
 
 #[test]
+fn labeled_parallel_reverse_edges_keep_independent_target_heads() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let source = format!(
+            "flowchart {direction}\nA[ENTRY] -->|send primary request| B[CHECK]\nB -->|first failure response| A\nA -->|send second request| B\nB -->|second failure response| A\n"
+        );
+        for options in readability_options() {
+            let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
+                panic!("labeled parallel reverse edges must keep independent heads ({direction}): {error}")
+            });
+            assert_labels_once(
+                &rendered,
+                &[
+                    "ENTRY",
+                    "CHECK",
+                    "send primary request",
+                    "send second request",
+                    "first failure response",
+                    "second failure response",
+                ],
+            );
+            assert_readable_target_heads(&rendered, 4);
+        }
+    }
+}
+
+#[test]
 fn long_labeled_mixed_feedback_keeps_every_label_and_target_head() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(
