@@ -151,7 +151,7 @@
       "id": "ascii-render",
       "description": "ASCII rendering source, copied fixtures, and behavior references.",
       "extends": [],
-      "components": ["beautiful-mermaid", "mermaid", "mermaid-ascii", "mermaid-rs-renderer"]
+      "components": ["beautiful-mermaid", "grok-build", "mermaid", "mermaid-ascii", "mermaid-rs-renderer"]
     },
     {
       "id": "web-analysis",
@@ -626,6 +626,31 @@
       ],
       "locks": [{"type": "repository", "repository_id": "graphlib"}],
       "notice": "dugong-graphlib is a modified Rust translation of the graph model used by Dagre."
+    },
+    {
+      "id": "grok-build",
+      "name": "Grok terminal Mermaid (xai-grok-markdown)",
+      "version": "0.1.0",
+      "source": {
+        "repository": "https://github.com/xai-org/grok-build",
+        "ref": "2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8",
+        "commit": "2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8",
+        "path": "crates/codegen/xai-grok-markdown/src/mermaid.rs"
+      },
+      "relationships": ["behavior-reference"],
+      "local_paths": ["crates/merman-ascii"],
+      "license_expression": "Apache-2.0",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/grok-build/LICENSE",
+          "sha256": "116f7778b9802e569b7fa3a532b17bd80eb13c67837def01eed093d4ea472f28",
+          "source_url": "https://raw.githubusercontent.com/xai-org/grok-build/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/LICENSE",
+          "source_path": "LICENSE",
+          "role": "license"
+        }
+      ],
+      "locks": [{"type": "repository", "repository_id": "grok-build"}],
+      "notice": "Grok's Apache-2.0 terminal Mermaid module is a behavior and presentation reference for terminal graph rendering. No Grok renderer, parser, test, or fixture implementation is included in distributed Merman artifacts. The separate MIT-licensed third_party/mermaid-to-svg component does not license this terminal module."
     },
     {
       "id": "katex-fonts",

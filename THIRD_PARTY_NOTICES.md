@@ -15,7 +15,7 @@ license or notice files. This inventory is engineering evidence, not legal advic
 
 ASCII rendering source, copied fixtures, and behavior references.
 
-Components: `beautiful-mermaid`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`.
+Components: `beautiful-mermaid`, `grok-build`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`.
 
 ### `cli-default`
 
@@ -69,19 +69,19 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Native C full SDK, including its ASCII source notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-math`
 
 Native C math SDK, including its ASCII source notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `sdk-native-standard`
 
 Native C standard SDK, including its ASCII source notices.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `fmin`, `graphlib`, `grok-build`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `sdk-cousine`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `sdk-standard`
 
@@ -93,7 +93,7 @@ Components: `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent
 
 Conservative repository source archive inventory covering every translated, copied, linked, embedded, fixture, and behavior-reference component recorded here.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `monaqa-tree-sitter-mermaid`, `non-layered-tidy-tree-layout`, `pappasam-tree-sitter-mermaid`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `singularity-tree-sitter-mermaid`, `tree-sitter-generator`, `tree-sitter-mermaid-mermaid-12-new-families`, `tree-sitter-mermaid-mermaid-baseline`, `tree-sitter-mermaid-zenuml-baseline`, `tree-sitter-templates`, `unicode-linebreak`, `venn-js`, `wasm-minimal-protocol`, `zenuml-core`.
 
 ### `tree-sitter-mermaid-source`
 
@@ -117,7 +117,7 @@ Components: `dompurify`, `mermaid`, `sanitize-url`, `zenuml-core`.
 
 Browser ASCII artifacts combining the core parser legal closure with the ASCII renderer's copied fixtures and behavior references.
 
-Components: `beautiful-mermaid`, `dompurify`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `sanitize-url`, `zenuml-core`.
+Components: `beautiful-mermaid`, `dompurify`, `grok-build`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `sanitize-url`, `zenuml-core`.
 
 ### `web-editor`
 
@@ -129,7 +129,7 @@ Components: `dompurify`, `mermaid`, `sanitize-url`, `zenuml-core`.
 
 Browser SDK including ASCII, Cytoscape, ELK and RaTeX math/font support.
 
-Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
+Components: `beautiful-mermaid`, `cose-base-v1`, `cose-base-v2`, `cytoscape`, `cytoscape-cose-bilkent`, `cytoscape-fcose`, `d3-path`, `d3-shape`, `dagre`, `dompurify`, `eclipse-elk`, `elkjs`, `fmin`, `graphlib`, `grok-build`, `katex-fonts`, `layout-base-v1`, `layout-base-v2`, `mermaid`, `mermaid-ascii`, `mermaid-rs-renderer`, `non-layered-tidy-tree-layout`, `ratex`, `rough-rs`, `roughjs`, `roxmltree-dom`, `sanitize-url`, `unicode-linebreak`, `venn-js`, `zenuml-core`.
 
 ### `web-render`
 
@@ -365,6 +365,22 @@ dugong-graphlib is a modified Rust translation of the graph model used by Dagre.
 - Local evidence: `crates/dugong-graphlib`
 - Legal files:
   - [`THIRD_PARTY_LICENSES/graphlib/LICENSE`](THIRD_PARTY_LICENSES/graphlib/LICENSE) (license, SHA-256 `6a349742a6cb219d5a2fc8d0844f6d89a6efc62e20c664450d884fc7ff2d6015`)
+
+### Grok terminal Mermaid (xai-grok-markdown) (`grok-build`)
+
+Grok's Apache-2.0 terminal Mermaid module is a behavior and presentation reference for terminal graph rendering. No Grok renderer, parser, test, or fixture implementation is included in distributed Merman artifacts. The separate MIT-licensed third_party/mermaid-to-svg component does not license this terminal module.
+
+- Version: `0.1.0`
+- Source: <https://github.com/xai-org/grok-build>
+- Source ref: `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`
+- Source commit: `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`
+- Source path: `crates/codegen/xai-grok-markdown/src/mermaid.rs`
+- Relationship: `behavior-reference`
+- License expression: `Apache-2.0`
+- Artifact scopes: `ascii-render`, `sdk-native-full`, `sdk-native-math`, `sdk-native-standard`, `source-archive`, `web-ascii`, `web-full`
+- Local evidence: `crates/merman-ascii`
+- Legal files:
+  - [`THIRD_PARTY_LICENSES/grok-build/LICENSE`](THIRD_PARTY_LICENSES/grok-build/LICENSE) (license, SHA-256 `116f7778b9802e569b7fa3a532b17bd80eb13c67837def01eed093d4ea472f28`)
 
 ### KaTeX fonts bundled by ratex-katex-fonts (`katex-fonts`)
 
