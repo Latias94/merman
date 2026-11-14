@@ -7,8 +7,8 @@ import re
 
 MIRROR = "https://mirrors.mit.edu"
 UBUNTU_URI = re.compile(
-    r"https?://(?:(?:azure\.archive|archive|security)\.ubuntu\.com/ubuntu"
-    r"|ports\.ubuntu\.com/ubuntu-ports)(?=/|\s|$)"
+    r"(?P<scheme>https?)://(?P<origin>(?:azure\.archive|archive|security)\.ubuntu\.com/ubuntu"
+    r"|ports\.ubuntu\.com/ubuntu-ports)/?(?=\s|$)"
 )
 APT_OPTIONS = '''Acquire::Retries "3";
 Acquire::http::Timeout "30";
@@ -18,21 +18,39 @@ APT::Update::Error-Mode "any";
 
 
 def configure_apt(root: Path = Path("/etc/apt")) -> None:
-    """Keep repository declarations and signing policy; replace known URI prefixes."""
+    """Prefer MIT with native APT failover; retain signing policy and original sources."""
+    # Runner-provided mirror lists already have native failover and may carry metadata.
+    # Prepend a preference instead of replacing their independent fallback hosts.
+    for path in sorted(root.glob("*mirrors*.txt")):
+        if path.name.startswith("merman-ci-") or not path.is_file():
+            continue
+        original = path.read_text(encoding="utf-8")
+        mirrors = dict.fromkeys(
+            f"{MIRROR}/{match['origin'].split('/', 1)[1]}\tpriority:0\n"
+            for match in UBUNTU_URI.finditer(original)
+        )
+        missing = "".join(line for line in mirrors if line not in original.splitlines(keepends=True))
+        if missing:
+            path.write_text(missing + original, encoding="utf-8")
+            print(f"Configured Ubuntu CI package mirrors in {path}")
+
+    def mirror_source(match: re.Match[str]) -> str:
+        host, archive = match["origin"].split("/", 1)
+        mirrors = root / f"merman-ci-{match['scheme']}-{host}-mirrors.txt"
+        mirrors.write_text(
+            f"{MIRROR}/{archive}\tpriority:1\n{match[0]}\tpriority:2\n",
+            encoding="utf-8",
+        )
+        return f"mirror+file:{mirrors.as_posix()}"
+
     sources = [root / "sources.list"]
     sources.extend(sorted((root / "sources.list.d").glob("*.list")))
     sources.extend(sorted((root / "sources.list.d").glob("*.sources")))
-    sources.extend(sorted(root.glob("*mirrors*.txt")))
     for path in sources:
         if not path.is_file():
             continue
         original = path.read_text(encoding="utf-8")
-        updated = UBUNTU_URI.sub(
-            lambda match: MIRROR + (
-                "/ubuntu-ports" if "/ubuntu-ports" in match[0] else "/ubuntu"
-            ),
-            original,
-        )
+        updated = UBUNTU_URI.sub(mirror_source, original)
         if updated != original:
             path.write_text(updated, encoding="utf-8")
             print(f"Configured Ubuntu CI package mirror in {path}")
