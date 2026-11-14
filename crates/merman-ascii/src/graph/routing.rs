@@ -22,6 +22,7 @@ mod label;
 mod occupancy;
 mod path;
 mod plan;
+mod terminal;
 #[cfg(test)]
 mod tests;
 
@@ -31,10 +32,12 @@ use label::{EdgeLabel, RoutedLabelCatalog, RoutedLabelCatalogPlan, draw_routed_l
 #[cfg(test)]
 use occupancy::allocate_marker_berths;
 #[cfg(test)]
+use occupancy::allocate_route_label_placements;
+#[cfg(test)]
 use occupancy::{MarkerCandidateDisposition, OccupiedRect, ProtectedKind};
 use occupancy::{
-    RouteCandidateScore, SceneOccupancy, allocate_committed_route_marker_berths,
-    allocate_route_label_placements,
+    RouteCandidateScore, SceneOccupancy, allocate_committed_route_labels,
+    allocate_committed_route_marker_berths,
 };
 #[cfg(test)]
 use path::StepDirection;
@@ -114,6 +117,7 @@ struct RouteOwner {
     canonical_edge_index: usize,
     from: String,
     to: String,
+    stroke: GraphEdgeStroke,
     boundary_group_indices: Vec<usize>,
 }
 
@@ -131,6 +135,7 @@ impl RouteOwner {
             canonical_edge_index,
             from: from.to_string(),
             to: to.to_string(),
+            stroke: GraphEdgeStroke::Normal,
             boundary_group_indices: Vec::new(),
         }
     }
@@ -357,7 +362,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         resources,
     )?;
     let canonical_edges = canonical_edges.values;
-    let mut routes = Vec::new();
+    let mut routes: Vec<PreparedRoute> = Vec::new();
     routes
         .try_reserve(canonical_edges.len())
         .map_err(|_| layout_allocation_failed())?;
@@ -380,8 +385,25 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         execution,
     )?;
 
+    let mut pending_self_loop_start = None::<usize>;
     for (edge_index, edge) in canonical_edges.iter().enumerate() {
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        if let Some(start) = pending_self_loop_start
+            && (edge.from != routes[start].owner.from || edge.from != edge.to)
+        {
+            // Parallel self-loops form one nested route batch. Place their labels after all
+            // return lanes are known, then protect the whole batch from subsequent edges.
+            for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+                allocate_committed_route_labels(
+                    route,
+                    route_index,
+                    &mut occupancy,
+                    resources,
+                    graph.diagram_type(),
+                )?;
+            }
+            pending_self_loop_start = None;
+        }
         if edge.stroke == super::model::GraphEdgeStroke::Invisible {
             continue;
         }
@@ -430,6 +452,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             canonical_edge_index: edge_index,
             from: edge.from.clone(),
             to: edge.to.clone(),
+            stroke: edge.stroke,
             boundary_group_indices,
         };
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
@@ -456,6 +479,25 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             {
                 selected = Some((score, candidate_index, plan));
             }
+        }
+        if topology.is_none()
+            && selected
+                .as_ref()
+                .is_none_or(|(score, _, _)| score.has_congestion())
+            && let Some((score, plan)) = terminal::plan_terminal_route(
+                request,
+                path::RouteObstacles {
+                    scene: &occupancy,
+                    routes: &routes,
+                    owner: &owner,
+                },
+                label_plans.descriptor(edge_index),
+                selected.as_ref().map(|(score, _, _)| *score),
+                resources,
+                execution,
+            )?
+        {
+            selected = Some((score, usize::MAX, plan));
         }
         let plan = match selected {
             Some((_, _, plan)) => plan,
@@ -494,11 +536,31 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             resources,
             graph.diagram_type(),
         )?;
+        if edge.from == edge.to {
+            pending_self_loop_start.get_or_insert(route_index);
+        } else {
+            allocate_committed_route_labels(
+                &mut routes[route_index],
+                route_index,
+                &mut occupancy,
+                resources,
+                graph.diagram_type(),
+            )?;
+        }
     }
 
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    allocate_route_label_placements(&mut routes, &mut occupancy, resources, graph.diagram_type())?;
-
+    if let Some(start) = pending_self_loop_start {
+        for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+            allocate_committed_route_labels(
+                route,
+                route_index,
+                &mut occupancy,
+                resources,
+                graph.diagram_type(),
+            )?;
+        }
+    }
     let mut width = 0;
     let mut height = 0;
     let mut planned_cell_count = 0usize;

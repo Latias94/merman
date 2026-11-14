@@ -22,6 +22,8 @@ mod marker;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 
+pub(super) use labels::allocate_committed_route_labels;
+#[cfg(test)]
 pub(super) use labels::allocate_route_label_placements;
 use labels::{label_anchor_contains, resolve_label_anchor, route_label_candidates};
 #[cfg(test)]
@@ -185,10 +187,18 @@ pub(super) struct RouteBounds {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct RouteCandidateScore {
+    target_port_reuse: usize,
+    ambiguous_shared_cells: usize,
     total_cost: usize,
     shared_cells: usize,
     cell_count: usize,
     marker_pressure: usize,
+}
+
+impl RouteCandidateScore {
+    pub(super) fn has_congestion(self) -> bool {
+        self.target_port_reuse != 0 || self.ambiguous_shared_cells != 0
+    }
 }
 
 impl RouteBounds {
@@ -327,14 +337,59 @@ pub(super) struct SceneOccupancy<'layout> {
     pub(super) route_cells: HashMap<CanvasCoord, RouteCellOccupancy>,
     pub(super) route_bounds: Vec<Option<RouteBounds>>,
     terminal_claims: HashMap<CanvasCoord, Vec<TerminalClaim>>,
+    target_ports: HashMap<(CanvasCoord, StepDirection), usize>,
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     labels: HashSet<CanvasCoord>,
     pub(super) protected: Vec<ProtectedGeometry<'layout>>,
     pub(super) label_lane_radius: usize,
     control: OperationControl,
+    occupied_extent: CanvasCoord,
 }
 
 impl<'layout> SceneOccupancy<'layout> {
+    pub(super) fn occupied_extent(&self) -> CanvasCoord {
+        self.occupied_extent
+    }
+    pub(super) fn target_port_usage(&self, attachment: super::plan::NodeAttachment) -> usize {
+        self.target_ports
+            .get(&(attachment.contact, attachment.outward))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub(super) fn route_cell_congestion(
+        &self,
+        existing_routes: &[PreparedRoute],
+        owner: &RouteOwner,
+        attachments: Option<NodeAttachments>,
+        coord: CanvasCoord,
+        resources: &mut ResourceContext,
+    ) -> Result<usize> {
+        let Some(occupied) = self.route_cells.get(&coord) else {
+            return Ok(0);
+        };
+        let mut penalty = 0;
+        for shared_owner in &occupied.owners {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            let existing = &existing_routes[shared_owner.route_index];
+            let shares_terminal_ray =
+                attachments
+                    .zip(existing.plan.attachments)
+                    .is_some_and(|(current, previous)| {
+                        (owner.from == existing.owner.from
+                            && current.start == previous.start
+                            && current.start.allows_escape(coord))
+                            || (owner.to == existing.owner.to
+                                && current.end == previous.end
+                                && current.end.allows_escape(coord))
+                    });
+            if !shares_terminal_ray {
+                penalty = resources.checked_work_add(penalty, 1)?;
+            }
+        }
+        Ok(penalty)
+    }
     pub(super) fn try_new_for_routes(
         graph_layout: &'layout GraphLayout,
         route_capacity: usize,
@@ -358,17 +413,20 @@ impl<'layout> SceneOccupancy<'layout> {
             route_cells: HashMap::default(),
             route_bounds: Vec::new(),
             terminal_claims: HashMap::default(),
+            target_ports: HashMap::default(),
             markers: HashMap::default(),
             labels: HashSet::default(),
             protected: Vec::new(),
             label_lane_radius,
             control: execution.cloned_control(),
+            occupied_extent: CanvasCoord { x: 0, y: 0 },
         };
         scene
             .route_bounds
             .try_reserve(route_capacity)
             .map_err(|_| layout_allocation_failed())?;
         try_reserve_hash_map(&mut scene.terminal_claims, marker_capacity)?;
+        try_reserve_hash_map(&mut scene.target_ports, route_capacity)?;
         try_reserve_hash_map(&mut scene.markers, marker_capacity)?;
         scene
             .labels
@@ -477,6 +535,7 @@ impl<'layout> SceneOccupancy<'layout> {
         diagram_type: &'static str,
     ) -> Result<Option<RouteCandidateScore>> {
         let mut shared_cells = 0usize;
+        let mut ambiguous_shared_cells = 0usize;
 
         for (_, cell) in plan.active_cells() {
             if !self.route_cell_is_clear(
@@ -484,13 +543,26 @@ impl<'layout> SceneOccupancy<'layout> {
                 owner,
                 plan.attachments,
                 cell.coord,
-                route_char_directions(cell.ch),
+                if cell.directions == 0 {
+                    route_char_directions(cell.ch)
+                } else {
+                    cell.directions
+                },
                 resources,
             )? {
                 return Ok(None);
             }
             if self.route_cells.contains_key(&cell.coord) {
                 shared_cells = resources.checked_work_add(shared_cells, 1)?;
+                let penalty = self.route_cell_congestion(
+                    existing_routes,
+                    owner,
+                    plan.attachments,
+                    cell.coord,
+                    resources,
+                )?;
+                ambiguous_shared_cells =
+                    resources.checked_work_add(ambiguous_shared_cells, penalty)?;
             }
         }
 
@@ -550,7 +622,12 @@ impl<'layout> SceneOccupancy<'layout> {
             cell_count = resources.checked_work_add(cell_count, 1)?;
         }
         let total_cost = resources.checked_work_add(cell_count, shared_cells)?;
+        let target_port_reuse = plan
+            .attachments
+            .map_or(0, |ports| self.target_port_usage(ports.end));
         Ok(Some(RouteCandidateScore {
+            ambiguous_shared_cells,
+            target_port_reuse,
             total_cost,
             shared_cells,
             cell_count,
@@ -571,6 +648,9 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
     ) -> Result<bool> {
         self.checkpoint_layout()?;
+        if self.labels.contains(&coord) {
+            return Ok(false);
+        }
         resources.charge_layout_work(self.protected.len().max(1))?;
         for (protected_index, protected) in self.protected.iter().enumerate() {
             self.checkpoint_layout_scan(protected_index)?;
@@ -668,6 +748,19 @@ impl<'layout> SceneOccupancy<'layout> {
                 let shared_contact = attachments.is_some_and(|ports| {
                     coord == ports.start.contact || coord == ports.end.contact
                 });
+                let existing_cell = &existing.plan.cells[shared_owner.cell.index()];
+                let existing_directions = if existing_cell.directions == 0 {
+                    route_char_directions(existing_cell.ch)
+                } else {
+                    existing_cell.directions
+                };
+                let transverse =
+                    super::cell::is_transverse_crossing(directions, existing_directions);
+                if owner.stroke != existing.owner.stroke && !shared_contact && !transverse {
+                    // A painted cell cannot retain two stroke identities. Reject the route
+                    // here so another lane can be tried before emission starts.
+                    return Ok(false);
+                }
                 if reverse_pair && !shared_contact {
                     // Opposite authored edges need distinct transit paths. Sharing the
                     // same stroke would erase which edge owns each direction and label.
@@ -932,6 +1025,14 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
     ) -> Result<()> {
         debug_assert_eq!(self.route_bounds.len(), route_index);
+        if let Some(ports) = route.plan.attachments {
+            resources.charge_layout_work(1)?;
+            let count = self
+                .target_ports
+                .entry((ports.end.contact, ports.end.outward))
+                .or_default();
+            *count = resources.checked_work_add(*count, 1)?;
+        }
         let mut bounds: Option<RouteBounds> = None;
         for (cell_index, cell) in route.plan.cells.iter().enumerate() {
             self.checkpoint_layout()?;
@@ -942,6 +1043,8 @@ impl<'layout> SceneOccupancy<'layout> {
             {
                 continue;
             }
+            self.occupied_extent.x = self.occupied_extent.x.max(cell.coord.x);
+            self.occupied_extent.y = self.occupied_extent.y.max(cell.coord.y);
             match &mut bounds {
                 Some(bounds) => bounds.include(cell.coord),
                 None => {
@@ -1390,6 +1493,14 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
     ) -> Result<()> {
         let footprint_cells = footprint.cell_count(resources)?;
+        self.occupied_extent.x = self
+            .occupied_extent
+            .x
+            .max(footprint.right.saturating_sub(1));
+        self.occupied_extent.y = self
+            .occupied_extent
+            .y
+            .max(footprint.bottom.saturating_sub(1));
         self.labels
             .try_reserve(footprint_cells)
             .map_err(|_| layout_allocation_failed())?;

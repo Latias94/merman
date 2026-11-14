@@ -1,6 +1,32 @@
 use super::*;
 
 #[test]
+fn flowchart_parser_ampersand_branch_merge_keeps_readable_target_heads() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        let source = format!("graph {direction}\nA --> B & C\nB --> C & D\nD --> C\n");
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            let rendered = render_flowchart(&source, &options)
+                .expect("ampersand branches and a shared sink should route");
+            assert_eq!(
+                rendered
+                    .chars()
+                    .filter(|ch| matches!(ch, '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼'))
+                    .count(),
+                5,
+                "all five edges must retain their target heads ({direction}):\n{rendered}"
+            );
+            for heads in [">>", "<<", "►►", "◄◄"] {
+                assert!(
+                    !rendered.contains(heads),
+                    "incoming edges should be traceable instead of stacking heads ({direction}):\n{rendered}"
+                );
+            }
+            assert_rectangular_terminal_grid(&rendered);
+        }
+    }
+}
+
+#[test]
 fn flowchart_parser_review_feedback_routes_around_both_branches() {
     let input = concat!(
         "flowchart LR\n",

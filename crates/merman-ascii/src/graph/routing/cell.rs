@@ -11,8 +11,10 @@ type Canvas<'surface> = dyn GraphSurface + 'surface;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RouteCellState {
     directions: u8,
-    stroke: GraphEdgeStroke,
     unicode: bool,
+    normal_directions: u8,
+    dotted_directions: u8,
+    heavy_directions: u8,
 }
 
 pub(crate) type RouteCells = HashMap<(usize, usize), RouteCellState>;
@@ -45,7 +47,18 @@ pub(super) fn set_route_cell_with_paint(
     let existing_route = route_cells.get(&(x, y)).copied();
     let merged_directions = match existing_route {
         Some(existing_route) => {
-            if existing_route.stroke != paint.stroke || existing_route.unicode != paint.unicode {
+            let incompatible = [
+                (GraphEdgeStroke::Normal, existing_route.normal_directions),
+                (GraphEdgeStroke::Dotted, existing_route.dotted_directions),
+                (GraphEdgeStroke::Thick, existing_route.heavy_directions),
+            ]
+            .into_iter()
+            .any(|(stroke, directions)| {
+                directions != 0
+                    && stroke != paint.stroke
+                    && !is_transverse_crossing(directions, incoming_directions)
+            });
+            if existing_route.unicode != paint.unicode || incompatible {
                 return Err(AsciiError::UnsupportedFeature {
                     diagram_type: paint.diagram_type,
                     feature: "mixed-stroke route junctions",
@@ -55,11 +68,37 @@ pub(super) fn set_route_cell_with_paint(
         }
         None => incoming_directions,
     };
+    let normal_directions = existing_route.map_or(0, |state| state.normal_directions)
+        | if paint.stroke == GraphEdgeStroke::Normal {
+            incoming_directions
+        } else {
+            0
+        };
+    let dotted_directions = existing_route.map_or(0, |state| state.dotted_directions)
+        | if paint.stroke == GraphEdgeStroke::Dotted {
+            incoming_directions
+        } else {
+            0
+        };
+    let heavy_directions = existing_route.map_or(0, |state| state.heavy_directions)
+        | if paint.stroke == GraphEdgeStroke::Thick {
+            incoming_directions
+        } else {
+            0
+        };
     let was_routed = existing_route.is_some();
     let merged = if is_marker(existing) {
         existing
     } else if was_routed {
-        stroke_route_char(paint.stroke, merged_directions, paint.unicode)
+        if usize::from(normal_directions != 0)
+            + usize::from(dotted_directions != 0)
+            + usize::from(heavy_directions != 0)
+            > 1
+        {
+            mixed_crossing_char(heavy_directions, paint.unicode)
+        } else {
+            stroke_route_char(paint.stroke, merged_directions, paint.unicode)
+        }
     } else {
         ch
     };
@@ -79,8 +118,10 @@ pub(super) fn set_route_cell_with_paint(
         (x, y),
         RouteCellState {
             directions: merged_directions,
-            stroke: paint.stroke,
             unicode: paint.unicode,
+            normal_directions,
+            dotted_directions,
+            heavy_directions,
         },
     );
     Ok(())
@@ -114,6 +155,25 @@ const DIR_HORIZONTAL: u8 = DIR_LEFT | DIR_RIGHT;
 const DIR_VERTICAL: u8 = DIR_UP | DIR_DOWN;
 const DIR_ALL: u8 = DIR_UP | DIR_RIGHT | DIR_DOWN | DIR_LEFT;
 
+pub(super) fn is_transverse_crossing(first: u8, second: u8) -> bool {
+    matches!(
+        (first, second),
+        (DIR_HORIZONTAL, DIR_VERTICAL) | (DIR_VERTICAL, DIR_HORIZONTAL)
+    )
+}
+
+fn mixed_crossing_char(heavy_directions: u8, unicode: bool) -> char {
+    if !unicode {
+        return '+';
+    }
+    match heavy_directions {
+        DIR_HORIZONTAL => '┿',
+        DIR_VERTICAL => '╂',
+        DIR_ALL => '╋',
+        _ => '┼',
+    }
+}
+
 pub(super) fn route_char_directions(ch: char) -> u8 {
     match ch {
         '-' | '=' | '.' | '─' | '┄' | '━' => DIR_HORIZONTAL,
@@ -126,7 +186,7 @@ pub(super) fn route_char_directions(ch: char) -> u8 {
         '┤' | '┥' | '┫' => DIR_UP | DIR_DOWN | DIR_LEFT,
         '┬' | '┰' | '┳' => DIR_RIGHT | DIR_DOWN | DIR_LEFT,
         '┴' | '┸' | '┻' => DIR_UP | DIR_RIGHT | DIR_LEFT,
-        '+' | '·' | '┼' | '╋' => DIR_ALL,
+        '+' | '·' | '┼' | '╋' | '┿' | '╂' => DIR_ALL,
         _ => 0,
     }
 }
@@ -280,7 +340,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_stroke_junction_is_rejected_without_overwriting_the_existing_route() {
+    fn mixed_stroke_overlap_is_rejected_without_overwriting_the_existing_route() {
         let mut canvas = RawCanvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
         let mut route_cells = RouteCells::default();
         set_route_cell_with_paint(
@@ -304,10 +364,10 @@ mod tests {
             &mut route_cells,
             0,
             0,
-            '│',
+            '┄',
             RouteCellPaint {
                 stroke: GraphEdgeStroke::Dotted,
-                directions: DIR_VERTICAL,
+                directions: DIR_HORIZONTAL,
                 unicode: true,
                 diagram_type: "flowchart",
                 color: CanvasColor::Role(AsciiColorRole::EdgeLine),
@@ -323,5 +383,41 @@ mod tests {
             }
         ));
         assert_eq!(canvas.get(0, 0), Some('─'));
+    }
+
+    #[test]
+    fn transverse_mixed_strokes_preserve_each_axis_in_any_paint_order() {
+        for (horizontal, vertical, expected) in [
+            (GraphEdgeStroke::Normal, GraphEdgeStroke::Dotted, '┼'),
+            (GraphEdgeStroke::Dotted, GraphEdgeStroke::Thick, '╂'),
+            (GraphEdgeStroke::Thick, GraphEdgeStroke::Normal, '┿'),
+        ] {
+            for reverse in [false, true] {
+                let mut canvas = RawCanvas::with_width_profile(1, 1, TerminalWidthProfile::Unicode);
+                let mut route_cells = RouteCells::default();
+                let mut strokes = [(horizontal, DIR_HORIZONTAL), (vertical, DIR_VERTICAL)];
+                if reverse {
+                    strokes.reverse()
+                }
+                for (stroke, directions) in [strokes[0], strokes[1], strokes[0]] {
+                    set_route_cell_with_paint(
+                        &mut canvas,
+                        &mut route_cells,
+                        0,
+                        0,
+                        stroke_route_char(stroke, directions, true),
+                        RouteCellPaint {
+                            stroke,
+                            directions,
+                            unicode: true,
+                            diagram_type: "flowchart",
+                            color: CanvasColor::Role(AsciiColorRole::EdgeLine),
+                        },
+                    )
+                    .expect("transverse crossings must also support another same-stroke owner");
+                }
+                assert_eq!(canvas.get(0, 0), Some(expected));
+            }
+        }
     }
 }

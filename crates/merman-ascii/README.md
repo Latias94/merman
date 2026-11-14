@@ -118,14 +118,23 @@ unless the caller explicitly overrides the corresponding family option. These ad
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
 
-Graph routing first keeps the existing deterministic route candidates. When every candidate for a
-node-to-node edge collides, it tries the cardinal port pairs on the same bounded coarse grid,
-checking each projected terminal cell against the scene's collision rules. This lets branching
-feedback edges avoid sibling nodes and previously committed arrows without changing already valid
-routes. Opposite authored edges retain separate transit paths; labels and target markers still
-require clear placements. Search work, frontier storage, and parent storage remain bounded by the
-existing routing margin and operation work budget, with cancellation checks during search and cell
-inspection. A graph with no safe route or marker berth still returns a structured diagnostic.
+Graph routing compares deterministic candidates using target-port congestion, ambiguous shared
+cells, and route length. Clear direct routes stay direct. Ordinary candidates retain all cardinal
+port combinations instead of discarding mixed horizontal/vertical choices before scene admission.
+For graphs without compound frames, a colliding or congested edge can additionally use terminal-cell
+search with a center and neighboring legal contacts on each node side. This separates branch/merge
+heads and skip-edge lanes without changing Dagre ranks. Optional improvement of an already valid
+route has a shared expansion cap across port pairs; required collision recovery remains bounded by
+the scene extent and operation work budget. Compound graphs retain their boundary-aware coarse-grid
+recovery. All attempts charge the same work ledger and observe cancellation.
+
+Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
+transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
+segments try another lane. Committed routes reserve their label footprints before subsequent
+edges are planned. Parallel self-loops reserve nested lane space before node projection and assign
+their labels as one route batch before unrelated edges are planned. A graph with no safe route,
+label placement, or independent marker berth still returns a structured diagnostic rather than a
+partial drawing.
 
 Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
 and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower

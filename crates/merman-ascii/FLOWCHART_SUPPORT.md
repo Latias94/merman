@@ -84,22 +84,29 @@ reference implementation is only an implementation aid.
 
 ## Known Limitations
 
-- When the ordinary route candidates collide, a bounded scene-aware grid search can route around
-  reserved nodes, reading margins, accepted labels, and endpoint markers. It reuses the ordinary
-  routing grid, work ledger, and final collision/marker checks. This admits review/retry feedback
-  branches, including wide Japanese labels, without changing an already valid canonical route.
-  Candidate exhaustion still produces `UnsupportedFeature`; resource or cancellation failures
-  remain terminal errors rather than a partial drawing.
+- Route candidates retain all cardinal port combinations. For graphs without compound frames,
+  collision or congestion can trigger terminal-cell search with center and neighboring legal
+  contacts on each side, preserving independent heads for four-to-six-way merges, branch/merge
+  graphs, skip edges, and mixed-stroke feedback. Clear direct routes remain direct, and Dagre ranks
+  do not change. Optional quality repair has a fixed expansion cap across port pairs; required
+  recovery is bounded by scene extent and the shared work ledger. Compound graphs retain their
+  boundary-aware coarse-grid recovery. Candidate exhaustion still produces `UnsupportedFeature`;
+  resource and cancellation failures remain terminal errors rather than a partial drawing.
 - LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains, branch layouts, same-rank merge/skip edges in either
   horizontal direction, bent cross-column downward edges, and right-side back-edge label lanes for
   the copied fixture set. Same-rank spans use direct horizontal ports when clear and when any
   label fits without covering an arrowhead; otherwise they use the shared bottom lane.
-- Endpoint markers are independently allocated even for same-glyph/same-color owners, and edge
-  labels use scene-level protected footprints with bounded local relocation. Route-body candidates,
-  legal shared segments, and mixed-stroke crossing ownership still need the remaining
-  `A-GRAPH-030` scene-allocation work; this does not yet claim arbitrary collision-free routing.
+- Endpoint markers are independently allocated even for same-glyph/same-color owners. Edge labels
+  are assigned and protected when their route is committed, so later routes cannot consume an
+  earlier label's berth. Parallel self-loops reserve nested lane space before node projection and
+  allocate their labels together after the batch's return lanes are known and before unrelated
+  edges are planned. Terminal-cell paths try their straight segments as label hosts in stable
+  length order. Transverse normal/dotted/thick crossings preserve each axis's stroke; Unicode uses
+  `┿` or `╂` when one axis is heavy. Incompatible mixed-stroke overlaps must use another lane.
+  Arbitrary dense routing, compound-frame terminal-cell search, and non-transverse mixed-stroke
+  junctions remain outside the admitted boundary.
 - Node ranks use the shared Dagre-compatible acyclic/nesting/ranker phases and retain `minlen`,
   cycle ownership, compound constraints, and root direction. Local subgraph direction transforms
   reapply forward cross-boundary rank constraints after moving the group block.
@@ -137,6 +144,7 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii graph_golden`
 - `cargo nextest run -p merman-ascii graph_fixture`
 - `cargo nextest run -p merman-ascii flowchart`
+- `cargo nextest run -p merman-ascii --features all-diagrams --test flowchart_model -E 'test(readability::)'`
 - `cargo nextest run -p merman-ascii --test viewport_characterization -j1`
 
 Golden tests compare against immutable copied `mermaid-ascii` fixtures for the supported subset. The

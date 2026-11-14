@@ -261,7 +261,7 @@ fn auto_requires_a_positive_viewport_and_string_helpers_cannot_supply_one() {
 }
 
 #[test]
-fn auto_unsupported_family_and_canonical_route_errors_remain_errors() {
+fn auto_unsupported_family_and_invalid_model_errors_remain_errors() {
     let options = AsciiRenderOptions::ascii().with_layout_profile(AsciiLayoutProfile::Auto);
     let state = parse_model("stateDiagram-v2\n[*] --> Ready\nReady --> [*]");
     assert!(matches!(
@@ -272,17 +272,64 @@ fn auto_unsupported_family_and_canonical_route_errors_remain_errors() {
         })
     ));
 
+    let mut invalid = parse_model("flowchart LR\nA --> B");
+    let merman_model::presentation::RenderSemanticModel::Flowchart(model) = &mut invalid else {
+        panic!("the fixture must be a flowchart");
+    };
+    model.edges[0].to = "missing".to_string();
+    for overflow in [
+        OverflowPolicy::Allow,
+        OverflowPolicy::Error,
+        OverflowPolicy::Fallback,
+    ] {
+        assert!(matches!(
+            render_model_report(
+                &invalid,
+                &options,
+                AsciiViewportPolicy::with_max_width(80).overflow(overflow)
+            ),
+            Err(AsciiError::UnsupportedFeature {
+                feature: "edges with missing endpoint nodes",
+                ..
+            })
+        ));
+    }
+}
+
+#[test]
+fn auto_renders_congested_labeled_fanout_without_losing_branches() {
     let fanout = parse_model(
         "flowchart LR\nA -->|description 0| N0\nA -->|description 1| N1\nA -->|description 2| N2\nA -->|description 3| N3\nA -->|description 4| N4\nA -->|description 5| N5",
     );
-    assert!(matches!(
-        render_model_report(
-            &fanout,
-            &options,
-            AsciiViewportPolicy::with_max_width(80).overflow(OverflowPolicy::Allow),
-        ),
-        Err(AsciiError::UnsupportedFeature { .. })
-    ));
+    let options = AsciiRenderOptions::ascii().with_layout_profile(AsciiLayoutProfile::Auto);
+    let output = render_model_report(&fanout, &options, AsciiViewportPolicy::with_max_width(80))
+        .expect("a previously congested six-way fanout should render through Auto");
+    assert!(!output.fallback.attempted);
+    assert_eq!(output.requested_layout_profile, AsciiLayoutProfile::Auto);
+    for index in 0..6 {
+        assert_eq!(
+            output.text.matches(&format!("description {index}")).count(),
+            1,
+            "{}",
+            output.text
+        );
+        assert_eq!(
+            output.text.matches(&format!("N{index}")).count(),
+            1,
+            "{}",
+            output.text
+        );
+    }
+    assert_eq!(
+        output
+            .text
+            .chars()
+            .filter(|ch| matches!(ch, '>' | '<' | 'v' | '^'))
+            .count(),
+        6,
+        "{}",
+        output.text
+    );
 }
 
 #[test]

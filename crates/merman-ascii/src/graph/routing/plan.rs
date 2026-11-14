@@ -19,6 +19,7 @@ mod compound;
 mod edges;
 mod grid;
 mod left_right;
+pub(super) mod orthogonal;
 mod same_rank;
 mod select;
 mod top_down;
@@ -511,6 +512,7 @@ impl RoutePlan {
     ) -> Result<Self> {
         for cell in &mut self.cells {
             let directions = match cell.kind {
+                PlannedRouteCellKind::RouteCell if cell.directions != 0 => cell.directions,
                 PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
                     super::cell::route_char_directions(cell.ch)
                 }

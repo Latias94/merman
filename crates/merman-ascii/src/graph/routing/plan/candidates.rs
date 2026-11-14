@@ -144,7 +144,7 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
     Ok(EdgeRouteCandidates::Routed(candidates))
 }
 
-const PORT_PAIRS: [(Port, Port); 8] = [
+const PORT_PAIRS: [(Port, Port); 16] = [
     (Port::Right, Port::Left),
     (Port::Left, Port::Right),
     (Port::Down, Port::Up),
@@ -153,6 +153,14 @@ const PORT_PAIRS: [(Port, Port); 8] = [
     (Port::Left, Port::Left),
     (Port::Down, Port::Down),
     (Port::Up, Port::Up),
+    (Port::Right, Port::Up),
+    (Port::Right, Port::Down),
+    (Port::Left, Port::Up),
+    (Port::Left, Port::Down),
+    (Port::Down, Port::Left),
+    (Port::Down, Port::Right),
+    (Port::Up, Port::Left),
+    (Port::Up, Port::Right),
 ];
 
 pub(in crate::graph::routing) fn plan_obstacle_aware_edge_route(
@@ -168,33 +176,30 @@ pub(in crate::graph::routing) fn plan_obstacle_aware_edge_route(
     }
     // Every cardinal port pair is considered once inside the existing finite routing margin.
     // Keep this search behind ordinary candidate admission so valid canonical output is stable.
-    const PORTS: [Port; 4] = [Port::Right, Port::Left, Port::Down, Port::Up];
     let mut selected = None;
-    for start in PORTS {
-        for end in PORTS {
-            execution.checkpoint(merman_model::OperationPhase::Layout)?;
-            let Some(plan) = plan_obstacle_aware_grid_route(
-                request,
-                PortPair::new(start, end),
-                obstacles,
-                label,
-                resources,
-                execution,
-            )?
-            else {
-                continue;
-            };
-            let Some((score, plan)) =
-                super::super::admit_route_candidate(request, obstacles, plan, resources)?
-            else {
-                continue;
-            };
-            if selected
-                .as_ref()
-                .is_none_or(|(best_score, _)| score < *best_score)
-            {
-                selected = Some((score, plan));
-            }
+    for (start, end) in PORT_PAIRS {
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        let Some(plan) = plan_obstacle_aware_grid_route(
+            request,
+            PortPair::new(start, end),
+            obstacles,
+            label,
+            resources,
+            execution,
+        )?
+        else {
+            continue;
+        };
+        let Some((score, plan)) =
+            super::super::admit_route_candidate(request, obstacles, plan, resources)?
+        else {
+            continue;
+        };
+        if selected
+            .as_ref()
+            .is_none_or(|(best_score, _)| score < *best_score)
+        {
+            selected = Some((score, plan));
         }
     }
     Ok(selected.map(|(_, plan)| plan))

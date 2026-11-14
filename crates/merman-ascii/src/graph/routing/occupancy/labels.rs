@@ -7,13 +7,13 @@ use crate::graph::routing::layout_allocation_failed;
 use crate::graph::routing::plan::{LabelAnchor, PlannedRouteSegment, RoutePlan};
 use crate::resource::ResourceContext;
 
+#[cfg(test)]
 pub(in crate::graph::routing) fn allocate_route_label_placements(
     routes: &mut [PreparedRoute],
     occupancy: &mut SceneOccupancy<'_>,
     resources: &mut ResourceContext,
     diagram_type: &'static str,
 ) -> Result<()> {
-    let lane_radius = occupancy.label_lane_radius;
     let label_count = routes.iter().try_fold(0usize, |count, route| {
         resources.checked_work_add(count, route.plan.labels.len())
     })?;
@@ -22,59 +22,66 @@ pub(in crate::graph::routing) fn allocate_route_label_placements(
     }
 
     for (route_index, route) in routes.iter_mut().enumerate() {
-        let label_len = route.plan.labels.len();
-        for label_index in 0..label_len {
-            let (original, line_count, unresolved_anchor) = {
-                let label = &route.plan.labels[label_index];
-                (label.placement, label.line_count(), label.anchor)
-            };
-            let original_rect = OccupiedRect::try_new(
-                original.x(),
-                original.y(),
-                original.width(),
-                line_count,
-                resources,
-            )?;
-            let anchor =
-                resolve_label_anchor(&route.plan, unresolved_anchor, original_rect, resources)?;
-            route.plan.labels[label_index].anchor = anchor;
-            let candidates = route_label_candidates(
-                original,
-                line_count,
-                anchor,
-                occupancy.route_bounds[route_index],
-                resources,
-                lane_radius,
-            )?;
-            let mut selected = None;
-            for candidate in candidates {
-                let candidate_rect = OccupiedRect::try_new(
-                    candidate.x(),
-                    candidate.y(),
-                    candidate.width(),
-                    line_count,
-                    resources,
-                )?;
-                if occupancy.label_candidate_is_clear(
-                    route_index,
-                    anchor,
-                    candidate_rect,
-                    resources,
-                )? {
-                    selected = Some((candidate, candidate_rect));
-                    break;
-                }
-            }
+        allocate_committed_route_labels(route, route_index, occupancy, resources, diagram_type)?;
+    }
+    Ok(())
+}
 
-            let Some((placement, footprint)) = selected else {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type,
-                    feature: "edge label placement exhausted after bounded route-local search",
-                });
-            };
-            route.plan.labels[label_index].placement = placement;
-            occupancy.occupy_label(footprint, resources)?;
+pub(in crate::graph::routing) fn allocate_committed_route_labels(
+    route: &mut PreparedRoute,
+    route_index: usize,
+    occupancy: &mut SceneOccupancy<'_>,
+    resources: &mut ResourceContext,
+    diagram_type: &'static str,
+) -> Result<()> {
+    let lane_radius = occupancy.label_lane_radius;
+    let label_len = route.plan.labels.len();
+    for label_index in 0..label_len {
+        let (original, line_count, unresolved_anchor) = {
+            let label = &route.plan.labels[label_index];
+            (label.placement, label.line_count(), label.anchor)
+        };
+        let original_rect = OccupiedRect::try_new(
+            original.x(),
+            original.y(),
+            original.width(),
+            line_count,
+            resources,
+        )?;
+        let anchor =
+            resolve_label_anchor(&route.plan, unresolved_anchor, original_rect, resources)?;
+        route.plan.labels[label_index].anchor = anchor;
+        let candidates = route_label_candidates(
+            original,
+            line_count,
+            anchor,
+            occupancy.route_bounds[route_index],
+            resources,
+            lane_radius,
+        )?;
+        let mut selected = None;
+        for candidate in candidates {
+            let candidate_rect = OccupiedRect::try_new(
+                candidate.x(),
+                candidate.y(),
+                candidate.width(),
+                line_count,
+                resources,
+            )?;
+            if occupancy.label_candidate_is_clear(route_index, anchor, candidate_rect, resources)? {
+                selected = Some((candidate, candidate_rect));
+                break;
+            }
         }
+
+        let Some((placement, footprint)) = selected else {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type,
+                feature: "edge label placement exhausted after bounded route-local search",
+            });
+        };
+        route.plan.labels[label_index].placement = placement;
+        occupancy.occupy_label(footprint, resources)?;
     }
     Ok(())
 }

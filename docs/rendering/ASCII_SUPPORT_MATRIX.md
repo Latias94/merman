@@ -80,7 +80,7 @@ readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
-| Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, nested groups, first-parent compound ownership, scene-level route occupancy, and a family-owned compact wrap policy. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense-route candidate policy, and mixed-stroke crossing ownership remain unsupported or incomplete; bounded fallback is a typed Plain compatibility projection, not clipped geometry. |
+| Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent branch/merge heads, normal/dotted/thick/invisible edge semantics, transverse mixed-stroke crossings, committed label reservations, subgraphs, nested groups, first-parent compound ownership, scene-level route occupancy, and family-owned Compact geometry. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense routing, compound-frame terminal-cell search, and non-transverse mixed-stroke junctions remain unsupported or incomplete; bounded fallback is a typed Plain compatibility projection, not clipped geometry. |
 | Swimlane | Partial | Diagrammatic | Yes | Uses the same terminal projection and admitted profiles as Flowchart while retaining its separate language and feature identity. | Shares Flowchart's geometry and presentation limits; terminal layout is independent of the SVG lane renderer. |
 | Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
 | State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | State is canonical-only and does not inherit Flowchart compact policy. Some presentation metadata and future shape variants are approximated; bounded fallback is a typed Plain compatibility projection. |
@@ -184,10 +184,10 @@ parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative
 
 | Fixture | Layout | Extent | Blank cells | Longest blank run |
 | --- | --- | ---: | ---: | ---: |
-| Issue #53 Flowchart | canonical | `74×57` | 3220 | 51 |
-| Issue #53 Flowchart | compact | `56×67` | 2910 | 41 |
-| Sequence self-messages/notes | canonical | `82×58` | 3227 | 20 |
-| Sequence self-messages/notes | compact | `78×58` | 2982 | 21 |
+| Issue #53 Flowchart | canonical | `74×57` | 3163 | 51 |
+| Issue #53 Flowchart | compact | `56×67` | 2854 | 41 |
+| Sequence self-messages/notes | canonical | `107×58` | 4681 | 41 |
+| Sequence self-messages/notes | compact | `105×58` | 4567 | 41 |
 
 These values are characterization evidence, not universal quality scores. Admission still requires
 complete authored-field retention and typed overflow behavior; a narrower result that drops a field

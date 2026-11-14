@@ -279,6 +279,13 @@ fn layout_left_right_grid_nodes(
         resources,
     )?;
 
+    reserve_parallel_self_loop_lanes(
+        graph,
+        &placements,
+        &mut column_widths,
+        &mut row_heights,
+        resources,
+    )?;
     let coord_by_id = node_coords_by_id(graph, &placements)?;
     for (index, edge) in graph.edges.iter().enumerate() {
         checkpoint_layout(execution, index)?;
@@ -591,6 +598,13 @@ fn layout_top_down_grid_nodes(
         resources,
     )?;
 
+    reserve_parallel_self_loop_lanes(
+        graph,
+        &placements,
+        &mut column_widths,
+        &mut row_heights,
+        resources,
+    )?;
     let index_by_id = node_indices_by_id(graph)?;
     for (index, edge) in graph.edges.iter().enumerate() {
         checkpoint_layout(execution, index)?;
@@ -672,6 +686,59 @@ fn reserve_leaf_group_rank_axis_sizes(
             }
             GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
         }
+    }
+    Ok(())
+}
+
+fn reserve_parallel_self_loop_lanes(
+    graph: &AsciiGraph,
+    placements: &[GridCoord],
+    column_widths: &mut AxisSizes,
+    row_heights: &mut AxisSizes,
+    resources: &ResourceContext,
+) -> Result<()> {
+    resources.charge_layout_work(graph.edges.len())?;
+    let mut loop_counts = HashMap::<&str, usize>::default();
+    for edge in &graph.edges {
+        resources.checkpoint()?;
+        if edge.from == edge.to && edge.stroke.is_visible() {
+            if !loop_counts.contains_key(edge.from.as_str()) {
+                try_reserve_hash_map(&mut loop_counts, 1)?;
+            }
+            let count = loop_counts.entry(edge.from.as_str()).or_default();
+            *count = resources.checked_work_add(*count, 1)?;
+        }
+    }
+    if loop_counts.is_empty() {
+        return Ok(());
+    }
+    resources.charge_layout_work(graph.nodes.len())?;
+    for (node, coord) in graph.nodes.iter().zip(placements) {
+        resources.checkpoint()?;
+        let count = loop_counts
+            .get(node.id.as_str())
+            .copied()
+            .unwrap_or_default();
+        if count <= 1 {
+            continue;
+        }
+        // The first right lane uses the midpoint to its next neighbor; subsequent loops
+        // extend two cells past that midpoint. Reserve both halves of this offset plus
+        // reading clearance. Bottom lanes instead start two cells below the node.
+        let outer_offset = resources.checked_grid_mul(count - 1, 2)?;
+        let horizontal_gap =
+            resources.checked_grid_add(resources.checked_grid_mul(outer_offset, 2)?, 2)?;
+        let vertical_gap = resources.checked_grid_add(resources.checked_grid_mul(count, 2)?, 1)?;
+        set_axis_size(
+            column_widths,
+            resources.checked_grid_add(coord.x, 3)?,
+            horizontal_gap,
+        );
+        set_axis_size(
+            row_heights,
+            resources.checked_grid_add(coord.y, 3)?,
+            vertical_gap,
+        );
     }
     Ok(())
 }

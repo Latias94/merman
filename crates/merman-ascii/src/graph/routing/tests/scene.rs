@@ -211,6 +211,137 @@ fn prepared_route_scene_prefers_a_clear_direct_route_over_extra_marker_berths() 
 }
 
 #[test]
+fn branching_chain_keeps_converging_edges_on_distinct_target_ports() {
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let charset = GraphCharset::for_options(&options);
+        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+        for id in ["A", "B", "C", "D"] {
+            graph.add_node(id, id);
+        }
+        for (from, to) in [("A", "B"), ("A", "C"), ("B", "C"), ("B", "D"), ("D", "C")] {
+            graph.add_edge(from, to);
+        }
+        let layout = layout_graph(&graph, &options);
+        let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset)
+            .expect("a branching chain should retain all five routes");
+        assert_eq!(scene.routes.len(), 5);
+        let contacts = scene
+            .routes
+            .iter()
+            .filter(|route| route.owner.to == "C")
+            .map(|route| route.plan.attachments.unwrap().end.contact)
+            .collect::<rustc_hash::FxHashSet<_>>();
+        assert_eq!(
+            contacts.len(),
+            3,
+            "independent incoming edges should use distinct ports before stacking markers"
+        );
+    }
+}
+
+#[test]
+fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for id in ["A", "B", "C", "D"] {
+        graph.add_node(id, id);
+    }
+    for (from, to) in [("A", "B"), ("A", "C"), ("B", "C"), ("B", "D"), ("D", "C")] {
+        graph.add_edge(from, to);
+    }
+    let layout = layout_graph(&graph, &options);
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut measured = ResourceContext::new(policy);
+    let expected =
+        prepare_route_scene_with_resources(&graph, &layout, &graph.edges, &charset, &mut measured)
+            .unwrap()
+            .materialize(&measured)
+            .unwrap();
+    let exact = measured.layout_work_used();
+    let mut admitted = ResourceContext::new(
+        policy
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
+            .unwrap(),
+    );
+    let actual =
+        prepare_route_scene_with_resources(&graph, &layout, &graph.edges, &charset, &mut admitted)
+            .unwrap()
+            .materialize(&admitted)
+            .unwrap();
+    assert_eq!(
+        route_scene_signature(&actual),
+        route_scene_signature(&expected)
+    );
+    assert_eq!(admitted.layout_work_used(), exact);
+    let mut rejected = ResourceContext::new(
+        policy
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+            .unwrap(),
+    );
+    let error = match prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &charset,
+        &mut rejected,
+    )
+    .and_then(|plan| plan.materialize(&rejected))
+    {
+        Ok(_) => panic!("terminal port repair must charge all attempted work"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
+}
+
+#[test]
+fn terminal_cell_search_observes_cancellation_inside_the_frontier() {
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &options);
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let from = endpoint_layout(&layout, "a", &charset).unwrap();
+    let to = endpoint_layout(&layout, "b", &charset).unwrap();
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &from,
+        to: &to,
+        edge_index: 0,
+        edge: &graph.edges[0],
+        charset: &charset,
+    };
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(3);
+    let error = match terminal::plan_terminal_route(
+        request,
+        path::RouteObstacles {
+            scene: &occupancy,
+            routes: &[],
+            owner: &owner,
+        },
+        None,
+        None,
+        &mut resources,
+        AsciiExecution::new(&control, &policy),
+    ) {
+        Ok(_) => panic!("the terminal search must cancel before returning a route"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, AsciiError::Cancelled(cancelled)
+        if cancelled.phase == OperationPhase::Layout && cancelled.reason == CancelReason::Requested));
+}
+
+#[test]
 fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
     let options = AsciiRenderOptions::unicode();
     let charset = GraphCharset::for_options(&options);

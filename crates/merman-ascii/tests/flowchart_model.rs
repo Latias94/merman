@@ -218,6 +218,8 @@ mod direction_and_labels;
 mod edges;
 #[path = "flowchart_model/graph_routing.rs"]
 mod graph_routing;
+#[path = "flowchart_model/readability.rs"]
+mod readability;
 #[path = "flowchart_model/shapes.rs"]
 mod shapes;
 #[path = "flowchart_model/subgraphs.rs"]
