@@ -144,6 +144,14 @@ Native-font measurement has its own per-operation provider limit, separate from
 `RenderResourcePolicy`. Its default is 16,384 uncached, nonempty shaping probes;
 cache hits do not consume it. One text label may require several probes for wrapping
 and different measurement operations, so this is not a table or label count.
+Successful metrics and proven missing-glyph results share the same operation-local
+cache and its entry/byte limits. Missing-glyph caching applies to explicit font sets
+and bounded metadata discovery, whose candidates stay fixed; experimental platform
+queries continue to retry missing coverage. A cached missing-glyph probe follows
+the same coverage policy: it declines to the configured fallback, or fails when
+strict glyph coverage is enabled, without consuming another shaping probe.
+When the cache is disabled or full, uncached requests continue to consume the
+measurement allowance.
 Changing the render profile, including `unbounded_for_trusted_input()`, does not
 raise this font limit.
 

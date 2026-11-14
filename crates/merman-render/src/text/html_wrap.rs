@@ -4,6 +4,17 @@ use super::line_break::{HtmlBreakKind, html_break_spaces_segments_with_metadata_
 use crate::environment::BuiltinHtmlLineWidth;
 use std::ops::Range;
 
+#[cfg(test)]
+thread_local! {
+    // Explicit candidate content writes; excludes allocator moves and measurement callbacks.
+    static CANDIDATE_WRITTEN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn record_candidate_write(bytes: usize) {
+    CANDIDATE_WRITTEN_BYTES.with(|written| written.set(written.get() + bytes));
+}
+
 pub(super) fn html_line_text_with_break(
     text: &str,
     selected_break: bool,
@@ -12,7 +23,11 @@ pub(super) fn html_line_text_with_break(
         return std::borrow::Cow::Borrowed(text);
     }
     let mut selected = text.strip_suffix('\u{00ad}').unwrap_or(text).to_owned();
+    #[cfg(test)]
+    record_candidate_write(selected.len());
     selected.push('-');
+    #[cfg(test)]
+    record_candidate_write(1);
     std::borrow::Cow::Owned(selected)
 }
 
@@ -280,6 +295,8 @@ impl Candidate {
             }
             self.source_start.get_or_insert(offset + relative);
             self.text.push(ch);
+            #[cfg(test)]
+            record_candidate_write(ch.len_utf8());
             if let Some(width) = &mut self.width {
                 width.push_text(ch.encode_utf8(&mut [0; 4]));
             }
@@ -316,6 +333,8 @@ impl Candidate {
         // SHY has no unselected glyph, but its control boundary still participates in shaping.
         // Removing it here would join otherwise independent combining or ZWJ sequences.
         self.text.push_str(text);
+        #[cfg(test)]
+        record_candidate_write(text.len());
         if let Some(width) = &mut self.width {
             width.push_text(text);
         }
@@ -327,7 +346,8 @@ impl Candidate {
     }
 
     fn measured<E>(
-        &self,
+        text: &mut String,
+        source_start: Option<usize>,
         end: usize,
         state: &Option<BuiltinHtmlLineWidth>,
         hyphen: bool,
@@ -342,27 +362,48 @@ impl Candidate {
             }
             width.width_px()
         } else if hyphen {
-            let start = self.source_start.unwrap_or(0);
-            measure(
-                &html_line_text_with_break(&self.text[..end], true),
-                start..start + end,
-                true,
-            )?
+            let start = source_start.unwrap_or(0);
+            if end == text.len() {
+                // Selected atoms end here. Restore the source control before propagating errors.
+                let soft_hyphen = text.ends_with('\u{00ad}');
+                if soft_hyphen {
+                    text.truncate(end - '\u{00ad}'.len_utf8());
+                }
+                text.push('-');
+                #[cfg(test)]
+                record_candidate_write(1);
+                let result = measure(text, start..start + end, true);
+                text.pop();
+                if soft_hyphen {
+                    text.push('\u{00ad}');
+                    #[cfg(test)]
+                    record_candidate_write('\u{00ad}'.len_utf8());
+                }
+                result?
+            } else {
+                measure(
+                    &html_line_text_with_break(&text[..end], true),
+                    start..start + end,
+                    true,
+                )?
+            }
         } else {
-            let start = self.source_start.unwrap_or(0);
-            measure(&self.text[..end], start..start + end, false)?
+            let start = source_start.unwrap_or(0);
+            measure(&text[..end], start..start + end, false)?
         };
         checkpoint()?;
         Ok(result)
     }
 
     fn fit_width<E>(
-        &self,
+        &mut self,
         hyphen: bool,
         measure: &mut impl FnMut(&str, Range<usize>, bool) -> Result<f64, E>,
         checkpoint: &mut impl FnMut() -> Result<(), E>,
     ) -> Result<f64, E> {
-        self.measured(
+        Self::measured(
+            &mut self.text,
+            self.source_start,
             self.non_hanging,
             &self.non_hanging_width,
             hyphen,
@@ -387,6 +428,8 @@ impl Candidate {
                 self.text.truncate(self.text.len() - '\u{00ad}'.len_utf8());
             }
             self.text.push('-');
+            #[cfg(test)]
+            record_candidate_write(1);
         }
         // Final measurement uses the same backend contract as natural-width measurement.
         checkpoint()?;
@@ -397,7 +440,9 @@ impl Candidate {
             && self.non_hanging < self.trimmed
             && (!conditional || limit.is_some_and(|limit| width > limit));
         let alignment_width = if hangs {
-            self.measured(
+            Self::measured(
+                &mut self.text,
+                self.source_start,
                 self.non_hanging,
                 &self.non_hanging_width,
                 false,
@@ -450,7 +495,9 @@ pub(crate) fn plan_html_lines_with_ranges<E>(
         checkpoint()?;
         let mut whole = Candidate::new(builtin.clone());
         whole.append(raw, source, base, checkpoint)?;
-        let natural = whole.measured(
+        let natural = Candidate::measured(
+            &mut whole.text,
+            whole.source_start,
             whole.trimmed,
             &whole.trimmed_width,
             false,
@@ -577,7 +624,145 @@ pub(crate) fn plan_html_lines_with_ranges<E>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::{Cell, RefCell};
     use std::convert::Infallible;
+
+    #[test]
+    fn soft_hyphen_candidate_construction_writes_scale_with_input_bytes() {
+        for count in [64, 256, 1024] {
+            let text = "a\u{00ad}".repeat(count);
+            let source = NormalizedHtmlText::single_mode(&text, HtmlWhiteSpace::BreakSpaces);
+            CANDIDATE_WRITTEN_BYTES.with(|written| written.set(0));
+            let lines = plan_html_lines(
+                &source,
+                Some((count / 2) as f64),
+                None,
+                &mut |candidate| {
+                    Ok::<_, Infallible>(
+                        candidate.chars().filter(|ch| *ch != '\u{00ad}').count() as f64
+                    )
+                },
+                &mut || Ok(()),
+            )
+            .unwrap();
+            let written = CANDIDATE_WRITTEN_BYTES.with(Cell::get);
+            assert_eq!(
+                lines
+                    .iter()
+                    .map(|line| line.text.chars().filter(|ch| *ch == 'a').count())
+                    .sum::<usize>(),
+                count,
+            );
+            assert!(
+                written <= 8 * text.len(),
+                "input_bytes={}, candidate_written_bytes={written}",
+                text.len(),
+            );
+        }
+    }
+
+    #[test]
+    fn soft_hyphen_candidates_restore_text_and_preserve_error_events() {
+        #[derive(Debug, PartialEq, Eq)]
+        enum Event {
+            Check,
+            Measure(String, Range<usize>, bool),
+        }
+
+        let text = "x\u{00ad}f\u{00ad}";
+        let source = NormalizedHtmlText::single_mode(text, HtmlWhiteSpace::BreakSpaces);
+        for (fail_at, callback_error) in [(0, false), (1, false), (2, false), (0, true)] {
+            let mut candidate = Candidate::new(None);
+            candidate
+                .append(text, &source, 0, &mut || Ok::<_, &str>(()))
+                .unwrap();
+            assert_eq!(candidate.non_hanging, candidate.text.len());
+            let events = RefCell::new(Vec::new());
+            let checks = Cell::new(0);
+            let mut measure = |value: &str, range: Range<usize>, selected| {
+                events
+                    .borrow_mut()
+                    .push(Event::Measure(value.to_string(), range, selected));
+                if callback_error {
+                    Err("measurement failed")
+                } else {
+                    Ok(if selected { 17.0 } else { 9.0 })
+                }
+            };
+            let mut checkpoint = || {
+                events.borrow_mut().push(Event::Check);
+                checks.set(checks.get() + 1);
+                if checks.get() == fail_at {
+                    Err("canceled")
+                } else {
+                    Ok(())
+                }
+            };
+            let result = candidate.fit_width(true, &mut measure, &mut checkpoint);
+            assert_eq!(candidate.text, text);
+            assert_eq!(candidate.trimmed, text.len());
+            assert_eq!(candidate.non_hanging, text.len());
+            let selected = Event::Measure("x\u{00ad}f-".to_string(), 0..text.len(), true);
+            if fail_at == 1 {
+                assert_eq!(result, Err("canceled"));
+                assert_eq!(*events.borrow(), [Event::Check]);
+            } else if callback_error {
+                assert_eq!(result, Err("measurement failed"));
+                assert_eq!(*events.borrow(), [Event::Check, selected]);
+            } else if fail_at == 2 {
+                assert_eq!(result, Err("canceled"));
+                assert_eq!(*events.borrow(), [Event::Check, selected, Event::Check]);
+            } else {
+                assert_eq!(result, Ok(17.0));
+                assert_eq!(
+                    candidate.fit_width(false, &mut measure, &mut checkpoint),
+                    Ok(9.0),
+                );
+                assert_eq!(
+                    *events.borrow(),
+                    [
+                        Event::Check,
+                        selected,
+                        Event::Check,
+                        Event::Check,
+                        Event::Measure(text.to_string(), 0..text.len(), false),
+                        Event::Check,
+                    ],
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn selected_hyphen_measurement_keeps_general_prefixes_and_trailing_text() {
+        let text = "a\u{00ad}b ";
+        let source = NormalizedHtmlText::single_mode(text, HtmlWhiteSpace::BreakSpaces);
+        let mut candidate = Candidate::new(None);
+        candidate
+            .append(text, &source, 0, &mut || Ok::<_, Infallible>(()))
+            .unwrap();
+        for (end, expected) in [(1, "a-"), (3, "a-"), (text.len(), "a\u{00ad}b -")] {
+            let mut probes = Vec::new();
+            assert_eq!(
+                Candidate::measured(
+                    &mut candidate.text,
+                    candidate.source_start,
+                    end,
+                    &None,
+                    true,
+                    &mut |value, range, selected| {
+                        probes.push((value.to_string(), range, selected));
+                        Ok::<_, Infallible>(7.0)
+                    },
+                    &mut || Ok(()),
+                )
+                .unwrap(),
+                7.0,
+            );
+            assert_eq!(probes, [(expected.to_string(), 0..end, true)]);
+            assert_eq!(candidate.text, text);
+        }
+    }
 
     fn plan(parts: &[(&str, HtmlWhiteSpace)], limit: f64) -> Vec<PlannedHtmlLine> {
         let mut source = NormalizedHtmlText::default();

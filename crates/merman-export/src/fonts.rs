@@ -54,8 +54,9 @@ pub struct NativeFontLimits {
     pub max_directory_depth: usize,
     pub max_label_bytes: usize,
     /// Maximum uncached, nonempty shaping probes within one operation (default: 16384).
-    /// Cache hits do not consume this budget. This provider limit is independent of render
-    /// resource profiles; set it with `NativeFontOptions::with_limits` before loading fonts.
+    /// Cached metrics and missing-glyph outcomes do not consume this budget. This provider limit
+    /// is independent of render resource profiles; set it with `NativeFontOptions::with_limits`
+    /// before loading fonts.
     pub max_measurements: usize,
     pub max_cache_entries: usize,
     pub max_cache_bytes: usize,
@@ -323,7 +324,8 @@ struct FontContextInner {
 #[derive(Default)]
 struct MeasurementState {
     strict_glyph_coverage: bool,
-    cache: BTreeMap<String, NativeMetrics>,
+    // None records proven missing glyph coverage for the same complete probe and font context.
+    cache: BTreeMap<String, Option<NativeMetrics>>,
     cache_bytes: usize,
     measurements: usize,
     selected_faces: BTreeSet<String>,
@@ -1245,7 +1247,7 @@ impl NativeFontContext {
         })?;
         self.checkpoint(control)?;
         if let Some(&metrics) = state.cache.get(&key) {
-            return Ok(metrics);
+            return metrics.ok_or(NativeFontError::MissingGlyphCoverage);
         }
         state.measurements = state.measurements.saturating_add(1);
         check_limit(
@@ -1253,18 +1255,63 @@ impl NativeFontContext {
             state.measurements,
             self.0.limits.max_measurements,
         )?;
-        self.shape_uncached(
+        let result = self.shape_uncached(
             text,
             style,
             control,
-            key,
             &mut state,
             ProbeSemantics {
                 preserve,
                 tspan_preserve,
                 baseline,
             },
-        )
+        );
+        let cacheable = match &result {
+            Ok(metrics) => Some(Some(*metrics)),
+            Err(NativeFontError::MissingGlyphCoverage) if self.cache_missing_glyph_coverage() => {
+                Some(None)
+            }
+            Err(_) => None,
+        };
+        if let Some(metrics) = cacheable {
+            let bytes = key
+                .len()
+                .saturating_add(std::mem::size_of::<Option<NativeMetrics>>());
+            if state.cache.len() < self.0.limits.max_cache_entries
+                && bytes
+                    <= self
+                        .0
+                        .limits
+                        .max_cache_bytes
+                        .saturating_sub(state.cache_bytes)
+            {
+                state.cache_bytes += bytes;
+                state.cache.insert(key, metrics);
+            }
+        }
+        result
+    }
+
+    fn cache_missing_glyph_coverage(&self) -> bool {
+        // Platform queries do not promise a frozen candidate set. Only fixed font inputs or
+        // bounded metadata discovery can prove that the same probe will keep missing coverage.
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        {
+            !matches!(
+                self.0.discovery.as_ref(),
+                Some(resolver::DiscoveryProvider::Platform { .. })
+            )
+        }
+        #[cfg(not(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        )))]
+        {
+            true
+        }
     }
 
     fn check_label(&self, text: &str, style: &TextStyle) -> Result<(), NativeFontError> {
@@ -1282,7 +1329,6 @@ impl NativeFontContext {
         text: &str,
         style: &TextStyle,
         control: &OperationControl,
-        key: String,
         state: &mut MeasurementState,
         semantics: ProbeSemantics,
     ) -> Result<NativeMetrics, NativeFontError> {
@@ -1417,19 +1463,6 @@ impl NativeFontContext {
             return Err(NativeFontError::Measurement(
                 "non-finite native text metrics".to_owned(),
             ));
-        }
-        if state.cache.len() < self.0.limits.max_cache_entries
-            && key
-                .len()
-                .saturating_add(std::mem::size_of::<NativeMetrics>())
-                <= self
-                    .0
-                    .limits
-                    .max_cache_bytes
-                    .saturating_sub(state.cache_bytes)
-        {
-            state.cache_bytes += key.len() + std::mem::size_of::<NativeMetrics>();
-            state.cache.insert(key, metrics);
         }
         self.checkpoint(control)?;
         Ok(metrics)
@@ -1601,6 +1634,150 @@ mod tests {
             })
             .unwrap();
         assert!(matches!(result, Some(HostTextMeasurement::Length(width)) if width > 0.0));
+    }
+
+    #[test]
+    fn repeated_missing_glyph_probes_share_the_bounded_measurement_cache() {
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+            )
+            .with_limits(NativeFontLimits {
+                max_measurements: 1,
+                ..Default::default()
+            })
+            .load(&control)
+            .unwrap();
+        let style = TextStyle {
+            font_family: Some("Cousine".to_owned()),
+            ..TextStyle::default()
+        };
+        let request = HostTextMeasurementRequest {
+            operation: TextMeasurementOperation::TitleBBoxX,
+            phase: TextMeasurementPhase::SvgBBox,
+            text: "\u{10ffff}",
+            style: &style,
+            max_width: None,
+            wrap_mode: WrapMode::SvgLike,
+        };
+        for _ in 0..3 {
+            assert!(context.measure(request).unwrap().is_none());
+        }
+        let state = context.0.state.lock().unwrap();
+        assert_eq!(state.measurements, 1);
+        assert_eq!(state.cache.len(), 1);
+        assert!(state.cache.values().all(Option::is_none));
+        assert!(state.cache_bytes > request.text.len());
+        assert!(state.cache_bytes <= context.0.limits.max_cache_bytes);
+        drop(state);
+        context.check().unwrap();
+
+        let fresh = context.for_operation(&OperationControl::new());
+        assert!(fresh.0.state.lock().unwrap().cache.is_empty());
+        assert!(fresh.measure(request).unwrap().is_none());
+        assert_eq!(fresh.0.state.lock().unwrap().measurements, 1);
+
+        control.cancel();
+        assert!(context.measure(request).is_err());
+        assert_eq!(context.0.state.lock().unwrap().measurements, 1);
+        assert!(matches!(
+            context.check(),
+            Err(NativeFontError::Operation(_))
+        ));
+        fresh.check().unwrap();
+    }
+
+    #[test]
+    fn missing_glyph_cache_respects_entry_and_byte_limits() {
+        for (max_cache_entries, max_cache_bytes, warm_success) in
+            [(0, 4096, false), (4, 0, false), (1, 4096, true)]
+        {
+            let control = OperationControl::new();
+            let context = NativeFontOptions::default()
+                .with_font_file(
+                    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+                )
+                .with_limits(NativeFontLimits {
+                    max_cache_entries,
+                    max_cache_bytes,
+                    max_measurements: 1 + usize::from(warm_success),
+                    ..Default::default()
+                })
+                .load(&control)
+                .unwrap();
+            let style = TextStyle {
+                font_family: Some("Cousine".to_owned()),
+                ..TextStyle::default()
+            };
+            let request = HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::TitleBBoxX,
+                phase: TextMeasurementPhase::SvgBBox,
+                text: "\u{10ffff}",
+                style: &style,
+                max_width: None,
+                wrap_mode: WrapMode::SvgLike,
+            };
+            if warm_success {
+                assert!(
+                    context
+                        .measure(HostTextMeasurementRequest {
+                            text: "A",
+                            ..request
+                        })
+                        .unwrap()
+                        .is_some()
+                );
+            }
+            assert!(context.measure(request).unwrap().is_none());
+            assert!(context.measure(request).is_err());
+            assert!(matches!(
+                context.check(),
+                Err(NativeFontError::Limit {
+                    resource: "measurements",
+                    ..
+                })
+            ));
+            let state = context.0.state.lock().unwrap();
+            assert_eq!(state.cache.len(), usize::from(warm_success));
+            assert!(state.cache_bytes <= max_cache_bytes);
+        }
+    }
+
+    #[test]
+    fn missing_glyph_cache_keys_keep_probe_text_and_style_distinct() {
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_font_file(
+                Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf"),
+            )
+            .load(&control)
+            .unwrap();
+        let style = TextStyle::default();
+        let larger = TextStyle {
+            font_size: style.font_size + 1.0,
+            ..style.clone()
+        };
+        for (text, style) in [
+            ("\u{10ffff}", &style),
+            ("A\u{10ffff}", &style),
+            ("\u{10ffff}", &larger),
+        ] {
+            let request = HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::TitleBBoxX,
+                phase: TextMeasurementPhase::SvgBBox,
+                text,
+                style,
+                max_width: None,
+                wrap_mode: WrapMode::SvgLike,
+            };
+            for _ in 0..2 {
+                assert!(context.measure(request).unwrap().is_none());
+            }
+        }
+        let state = context.0.state.lock().unwrap();
+        assert_eq!(state.measurements, 3);
+        assert_eq!(state.cache.len(), 3);
     }
 
     #[test]

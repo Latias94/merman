@@ -381,7 +381,6 @@ class PreflightWorkflowTests(unittest.TestCase):
         self.assertNotIn("always()", issuer)
         self.assertIn("if: ${{ inputs.scope == 'release' }}", issuer)
         self.assertIn("timeout-minutes: 10", workflow)
-        self.assertIn("Acquire::Retries=3", workflow)
         versions = self.job(workflow, "versions-and-packages")
         self.assertIn("python3 scripts/verify_artifact_dependency_closures.py", versions)
 

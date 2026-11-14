@@ -21,7 +21,7 @@ jobs:
     name: Build Web package
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -77,7 +77,7 @@ jobs:
     name: Build Web size tool
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       CARGO_INCREMENTAL: '0'
       CARGO_PROFILE_RELEASE_DEBUG: '0'
@@ -126,7 +126,7 @@ jobs:
   size-report:
     name: Report Web package sizes
     needs: [web-package, size-tool]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -159,7 +159,7 @@ jobs:
   build:
     name: Build playground
     needs: web-package
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -213,9 +213,7 @@ jobs:
         run: npm run verify:dependencies --prefix playground
 
       - name: Install playground browsers
-        run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
-          npm run install:browsers --prefix playground/tests
+        run: npm run install:browsers --prefix playground/tests
 
       - name: Qualify installed Web packages in Chromium and Worker
         run: node platforms/web/scripts/installed-browser-consumer.mjs

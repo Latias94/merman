@@ -4,9 +4,20 @@
 
 use super::{
     DeterministicTextMeasurer, TextMeasurer, TextStyle, split_html_br_lines,
-    trim_end_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
+    trim_end_html_collapsible_ascii_whitespace,
 };
 use unicode_segmentation::UnicodeSegmentation;
+
+#[cfg(test)]
+thread_local! {
+    // Explicit candidate content writes; excludes allocator moves and measurement callbacks.
+    static CANDIDATE_WRITTEN_BYTES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+#[cfg(test)]
+fn record_candidate_write(bytes: usize) {
+    CANDIDATE_WRITTEN_BYTES.with(|written| written.set(written.get() + bytes));
+}
 
 pub fn ceil_to_1_64_px(v: f64) -> f64 {
     if !(v.is_finite() && v >= 0.0) {
@@ -174,28 +185,34 @@ pub fn wrap_text_lines_measurer(
         let mut tokens = VecDeque::from(DeterministicTextMeasurer::split_line_to_words(line));
         let mut out: Vec<String> = Vec::new();
         let mut cur = String::new();
+        let mut trimmed_end = 0;
 
         while let Some(tok) = tokens.pop_front() {
             if cur.is_empty() && tok == " " {
                 continue;
             }
 
-            let candidate = format!("{cur}{tok}");
-            if measurer
-                .measure(
-                    trim_end_html_collapsible_ascii_whitespace(&candidate),
-                    style,
-                )
-                .width
-                <= max_width_px
-            {
-                cur = candidate;
+            let previous_len = cur.len();
+            // Inspect only the appended token, so retained spaces are not rescanned per probe.
+            let token_end = trim_end_html_collapsible_ascii_whitespace(&tok).len();
+            let candidate_end = if token_end == 0 {
+                trimmed_end
+            } else {
+                previous_len + token_end
+            };
+            cur.push_str(&tok);
+            #[cfg(test)]
+            record_candidate_write(tok.len());
+            if measurer.measure(&cur[..candidate_end], style).width <= max_width_px {
+                trimmed_end = candidate_end;
                 continue;
             }
+            cur.truncate(previous_len);
 
-            if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
-                out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
+            if trimmed_end != 0 {
+                out.push(cur[..trimmed_end].to_string());
                 cur.clear();
+                trimmed_end = 0;
                 tokens.push_front(tok);
                 continue;
             }
@@ -224,12 +241,15 @@ pub fn wrap_text_lines_measurer(
                 } else {
                     cur.clear();
                     cur.push_str(visit.tail);
+                    trimmed_end = trim_end_html_collapsible_ascii_whitespace(visit.tail).len();
+                    #[cfg(test)]
+                    record_candidate_write(visit.tail.len());
                 }
             }
         }
 
-        if !trim_html_collapsible_ascii_whitespace(&cur).is_empty() {
-            out.push(trim_end_html_collapsible_ascii_whitespace(&cur).to_string());
+        if trimmed_end != 0 {
+            out.push(cur[..trimmed_end].to_string());
         }
 
         if out.is_empty() {
@@ -307,18 +327,18 @@ fn try_wrap_label_like_mermaid_lines<E>(
         let mut current = String::new();
         for (idx, ch) in chars.iter().enumerate() {
             checkpoint()?;
-            let next_line = format!("{current}{ch}");
-            let line_w = w_px(measurer, style, &next_line, checkpoint)?;
+            current.push(*ch);
+            #[cfg(test)]
+            record_candidate_write(ch.len_utf8());
+            let line_w = w_px(measurer, style, &current, checkpoint)?;
             if line_w >= max_width_px {
                 let is_last = idx + 1 == chars.len();
-                if is_last {
-                    lines.push(next_line);
-                } else {
-                    lines.push(format!("{next_line}-"));
+                if !is_last {
+                    current.push('-');
+                    #[cfg(test)]
+                    record_candidate_write(1);
                 }
-                current.clear();
-            } else {
-                current = next_line;
+                lines.push(std::mem::take(&mut current));
             }
         }
         Ok((lines, current))
@@ -395,8 +415,195 @@ mod tests {
         split_graphemes_to_width, visit_grapheme_lines_to_width, wrap_text_lines_measurer,
     };
     use crate::text::{
-        DeterministicTextMeasurer, TextMeasurer, TextStyle, WrapMode, try_measure_wrapped_text,
+        DeterministicTextMeasurer, TextMeasurer, TextMetrics, TextStyle, WrapMode,
+        try_measure_wrapped_text,
     };
+    use std::cell::{Cell, RefCell};
+
+    struct WidthProbe<F>(F);
+
+    impl<F: Fn(&str) -> f64> TextMeasurer for WidthProbe<F> {
+        fn measure(&self, text: &str, _style: &TextStyle) -> TextMetrics {
+            TextMetrics {
+                width: (self.0)(text),
+                height: 1.0,
+                line_count: 1,
+            }
+        }
+    }
+
+    #[test]
+    fn emitted_candidate_construction_writes_scale_with_input_bytes() {
+        let measurer = WidthProbe(|_: &str| 0.0);
+        for count in [64, 256, 1024] {
+            for text in [
+                format!("{}z", "a ".repeat(count)),
+                format!("a{}b", " ".repeat(count)),
+            ] {
+                super::CANDIDATE_WRITTEN_BYTES.with(|written| written.set(0));
+                let lines =
+                    wrap_text_lines_measurer(&text, &measurer, &TextStyle::default(), Some(1.0));
+                let written = super::CANDIDATE_WRITTEN_BYTES.with(Cell::get);
+                assert_eq!(lines, [text.as_str()]);
+                assert!(
+                    written <= 4 * text.len(),
+                    "input_bytes={}, candidate_written_bytes={written}",
+                    text.len(),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sequence_candidate_construction_writes_scale_with_input_bytes() {
+        let measurer = WidthProbe(|text: &str| text.len() as f64);
+        for count in [64, 256, 1024] {
+            let text = "a".repeat(count);
+            super::CANDIDATE_WRITTEN_BYTES.with(|written| written.set(0));
+            let lines = super::wrap_label_like_mermaid_lines(
+                &text,
+                &measurer,
+                &TextStyle::default(),
+                (count / 2) as f64,
+            );
+            let written = super::CANDIDATE_WRITTEN_BYTES.with(Cell::get);
+            assert_eq!(
+                lines,
+                [format!("{}-", "a".repeat(count / 2)), "a".repeat(count / 2)]
+            );
+            assert!(
+                written <= 4 * text.len(),
+                "input_bytes={}, candidate_written_bytes={written}",
+                text.len(),
+            );
+        }
+    }
+
+    #[test]
+    fn emitted_candidates_preserve_complete_requests_trimming_and_retry_order() {
+        let probes = RefCell::new(Vec::new());
+        let measurer = WidthProbe(|text: &str| {
+            probes.borrow_mut().push(text.to_string());
+            match text {
+                "a" => 3.0,
+                "a  b" | "c" => 1.0,
+                _ => 4.0,
+            }
+        });
+        let lines = wrap_text_lines_measurer("a  b c", &measurer, &TextStyle::default(), Some(3.0));
+        assert_eq!(lines, ["a  b", "c"]);
+        assert_eq!(
+            *probes.borrow(),
+            ["a", "a", "a", "a  b", "a  b", "a  b c", "c"],
+        );
+
+        probes.borrow_mut().clear();
+        let measurer = WidthProbe(|text: &str| {
+            probes.borrow_mut().push(text.to_string());
+            0.0
+        });
+        let text = "\t a\u{00a0}\t \u{000b}b\u{000c} c";
+        assert_eq!(
+            wrap_text_lines_measurer(text, &measurer, &TextStyle::default(), Some(1.0)),
+            [text],
+        );
+        assert_eq!(
+            *probes.borrow(),
+            [
+                "",
+                "",
+                "\t a\u{00a0}",
+                "\t a\u{00a0}",
+                "\t a\u{00a0}\t \u{000b}b",
+                "\t a\u{00a0}\t \u{000b}b",
+                text,
+            ],
+        );
+    }
+
+    #[test]
+    fn sequence_candidates_preserve_callback_and_checkpoint_error_order() {
+        let expected = [
+            "check",
+            "check",
+            "check",
+            "measure:abcd ",
+            "check",
+            "check",
+            "measure:",
+            "check",
+            "check",
+            "check",
+            "measure:a",
+            "check",
+            "check",
+            "check",
+            "measure:ab",
+            "check",
+            "check",
+            "check",
+            "measure:abc",
+            "check",
+            "check",
+            "check",
+            "measure:d",
+            "check",
+            "check",
+            "check",
+            "measure:x ",
+            "check",
+            "check",
+            "measure:d",
+            "check",
+            "check",
+        ];
+        let checkpoints = expected.iter().filter(|event| **event == "check").count();
+        for fail_at in 0..=checkpoints {
+            let events = RefCell::new(Vec::new());
+            let checks = Cell::new(0);
+            let measurer = WidthProbe(|text: &str| {
+                events.borrow_mut().push(format!("measure:{text}"));
+                match text {
+                    "abcd " => 5.0,
+                    "a" | "x " => 2.0,
+                    "ab" | "d" => 1.0,
+                    "abc" => 3.0,
+                    "" => 0.0,
+                    _ => panic!("unexpected candidate {text:?}"),
+                }
+            });
+            let result = super::try_wrap_label_like_mermaid_lines(
+                "abcd x",
+                &measurer,
+                &TextStyle::default(),
+                3.0,
+                &mut || {
+                    events.borrow_mut().push("check".to_string());
+                    checks.set(checks.get() + 1);
+                    if checks.get() == fail_at {
+                        Err("canceled")
+                    } else {
+                        Ok(())
+                    }
+                },
+            );
+            if fail_at == 0 {
+                assert_eq!(result.unwrap(), ["abc-", "d", "x"]);
+                assert_eq!(*events.borrow(), expected);
+            } else {
+                assert_eq!(result.unwrap_err(), "canceled");
+                let end = expected
+                    .iter()
+                    .enumerate()
+                    .filter(|(_, event)| **event == "check")
+                    .nth(fail_at - 1)
+                    .unwrap()
+                    .0
+                    + 1;
+                assert_eq!(*events.borrow(), expected[..end], "fail_at={fail_at}");
+            }
+        }
+    }
 
     #[test]
     fn grapheme_splitting_keeps_non_increasing_overwide_candidates() {

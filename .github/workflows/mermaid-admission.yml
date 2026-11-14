@@ -18,7 +18,7 @@ concurrency:
 jobs:
   zenuml:
     name: ZenUML candidate and browser admission
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     permissions:
       contents: read
     steps:
@@ -60,9 +60,7 @@ jobs:
           npm ci --ignore-scripts --prefix playground/tests
 
       - name: Install Chromium for admission
-        run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
-          npm exec --prefix playground/tests -- playwright install --with-deps chromium
+        run: npm exec --prefix playground/tests -- playwright install --with-deps chromium
 
       - name: Run official signature and candidate behavior admission
         env:

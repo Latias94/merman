@@ -4,6 +4,15 @@ Merman separates pull-request feedback, scheduled maintenance, and release evide
 in the earliest layer that can justify its cost, but it should not be repeated in every later job
 unless that job produces an independently releasable artifact.
 
+Ordinary Linux CI uses the explicit `ubuntu-26.04` and `ubuntu-26.04-arm` labels, which
+[became generally available in September 2026](https://github.com/actions/runner-images/issues/14747).
+Pinning the LTS version keeps runner upgrades intentional. Native artifact builders retain their
+declared compatibility images, including Ubuntu 22.04 for GNU CLI/LSP archives and VS Code runtimes.
+Release and performance workflows keep their existing qualified environments; their migration is
+separate from ordinary CI.
+Actionlint's native label configuration admits the two official 26.04 labels until its built-in
+runner list includes them.
+
 ## Rust Toolchains
 
 `rust-toolchain.toml` pins development and ordinary CI/release builds to Rust **1.100.0**, with
@@ -395,12 +404,10 @@ build and measure a second Cargo-only approximation of the same package.
 
 The tagged crates workflow reuses the strict feature matrix and Web build/smoke only from a successful full preflight with an explicit immutable source input and the exact same workflow commit. The read-only verifier binds repository, source commit/tree/version, run/attempt, and the downloaded artifact's ID and digest. Missing or stale evidence runs the original checks; fresh registry resolution, static gates, Typst, and publication barriers remain mandatory. This is a narrow source-check optimization, not a general release authorization cache.
 
-Ubuntu CLI-validator and wheel-repair dependency installation has a ten-minute step limit, bounded network timeouts, and finite retries. Failed package-index updates stop the step rather than silently using stale metadata; these limits prevent a stalled mirror from consuming the full build-job timeout.
-
-Ubuntu jobs run `sudo python3 scripts/configure_ubuntu_apt.py` before their first APT or browser
-dependency installation. The helper points known Ubuntu repository URIs to the MIT mirror while
-preserving Ubuntu `Signed-By` metadata, keyrings, and external repositories. Its persistent bounded
-APT configuration also covers sudo child installers such as Playwright and Puppeteer.
+Ubuntu jobs use their runner's package sources and ordinary `apt-get update` / `apt-get install`
+commands. Browser installers use their standard dependency installation. Merman does not rewrite
+mirrors or install custom APT configuration. Dependency-installation steps retain their time limits,
+and strict index updates stop on download failures. Containers use the pinned base image's sources.
 
 ## Evidence Ownership
 

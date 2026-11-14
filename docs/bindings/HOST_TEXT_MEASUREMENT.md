@@ -213,6 +213,15 @@ waiting for a UI thread, or starting a font download inside the callback cannot
 complete that measurement. A reusable host cache must include the complete
 request and invalidate when its font environment changes.
 
+Wrapping passes complete candidate strings so the provider can preserve kerning,
+ligatures, and combining sequences. Merman reuses growing candidate buffers and
+temporarily substitutes a selected discretionary hyphen; this avoids repeatedly
+copying the full prefix but does not reduce the bytes seen by an opaque provider.
+For long labels, bound cumulative shaping work as well as individual request size
+and call count. Widths need not increase monotonically as text grows, so adapters
+must not replace complete requests with summed character widths or prefix searches
+that assume monotonicity.
+
 The stable operation mapping is:
 
 | Code | Operation | Expected result kind |

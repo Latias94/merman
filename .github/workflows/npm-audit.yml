@@ -16,7 +16,7 @@ concurrency:
 jobs:
   audit-plan:
     name: discover tracked audit locks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       npm: ${{ steps.plan.outputs.npm }}
     steps:
@@ -31,7 +31,7 @@ jobs:
   audit:
     name: npm dependency audit (${{ matrix.directory }})
     needs: audit-plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.audit-plan.outputs.npm) }}
