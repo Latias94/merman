@@ -14,8 +14,6 @@ mod side_constraints;
 mod spacing;
 mod transit;
 
-pub(super) use spacing::reserve_compound_axis_spacing;
-
 use self::bounds::RawBounds;
 use self::members::{
     graph_endpoint_group_ids, group_member_indices, member_grid_bounds, shift_member_indices_x,
@@ -39,6 +37,61 @@ pub(super) fn apply_group_placement_adjustments(
     placement::apply_group_placement_adjustments(
         graph, placements, topology, policy, resources, execution,
     )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn reserve_compound_axis_spacing(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    policy: &GraphLayoutPolicy,
+    column_widths: &mut super::grid::AxisSizes,
+    row_heights: &mut super::grid::AxisSizes,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    // Both passes measure the same initial projection. Merge their requirements by maximum,
+    // rather than adding a second allowance to an already expanded separator band.
+    let transaction_resources = resources.clone();
+    transaction_resources.transaction(|resources| {
+        let divider_rows = bounds::empty_divider_row_requirements(
+            graph,
+            layouts,
+            topology,
+            policy,
+            row_heights,
+            resources,
+            execution,
+        )?;
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        resources.charge_layout_work(divider_rows.len())?;
+        // Spacing inserts only trailing node-separator rows: a group grid bottom is also a
+        // member node's bottom. Reserve at most one such key per node as well as every Divider
+        // key, so spacing cannot consume the capacity needed by the final allocation-free merge.
+        let additional_rows = if divider_rows.is_empty() {
+            0
+        } else {
+            resources.checked_work_add(layouts.len(), divider_rows.len())?
+        };
+        row_heights
+            .try_reserve(additional_rows)
+            .map_err(|_| layout_work_allocation_failed())?;
+        let mut spacing_resources = resources.clone();
+        spacing::reserve_compound_axis_spacing(
+            graph,
+            layouts,
+            topology,
+            policy,
+            column_widths,
+            row_heights,
+            &mut spacing_resources,
+            execution,
+        )?;
+        for (row, height) in divider_rows {
+            super::grid::set_axis_size(row_heights, row, height);
+        }
+        Ok(())
+    })
 }
 
 pub(super) fn layout_scene_groups(
@@ -89,7 +142,9 @@ fn separate_external_nodes_from_groups(
         let mut changed = false;
         for group_index in 0..graph.groups.len() {
             resources.charge_layout_work(1)?;
-            if !endpoint_group_ids.contains(graph.groups[group_index].id.as_str()) {
+            if graph.groups[group_index].kind != GraphGroupKind::Container
+                || !endpoint_group_ids.contains(graph.groups[group_index].id.as_str())
+            {
                 continue;
             }
             resources.charge_layout_work(graph.nodes.len())?;
@@ -97,14 +152,28 @@ fn separate_external_nodes_from_groups(
             if member_indices.is_empty() {
                 continue;
             }
-            // Frame padding is measured in terminal cells and is resolved by axis projection.
-            // Only overlapping member envelopes require movement on this coarse grid.
+            // Axis projection owns physical frame clearance, but it requires one separator
+            // band outside both member envelopes. Abutting node bands have no such host.
             let Some(group_bounds) = member_grid_bounds(&member_indices, placements, resources)?
             else {
                 continue;
             };
+            let group_bounds = RawBounds {
+                x: group_bounds.x.saturating_sub(1),
+                y: group_bounds.y.saturating_sub(1),
+                right: group_bounds
+                    .right
+                    .checked_add(1)
+                    .ok_or_else(|| resources.grid_overflow())?,
+                bottom: group_bounds
+                    .bottom
+                    .checked_add(1)
+                    .ok_or_else(|| resources.grid_overflow())?,
+            };
             changed |= shift_external_nodes_away_from_group(
                 graph,
+                topology,
+                group_index,
                 &member_indices,
                 group_bounds,
                 placements,
@@ -370,6 +439,8 @@ pub(super) fn node_padding_y(
 
 fn shift_external_nodes_away_from_group(
     graph: &AsciiGraph,
+    topology: &GraphGroupTopology<'_>,
+    group_index: usize,
     member_indices: &[usize],
     group_bounds: RawBounds,
     placements: &mut [GridCoord],
@@ -377,6 +448,8 @@ fn shift_external_nodes_away_from_group(
 ) -> Result<bool> {
     let graph_direction = graph.direction.canonical();
     let mut changed = false;
+    let ancestors =
+        topology.groups_containing_endpoint(&graph.groups[group_index].id, resources)?;
 
     for index in 0..placements.len() {
         if member_indices.binary_search(&index).is_ok() {
@@ -386,17 +459,33 @@ fn shift_external_nodes_away_from_group(
             continue;
         }
 
-        while raw_bounds_intersects(group_bounds, node_bounds(placements[index], resources)?)
-            || node_overlaps_any_other(index, placements, resources)?
-        {
+        let mut candidate = topology.direct_node_group_index(&graph.nodes[index].id);
+        let mut external_group = None;
+        for _ in 0..graph.groups.len() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            let Some(group) = candidate else { break };
+            if group == group_index || ancestors.contains(&group) {
+                break;
+            }
+            external_group = Some(group);
+            candidate = topology.parent_group_index(group);
+        }
+        // Move the complete external branch below the common scope. Shifting only the
+        // collided member would split a sibling group or move part of a nested subtree.
+        let block = external_group
+            .map(|group| topology.group_member_node_indices(group, resources))
+            .transpose()?;
+        let block = block.as_deref().unwrap_or(std::slice::from_ref(&index));
+        while block_overlaps_group_or_nodes(block, group_bounds, placements, resources)? {
             resources.charge_layout_work(1)?;
             changed = true;
             match graph_direction {
                 GraphDirection::LeftRight => {
-                    placements[index].y = resources.checked_grid_add(placements[index].y, 4)?;
+                    shift_member_indices_y(placements, block, 4, resources)?;
                 }
                 GraphDirection::TopDown => {
-                    placements[index].x = resources.checked_grid_add(placements[index].x, 4)?;
+                    shift_member_indices_x(placements, block, 4, resources)?;
                 }
                 GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
             }
@@ -406,18 +495,24 @@ fn shift_external_nodes_away_from_group(
     Ok(changed)
 }
 
-fn node_overlaps_any_other(
-    index: usize,
+fn block_overlaps_group_or_nodes(
+    members: &[usize],
+    group_bounds: RawBounds,
     placements: &[GridCoord],
     resources: &ResourceContext,
 ) -> Result<bool> {
     // Charge the target-bound calculation and each actual comparison before doing the geometry
     // work. This keeps the O(N) scan visible to the render-wide layout-work budget and makes a
     // rejected comparison side-effect free for callers that may mutate placements afterwards.
-    resources.charge_layout_work(1)?;
-    let bounds = node_bounds(placements[index], resources)?;
+    resources.charge_layout_work(members.len())?;
+    let Some(bounds) = member_grid_bounds(members, placements, resources)? else {
+        return Ok(false);
+    };
+    if raw_bounds_intersects(group_bounds, bounds) {
+        return Ok(true);
+    }
     for (other_index, other_coord) in placements.iter().enumerate() {
-        if index == other_index {
+        if members.binary_search(&other_index).is_ok() {
             continue;
         }
         resources.charge_layout_work(1)?;
@@ -465,15 +560,242 @@ fn raw_bounds_intersects(left: RawBounds, right: RawBounds) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AsciiRenderOptions;
     use crate::graph::model::GraphGroupStyle;
     use crate::resource::AsciiResourcePolicy;
+    use crate::{AsciiLayoutProfile, AsciiRenderOptions};
     use merman_model::resources::ResourceProfile;
 
     fn unbounded_resources() -> ResourceContext {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
         ))
+    }
+
+    fn concurrency_graph(direction: GraphDirection, populated: &[bool]) -> AsciiGraph {
+        let mut graph = AsciiGraph::new(direction);
+        let mut sections = Vec::new();
+        for (index, populated) in populated.iter().copied().enumerate() {
+            let id = format!("section_{index}");
+            let members = if populated {
+                let node = format!("node_{index}");
+                graph.add_node(&node, &node);
+                vec![node]
+            } else {
+                Vec::new()
+            };
+            graph.add_group_with_kind_and_style(
+                &id,
+                "",
+                None,
+                members,
+                GraphGroupKind::Divider,
+                GraphGroupStyle::default(),
+            );
+            sections.push(id);
+        }
+        graph.add_group_with_style("RUN", "RUN", None, sections, GraphGroupStyle::default());
+        graph
+    }
+
+    fn assert_sections_inside_parent(layout: &super::super::GraphLayout, ids: &[&str]) {
+        let parent = layout
+            .groups
+            .iter()
+            .find(|group| group.id == "RUN")
+            .unwrap();
+        let mut previous_bottom = None;
+        for id in ids {
+            let section = layout.groups.iter().find(|group| group.id == *id).unwrap();
+            assert!(parent.x < section.x && section.right() < parent.right());
+            assert!(parent.y < section.y && section.bottom() < parent.bottom());
+            if let Some(bottom) = previous_bottom {
+                assert!(
+                    bottom + 1 < section.y,
+                    "ordered sections need a clear row: {id}: {layout:?}"
+                );
+            }
+            previous_bottom = Some(section.bottom());
+        }
+    }
+
+    #[test]
+    fn empty_divider_sections_keep_vertical_order_in_every_root_direction() {
+        for direction in [
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+        ] {
+            for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+                for populated in [
+                    &[false, true][..],
+                    &[true, false][..],
+                    &[true, false, false, true][..],
+                    &[false, false, false][..],
+                ] {
+                    let graph = concurrency_graph(direction, populated);
+                    let mut resources = unbounded_resources();
+                    let layout = super::super::layout_graph_with_resources(
+                        &graph,
+                        &AsciiRenderOptions::default().with_layout_profile(profile),
+                        &mut resources,
+                    )
+                    .expect("empty sections should share the ordinary compound projection");
+                    let ids = (0..populated.len())
+                        .map(|index| format!("section_{index}"))
+                        .collect::<Vec<_>>();
+                    let ids = ids.iter().map(String::as_str).collect::<Vec<_>>();
+                    assert_sections_inside_parent(&layout, &ids);
+                    for (index, populated) in populated.iter().copied().enumerate() {
+                        if populated {
+                            let id = format!("node_{index}");
+                            let node = layout.nodes.iter().find(|node| node.id == id).unwrap();
+                            let section_id = format!("section_{index}");
+                            let section = layout
+                                .groups
+                                .iter()
+                                .find(|group| group.id == section_id)
+                                .unwrap();
+                            assert!(section.y < node.y && node.bottom() <= section.bottom());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn empty_divider_subtrees_reserve_their_full_height_between_nested_siblings() {
+        for direction in [
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+        ] {
+            let mut graph = AsciiGraph::new(direction);
+            for id in ["a", "b", "outside"] {
+                graph.add_node(id, id);
+            }
+            for (id, title, members) in [
+                ("leaf", "Empty\nsection\nwith\na\ntall\nlabel", vec![]),
+                ("shell", "Shell", vec!["leaf".into()]),
+                ("before_body", "Before", vec!["a".into()]),
+                ("after_body", "After", vec!["b".into()]),
+                ("neighbor", "Neighbor", vec!["outside".into()]),
+            ] {
+                graph.add_group_with_style(id, title, None, members, GraphGroupStyle::default());
+            }
+            for (id, members) in [
+                ("leading", vec![]),
+                ("before", vec!["before_body".into()]),
+                ("empty", vec!["shell".into()]),
+                ("after", vec!["after_body".into()]),
+                ("trailing", vec![]),
+            ] {
+                graph.add_group_with_kind_and_style(
+                    id,
+                    "",
+                    None,
+                    members,
+                    GraphGroupKind::Divider,
+                    GraphGroupStyle::default(),
+                );
+            }
+            graph.add_group_with_style(
+                "RUN",
+                "RUN",
+                None,
+                ["leading", "before", "empty", "after", "trailing"]
+                    .map(String::from)
+                    .to_vec(),
+                GraphGroupStyle::default(),
+            );
+            graph.add_group_with_style(
+                "outer",
+                "Outer",
+                None,
+                vec!["RUN".into(), "neighbor".into()],
+                GraphGroupStyle::default(),
+            );
+            let mut resources = unbounded_resources();
+            let layout = super::super::layout_graph_with_resources(
+                &graph,
+                &AsciiRenderOptions::default(),
+                &mut resources,
+            )
+            .expect("empty nested sections must reserve measured space between populated ones");
+            assert_sections_inside_parent(
+                &layout,
+                &["leading", "before", "empty", "after", "trailing"],
+            );
+            let group = |id: &str| layout.groups.iter().find(|group| group.id == id).unwrap();
+            for (parent, child) in [
+                ("shell", "leaf"),
+                ("empty", "shell"),
+                ("before", "before_body"),
+                ("after", "after_body"),
+                ("outer", "RUN"),
+                ("outer", "neighbor"),
+            ] {
+                let (parent, child) = (group(parent), group(child));
+                assert!(parent.x < child.x && child.right() < parent.right());
+                assert!(parent.y < child.y && child.bottom() <= parent.bottom());
+            }
+            let (run, neighbor) = (group("RUN"), group("neighbor"));
+            assert!(
+                run.right() + 1 < neighbor.x
+                    || neighbor.right() + 1 < run.x
+                    || run.bottom() + 1 < neighbor.y
+                    || neighbor.bottom() + 1 < run.y,
+                "empty section envelopes must stay clear of external siblings: {layout:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn external_separator_reservation_moves_complete_sibling_subtrees() {
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            let mut graph = AsciiGraph::new(direction);
+            for id in ["g", "h0", "h1"] {
+                graph.add_node(id, id);
+            }
+            for (id, members) in [
+                ("G", vec!["g".into()]),
+                ("H", vec!["h0".into(), "h1".into()]),
+                ("outer", vec!["G".into(), "H".into()]),
+            ] {
+                graph.add_group_with_style(id, id, None, members, GraphGroupStyle::default());
+            }
+            graph.add_edge("G", "H");
+            let mut resources = unbounded_resources();
+            let topology = GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
+            let mut placements = [
+                GridCoord { x: 0, y: 0 },
+                GridCoord { x: 3, y: 0 },
+                GridCoord { x: 7, y: 0 },
+            ];
+            if direction == GraphDirection::TopDown {
+                for coord in &mut placements {
+                    std::mem::swap(&mut coord.x, &mut coord.y);
+                }
+            }
+            let original = placements;
+            separate_external_nodes_from_groups(&graph, &mut placements, &topology, &mut resources)
+                .unwrap();
+            assert_eq!(placements[0], original[0]);
+            assert_eq!(
+                placements[2].x - placements[1].x,
+                original[2].x - original[1].x
+            );
+            assert_eq!(
+                placements[2].y - placements[1].y,
+                original[2].y - original[1].y
+            );
+            assert_ne!(
+                placements[1], original[1],
+                "the adjacent block needs a separator"
+            );
+        }
     }
 
     #[test]
@@ -565,17 +887,23 @@ mod tests {
     }
 
     #[test]
-    fn node_overlap_scan_accepts_exact_work_and_rejects_max_minus_one() {
+    fn block_overlap_scan_accepts_exact_work_and_rejects_max_minus_one() {
         let placements = [
             GridCoord { x: 0, y: 0 },
             GridCoord { x: 10, y: 0 },
             GridCoord { x: 20, y: 0 },
         ];
+        let group_bounds = RawBounds {
+            x: 30,
+            y: 30,
+            right: 32,
+            bottom: 32,
+        };
         let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
 
         let measured_resources = ResourceContext::new(unbounded);
         assert!(
-            !node_overlaps_any_other(0, &placements, &measured_resources)
+            !block_overlaps_group_or_nodes(&[0], group_bounds, &placements, &measured_resources)
                 .expect("unbounded overlap scan should succeed")
         );
         let exact_work = measured_resources.layout_work_used();
@@ -589,7 +917,7 @@ mod tests {
             .expect("exact overlap-scan budget should be valid");
         let exact_resources = ResourceContext::new(exact_policy);
         assert!(
-            !node_overlaps_any_other(0, &placements, &exact_resources)
+            !block_overlaps_group_or_nodes(&[0], group_bounds, &placements, &exact_resources)
                 .expect("exact overlap-scan budget should pass")
         );
         assert_eq!(exact_resources.layout_work_used(), exact_work);
@@ -598,8 +926,9 @@ mod tests {
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact_work - 1)
             .expect("max-minus-one overlap-scan budget should be valid");
         let below_resources = ResourceContext::new(below_policy);
-        let error = node_overlaps_any_other(0, &placements, &below_resources)
-            .expect_err("max-minus-one overlap-scan budget should reject");
+        let error =
+            block_overlaps_group_or_nodes(&[0], group_bounds, &placements, &below_resources)
+                .expect_err("max-minus-one overlap-scan budget should reject");
         let crate::AsciiError::ResourceLimitExceeded(details) = error else {
             panic!("expected a layout-work resource error, got {error:?}");
         };

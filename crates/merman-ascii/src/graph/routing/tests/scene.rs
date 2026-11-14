@@ -290,6 +290,7 @@ fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
         branching_chain_graph(true, GraphDirection::LeftRight),
         group_endpoint_merge_graph(),
         group_self_loop_graph(),
+        concurrent_region_skip_graph(),
     ] {
         let options = AsciiRenderOptions::unicode();
         let charset = GraphCharset::for_options(&options);
@@ -397,6 +398,43 @@ fn group_self_loop_graph() -> AsciiGraph {
         );
     }
     graph.add_edge("group", "Z");
+    graph
+}
+
+fn concurrent_region_skip_graph() -> AsciiGraph {
+    use crate::graph::model::{GraphGroupKind, GraphGroupStyle};
+    let mut graph = AsciiGraph::new_for_diagram("state", GraphDirection::TopDown);
+    let mut regions = Vec::new();
+    for id in ["A", "B", "C", "D"] {
+        graph.add_node(id, id);
+        let region = format!("region-{id}");
+        graph.add_group_with_kind_and_style(
+            &region,
+            "",
+            None,
+            vec![id.into()],
+            GraphGroupKind::Divider,
+            GraphGroupStyle::default(),
+        );
+        regions.push(region);
+    }
+    graph.add_group_with_style(
+        "outer",
+        "RUNNING",
+        None,
+        regions,
+        GraphGroupStyle::default(),
+    );
+    for (from, to, label) in [("A", "D", "send"), ("D", "A", "retry")] {
+        graph.add_edge_with_attrs(
+            from,
+            to,
+            GraphEdgeAttrs {
+                label: Some(label.into()),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
     graph
 }
 

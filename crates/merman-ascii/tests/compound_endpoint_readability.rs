@@ -515,3 +515,30 @@ fn deeply_nested_parallel_group_self_loops_reserve_label_space() {
         }
     }
 }
+
+#[test]
+fn contained_node_self_loops_recover_beside_a_labeled_exit() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        let source = format!(
+            "graph {direction}\nsubgraph g[BUFFER]\nA -->|first| A\nA -->|second| A\nA -->|third| A\nend\nA -->|exit| Z\n"
+        );
+        let model = parse_model(&source);
+        for options in options() {
+            let rendered = render_model(&model, &options)
+                .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+            let frames = assert_scene(
+                &rendered,
+                &["BUFFER", "A", "Z"],
+                &[("A", false), ("A", false), ("A", false), ("Z", false)],
+            );
+            let group = frame(&frames, "BUFFER");
+            assert!(group.encloses(frame(&frames, "A")), "{rendered}");
+            let rows: Vec<Vec<char>> = rendered.lines().map(|row| row.chars().collect()).collect();
+            for label in ["first", "second", "third"] {
+                let (x, y) = label_position(&rows, label, &rendered);
+                assert!(group.contains(x, y), "{rendered}");
+            }
+            assert_eq!(rendered.matches("exit").count(), 1, "{rendered}");
+        }
+    }
+}

@@ -56,9 +56,6 @@ pub(super) fn plan_terminal_route(
     let to =
         EndpointGeometry::for_route(request.to, request.from, request.graph_layout, resources)?;
     let self_loop = request.from.id == request.to.id;
-    if self_loop && !from.group {
-        return Ok(None);
-    }
     let starts = terminal_ports(from, request, resources)?;
     let ends = terminal_ports(to, request, resources)?;
     let mut pairs = Vec::new();

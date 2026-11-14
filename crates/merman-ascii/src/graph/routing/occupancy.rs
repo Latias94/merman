@@ -138,6 +138,13 @@ impl OccupiedRect {
         x >= self.x && x < self.right && y >= self.y && y < self.bottom
     }
 
+    fn conflicts_with_marker(self, coord: CanvasCoord, direction: StepDirection) -> bool {
+        self.contains(coord.x, coord.y)
+            || (matches!(direction, StepDirection::Up | StepDirection::Down)
+                && (self.y..self.bottom).contains(&coord.y)
+                && (coord.x.checked_add(1) == Some(self.x) || coord.x == self.right))
+    }
+
     fn intersects_horizontal_span(self, x_start: usize, x_end: usize, y: usize) -> bool {
         y >= self.y && y < self.bottom && x_start < self.right && self.x <= x_end
     }
@@ -237,6 +244,7 @@ struct TerminalClaim {
 struct MarkerOccupant {
     route_index: usize,
     endpoint: MarkerEndpoint,
+    point_direction: StepDirection,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -837,8 +845,15 @@ impl<'layout> SceneOccupancy<'layout> {
                 if self.label_region_is_clear(owner, footprint, resources)?
                     && !marker_berths
                         .into_iter()
-                        .flatten()
-                        .any(|coord| footprint.contains(coord.x, coord.y))
+                        .zip([MarkerEndpoint::Start, MarkerEndpoint::End])
+                        .any(|(coord, endpoint)| {
+                            coord.is_some_and(|coord| {
+                                footprint.conflicts_with_marker(
+                                    coord,
+                                    plan.marker_point_direction(endpoint),
+                                )
+                            })
+                        })
                     && self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)?
                 {
                     clear = true;
@@ -907,6 +922,9 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<MarkerCandidateDisposition> {
+        if !self.marker_reading_clearance_is_clear(candidate, resources)? {
+            return Ok(MarkerCandidateDisposition::Blocked);
+        }
         let endpoint_id = owner.endpoint_id(endpoint);
         for protected in &self.protected {
             self.checkpoint_layout()?;
@@ -921,6 +939,8 @@ impl<'layout> SceneOccupancy<'layout> {
                             endpoint,
                             candidate,
                         )
+                        || self
+                            .divider_allows_terminal_marker(protected, plan, endpoint, candidate)
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(&owner.from, candidate.coord)
                                 || protected.allows_endpoint_port(&owner.to, candidate.coord)))));
@@ -990,6 +1010,75 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         Ok(MarkerCandidateDisposition::Available)
+    }
+
+    fn marker_reading_clearance_is_clear(
+        &self,
+        candidate: MarkerCandidate,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        if matches!(
+            candidate.point_direction,
+            StepDirection::Up | StepDirection::Down
+        ) {
+            for x in [
+                candidate.coord.x.checked_sub(1),
+                candidate.coord.x.checked_add(1),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                if self.labels.contains(&CanvasCoord {
+                    x,
+                    ..candidate.coord
+                }) {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn divider_allows_terminal_marker(
+        &self,
+        protected: &ProtectedGeometry<'_>,
+        plan: &RoutePlan,
+        endpoint: MarkerEndpoint,
+        candidate: MarkerCandidate,
+    ) -> bool {
+        if protected.kind != ProtectedKind::GroupBorder
+            || !protected
+                .group_index
+                .and_then(|index| self.graph_layout.groups.get(index))
+                .is_some_and(|group| group.kind == GraphGroupKind::Divider)
+        {
+            return false;
+        }
+        let Some(attachments) = plan.attachments else {
+            return false;
+        };
+        let attachment = match endpoint {
+            MarkerEndpoint::Start => attachments.start,
+            MarkerEndpoint::End => attachments.end,
+        };
+        let contact = attachment.contact;
+        let coord = candidate.coord;
+        let adjacent = (contact.x == coord.x && contact.y.abs_diff(coord.y) == 1)
+            || (contact.y == coord.y && contact.x.abs_diff(coord.x) == 1);
+        let directions = match candidate.point_direction {
+            StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+            StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+        };
+        // An open separator can coincide with a primary berth immediately beside the
+        // actual endpoint. The marker must retain a transverse, continuous attachment.
+        adjacent
+            && attachment.allows_escape(coord)
+            && protected
+                .shape
+                .transverse_border_directions(coord, directions)
+                .is_some()
     }
 
     pub(super) fn preserve_group_crossings(
@@ -1260,6 +1349,9 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<MarkerCandidateDisposition> {
+        if !self.marker_reading_clearance_is_clear(candidate, resources)? {
+            return Ok(MarkerCandidateDisposition::Blocked);
+        }
         let endpoint_id = routes[route_index].owner.endpoint_id(endpoint);
         for protected in &self.protected {
             self.checkpoint_layout()?;
@@ -1270,6 +1362,12 @@ impl<'layout> SceneOccupancy<'layout> {
                         || own_terminal_marker_escape(
                             protected,
                             endpoint_id,
+                            &routes[route_index].plan,
+                            endpoint,
+                            candidate,
+                        )
+                        || self.divider_allows_terminal_marker(
+                            protected,
                             &routes[route_index].plan,
                             endpoint,
                             candidate,
@@ -1564,7 +1662,15 @@ impl<'layout> SceneOccupancy<'layout> {
             {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
-                if self.labels.contains(&CanvasCoord { x, y }) {
+                let coord = CanvasCoord { x, y };
+                if self.labels.contains(&coord)
+                    || self.markers.get(&coord).is_some_and(|marker| {
+                        matches!(
+                            marker.point_direction,
+                            StepDirection::Up | StepDirection::Down
+                        )
+                    })
+                {
                     return Ok(false);
                 }
             }

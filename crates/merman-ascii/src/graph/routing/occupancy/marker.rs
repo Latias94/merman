@@ -185,6 +185,7 @@ fn allocate_pending_markers(
             MarkerOccupant {
                 route_index: marker.route_index,
                 endpoint: marker.endpoint,
+                point_direction: candidate.point_direction,
             },
             resources,
             diagram_type,

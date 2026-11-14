@@ -476,9 +476,43 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
-        if selected
+        let container_endpoint = matches!(
+            topology
+                .as_ref()
+                .and_then(|topology| topology.endpoint_index(&edge.from)),
+            Some(GraphEndpointIndex::Group(_))
+        );
+        let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
+        let needs_terminal_search = selected
             .as_ref()
-            .is_none_or(|(score, _, _)| score.has_congestion())
+            .is_none_or(|(score, _, _)| score.has_congestion());
+        if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
+            // A searched loop can choose a different side from the predetermined lanes.
+            // Protect earlier batch labels first, then re-admit the incumbent against them.
+            for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+                allocate_committed_route_labels(
+                    route,
+                    route_index,
+                    &mut occupancy,
+                    resources,
+                    graph.diagram_type(),
+                )?;
+            }
+            if let Some((_, index, plan)) = selected.take() {
+                selected = admit_route_candidate(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    plan,
+                    resources,
+                )?
+                .map(|(score, plan)| (score, index, plan));
+            }
+        }
+        if needs_terminal_search
             && let Some((score, plan)) = terminal::plan_terminal_route(
                 request,
                 path::RouteObstacles {
@@ -493,6 +527,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             )?
         {
             selected = Some((score, usize::MAX, plan));
+            defer_loop_labels = false;
         }
         let plan = match selected {
             Some((_, _, plan)) => plan,
@@ -533,16 +568,9 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             resources,
             graph.diagram_type(),
         )?;
-        // Node loops use predetermined nested lanes, so their labels wait for the batch.
-        // Container loops can choose any exterior side and must protect each label before
-        // the next terminal search chooses its contacts and transit cells.
-        let container_endpoint = matches!(
-            topology
-                .as_ref()
-                .and_then(|topology| topology.endpoint_index(&edge.from)),
-            Some(GraphEndpointIndex::Group(_))
-        );
-        if edge.from == edge.to && !container_endpoint {
+        // Predetermined node loops can reserve labels after their nested lanes are known.
+        // Searched loops and container loops protect each label before the next search.
+        if defer_loop_labels {
             pending_self_loop_start.get_or_insert(route_index);
         } else {
             allocate_committed_route_labels(
@@ -669,11 +697,15 @@ fn route_boundary_group_indices(
     indices
         .try_reserve(graph.groups.len())
         .map_err(|_| layout_allocation_failed())?;
-    for group_index in 0..graph.groups.len() {
+    for (group_index, group) in graph.groups.iter().enumerate() {
         resources.charge_layout_work(1)?;
         let crosses_boundary =
             from_groups.contains(&group_index) != to_groups.contains(&group_index);
-        if crosses_boundary
+        // Region separators are open lines, not closed containers. A transition can
+        // cross intermediate separators even when neither endpoint belongs to that region.
+        // CompoundRouteGeometry still reserves unrelated container interiors.
+        if group.kind == super::model::GraphGroupKind::Divider
+            || crosses_boundary
             || from_group_endpoint == Some(group_index)
             || to_group_endpoint == Some(group_index)
         {

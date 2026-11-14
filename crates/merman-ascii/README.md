@@ -138,20 +138,27 @@ terminal crossings; corner contacts are excluded. Container self-loops can recov
 distinct exterior contacts, keeping their transit and labels inside a shared parent when nested.
 The immediate parent reserves room to leave a berth before turning and returning to the frame.
 Ports near the center and inset from frame corners provide alternatives around titles and member
-nodes. Divider endpoints retain their dedicated routing.
+nodes. State concurrency separators remain open to transverse routes through intermediate regions;
+their generated Divider identities retain their dedicated endpoint-routing boundary. Empty regions
+remain ordered structural sections rather than visible nodes. Node self-loops can also recover
+through alternate terminal ports when fixed lanes are blocked. Before such a search, earlier
+loop labels are protected and the incumbent route is checked against those reservations again.
 All attempts charge the same work ledger and observe cancellation.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
 transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
 segments try another lane. Committed routes reserve their label footprints before subsequent
 edges are planned. Parallel node self-loops reserve nested lane space before node projection and
-assign their labels as one route batch before unrelated edges are planned. A graph with no safe route,
-label placement, or independent marker berth still returns a structured diagnostic rather than a
-partial drawing. Boundary routes with no vertical transit segment retain their labels on an
-available inline segment. Label candidates respect container ownership and the route's planned
-marker berths: external group labels stay outside the endpoint frame, and internal labels stay
-inside their common container. Coarse placement separates overlapping member envelopes; terminal
-frame clearance is resolved once during axis projection instead of repeatedly moving groups.
+assign their labels as one route batch before unrelated edges or a searched loop are planned.
+Searched-loop labels are committed immediately. Vertical markers keep one column of reading
+clearance from neighboring labels, preventing an ASCII `v` from merging with label text.
+A graph with no safe route, label placement, or independent marker berth still returns a structured
+diagnostic rather than a partial drawing. Boundary routes with no vertical transit segment
+retain their labels on an available inline segment. Label candidates respect container ownership
+and the route's planned marker berths: external group labels stay outside the endpoint frame, and internal labels stay
+inside their common container. Coarse placement reserves a separator band and moves complete
+sibling branches together. Axis projection uses a valid separating axis for measured frame
+clearance, keeping external nodes outside their endpoint containers even at zero preferred padding.
 
 Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
 and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower

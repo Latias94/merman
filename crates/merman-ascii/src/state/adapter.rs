@@ -1147,10 +1147,12 @@ fn is_group_container(node: StateTerminalNode<'_>, group_members: &StateGroupMem
     if is_state_note_group(node) {
         return false;
     }
+    // A concurrency region stays structural even when it has no projected children.
     node.is_group
-        && group_members
-            .get(node.id)
-            .is_some_and(|members| !members.is_empty())
+        && (is_state_divider_group(node)
+            || group_members
+                .get(node.id)
+                .is_some_and(|members| !members.is_empty()))
 }
 
 fn state_node_shape(

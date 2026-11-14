@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::graph::layout::NodeLayout;
 use crate::graph::model::{AsciiGraph, GraphGroupKind};
-use crate::graph::topology::GraphGroupTopology;
+use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::operation::AsciiExecution;
 use crate::options::GraphLayoutPolicy;
 use crate::resource::ResourceContext;
@@ -36,16 +36,24 @@ pub(super) fn group_routing_policies(
         }
         if edge.from == edge.to {
             resources.charge_layout_work(2)?;
-            if let Some(group_index) = topology.group_index(&edge.from)
-                && graph.groups[group_index].kind == GraphGroupKind::Container
-                && let Some(parent_index) = topology.parent_group_index(group_index)
-                && graph.groups[parent_index].kind == GraphGroupKind::Container
-            {
-                // A loop must leave its berth before turning and return through another
-                // contact. Keep both exterior cells inside the immediate parent frame.
-                let parent = &mut policies[parent_index];
-                parent.group_padding_x = parent.group_padding_x.max(MIN_TRANSIT_PADDING);
-                parent.group_padding_y = parent.group_padding_y.max(MIN_TRANSIT_PADDING);
+            let mut enclosing = match topology.endpoint_index(&edge.from) {
+                Some(GraphEndpointIndex::Node(_)) => topology.direct_node_group_index(&edge.from),
+                Some(GraphEndpointIndex::Group(group)) => topology.parent_group_index(group),
+                None => None,
+            };
+            for depth in 0..graph.groups.len() {
+                execution.checkpoint_loop(OperationPhase::Layout, depth)?;
+                resources.charge_layout_work(1)?;
+                let Some(group_index) = enclosing else { break };
+                if graph.groups[group_index].kind == GraphGroupKind::Container {
+                    // A loop needs two exterior cells before the enclosing frame. Divider
+                    // sections are open, so reserve this space in the nearest actual frame.
+                    let parent = &mut policies[group_index];
+                    parent.group_padding_x = parent.group_padding_x.max(MIN_TRANSIT_PADDING);
+                    parent.group_padding_y = parent.group_padding_y.max(MIN_TRANSIT_PADDING);
+                    break;
+                }
+                enclosing = topology.parent_group_index(group_index);
             }
             continue;
         }

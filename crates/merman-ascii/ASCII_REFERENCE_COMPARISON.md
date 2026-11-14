@@ -77,8 +77,8 @@ explicit assertions. Coarse member-envelope separation and terminal frame paddin
 owners, avoiding repeated group displacement and large blank offsets. Container self-loop
 regressions additionally cover labeled parallel loops beside an exit, nested ownership, two-ended
 markers, and mixed strokes across root directions and layout profiles. Terminal recovery selects
-distinct exterior contacts and excludes frame corners. Divider endpoints retain their previous
-terminal-search limitations.
+distinct exterior contacts and excludes frame corners. The graph/sequence reference does not own
+State concurrency behavior; [State support](STATE_SUPPORT.md) defines that separate boundary.
 
 Nested container loops reserve turning clearance in their immediate parent. Each loop protects
 its label before subsequent searches; unlike predetermined node-loop lanes, searched container

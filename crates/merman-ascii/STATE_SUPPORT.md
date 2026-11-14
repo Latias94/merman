@@ -16,7 +16,7 @@ This document describes the current `merman-ascii` state support boundary. The r
 | Fork/join/choice pseudo states | Supported approximation | `<<fork>>` and `<<join>>` states render as synchronization bars. `<<choice>>` states render as visible diamond-like branch nodes. Implementation ids are omitted from terminal output. |
 | Transitions | Supported subset | Directed transitions and non-empty labels render through the shared graph route planner. |
 | Composite states | Supported subset | Composite states render as group boxes when their children can be mapped cleanly to graph members. Transitions may attach to composite group boundaries. |
-| Divider/concurrency regions | Supported approximation | Mermaid divider groups render as vertically stacked terminal sections with horizontal separator lines. Section children keep their own graph layout and divider implementation ids are omitted. |
+| Divider/concurrency regions | Supported approximation | Mermaid divider groups render as vertically stacked terminal sections with horizontal separator lines. Empty regions retain their order, including leading, trailing, consecutive, and nested sections. Section children keep their own graph layout and divider implementation ids are omitted. Transitions can cross intermediate separators transversely while retaining their actual state endpoints and labels. |
 | State notes | Supported approximation | Inline and block notes render as terminal note nodes connected with open note edges. Multiline note text is preserved. Mermaid's exact note side placement is approximated by the shared graph layout. |
 | Click/href links | Accepted metadata | State link URLs and tooltips are SVG/interaction metadata. They do not block ASCII rendering and are not emitted in terminal output. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
@@ -42,7 +42,16 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 - Composite groups currently require child-member mapping. Boundary-entry routing is a terminal graph
   approximation and does not attempt SVG cluster-edge parity.
 - Divider/concurrency regions are a terminal graph approximation. Sections stack vertically and
-  separators span the parent composite state, but spacing is not SVG layout parity.
+  separators span the parent composite state, but spacing is not SVG layout parity. Separators
+  are open lines, so transitions can pass through intermediate regions without treating their
+  full-width separators as closed containers. Parent and unrelated composite frames retain their
+  containment constraints. A primary marker may share a separator cell only when it sits directly
+  beside its actual endpoint and crosses the separator transversely; this preserves target ports
+  for small nodes at zero padding. Vertical markers keep a reading column beside adjacent labels.
+  Divider ids are generated structure rather than authored transition targets; direct typed-model
+  edges to Divider groups do not participate in terminal-cell recovery.
+  Mixed typed-model scopes place empty regions clear of ordinary peers rather than hiding their
+  separators beneath node frames.
 - State note side placement is terminal-graph approximate. The note text and note relationship are
   preserved, but Mermaid's exact SVG note offsets are not.
 - State links are accepted as interaction metadata and intentionally omitted from terminal output.
@@ -60,4 +69,6 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii`
 
 The parser-backed state tests live in `tests/state_model.rs` and exercise the public `render_model`
-path from Mermaid text through `merman-core` into `merman-ascii`.
+path from Mermaid text through `merman-core` into `merman-ascii`. Region coverage includes empty
+sections, intermediate-region skip edges, feedback, independent merge heads, and nested concurrency
+with distinct start/end pseudo states.

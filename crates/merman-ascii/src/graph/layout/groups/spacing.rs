@@ -221,8 +221,24 @@ fn reserve_pair_spacing(
     row_requirements: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
-    let separated_x = left_grid.right < right_grid.x || right_grid.right < left_grid.x;
-    let separated_y = left_grid.bottom < right_grid.y || right_grid.bottom < left_grid.y;
+    // A disjoint pair can still abut on an axis. Prefer the root axis only when it has
+    // a complete separator band; otherwise use the other axis's available band.
+    let separated_x = right_grid
+        .x
+        .checked_sub(left_grid.right)
+        .is_some_and(|gap| gap > 1)
+        || left_grid
+            .x
+            .checked_sub(right_grid.right)
+            .is_some_and(|gap| gap > 1);
+    let separated_y = right_grid
+        .y
+        .checked_sub(left_grid.bottom)
+        .is_some_and(|gap| gap > 1)
+        || left_grid
+            .y
+            .checked_sub(right_grid.bottom)
+            .is_some_and(|gap| gap > 1);
     if !separated_x && !separated_y {
         return Ok(());
     }
@@ -375,6 +391,54 @@ mod tests {
             },
         ];
         (nodes, envelopes)
+    }
+
+    #[test]
+    fn compound_pair_spacing_uses_the_available_cross_axis_separator() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let columns = AxisSizes::default();
+        let rows = AxisSizes::default();
+        let mut column_requirements = AxisSizes::default();
+        let mut row_requirements = AxisSizes::default();
+        reserve_pair_spacing(
+            GridBounds {
+                x: 0,
+                y: 0,
+                right: 2,
+                bottom: 2,
+            },
+            RawBounds {
+                x: 0,
+                y: 0,
+                right: 6,
+                bottom: 7,
+            },
+            GridBounds {
+                x: 3,
+                y: 4,
+                right: 5,
+                bottom: 6,
+            },
+            RawBounds {
+                x: 4,
+                y: 5,
+                right: 6,
+                bottom: 8,
+            },
+            GraphDirection::LeftRight,
+            &columns,
+            &rows,
+            &mut column_requirements,
+            &mut row_requirements,
+            &resources,
+        )
+        .unwrap();
+        assert!(column_requirements.is_empty());
+        assert!(
+            row_requirements
+                .get(&3)
+                .is_some_and(|height| *height > effective_axis_size(&rows, 3))
+        );
     }
 
     #[test]

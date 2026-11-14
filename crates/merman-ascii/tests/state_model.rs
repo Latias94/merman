@@ -1035,6 +1035,227 @@ fn state_dividers_render_as_stacked_sections() {
 }
 
 #[test]
+fn state_empty_concurrent_regions_remain_structural_separators() {
+    for body in [
+        "--\nA",
+        "A\n--",
+        "A\n--\n--\nB",
+        "--\n--",
+        "A\n--\nB\nA --> B: send\nB --> A: retry",
+    ] {
+        for direction in ["LR", "RL", "TB", "BT"] {
+            let source =
+                format!("stateDiagram-v2\ndirection {direction}\nstate RUN {{\n{body}\n}}");
+            for options in concurrency_options() {
+                let rendered = render_state(&source, &options)
+                    .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+                support::assert_rectangular_terminal_grid(&rendered);
+                assert_eq!(rendered.matches("RUN").count(), 1, "{rendered}");
+                assert!(
+                    !rendered.contains("divider-id") && !rendered.contains("id-"),
+                    "structural region ids must not become visible nodes:\n{rendered}"
+                );
+                for label in ["A", "B", "send", "retry"] {
+                    if body.contains(label) {
+                        assert_eq!(
+                            rendered
+                                .split(|ch: char| !ch.is_alphanumeric())
+                                .filter(|word| *word == label)
+                                .count(),
+                            1,
+                            "{source}\n{rendered}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn concurrency_options() -> [AsciiRenderOptions; 4] {
+    [
+        AsciiRenderOptions::ascii(),
+        AsciiRenderOptions::unicode(),
+        AsciiRenderOptions::ascii()
+            .with_node_padding(0)
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0),
+        AsciiRenderOptions::unicode()
+            .with_node_padding(0)
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0),
+    ]
+}
+
+#[test]
+fn direct_state_root_divider_keeps_clear_of_ordinary_peer_nodes() {
+    for direction in ["LR", "RL", "TB", "BT"] {
+        for contained in [false, true] {
+            let mut divider = direct_state_node("root-region", "divider", None, None);
+            divider.is_group = true;
+            let mut nodes = vec![
+                direct_state_node("A", "rect", contained.then_some("BOX"), None),
+                divider,
+            ];
+            if contained {
+                let mut group = direct_state_node("BOX", "roundedWithTitle", None, None);
+                group.is_group = true;
+                nodes.insert(0, group);
+            }
+            let model = RenderSemanticModel::State(StateDiagramRenderModel {
+                direction: direction.into(),
+                nodes,
+                ..StateDiagramRenderModel::default()
+            });
+            for options in concurrency_options() {
+                let rendered = render_model(&model, &options).unwrap();
+                support::assert_rectangular_terminal_grid(&rendered);
+                assert_eq!(rendered.matches('A').count(), 1, "{rendered}");
+                assert!(
+                    rendered.contains('.') || rendered.contains('┄'),
+                    "the separator must remain visible:\n{rendered}"
+                );
+                assert!(!rendered.contains("root-region"), "{rendered}");
+            }
+        }
+    }
+}
+
+#[test]
+fn state_transitions_can_skip_concurrent_regions_without_losing_heads_or_labels() {
+    fn target_heads(rendered: &str) -> Vec<char> {
+        let rows: Vec<Vec<char>> = rendered
+            .lines()
+            .map(|line| line.chars().collect())
+            .collect();
+        let vertical = |ch: char| matches!(ch, '|' | '│' | '+' | '├' | '┤');
+        let frames: Vec<_> = ['A', 'B', 'C', 'D']
+            .into_iter()
+            .map(|label| {
+                let (x, y) = rows
+                    .iter()
+                    .enumerate()
+                    .find_map(|(y, row)| row.iter().position(|ch| *ch == label).map(|x| (x, y)))
+                    .unwrap_or_else(|| panic!("missing state {label}:\n{rendered}"));
+                let left = (0..x).rev().find(|x| vertical(rows[y][*x])).unwrap();
+                let right = (x + 1..rows[y].len())
+                    .find(|x| vertical(rows[y][*x]))
+                    .unwrap();
+                let top = (0..y)
+                    .rev()
+                    .find(|y| matches!(rows[*y][left], '+' | '┌'))
+                    .unwrap();
+                let bottom = (y + 1..rows.len())
+                    .find(|y| matches!(rows[*y][left], '+' | '└'))
+                    .unwrap();
+                (label, left, right, top, bottom)
+            })
+            .collect();
+        let mut targets = Vec::new();
+        for (y, row) in rows.iter().enumerate() {
+            for (x, ch) in row.iter().enumerate() {
+                let (dx, dy) = match ch {
+                    '>' | '►' => (1, 0),
+                    '<' | '◄' => (-1, 0),
+                    '^' | '▲' => (0, -1),
+                    'v' | '▼' => (0, 1),
+                    _ => continue,
+                };
+                let contact = x.checked_add_signed(dx).zip(y.checked_add_signed(dy));
+                let owners: Vec<_> = frames
+                    .iter()
+                    .filter(|(_, left, right, top, bottom)| {
+                        contact.is_some_and(|(x, y)| {
+                            (dy == 0 && (x == *left || x == *right) && *top < y && y < *bottom)
+                                || (dx == 0
+                                    && (y == *top || y == *bottom)
+                                    && *left < x
+                                    && x < *right)
+                        })
+                    })
+                    .collect();
+                assert_eq!(
+                    owners.len(),
+                    1,
+                    "head ({x}, {y}) must touch its state:\n{rendered}"
+                );
+                targets.push(owners[0].0);
+            }
+        }
+        targets.sort_unstable();
+        targets
+    }
+
+    for direction in ["LR", "RL", "TB", "BT"] {
+        for edges in [
+            "A --> D: send\nD --> A: retry",
+            "A --> D: one\nB --> D: two\nC --> D: three",
+        ] {
+            let source = format!(
+                "stateDiagram-v2\ndirection {direction}\nstate RUNNING {{\nA\n--\nB\n--\nC\n--\nD\n}}\n{edges}"
+            );
+            for options in concurrency_options() {
+                let rendered = render_state(&source, &options)
+                    .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+                support::assert_rectangular_terminal_grid(&rendered);
+                let expected_targets = if edges.contains("retry") {
+                    vec!['A', 'D']
+                } else {
+                    vec!['D'; 3]
+                };
+                assert_eq!(target_heads(&rendered), expected_targets, "{rendered}");
+                for label in ["one", "two", "three", "send", "retry"] {
+                    if edges.contains(label) {
+                        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+                    }
+                }
+                assert!(
+                    !rendered.contains("divider-id") && !rendered.contains("id-"),
+                    "{rendered}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn state_concurrent_branches_and_nested_pseudo_states_keep_their_transitions() {
+    for (body, labels, expected_heads) in [
+        (
+            "state RUNNING {\n[*] --> A\nA --> B: work\nA --> C: skip\nB --> C: done\n--\n[*] --> Watch\nWatch --> Watch: tick\n}\nRUNNING --> Done: stop",
+            vec!["work", "skip", "done", "tick", "stop"],
+            8,
+        ),
+        (
+            "state RUNNING {\nstate Worker {\n[*] --> Build\nBuild --> [*]: built\n--\n[*] --> Monitor\nMonitor --> [*]: stopped\n}\nWorker --> [*]: complete\n--\n[*] --> Audit\nAudit --> [*]: recorded\n}\nRUNNING --> Done",
+            vec!["built", "stopped", "complete", "recorded"],
+            9,
+        ),
+    ] {
+        for direction in ["LR", "RL", "TB", "BT"] {
+            let source = format!("stateDiagram-v2\ndirection {direction}\n[*] --> RUNNING\n{body}");
+            for options in concurrency_options() {
+                let rendered = render_state(&source, &options)
+                    .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+                support::assert_rectangular_terminal_grid(&rendered);
+                let heads = rendered
+                    .chars()
+                    .filter(|ch| matches!(ch, '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼'))
+                    .count();
+                assert_eq!(heads, expected_heads, "{rendered}");
+                for label in &labels {
+                    assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+                }
+                assert!(
+                    !rendered.contains("divider-id") && !rendered.contains("id-"),
+                    "{rendered}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn state_local_semantic_fixture_covers_composite_boundaries() {
     let input = read_local_semantic_fixture("state/composite_boundary.mmd");
 
