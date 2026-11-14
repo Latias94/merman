@@ -33,7 +33,6 @@ pub(super) fn apply_group_placement_adjustments(
     let placement_context = GroupPlacementContext {
         graph,
         topology,
-        policy,
         direction_overrides: &direction_overrides,
         original_placements: &original_placements,
         original_root_axis: &original_root_axis,
@@ -146,7 +145,6 @@ struct GroupPlacementState {
 struct GroupPlacementContext<'context, 'graph> {
     graph: &'context AsciiGraph,
     topology: &'context GraphGroupTopology<'graph>,
-    policy: &'context GraphLayoutPolicy,
     direction_overrides: &'context [Option<GraphDirection>],
     original_placements: &'context [GridCoord],
     original_root_axis: &'context [usize],

@@ -24,8 +24,8 @@ mod same_rank;
 mod select;
 mod top_down;
 
-pub(super) use candidates::plan_obstacle_aware_edge_route;
 pub(super) use candidates::{EdgeRouteCandidates, plan_edge_route_candidates_with_topology};
+pub(super) use candidates::{endpoints_are_nodes, plan_obstacle_aware_edge_route};
 #[cfg(test)]
 pub(super) use select::EdgeRoutePlan;
 pub(super) use select::EdgeRouteRequest;

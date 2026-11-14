@@ -339,6 +339,57 @@ mod tests {
     }
 
     #[test]
+    fn nested_sibling_chains_keep_disjoint_frames_after_local_direction_overrides() {
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            let mut graph = AsciiGraph::new(direction);
+            for id in ["A", "B", "D", "C"] {
+                graph.add_node(id, id);
+            }
+            for (from, to) in [("A", "B"), ("D", "C"), ("B", "D")] {
+                graph.add_edge(from, to);
+            }
+            for (id, title, local, members) in [
+                (
+                    "left",
+                    "Source",
+                    Some(GraphDirection::LeftRight),
+                    vec!["A", "B"],
+                ),
+                (
+                    "right",
+                    "Sink",
+                    Some(GraphDirection::LeftRight),
+                    vec!["D", "C"],
+                ),
+                ("p", "Pipeline", None, vec!["left", "right"]),
+            ] {
+                graph.add_group_with_style(
+                    id,
+                    title,
+                    local,
+                    members.into_iter().map(str::to_owned).collect(),
+                    GraphGroupStyle::default(),
+                );
+            }
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            let left = &layout.groups[0];
+            let right = &layout.groups[1];
+            assert!(
+                left.right() + 1 < right.x
+                    || right.right() + 1 < left.x
+                    || left.bottom() + 1 < right.y
+                    || right.bottom() + 1 < left.y,
+                "sibling frames need a reading gutter ({direction:?}): {left:?}, {right:?}; nodes={:?}",
+                layout
+                    .nodes
+                    .iter()
+                    .map(|node| (&node.id, node.grid, node.x, node.y))
+                    .collect::<Vec<_>>()
+            );
+        }
+    }
+
+    #[test]
     fn compact_sibling_frames_expand_the_shared_member_gap_only() {
         let layout = compact_two_groups(GraphDirection::LeftRight, false);
         let ci = &layout.groups[0];

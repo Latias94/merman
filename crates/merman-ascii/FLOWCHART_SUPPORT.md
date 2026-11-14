@@ -84,13 +84,19 @@ reference implementation is only an implementation aid.
 
 ## Known Limitations
 
-- Route candidates retain all cardinal port combinations. For graphs without compound frames,
-  collision or congestion can trigger terminal-cell search with center and neighboring legal
-  contacts on each side, preserving independent heads for four-to-six-way merges, branch/merge
-  graphs, skip edges, and mixed-stroke feedback. Clear direct routes remain direct, and Dagre ranks
-  do not change. Optional quality repair has a fixed expansion cap across port pairs; required
-  recovery is bounded by scene extent and the shared work ledger. Compound graphs retain their
-  boundary-aware coarse-grid recovery. Candidate exhaustion still produces `UnsupportedFeature`;
+- Route candidates retain all cardinal port combinations. Collision or congestion can trigger
+  terminal-cell search with center and neighboring legal contacts on each node side, preserving
+  independent heads for four-to-six-way merges, branch/merge graphs, skip edges, and mixed-stroke
+  feedback. Node-to-node routes across nested subgraphs use the same containment and transverse
+  crossing constraints as coarse-grid recovery. Aligned edges blocked by intermediate nodes reserve
+  a bypass lane in their nearest common container; group-title footprints include a horizontal
+  reading gap where space permits. Explicit local directions remain authoritative. Group endpoints
+  retain dedicated compound routing. Parent layouts account for complete child-content spans;
+  sibling subgraphs remain separate units during local-direction placement. Clear direct routes
+  remain direct, and Dagre ranks do not change. Optional quality repair has a fixed expansion cap
+  across port pairs; required recovery is bounded by scene extent and the shared work ledger.
+  Alternate candidates and recovery still run
+  when the primary route family is unavailable. Candidate exhaustion produces `UnsupportedFeature`;
   resource and cancellation failures remain terminal errors rather than a partial drawing.
 - LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
   duplicate and bidirectional label lanes for the supported graph subset.
@@ -103,9 +109,11 @@ reference implementation is only an implementation aid.
   earlier label's berth. Parallel self-loops reserve nested lane space before node projection and
   allocate their labels together after the batch's return lanes are known and before unrelated
   edges are planned. Terminal-cell paths try their straight segments as label hosts in stable
-  length order. Transverse normal/dotted/thick crossings preserve each axis's stroke; Unicode uses
+  length order. A boundary route without a vertical transit segment keeps its label on an inline
+  host instead of dropping it. Transverse normal/dotted/thick crossings preserve each axis's
+  stroke; Unicode uses
   `┿` or `╂` when one axis is heavy. Incompatible mixed-stroke overlaps must use another lane.
-  Arbitrary dense routing, compound-frame terminal-cell search, and non-transverse mixed-stroke
+  Arbitrary dense routing, terminal-cell search for group endpoints, and non-transverse mixed-stroke
   junctions remain outside the admitted boundary.
 - Node ranks use the shared Dagre-compatible acyclic/nesting/ranker phases and retain `minlen`,
   cycle ownership, compound constraints, and root direction. Local subgraph direction transforms

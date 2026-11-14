@@ -1214,14 +1214,18 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources.checked_grid_add(group.y, 1)?,
                 resources.checked_grid_mul(line_index, line_step)?,
             )?;
+            let protected_left = title_x.saturating_sub(1).max(inner_left);
+            let protected_right = resources
+                .checked_grid_add(resources.checked_grid_add(title_x, title_width)?, 1)?
+                .min(group.right());
             self.protected.push(ProtectedGeometry {
                 owner_id: &group.id,
                 group_index: Some(group_index),
                 kind: ProtectedKind::GroupTitle,
                 shape: ProtectedShape::Rect(OccupiedRect::try_new(
-                    title_x,
+                    protected_left,
                     title_y,
-                    title_width,
+                    protected_right - protected_left,
                     1,
                     resources,
                 )?),

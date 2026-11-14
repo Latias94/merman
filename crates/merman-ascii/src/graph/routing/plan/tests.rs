@@ -777,7 +777,7 @@ fn edge_boundary_context_prefers_the_narrowest_nested_group_boundary() {
 }
 
 #[test]
-fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
+fn entering_boundary_route_preserves_its_label_on_a_horizontal_grid_path() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
@@ -823,9 +823,18 @@ fn entering_boundary_route_prefers_grid_path_for_td_root_lr_subgraph_slice() {
     )
     .expect("grid path should exist");
     assert_eq!(plan, expected);
-    assert_eq!(
-        plan.labels.first().map(|label| label.placement),
-        Some(RoutedLabelPlacement::new(36, 10, 5))
+    let label = plan
+        .labels
+        .first()
+        .expect("the boundary route must preserve its label");
+    assert_eq!(label.placement.width(), 5);
+    assert!(
+        plan.cells.iter().any(|cell| {
+            cell.coord.x == label.placement.x()
+                && cell.coord.y == label.placement.y()
+                && cell.ch == charset.horizontal
+        }),
+        "without a vertical segment the label must retain a horizontal host"
     );
 }
 

@@ -13,6 +13,7 @@ mod members;
 mod placement;
 mod side_constraints;
 mod spacing;
+mod transit;
 
 pub(super) use spacing::reserve_compound_axis_spacing;
 

@@ -1,8 +1,6 @@
-use super::super::layout::{
-    CanvasCoord, GraphLayout, GridCoord, GroupLayout, NodeLayout, ROUTING_GRID_MARGIN,
-};
-use super::super::model::GraphGroupKind;
+use super::super::layout::{CanvasCoord, GraphLayout, GridCoord, NodeLayout, ROUTING_GRID_MARGIN};
 use super::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
+use super::geometry::{CompoundRouteGeometry, FrameSegment};
 use super::occupancy::SceneOccupancy;
 use super::plan::{NodeAttachment, NodeAttachments};
 use super::{PreparedRoute, RouteOwner};
@@ -549,22 +547,17 @@ impl GroupRouteGeometry<'_> {
         let next_grid = to;
         let from = self.layout.grid_to_canvas(from);
         let to = self.layout.grid_to_canvas(to);
-        let mut crossing_direction = None;
-        for (index, group) in self.layout.groups.iter().enumerate() {
-            execution.checkpoint_loop(OperationPhase::Layout, index)?;
-            resources.charge_layout_work(1)?;
-            if group.kind != GraphGroupKind::Container {
-                continue;
-            }
-            let contains_from = group_contains_node(group, self.from);
-            let contains_to = group_contains_node(group, self.to);
-            if !group_allows_segment(group, contains_from, contains_to, from, to) {
-                return Ok(None);
-            }
-            if group_perimeter_contains(group, to) {
-                crossing_direction = Some(direction);
-            }
-        }
+        let crossing_direction = match (CompoundRouteGeometry {
+            layout: self.layout,
+            from: self.from,
+            to: self.to,
+        })
+        .segment(from, to, resources, execution)?
+        {
+            FrameSegment::Blocked => return Ok(None),
+            FrameSegment::Clear => None,
+            FrameSegment::Boundary => Some(direction),
+        };
         if let Some(scene) = self.scene {
             let directions = match direction {
                 StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
@@ -600,52 +593,6 @@ impl GroupRouteGeometry<'_> {
             coord: next_grid,
             crossing_direction,
         }))
-    }
-}
-
-fn group_contains_node(group: &GroupLayout, node: &NodeLayout) -> bool {
-    group.x < node.x
-        && node.right() < group.right()
-        && group.y < node.y
-        && node.bottom() < group.bottom()
-}
-
-fn group_perimeter_contains(group: &GroupLayout, coord: CanvasCoord) -> bool {
-    ((coord.x == group.x || coord.x == group.right())
-        && (group.y..=group.bottom()).contains(&coord.y))
-        || ((coord.y == group.y || coord.y == group.bottom())
-            && (group.x..=group.right()).contains(&coord.x))
-}
-
-fn group_allows_segment(
-    group: &GroupLayout,
-    contains_from: bool,
-    contains_to: bool,
-    from: CanvasCoord,
-    to: CanvasCoord,
-) -> bool {
-    let min_x = from.x.min(to.x);
-    let max_x = from.x.max(to.x);
-    let min_y = from.y.min(to.y);
-    let max_y = from.y.max(to.y);
-    if contains_from && contains_to {
-        return group.x < min_x
-            && max_x < group.right()
-            && group.y < min_y
-            && max_y < group.bottom();
-    }
-    let intersects =
-        min_x <= group.right() && max_x >= group.x && min_y <= group.bottom() && max_y >= group.y;
-    if !intersects {
-        return true;
-    }
-    if !contains_from && !contains_to {
-        return false;
-    }
-    if from.y == to.y {
-        group.y < from.y && from.y < group.bottom()
-    } else {
-        group.x < from.x && from.x < group.right()
     }
 }
 
@@ -915,70 +862,6 @@ mod tests {
             )
             .expect("repeated equal-cost routing should stay reachable");
             assert_eq!(actual, expected);
-        }
-    }
-
-    #[test]
-    fn compound_steps_cross_owned_sides_transversely_without_touching_corners() {
-        let group = group();
-        for (from, to) in [
-            ((5, 15), (15, 15)),
-            ((15, 15), (25, 15)),
-            ((15, 5), (15, 15)),
-            ((15, 15), (15, 25)),
-        ] {
-            let from = CanvasCoord {
-                x: from.0,
-                y: from.1,
-            };
-            let to = CanvasCoord { x: to.0, y: to.1 };
-            assert!(group_allows_segment(&group, true, false, from, to));
-            assert!(group_allows_segment(&group, false, true, to, from));
-            assert!(!group_allows_segment(&group, false, false, from, to));
-            assert!(!group_allows_segment(&group, true, true, from, to));
-        }
-        for (from, to) in [
-            ((5, 10), (15, 10)),
-            ((15, 20), (25, 20)),
-            ((10, 5), (10, 15)),
-            ((20, 15), (20, 25)),
-        ] {
-            let from = CanvasCoord {
-                x: from.0,
-                y: from.1,
-            };
-            let to = CanvasCoord { x: to.0, y: to.1 };
-            assert!(!group_allows_segment(&group, true, false, from, to));
-        }
-        let inside = CanvasCoord { x: 12, y: 15 };
-        let other_inside = CanvasCoord { x: 18, y: 15 };
-        assert!(group_allows_segment(
-            &group,
-            true,
-            true,
-            inside,
-            other_inside
-        ));
-        assert!(!group_allows_segment(
-            &group,
-            false,
-            false,
-            inside,
-            other_inside
-        ));
-    }
-
-    fn group() -> GroupLayout {
-        GroupLayout {
-            id: "group".into(),
-            kind: GraphGroupKind::Container,
-            title: GraphLabel::empty_with_profile(crate::options::TerminalWidthProfile::Unicode),
-            style: crate::graph::model::GraphGroupStyle::default(),
-            divider_span: None,
-            x: 10,
-            y: 10,
-            width: 11,
-            height: 11,
         }
     }
 

@@ -24,9 +24,9 @@ use crate::resource::ResourceContext;
 
 const ADDITIONAL_LANE_CANDIDATES: usize = 4;
 
-pub(in crate::graph::routing) enum EdgeRouteCandidates {
-    Routed(Vec<RoutePlan>),
-    Unsupported(UnsupportedEdgeRoute),
+pub(in crate::graph::routing) struct EdgeRouteCandidates {
+    pub(in crate::graph::routing) plans: Vec<RoutePlan>,
+    pub(in crate::graph::routing) unsupported: Option<UnsupportedEdgeRoute>,
 }
 
 pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
@@ -36,18 +36,18 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<EdgeRouteCandidates> {
-    let primary =
-        match plan_edge_route_with_topology(request, topology, label, resources, execution)? {
-            EdgeRoutePlan::Routed(plan) => plan,
-            EdgeRoutePlan::Unsupported(route) => {
-                return Ok(EdgeRouteCandidates::Unsupported(route));
-            }
-        };
+    let primary = plan_edge_route_with_topology(request, topology, label, resources, execution)?;
     let mut candidates = Vec::new();
     candidates
         .try_reserve(1 + ADDITIONAL_LANE_CANDIDATES + PORT_PAIRS.len())
         .map_err(|_| layout_allocation_failed())?;
-    candidates.push(primary);
+    let unsupported = match primary {
+        EdgeRoutePlan::Routed(plan) => {
+            candidates.push(plan);
+            None
+        }
+        EdgeRoutePlan::Unsupported(route) => Some(route),
+    };
 
     let parallel_index = parallel_edge_index(request.edges, request.edge_index);
     if request.from.id == request.to.id {
@@ -66,7 +66,10 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
                 push_unique_candidate(&mut candidates, plan, resources)?;
             }
         }
-        return Ok(EdgeRouteCandidates::Routed(candidates));
+        return Ok(EdgeRouteCandidates {
+            plans: candidates,
+            unsupported,
+        });
     }
 
     if endpoint_is_group(request, topology)
@@ -141,7 +144,10 @@ pub(in crate::graph::routing) fn plan_edge_route_candidates_with_topology(
         }
     }
 
-    Ok(EdgeRouteCandidates::Routed(candidates))
+    Ok(EdgeRouteCandidates {
+        plans: candidates,
+        unsupported,
+    })
 }
 
 const PORT_PAIRS: [(Port, Port); 16] = [
@@ -205,7 +211,7 @@ pub(in crate::graph::routing) fn plan_obstacle_aware_edge_route(
     Ok(selected.map(|(_, plan)| plan))
 }
 
-fn endpoints_are_nodes(
+pub(in crate::graph::routing) fn endpoints_are_nodes(
     request: EdgeRouteRequest<'_>,
     topology: Option<&GraphGroupTopology<'_>>,
 ) -> bool {

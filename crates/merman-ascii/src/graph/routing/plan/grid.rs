@@ -345,9 +345,23 @@ fn plan_grid_path_route(
         resources,
         execution,
     )?;
-    let labels = planned_grid_label(label, &lines_drawn, &line_directions, options.label_mode)
-        .into_iter()
-        .collect();
+    let planned_label = planned_grid_label(
+        label,
+        &lines_drawn,
+        &line_directions,
+        options.label_mode,
+        resources,
+    )?;
+    if label.is_some() && planned_label.is_none() {
+        return Ok(None);
+    }
+    let mut labels = Vec::new();
+    if let Some(label) = planned_label {
+        labels
+            .try_reserve(1)
+            .map_err(|_| super::super::layout_allocation_failed())?;
+        labels.push(label);
+    }
 
     let start_anchor = MarkerAnchor::new(start_cell, start_port.terminal_direction().opposite());
     let end_anchor = MarkerAnchor::new(end_cell, end_port.terminal_direction().opposite());
@@ -363,13 +377,33 @@ fn planned_grid_label(
     lines: &[Vec<CanvasCoord>],
     directions: &[StepDirection],
     mode: GridRouteLabelMode,
-) -> Option<PlannedRouteLabel> {
-    let descriptor = descriptor?;
-    let (line, direction) = grid_label_line(lines, directions, mode)?;
-    let first = line.first().copied()?;
-    let last = line.last().copied()?;
-    let placement = grid_label_placement(descriptor, first, last, mode, direction)?;
-    Some(PlannedRouteLabel::new(descriptor, placement))
+    resources: &ResourceContext,
+) -> Result<Option<PlannedRouteLabel>> {
+    let Some(descriptor) = descriptor else {
+        return Ok(None);
+    };
+    resources.checkpoint()?;
+    resources.charge_layout_work(lines.len())?;
+    let preferred = grid_label_line(lines, directions, mode).and_then(|(line, direction)| {
+        grid_label_placement(descriptor, *line.first()?, *line.last()?, mode, direction)
+    });
+    if let Some(placement) = preferred {
+        return Ok(Some(PlannedRouteLabel::new(descriptor, placement)));
+    }
+    let mut fallback = None;
+    for line in lines {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        let Some((&first, &last)) = line.first().zip(line.last()) else {
+            continue;
+        };
+        if let Some(placement) = routed_label_placement_for_descriptor(first, last, descriptor)
+            && fallback.as_ref().is_none_or(|(len, _)| line.len() >= *len)
+        {
+            fallback = Some((line.len(), placement));
+        }
+    }
+    Ok(fallback.map(|(_, placement)| PlannedRouteLabel::new(descriptor, placement)))
 }
 
 fn grid_label_line<'a>(
@@ -597,4 +631,37 @@ fn plan_grid_box_start(
 
 fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
     execution.checkpoint(OperationPhase::Layout)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AsciiResourcePolicy, TerminalWidthProfile};
+
+    #[test]
+    fn transit_label_preserves_text_when_the_route_has_no_vertical_segment() {
+        let lines = vec![(10..=24).map(|x| CanvasCoord { x, y: 8 }).collect()];
+        let descriptor = RoutedLabelDescriptor::for_test(0, "enter", TerminalWidthProfile::Unicode);
+        for mode in [
+            GridRouteLabelMode::FirstVerticalTransitLane,
+            GridRouteLabelMode::LastVerticalTransitLane,
+        ] {
+            let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+            let label = planned_grid_label(
+                descriptor,
+                &lines,
+                &[StepDirection::Right],
+                mode,
+                &resources,
+            )
+            .unwrap()
+            .expect("a horizontal boundary route must retain the authored label");
+            assert_eq!(label.placement, RoutedLabelPlacement::new(15, 8, 5));
+            assert!(
+                planned_grid_label(descriptor, &[], &[], mode, &resources)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+    }
 }

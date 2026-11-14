@@ -213,86 +213,136 @@ fn prepared_route_scene_prefers_a_clear_direct_route_over_extra_marker_berths() 
 #[test]
 fn branching_chain_keeps_converging_edges_on_distinct_target_ports() {
     for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
-        let charset = GraphCharset::for_options(&options);
-        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
-        for id in ["A", "B", "C", "D"] {
-            graph.add_node(id, id);
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            for compound in [false, true] {
+                let charset = GraphCharset::for_options(&options);
+                let graph = branching_chain_graph(compound, direction);
+                let layout = layout_graph(&graph, &options);
+                let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset)
+                    .unwrap_or_else(|error| {
+                        panic!("all five routes must survive: {error}\n{layout:#?}")
+                    });
+                assert_eq!(scene.routes.len(), 5);
+                let contacts = scene
+                    .routes
+                    .iter()
+                    .filter(|route| route.owner.to == "C")
+                    .map(|route| route.plan.attachments.unwrap().end.contact)
+                    .collect::<rustc_hash::FxHashSet<_>>();
+                assert_eq!(
+                    contacts.len(),
+                    3,
+                    "independent incoming edges should use distinct ports before stacking markers"
+                );
+                for group in &layout.groups {
+                    for route in &scene.routes {
+                        for (_, cell) in route.plan.active_cells() {
+                            let inside = group.x < cell.coord.x
+                                && cell.coord.x < group.right()
+                                && group.y < cell.coord.y
+                                && cell.coord.y < group.bottom();
+                            if group.id == "foreign" {
+                                assert!(!inside, "routes must not enter an unrelated frame");
+                            } else {
+                                assert!(
+                                    inside,
+                                    "internal routes must stay inside every common frame"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
         }
-        for (from, to) in [("A", "B"), ("A", "C"), ("B", "C"), ("B", "D"), ("D", "C")] {
-            graph.add_edge(from, to);
-        }
-        let layout = layout_graph(&graph, &options);
-        let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset)
-            .expect("a branching chain should retain all five routes");
-        assert_eq!(scene.routes.len(), 5);
-        let contacts = scene
-            .routes
-            .iter()
-            .filter(|route| route.owner.to == "C")
-            .map(|route| route.plan.attachments.unwrap().end.contact)
-            .collect::<rustc_hash::FxHashSet<_>>();
-        assert_eq!(
-            contacts.len(),
-            3,
-            "independent incoming edges should use distinct ports before stacking markers"
-        );
     }
 }
 
-#[test]
-fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
-    let options = AsciiRenderOptions::unicode();
-    let charset = GraphCharset::for_options(&options);
-    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+fn branching_chain_graph(compound: bool, direction: GraphDirection) -> AsciiGraph {
+    let mut graph = AsciiGraph::new(direction);
     for id in ["A", "B", "C", "D"] {
         graph.add_node(id, id);
     }
     for (from, to) in [("A", "B"), ("A", "C"), ("B", "C"), ("B", "D"), ("D", "C")] {
         graph.add_edge(from, to);
     }
-    let layout = layout_graph(&graph, &options);
-    let policy = AsciiResourcePolicy::unbounded();
-    let mut measured = ResourceContext::new(policy);
-    let expected =
-        prepare_route_scene_with_resources(&graph, &layout, &graph.edges, &charset, &mut measured)
-            .unwrap()
-            .materialize(&measured)
-            .unwrap();
-    let exact = measured.layout_work_used();
-    let mut admitted = ResourceContext::new(
-        policy
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
-            .unwrap(),
-    );
-    let actual =
-        prepare_route_scene_with_resources(&graph, &layout, &graph.edges, &charset, &mut admitted)
-            .unwrap()
-            .materialize(&admitted)
-            .unwrap();
-    assert_eq!(
-        route_scene_signature(&actual),
-        route_scene_signature(&expected)
-    );
-    assert_eq!(admitted.layout_work_used(), exact);
-    let mut rejected = ResourceContext::new(
-        policy
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
-            .unwrap(),
-    );
-    let error = match prepare_route_scene_with_resources(
-        &graph,
-        &layout,
-        &graph.edges,
-        &charset,
-        &mut rejected,
-    )
-    .and_then(|plan| plan.materialize(&rejected))
-    {
-        Ok(_) => panic!("terminal port repair must charge all attempted work"),
-        Err(error) => error,
-    };
-    assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+    if compound {
+        for (id, members) in [
+            ("inner", vec!["A", "B", "C", "D"]),
+            ("outer", vec!["inner", "foreign"]),
+            ("foreign", vec![]),
+        ] {
+            graph.add_group_with_style(
+                id,
+                id,
+                Some(direction),
+                members.into_iter().map(str::to_owned).collect(),
+                crate::graph::model::GraphGroupStyle::default(),
+            );
+        }
+    }
+    graph
+}
+
+#[test]
+fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
+    for compound in [false, true] {
+        let options = AsciiRenderOptions::unicode();
+        let charset = GraphCharset::for_options(&options);
+        let graph = branching_chain_graph(compound, GraphDirection::LeftRight);
+        let layout = layout_graph(&graph, &options);
+        let policy = AsciiResourcePolicy::unbounded();
+        let mut measured = ResourceContext::new(policy);
+        let expected = prepare_route_scene_with_resources(
+            &graph,
+            &layout,
+            &graph.edges,
+            &charset,
+            &mut measured,
+        )
+        .unwrap()
+        .materialize(&measured)
+        .unwrap();
+        let exact = measured.layout_work_used();
+        let mut admitted = ResourceContext::new(
+            policy
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
+                .unwrap(),
+        );
+        let actual = prepare_route_scene_with_resources(
+            &graph,
+            &layout,
+            &graph.edges,
+            &charset,
+            &mut admitted,
+        )
+        .unwrap()
+        .materialize(&admitted)
+        .unwrap();
+        assert_eq!(
+            route_scene_signature(&actual),
+            route_scene_signature(&expected)
+        );
+        assert_eq!(admitted.layout_work_used(), exact);
+        let mut rejected = ResourceContext::new(
+            policy
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+                .unwrap(),
+        );
+        let error = match prepare_route_scene_with_resources(
+            &graph,
+            &layout,
+            &graph.edges,
+            &charset,
+            &mut rejected,
+        )
+        .and_then(|plan| plan.materialize(&rejected))
+        {
+            Ok(_) => panic!("terminal port repair must charge all attempted work"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
         if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
+    }
 }
 
 #[test]
@@ -339,6 +389,96 @@ fn terminal_cell_search_observes_cancellation_inside_the_frontier() {
     };
     assert!(matches!(error, AsciiError::Cancelled(cancelled)
         if cancelled.phase == OperationPhase::Layout && cancelled.reason == CancelReason::Requested));
+}
+
+#[test]
+fn terminal_cell_search_crosses_owned_frames_inside_the_common_parent() {
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for id in ["A", "B", "X"] {
+        graph.add_node(id, id);
+    }
+    graph.add_edge("A", "B");
+    for (id, members) in [
+        ("left", vec!["A"]),
+        ("right", vec!["B"]),
+        ("foreign", vec!["X"]),
+        ("outer", vec!["left", "right", "foreign"]),
+    ] {
+        graph.add_group_with_style(
+            id,
+            id,
+            Some(GraphDirection::LeftRight),
+            members.into_iter().map(str::to_owned).collect(),
+            crate::graph::model::GraphGroupStyle::default(),
+        );
+    }
+    let layout = layout_graph(&graph, &options);
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let topology = GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
+    let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let from = endpoint_layout(&layout, "A", &charset).unwrap();
+    let to = endpoint_layout(&layout, "B", &charset).unwrap();
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &from,
+        to: &to,
+        edge_index: 0,
+        edge: &graph.edges[0],
+        charset: &charset,
+    };
+    let mut owner = RouteOwner::for_test(0, "A", "B");
+    owner.boundary_group_indices =
+        route_boundary_group_indices(&graph, Some(&topology), &graph.edges[0], &mut resources)
+            .unwrap();
+    let (_, plan) = terminal::plan_terminal_route(
+        request,
+        path::RouteObstacles {
+            scene: &occupancy,
+            routes: &[],
+            owner: &owner,
+        },
+        None,
+        None,
+        &mut resources,
+        AsciiExecution::for_test(&policy),
+    )
+    .unwrap()
+    .expect("terminal ports must connect nodes across their owned sibling frames");
+    for group in &layout.groups {
+        let mut crossings = 0;
+        for (_, cell) in plan.active_cells() {
+            let coord = cell.coord;
+            let within_x = (group.x..=group.right()).contains(&coord.x);
+            let within_y = (group.y..=group.bottom()).contains(&coord.y);
+            let inside = group.x < coord.x
+                && coord.x < group.right()
+                && group.y < coord.y
+                && coord.y < group.bottom();
+            match group.id.as_str() {
+                "outer" => assert!(inside, "the route must stay inside its common parent"),
+                "foreign" => assert!(!(within_x && within_y), "an unrelated frame is reserved"),
+                _ => {
+                    if within_y && (coord.x == group.x || coord.x == group.right()) {
+                        assert!(group.y < coord.y && coord.y < group.bottom());
+                        assert_eq!(cell.directions, cell::DIR_LEFT | cell::DIR_RIGHT);
+                        crossings += 1;
+                    } else if within_x && (coord.y == group.y || coord.y == group.bottom()) {
+                        assert!(group.x < coord.x && coord.x < group.right());
+                        assert_eq!(cell.directions, cell::DIR_UP | cell::DIR_DOWN);
+                        crossings += 1;
+                    }
+                }
+            }
+        }
+        if matches!(group.id.as_str(), "left" | "right") {
+            assert_eq!(crossings, 1, "each owned frame must be crossed once");
+        }
+    }
 }
 
 #[test]

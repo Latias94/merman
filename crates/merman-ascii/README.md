@@ -121,12 +121,20 @@ families.
 Graph routing compares deterministic candidates using target-port congestion, ambiguous shared
 cells, and route length. Clear direct routes stay direct. Ordinary candidates retain all cardinal
 port combinations instead of discarding mixed horizontal/vertical choices before scene admission.
-For graphs without compound frames, a colliding or congested edge can additionally use terminal-cell
-search with a center and neighboring legal contacts on each node side. This separates branch/merge
-heads and skip-edge lanes without changing Dagre ranks. Optional improvement of an already valid
-route has a shared expansion cap across port pairs; required collision recovery remains bounded by
-the scene extent and operation work budget. Compound graphs retain their boundary-aware coarse-grid
-recovery. All attempts charge the same work ledger and observe cancellation.
+Colliding or congested node-to-node edges can additionally use terminal-cell search with a center
+and neighboring legal contacts on each node side, including across nested compound frames. This
+separates branch/merge heads and skip-edge lanes without changing Dagre ranks. Coarse-grid and
+terminal-cell searches share frame constraints: routes stay inside common containers, avoid
+unrelated containers, and cross owned frame sides transversely without turning on a border.
+Aligned edges obstructed by another node reserve a bypass lane in their nearest common container;
+group titles retain a horizontal reading gap where space permits. A missing primary route family
+does not prevent alternate candidates or bounded recovery from running. Parent local-direction
+layouts reserve the full span of child contents and move each child as a unit before frame spacing
+is resolved. Optional improvement of an already valid route has a shared expansion cap across
+port pairs; required collision recovery remains bounded by the scene extent and operation work
+budget. Edges whose endpoint is a group
+itself retain dedicated compound routing. All attempts charge the same work ledger and observe
+cancellation.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
 transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
@@ -134,7 +142,8 @@ segments try another lane. Committed routes reserve their label footprints befor
 edges are planned. Parallel self-loops reserve nested lane space before node projection and assign
 their labels as one route batch before unrelated edges are planned. A graph with no safe route,
 label placement, or independent marker berth still returns a structured diagnostic rather than a
-partial drawing.
+partial drawing. Boundary routes with no vertical transit segment retain their labels on an
+available inline segment.
 
 Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
 and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower

@@ -18,6 +18,7 @@ use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use std::cmp::Ordering;
 
 mod cell;
+mod geometry;
 mod label;
 mod occupancy;
 mod path;
@@ -430,21 +431,16 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             edge,
             charset,
         };
-        let candidates = match plan_edge_route_candidates_with_topology(
+        let EdgeRouteCandidates {
+            plans: candidates,
+            unsupported,
+        } = plan_edge_route_candidates_with_topology(
             request,
             topology.as_ref(),
             label_plans.descriptor(edge_index),
             resources,
             execution,
-        )? {
-            EdgeRouteCandidates::Routed(candidates) => candidates,
-            EdgeRouteCandidates::Unsupported(route) => {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: graph.diagram_type(),
-                    feature: route.feature(),
-                });
-            }
-        };
+        )?;
 
         let boundary_group_indices =
             route_boundary_group_indices(graph, topology.as_ref(), edge, resources)?;
@@ -480,7 +476,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
-        if topology.is_none()
+        if plan::endpoints_are_nodes(request, topology.as_ref())
             && selected
                 .as_ref()
                 .is_none_or(|(score, _, _)| score.has_congestion())
@@ -515,7 +511,9 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             )?
             .ok_or(AsciiError::UnsupportedFeature {
                 diagram_type: graph.diagram_type(),
-                feature: "routes crossing reserved graph geometry",
+                feature: unsupported.map_or("routes crossing reserved graph geometry", |route| {
+                    route.feature()
+                }),
             })?,
         };
         let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;

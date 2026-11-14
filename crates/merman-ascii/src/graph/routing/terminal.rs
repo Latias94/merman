@@ -1,3 +1,4 @@
+use super::geometry::{CompoundRouteGeometry, FrameSegment};
 use super::occupancy::RouteCandidateScore;
 use super::path::{RouteObstacles, StepDirection};
 use super::plan::{EdgeRouteRequest, NodeAttachment, NodeAttachments, RoutePlan};
@@ -75,6 +76,12 @@ pub(super) fn plan_terminal_route(
         max_x = max_x.max(node.right());
         max_y = max_y.max(node.bottom());
     }
+    for group in &request.graph_layout.groups {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        max_x = max_x.max(group.right());
+        max_y = max_y.max(group.bottom());
+    }
     let bounds = CanvasCoord {
         x: resources.checked_grid_add(max_x, ROUTING_GRID_MARGIN)?,
         y: resources.checked_grid_add(max_y, ROUTING_GRID_MARGIN)?,
@@ -91,6 +98,11 @@ pub(super) fn plan_terminal_route(
             end,
             bounds,
             obstacles,
+            groups: CompoundRouteGeometry {
+                layout: request.graph_layout,
+                from: request.from,
+                to: request.to,
+            },
         };
         let Some(path) = find_path(geometry, &mut expansions_left, resources, execution)? else {
             if expansions_left == 0 {
@@ -194,6 +206,7 @@ struct SearchGeometry<'a> {
     end: TerminalPort,
     bounds: CanvasCoord,
     obstacles: RouteObstacles<'a>,
+    groups: CompoundRouteGeometry<'a>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
@@ -244,14 +257,19 @@ fn find_path(
         end: geometry.end.attachment,
     });
     for port in [geometry.start, geometry.end] {
-        if !geometry.obstacles.scene.route_cell_is_clear(
-            geometry.obstacles.routes,
-            geometry.obstacles.owner,
-            attachments,
-            port.berth,
-            axis_mask(port.attachment.outward),
-            resources,
-        )? {
+        if geometry
+            .groups
+            .segment(port.attachment.contact, port.berth, resources, execution)?
+            == FrameSegment::Blocked
+            || !geometry.obstacles.scene.route_cell_is_clear(
+                geometry.obstacles.routes,
+                geometry.obstacles.owner,
+                attachments,
+                port.berth,
+                axis_mask(port.attachment.outward),
+                resources,
+            )?
+        {
             return Ok(None);
         }
     }
@@ -328,6 +346,13 @@ fn find_path(
                 continue;
             };
             if next == geometry.end.berth && heading != geometry.end.attachment.outward.opposite() {
+                continue;
+            }
+            if geometry
+                .groups
+                .segment(entry.position.coord, next, resources, execution)?
+                == FrameSegment::Blocked
+            {
                 continue;
             }
             let corner_mask =

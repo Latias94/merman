@@ -179,6 +179,9 @@ pub(super) fn layout_groups_from_bounds(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
+    let routing_policies = super::transit::group_routing_policies(
+        graph, layouts, topology, policy, resources, execution,
+    )?;
     // Charge indexed lookups plus the linear topology, layout, and output passes up front.
     let mut member_count = 0usize;
     for (group_index, group) in graph.groups.iter().enumerate() {
@@ -211,7 +214,8 @@ pub(super) fn layout_groups_from_bounds(
             GraphGroupKind::Container if !group.nodes.is_empty() => {
                 // The perimeter includes the padding on both sides; recover the same title host
                 // used by raw_group_bounds_for_members before painting its prepared label.
-                let padding = resources.checked_grid_mul(policy.group_padding_x.max(1), 2)?;
+                let padding = resources
+                    .checked_grid_mul(routing_policies[group_index].group_padding_x.max(1), 2)?;
                 let title_width = resources
                     .checked_grid_add(width.saturating_sub(padding).saturating_sub(1), 3)?
                     .max(1);
@@ -618,6 +622,9 @@ pub(super) fn raw_group_bounds_batch(
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<Option<RawBounds>>> {
     resources.transaction(|resources| {
+        let routing_policies = super::transit::group_routing_policies(
+            graph, layouts, topology, policy, resources, execution,
+        )?;
         checkpoint_layout(execution, 0)?;
         resources.charge_layout_work(graph.groups.len())?;
         let mut member_count = 0usize;
@@ -775,7 +782,7 @@ pub(super) fn raw_group_bounds_batch(
                     &layout_bounds_by_id,
                     topology,
                     &completed,
-                    policy,
+                    &routing_policies[group_index],
                     resources,
                     execution,
                 )?
