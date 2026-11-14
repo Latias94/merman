@@ -50,7 +50,16 @@ impl<'a> EndpointGeometry<'a> {
         inward: StepDirection,
         charset: &GraphCharset,
     ) -> Option<NodeAttachment> {
-        NodeAttachment::resolve_in_region(self.layout, berth, inward, self.interior, charset)
+        let attachment =
+            NodeAttachment::resolve_in_region(self.layout, berth, inward, self.interior, charset)?;
+        let contact = attachment.contact;
+        if self.group
+            && (contact.x == self.layout.x || contact.x == self.layout.right())
+            && (contact.y == self.layout.y || contact.y == self.layout.bottom())
+        {
+            return None;
+        }
+        Some(attachment)
     }
 }
 

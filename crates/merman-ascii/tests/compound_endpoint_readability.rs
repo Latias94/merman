@@ -67,8 +67,18 @@ fn label_position(rows: &[Vec<char>], label: &str, rendered: &str) -> (usize, us
 
 fn frame_around(rows: &[Vec<char>], label: &str, rendered: &str) -> Frame {
     let (x, y) = label_position(rows, label, rendered);
-    let horizontal = |ch: &char| matches!(ch, '-' | '─' | '+' | '┬' | '┴' | '┼');
-    let vertical = |ch: char| matches!(ch, '|' | '│' | '+' | '├' | '┤' | '┼');
+    let horizontal = |ch: &char| {
+        matches!(
+            ch,
+            '-' | '─' | '+' | '┬' | '┴' | '┼' | '┰' | '┸' | '┿' | '╂'
+        )
+    };
+    let vertical = |ch: char| {
+        matches!(
+            ch,
+            '|' | '│' | '+' | '├' | '┤' | '┼' | '┝' | '┥' | '┿' | '╂'
+        )
+    };
     for top in (0..y).rev() {
         for left in (0..x).rev() {
             if !matches!(rows[top][left], '+' | '┌') {
@@ -380,6 +390,128 @@ fn ancestor_member_bidirectional_edge_uses_two_distinct_marker_berths() {
             );
             let group = frame(&frames, "BUFFER");
             assert!(group.encloses(frame(&frames, "A")), "{rendered}");
+        }
+    }
+}
+
+#[test]
+fn labeled_group_self_loops_keep_distinct_contacts_beside_an_exit() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        for loops in [1, 3] {
+            let mut source = format!("graph {direction}\nsubgraph g[BUFFER]\nA\nend\n");
+            let labels = ["first", "second", "third"];
+            for label in &labels[..loops] {
+                source.push_str(&format!("g -->|{label}| g\n"));
+            }
+            source.push_str("g --> Z\n");
+            let model = parse_model(&source);
+            for options in options() {
+                let rendered = render_model(&model, &options)
+                    .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+                let mut targets = vec![("BUFFER", false); loops];
+                targets.push(("Z", false));
+                let frames = assert_scene(&rendered, &["BUFFER", "A", "Z"], &targets);
+                let group = frame(&frames, "BUFFER");
+                assert_isolated_member(&rendered, group, frame(&frames, "A"), "BUFFER");
+                let rows: Vec<Vec<char>> =
+                    rendered.lines().map(|row| row.chars().collect()).collect();
+                for label in &labels[..loops] {
+                    let (x, y) = label_position(&rows, label, &rendered);
+                    assert!(!group.contains(x, y), "{rendered}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn nested_group_self_loop_stays_outside_its_frame_and_inside_its_parent() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        let source = format!(
+            "graph {direction}\nsubgraph p[PIPELINE]\nsubgraph g[BUFFER]\nA\nend\ng -->|retry| g\nend\ng --> Z\n"
+        );
+        let model = parse_model(&source);
+        for options in options() {
+            let rendered = render_model(&model, &options)
+                .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+            let frames = assert_scene(
+                &rendered,
+                &["PIPELINE", "BUFFER", "A", "Z"],
+                &[("BUFFER", false), ("Z", false)],
+            );
+            let parent = frame(&frames, "PIPELINE");
+            let group = frame(&frames, "BUFFER");
+            assert!(parent.encloses(group), "{rendered}");
+            assert!(parent.disjoint(frame(&frames, "Z")), "{rendered}");
+            assert_isolated_member(&rendered, group, frame(&frames, "A"), "BUFFER");
+            let rows: Vec<Vec<char>> = rendered.lines().map(|row| row.chars().collect()).collect();
+            let (x, y) = label_position(&rows, "retry", &rendered);
+            assert!(parent.contains(x, y), "{rendered}");
+            assert!(!group.contains(x, y), "{rendered}");
+        }
+    }
+}
+
+#[test]
+fn group_self_loops_preserve_two_ended_markers_and_distinct_strokes() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        let source = format!(
+            "graph {direction}\nsubgraph g[BUFFER]\nA\nend\ng <-->|retry| g\ng -.->|poll| g\ng ==>|flush| g\ng --> Z\n"
+        );
+        let model = parse_model(&source);
+        for options in options() {
+            let rendered = render_model(&model, &options)
+                .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+            let frames = assert_scene(
+                &rendered,
+                &["BUFFER", "A", "Z"],
+                &[
+                    ("BUFFER", false),
+                    ("BUFFER", false),
+                    ("BUFFER", false),
+                    ("BUFFER", false),
+                    ("Z", false),
+                ],
+            );
+            assert_isolated_member(
+                &rendered,
+                frame(&frames, "BUFFER"),
+                frame(&frames, "A"),
+                "BUFFER",
+            );
+            for label in ["retry", "poll", "flush"] {
+                assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+            }
+        }
+    }
+}
+
+#[test]
+fn deeply_nested_parallel_group_self_loops_reserve_label_space() {
+    for direction in ["LR", "RL", "TD", "BT"] {
+        let source = format!(
+            "graph {direction}\nsubgraph p[PIPELINE]\nsubgraph q[MIDDLE]\nsubgraph g[BUFFER]\nA\nend\ng -->|first| g\ng -->|second| g\nend\nend\ng --> Z\n"
+        );
+        let model = parse_model(&source);
+        for options in options() {
+            let rendered = render_model(&model, &options)
+                .unwrap_or_else(|error| panic!("{source}\n{options:?}: {error}"));
+            let frames = assert_scene(
+                &rendered,
+                &["PIPELINE", "MIDDLE", "BUFFER", "A", "Z"],
+                &[("BUFFER", false), ("BUFFER", false), ("Z", false)],
+            );
+            let parent = frame(&frames, "MIDDLE");
+            let group = frame(&frames, "BUFFER");
+            assert!(frame(&frames, "PIPELINE").encloses(parent), "{rendered}");
+            assert!(parent.encloses(group), "{rendered}");
+            assert_isolated_member(&rendered, group, frame(&frames, "A"), "BUFFER");
+            let rows: Vec<Vec<char>> = rendered.lines().map(|row| row.chars().collect()).collect();
+            for label in ["first", "second"] {
+                let (x, y) = label_position(&rows, label, &rendered);
+                assert!(parent.contains(x, y), "{rendered}");
+                assert!(!group.contains(x, y), "{rendered}");
+            }
         }
     }
 }

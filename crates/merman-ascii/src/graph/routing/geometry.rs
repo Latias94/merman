@@ -27,32 +27,21 @@ impl CompoundRouteGeometry<'_> {
         plan: &RoutePlan,
         resources: &ResourceContext,
     ) -> Result<bool> {
-        let Some(attachments) = self.attachments else {
+        if self.attachments.is_none() {
             return Ok(false);
-        };
+        }
         for group in &self.layout.groups {
             resources.checkpoint()?;
             resources.charge_layout_work(1)?;
-            if group.kind != GraphGroupKind::Container {
+            if group.kind != GraphGroupKind::Container
+                || (group.id != self.from.id && group.id != self.to.id)
+            {
                 continue;
             }
-            let (attachment, other) = if group.id == self.from.id {
-                (attachments.start, self.to)
-            } else if group.id == self.to.id {
-                (attachments.end, self.from)
-            } else {
-                continue;
-            };
             for (_, cell) in plan.active_cells() {
                 resources.checkpoint()?;
                 resources.charge_layout_work(1)?;
-                if !group_allows_endpoint_segment(
-                    group,
-                    group_contains_node(group, other),
-                    attachment,
-                    cell.coord,
-                    cell.coord,
-                ) {
+                if !self.group_allows_segment(group, cell.coord, cell.coord) {
                     return Ok(false);
                 }
             }
@@ -74,36 +63,7 @@ impl CompoundRouteGeometry<'_> {
             if group.kind != GraphGroupKind::Container {
                 continue;
             }
-            let permitted = if group.id == self.from.id {
-                self.attachments.is_some_and(|attachments| {
-                    group_allows_endpoint_segment(
-                        group,
-                        group_contains_node(group, self.to),
-                        attachments.start,
-                        from,
-                        to,
-                    )
-                })
-            } else if group.id == self.to.id {
-                self.attachments.is_some_and(|attachments| {
-                    group_allows_endpoint_segment(
-                        group,
-                        group_contains_node(group, self.from),
-                        attachments.end,
-                        from,
-                        to,
-                    )
-                })
-            } else {
-                group_allows_segment(
-                    group,
-                    group_contains_node(group, self.from),
-                    group_contains_node(group, self.to),
-                    from,
-                    to,
-                )
-            };
-            if !permitted {
+            if !self.group_allows_segment(group, from, to) {
                 return Ok(FrameSegment::Blocked);
             }
             if group_perimeter_contains(group, to) {
@@ -111,6 +71,27 @@ impl CompoundRouteGeometry<'_> {
             }
         }
         Ok(access)
+    }
+
+    fn group_allows_segment(self, group: &GroupLayout, from: CanvasCoord, to: CanvasCoord) -> bool {
+        match (group.id == self.from.id, group.id == self.to.id) {
+            (false, false) => group_allows_segment(
+                group,
+                group_contains_node(group, self.from),
+                group_contains_node(group, self.to),
+                from,
+                to,
+            ),
+            (owns_start, owns_end) => self.attachments.is_some_and(|attachments| {
+                let contacts = [attachments.start, attachments.end];
+                let (interior, contacts) = match (owns_start, owns_end) {
+                    (true, true) => (false, &contacts[..]),
+                    (true, false) => (group_contains_node(group, self.to), &contacts[..1]),
+                    _ => (group_contains_node(group, self.from), &contacts[1..]),
+                };
+                group_allows_endpoint_segment(group, interior, contacts, from, to)
+            }),
+        }
     }
 }
 
@@ -124,14 +105,17 @@ pub(super) fn group_contains_node(group: &GroupLayout, node: &NodeLayout) -> boo
 fn group_allows_endpoint_segment(
     group: &GroupLayout,
     interior: bool,
-    attachment: NodeAttachment,
+    attachments: &[NodeAttachment],
     from: CanvasCoord,
     to: CanvasCoord,
 ) -> bool {
     let trim_contact = |coord: CanvasCoord, other: CanvasCoord| {
-        if coord != attachment.contact {
+        let Some(attachment) = attachments
+            .iter()
+            .find(|attachment| coord == attachment.contact)
+        else {
             return Some(coord);
-        }
+        };
         if !attachment.allows_escape(other) {
             return None;
         }
@@ -265,27 +249,91 @@ mod tests {
                 connector: None,
             };
             assert!(group_allows_endpoint_segment(
-                &group, interior, attachment, contact, berth
+                &group,
+                interior,
+                &[attachment],
+                contact,
+                berth
             ));
             assert!(group_allows_endpoint_segment(
-                &group, interior, attachment, berth, contact
+                &group,
+                interior,
+                &[attachment],
+                berth,
+                contact
             ));
             assert!(!group_allows_endpoint_segment(
-                &group, !interior, attachment, contact, berth
+                &group,
+                !interior,
+                &[attachment],
+                contact,
+                berth
             ));
             assert!(!group_allows_endpoint_segment(
                 &group,
                 interior,
-                attachment,
+                &[attachment],
                 berth,
                 CanvasCoord { x: 10, y: 16 },
             ));
             assert!(!group_allows_endpoint_segment(
                 &group,
                 interior,
-                attachment,
+                &[attachment],
                 contact,
                 CanvasCoord { x: 10, y: 16 },
+            ));
+        }
+    }
+
+    #[test]
+    fn group_self_loop_segments_allow_both_contacts_and_reserve_the_interior() {
+        use crate::graph::routing::path::StepDirection;
+        let group = group();
+        let attachments = [
+            NodeAttachment {
+                contact: CanvasCoord { x: 20, y: 15 },
+                outward: StepDirection::Right,
+                connector: None,
+            },
+            NodeAttachment {
+                contact: CanvasCoord { x: 15, y: 20 },
+                outward: StepDirection::Down,
+                connector: None,
+            },
+        ];
+        for (contact, berth) in [
+            (attachments[0].contact, CanvasCoord { x: 21, y: 15 }),
+            (attachments[1].contact, CanvasCoord { x: 15, y: 21 }),
+        ] {
+            assert!(group_allows_endpoint_segment(
+                &group,
+                false,
+                &attachments,
+                contact,
+                berth
+            ));
+            assert!(group_allows_endpoint_segment(
+                &group,
+                false,
+                &attachments,
+                berth,
+                contact
+            ));
+        }
+        for (from, to) in [
+            (CanvasCoord { x: 15, y: 15 }, CanvasCoord { x: 16, y: 15 }),
+            (CanvasCoord { x: 20, y: 16 }, CanvasCoord { x: 21, y: 16 }),
+            (attachments[0].contact, CanvasCoord { x: 19, y: 15 }),
+            (attachments[1].contact, CanvasCoord { x: 15, y: 19 }),
+            (attachments[0].contact, attachments[1].contact),
+        ] {
+            assert!(!group_allows_endpoint_segment(
+                &group,
+                false,
+                &attachments,
+                from,
+                to
             ));
         }
     }

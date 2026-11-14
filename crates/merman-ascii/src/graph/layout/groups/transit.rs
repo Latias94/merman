@@ -31,7 +31,22 @@ pub(super) fn group_routing_policies(
     for (edge_index, edge) in graph.edges.iter().enumerate() {
         execution.checkpoint_loop(OperationPhase::Layout, edge_index)?;
         resources.charge_layout_work(1)?;
-        if !edge.stroke.is_visible() || edge.from == edge.to {
+        if !edge.stroke.is_visible() {
+            continue;
+        }
+        if edge.from == edge.to {
+            resources.charge_layout_work(2)?;
+            if let Some(group_index) = topology.group_index(&edge.from)
+                && graph.groups[group_index].kind == GraphGroupKind::Container
+                && let Some(parent_index) = topology.parent_group_index(group_index)
+                && graph.groups[parent_index].kind == GraphGroupKind::Container
+            {
+                // A loop must leave its berth before turning and return through another
+                // contact. Keep both exterior cells inside the immediate parent frame.
+                let parent = &mut policies[parent_index];
+                parent.group_padding_x = parent.group_padding_x.max(MIN_TRANSIT_PADDING);
+                parent.group_padding_y = parent.group_padding_y.max(MIN_TRANSIT_PADDING);
+            }
             continue;
         }
         resources.charge_layout_work(resources.checked_work_mul(layouts.len(), 2)?)?;

@@ -92,7 +92,10 @@ reference implementation is only an implementation aid.
   a bypass lane in their nearest common container; group-title footprints include a horizontal
   reading gap where space permits. Explicit local directions remain authoritative. Container
   endpoints participate in terminal-cell recovery with distinct exterior and ancestor/member
-  interior contacts; only the selected endpoint contact may touch that frame. Divider endpoints
+  interior contacts; only selected endpoint contacts may touch that frame, excluding corners.
+  Container self-loops can use two distinct exterior contacts, including labeled parallel loops
+  beside an exit. Nested loops and their labels stay inside their common parent, which reserves
+  enough exterior space to leave a berth before turning. Divider endpoints
   retain dedicated routing. Parent layouts account for complete child-content spans;
   sibling subgraphs remain separate units during local-direction placement. Clear direct routes
   remain direct, and Dagre ranks do not change. Optional quality repair has a fixed expansion cap
@@ -108,17 +111,19 @@ reference implementation is only an implementation aid.
   label fits without covering an arrowhead; otherwise they use the shared bottom lane.
 - Endpoint markers are independently allocated even for same-glyph/same-color owners. Edge labels
   are assigned and protected when their route is committed, so later routes cannot consume an
-  earlier label's berth. Parallel self-loops reserve nested lane space before node projection and
-  allocate their labels together after the batch's return lanes are known and before unrelated
-  edges are planned. Terminal-cell paths try their straight segments as label hosts in stable
-  length order. A boundary route without a vertical transit segment keeps its label on an inline
+  earlier label's berth. Parallel node self-loops reserve nested lane space before node projection
+  and allocate their labels together after the batch's return lanes are known and before unrelated
+  edges are planned. Container-loop labels are committed before the next loop's search, so later
+  contacts and transit cells respect their footprints. Terminal-cell paths try their straight
+  segments as label hosts in stable length order. A boundary route without a vertical transit
+  segment keeps its label on an inline
   host instead of dropping it. Transverse normal/dotted/thick crossings preserve each axis's
   stroke; Unicode uses
   `┿` or `╂` when one axis is heavy. Incompatible mixed-stroke overlaps must use another lane.
   Labels respect endpoint-container ownership, shared ancestor interiors, and planned marker
   berths. External group labels cannot leak into member space. Single-cell terminal paths require
   at most one visible endpoint marker; dual-marker edges try another port pair. Arbitrary dense
-  routing, terminal-cell search for Divider endpoints and group self-loops, and non-transverse
+  routing, terminal-cell search for Divider endpoints, and non-transverse
   mixed-stroke junctions remain outside the admitted boundary.
 - Node ranks use the shared Dagre-compatible acyclic/nesting/ranker phases and retain `minlen`,
   cycle ownership, compound constraints, and root direction. Local subgraph direction transforms

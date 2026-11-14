@@ -74,8 +74,15 @@ feedback, nested endpoints, and ancestor/member connections. Exterior routes sto
 frame without entering its member space; ancestor/member routes and labels use the frame's
 interior. Independent target contacts, label ownership, and dual endpoint marker berths remain
 explicit assertions. Coarse member-envelope separation and terminal frame padding have distinct
-owners, avoiding repeated group displacement and large blank offsets. Divider endpoints and
-group self-loops retain their previous routing limitations.
+owners, avoiding repeated group displacement and large blank offsets. Container self-loop
+regressions additionally cover labeled parallel loops beside an exit, nested ownership, two-ended
+markers, and mixed strokes across root directions and layout profiles. Terminal recovery selects
+distinct exterior contacts and excludes frame corners. Divider endpoints retain their previous
+terminal-search limitations.
+
+Nested container loops reserve turning clearance in their immediate parent. Each loop protects
+its label before subsequent searches; unlike predetermined node-loop lanes, searched container
+loops need not share a side or defer label allocation until the batch is complete.
 
 The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from

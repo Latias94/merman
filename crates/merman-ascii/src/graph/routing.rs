@@ -533,7 +533,16 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             resources,
             graph.diagram_type(),
         )?;
-        if edge.from == edge.to {
+        // Node loops use predetermined nested lanes, so their labels wait for the batch.
+        // Container loops can choose any exterior side and must protect each label before
+        // the next terminal search chooses its contacts and transit cells.
+        let container_endpoint = matches!(
+            topology
+                .as_ref()
+                .and_then(|topology| topology.endpoint_index(&edge.from)),
+            Some(GraphEndpointIndex::Group(_))
+        );
+        if edge.from == edge.to && !container_endpoint {
             pending_self_loop_start.get_or_insert(route_index);
         } else {
             allocate_committed_route_labels(

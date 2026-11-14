@@ -289,6 +289,7 @@ fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
         branching_chain_graph(false, GraphDirection::LeftRight),
         branching_chain_graph(true, GraphDirection::LeftRight),
         group_endpoint_merge_graph(),
+        group_self_loop_graph(),
     ] {
         let options = AsciiRenderOptions::unicode();
         let charset = GraphCharset::for_options(&options);
@@ -372,6 +373,67 @@ fn group_endpoint_merge_graph() -> AsciiGraph {
     }
     graph.add_edge("group", "Z");
     graph
+}
+
+fn group_self_loop_graph() -> AsciiGraph {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("A", "A");
+    graph.add_node("Z", "Z");
+    graph.add_group_with_style(
+        "group",
+        "Buffer",
+        None,
+        vec!["A".into()],
+        crate::graph::model::GraphGroupStyle::default(),
+    );
+    for label in ["first", "second", "third"] {
+        graph.add_edge_with_attrs(
+            "group",
+            "group",
+            GraphEdgeAttrs {
+                label: Some(label.into()),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
+    graph.add_edge("group", "Z");
+    graph
+}
+
+#[test]
+fn group_self_loops_use_distinct_return_contacts_and_keep_transit_outside() {
+    let graph = group_self_loop_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset).unwrap();
+    let group = layout
+        .groups
+        .iter()
+        .find(|group| group.id == "group")
+        .unwrap();
+    let loops: Vec<_> = scene
+        .routes
+        .iter()
+        .filter(|route| route.owner.to == "group")
+        .collect();
+    let contacts: rustc_hash::FxHashSet<_> = loops
+        .iter()
+        .map(|route| route.plan.attachments.unwrap().end.contact)
+        .collect();
+    assert_eq!(contacts.len(), 3);
+    for route in loops {
+        let attachments = route.plan.attachments.unwrap();
+        assert_ne!(attachments.start.contact, attachments.end.contact);
+        for (_, cell) in route.plan.active_cells() {
+            assert!(
+                !(group.x < cell.coord.x
+                    && cell.coord.x < group.right()
+                    && group.y < cell.coord.y
+                    && cell.coord.y < group.bottom())
+            );
+        }
+    }
 }
 
 #[test]

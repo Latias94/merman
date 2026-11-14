@@ -42,9 +42,6 @@ pub(super) fn plan_terminal_route(
     execution: AsciiExecution<'_>,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    if request.from.id == request.to.id {
-        return Ok(None);
-    }
     for group in &request.graph_layout.groups {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
@@ -58,6 +55,10 @@ pub(super) fn plan_terminal_route(
         EndpointGeometry::for_route(request.from, request.to, request.graph_layout, resources)?;
     let to =
         EndpointGeometry::for_route(request.to, request.from, request.graph_layout, resources)?;
+    let self_loop = request.from.id == request.to.id;
+    if self_loop && !from.group {
+        return Ok(None);
+    }
     let starts = terminal_ports(from, request, resources)?;
     let ends = terminal_ports(to, request, resources)?;
     let mut pairs = Vec::new();
@@ -68,6 +69,9 @@ pub(super) fn plan_terminal_route(
         for end in &ends {
             resources.checkpoint()?;
             resources.charge_layout_work(1)?;
+            if self_loop && start.attachment.contact == end.attachment.contact {
+                continue;
+            }
             let distance = distance(start.berth, end.berth, resources)?;
             let ordinal = pairs.len();
             pairs.push((
