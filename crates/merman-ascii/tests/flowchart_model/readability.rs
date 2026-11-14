@@ -101,7 +101,14 @@ fn four_to_six_incoming_edges_keep_unstacked_target_heads() {
 
 #[test]
 fn wide_fan_in_and_marked_fan_out_keep_independent_heads_at_zero_padding() {
-    for (incoming, marked_source) in [(8, false), (12, false), (4, true), (6, true)] {
+    for (incoming, marked_source) in [
+        (8, false),
+        (12, false),
+        (4, true),
+        (6, true),
+        (8, true),
+        (10, true),
+    ] {
         for direction in ["TD", "BT", "LR", "RL"] {
             let mut source = format!("flowchart {direction}\n");
             for index in 1..=incoming {

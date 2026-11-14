@@ -89,6 +89,7 @@ fn collect_marker_requests(
                             route_index,
                             endpoint,
                             point_direction: candidate.point_direction,
+                            primary: false,
                         },
                     )?;
                 }

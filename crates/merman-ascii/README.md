@@ -123,6 +123,10 @@ congestion, ambiguous shared cells, and route length. Open starts can retain sha
 visible source markers prefer independent contacts. Clear direct routes stay direct. Ordinary
 candidates retain all cardinal port combinations instead of discarding mixed horizontal/vertical
 choices before scene admission.
+Actual endpoint markers and primary terminal positions remain protected. Unused alternate marker
+positions admit transverse route crossings; later marker allocation rejects any position occupied
+by such a crossing. This keeps alternate choices from sealing an entire branch corridor, including
+covered two-ended-marker fans through ten edges at zero preferred graph padding.
 Colliding or congested node-to-node edges can additionally use terminal-cell search over every
 non-corner contact accepted by the endpoint shape, including across nested compound frames. This
 separates branch/merge heads and skip-edge lanes without changing Dagre ranks. Coarse-grid and

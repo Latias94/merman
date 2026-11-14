@@ -108,11 +108,15 @@ reference implementation is only an implementation aid.
   remain direct, and Dagre ranks do not change. Where a globally empty separator exists, branch
   spacing reserves a complete transit band beyond endpoint reading margins on the actual local
   rank axis without expanding any node's content bands. Source markers participate in port-reuse
-  scoring; open starts may share their stems.
+  scoring; open starts may share their stems. Actual markers and primary terminals remain
+  protected, while unused alternate marker positions allow transverse crossings. Marker allocation
+  rejects those positions after a crossing takes them. Covered two-ended-marker fans through ten
+  edges retain independent, unstacked heads in every root direction, including at zero graph padding.
   Optional quality repair has a fixed expansion cap across lazily generated port pairs; required
   recovery is bounded by scene extent and the shared work ledger. Full contour enumeration does
   not guarantee independent routes for arbitrary degree. Dense two-ended-marker fan-out can still
-  exhaust recovery or the work budget, including an eight-edge zero-padding case.
+  exhaust recovery or the work budget; a twelve-edge case can stack source heads, and its TD/BT
+  zero-padding variants can exhaust the Interactive work budget.
   Alternate candidates and recovery still run
   when the primary route family is unavailable. Candidate exhaustion produces `UnsupportedFeature`;
   resource and cancellation failures remain terminal errors rather than a partial drawing.

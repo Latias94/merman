@@ -80,6 +80,7 @@ fn terminal_claims_allow_route_cell(
     existing_routes: &[PreparedRoute],
     owner: &RouteOwner,
     claims: &[TerminalClaim],
+    directions: u8,
     resources: &mut ResourceContext,
     control: &OperationControl,
 ) -> Result<bool> {
@@ -90,6 +91,16 @@ fn terminal_claims_allow_route_cell(
                 .checkpoint_at(OperationPhase::Layout)
                 .map_err(AsciiError::Cancelled)?;
             resources.charge_layout_work(1)?;
+            let claim_axis = match claim.point_direction {
+                StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+                StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+            };
+            // Alternative marker positions are opportunities, not occupied terminals.
+            // A transverse crossing preserves the committed heads; later marker
+            // admission checks the crossing's owner before using this position.
+            if !claim.primary && super::cell::is_transverse_crossing(directions, claim_axis) {
+                continue;
+            }
             if existing_routes
                 .get(claim.route_index)
                 .is_none_or(|route| route.owner.endpoint_id(claim.endpoint) != endpoint_id)
@@ -243,6 +254,7 @@ struct TerminalClaim {
     route_index: usize,
     endpoint: MarkerEndpoint,
     point_direction: StepDirection,
+    primary: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -773,6 +785,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 existing_routes,
                 owner,
                 claims,
+                directions,
                 resources,
                 &self.control,
             )?
@@ -1243,6 +1256,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     route_index,
                     endpoint,
                     point_direction: candidate.point_direction,
+                    primary: true,
                 },
             )?;
         }

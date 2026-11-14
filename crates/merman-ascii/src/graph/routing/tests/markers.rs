@@ -395,6 +395,160 @@ fn route_score_rejects_a_later_crossing_of_a_reserved_primary_terminal() {
 }
 
 #[test]
+fn unused_marker_candidates_allow_only_transverse_routes_and_cannot_cover_them() {
+    use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
+
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    for vertical in [false, true] {
+        let coord = |offset| {
+            if vertical {
+                CanvasCoord { x: 1, y: offset }
+            } else {
+                CanvasCoord { x: offset, y: 1 }
+            }
+        };
+        let (start_direction, end_direction, axis, transverse) = if vertical {
+            (
+                StepDirection::Up,
+                StepDirection::Down,
+                DIR_UP | DIR_DOWN,
+                DIR_LEFT | DIR_RIGHT,
+            )
+        } else {
+            (
+                StepDirection::Left,
+                StepDirection::Right,
+                DIR_LEFT | DIR_RIGHT,
+                DIR_UP | DIR_DOWN,
+            )
+        };
+        let plan = RoutePlan::new(
+            (0..5)
+                .map(|offset| {
+                    let coord = coord(offset);
+                    planned_cell(
+                        coord.x,
+                        coord.y,
+                        if vertical { '|' } else { '-' },
+                        PlannedRouteCellKind::EdgeLine,
+                    )
+                })
+                .collect(),
+            Vec::new(),
+            MarkerAnchors::new(
+                MarkerAnchor::new(PlannedCellId::new(0), start_direction),
+                MarkerAnchor::new(PlannedCellId::new(4), end_direction),
+            ),
+        )
+        .with_marker_requests(GraphEdgeMarker::Open, GraphEdgeMarker::Point, "flowchart")
+        .unwrap();
+        let later_plan = plan.clone();
+        let mut routes = vec![PreparedRoute::for_test_with_endpoints(
+            plan, 0, "source", "target",
+        )];
+        let mut resources = unbounded_resources();
+        let mut occupancy =
+            SceneOccupancy::try_new(&routes, &graph_layout, &mut resources, "flowchart").unwrap();
+        allocate_committed_route_marker_berths(
+            &mut routes,
+            0,
+            &mut occupancy,
+            &charset,
+            &mut resources,
+            "flowchart",
+        )
+        .unwrap();
+        let crossing_owner = RouteOwner::for_test(1, "other-a", "other-b");
+
+        for (directions, allowed) in [
+            (transverse, true),
+            (axis, false),
+            (DIR_DOWN | DIR_RIGHT, false),
+        ] {
+            assert_eq!(
+                occupancy
+                    .route_cell_is_clear(
+                        &routes,
+                        &crossing_owner,
+                        None,
+                        coord(2),
+                        directions,
+                        &mut resources
+                    )
+                    .unwrap(),
+                allowed
+            );
+        }
+        assert!(
+            !occupancy
+                .route_cell_is_clear(
+                    &routes,
+                    &crossing_owner,
+                    None,
+                    coord(4),
+                    transverse,
+                    &mut resources
+                )
+                .unwrap(),
+            "the actual marker remains protected"
+        );
+
+        let mut crossing = vertical_route_plan_at_x(2);
+        if vertical {
+            crossing = marker_request_plan_at_y(GraphEdgeMarker::Open, 3, 2);
+        }
+        routes.push(PreparedRoute {
+            plan: crossing,
+            owner: crossing_owner,
+        });
+        assert!(
+            occupancy
+                .score_route(
+                    &routes[..1],
+                    &routes[1].plan,
+                    &routes[1].owner,
+                    &mut resources,
+                    "flowchart"
+                )
+                .unwrap()
+                .is_some()
+        );
+        let start = routes[1]
+            .plan
+            .terminal_candidate(MarkerEndpoint::Start, "flowchart")
+            .unwrap();
+        let end = routes[1]
+            .plan
+            .terminal_candidate(MarkerEndpoint::End, "flowchart")
+            .unwrap();
+        occupancy
+            .commit_route(1, &routes[1], start, end, &mut resources)
+            .unwrap();
+        let candidate = later_plan
+            .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+            .unwrap()
+            .unwrap()[2];
+        assert_eq!(candidate.coord, coord(2));
+        assert_eq!(
+            occupancy
+                .marker_candidate_disposition_before_commit(
+                    &routes,
+                    &RouteOwner::for_test(2, "source", "target"),
+                    &later_plan,
+                    MarkerEndpoint::End,
+                    candidate,
+                    &mut resources,
+                )
+                .unwrap(),
+            MarkerCandidateDisposition::Blocked,
+            "a later marker must not cover the admitted crossing"
+        );
+    }
+}
+
+#[test]
 fn route_score_allows_an_incident_route_to_share_a_terminal_corridor() {
     let options = AsciiRenderOptions::ascii();
     let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);

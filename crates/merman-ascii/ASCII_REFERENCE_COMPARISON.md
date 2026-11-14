@@ -59,8 +59,10 @@ The contour follow-up replaces fixed center-neighbor sampling with all shape-val
 contacts, and keeps port pairs lazy rather than materializing their Cartesian product. Local tests
 compare the generated priority order with exhaustive sorting and protect cancellation, work limits,
 diamond restrictions, and recovery after the three central contacts are occupied. Covered merges
-now include eight and twelve incoming edges at zero preferred padding; four-to-six-way two-ended
-fan-out checks source-marker symmetry. Branch clearance follows the actually applied local
+now include eight and twelve incoming edges at zero preferred padding; two-ended fan-out through
+ten edges checks source-marker symmetry. Unused alternate marker positions admit transverse
+crossings without weakening protection of actual markers or primary terminals. Later marker
+allocation cannot cover those crossings. Branch clearance follows the actually applied local
 direction and reserves a real separator outside endpoint content. Neither reference supplies an
 independent-marker oracle for arbitrary degree, and dense marked fan-out remains bounded.
 The expanded search also exposed repeated futile searches through sealed frame approaches and

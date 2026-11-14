@@ -326,10 +326,10 @@ fn issue_53_compact_candidate_reduces_width_and_total_blank_cells() {
 
     assert_eq!(canonical_extent, (74, 57));
     assert_eq!(compact_extent, (56, 67));
-    assert_eq!(canonical_blank_cells, 3_163);
-    assert_eq!(compact_blank_cells, 2_854);
-    assert_eq!(canonical_longest_blank_run, 51);
-    assert_eq!(compact_longest_blank_run, 41);
+    assert_eq!(canonical_blank_cells, 3_158);
+    assert_eq!(compact_blank_cells, 2_849);
+    assert_eq!(canonical_longest_blank_run, 52);
+    assert_eq!(compact_longest_blank_run, 42);
     assert!(compact_extent.0 < canonical_extent.0);
     assert!(compact_extent.1 > canonical_extent.1);
     assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);

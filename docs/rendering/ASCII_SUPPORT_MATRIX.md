@@ -184,8 +184,8 @@ parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative
 
 | Fixture | Layout | Extent | Blank cells | Longest blank run |
 | --- | --- | ---: | ---: | ---: |
-| Issue #53 Flowchart | canonical | `74×57` | 3163 | 51 |
-| Issue #53 Flowchart | compact | `56×67` | 2854 | 41 |
+| Issue #53 Flowchart | canonical | `74×57` | 3158 | 52 |
+| Issue #53 Flowchart | compact | `56×67` | 2849 | 42 |
 | Sequence self-messages/notes | canonical | `107×58` | 4681 | 41 |
 | Sequence self-messages/notes | compact | `105×58` | 4567 | 41 |
 
