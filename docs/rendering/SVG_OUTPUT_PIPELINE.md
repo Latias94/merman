@@ -133,6 +133,12 @@ and CSS features outside the admitted subset remain residuals. Hosts that need m
 styles must inject them before the fallback stage (through the same `SvgPipeline`); styling added
 after generated text exists may change paint, but cannot make Merman remeasure wrapping or geometry.
 
+CSS matching retains a bounded, byte-weighted work budget. Candidate lookup accounts for element,
+ID, class, and attribute-name keys; attribute values contribute when an admitted selector compares
+them. Unrelated inline styles, coordinates, and metadata do not count as value scans for every
+selector. Oversized matching work still fails with `svg_fallback_selector_index`, independently
+of the configurable SVG byte and element limits.
+
 The adapter retains admitted inline text runs through whitespace normalization, wrapping, and SVG
 `tspan` emission. HTML emphasis and code defaults yield to explicit source styles. Generated runs
 keep resolved typography and paint isolated from ordinary SVG-only selectors. Styles that cannot

@@ -10,6 +10,44 @@ fn render_resvg_safe(name: &str, source: &str) -> String {
     render_with_pipeline(name, source, Some(SvgPipeline::resvg_safe()))
 }
 
+#[test]
+fn resvg_safe_renders_five_hundred_flowchart_labels() {
+    let mut source = String::from("flowchart TD\n");
+    for index in 0..500 {
+        source.push_str(&format!("N{index}[\"Node {index}\"]\n"));
+    }
+    let svg = render_resvg_safe("flowchart-label-scale", &source);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let labels = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .filter_map(|node| node.text())
+        .collect::<std::collections::HashSet<_>>();
+    for index in 0..500 {
+        assert!(labels.contains(format!("Node {index}").as_str()));
+    }
+}
+
+#[test]
+fn resvg_safe_renders_four_hundred_class_members() {
+    let mut source = String::from("classDiagram\nclass Example {\n");
+    for index in 0..400 {
+        source.push_str(&format!("+String field{index}\n"));
+    }
+    source.push_str("}\n");
+    let svg = render_resvg_safe("class-label-scale", &source);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    let labels = document
+        .descendants()
+        .filter(|node| node.has_tag_name("text"))
+        .filter_map(|node| node.text())
+        .collect::<std::collections::HashSet<_>>();
+    assert!(labels.contains("Example"));
+    for index in 0..400 {
+        assert!(labels.contains(format!("+String field{index}").as_str()));
+    }
+}
+
 fn render_with_pipeline(name: &str, source: &str, pipeline: Option<SvgPipeline>) -> String {
     let output = Renderer::new()
         .render(RenderRequest::svg(

@@ -648,6 +648,7 @@ impl CascadeIndex {
     fn candidate_rules_for_path<E>(
         &mut self,
         path: &[SourceElement],
+        checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
     ) -> Result<Vec<usize>, E> {
         let element = path.last().expect("source path is non-empty");
@@ -657,7 +658,7 @@ impl CascadeIndex {
             && self
                 .budget
                 .charge_match_work(element.selector_weight, selector_limit)?;
-        let mut candidate_rule_indices = if may_collect_candidates {
+        let candidate_rule_indices = if may_collect_candidates {
             self.candidate_rule_indices(element)
         } else {
             Vec::new()
@@ -687,7 +688,33 @@ impl CascadeIndex {
                 total.saturating_add(branch_work)
             });
         if !self.budget.charge_match_work(match_work, selector_limit)? {
-            candidate_rule_indices.clear();
+            return Ok(Vec::new());
+        }
+        // Attribute lookup hashes names. Only value predicates scan values; unrelated style,
+        // geometry, and metadata payloads must not be charged for every branch. Charge the
+        // general traversal first, then bound and checkpoint each additional value lookup.
+        let mut iteration = 0usize;
+        for rule_index in &candidate_rule_indices {
+            for selector in self.rules[*rule_index]
+                .branch
+                .compounds
+                .iter()
+                .flat_map(|compound| &compound.attributes)
+                .filter(|selector| !matches!(selector.matcher, AttributeMatcher::Exists))
+            {
+                for element in path {
+                    checkpoint_loop(iteration, checkpoint)?;
+                    iteration = iteration.saturating_add(1);
+                    let value_bytes = element
+                        .attributes
+                        .get(&selector.name)
+                        .and_then(Option::as_deref)
+                        .map_or(0, str::len);
+                    if !self.budget.charge_match_work(value_bytes, selector_limit)? {
+                        return Ok(Vec::new());
+                    }
+                }
+            }
         }
         Ok(candidate_rule_indices)
     }
@@ -736,7 +763,7 @@ impl CascadeIndex {
                 return Ok(false);
             }
             path.push(element);
-            for index in self.candidate_rules_for_path(&path, selector_limit)? {
+            for index in self.candidate_rules_for_path(&path, checkpoint, selector_limit)? {
                 let rule = &self.rules[index];
                 if matches_branch(&rule.branch, &path, checkpoint)?
                     && (rule.projection_only
@@ -829,7 +856,7 @@ impl CascadeIndex {
         checkpoint: &mut impl FnMut() -> Result<(), E>,
         selector_limit: &mut impl FnMut(usize, usize) -> Result<(), E>,
     ) -> Result<bool, E> {
-        for index in self.candidate_rules_for_path(path, selector_limit)? {
+        for index in self.candidate_rules_for_path(path, checkpoint, selector_limit)? {
             let rule = &self.rules[index];
             if (rule.projection_only || rule.projection_uncertain)
                 && matches_branch(&rule.branch, path, checkpoint)?
@@ -864,7 +891,7 @@ impl CascadeIndex {
                 continue;
             }
             path.push(Self::source_element(tag.raw(), Namespace::Svg, checkpoint)?);
-            let candidates = self.candidate_rules_for_path(&path, selector_limit)?;
+            let candidates = self.candidate_rules_for_path(&path, checkpoint, selector_limit)?;
             if self.budget.matching_exhausted {
                 return Ok(false);
             }
@@ -949,7 +976,8 @@ impl CascadeIndex {
             };
             path.push(Self::source_element(tag.raw(), Namespace::Svg, checkpoint)?);
             if name == "tspan" {
-                let candidates = self.candidate_rules_for_path(&path, selector_limit)?;
+                let candidates =
+                    self.candidate_rules_for_path(&path, checkpoint, selector_limit)?;
                 if self.budget.matching_exhausted {
                     return Ok(true);
                 }
@@ -987,7 +1015,8 @@ impl CascadeIndex {
         let element = path.last().expect("source path is non-empty");
         let parent = inherited.cloned().unwrap_or_else(default_style);
         let mut specified: HashMap<String, Specified> = HashMap::new();
-        let candidate_rule_indices = self.candidate_rules_for_path(path, selector_limit)?;
+        let candidate_rule_indices =
+            self.candidate_rules_for_path(path, checkpoint, selector_limit)?;
         for (candidate_index, rule_index) in candidate_rule_indices.into_iter().enumerate() {
             checkpoint_loop(candidate_index, checkpoint)?;
             let rule = &self.rules[rule_index];
@@ -1568,11 +1597,8 @@ fn source_selector_weight(
     for class in classes {
         weight = weight.saturating_add(1).saturating_add(class.len());
     }
-    for (name, value) in attributes {
+    for name in attributes.keys() {
         weight = weight.saturating_add(1).saturating_add(name.len());
-        if let Some(value) = value {
-            weight = weight.saturating_add(1).saturating_add(value.len());
-        }
     }
     weight
 }
@@ -3961,6 +3987,135 @@ mod tests {
             HtmlTextFragment::Text { text, white_space: HtmlWhiteSpace::Normal, .. } if text == " "
         ));
         assert_eq!(resolved.typography.font_size, DEFAULT_FONT_SIZE);
+    }
+
+    #[test]
+    fn selector_match_work_counts_only_referenced_attribute_values() {
+        for (selector, reads_payload) in [
+            ("svg .hit", false),
+            ("svg[data-payload] .hit", false),
+            ("svg[data-payload$=x] .hit", true),
+            ("svg[data-payload~=x] .hit", true),
+        ] {
+            let mut work = Vec::new();
+            for payload in [String::new(), "x".repeat(65_536)] {
+                let mut checkpoint = || Ok::<(), Infallible>(());
+                let mut selector_limit = |_, _| Ok::<(), Infallible>(());
+                let mut cascade = CascadeIndex::new(
+                    &format!("<svg><style>{selector}{{font-size:19px}}</style></svg>"),
+                    &mut checkpoint,
+                    &mut selector_limit,
+                )
+                .unwrap();
+                let path = [
+                    CascadeIndex::source_element(
+                        &format!("<svg data-payload='{payload}'>"),
+                        Namespace::Svg,
+                        &mut checkpoint,
+                    )
+                    .unwrap(),
+                    CascadeIndex::source_element(
+                        "<span class='hit'>",
+                        Namespace::Xhtml,
+                        &mut checkpoint,
+                    )
+                    .unwrap(),
+                ];
+                assert_eq!(
+                    cascade
+                        .candidate_rules_for_path(&path, &mut checkpoint, &mut selector_limit)
+                        .unwrap()
+                        .len(),
+                    1
+                );
+                work.push(cascade.budget.match_work);
+            }
+            if reads_payload {
+                assert!(work[1] >= work[0] + 65_536, "{selector}: {work:?}");
+            } else {
+                assert_eq!(work[0], work[1], "{selector}: unread attribute payload");
+            }
+        }
+    }
+
+    #[test]
+    fn selector_match_work_still_bounds_referenced_attribute_payloads() {
+        let selector = std::iter::repeat_n("svg[data-payload$=x] .hit", 512)
+            .collect::<Vec<_>>()
+            .join(",");
+        let mut checkpoint = || Ok::<(), &'static str>(());
+        let mut selector_limit = |actual, maximum| {
+            assert!(actual > maximum);
+            assert_eq!(maximum, MAX_SELECTOR_MATCH_WORK);
+            Err("selector budget exceeded")
+        };
+        let mut cascade = CascadeIndex::new(
+            &format!("<svg><style>{selector}{{font-size:19px}}</style></svg>"),
+            &mut checkpoint,
+            &mut selector_limit,
+        )
+        .unwrap();
+        let path = [
+            CascadeIndex::source_element(
+                &format!("<svg data-payload='{}'>", "x".repeat(65_536)),
+                Namespace::Svg,
+                &mut checkpoint,
+            )
+            .unwrap(),
+            CascadeIndex::source_element("<span class='hit'>", Namespace::Xhtml, &mut checkpoint)
+                .unwrap(),
+        ];
+        assert_eq!(
+            cascade.candidate_rules_for_path(&path, &mut checkpoint, &mut selector_limit),
+            Err("selector budget exceeded")
+        );
+    }
+
+    #[test]
+    fn selector_attribute_accounting_observes_cancellation_after_general_admission() {
+        for exhausted in [false, true] {
+            let mut setup_checkpoint = || Ok::<(), &'static str>(());
+            let mut selector_limit = |_, _| Err("selector budget exceeded");
+            let mut cascade = CascadeIndex::new(
+                "<svg><style>svg[data-payload$=x] .hit{font-size:19px}</style></svg>",
+                &mut setup_checkpoint,
+                &mut selector_limit,
+            )
+            .unwrap();
+            let path = [
+                CascadeIndex::source_element(
+                    "<svg data-payload='x'>",
+                    Namespace::Svg,
+                    &mut setup_checkpoint,
+                )
+                .unwrap(),
+                CascadeIndex::source_element(
+                    "<span class='hit'>",
+                    Namespace::Xhtml,
+                    &mut setup_checkpoint,
+                )
+                .unwrap(),
+            ];
+            if exhausted {
+                cascade.budget.match_work = MAX_SELECTOR_MATCH_WORK;
+            }
+            let mut checkpoints = 0usize;
+            let result = cascade.candidate_rules_for_path(
+                &path,
+                &mut || {
+                    checkpoints += 1;
+                    Err("cancelled")
+                },
+                &mut selector_limit,
+            );
+            if exhausted {
+                assert_eq!(result, Err("selector budget exceeded"));
+                assert_eq!(checkpoints, 0, "reject before attribute accounting");
+            } else {
+                assert_eq!(result, Err("cancelled"));
+                assert_eq!(checkpoints, 1);
+            }
+        }
     }
 
     #[test]
