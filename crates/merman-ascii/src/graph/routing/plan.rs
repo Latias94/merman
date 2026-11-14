@@ -626,6 +626,13 @@ impl RoutePlan {
         Ok(self)
     }
 
+    pub(super) fn requests_marker(&self, endpoint: MarkerEndpoint) -> bool {
+        match endpoint {
+            MarkerEndpoint::Start => self.start_marker != GraphEdgeMarker::Open,
+            MarkerEndpoint::End => self.end_marker != GraphEdgeMarker::Open,
+        }
+    }
+
     pub(super) fn materialized_marker_cell(
         &self,
         endpoint: MarkerEndpoint,

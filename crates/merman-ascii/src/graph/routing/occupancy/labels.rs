@@ -6,6 +6,13 @@ use crate::graph::routing::label::RoutedLabelPlacement;
 use crate::graph::routing::layout_allocation_failed;
 use crate::graph::routing::plan::{LabelAnchor, PlannedRouteSegment, RoutePlan};
 use crate::resource::ResourceContext;
+use rustc_hash::FxHashSet as HashSet;
+
+#[derive(Default)]
+struct LabelCandidates {
+    ordered: Vec<RoutedLabelPlacement>,
+    seen: HashSet<CanvasCoord>,
+}
 
 #[cfg(test)]
 pub(in crate::graph::routing) fn allocate_route_label_placements(
@@ -283,11 +290,7 @@ pub(super) fn route_label_candidates(
     resources: &mut ResourceContext,
     lane_radius: usize,
 ) -> Result<Vec<RoutedLabelPlacement>> {
-    const CANDIDATE_CAPACITY: usize = 64;
-    let mut candidates = Vec::new();
-    candidates
-        .try_reserve(CANDIDATE_CAPACITY)
-        .map_err(|_| layout_allocation_failed())?;
+    let mut candidates = LabelCandidates::default();
     push_label_candidate(
         &mut candidates,
         original,
@@ -329,11 +332,11 @@ pub(super) fn route_label_candidates(
             )?;
         }
     }
-    Ok(candidates)
+    Ok(candidates.ordered)
 }
 
 fn push_horizontal_host_candidates(
-    candidates: &mut Vec<RoutedLabelPlacement>,
+    candidates: &mut LabelCandidates,
     original: RoutedLabelPlacement,
     line_count: usize,
     host: HorizontalLabelHost,
@@ -365,7 +368,7 @@ fn push_horizontal_host_candidates(
 }
 
 fn push_vertical_host_candidates(
-    candidates: &mut Vec<RoutedLabelPlacement>,
+    candidates: &mut LabelCandidates,
     original: RoutedLabelPlacement,
     line_count: usize,
     host: VerticalLabelHost,
@@ -397,7 +400,7 @@ fn push_vertical_host_candidates(
 }
 
 fn push_point_host_candidates(
-    candidates: &mut Vec<RoutedLabelPlacement>,
+    candidates: &mut LabelCandidates,
     original: RoutedLabelPlacement,
     line_count: usize,
     point: CanvasCoord,
@@ -451,19 +454,25 @@ fn push_point_host_candidates(
 }
 
 fn push_label_candidate(
-    candidates: &mut Vec<RoutedLabelPlacement>,
+    candidates: &mut LabelCandidates,
     original: RoutedLabelPlacement,
     x: usize,
     y: usize,
-    resources: &mut ResourceContext,
+    resources: &ResourceContext,
 ) -> Result<()> {
-    resources.charge_layout_work(candidates.len())?;
-    let candidate = original.with_position(x, y);
-    if !candidates.contains(&candidate) {
+    resources.charge_layout_work(1)?;
+    let coord = CanvasCoord { x, y };
+    if !candidates.seen.contains(&coord) {
         candidates
+            .seen
             .try_reserve(1)
             .map_err(|_| layout_allocation_failed())?;
-        candidates.push(candidate);
+        candidates
+            .ordered
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_failed())?;
+        candidates.seen.insert(coord);
+        candidates.ordered.push(original.with_position(x, y));
     }
     Ok(())
 }
@@ -471,8 +480,46 @@ fn push_label_candidate(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::resource::AsciiResourceLimitId;
     use crate::resource::AsciiResourcePolicy;
     use merman_model::resources::ResourceProfile;
+
+    #[test]
+    fn candidate_dedup_preserves_first_order_with_linear_work_admission() {
+        for distinct in [8, 64, 256] {
+            let attempts = distinct * 2;
+            let policy = AsciiResourcePolicy::unbounded();
+            for limit in [attempts, attempts - 1] {
+                let resources = ResourceContext::new(
+                    policy
+                        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                        .unwrap(),
+                );
+                let mut candidates = LabelCandidates::default();
+                let original = RoutedLabelPlacement::new(0, 0, 3);
+                let result = (0..distinct).rev().chain(0..distinct).try_for_each(|x| {
+                    push_label_candidate(&mut candidates, original, x, 7, &resources)
+                });
+                if limit == attempts {
+                    result.unwrap();
+                    assert_eq!(candidates.ordered.len(), distinct);
+                    assert_eq!(resources.layout_work_used(), attempts);
+                    assert!(
+                        candidates
+                            .ordered
+                            .iter()
+                            .zip((0..distinct).rev())
+                            .all(|(candidate, x)| *candidate == original.with_position(x, 7))
+                    );
+                } else {
+                    assert!(
+                        matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == attempts)
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn vertical_host_candidates_align_the_full_multiline_block() {

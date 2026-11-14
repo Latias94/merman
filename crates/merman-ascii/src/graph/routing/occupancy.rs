@@ -197,6 +197,7 @@ pub(super) struct RouteBounds {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct RouteCandidateScore {
     target_port_reuse: usize,
+    source_port_reuse: usize,
     ambiguous_shared_cells: usize,
     total_cost: usize,
     shared_cells: usize,
@@ -206,7 +207,9 @@ pub(super) struct RouteCandidateScore {
 
 impl RouteCandidateScore {
     pub(super) fn has_congestion(self) -> bool {
-        self.target_port_reuse != 0 || self.ambiguous_shared_cells != 0
+        self.target_port_reuse != 0
+            || self.source_port_reuse != 0
+            || self.ambiguous_shared_cells != 0
     }
 }
 
@@ -349,6 +352,7 @@ pub(super) struct SceneOccupancy<'layout> {
     pub(super) route_bounds: Vec<Option<RouteBounds>>,
     terminal_claims: HashMap<CanvasCoord, Vec<TerminalClaim>>,
     target_ports: HashMap<(CanvasCoord, StepDirection), usize>,
+    source_ports: HashMap<(CanvasCoord, StepDirection), usize>,
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     // Includes each label's text and the clear perpendicular gap to its host.
     labels: HashSet<CanvasCoord>,
@@ -364,6 +368,14 @@ impl<'layout> SceneOccupancy<'layout> {
     }
     pub(super) fn target_port_usage(&self, attachment: super::plan::NodeAttachment) -> usize {
         self.target_ports
+            .get(&(attachment.contact, attachment.outward))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Counts committed start-marker requests before marker berth allocation.
+    pub(super) fn source_port_usage(&self, attachment: super::plan::NodeAttachment) -> usize {
+        self.source_ports
             .get(&(attachment.contact, attachment.outward))
             .copied()
             .unwrap_or_default()
@@ -427,6 +439,7 @@ impl<'layout> SceneOccupancy<'layout> {
             route_bounds: Vec::new(),
             terminal_claims: HashMap::default(),
             target_ports: HashMap::default(),
+            source_ports: HashMap::default(),
             markers: HashMap::default(),
             labels: HashSet::default(),
             protected: Vec::new(),
@@ -440,6 +453,7 @@ impl<'layout> SceneOccupancy<'layout> {
             .map_err(|_| layout_allocation_failed())?;
         try_reserve_hash_map(&mut scene.terminal_claims, marker_capacity)?;
         try_reserve_hash_map(&mut scene.target_ports, route_capacity)?;
+        try_reserve_hash_map(&mut scene.source_ports, route_capacity)?;
         try_reserve_hash_map(&mut scene.markers, marker_capacity)?;
         scene
             .labels
@@ -646,9 +660,16 @@ impl<'layout> SceneOccupancy<'layout> {
         let target_port_reuse = plan
             .attachments
             .map_or(0, |ports| self.target_port_usage(ports.end));
+        let source_port_reuse = if plan.requests_marker(MarkerEndpoint::Start) {
+            plan.attachments
+                .map_or(0, |ports| self.source_port_usage(ports.start))
+        } else {
+            0
+        };
         Ok(Some(RouteCandidateScore {
-            ambiguous_shared_cells,
             target_port_reuse,
+            source_port_reuse,
+            ambiguous_shared_cells,
             total_cost,
             shared_cells,
             cell_count,
@@ -1153,6 +1174,16 @@ impl<'layout> SceneOccupancy<'layout> {
                 .entry((ports.end.contact, ports.end.outward))
                 .or_default();
             *count = resources.checked_work_add(*count, 1)?;
+            if route.plan.requests_marker(MarkerEndpoint::Start) {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                try_reserve_hash_map(&mut self.source_ports, 1)?;
+                let count = self
+                    .source_ports
+                    .entry((ports.start.contact, ports.start.outward))
+                    .or_default();
+                *count = resources.checked_work_add(*count, 1)?;
+            }
         }
         let mut bounds: Option<RouteBounds> = None;
         for (cell_index, cell) in route.plan.cells.iter().enumerate() {

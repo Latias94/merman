@@ -118,11 +118,13 @@ unless the caller explicitly overrides the corresponding family option. These ad
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
 
-Graph routing compares deterministic candidates using target-port congestion, ambiguous shared
-cells, and route length. Clear direct routes stay direct. Ordinary candidates retain all cardinal
-port combinations instead of discarding mixed horizontal/vertical choices before scene admission.
-Colliding or congested node-to-node edges can additionally use terminal-cell search with a center
-and neighboring legal contacts on each node side, including across nested compound frames. This
+Graph routing compares deterministic candidates using target-port congestion, marked-source port
+congestion, ambiguous shared cells, and route length. Open starts can retain shared outgoing stems;
+visible source markers prefer independent contacts. Clear direct routes stay direct. Ordinary
+candidates retain all cardinal port combinations instead of discarding mixed horizontal/vertical
+choices before scene admission.
+Colliding or congested node-to-node edges can additionally use terminal-cell search over every
+non-corner contact accepted by the endpoint shape, including across nested compound frames. This
 separates branch/merge heads and skip-edge lanes without changing Dagre ranks. Coarse-grid and
 terminal-cell searches share frame constraints: routes stay inside common containers, avoid
 unrelated containers, and cross owned frame sides transversely without turning on a border.
@@ -131,19 +133,26 @@ group titles retain a horizontal reading gap where space permits. A missing prim
 does not prevent alternate candidates or bounded recovery from running. Parent local-direction
 layouts reserve the full span of child contents and move each child as a unit before frame spacing
 is resolved. Optional improvement of an already valid route has a shared expansion cap across
-port pairs; required collision recovery remains bounded by the scene extent and operation work
+port pairs. Pairs are generated in usage/distance order with a frontier linear in the source
+perimeter rather than retaining their Cartesian product. Where a globally empty separator exists,
+visible branches reserve a transit cell beyond both endpoint reading margins on the applied local
+rank axis, including at zero preferred padding. Node content bands in other scopes stay intact.
+Required collision recovery remains bounded by the scene extent and operation work
 budget. Container endpoints also use terminal-cell recovery: external edges contact the outside
 of the frame, while ancestor/member edges contact its inside. Only selected frame contacts permit
 terminal crossings; corner contacts are excluded. Container self-loops can recover through two
 distinct exterior contacts, keeping their transit and labels inside a shared parent when nested.
 The immediate parent reserves room to leave a berth before turning and returning to the frame.
-Ports near the center and inset from frame corners provide alternatives around titles and member
-nodes. State concurrency separators remain open to transverse routes through intermediate regions;
+Center-out contour enumeration provides alternatives around titles and member nodes.
+State concurrency separators remain open to transverse routes through intermediate regions;
 their generated Divider identities retain their dedicated endpoint-routing boundary. Empty regions
 remain ordered structural sections rather than visible nodes. Node self-loops can also recover
 through alternate terminal ports when fixed lanes are blocked. Before such a search, earlier
 loop labels are protected and the incumbent route is checked against those reservations again.
 All attempts charge the same work ledger and observe cancellation.
+Recovery rejects sealed straight approaches before opening the path frontier. Label candidates
+retain first-insertion order with operation-local hash-set deduplication, avoiding a repeated
+linear scan for each generated position as the contour search grows.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
 transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping

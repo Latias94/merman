@@ -92,9 +92,9 @@ reference implementation is only an implementation aid.
 ## Known Limitations
 
 - Route candidates retain all cardinal port combinations. Collision or congestion can trigger
-  terminal-cell search with center and neighboring legal contacts on each node side, preserving
-  independent heads for four-to-six-way merges, branch/merge graphs, skip edges, and mixed-stroke
-  feedback. Node-to-node routes across nested subgraphs use the same containment and transverse
+  terminal-cell search over every shape-valid non-corner contact on each node side, preserving
+  independent heads for covered merges through twelve incoming edges, branch/merge graphs, skip
+  edges, and mixed-stroke feedback. Node-to-node routes across nested subgraphs use the same containment and transverse
   crossing constraints as coarse-grid recovery. Aligned edges blocked by intermediate nodes reserve
   a bypass lane in their nearest common container; group-title footprints include a horizontal
   reading gap where space permits. Explicit local directions remain authoritative. Container
@@ -105,8 +105,14 @@ reference implementation is only an implementation aid.
   enough exterior space to leave a berth before turning. Parent layouts account for complete
   child-content spans;
   sibling subgraphs remain separate units during local-direction placement. Clear direct routes
-  remain direct, and Dagre ranks do not change. Optional quality repair has a fixed expansion cap
-  across port pairs; required recovery is bounded by scene extent and the shared work ledger.
+  remain direct, and Dagre ranks do not change. Where a globally empty separator exists, branch
+  spacing reserves a complete transit band beyond endpoint reading margins on the actual local
+  rank axis without expanding any node's content bands. Source markers participate in port-reuse
+  scoring; open starts may share their stems.
+  Optional quality repair has a fixed expansion cap across lazily generated port pairs; required
+  recovery is bounded by scene extent and the shared work ledger. Full contour enumeration does
+  not guarantee independent routes for arbitrary degree. Dense two-ended-marker fan-out can still
+  exhaust recovery or the work budget, including an eight-edge zero-padding case.
   Alternate candidates and recovery still run
   when the primary route family is unavailable. Candidate exhaustion produces `UnsupportedFeature`;
   resource and cancellation failures remain terminal errors rather than a partial drawing.

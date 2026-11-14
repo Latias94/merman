@@ -33,7 +33,7 @@ pub(super) fn apply_group_placement_adjustments(
     policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<()> {
+) -> Result<Vec<Option<GraphDirection>>> {
     placement::apply_group_placement_adjustments(
         graph, placements, topology, policy, resources, execution,
     )

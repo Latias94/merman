@@ -100,6 +100,35 @@ fn four_to_six_incoming_edges_keep_unstacked_target_heads() {
 }
 
 #[test]
+fn wide_fan_in_and_marked_fan_out_keep_independent_heads_at_zero_padding() {
+    for (incoming, marked_source) in [(8, false), (12, false), (4, true), (6, true)] {
+        for direction in ["TD", "BT", "LR", "RL"] {
+            let mut source = format!("flowchart {direction}\n");
+            for index in 1..=incoming {
+                if marked_source {
+                    source.push_str(&format!("S[SOURCE] <--> N{index:02}[N{index:02}]\n"));
+                } else {
+                    source.push_str(&format!("N{index:02}[N{index:02}] --> T[TARGET]\n"));
+                }
+            }
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let options = options.with_graph_padding_x(0).with_graph_padding_y(0);
+                let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
+                    panic!("{incoming} ports, {direction}, marked_source={marked_source}: {error}")
+                });
+                assert_readable_target_heads(
+                    &rendered,
+                    incoming * if marked_source { 2 } else { 1 },
+                );
+                for index in 1..=incoming {
+                    assert_labels_once(&rendered, &[&format!("N{index:02}")]);
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn six_way_branch_and_merge_preserves_all_twelve_target_heads() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(

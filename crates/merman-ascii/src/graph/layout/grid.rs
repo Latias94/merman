@@ -25,6 +25,8 @@ const MINIMUM_NODE_GRID_HEIGHT: usize = 3;
 const MINIMUM_NODE_GRID_CELLS: usize = MINIMUM_NODE_GRID_WIDTH * MINIMUM_NODE_GRID_HEIGHT;
 const AXIS_ENTRIES_PER_NODE: usize = 4;
 const MINIMUM_GROUP_RANK_GAP: usize = 1;
+// One reading-margin cell per endpoint plus one free transverse transit cell.
+const MINIMUM_BRANCH_RANK_GAP: usize = 3;
 const ROUTING_CORRIDOR_BAND_SIZE: usize = 2;
 const NODE_LABEL_PLAN_CHECKPOINT_INTERVAL: usize = 64;
 
@@ -107,6 +109,43 @@ impl AxisProjection {
 struct RankedGridPlacements {
     nodes: Vec<GridCoord>,
     leaf_group_levels: Vec<Option<usize>>,
+    group_directions: Vec<Option<GraphDirection>>,
+}
+
+#[derive(Clone, Copy, Default)]
+struct VisibleNodeDegree {
+    incoming: usize,
+    outgoing: usize,
+}
+
+struct NodeAxisBands {
+    columns: HashSet<usize>,
+    rows: HashSet<usize>,
+}
+
+impl NodeAxisBands {
+    fn try_new(placements: &[GridCoord], resources: &ResourceContext) -> Result<Self> {
+        let count = resources.checked_work_mul(placements.len(), 3)?;
+        resources.charge_layout_work(resources.checked_work_mul(count, 2)?)?;
+        let mut bands = Self {
+            columns: HashSet::default(),
+            rows: HashSet::default(),
+        };
+        try_reserve_hash_set(&mut bands.columns, count)?;
+        try_reserve_hash_set(&mut bands.rows, count)?;
+        for placement in placements {
+            resources.checkpoint()?;
+            for offset in 0..3 {
+                bands
+                    .columns
+                    .insert(resources.checked_grid_add(placement.x, offset)?);
+                bands
+                    .rows
+                    .insert(resources.checked_grid_add(placement.y, offset)?);
+            }
+        }
+        Ok(bands)
+    }
 }
 
 fn checkpoint_layout(execution: AsciiExecution<'_>, iteration: usize) -> Result<()> {
@@ -289,16 +328,33 @@ fn layout_left_right_grid_nodes(
         &mut row_heights,
         resources,
     )?;
-    let coord_by_id = node_coords_by_id(graph, &placements)?;
+    let index_by_id = node_indices_by_id(graph)?;
+    let degrees = visible_node_degrees(graph, &index_by_id, resources, execution)?;
+    let occupied = NodeAxisBands::try_new(&placements, resources)?;
     for (index, edge) in graph.edges.iter().enumerate() {
         checkpoint_layout(execution, index)?;
-        let (Some(from), Some(to)) = (
-            coord_by_id.get(edge.from.as_str()).copied(),
-            coord_by_id.get(edge.to.as_str()).copied(),
+        let (Some(from_index), Some(to_index)) = (
+            index_by_id.get(edge.from.as_str()).copied(),
+            index_by_id.get(edge.to.as_str()).copied(),
         ) else {
             continue;
         };
+        let from = placements[from_index];
+        let to = placements[to_index];
         apply_horizontal_edge_spacing(edge, from, to, policy, &mut column_widths, resources)?;
+        reserve_branch_rank_spacing(
+            graph,
+            edge,
+            from,
+            to,
+            degrees[from_index].outgoing > 1 || degrees[to_index].incoming > 1,
+            topology,
+            &ranked.group_directions,
+            &occupied,
+            &mut column_widths,
+            &mut row_heights,
+            resources,
+        )?;
         if from.x == to.x {
             apply_vertical_edge_spacing(
                 edge,
@@ -340,7 +396,7 @@ fn place_left_right_grid_nodes(
     )?;
     if !graph.groups.is_empty() {
         checkpoint_layout(execution, 0)?;
-        groups::apply_group_placement_adjustments(
+        ranked.group_directions = groups::apply_group_placement_adjustments(
             graph,
             &mut ranked.nodes,
             topology.expect("non-empty graph groups must have topology"),
@@ -440,6 +496,7 @@ fn place_ranked_grid_nodes(
     Ok(RankedGridPlacements {
         nodes: finalize_ranked_placements(placements, graph.diagram_type())?,
         leaf_group_levels: rank_levels.leaf_groups,
+        group_directions: Vec::new(),
     })
 }
 
@@ -610,6 +667,8 @@ fn layout_top_down_grid_nodes(
         resources,
     )?;
     let index_by_id = node_indices_by_id(graph)?;
+    let degrees = visible_node_degrees(graph, &index_by_id, resources, execution)?;
+    let occupied = NodeAxisBands::try_new(&placements, resources)?;
     for (index, edge) in graph.edges.iter().enumerate() {
         checkpoint_layout(execution, index)?;
         let (Some(from_index), Some(to_index)) = (
@@ -625,6 +684,19 @@ fn layout_top_down_grid_nodes(
             from,
             to,
             policy,
+            &mut column_widths,
+            &mut row_heights,
+            resources,
+        )?;
+        reserve_branch_rank_spacing(
+            graph,
+            edge,
+            from,
+            to,
+            degrees[from_index].outgoing > 1 || degrees[to_index].incoming > 1,
+            topology,
+            &ranked.group_directions,
+            &occupied,
             &mut column_widths,
             &mut row_heights,
             resources,
@@ -871,7 +943,7 @@ fn place_top_down_grid_nodes(
     )?;
     if !graph.groups.is_empty() {
         checkpoint_layout(execution, 0)?;
-        groups::apply_group_placement_adjustments(
+        ranked.group_directions = groups::apply_group_placement_adjustments(
             graph,
             &mut ranked.nodes,
             topology.expect("non-empty graph groups must have topology"),
@@ -897,16 +969,98 @@ fn node_indices_by_id(graph: &AsciiGraph) -> Result<NodeIndexById<'_>> {
     Ok(index_by_id)
 }
 
-fn node_coords_by_id<'a>(
-    graph: &'a AsciiGraph,
-    placements: &[GridCoord],
-) -> Result<HashMap<&'a str, GridCoord>> {
-    let mut coord_by_id = HashMap::default();
-    try_reserve_hash_map(&mut coord_by_id, graph.nodes.len())?;
-    for (node, coord) in graph.nodes.iter().zip(placements.iter().copied()) {
-        coord_by_id.insert(node.id.as_str(), coord);
+fn visible_node_degrees(
+    graph: &AsciiGraph,
+    index_by_id: &NodeIndexById<'_>,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<VisibleNodeDegree>> {
+    resources
+        .charge_layout_work(resources.checked_work_add(graph.nodes.len(), graph.edges.len())?)?;
+    let mut degrees = Vec::new();
+    try_reserve_vec(&mut degrees, graph.nodes.len())?;
+    degrees.resize(graph.nodes.len(), VisibleNodeDegree::default());
+    for (index, edge) in graph.edges.iter().enumerate() {
+        checkpoint_layout(execution, index)?;
+        if !edge.stroke.is_visible() || edge.from == edge.to {
+            continue;
+        }
+        let (Some(from), Some(to)) = (
+            index_by_id.get(edge.from.as_str()).copied(),
+            index_by_id.get(edge.to.as_str()).copied(),
+        ) else {
+            continue;
+        };
+        degrees[from].outgoing = resources.checked_work_add(degrees[from].outgoing, 1)?;
+        degrees[to].incoming = resources.checked_work_add(degrees[to].incoming, 1)?;
     }
-    Ok(coord_by_id)
+    Ok(degrees)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn reserve_branch_rank_spacing(
+    graph: &AsciiGraph,
+    edge: &AsciiGraphEdge,
+    from: GridCoord,
+    to: GridCoord,
+    is_branch: bool,
+    topology: Option<&GraphGroupTopology<'_>>,
+    group_directions: &[Option<GraphDirection>],
+    occupied: &NodeAxisBands,
+    column_widths: &mut AxisSizes,
+    row_heights: &mut AxisSizes,
+    resources: &mut ResourceContext,
+) -> Result<()> {
+    if !is_branch || !edge.stroke.is_visible() {
+        return Ok(());
+    }
+    let mut direction = graph.direction;
+    if let Some(topology) = topology {
+        let target_scope = topology.groups_containing_endpoint(&edge.to, resources)?;
+        let mut scope = topology.direct_node_group_index(&edge.from);
+        for _ in 0..graph.groups.len() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            let Some(group_index) = scope else {
+                break;
+            };
+            if target_scope.contains(&group_index)
+                && let Some(local) = group_directions.get(group_index).copied().flatten()
+            {
+                direction = local;
+                break;
+            }
+            scope = topology.parent_group_index(group_index);
+        }
+    }
+    let (first, last, sizes, occupied) = match direction.canonical() {
+        GraphDirection::LeftRight => (
+            from.x.min(to.x),
+            from.x.max(to.x),
+            column_widths,
+            &occupied.columns,
+        ),
+        GraphDirection::TopDown => (
+            from.y.min(to.y),
+            from.y.max(to.y),
+            row_heights,
+            &occupied.rows,
+        ),
+        GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+    };
+    // All nodes share axis projections, including unrelated local-direction scopes. Expanding
+    // any node-owned band would stretch its contour, so only a globally empty band may grow.
+    if last - first > 2 {
+        for separator in (resources.checked_grid_add(first, 3)?..last).rev() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            if !occupied.contains(&separator) {
+                set_axis_size(sizes, separator, MINIMUM_BRANCH_RANK_GAP);
+                break;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn new_occupied_grid(
@@ -1196,9 +1350,253 @@ fn layout_allocation_failed() -> AsciiError {
 mod tests {
     use super::*;
     use crate::AsciiRenderOptions;
+    use crate::graph::layout::layout_graph;
+    use crate::graph::model::{GraphEdgeAttrs, GraphEdgeStroke};
     use crate::resource::AsciiResourcePolicy;
     use merman_model::resources::ResourceProfile;
     use merman_model::{OperationControl, OperationPhase};
+
+    fn node_rank_gap(from: &NodeLayout, to: &NodeLayout, direction: GraphDirection) -> usize {
+        match direction.canonical() {
+            GraphDirection::LeftRight => to.x - from.right() - 1,
+            GraphDirection::TopDown => to.y - from.bottom() - 1,
+            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn visible_branches_reserve_a_transit_cell_outside_endpoint_reading_margins() {
+        for direction in [
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+        ] {
+            for fan_in in [false, true] {
+                let mut graph = AsciiGraph::new(direction);
+                for index in 1..=8 {
+                    graph.add_node(format!("N{index:02}"), format!("S{index:02}"));
+                }
+                graph.add_node("T", "TARGET");
+                for index in 1..=8 {
+                    let leaf = format!("N{index:02}");
+                    if fan_in {
+                        graph.add_edge(leaf, "T");
+                    } else {
+                        graph.add_edge("T", leaf);
+                    }
+                }
+                graph.add_node("Z", "TAIL");
+                if fan_in {
+                    graph.add_edge("T", "Z");
+                } else {
+                    graph.add_edge("Z", "T");
+                }
+                let mut invisible = graph.clone();
+                for edge in &mut invisible.edges {
+                    edge.stroke = GraphEdgeStroke::Invisible;
+                }
+                for preferred_gap in [0, 5] {
+                    let options = AsciiRenderOptions::ascii()
+                        .with_graph_padding_x(preferred_gap)
+                        .with_graph_padding_y(preferred_gap);
+                    let layout = layout_graph(&graph, &options);
+                    let control = layout_graph(&invisible, &options);
+                    let hub = &layout.nodes[8];
+                    for leaf in &layout.nodes[..8] {
+                        let (from, to) = if fan_in { (leaf, hub) } else { (hub, leaf) };
+                        let gap = node_rank_gap(from, to, direction);
+                        assert!(
+                            gap.saturating_sub(2) >= 1 && gap >= preferred_gap,
+                            "a branch needs a transit cell beyond both reading margins: {direction:?}, fan_in={fan_in}, gap={gap}"
+                        );
+                    }
+                    let tail = &layout.nodes[9];
+                    let (from, to) = if fan_in { (hub, tail) } else { (tail, hub) };
+                    assert_eq!(node_rank_gap(from, to, direction), preferred_gap.max(1));
+                    for (node, control_node) in layout.nodes.iter().zip(&control.nodes) {
+                        assert_eq!(node.grid, control_node.grid);
+                        assert_eq!(node.width, control_node.width);
+                        assert_eq!(node.height, control_node.height);
+                        match direction.canonical() {
+                            GraphDirection::LeftRight => assert_eq!(node.y, control_node.y),
+                            GraphDirection::TopDown => assert_eq!(node.x, control_node.x),
+                            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn single_edges_and_invisible_branches_keep_zero_padding_rank_spacing() {
+        let options = AsciiRenderOptions::ascii()
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0);
+        for direction in [
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+        ] {
+            for fan_in in [false, true] {
+                for (first_stroke, second_stroke) in [
+                    (GraphEdgeStroke::Normal, None),
+                    (GraphEdgeStroke::Normal, Some(GraphEdgeStroke::Invisible)),
+                    (GraphEdgeStroke::Invisible, Some(GraphEdgeStroke::Invisible)),
+                ] {
+                    let mut graph = AsciiGraph::new(direction);
+                    for id in ["hub", "first", "second"] {
+                        graph.add_node(id, id);
+                    }
+                    for (leaf, stroke) in [("first", Some(first_stroke)), ("second", second_stroke)]
+                    {
+                        let Some(stroke) = stroke else {
+                            continue;
+                        };
+                        let (from, to) = if fan_in { (leaf, "hub") } else { ("hub", leaf) };
+                        graph.add_edge_with_attrs(
+                            from,
+                            to,
+                            GraphEdgeAttrs {
+                                stroke,
+                                ..GraphEdgeAttrs::default()
+                            },
+                        );
+                    }
+                    let layout = layout_graph(&graph, &options);
+                    for edge in &graph.edges {
+                        let from = layout
+                            .nodes
+                            .iter()
+                            .find(|node| node.id == edge.from)
+                            .unwrap();
+                        let to = layout.nodes.iter().find(|node| node.id == edge.to).unwrap();
+                        assert_eq!(
+                            node_rank_gap(from, to, direction),
+                            1,
+                            "single edges and invisible constraints retain the minimum grid gap: {direction:?}, fan_in={fan_in}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn self_loops_do_not_turn_single_edges_into_branches() {
+        let options = AsciiRenderOptions::ascii()
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0);
+        for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("a", "A");
+            graph.add_node("b", "B");
+            graph.add_edge("a", "b");
+            let control = layout_graph(&graph, &options);
+            graph.add_edge("a", "a");
+            graph.add_edge("b", "b");
+            let layout = layout_graph(&graph, &options);
+            assert_eq!(layout, control);
+        }
+    }
+
+    #[test]
+    fn branch_clearance_follows_the_applied_local_direction_without_stretching_nodes() {
+        let options = AsciiRenderOptions::ascii()
+            .with_node_padding(0)
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0);
+        for root in [
+            GraphDirection::TopDown,
+            GraphDirection::BottomTop,
+            GraphDirection::LeftRight,
+            GraphDirection::RightLeft,
+        ] {
+            for local in [
+                GraphDirection::TopDown,
+                GraphDirection::BottomTop,
+                GraphDirection::LeftRight,
+                GraphDirection::RightLeft,
+            ] {
+                for fan_in in [false, true] {
+                    let mut graph = AsciiGraph::new(root);
+                    for id in ["A", "B", "T"] {
+                        graph.add_node(id, id);
+                    }
+                    for leaf in ["A", "B"] {
+                        if fan_in {
+                            graph.add_edge(leaf, "T");
+                        } else {
+                            graph.add_edge("T", leaf);
+                        }
+                    }
+                    graph.add_group_with_style(
+                        "g",
+                        "g",
+                        Some(local),
+                        vec!["A".into(), "B".into(), "T".into()],
+                        Default::default(),
+                    );
+                    let layout = layout_graph(&graph, &options);
+                    for node in &layout.nodes {
+                        assert_eq!(node.width, 3, "{root:?}, {local:?}, {node:?}");
+                        assert_eq!(node.height, 3, "{root:?}, {local:?}, {node:?}");
+                    }
+                    let hub = &layout.nodes[2];
+                    for leaf in &layout.nodes[..2] {
+                        let (first, last) = match local.canonical() {
+                            GraphDirection::LeftRight if leaf.x < hub.x => (leaf, hub),
+                            GraphDirection::LeftRight => (hub, leaf),
+                            GraphDirection::TopDown if leaf.y < hub.y => (leaf, hub),
+                            GraphDirection::TopDown => (hub, leaf),
+                            _ => unreachable!(),
+                        };
+                        assert!(node_rank_gap(first, last, local) >= 3);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn local_branch_spacing_preserves_unrelated_node_content_on_shared_axis_bands() {
+        let options = AsciiRenderOptions::ascii()
+            .with_node_padding(0)
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0);
+        for (root, local) in [
+            (GraphDirection::TopDown, GraphDirection::LeftRight),
+            (GraphDirection::LeftRight, GraphDirection::TopDown),
+        ] {
+            let mut graph = AsciiGraph::new(root);
+            for id in ["U", "V", "A", "B", "C"] {
+                graph.add_node(id, id);
+            }
+            for (from, to) in [("U", "A"), ("V", "A"), ("A", "B"), ("A", "C")] {
+                graph.add_edge(from, to);
+            }
+            graph.add_group_with_style(
+                "g",
+                "g",
+                Some(local),
+                vec!["A".into(), "B".into(), "C".into()],
+                Default::default(),
+            );
+            let mut invisible = graph.clone();
+            for edge in &mut invisible.edges {
+                edge.stroke = GraphEdgeStroke::Invisible;
+            }
+            let layout = layout_graph(&graph, &options);
+            let control = layout_graph(&invisible, &options);
+            for (node, control) in layout.nodes.iter().zip(&control.nodes) {
+                assert_eq!(node.grid, control.grid);
+                assert_eq!(node.width, control.width, "{root:?}, {local:?}, {node:?}");
+                assert_eq!(node.height, control.height, "{root:?}, {local:?}, {node:?}");
+            }
+        }
+    }
 
     fn apply_test_edge_label_spacing(
         direction: GraphDirection,
@@ -1232,8 +1630,6 @@ mod tests {
 
     #[test]
     fn discarded_blank_edge_labels_do_not_expand_rank_spacing() {
-        use crate::graph::model::GraphEdgeAttrs;
-
         let options = AsciiRenderOptions::ascii()
             .with_graph_padding_x(0)
             .with_graph_padding_y(0);

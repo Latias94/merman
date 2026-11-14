@@ -1,4 +1,78 @@
 use super::*;
+use crate::graph::routing::plan::{NodeAttachment, NodeAttachments};
+
+#[test]
+fn source_port_reuse_is_congestion_only_for_marked_starts() {
+    let options = AsciiRenderOptions::ascii();
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    let plan_with_source = |marker, length| {
+        let mut plan = marker_request_plan(GraphEdgeMarker::Open, length)
+            .with_marker_requests(marker, GraphEdgeMarker::Open, "flowchart")
+            .unwrap();
+        plan.attachments = Some(NodeAttachments {
+            start: NodeAttachment {
+                contact: CanvasCoord { x: 0, y: 0 },
+                outward: StepDirection::Right,
+                connector: None,
+            },
+            end: NodeAttachment {
+                contact: CanvasCoord {
+                    x: length - 1,
+                    y: 0,
+                },
+                outward: StepDirection::Left,
+                connector: None,
+            },
+        });
+        plan
+    };
+
+    for existing_marker in [GraphEdgeMarker::Open, GraphEdgeMarker::Point] {
+        let existing_routes = vec![PreparedRoute::for_test_with_endpoints(
+            plan_with_source(existing_marker, 6),
+            0,
+            "source",
+            "first-target",
+        )];
+        let mut resources = unbounded_resources();
+        let occupancy =
+            SceneOccupancy::try_new(&existing_routes, &graph_layout, &mut resources, "flowchart")
+                .unwrap();
+
+        for candidate_marker in [GraphEdgeMarker::Open, GraphEdgeMarker::Point] {
+            let candidate = PreparedRoute::for_test_with_endpoints(
+                plan_with_source(candidate_marker, 3),
+                1,
+                "source",
+                "second-target",
+            );
+            let attachments = candidate.plan.attachments.unwrap();
+            assert_eq!(
+                occupancy.source_port_usage(attachments.start),
+                usize::from(existing_marker != GraphEdgeMarker::Open),
+                "only committed start-marker requests should reserve the source contact"
+            );
+            assert_eq!(occupancy.target_port_usage(attachments.end), 0);
+            let score = occupancy
+                .score_route(
+                    &existing_routes,
+                    &candidate.plan,
+                    &candidate.owner,
+                    &mut resources,
+                    "flowchart",
+                )
+                .unwrap()
+                .expect("same-source routes may share their outgoing terminal ray");
+
+            assert_eq!(
+                score.has_congestion(),
+                existing_marker != GraphEdgeMarker::Open
+                    && candidate_marker != GraphEdgeMarker::Open,
+                "source reuse must trigger repair for marked fanout while preserving open stems"
+            );
+        }
+    }
+}
 
 #[test]
 fn conflicting_marker_owners_receive_independent_terminal_berths() {

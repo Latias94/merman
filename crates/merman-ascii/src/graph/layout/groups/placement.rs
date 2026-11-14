@@ -23,12 +23,12 @@ pub(super) fn apply_group_placement_adjustments(
     policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<()> {
+) -> Result<Vec<Option<GraphDirection>>> {
     let original_placements = clone_grid_placements(placements, resources)?;
     let original_root_axis = root_axis_positions(graph.direction, placements, resources)?;
     let endpoint_index =
         GroupEndpointIndex::try_new(graph, topology, &original_root_axis, resources)?;
-    let direction_overrides = plan_group_direction_overrides(graph, topology, resources)?;
+    let mut direction_overrides = plan_group_direction_overrides(graph, topology, resources)?;
     let mut disabled_overrides = try_bool_slots(graph.groups.len(), resources)?;
     let placement_context = GroupPlacementContext {
         graph,
@@ -91,9 +91,16 @@ pub(super) fn apply_group_placement_adjustments(
     )? {
         restore_grid_placements(placements, &original_placements, resources)?;
         separate_external_nodes_from_groups(graph, placements, topology, resources)?;
+        disable_all_group_overrides(&direction_overrides, &mut disabled_overrides, resources)?;
     }
 
-    Ok(())
+    resources.charge_layout_work(direction_overrides.len())?;
+    for (direction, disabled) in direction_overrides.iter_mut().zip(disabled_overrides) {
+        if disabled {
+            *direction = None;
+        }
+    }
+    Ok(direction_overrides)
 }
 
 fn clone_grid_placements(

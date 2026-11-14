@@ -5,7 +5,7 @@ use super::plan::{EdgeRouteRequest, EndpointGeometry, NodeAttachment, NodeAttach
 use super::{admit_route_candidate, layout_allocation_failed};
 use crate::error::Result;
 use crate::graph::layout::{CanvasCoord, ROUTING_GRID_MARGIN};
-use crate::graph::model::GraphGroupKind;
+use crate::graph::model::{GraphEdgeMarker, GraphGroupKind};
 use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::operation::AsciiExecution;
@@ -29,6 +29,182 @@ const MAX_REPAIR_EXPANSIONS: usize = 4_096;
 struct TerminalPort {
     attachment: NodeAttachment,
     berth: CanvasCoord,
+    usage: usize,
+    ordinal: usize,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct PortPairEntry {
+    priority: (usize, usize, usize, usize),
+    end_index: usize,
+    end_limit: usize,
+    increasing: bool,
+}
+
+impl Ord for PortPairEntry {
+    fn cmp(&self, other: &Self) -> Ordering {
+        other.priority.cmp(&self.priority)
+    }
+}
+
+impl PartialOrd for PortPairEntry {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+// Within a usage tier and one endpoint side, berth coordinates lie on a straight line.
+// Manhattan distance increases away from the nearest intercept in either direction. Merge
+// those two streams per source, retaining at most eight entries per source instead of the
+// Cartesian product. Usage tiers and original ordinals preserve exhaustive-sort ordering.
+struct PortPairs {
+    starts: Vec<TerminalPort>,
+    ends: Vec<TerminalPort>,
+    frontier: BinaryHeap<PortPairEntry>,
+    next_usage_group: usize,
+}
+
+impl PortPairs {
+    fn new(
+        starts: Vec<TerminalPort>,
+        mut ends: Vec<TerminalPort>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        crate::graph::layout::charge_sort_work(ends.len(), resources)?;
+        ends.sort_unstable_by_key(|port| {
+            (
+                port.usage,
+                direction_mask(port.attachment.outward),
+                port_intercept(*port),
+            )
+        });
+        Ok(Self {
+            starts,
+            ends,
+            frontier: BinaryHeap::new(),
+            next_usage_group: 0,
+        })
+    }
+
+    fn next(
+        &mut self,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Option<(TerminalPort, TerminalPort)>> {
+        if self.starts.is_empty() || self.ends.is_empty() {
+            return Ok(None);
+        }
+        if self.frontier.is_empty() {
+            if self.next_usage_group == self.ends.len() {
+                return Ok(None);
+            }
+            let usage = self.ends[self.next_usage_group].usage;
+            while self.next_usage_group < self.ends.len()
+                && self.ends[self.next_usage_group].usage == usage
+            {
+                let first = self.next_usage_group;
+                let outward = self.ends[first].attachment.outward;
+                while self.next_usage_group < self.ends.len()
+                    && self.ends[self.next_usage_group].usage == usage
+                    && self.ends[self.next_usage_group].attachment.outward == outward
+                {
+                    execution.checkpoint(merman_model::OperationPhase::Layout)?;
+                    resources.charge_layout_work(1)?;
+                    self.next_usage_group += 1;
+                }
+                let last = self.next_usage_group;
+                for start_index in 0..self.starts.len() {
+                    let start = self.starts[start_index];
+                    let intercept = match outward {
+                        StepDirection::Left | StepDirection::Right => start.berth.y,
+                        StepDirection::Up | StepDirection::Down => start.berth.x,
+                    };
+                    let mut lower = first;
+                    let mut upper = last;
+                    while lower < upper {
+                        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+                        resources.charge_layout_work(1)?;
+                        let middle = lower + (upper - lower) / 2;
+                        if port_intercept(self.ends[middle]) < intercept {
+                            lower = middle + 1;
+                        } else {
+                            upper = middle;
+                        }
+                    }
+                    if lower > first {
+                        self.push(start_index, lower - 1, first, false, resources)?;
+                    }
+                    if lower < last {
+                        self.push(start_index, lower, last, true, resources)?;
+                    }
+                }
+            }
+        }
+        let Some(entry) = self.frontier.pop() else {
+            return Ok(None);
+        };
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        let start_index = entry.priority.2;
+        let next = if entry.increasing {
+            entry
+                .end_index
+                .checked_add(1)
+                .filter(|next| *next < entry.end_limit)
+        } else {
+            entry
+                .end_index
+                .checked_sub(1)
+                .filter(|next| *next >= entry.end_limit)
+        };
+        if let Some(next) = next {
+            self.push(
+                start_index,
+                next,
+                entry.end_limit,
+                entry.increasing,
+                resources,
+            )?;
+        }
+        Ok(Some((self.starts[start_index], self.ends[entry.end_index])))
+    }
+
+    fn push(
+        &mut self,
+        start_index: usize,
+        end_index: usize,
+        end_limit: usize,
+        increasing: bool,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        let start = self.starts[start_index];
+        let end = self.ends[end_index];
+        let entry = PortPairEntry {
+            priority: (
+                start.usage,
+                distance(start.berth, end.berth, resources)?,
+                start_index,
+                end.ordinal,
+            ),
+            end_index,
+            end_limit,
+            increasing,
+        };
+        self.frontier
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_failed())?;
+        self.frontier.push(entry);
+        Ok(())
+    }
+}
+
+fn port_intercept(port: TerminalPort) -> usize {
+    match port.attachment.outward {
+        StepDirection::Left | StepDirection::Right => port.berth.y,
+        StepDirection::Up | StepDirection::Down => port.berth.x,
+    }
 }
 
 /// Resolve congestion at actual terminal-cell ports, after the cheaper coarse routes have
@@ -56,32 +232,21 @@ pub(super) fn plan_terminal_route(
     let to =
         EndpointGeometry::for_route(request.to, request.from, request.graph_layout, resources)?;
     let self_loop = request.from.id == request.to.id;
-    let starts = terminal_ports(from, request, resources)?;
-    let ends = terminal_ports(to, request, resources)?;
-    let mut pairs = Vec::new();
-    pairs
-        .try_reserve(resources.checked_work_mul(starts.len(), ends.len())?)
-        .map_err(|_| layout_allocation_failed())?;
-    for start in starts {
-        for end in &ends {
-            resources.checkpoint()?;
-            resources.charge_layout_work(1)?;
-            if self_loop && start.attachment.contact == end.attachment.contact {
-                continue;
-            }
-            let distance = distance(start.berth, end.berth, resources)?;
-            let ordinal = pairs.len();
-            pairs.push((
-                obstacles.scene.target_port_usage(end.attachment),
-                distance,
-                ordinal,
-                start,
-                *end,
-            ));
+    let mut starts = terminal_ports(from, request, resources, execution)?;
+    let mut ends = terminal_ports(to, request, resources, execution)?;
+    for start in &mut starts {
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        if request.edge.start_marker != GraphEdgeMarker::Open {
+            start.usage = obstacles.scene.source_port_usage(start.attachment);
         }
     }
-    crate::graph::layout::charge_sort_work(pairs.len(), resources)?;
-    pairs.sort_unstable_by_key(|(usage, distance, ordinal, _, _)| (*usage, *distance, *ordinal));
+    for end in &mut ends {
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        end.usage = obstacles.scene.target_port_usage(end.attachment);
+    }
+    let mut pairs = PortPairs::new(starts, ends, resources)?;
     let extent = obstacles.scene.occupied_extent();
     let mut max_x = extent.x;
     let mut max_y = extent.y;
@@ -106,8 +271,14 @@ pub(super) fn plan_terminal_route(
     } else {
         usize::MAX
     };
-    for (_, _, _, start, end) in pairs {
+    while expansions_left != 0 {
+        let Some((start, end)) = pairs.next(resources, execution)? else {
+            break;
+        };
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        if self_loop && start.attachment.contact == end.attachment.contact {
+            continue;
+        }
         let geometry = SearchGeometry {
             start,
             end,
@@ -162,83 +333,81 @@ fn terminal_ports(
     geometry: EndpointGeometry<'_>,
     request: EdgeRouteRequest<'_>,
     resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
 ) -> Result<Vec<TerminalPort>> {
     let node = geometry.layout;
     let mut ports = Vec::new();
-    ports
-        .try_reserve(if geometry.group { 28 } else { 12 })
-        .map_err(|_| layout_allocation_failed())?;
     for outward in DIRECTIONS {
         let (first, center, last) = match outward {
             StepDirection::Left | StepDirection::Right => (node.y, node.center_y(), node.bottom()),
             StepDirection::Up | StepDirection::Down => (node.x, node.center_x(), node.right()),
         };
-        let contacts = [
-            Some(center),
-            center.checked_sub(1),
-            center.checked_add(1),
-            geometry.group.then(|| first.checked_add(1)).flatten(),
-            geometry.group.then(|| first.checked_add(2)).flatten(),
-            geometry.group.then(|| last.checked_sub(1)).flatten(),
-            geometry.group.then(|| last.checked_sub(2)).flatten(),
-        ];
-        for intercept in contacts.into_iter().flatten() {
-            resources.checkpoint()?;
-            resources.charge_layout_work(1)?;
-            if intercept <= first || intercept >= last {
-                continue;
-            }
-            let berth = match outward {
-                StepDirection::Left | StepDirection::Right => {
-                    let y = intercept;
-                    let x = match outward {
-                        StepDirection::Left => {
-                            let Some(x) = (if geometry.interior {
-                                node.x.checked_add(1)
-                            } else {
-                                node.x.checked_sub(1)
-                            }) else {
-                                continue;
-                            };
-                            x
-                        }
-                        _ if geometry.interior => node.right() - 1,
-                        _ => resources.checked_grid_add(node.right(), 1)?,
-                    };
-                    CanvasCoord { x, y }
+        for offset in 0..=center.abs_diff(first).max(last.abs_diff(center)) {
+            let contacts = [
+                center.checked_sub(offset),
+                (offset != 0).then(|| center.checked_add(offset)).flatten(),
+            ];
+            for intercept in contacts.into_iter().flatten() {
+                execution.checkpoint(merman_model::OperationPhase::Layout)?;
+                resources.charge_layout_work(1)?;
+                if intercept <= first || intercept >= last {
+                    continue;
                 }
-                StepDirection::Up | StepDirection::Down => {
-                    let x = intercept;
-                    let y = match outward {
-                        StepDirection::Up => {
-                            let Some(y) = (if geometry.interior {
-                                node.y.checked_add(1)
-                            } else {
-                                node.y.checked_sub(1)
-                            }) else {
-                                continue;
-                            };
-                            y
-                        }
-                        _ if geometry.interior => node.bottom() - 1,
-                        _ => resources.checked_grid_add(node.bottom(), 1)?,
-                    };
-                    CanvasCoord { x, y }
-                }
-            };
-            let departure = if geometry.interior {
-                outward.opposite()
-            } else {
-                outward
-            };
-            if let Some(attachment) = geometry.resolve(berth, departure.opposite(), request.charset)
-            {
-                resources.charge_layout_work(ports.len())?;
-                if !ports
-                    .iter()
-                    .any(|port: &TerminalPort| port.attachment == attachment)
+                let berth = match outward {
+                    StepDirection::Left | StepDirection::Right => {
+                        let y = intercept;
+                        let x = match outward {
+                            StepDirection::Left => {
+                                let Some(x) = (if geometry.interior {
+                                    node.x.checked_add(1)
+                                } else {
+                                    node.x.checked_sub(1)
+                                }) else {
+                                    continue;
+                                };
+                                x
+                            }
+                            _ if geometry.interior => node.right() - 1,
+                            _ => resources.checked_grid_add(node.right(), 1)?,
+                        };
+                        CanvasCoord { x, y }
+                    }
+                    StepDirection::Up | StepDirection::Down => {
+                        let x = intercept;
+                        let y = match outward {
+                            StepDirection::Up => {
+                                let Some(y) = (if geometry.interior {
+                                    node.y.checked_add(1)
+                                } else {
+                                    node.y.checked_sub(1)
+                                }) else {
+                                    continue;
+                                };
+                                y
+                            }
+                            _ if geometry.interior => node.bottom() - 1,
+                            _ => resources.checked_grid_add(node.bottom(), 1)?,
+                        };
+                        CanvasCoord { x, y }
+                    }
+                };
+                let departure = if geometry.interior {
+                    outward.opposite()
+                } else {
+                    outward
+                };
+                if let Some(attachment) =
+                    geometry.resolve(berth, departure.opposite(), request.charset)
                 {
-                    ports.push(TerminalPort { attachment, berth });
+                    ports
+                        .try_reserve(1)
+                        .map_err(|_| layout_allocation_failed())?;
+                    ports.push(TerminalPort {
+                        attachment,
+                        berth,
+                        usage: 0,
+                        ordinal: ports.len(),
+                    });
                 }
             }
         }
@@ -315,6 +484,11 @@ fn find_path(
                 axis_mask(port.attachment.outward),
                 resources,
             )?
+        {
+            return Ok(None);
+        }
+        if geometry.start.berth != geometry.end.berth
+            && !terminal_corridor_is_open(geometry, port, resources, execution)?
         {
             return Ok(None);
         }
@@ -503,6 +677,80 @@ fn neighbor(
     }
 }
 
+fn terminal_corridor_is_open(
+    geometry: SearchGeometry<'_>,
+    port: TerminalPort,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<bool> {
+    let attachments = Some(NodeAttachments {
+        start: geometry.start.attachment,
+        end: geometry.end.attachment,
+    });
+    let outward = port.attachment.outward;
+    let mut previous = port.berth;
+    loop {
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        let Some(transit) = neighbor(previous, outward, geometry.bounds) else {
+            return Ok(false);
+        };
+        if geometry
+            .groups
+            .segment(previous, transit, resources, execution)?
+            == FrameSegment::Blocked
+            || !geometry.obstacles.scene.route_cell_is_clear(
+                geometry.obstacles.routes,
+                geometry.obstacles.owner,
+                attachments,
+                transit,
+                axis_mask(outward),
+                resources,
+            )?
+        {
+            return Ok(false);
+        }
+        if transit == geometry.start.berth || transit == geometry.end.berth {
+            return Ok(true);
+        }
+        // A frame crossing requires a straight run. Continue that forced corridor until
+        // a legal turn is possible, rather than searching the scene for a sealed approach.
+        for heading in DIRECTIONS {
+            if heading == outward || heading == outward.opposite() {
+                continue;
+            }
+            let Some(next) = neighbor(transit, heading, geometry.bounds) else {
+                continue;
+            };
+            let mask = direction_mask(outward.opposite()) | direction_mask(heading);
+            if geometry
+                .groups
+                .segment(transit, next, resources, execution)?
+                != FrameSegment::Blocked
+                && geometry.obstacles.scene.route_cell_is_clear(
+                    geometry.obstacles.routes,
+                    geometry.obstacles.owner,
+                    attachments,
+                    transit,
+                    mask,
+                    resources,
+                )?
+                && geometry.obstacles.scene.route_cell_is_clear(
+                    geometry.obstacles.routes,
+                    geometry.obstacles.owner,
+                    attachments,
+                    next,
+                    axis_mask(heading),
+                    resources,
+                )?
+            {
+                return Ok(true);
+            }
+        }
+        previous = transit;
+    }
+}
+
 fn axis_mask(heading: StepDirection) -> u8 {
     match heading {
         StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
@@ -522,3 +770,6 @@ fn direction_mask(heading: StepDirection) -> u8 {
 fn distance(from: CanvasCoord, to: CanvasCoord, resources: &ResourceContext) -> Result<usize> {
     resources.checked_work_add(from.x.abs_diff(to.x), from.y.abs_diff(to.y))
 }
+
+#[cfg(test)]
+mod tests;

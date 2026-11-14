@@ -55,6 +55,19 @@ Merman keeps the DAG ranks and all five independent heads instead of copying tha
 regressions additionally cover four-to-six-way merges, six-way branch/merge graphs, mixed strokes,
 edge-order permutations, wide labels, and long labeled feedback in Canonical and Compact output.
 The improvements remain implementation policy rather than a new byte-level reference oracle.
+The contour follow-up replaces fixed center-neighbor sampling with all shape-valid non-corner
+contacts, and keeps port pairs lazy rather than materializing their Cartesian product. Local tests
+compare the generated priority order with exhaustive sorting and protect cancellation, work limits,
+diamond restrictions, and recovery after the three central contacts are occupied. Covered merges
+now include eight and twelve incoming edges at zero preferred padding; four-to-six-way two-ended
+fan-out checks source-marker symmetry. Branch clearance follows the actually applied local
+direction and reserves a real separator outside endpoint content. Neither reference supplies an
+independent-marker oracle for arbitrary degree, and dense marked fan-out remains bounded.
+The expanded search also exposed repeated futile searches through sealed frame approaches and
+quadratic duplicate scans while generating label positions. Recovery now traces required straight
+corridors before opening its path frontier, and label-position deduplication preserves the ordered
+vector with an operation-local coordinate set. Existing mixed-feedback and nested endpoint tests
+retain the unchanged Interactive work ceiling; these are resource-bound repairs, not timing claims.
 
 Compound follow-up regressions wrap the same five-edge graph in single and nested subgraphs,
 exercise perpendicular local directions, and cover cross-sibling merges and labeled feedback in
