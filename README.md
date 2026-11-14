@@ -76,6 +76,10 @@ For an existing file, run `merman-cli render diagram.mmd --output diagram.svg`.
 The [CLI guide] also covers prebuilt installation, PNG/JPEG/PDF export, Markdown batches,
 linting, and ASCII/Unicode output for supported families.
 
+Time-dependent diagrams use a deterministic clock by default. Replay a captured host instant
+with `--fixed-unix-millis` and its `--fixed-local-offset-minutes`; see the
+[CLI runtime policy](crates/merman-cli/README.md#runtime-policy) for bounds and date-only controls.
+
 ## Ecosystem
 
 Choose the host where your application runs. Each guide owns its installation steps and

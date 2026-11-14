@@ -270,6 +270,7 @@ function themeExampleOperation(snapshot: ProjectHandoffSnapshot, example?: Proje
     },
     asciiEnabled: false, compareEnabled: false, diagnosticsEnabled: false,
     layoutEnvironment: { containerWidth: 800, containerHeight: 600 },
+    runtimeSnapshot: { unixMillis: 0, localOffsetMinutes: 0 },
     versions: snapshot.versions ?? { merman: "unknown", mermaid: "unknown" },
     viewport: null,
     themeRecipeInspection: snapshot.selection,
@@ -313,11 +314,18 @@ function rustConsumer(operation: FrozenRenderOperation, files: Readonly<Record<s
     : "MermaidEngine::new()";
   const pipeline = { parity: "parity", readable: "readable", "resvg-safe": "resvg_safe" }[operation.svgPipeline];
   const layout = operation.bindingOptions.layout;
-  return `${imports}use merman::svg::SvgPipeline;\nuse merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest${files["site-config.json"] ? ", SourcePresentationConfig" : ""}};\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n${theme}    let source = ${input("diagram.mmd")};\n    let engine = ${site};\n    let mut svg_request = SvgRequest::default();\n    svg_request.pipeline = Some(SvgPipeline::${pipeline}());\n${layout ? `    svg_request.layout.container_width = ${rustFloat(layout.container_width ?? 800)};\n    svg_request.layout.container_height = ${rustFloat(layout.container_height ?? 600)};\n` : ""}${layout?.screen_available_width === undefined ? "" : `    svg_request.layout.screen_available_width = Some(${rustFloat(layout.screen_available_width)});\n`}    // Native consumers use deterministic measurement; browser fonts are external host resources.\n    let request = RenderRequest::svg(source, OperationControl::new(), svg_request)${recipe || preset ? ".with_theme(theme)" : ""};\n    let output = Renderer::new().with_presentation_engine(engine).render(request)?;\n    let RenderOutput::Svg(Some(svg)) = output else {\n        return Err("No Mermaid diagram detected".into());\n    };\n    std::fs::write(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("diagram.svg"), svg.svg())?;\n    Ok(())\n}\n${embedded}`;
+  const { fixed_unix_millis: unixMillis, fixed_local_offset_minutes: localOffsetMinutes } = operation.bindingOptions;
+  const runtime = [
+    "RuntimePolicy::deterministic()",
+    ...(unixMillis == null ? [] : [`.with_fixed_unix_millis(${unixMillis})`]),
+    ...(localOffsetMinutes == null ? [] : [`.try_with_fixed_local_offset_minutes(${localOffsetMinutes})?`]),
+  ].join("\n        ");
+  return `${imports}use merman::model::runtime::RuntimePolicy;\nuse merman::svg::SvgPipeline;\nuse merman::{MermaidEngine, OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest${files["site-config.json"] ? ", SourcePresentationConfig" : ""}};\n\nfn main() -> Result<(), Box<dyn std::error::Error>> {\n${theme}    let source = ${input("diagram.mmd")};\n    let engine = ${site};\n    let runtime_policy = ${runtime};\n    let mut svg_request = SvgRequest::default();\n    svg_request.pipeline = Some(SvgPipeline::${pipeline}());\n${layout ? `    svg_request.layout.container_width = ${rustFloat(layout.container_width ?? 800)};\n    svg_request.layout.container_height = ${rustFloat(layout.container_height ?? 600)};\n` : ""}${layout?.screen_available_width === undefined ? "" : `    svg_request.layout.screen_available_width = Some(${rustFloat(layout.screen_available_width)});\n`}    // Native consumers use deterministic measurement; browser fonts are external host resources.\n    let request = RenderRequest::svg(source, OperationControl::new(), svg_request)${recipe || preset ? ".with_theme(theme)" : ""};\n    let output = Renderer::new()\n        .with_presentation_engine(engine)\n        .with_runtime_policy(runtime_policy)\n        .render(request)?;\n    let RenderOutput::Svg(Some(svg)) = output else {\n        return Err("No Mermaid diagram detected".into());\n    };\n    std::fs::write(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("diagram.svg"), svg.svg())?;\n    Ok(())\n}\n${embedded}`;
 }
 
 function cliArguments(operation: FrozenRenderOperation, files: Readonly<Record<string, string>>): string[] {
   const layout = operation.bindingOptions.layout;
+  const { fixed_unix_millis: unixMillis, fixed_local_offset_minutes: localOffsetMinutes } = operation.bindingOptions;
   return [
     "render", "diagram.mmd",
     ...(files["site-config.json"] ? ["--config-file", "site-config.json"] : []),
@@ -327,6 +335,8 @@ function cliArguments(operation: FrozenRenderOperation, files: Readonly<Record<s
       ? ["--theme-appearance", operation.resolvedThemeAppearance] : []),
     "--svg-pipeline", operation.svgPipeline,
     "--font-measurement", "deterministic", "--font-system", "off",
+    ...(unixMillis == null ? [] : ["--fixed-unix-millis", String(unixMillis)]),
+    ...(localOffsetMinutes == null ? [] : ["--fixed-local-offset-minutes", String(localOffsetMinutes)]),
     ...(layout?.container_width === undefined ? [] : ["--width", String(layout.container_width)]),
     ...(layout?.container_height === undefined ? [] : ["--height", String(layout.container_height)]),
     "-o", "diagram.svg",
@@ -424,6 +434,7 @@ Configuration provenance
 - site-config.json, when present, contains only the frozen operation's host initialization config. The generated consumer already applies it.
 - theme.json, when selected, is the authored standalone visual style recipe. It supplies styling, while diagram.mmd supplies the diagram and its configuration. Do not wrap the recipe in {recipe: ...}.
 - options.json retains the complete Web binding request, including the selected theme and host initialization config. The Web consumer already loads them through options.json; no second manual theme.json load or configuration merge is needed.
+- The generated Rust, CLI and Web consumers retain the captured clock instant and local UTC offset. Rendering these materials later replays the original instant, including Gantt's today marker.
 - handoff.json records versions, layout, measurement and file provenance. Builtin preset IDs require a matching runtime catalog; a package version alone does not pin a source revision.
 
 Host dependencies

@@ -179,7 +179,10 @@ test("export freezes the unavailable preset notice with the actual base-theme ra
   assert.equal(owner.freeze({ engine: "mermaid", publicationId: publication.snapshot.publicationId }).unavailableThemePresetId, null);
 });
 
-test("renders and caches ASCII only after an explicit artifact action", async () => {
+test("renders and caches ASCII only after an explicit artifact action", async (t) => {
+  const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
+  t.mock.timers.enable({ apis: ["Date"], now: unixMillis });
+  t.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
   const completed = completedPublication("on-demand");
   const publication: CompletedRenderBatch = Object.freeze({
     ...completed,
@@ -201,6 +204,7 @@ test("renders and caches ASCII only after an explicit artifact action", async ()
     io: recordingIo(calls),
   });
 
+  t.mock.timers.tick(86_400_000);
   await owner({
     action: "copy-ascii",
     publicationId: publication.snapshot.publicationId,
@@ -212,6 +216,8 @@ test("renders and caches ASCII only after an explicit artifact action", async ()
 
   assert.equal(renderInputs.length, 1);
   assert.equal(renderInputs[0], publication.snapshot.operation);
+  assert.equal(renderInputs[0].bindingOptions.fixed_unix_millis, unixMillis);
+  assert.equal(renderInputs[0].bindingOptions.fixed_local_offset_minutes, 345);
   assert.deepEqual(calls, [
     "copy-ascii:ascii-on-demand",
     "download-ascii:ascii-on-demand:merman-diagram",
@@ -355,7 +361,10 @@ test("rejects stale, missing, and updating publications before I/O", async () =>
   assert.deepEqual(calls, []);
 });
 
-test("freezes an export target that does not retarget after a newer publication", () => {
+test("freezes an export target that does not retarget after a newer publication", (t) => {
+  const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
+  t.mock.timers.enable({ apis: ["Date"], now: unixMillis });
+  t.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
   const initial = completedPublication("first");
   if (initial.status !== "success" || initial.mermaid === null) throw new Error("Expected fixture SVG pair");
   const metadata: SvgRenderMetadata = {
@@ -393,6 +402,7 @@ test("freezes an export target that does not retarget after a newer publication"
     publicationId: first.snapshot.publicationId,
   });
 
+  t.mock.timers.tick(86_400_000);
   state = completedPublication("second", publicationId(2));
   assert.equal(label(target.svgArtifact.svg), "merman");
   assert.equal(label(mermaidTarget.svgArtifact.svg), "mermaid");
@@ -407,6 +417,8 @@ test("freezes an export target that does not retarget after a newer publication"
   assert.deepEqual(renderInputs[0]?.bindingOptions.svg, {
     pipeline: "resvg-safe",
   });
+  assert.equal(renderInputs[0].bindingOptions.fixed_unix_millis, unixMillis);
+  assert.equal(renderInputs[0].bindingOptions.fixed_local_offset_minutes, 345);
   assert.equal(
     targetOwner.rasterArtifact(mermaidTarget),
     mermaidTarget.svgArtifact,

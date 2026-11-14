@@ -9,6 +9,8 @@ import {
   waitForPreviewSvg,
 } from "./helpers/playground";
 import { GENERATED_EXAMPLES } from "../src/generated/examples.ts";
+import { encodeShareHash } from "../src/lib/share";
+import { DEFAULT_WORKSPACE_SNAPSHOT } from "../src/lib/workspace-snapshot";
 
 const UPSTREAM_C_SCALE_0 = {
   default: "hsl(240, 100%, 76.2745098039%)",
@@ -724,6 +726,62 @@ test("Merman Gantt presents non-overlapping date ticks", async ({ page }) => {
 
   await expect.poll(() => ganttTickOverlapCount(page)).toBe(0);
   errors.assertNone();
+});
+
+test.describe("Gantt today marker", () => {
+  test.use({ timezoneId: "Asia/Kathmandu" });
+
+  for (const theme of ["native", "custom recipe"] as const) {
+    test(`keeps the ${theme} marker inside today's task and honors source styles`, async ({ page }) => {
+      const errors = monitorBrowserErrors(page);
+      // 11:08:45.678 in Kathmandu, so neither UTC nor local midnight is the marker position.
+      await page.clock.setFixedTime(new Date("2026-11-14T05:23:45.678Z"));
+      const source = [
+        "gantt",
+        "dateFormat YYYY-MM-DD",
+        "section Work",
+        "Today's task: task, 2026-11-14, 1d",
+      ].join("\n");
+      await page.addInitScript(() => {
+        if (window === window.top) localStorage.setItem("merman-language", "en");
+      });
+      await page.goto(`./${encodeShareHash({
+        ...DEFAULT_WORKSPACE_SNAPSHOT,
+        code: source,
+        themeRecipeJson: theme === "custom recipe"
+          ? '{"schema_version":1,"kind":"design","design":{"canvas":{"base":"#fef3c7"}}}'
+          : null,
+      })}`, { waitUntil: "domcontentloaded" });
+      await waitForPreviewSvg(page);
+
+      const marker = previewHost(page).locator("line.today");
+      await expect(marker).toHaveCount(1);
+      const position = await previewHost(page).evaluate((host) => {
+        const svg = host.shadowRoot!.querySelector<SVGSVGElement>("svg")!;
+        const line = svg.querySelector<SVGLineElement>("line.today")!;
+        const task = svg.querySelector<SVGRectElement>("rect.task")!;
+        const x = line.x1.baseVal.value;
+        return {
+          fraction: (x - task.x.baseVal.value) / task.width.baseVal.value,
+          insideViewBox: x >= svg.viewBox.baseVal.x && x <= svg.viewBox.baseVal.x + svg.viewBox.baseVal.width,
+          height: line.y2.baseVal.value - line.y1.baseVal.value,
+        };
+      });
+      expect(position.insideViewBox).toBe(true);
+      expect(position.height).toBeGreaterThan(0);
+      expect(position.fraction).toBeCloseTo((11 * 3600 + 8 * 60 + 45.678) / 86_400, 2);
+
+      await renderSource(page, source.replace("section Work", "todayMarker off\nsection Work"));
+      await expect(marker).toHaveCount(0);
+
+      await renderSource(page, source.replace("section Work", "todayMarker stroke:#00f,stroke-width:5px,opacity:0.5\nsection Work"));
+      await expect(marker).toHaveCount(1);
+      await expect(marker).toHaveCSS("stroke", "rgb(0, 0, 255)");
+      await expect(marker).toHaveCSS("stroke-width", "5px");
+      await expect(marker).toHaveCSS("opacity", "0.5");
+      errors.assertNone();
+    });
+  }
 });
 
 test("resvg-compatible SVG rejects coordinates admitted by Mermaid SVG", async ({ page }) => {

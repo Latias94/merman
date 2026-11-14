@@ -158,6 +158,7 @@ Every field is optional.
 | `version` | integer | `3` | Current options-schema version. Earlier versions are rejected. Omitting the field selects the current grammar; durable integrations should send `3` explicitly and use a matching runtime artifact. |
 | `runtime_policy` | string | `deterministic` | `deterministic` or `native`. The native policy is an explicit opt-in and fails with a typed missing-capability error unless the artifact contains the required system clock, time-zone, and random adapters. |
 | `fixed_today` | string | selected policy date | Overrides the selected policy's local "today" date with a canonical signed-32-bit civil date. Years `0000` through `9999` use `YYYY-MM-DD`; later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The deterministic policy otherwise uses `1970-01-01`; the native policy reads the system date. |
+| `fixed_unix_millis` | integer or null | selected policy instant | Exact Unix milliseconds in JavaScript Date's inclusive range `[-8640000000000000, 8640000000000000]`. Derives the local date through the selected time zone and preserves time of day. Cannot be combined with a non-null `fixed_today`. |
 | `fixed_local_offset_minutes` | integer | selected policy time zone | Replaces the selected policy's time-zone rules with one fixed offset in minutes. The deterministic policy otherwise uses UTC; the native policy uses discovered system time-zone rules. |
 | `theme` | object or null | none | Complete Merman theme selection: `preset` or `recipe` with optional concrete `appearance`, a complete `spec`, or a direct `ThemeRecipeV1`. Null clears it. |
 | `site_config` | object | defaults | Mermaid site configuration merged onto the pinned Mermaid defaults before diagram directives are applied. |
@@ -215,12 +216,34 @@ values rather than assuming the request was applied unchanged.
 
 ## Fixed Time Options
 
-`fixed_today` and `fixed_local_offset_minutes` are host-level deterministic controls for diagrams
-whose semantics depend on local time. Gantt uses them for date parsing, relative fallback dates,
-and render-model generation. They apply to parse JSON, layout JSON, SVG rendering, validation, and
-ASCII render entry points that parse Mermaid source through the shared engine. These values
-override the selected runtime policy; they do not implicitly switch a deterministic engine to the
+`fixed_today`, `fixed_unix_millis`, and `fixed_local_offset_minutes` are host-level deterministic
+controls for diagrams whose semantics depend on local time. Gantt uses them for date parsing,
+relative fallback dates, and the today marker. They apply to parse JSON, layout JSON, SVG rendering,
+validation, and ASCII entry points that parse Mermaid source through the shared engine. These
+values override the selected runtime policy; they do not switch a deterministic engine to the
 native policy.
+
+Use `fixed_today` for a date-only override: it freezes the clock at that date's local midnight.
+Use `fixed_unix_millis` for an exact host-captured instant, including its time of day. Only one
+selector may be non-null. In reusable engines, switching selectors requires clearing the inherited
+one with null in the same request. Prepared sources retain the captured instant; changing it
+requires preparing a new source.
+
+A browser host can capture its instant and current UTC offset once for a render operation:
+
+```ts
+const instant = new Date();
+const options = {
+  version: 3,
+  fixed_unix_millis: instant.getTime(),
+  fixed_local_offset_minutes: -instant.getTimezoneOffset(),
+};
+```
+
+Retain these options for related parse/layout diagnostics and later exports. The offset is a fixed
+snapshot, not a complete time-zone rule set for task dates across daylight-saving transitions.
+Native hosts that need those rules can select the native runtime policy. Omitting both selectors
+preserves the deterministic Unix epoch default.
 
 ## Lint Options
 
@@ -579,7 +602,7 @@ LSP adapters use the same `options_json` envelope. Analysis consumers honor opti
 deterministic time, Mermaid site config, and resource limits while retaining family parse failures
 in the closed analysis snapshot:
 
-- `fixed_today` and `fixed_local_offset_minutes` for time-dependent diagram semantics;
+- `fixed_today` or `fixed_unix_millis`, together with `fixed_local_offset_minutes`, for time-dependent diagram semantics;
 - `site_config` and diagram directives for Mermaid-compatible parse/config behavior;
 - `resources.*` for source and model budgets.
 

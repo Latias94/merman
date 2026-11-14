@@ -72,7 +72,7 @@ The session cache has one weighted strong-reference entry per current URI stamp.
 - Diagnostic-only rule changes refresh diagnostics without rebuilding semantic snapshots or syntax
   trees.
 
-Initialization and workspace settings can provide deterministic `fixed_today` and `fixed_local_offset_minutes` values. `fixed_today` uses the canonical `CivilDate` spelling: years `0000` through `9999` use `YYYY-MM-DD`, later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The LSP does not expose a native runtime selector or forward the facade's `system-*` Cargo features.
+Initialization and workspace settings can provide deterministic `fixed_today` or `fixed_unix_millis` values, together with `fixed_local_offset_minutes`. `fixed_unix_millis` accepts an integer within the inclusive JavaScript Date range of ±8,640,000,000,000,000 milliseconds and cannot be combined with a non-null `fixed_today`. Changes to the complete runtime policy invalidate semantic snapshots. `fixed_today` uses the canonical `CivilDate` spelling: years `0000` through `9999` use `YYYY-MM-DD`, later years use `+YEAR-MM-DD`, and negative years use `-YEAR-MM-DD`. The LSP does not expose a native runtime selector or forward the facade's `system-*` Cargo features.
 
 ## Semantic Ownership
 

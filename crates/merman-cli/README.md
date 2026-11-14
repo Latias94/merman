@@ -692,7 +692,9 @@ Viewport fallback is Plain-only; styled/fallback combinations are invalid even i
 failures use ASCII error-report schema 1 on stderr with a stable code, category, terminal-safe message, and typed details; stdout and
 the requested output target remain unpublished.
 
-Runtime behavior is deterministic by default even when system adapters are compiled. This also applies to `mmdc` and is a deliberate divergence from Chromium's ambient date, time zone, and randomness. A complete default binary can opt into upstream-like host state:
+## Runtime Policy
+
+Runtime behavior is deterministic by default, using Unix epoch time, UTC, and a fixed operation seed even when system adapters are compiled. This also applies to `mmdc` and is a deliberate divergence from Chromium's ambient date, time zone, and randomness. A complete default binary can opt into upstream-like host state:
 
 ```sh
 merman-cli render diagram.mmd --runtime native
@@ -700,6 +702,23 @@ merman-cli mmdc -i diagram.mmd -o diagram.svg --runtime native
 ```
 
 Each adapter is also independently selectable with `--system-clock`, `--system-timezone`, `--system-random`, or `--system-timing` when its feature is compiled. `--runtime native` is shown only when the clock, time-zone, and random adapters are all available. Timing remains separately opt-in. Native-context font discovery is controlled by the font options above; `--runtime native` alone does not select it.
+
+To replay a host-captured clock precisely, pass `--fixed-unix-millis` and the corresponding fixed
+local offset. These controls are available without system adapters:
+
+```sh
+merman-cli render diagram.mmd --fixed-unix-millis 1781046000375 --fixed-local-offset-minutes 480
+merman-cli mmdc -i diagram.mmd -o diagram.svg --fixed-unix-millis 1781046000375 --fixed-local-offset-minutes 480
+```
+
+`--fixed-unix-millis` accepts an integer from `-8640000000000000` through `8640000000000000`,
+inclusive, matching the JavaScript Date range. It preserves the exact millisecond instant,
+including the Gantt Today Marker position. The selected time zone determines the local calendar
+date used by date parsing; changing the fixed offset does not shift the supplied instant.
+Omitting the offset preserves the selected policy's time zone, which is UTC by default.
+`--fixed-today YYYY-MM-DD` instead freezes the clock at that date's local midnight and cannot be
+combined with `--fixed-unix-millis`. Both forms preserve deterministic randomness unless a
+different random source is explicitly selected.
 
 ## Operation Control
 

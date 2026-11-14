@@ -1,4 +1,4 @@
-use crate::cli::{ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
+use crate::cli::{MAX_FIXED_UNIX_MILLIS, ParseCliArgs, RuntimeCliArgs, RuntimePolicyKind};
 use crate::error::CliError;
 use crate::input::InputLimit;
 #[cfg(feature = "svg")]
@@ -99,6 +99,18 @@ struct ResolvedCliRuntimePolicy {
 
 impl ResolvedCliRuntimePolicy {
     fn from_cli(args: &RuntimeCliArgs) -> Result<Self, CliError> {
+        if args.fixed_today.is_some() && args.fixed_unix_millis.is_some() {
+            return Err(CliError::InvalidInput(
+                "--fixed-today cannot be combined with --fixed-unix-millis".to_string(),
+            ));
+        }
+        if let Some(unix_millis) = args.fixed_unix_millis
+            && !(-MAX_FIXED_UNIX_MILLIS..=MAX_FIXED_UNIX_MILLIS).contains(&unix_millis)
+        {
+            return Err(CliError::InvalidInput(format!(
+                "--fixed-unix-millis must be between -{MAX_FIXED_UNIX_MILLIS} and {MAX_FIXED_UNIX_MILLIS}"
+            )));
+        }
         let mut runtime_policy = match args.policy {
             RuntimePolicyKind::Deterministic => RuntimePolicy::deterministic(),
             #[cfg(all(
@@ -138,6 +150,11 @@ impl ResolvedCliRuntimePolicy {
             runtime_policy = runtime_policy
                 .try_with_fixed_local_offset_minutes(offset_minutes)
                 .map_err(|err| CliError::InvalidInput(err.to_string()))?;
+        }
+        if let Some(unix_millis) = args.fixed_unix_millis {
+            runtime_policy = runtime_policy
+                .with_fixed_today(None)
+                .with_fixed_unix_millis(unix_millis);
         }
         if let Some(today) = args.fixed_today {
             runtime_policy = runtime_policy
@@ -844,8 +861,61 @@ mod tests {
             context.random_source(),
             merman::model::runtime::RuntimeValueSource::Fixed
         );
+        assert_eq!(context.unix_millis(), 0);
         assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(0));
         assert!(context.timing().is_none());
+    }
+
+    #[test]
+    fn fixed_unix_millis_preserves_the_instant_and_fixed_timezone() {
+        for unix_millis in [-MAX_FIXED_UNIX_MILLIS, -1, 0, 375, MAX_FIXED_UNIX_MILLIS] {
+            let args = RuntimeCliArgs {
+                fixed_unix_millis: Some(unix_millis),
+                fixed_local_offset_minutes: Some(-60),
+                ..Default::default()
+            };
+            let resolved = ResolvedCliRuntimePolicy::from_cli(&args).unwrap();
+            let first = resolved.runtime_policy.begin_operation().unwrap();
+            let second = resolved.runtime_policy.begin_operation().unwrap();
+
+            assert_eq!(first.unix_millis(), unix_millis);
+            assert_eq!(first.local_time_zone().fixed_offset_minutes(), Some(-60));
+            assert_eq!(first, second);
+            assert_eq!(resolved.runtime_policy.fixed_today(), None);
+            if unix_millis == 375 {
+                assert_eq!(first.today_local().to_string(), "1969-12-31");
+            }
+        }
+    }
+
+    #[test]
+    fn fixed_unix_millis_rejects_programmatic_conflicts_and_out_of_range_instants() {
+        for unix_millis in [
+            i64::MIN,
+            -MAX_FIXED_UNIX_MILLIS - 1,
+            MAX_FIXED_UNIX_MILLIS + 1,
+            i64::MAX,
+        ] {
+            let args = RuntimeCliArgs {
+                fixed_unix_millis: Some(unix_millis),
+                ..Default::default()
+            };
+            let error = ResolvedCliRuntimePolicy::from_cli(&args).unwrap_err();
+
+            assert!(matches!(error, CliError::InvalidInput(_)));
+            assert!(error.to_string().contains("--fixed-unix-millis"));
+        }
+
+        let args = RuntimeCliArgs {
+            fixed_today: Some("2026-01-15".parse().unwrap()),
+            fixed_unix_millis: Some(0),
+            ..Default::default()
+        };
+        let error = ResolvedCliRuntimePolicy::from_cli(&args).unwrap_err();
+
+        assert!(matches!(error, CliError::InvalidInput(_)));
+        assert!(error.to_string().contains("--fixed-today"));
+        assert!(error.to_string().contains("--fixed-unix-millis"));
     }
 
     #[cfg(all(

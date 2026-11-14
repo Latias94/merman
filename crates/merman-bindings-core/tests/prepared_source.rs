@@ -57,6 +57,7 @@ fn retained_output_rejects_frozen_settings_and_readmits_resources() {
         br#"{"parse":{"suppress_errors":true}}"#.as_slice(),
         br#"{"site_config":{}}"#,
         br#"{"analysis":{"fixed_today":"2030-01-01"}}"#,
+        br#"{"fixed_unix_millis":375}"#,
         br#"{"fixed_local_offset_minutes":60}"#,
         br#"{"theme":null}"#,
     ] {

@@ -80,6 +80,7 @@ fn client_projection_exposes_each_manifest_setting_and_typed_constraint_once() {
         [
             "fixed_today",
             "fixed_local_offset_minutes",
+            "fixed_unix_millis",
             "site_config",
             "resources.limits.max_source_bytes",
             "resources.limits.max_document_diagrams",
@@ -93,12 +94,12 @@ fn client_projection_exposes_each_manifest_setting_and_typed_constraint_once() {
     assert_eq!(projection.severities, ["error", "warning", "info", "hint"]);
     let settings = &projection.constraints.settings;
     assert!(
-        settings[..5]
+        settings[..6]
             .iter()
             .all(|setting| setting.change_scope == AnalysisConfigChangeScope::SnapshotAffecting)
     );
     assert!(
-        settings[5..]
+        settings[6..]
             .iter()
             .all(|setting| setting.change_scope == AnalysisConfigChangeScope::DiagnosticsOnly)
     );
@@ -119,18 +120,25 @@ fn client_projection_exposes_each_manifest_setting_and_typed_constraint_once() {
         }
     );
     assert_eq!(
-        settings[3].normalization,
+        settings[2].normalization,
+        AnalysisConfigClientSettingNormalization::Integer {
+            minimum: -MAX_FIXED_UNIX_MILLIS,
+            maximum: MAX_FIXED_UNIX_MILLIS,
+        }
+    );
+    assert_eq!(
+        settings[4].normalization,
         AnalysisConfigClientSettingNormalization::Integer {
             minimum: 1,
             maximum: u32::MAX as i64,
         }
     );
     assert_eq!(
-        settings[6].normalization,
+        settings[7].normalization,
         AnalysisConfigClientSettingNormalization::RuleIdList
     );
     let AnalysisConfigClientSettingNormalization::RuleSeverityOverrides { fields } =
-        &settings[8].normalization
+        &settings[9].normalization
     else {
         panic!("rule severities must retain their owned object fields");
     };
@@ -218,12 +226,9 @@ fn policy_descriptors_drive_runtime_classification_and_field_schema_scope() {
 
     for policy in ANALYSIS_CONFIG_POLICIES {
         let next = match policy.id {
-            AnalysisConfigPolicyId::FixedToday => {
-                AnalysisOptions::default().with_fixed_today(Some("2026-08-11".parse().unwrap()))
-            }
-            AnalysisConfigPolicyId::FixedLocalOffsetMinutes => AnalysisOptions::default()
-                .try_with_fixed_local_offset_minutes(60)
-                .unwrap(),
+            AnalysisConfigPolicyId::Runtime => AnalysisOptions::default().with_runtime_policy(
+                merman_model::runtime::RuntimePolicy::deterministic().with_fixed_unix_millis(375),
+            ),
             AnalysisConfigPolicyId::SiteConfig => AnalysisOptions::default().with_site_config(
                 merman_model::MermaidConfig::from_value(json!({ "theme": "dark" })),
             ),

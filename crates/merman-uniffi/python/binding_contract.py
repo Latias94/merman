@@ -277,6 +277,12 @@ BINDING_OPTION_GROUP_SPECS = (
         "requires_svg_pipeline": False,
     },
     {
+        "id": "fixed_unix_millis",
+        "always_available": True,
+        "any_capability_ids": (),
+        "requires_svg_pipeline": False,
+    },
+    {
         "id": "jpeg",
         "always_available": False,
         "any_capability_ids": ("jpeg",),

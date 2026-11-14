@@ -46,6 +46,16 @@ asciiDiagnostic.actual_width;
 
 const resources: ResourceOptions = { profile: "interactive" };
 
+const hostClock: SvgBindingOptions = {
+  version: 3,
+  fixed_unix_millis: 1_794_657_600_375,
+  fixed_local_offset_minutes: 480,
+};
+renderSvgResult("gantt\ndateFormat x\nTask: task,0,1000ms", hostClock);
+renderSvgResult("gantt\ndateFormat x\nTask: task,0,1000ms", {
+  analysis: { fixed_today: null, fixed_unix_millis: 375 },
+});
+
 const presetNote: ThemePresetApplicationNote = {
   id: "future-guidance",
   family_id: "future-family",

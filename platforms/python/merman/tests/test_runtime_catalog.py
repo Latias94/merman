@@ -34,6 +34,7 @@ def valid_catalog():
             "environment",
             "fixed_local_offset_minutes",
             "fixed_today",
+            "fixed_unix_millis",
             "layout",
             "lint",
             "parse",
@@ -190,6 +191,7 @@ class RuntimeCatalogTest(unittest.TestCase):
             "ascii",
             "fixed_local_offset_minutes",
             "fixed_today",
+            "fixed_unix_millis",
             "lint",
             "parse",
             "resources",
@@ -257,6 +259,7 @@ class RuntimeCatalogTest(unittest.TestCase):
             "environment",
             "fixed_local_offset_minutes",
             "fixed_today",
+            "fixed_unix_millis",
             "layout",
             "parse",
             "raster",
@@ -332,7 +335,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         missing_option["option_group_ids"].remove("version")
 
         extra_option = valid_catalog()
-        extra_option["option_group_ids"].insert(4, "jpeg")
+        extra_option["option_group_ids"] = sorted([*extra_option["option_group_ids"], "jpeg"])
 
         for catalog in [
             extra_metadata,
@@ -565,7 +568,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         ]
         capabilities["text_measurement"]["future_measurement_metadata"] = True
         catalog["metadata_ids"].insert(2, "future-metadata")
-        catalog["option_group_ids"].insert(4, "future-option-group")
+        catalog["option_group_ids"] = sorted([*catalog["option_group_ids"], "future-option-group"])
         catalog["constructor_service_ids"].insert(0, "future-service")
         catalog["constructor_service_contracts"].insert(
             0,

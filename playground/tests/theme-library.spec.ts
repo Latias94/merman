@@ -506,6 +506,35 @@ test("current-diagram inspection is isolated until Apply and supports source, fi
   errors.assertNone();
 });
 
+test.describe("current Gantt theme preview", () => {
+  test.use({ timezoneId: "Asia/Kathmandu" });
+
+  test("uses the browser instant for the today marker", async ({ page }) => {
+    const errors = monitorBrowserErrors(page);
+    await page.clock.setFixedTime(new Date("2026-11-14T05:23:45.678Z"));
+    const library = await start(page, {
+      ...workspace,
+      themePresetId: null,
+      code: "gantt\ndateFormat YYYY-MM-DD\nsection Work\nToday's task: task, 2026-11-14, 1d\n",
+    });
+    await library.getByRole("button", { name: "Explore Signal", exact: true }).click();
+    const detail = library.getByTestId("theme-showcase-detail");
+    await detail.getByRole("button", { name: "My current diagram", exact: true }).click();
+    const preview = detail.getByTestId("theme-library-preview");
+    const viewport = await expectInteractivePreview(preview, "embedded");
+    const marker = viewport.locator("line.today");
+    await expect(marker).toHaveCount(1);
+    const fraction = await marker.evaluate((element) => {
+      const line = element as SVGLineElement;
+      const svg = line.ownerSVGElement!;
+      const task = svg.querySelector<SVGRectElement>("rect.task")!;
+      return (line.x1.baseVal.value - task.x.baseVal.value) / task.width.baseVal.value;
+    });
+    expect(fraction).toBeCloseTo((11 * 3600 + 8 * 60 + 45.678) / 86_400, 2);
+    errors.assertNone();
+  });
+});
+
 test("a search without a reviewed design for the current family offers a clear action without claiming unsupported rendering", async ({ page }) => {
   const errors = monitorBrowserErrors(page);
   const library = await start(page, { ...workspace, code: "gantt\n title Delivery\n dateFormat YYYY-MM-DD\n section Plan\n Design :a, 2026-11-01, 2d" });

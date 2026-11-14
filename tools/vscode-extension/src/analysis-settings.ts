@@ -19,6 +19,7 @@ export type AnalysisConfigurableRuleId = string;
 export interface AnalysisSettings {
   fixed_today?: string;
   fixed_local_offset_minutes?: number;
+  fixed_unix_millis?: number;
   site_config?: Record<string, unknown>;
   resources?: {
     limits?: {
