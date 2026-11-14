@@ -230,6 +230,8 @@ fn edge_route_selects_left_right_parallel_bottom_lane() {
     let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
     graph.add_node("a", "A");
     graph.add_node("b", "B");
+    graph.edges = edges.clone();
+    let layout = layout_graph(&graph, &options);
     let scene = super::super::prepare_route_scene(&graph, &layout, &edges, &charset).unwrap();
     let markers = scene
         .routes
@@ -1458,7 +1460,7 @@ fn left_right_reverse_over_self_loop_route_plans_target_side_lane() {
 }
 
 #[test]
-fn left_right_self_loop_route_plans_loop_and_arrow() {
+fn left_right_self_loop_keeps_visible_connections_around_its_label() {
     let from = node("a", 0, 0, 3, 3);
     let layouts = vec![from.clone()];
     let edge = edge_between("a", "a", Some("loop"), GraphEdgeArrow::Point);
@@ -1467,28 +1469,29 @@ fn left_right_self_loop_route_plans_loop_and_arrow() {
 
     let plan = plan_left_right_self_loop_route(&layouts, &edges, &from, &edge, &charset).unwrap();
 
+    let label = &plan.labels[0];
+    let LabelAnchor::Segment { start, end, .. } = label.anchor else {
+        panic!("a self-loop label must retain its horizontal host");
+    };
+    assert_eq!(label.placement.y(), start.y);
+    assert!(start.x < label.placement.x());
+    assert!(label.placement.x() + label.placement.width() <= end.x);
+    for coord in [start, end] {
+        assert!(plan.cells.iter().any(|cell| cell.coord == coord));
+    }
+    let marker = plan
+        .cells
+        .iter()
+        .find(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+        .unwrap();
     assert_eq!(
-        plan.cells,
-        vec![
-            cell(2, 1, '|', PlannedRouteCellKind::EdgeLine),
-            cell(3, 1, '-', PlannedRouteCellKind::RouteCell),
-            cell(4, 1, '+', PlannedRouteCellKind::RouteCell),
-            cell(4, 2, '|', PlannedRouteCellKind::RouteCell),
-            cell(4, 3, '|', PlannedRouteCellKind::RouteCell),
-            cell(4, 4, '+', PlannedRouteCellKind::RouteCell),
-            cell(2, 4, '-', PlannedRouteCellKind::RouteCell),
-            cell(3, 4, '-', PlannedRouteCellKind::RouteCell),
-            cell(1, 4, '+', PlannedRouteCellKind::RouteCell),
-            cell(1, 3, '^', PlannedRouteCellKind::EdgeArrow),
-        ]
+        marker.coord,
+        CanvasCoord {
+            x: from.center_x(),
+            y: from.bottom() + 1
+        }
     );
-    assert_eq!(
-        plan.labels,
-        vec![PlannedRouteLabel::new(
-            RoutedLabelText::new("loop").expect("single-line label should exist"),
-            RoutedLabelPlacement::new(1, 4, 4),
-        )]
-    );
+    assert_eq!(marker.ch, '^');
 }
 
 #[test]

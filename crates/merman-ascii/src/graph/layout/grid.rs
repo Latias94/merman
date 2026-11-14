@@ -1,7 +1,9 @@
 use super::super::horizontal_label::HorizontalLabelPadding;
-use super::super::label::{GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle};
+use super::super::label::{
+    GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle, try_measure_edge_label,
+};
 use super::super::model::{
-    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphNodeSide,
+    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeMarker, GraphNodeSide,
 };
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
@@ -279,9 +281,10 @@ fn layout_left_right_grid_nodes(
         resources,
     )?;
 
-    reserve_parallel_self_loop_lanes(
+    reserve_self_loop_lanes(
         graph,
         &placements,
+        policy,
         &mut column_widths,
         &mut row_heights,
         resources,
@@ -598,9 +601,10 @@ fn layout_top_down_grid_nodes(
         resources,
     )?;
 
-    reserve_parallel_self_loop_lanes(
+    reserve_self_loop_lanes(
         graph,
         &placements,
+        policy,
         &mut column_widths,
         &mut row_heights,
         resources,
@@ -690,55 +694,77 @@ fn reserve_leaf_group_rank_axis_sizes(
     Ok(())
 }
 
-fn reserve_parallel_self_loop_lanes(
+fn reserve_self_loop_lanes(
     graph: &AsciiGraph,
     placements: &[GridCoord],
+    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
     resources.charge_layout_work(graph.edges.len())?;
-    let mut loop_counts = HashMap::<&str, usize>::default();
+    let mut loop_sizes = HashMap::<&str, (usize, usize)>::default();
     for edge in &graph.edges {
         resources.checkpoint()?;
         if edge.from == edge.to && edge.stroke.is_visible() {
-            if !loop_counts.contains_key(edge.from.as_str()) {
-                try_reserve_hash_map(&mut loop_counts, 1)?;
+            if !loop_sizes.contains_key(edge.from.as_str()) {
+                try_reserve_hash_map(&mut loop_sizes, 1)?;
             }
-            let count = loop_counts.entry(edge.from.as_str()).or_default();
+            let (count, width) = loop_sizes.entry(edge.from.as_str()).or_default();
             *count = resources.checked_work_add(*count, 1)?;
+            if let Some(label) = &edge.label {
+                *width = (*width).max(
+                    try_measure_edge_label(label, policy.terminal_width_profile, resources)?
+                        .map_or(0, |metrics| metrics.max_width),
+                );
+            }
         }
     }
-    if loop_counts.is_empty() {
+    if loop_sizes.is_empty() {
         return Ok(());
     }
     resources.charge_layout_work(graph.nodes.len())?;
     for (node, coord) in graph.nodes.iter().zip(placements) {
         resources.checkpoint()?;
-        let count = loop_counts
+        let (count, label_width) = loop_sizes
             .get(node.id.as_str())
             .copied()
             .unwrap_or_default();
-        if count <= 1 {
+        if count == 0 || (count == 1 && label_width == 0) {
             continue;
         }
         // The first right lane uses the midpoint to its next neighbor; subsequent loops
         // extend two cells past that midpoint. Reserve both halves of this offset plus
         // reading clearance. Bottom lanes instead start two cells below the node.
         let outer_offset = resources.checked_grid_mul(count - 1, 2)?;
-        let horizontal_gap =
+        let lane_gap =
             resources.checked_grid_add(resources.checked_grid_mul(outer_offset, 2)?, 2)?;
-        let vertical_gap = resources.checked_grid_add(resources.checked_grid_mul(count, 2)?, 1)?;
+        let node_width = (coord.x..=coord.x + 2).try_fold(0, |width, x| {
+            resources.checked_grid_add(width, column_widths.get(&x).copied().unwrap_or(1))
+        })?;
+        let return_span = node_width.saturating_sub(1 + node_width / 2);
+        // A horizontal loop label needs a visible stroke cell at either end. Its outer
+        // vertical lane uses the midpoint of the gap to the next node.
+        let label_gap = resources.checked_grid_mul(
+            resources
+                .checked_grid_add(label_width, 1)?
+                .saturating_sub(return_span),
+            2,
+        )?;
         set_axis_size(
             column_widths,
             resources.checked_grid_add(coord.x, 3)?,
-            horizontal_gap,
+            lane_gap.max(label_gap),
         );
-        set_axis_size(
-            row_heights,
-            resources.checked_grid_add(coord.y, 3)?,
-            vertical_gap,
-        );
+        if count > 1 {
+            let vertical_gap =
+                resources.checked_grid_add(resources.checked_grid_mul(count, 2)?, 1)?;
+            set_axis_size(
+                row_heights,
+                resources.checked_grid_add(coord.y, 3)?,
+                vertical_gap,
+            );
+        }
     }
     Ok(())
 }
@@ -760,26 +786,31 @@ fn apply_vertical_edge_spacing(
         policy.rank_gap_y,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
-    let label_width = if from.x == to.x {
-        edge.label
-            .as_deref()
-            .map(|label| {
-                GraphLabel::try_measure_width_with_profile(
-                    label,
-                    policy.terminal_width_profile,
-                    resources,
-                )
-            })
-            .transpose()?
+    let label_metrics = edge
+        .label
+        .as_deref()
+        .map(|label| try_measure_edge_label(label, policy.terminal_width_profile, resources))
+        .transpose()?
+        .flatten();
+    let label_gap = if let Some(metrics) = label_metrics {
+        let marker_cells = [edge.start_marker, edge.end_marker]
+            .into_iter()
+            .filter(|marker| *marker != GraphEdgeMarker::Open)
+            .count();
+        // Preferred zero padding must still leave the full label block, independent
+        // endpoint markers, and a visible connecting cell on either side.
+        resources.checked_grid_add(metrics.line_count, marker_cells + 2)?
     } else {
-        None
+        0
     };
-    set_axis_size(row_heights, from.y.max(to.y) - 1, length_gap);
-    if let Some(label_width) = label_width {
+    set_axis_size(row_heights, from.y.max(to.y) - 1, length_gap.max(label_gap));
+    if from.x == to.x
+        && let Some(metrics) = label_metrics
+    {
         set_axis_size(
             column_widths,
             from.x + 1,
-            resources.checked_grid_add(label_width, 2)?,
+            resources.checked_grid_add(metrics.max_width, 2)?,
         );
     }
     Ok(())
@@ -801,16 +832,16 @@ fn apply_horizontal_edge_spacing(
         policy.rank_gap_x,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
-    let label_gap = edge
+    let label_metrics = edge
         .label
         .as_deref()
-        .map(|label| {
+        .map(|label| try_measure_edge_label(label, policy.terminal_width_profile, resources))
+        .transpose()?
+        .flatten();
+    let label_gap = label_metrics
+        .map(|metrics| {
             resources.checked_grid_add(
-                GraphLabel::try_measure_width_with_profile(
-                    label,
-                    policy.terminal_width_profile,
-                    resources,
-                )?,
+                metrics.max_width,
                 HorizontalLabelPadding::new(edge.start_marker, edge.end_marker).gap_cells(),
             )
         })
@@ -1196,6 +1227,50 @@ mod tests {
                 resources,
             ),
             GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
+        }
+    }
+
+    #[test]
+    fn discarded_blank_edge_labels_do_not_expand_rank_spacing() {
+        use crate::graph::model::GraphEdgeAttrs;
+
+        let options = AsciiRenderOptions::ascii()
+            .with_graph_padding_x(0)
+            .with_graph_padding_y(0);
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("a", "A");
+            graph.add_node("b", "B");
+            graph.add_edge_with_attrs("a", "b", GraphEdgeAttrs::default());
+            let edge = &mut graph.edges[0];
+            let mut expected_columns = AxisSizes::default();
+            let mut expected_rows = AxisSizes::default();
+            let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+            apply_test_edge_label_spacing(
+                direction,
+                edge,
+                &options,
+                &mut expected_columns,
+                &mut expected_rows,
+                &resources,
+            )
+            .unwrap();
+            for blank in ["\n".repeat(128), " ".repeat(128), "<br/>".repeat(128)] {
+                edge.label = Some(blank);
+                let mut columns = AxisSizes::default();
+                let mut rows = AxisSizes::default();
+                apply_test_edge_label_spacing(
+                    direction,
+                    edge,
+                    &options,
+                    &mut columns,
+                    &mut rows,
+                    &resources,
+                )
+                .unwrap();
+                assert_eq!(columns, expected_columns);
+                assert_eq!(rows, expected_rows);
+            }
         }
     }
 

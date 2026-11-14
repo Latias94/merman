@@ -74,8 +74,10 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
                 anchor,
                 candidate_rect,
                 resources,
-            )? {
-                selected = Some((candidate, candidate_rect));
+            )? && let Some(reservation) =
+                label_reservation(anchor, candidate_rect, lane_radius, resources)?
+            {
+                selected = Some((candidate, reservation));
                 break;
             }
         }
@@ -175,6 +177,64 @@ enum LabelAnchorAxis {
     Horizontal(HorizontalLabelHost),
     Vertical(VerticalLabelHost),
     Point(CanvasCoord),
+}
+
+/// Reserve the text and its perpendicular gap to the host together. A later route must
+/// not pass between them and make the text appear to identify that unrelated route.
+pub(super) fn label_reservation(
+    anchor: LabelAnchor,
+    text: OccupiedRect,
+    lane_radius: usize,
+    resources: &ResourceContext,
+) -> Result<Option<OccupiedRect>> {
+    let axis = match LabelAnchorAxis::from_anchor(anchor) {
+        LabelAnchorAxis::Point(point) if text.x <= point.x && point.x < text.right => {
+            LabelAnchorAxis::Horizontal(HorizontalLabelHost {
+                min_x: point.x,
+                max_x: point.x,
+                y: point.y,
+            })
+        }
+        LabelAnchorAxis::Point(point) if text.y <= point.y && point.y < text.bottom => {
+            LabelAnchorAxis::Vertical(VerticalLabelHost {
+                x: point.x,
+                min_y: point.y,
+                max_y: point.y,
+            })
+        }
+        axis => axis,
+    };
+    let (x, y, right, bottom, gap) = match axis {
+        LabelAnchorAxis::Horizontal(host) if text.x <= host.max_x && host.min_x < text.right => {
+            let host_end = resources.checked_grid_add(host.y, 1)?;
+            (
+                text.x,
+                text.y.min(host_end),
+                text.right,
+                text.bottom.max(host.y),
+                text.y
+                    .saturating_sub(host_end)
+                    .max(host.y.saturating_sub(text.bottom)),
+            )
+        }
+        LabelAnchorAxis::Vertical(host) if text.y <= host.max_y && host.min_y < text.bottom => {
+            let host_end = resources.checked_grid_add(host.x, 1)?;
+            (
+                text.x.min(host_end),
+                text.y,
+                text.right.max(host.x),
+                text.bottom,
+                text.x
+                    .saturating_sub(host_end)
+                    .max(host.x.saturating_sub(text.right)),
+            )
+        }
+        _ => return Ok(None),
+    };
+    if gap > lane_radius {
+        return Ok(None);
+    }
+    OccupiedRect::try_new(x, y, right - x, bottom - y, resources).map(Some)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -287,6 +347,8 @@ fn push_horizontal_host_candidates(
         midpoint.checked_sub(original.width() / 2),
         Some(host.min_x),
         host_end.checked_sub(original.width().max(1)),
+        Some(host.max_x),
+        host.min_x.checked_sub(original.width().saturating_sub(1)),
     ];
     for x in x_candidates.into_iter().flatten() {
         push_label_candidate(candidates, original, x, original.y(), resources)?;
@@ -305,7 +367,7 @@ fn push_horizontal_host_candidates(
 fn push_vertical_host_candidates(
     candidates: &mut Vec<RoutedLabelPlacement>,
     original: RoutedLabelPlacement,
-    _line_count: usize,
+    line_count: usize,
     host: VerticalLabelHost,
     resources: &mut ResourceContext,
     lane_radius: usize,
@@ -314,9 +376,11 @@ fn push_vertical_host_candidates(
     let midpoint = host.min_y + (host.max_y - host.min_y) / 2;
     let y_candidates = [
         Some(original.y()),
-        midpoint.checked_sub(1),
+        midpoint.checked_sub(line_count / 2),
         Some(host.min_y),
-        host_end.checked_sub(1),
+        host_end.checked_sub(line_count.max(1)),
+        Some(host.max_y),
+        host.min_y.checked_sub(line_count.saturating_sub(1)),
     ];
     for y in y_candidates.into_iter().flatten() {
         push_label_candidate(candidates, original, original.x(), y, resources)?;
@@ -364,11 +428,10 @@ fn push_point_host_candidates(
             (left, Some(original.y())),
             (right, Some(original.y())),
         ];
-        let diagonal = [(left, above), (right, above), (left, below), (right, below)];
         let ordered = if prefer_vertical_lanes {
-            [vertical, horizontal, diagonal]
+            [vertical, horizontal]
         } else {
-            [horizontal, vertical, diagonal]
+            [horizontal, vertical]
         };
         for lane in ordered {
             for (candidate_x, candidate_y) in lane {
@@ -403,4 +466,34 @@ fn push_label_candidate(
         candidates.push(candidate);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::AsciiResourcePolicy;
+    use merman_model::resources::ResourceProfile;
+
+    #[test]
+    fn vertical_host_candidates_align_the_full_multiline_block() {
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::for_profile(
+            ResourceProfile::UnboundedForTrustedInput,
+        ));
+        let candidates = route_label_candidates(
+            RoutedLabelPlacement::new(21, 14, 5),
+            5,
+            LabelAnchor::Segment {
+                start: CanvasCoord { x: 20, y: 10 },
+                end: CanvasCoord { x: 20, y: 20 },
+                route_segment: None,
+            },
+            None,
+            &mut resources,
+            4,
+        )
+        .unwrap();
+        for y in [10, 13, 16] {
+            assert!(candidates.contains(&RoutedLabelPlacement::new(21, y, 5)));
+        }
+    }
 }

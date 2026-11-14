@@ -511,17 +511,44 @@ fn planned_top_down_back_label(
     source_y: usize,
 ) -> Option<PlannedRouteLabel> {
     let descriptor = descriptor?;
-    let placement = routed_label_right_of_vertical_route_placement_for_descriptor(
-        CanvasCoord {
-            x: lane_x,
-            y: target_y,
-        },
-        CanvasCoord {
-            x: lane_x,
-            y: source_y,
-        },
-        descriptor,
-    )?;
+    let start = CanvasCoord {
+        x: lane_x,
+        y: target_y,
+    };
+    let end = CanvasCoord {
+        x: lane_x,
+        y: source_y,
+    };
+    let placement =
+        routed_label_right_of_vertical_route_placement_for_descriptor(start, end, descriptor)?;
 
-    Some(PlannedRouteLabel::new(descriptor, placement))
+    Some(PlannedRouteLabel::with_host_segment(
+        descriptor, placement, start, end,
+    ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::TerminalWidthProfile;
+    use crate::graph::routing::label::RoutedLabelPlacement;
+    use crate::graph::routing::plan::LabelAnchor;
+
+    #[test]
+    fn back_label_preserves_full_lane_and_preferred_placement() {
+        let descriptor =
+            RoutedLabelDescriptor::for_test(0, "try again", TerminalWidthProfile::Unicode);
+        let label = planned_top_down_back_label(descriptor, 16, 4, 20)
+            .expect("a back-edge label must retain its vertical lane");
+
+        assert_eq!(label.placement, RoutedLabelPlacement::new(17, 12, 9));
+        assert_eq!(
+            label.anchor,
+            LabelAnchor::Segment {
+                start: CanvasCoord { x: 16, y: 4 },
+                end: CanvasCoord { x: 16, y: 20 },
+                route_segment: None,
+            }
+        );
+    }
 }

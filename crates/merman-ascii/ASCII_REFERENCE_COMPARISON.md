@@ -84,6 +84,15 @@ Nested container loops reserve turning clearance in their immediate parent. Each
 its label before subsequent searches; unlike predetermined node-loop lanes, searched container
 loops need not share a side or defer label allocation until the batch is complete.
 
+The route-label audit also adopts the reference mapper's useful ownership principle: preserve the
+selected straight host through planning and painting. Grid and feedback labels retain that segment
+instead of reducing it to a single placement hint. Local admission protects both the text and its
+perpendicular gap to the host, preventing another route from separating a relocated label from its
+edge. This applies before and after route commitment. Multiline side-lane candidates account for
+the complete text height, and node-loop envelopes account for the widest parallel label. Local
+regressions cover long parallel loops and multiline feedback at zero preferred graph padding;
+the reference's string-based edge labels do not serve as a multiline oracle.
+
 The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from
 `876b5b4` named in its inventory, contains 54 `ascii` graph fixtures, 25 `extended-chars` graph

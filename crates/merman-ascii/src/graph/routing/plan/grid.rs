@@ -12,7 +12,7 @@ use super::super::path::{
     step_direction,
 };
 use super::{
-    MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
+    LabelAnchor, MarkerAnchor, MarkerAnchors, PlannedCellId, PlannedRouteCells, PlannedRouteLabel,
     PlannedRouteSegment, RoutePlan, edge_line_cell_in_segment, route_cell_in_segment,
     route_turn_char,
 };
@@ -350,6 +350,7 @@ fn plan_grid_path_route(
         &lines_drawn,
         &line_directions,
         options.label_mode,
+        segment,
         resources,
     )?;
     if label.is_some() && planned_label.is_none() {
@@ -377,6 +378,7 @@ fn planned_grid_label(
     lines: &[Vec<CanvasCoord>],
     directions: &[StepDirection],
     mode: GridRouteLabelMode,
+    segment: PlannedRouteSegment,
     resources: &ResourceContext,
 ) -> Result<Option<PlannedRouteLabel>> {
     let Some(descriptor) = descriptor else {
@@ -385,25 +387,39 @@ fn planned_grid_label(
     resources.checkpoint()?;
     resources.charge_layout_work(lines.len())?;
     let preferred = grid_label_line(lines, directions, mode).and_then(|(line, direction)| {
-        grid_label_placement(descriptor, *line.first()?, *line.last()?, mode, direction)
+        let first = *line.first()?;
+        let last = *line.last()?;
+        let placement = grid_label_placement(descriptor, first, last, mode, direction)?;
+        Some((placement, first, last))
     });
-    if let Some(placement) = preferred {
-        return Ok(Some(PlannedRouteLabel::new(descriptor, placement)));
-    }
-    let mut fallback = None;
-    for line in lines {
-        resources.checkpoint()?;
-        resources.charge_layout_work(1)?;
-        let Some((&first, &last)) = line.first().zip(line.last()) else {
-            continue;
-        };
-        if let Some(placement) = routed_label_placement_for_descriptor(first, last, descriptor)
-            && fallback.as_ref().is_none_or(|(len, _)| line.len() >= *len)
-        {
-            fallback = Some((line.len(), placement));
+    let (placement, first, last) = if let Some(preferred) = preferred {
+        preferred
+    } else {
+        let mut fallback = None;
+        for line in lines {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            let Some((&first, &last)) = line.first().zip(line.last()) else {
+                continue;
+            };
+            if let Some(placement) = routed_label_placement_for_descriptor(first, last, descriptor)
+                && fallback
+                    .as_ref()
+                    .is_none_or(|(len, _, _, _)| line.len() >= *len)
+            {
+                fallback = Some((line.len(), placement, first, last));
+            }
         }
+        let Some((_, placement, first, last)) = fallback else {
+            return Ok(None);
+        };
+        (placement, first, last)
+    };
+    let mut label = PlannedRouteLabel::with_host_segment(descriptor, placement, first, last);
+    if let LabelAnchor::Segment { route_segment, .. } = &mut label.anchor {
+        *route_segment = Some(segment);
     }
-    Ok(fallback.map(|(_, placement)| PlannedRouteLabel::new(descriptor, placement)))
+    Ok(Some(label))
 }
 
 fn grid_label_line<'a>(
@@ -636,11 +652,86 @@ fn checkpoint_layout(execution: AsciiExecution<'_>) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{AsciiResourcePolicy, TerminalWidthProfile};
+    use crate::graph::layout::layout_graph;
+    use crate::graph::model::AsciiGraph;
+    use crate::graph::routing::PreparedRoute;
+    use crate::graph::routing::occupancy::{SceneOccupancy, allocate_route_label_placements};
+    use crate::{AsciiRenderOptions, AsciiResourcePolicy, TerminalWidthProfile};
 
     #[test]
-    fn transit_label_preserves_text_when_the_route_has_no_vertical_segment() {
-        let lines = vec![(10..=24).map(|x| CanvasCoord { x, y: 8 }).collect()];
+    fn inline_multiword_grid_label_keeps_selected_host_and_placement() {
+        let options = AsciiRenderOptions::ascii();
+        let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::LeftRight), &options);
+        let lines: Vec<Vec<_>> = vec![
+            (10..=20).map(|x| CanvasCoord { x, y: 4 }).collect(),
+            (10..=24).rev().map(|x| CanvasCoord { x, y: 8 }).collect(),
+        ];
+        let descriptor =
+            RoutedLabelDescriptor::for_test(0, "enter queue", TerminalWidthProfile::Unicode);
+        for (segment, final_segment) in [
+            (PlannedRouteSegment::Direct, PlannedRouteSegment::Direct),
+            (PlannedRouteSegment::Boundary, PlannedRouteSegment::Boundary),
+            (PlannedRouteSegment::Direct, PlannedRouteSegment::Boundary),
+        ] {
+            let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+            let label = planned_grid_label(
+                descriptor,
+                &lines,
+                &[StepDirection::Right, StepDirection::Left],
+                GridRouteLabelMode::InlineLongestSegment,
+                segment,
+                &resources,
+            )
+            .unwrap()
+            .expect("a multiword label must retain its longest straight host");
+            let anchor = LabelAnchor::Segment {
+                start: CanvasCoord { x: 24, y: 8 },
+                end: CanvasCoord { x: 10, y: 8 },
+                route_segment: Some(segment),
+            };
+            let placement = RoutedLabelPlacement::new(12, 8, 11);
+            assert_eq!(label.anchor, anchor);
+            assert_eq!(label.placement, placement);
+
+            let cells = lines
+                .iter()
+                .flatten()
+                .map(|coord| route_cell_in_segment(coord.x, coord.y, '-', segment))
+                .collect();
+            let plan = RoutePlan::new_without_markers_for_test(cells, vec![label])
+                .with_segment(final_segment);
+            let mut routes = vec![PreparedRoute::for_test(plan, 0)];
+            let mut occupancy =
+                SceneOccupancy::try_new(&routes, &graph_layout, &mut resources, "flowchart")
+                    .unwrap();
+
+            allocate_route_label_placements(
+                &mut routes,
+                &mut occupancy,
+                &mut resources,
+                "flowchart",
+            )
+            .expect("the full host must admit the original inline label footprint");
+
+            assert_eq!(routes[0].plan.labels[0].placement, placement);
+            assert_eq!(
+                routes[0].plan.labels[0].anchor,
+                LabelAnchor::Segment {
+                    start: CanvasCoord { x: 24, y: 8 },
+                    end: CanvasCoord { x: 10, y: 8 },
+                    route_segment: Some(final_segment),
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn transit_label_preserves_longest_fallback_host_when_route_has_no_vertical_segment() {
+        let lines = vec![
+            (10..=24).map(|x| CanvasCoord { x, y: 4 }).collect(),
+            (10..=24).map(|x| CanvasCoord { x, y: 8 }).collect(),
+            (10..=20).map(|x| CanvasCoord { x, y: 12 }).collect(),
+        ];
         let descriptor = RoutedLabelDescriptor::for_test(0, "enter", TerminalWidthProfile::Unicode);
         for mode in [
             GridRouteLabelMode::FirstVerticalTransitLane,
@@ -650,17 +741,33 @@ mod tests {
             let label = planned_grid_label(
                 descriptor,
                 &lines,
-                &[StepDirection::Right],
+                &[StepDirection::Right; 3],
                 mode,
+                PlannedRouteSegment::Boundary,
                 &resources,
             )
             .unwrap()
             .expect("a horizontal boundary route must retain the authored label");
             assert_eq!(label.placement, RoutedLabelPlacement::new(15, 8, 5));
+            assert_eq!(
+                label.anchor,
+                LabelAnchor::Segment {
+                    start: CanvasCoord { x: 10, y: 8 },
+                    end: CanvasCoord { x: 24, y: 8 },
+                    route_segment: Some(PlannedRouteSegment::Boundary),
+                }
+            );
             assert!(
-                planned_grid_label(descriptor, &[], &[], mode, &resources)
-                    .unwrap()
-                    .is_none()
+                planned_grid_label(
+                    descriptor,
+                    &[],
+                    &[],
+                    mode,
+                    PlannedRouteSegment::Boundary,
+                    &resources,
+                )
+                .unwrap()
+                .is_none()
             );
         }
     }

@@ -25,7 +25,9 @@ const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 pub(super) use labels::allocate_committed_route_labels;
 #[cfg(test)]
 pub(super) use labels::allocate_route_label_placements;
-use labels::{label_anchor_contains, resolve_label_anchor, route_label_candidates};
+use labels::{
+    label_anchor_contains, label_reservation, resolve_label_anchor, route_label_candidates,
+};
 #[cfg(test)]
 pub(super) use marker::allocate_marker_berths;
 use marker::marker_candidate_continues_chain;
@@ -348,6 +350,7 @@ pub(super) struct SceneOccupancy<'layout> {
     terminal_claims: HashMap<CanvasCoord, Vec<TerminalClaim>>,
     target_ports: HashMap<(CanvasCoord, StepDirection), usize>,
     markers: HashMap<CanvasCoord, MarkerOccupant>,
+    // Includes each label's text and the clear perpendicular gap to its host.
     labels: HashSet<CanvasCoord>,
     pub(super) protected: Vec<ProtectedGeometry<'layout>>,
     pub(super) label_lane_radius: usize,
@@ -842,13 +845,18 @@ impl<'layout> SceneOccupancy<'layout> {
                     label.line_count(),
                     resources,
                 )?;
+                let Some(reservation) =
+                    label_reservation(anchor, footprint, self.label_lane_radius, resources)?
+                else {
+                    continue;
+                };
                 if self.label_region_is_clear(owner, footprint, resources)?
                     && !marker_berths
                         .into_iter()
                         .zip([MarkerEndpoint::Start, MarkerEndpoint::End])
                         .any(|(coord, endpoint)| {
                             coord.is_some_and(|coord| {
-                                footprint.conflicts_with_marker(
+                                reservation.conflicts_with_marker(
                                     coord,
                                     plan.marker_point_direction(endpoint),
                                 )
@@ -874,10 +882,15 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: OccupiedRect,
         resources: &mut ResourceContext,
     ) -> Result<bool> {
+        let Some(reservation) =
+            label_reservation(anchor, candidate, self.label_lane_radius, resources)?
+        else {
+            return Ok(false);
+        };
         for protected in &self.protected {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
-            if protected.shape.intersects(candidate) {
+            if protected.shape.intersects(reservation) {
                 return Ok(false);
             }
         }
@@ -886,8 +899,8 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(false);
         }
 
-        for y in candidate.y..candidate.bottom {
-            for x in candidate.x..candidate.right {
+        for y in reservation.y..reservation.bottom {
+            for x in reservation.x..reservation.right {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
@@ -904,7 +917,7 @@ impl<'layout> SceneOccupancy<'layout> {
         resources.charge_layout_work(plan.cells.len())?;
         for (cell_index, (_, cell)) in plan.active_cells().enumerate() {
             self.checkpoint_layout_scan(cell_index)?;
-            if candidate.contains(cell.coord.x, cell.coord.y)
+            if reservation.contains(cell.coord.x, cell.coord.y)
                 && !label_anchor_contains(anchor, cell.coord, cell.segment)
             {
                 return Ok(false);
@@ -1548,13 +1561,18 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: OccupiedRect,
         resources: &mut ResourceContext,
     ) -> Result<bool> {
+        let Some(reservation) =
+            label_reservation(anchor, candidate, self.label_lane_radius, resources)?
+        else {
+            return Ok(false);
+        };
         if !self.label_region_is_clear(owner, candidate, resources)? {
             return Ok(false);
         }
         for protected in &self.protected {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
-            if protected.shape.intersects(candidate) {
+            if protected.shape.intersects(reservation) {
                 return Ok(false);
             }
         }
@@ -1563,8 +1581,8 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(false);
         }
 
-        for y in candidate.y..candidate.bottom {
-            for x in candidate.x..candidate.right {
+        for y in reservation.y..reservation.bottom {
+            for x in reservation.x..reservation.right {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };

@@ -29,7 +29,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Capability | Planned behavior | Notes |
 | --- | --- | --- |
 | Direction transforms | Supported subset. | `BT` vertically flips the TD layout; `RL` horizontally mirrors the LR layout. Node labels, edge labels, group titles, arrowheads, and Unicode connectors stay readable/oriented for the covered root-direction subset. |
-| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. The scene allocator keeps the original placement when clear, probes bounded route-local side lanes on collision, and returns an explicit error only when every non-destructive candidate is exhausted. |
+| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Grid and feedback planners retain the complete straight host so an inline label can cover its own segment. Relocated labels keep a clear perpendicular gap to that host; the gap is reserved against later routes and labels. Multiline side lanes align the complete text block, and labeled self-loops reserve a measured envelope with visible connections around the text. Placement may differ from SVG. The scene allocator keeps the original placement when clear, probes bounded route-local side lanes on collision, and returns an explicit error only when every non-destructive candidate is exhausted. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
 | Thick edges | Supported subset. | ASCII uses `=`/`#` for horizontal/vertical thick lines; Unicode uses heavy box-drawing line characters. |
@@ -49,6 +49,11 @@ approximations. These mappings are product behavior once shipped and should be s
 | Document shapes | Supported approximation. | Rendered as a box with a folded bottom edge. |
 | Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, disconnected, external-edge, and boundary-aware cross-boundary group layouts are covered by parser/model tests and local semantic fixtures. Copied `mermaid-ascii` fixtures remain immutable; implicit isolated groups intentionally differ where the narrow renderer inherits the root axis instead of the pinned Mermaid baseline's perpendicular default. |
 
+Preferred graph gaps can grow to fit a retained edge label's complete height, endpoint markers,
+and visible connections, including when the preferred padding is zero. Edge spacing and loop
+envelopes use the same whitespace trimming as routed text; omitted blank labels reserve no label
+space.
+
 ## Explicitly Unsupported
 
 These features return `AsciiError::UnsupportedFeature` instead of silently dropping semantics:
@@ -58,9 +63,8 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Hand-built subgraph member ids with line breaks | `subgraph member ids with line breaks` |
 | Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
 | Icon, image, browser-only metadata, and any future unsupported uncommon shapes | `non-rectangular node shapes` |
-| Invisible or otherwise non-normal/non-dotted/non-thick strokes | `non-normal edge strokes` |
-| Cross, circle, or otherwise non-point edge arrows | `non-point edge arrows` |
 | Hand-built models with edges whose endpoints are missing from `nodes` | `edges with missing endpoint nodes` |
+| Routes or labels that exhaust bounded non-destructive candidates | `routes crossing reserved graph geometry` or `edge label placement exhausted after bounded route-local search` |
 
 ## `beautiful-mermaid` Delta Triage
 

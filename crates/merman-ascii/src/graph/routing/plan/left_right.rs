@@ -8,6 +8,7 @@ use super::{
     MarkerAnchors, PlannedRouteCells, RoutePlan, edge_line_cell, planned_label, route_cell,
 };
 use crate::error::Result;
+use crate::graph::label::try_measure_edge_label;
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::resource::ResourceContext;
 
@@ -383,12 +384,39 @@ pub(super) fn plan_left_right_self_loop_route_with_resources(
 ) -> Result<Option<RoutePlan>> {
     let y = from.center_y();
     let lane_offset = resources.checked_grid_mul(parallel_index, 2)?;
-    let loop_x = resources.checked_grid_add(self_loop_right_x(layouts, from), lane_offset)?;
+    let mut loop_x = resources.checked_grid_add(self_loop_right_x(layouts, from), lane_offset)?;
     let bottom_y = resources.checked_grid_add(
         self_loop_bottom_y_for_edges(layouts, edges, from),
         lane_offset,
     )?;
     let marker_x = resources.checked_grid_add(from.center_x(), parallel_index)?;
+    let mut label_width = label.map_or(0, RoutedLabelDescriptor::width);
+    resources.charge_layout_work(edges.len())?;
+    for candidate in edges {
+        resources.checkpoint()?;
+        if candidate.from == from.id
+            && candidate.to == from.id
+            && candidate.stroke.is_visible()
+            && let Some(text) = &candidate.label
+        {
+            label_width = label_width.max(
+                try_measure_edge_label(text, charset.width_profile, resources)?
+                    .map_or(0, |metrics| metrics.max_width),
+            );
+        }
+    }
+    if label_width > 0 {
+        // All parallel loops use the same base envelope, keeping their lanes nested even
+        // when a later label is shorter than an earlier one.
+        loop_x =
+            loop_x.max(resources.checked_grid_add(
+                resources.checked_grid_add(
+                    resources.checked_grid_add(from.center_x(), label_width)?,
+                    1,
+                )?,
+                lane_offset,
+            )?);
+    }
     let minimum_bottom_y = resources.checked_grid_add(y, 1)?;
     if loop_x <= from.right() || marker_x >= loop_x || bottom_y <= minimum_bottom_y {
         return Ok(None);

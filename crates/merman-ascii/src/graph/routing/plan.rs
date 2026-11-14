@@ -555,6 +555,11 @@ impl RoutePlan {
         for cell in &mut self.cells {
             cell.segment = segment;
         }
+        for label in &mut self.labels {
+            if let LabelAnchor::Segment { route_segment, .. } = &mut label.anchor {
+                *route_segment = Some(segment);
+            }
+        }
         self
     }
 

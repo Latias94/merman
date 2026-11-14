@@ -259,6 +259,64 @@ fn parallel_self_loop_labels_leave_the_following_exit_clear() {
 }
 
 #[test]
+fn parallel_long_self_loop_labels_leave_the_following_exit_clear() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let source = format!(
+            "flowchart {direction}\nA[ENTRY] -->|first retry after check| A\nA -->|second retry after check| A\nA -->|third retry after check| A\nA -->|accept after checks| B[DONE]\n"
+        );
+        for options in readability_options() {
+            let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
+                panic!("long parallel self-loop labels must leave an exit ({direction}): {error}")
+            });
+            assert_labels_once(
+                &rendered,
+                &[
+                    "ENTRY",
+                    "DONE",
+                    "first retry after check",
+                    "second retry after check",
+                    "third retry after check",
+                    "accept after checks",
+                ],
+            );
+            assert_readable_target_heads(&rendered, 4);
+        }
+    }
+}
+
+#[test]
+fn multiline_parallel_feedback_keeps_labels_and_heads_with_zero_preferred_padding() {
+    for direction in ["TD", "BT", "LR", "RL"] {
+        let source = format!(
+            "flowchart {direction}\nA[ENTRY] -->|initial<br/>screening| B[CHECK]\nB -->|first retry<br/>after check| A\nB -->|second retry<br/>after check| A\nB -->|third retry<br/>after check| A\nB -->|accept<br/>after checks| T[DONE]\n"
+        );
+        for options in readability_options() {
+            let options = options.with_graph_padding_x(0).with_graph_padding_y(0);
+            let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
+                panic!(
+                    "multiline parallel feedback must retain readable lanes ({direction}): {error}"
+                )
+            });
+            assert_labels_once(
+                &rendered,
+                &[
+                    "ENTRY",
+                    "CHECK",
+                    "DONE",
+                    "initial",
+                    "screening",
+                    "first retry",
+                    "second retry",
+                    "third retry",
+                    "accept",
+                ],
+            );
+            assert_readable_target_heads(&rendered, 5);
+        }
+    }
+}
+
+#[test]
 fn long_labeled_mixed_feedback_keeps_every_label_and_target_head() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(
