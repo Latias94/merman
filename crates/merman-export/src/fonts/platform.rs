@@ -569,6 +569,40 @@ mod tests {
         }))
     }
 
+    #[test]
+    fn platform_queries_retry_missing_coverage_without_negative_caching() {
+        let context = poisoned_platform_context(
+            "MermanSymbolicTest.ttf",
+            true,
+            NativeFontLimits {
+                max_measurements: 2,
+                ..Default::default()
+            },
+        );
+        let style = TextStyle::default();
+        for _ in 0..2 {
+            assert!(
+                context
+                    .measure(HostTextMeasurementRequest {
+                        operation: TextMeasurementOperation::TitleBBoxX,
+                        phase: merman_render::environment::TextMeasurementPhase::SvgBBox,
+                        text: "\u{10ffff}",
+                        style: &style,
+                        max_width: None,
+                        wrap_mode: WrapMode::SvgLike,
+                    })
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        let state = context.0.state.lock().unwrap();
+        assert_eq!(state.measurements, 2);
+        assert!(state.cache.is_empty());
+        assert_eq!(state.cache_bytes, 0);
+        drop(state);
+        context.check().unwrap();
+    }
+
     fn platform_painted_families(
         context: &NativeFontContext,
         family: Option<&str>,
