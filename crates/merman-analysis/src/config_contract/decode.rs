@@ -276,6 +276,9 @@ fn decode_analysis_options_object(
             AnalysisOptionsFieldId::FixedLocalOffsetMinutes => {
                 decoded.fixed_local_offset_minutes = Some(decoded_integer(field, value)? as i32);
             }
+            AnalysisOptionsFieldId::FixedUnixMillis => {
+                decoded.fixed_unix_millis = Some(decoded_integer(field, value)?);
+            }
             AnalysisOptionsFieldId::SiteConfig => decoded.site_config = Some(value.clone()),
             AnalysisOptionsFieldId::Resources => {
                 decoded.resources = Some(decode_resource_options(value)?);

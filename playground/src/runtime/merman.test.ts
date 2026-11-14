@@ -122,13 +122,57 @@ test("freezes one configured input for detection, parse, layout, and render", ()
   assert.equal("host_theme" in (input.bindingOptions ?? {}), false);
 });
 
+test("captures the browser instant and its local offset when freezing a render", (context) => {
+  const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
+  context.mock.timers.enable({ apis: ["Date"], now: unixMillis });
+  const offset = context.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
+  const frozen = operation();
+
+  assert.equal(frozen.bindingOptions.fixed_unix_millis, unixMillis);
+  assert.equal(frozen.bindingOptions.fixed_local_offset_minutes, 345);
+  assert.equal(frozen.bindingOptions.fixed_today, undefined);
+  assert.equal(offset.mock.callCount(), 1);
+  context.mock.timers.tick(86_400_000);
+  assert.equal(frozen.bindingOptions.fixed_unix_millis, unixMillis);
+});
+
+test("generic operation inputs keep deterministic defaults and accept an explicit runtime snapshot", (context) => {
+  const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
+  context.mock.timers.enable({ apis: ["Date"], now: unixMillis });
+  const source = "gantt\nTask: task, 2026-11-14, 1d";
+  const deterministic = configuredMermanOperationInput(source, "auto", "{}", undefined);
+  context.mock.timers.tick(86_400_000);
+  assert.deepEqual(
+    configuredMermanOperationInput(source, "auto", "{}", undefined),
+    deterministic,
+  );
+  assert.equal(deterministic.bindingOptions.fixed_unix_millis, undefined);
+  assert.equal(deterministic.bindingOptions.fixed_local_offset_minutes, undefined);
+
+  const runtimeSnapshot = { unixMillis, localOffsetMinutes: -210 };
+  const explicit = configuredMermanOperationInput(source, "auto", "{}", { runtimeSnapshot });
+  assert.equal(explicit.bindingOptions.fixed_unix_millis, unixMillis);
+  assert.equal(explicit.bindingOptions.fixed_local_offset_minutes, -210);
+  runtimeSnapshot.unixMillis += 1;
+  assert.equal(explicit.bindingOptions.fixed_unix_millis, unixMillis);
+});
+
 test("browser facade keeps each measured or headless SVG with its single execution metadata", async (context) => {
   const { calls, support, supportCalls } = browserRenderFixture;
   const browserModuleUrl = new URL("./merman-browser.ts", import.meta.url).href;
+  const fixtureUrl = new URL("./merman-browser-test-fixture.ts", import.meta.url).href;
+  const fixtureSource = `
+    export * from ${JSON.stringify(fixtureUrl)};
+    import { browserRenderFixture } from ${JSON.stringify(fixtureUrl)};
+    export function renderAscii(source, options) {
+      browserRenderFixture.calls.push({ mode: "legacy", source, optionsJson: JSON.stringify(options) });
+      return "ascii";
+    }
+  `;
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       if (specifier === "@mermanjs/web" && context.parentURL === browserModuleUrl) {
-        return { url: new URL("./merman-browser-test-fixture.ts", import.meta.url).href, shortCircuit: true };
+        return { url: `data:text/javascript,${encodeURIComponent(fixtureSource)}`, shortCircuit: true };
       }
       return nextResolve(specifier, context);
     },
@@ -145,6 +189,7 @@ test("browser facade keeps each measured or headless SVG with its single executi
       const input = configuredMermanOperationInput("flowchart TD\nA", "forest", "{}", {
         textMeasurementMode: mode,
         themeRecipeJson: recipe,
+        runtimeSnapshot: { unixMillis: 1_794_633_825_678, localOffsetMinutes: 345 },
       });
       browserRenderFixture.result = {
         svg: `<svg xmlns="http://www.w3.org/2000/svg"><text>${mode}</text></svg>`,
@@ -167,9 +212,30 @@ test("browser facade keeps each measured or headless SVG with its single executi
       assert.equal(calls[0].source, input.configuredSource);
       assert.equal(calls[0].optionsJson, input.bindingOptionsJson);
       assert.ok(calls[0].optionsJson?.includes(recipe));
+      assert.equal(JSON.parse(calls[0].optionsJson!).fixed_unix_millis, 1_794_633_825_678);
+      assert.equal(JSON.parse(calls[0].optionsJson!).fixed_local_offset_minutes, 345);
       assert.equal(typeof calls[0].measurer, mode === "browser" ? "function" : "undefined");
     });
   }
+
+  await context.test("ASCII preserves the operation clock without SVG-only binding fields", () => {
+    calls.length = 0;
+    const input = configuredMermanOperationInput("gantt\nTask: task, 2026-11-14, 1d", "auto", "{}", {
+      runtimeSnapshot: { unixMillis: 1_794_633_825_678, localOffsetMinutes: 345 },
+      themeRecipeJson: '{"schema_version":1,"kind":"design","design":{}}',
+      svgPipeline: "resvg-safe",
+    });
+    const result = browserSession.facade.renderAscii(input);
+    assert.equal(result.status, "success");
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].source, input.configuredSource);
+    assert.deepEqual(JSON.parse(calls[0].optionsJson!), {
+      version: BINDING_OPTIONS_SCHEMA_VERSION,
+      site_config: input.bindingOptions.site_config,
+      fixed_unix_millis: 1_794_633_825_678,
+      fixed_local_offset_minutes: 345,
+    });
+  });
 
   await context.test("configuration and recipe errors retain the render failure boundary", () => {
     calls.length = 0;
@@ -231,7 +297,10 @@ test("browser facade keeps each measured or headless SVG with its single executi
   });
 });
 
-test("custom recipe reaches the Rust transport intact and changes render identity", () => {
+test("custom recipe reaches the Rust transport intact and changes render identity", (context) => {
+  const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
+  context.mock.timers.enable({ apis: ["Date"], now: unixMillis });
+  context.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
   const recipe = '{"schema_version":1,"kind":"design","design":{"tokens":{"accent":{"type":"color","value":"#123456"},"accent":{"type":"color","value":"#abcdef"}}}}';
   const input = configuredMermanOperationInput("flowchart TD\nA", "auto", "{}", {
     themeRecipeJson: recipe,
@@ -242,9 +311,14 @@ test("custom recipe reaches the Rust transport intact and changes render identit
   assert.deepEqual(JSON.parse(input.bindingOptionsJson!).theme, JSON.parse(recipe));
   const custom = operation({ workspace: { themeRecipeJson: recipe } });
   assert.equal(sameRenderOperation(operation(), custom), false);
+  assert.equal(JSON.parse(custom.bindingOptionsJson!).fixed_unix_millis, unixMillis);
+  assert.equal(JSON.parse(custom.bindingOptionsJson!).fixed_local_offset_minutes, 345);
+  context.mock.timers.tick(86_400_000);
   const exported = renderOperationWithSvgPipeline(custom, "resvg-safe");
   assert.ok(exported.bindingOptionsJson?.includes(recipe));
   assert.equal(JSON.parse(exported.bindingOptionsJson!).svg.pipeline, "resvg-safe");
+  assert.equal(JSON.parse(exported.bindingOptionsJson!).fixed_unix_millis, unixMillis);
+  assert.equal(JSON.parse(exported.bindingOptionsJson!).fixed_local_offset_minutes, 345);
 });
 
 test("invalid recipe and mixed selections are configuration errors", () => {
@@ -449,7 +523,8 @@ test("freezes invalid config as operation evidence instead of throwing", () => {
   assert.match(input.configurationError?.summary ?? "", /JSON/);
 });
 
-test("identity covers every render-operation axis", () => {
+test("identity covers every render-operation axis", (context) => {
+  context.mock.timers.enable({ apis: ["Date"], now: 1_794_633_825_678 });
   const base = operation();
   assert.equal(sameRenderOperation(base, operation()), true);
   assert.equal(Object.isFrozen(base.bindingOptions), true);
@@ -472,6 +547,14 @@ test("identity covers every render-operation axis", () => {
     operation({ diagnosticsEnabled: true }),
     operation({ viewport: { width: 801, height: 600 } }),
     operation({ versions: { merman: "next", mermaid: "11.16.0" } }),
+    operation({ runtimeSnapshot: {
+      unixMillis: 1_794_633_825_679,
+      localOffsetMinutes: base.bindingOptions.fixed_local_offset_minutes!,
+    } }),
+    operation({ runtimeSnapshot: {
+      unixMillis: 1_794_633_825_678,
+      localOffsetMinutes: base.bindingOptions.fixed_local_offset_minutes! + 60,
+    } }),
   ];
   for (const variant of variants) {
     assert.equal(sameRenderOperation(base, variant), false);
@@ -531,6 +614,7 @@ function operation({
     screenAvailableWidth: 1280,
   },
   versions = { merman: "test", mermaid: "11.16.0" },
+  runtimeSnapshot,
   viewport = { width: 800, height: 600 },
   themePresets,
   workspace: workspaceOverrides = {},
@@ -540,6 +624,7 @@ function operation({
   diagnosticsEnabled?: boolean;
   layoutEnvironment?: FreezeRenderOperationInput["layoutEnvironment"];
   versions?: FreezeRenderOperationInput["versions"];
+  runtimeSnapshot?: FreezeRenderOperationInput["runtimeSnapshot"];
   viewport?: FreezeRenderOperationInput["viewport"];
   themePresets?: FreezeRenderOperationInput["themePresets"];
   workspace?: Partial<WorkspaceSnapshot>;
@@ -555,6 +640,7 @@ function operation({
     diagnosticsEnabled,
     layoutEnvironment,
     versions,
+    runtimeSnapshot,
     viewport,
     themePresets,
     workspace,

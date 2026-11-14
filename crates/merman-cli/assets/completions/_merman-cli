@@ -147,6 +147,7 @@ _arguments "${_arguments_options[@]}" : \
 '--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
 constrained\:"Constrained rendering for untrusted or publicly submitted documents"
@@ -203,6 +204,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
@@ -325,6 +327,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
@@ -395,6 +398,7 @@ _arguments "${_arguments_options[@]}" : \
 '--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--lint-profile=[Built-in lint rule profile\: core, recommended, or strict]:PROFILE:_default' \
 '*--enable-rule=[Enable a configurable lint rule by stable rule id. Can be repeated]:RULE_ID:_default' \
@@ -429,6 +433,7 @@ _arguments "${_arguments_options[@]}" : \
 '--config-file=[JSON Mermaid configuration file]:CONFIG_FILE:_files' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--lint-profile=[Built-in lint rule profile\: core, recommended, or strict]:PROFILE:_default' \
 '*--enable-rule=[Enable a configurable lint rule by stable rule id. Can be repeated]:RULE_ID:_default' \
@@ -473,6 +478,7 @@ _arguments "${_arguments_options[@]}" : \
 '--theme=[Mermaid theme override]:THEME:(default base dark forest neutral neo neo-dark redux redux-dark redux-color redux-dark-color)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default; \`ratex\` requires \`math\`]:MATH_RENDERER:(none ratex)' \
 '-w+[Available container width for size-sensitive layouts]:CONTAINER_WIDTH:_default' \
@@ -542,6 +548,7 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '--theme=[Official Mermaid CLI theme selector]::THEME:(default forest dark neutral)' \
 '--runtime=[Runtime source for clock, local timezone, and operation randomness]:POLICY:(deterministic native)' \
 '--fixed-today=[Override the local "today" date for time-dependent diagrams]:FIXED_TODAY:_default' \
+'(--fixed-today)--fixed-unix-millis=[Override the clock with exact Unix milliseconds within the JavaScript Date range.]:FIXED_UNIX_MILLIS:_default' \
 '--fixed-local-offset-minutes=[Override the local timezone offset in minutes for time-dependent diagrams]:FIXED_LOCAL_OFFSET_MINUTES:_default' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \

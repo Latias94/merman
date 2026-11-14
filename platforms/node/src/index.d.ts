@@ -7,6 +7,10 @@ export type MermanResourceProfile =
 export interface MermanBindingOptions {
   version?: 3;
   runtime_policy?: "deterministic";
+  fixed_today?: string | null;
+  /** Exact host-supplied Unix milliseconds; mutually exclusive with a non-null fixed_today. */
+  fixed_unix_millis?: number | null;
+  fixed_local_offset_minutes?: number | null;
   environment?: {
     theme_portability?: "best-effort" | "require-portable";
     text_measurement?: "deterministic" | null;

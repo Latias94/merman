@@ -1512,6 +1512,40 @@ mod tests {
     }
 
     #[test]
+    fn fixed_unix_millis_derives_the_local_day_from_the_precise_instant() {
+        let options = crate::common::parse_options(
+            br#"{"fixed_unix_millis":-1,"fixed_local_offset_minutes":480}"#,
+        )
+        .expect("binding options");
+        let previous = merman::model::runtime::RuntimePolicy::deterministic()
+            .try_with_fixed_today_at_local_midnight("2026-06-10".parse().unwrap())
+            .unwrap();
+        let policy = binding_runtime_policy_from(&options, previous).expect("host clock policy");
+        let context = policy.begin_operation().expect("host clock context");
+
+        assert_eq!(context.unix_millis(), -1);
+        assert_eq!(context.today_local().to_string(), "1970-01-01");
+        assert!(!context.today_is_fixed());
+        assert_eq!(context, policy.begin_operation().unwrap());
+    }
+
+    #[test]
+    fn fixed_unix_millis_accepts_the_inclusive_javascript_date_range() {
+        for millis in [-8_640_000_000_000_000_i64, 0, 8_640_000_000_000_000] {
+            let options = crate::common::parse_options(
+                format!(r#"{{"fixed_unix_millis":{millis}}}"#).as_bytes(),
+            )
+            .expect("TimeClip endpoint is accepted");
+            let policy = binding_runtime_policy_from(
+                &options,
+                merman::model::runtime::RuntimePolicy::deterministic(),
+            )
+            .unwrap();
+            assert_eq!(policy.begin_operation().unwrap().unix_millis(), millis);
+        }
+    }
+
+    #[test]
     fn fixed_today_freezes_the_binding_clock_across_operations() {
         let options = crate::common::parse_options(
             br#"{

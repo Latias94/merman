@@ -17,6 +17,78 @@ fn task_by_id<'a>(model: &'a Value, id: &str) -> &'a Value {
 }
 
 #[test]
+fn native_render_gantt_uses_precise_host_instants_with_fixed_offsets() {
+    let source = "gantt\ndateFormat x\nTask: task,0,1000ms\n";
+    for offset in ["0", "480", "-60"] {
+        let output = run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--format",
+                "svg",
+                "--output",
+                "-",
+                "--fixed-unix-millis",
+                "375",
+                "--fixed-local-offset-minutes",
+                offset,
+            ],
+            source,
+        );
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let svg = std::str::from_utf8(&output.stdout).unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .expect("precise Gantt today marker");
+
+        assert_eq!(marker.attribute("x1"), Some("319"));
+        assert_eq!(marker.attribute("x2"), Some("319"));
+    }
+}
+
+#[test]
+fn fixed_unix_millis_validation_precedes_input_acquisition() {
+    let invalid: &[&[&str]] = &[
+        &["--fixed-unix-millis=8640000000000001"],
+        &["--fixed-unix-millis=-8640000000000001"],
+        &["--fixed-unix-millis=9223372036854775808"],
+        &["--fixed-unix-millis=0.5"],
+        &["--fixed-unix-millis=NaN"],
+        &["--fixed-unix-millis=375", "--fixed-today=2026-01-15"],
+    ];
+    for command in ["parse", "render", "mmdc"] {
+        for extra in invalid {
+            let mut args = match command {
+                "mmdc" => vec!["mmdc", "-i", "missing.mmd", "-o", "-"],
+                _ => vec![command, "missing.mmd"],
+            };
+            args.extend_from_slice(extra);
+            let output = run_with_stdin(&args, "");
+            assert_eq!(support::exit_code(output.status), 2, "{args:?}");
+            assert!(output.stdout.is_empty(), "{args:?}");
+            let stderr = String::from_utf8(output.stderr).unwrap();
+            assert!(stderr.contains("--fixed-unix-millis"), "{args:?}: {stderr}");
+            assert!(!stderr.contains("failed to read"), "{args:?}: {stderr}");
+        }
+    }
+}
+
+#[test]
+fn fixed_unix_millis_accepts_timeclip_boundaries_as_cli_integers() {
+    for instant in ["-8640000000000000", "-1", "0", "8640000000000000"] {
+        let output = run_with_stdin(
+            &["parse", "--fixed-unix-millis", instant, "-"],
+            "flowchart LR\nA --> B\n",
+        );
+        assert!(output.status.success(), "{instant}: {:?}", output.stderr);
+        let model: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(model["type"], "flowchart-v2");
+    }
+}
+
+#[test]
 fn compiled_help_and_version_are_available() {
     let exe = assert_cmd::cargo_bin!("merman-cli");
 
@@ -1426,6 +1498,7 @@ fn raw_svg_rejects_each_mermaid_only_option_before_input_acquisition() {
         ("system random", &["--system-random"]),
         ("system timing", &["--system-timing"]),
         ("fixed date", &["--fixed-today", "2026-07-28"]),
+        ("fixed instant", &["--fixed-unix-millis", "375"]),
         (
             "fixed local offset",
             &["--fixed-local-offset-minutes", "480"],

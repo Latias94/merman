@@ -153,6 +153,7 @@ internal val MERMAN_BINDING_OPTION_GROUP_SPECS: Map<String, MermanBindingOptionG
     MermanBindingOptionGroupSpec("environment", false, setOf(), true),
     MermanBindingOptionGroupSpec("fixed_local_offset_minutes", true, setOf(), false),
     MermanBindingOptionGroupSpec("fixed_today", true, setOf(), false),
+    MermanBindingOptionGroupSpec("fixed_unix_millis", true, setOf(), false),
     MermanBindingOptionGroupSpec("jpeg", false, setOf("jpeg"), false),
     MermanBindingOptionGroupSpec("layout", false, setOf(), true),
     MermanBindingOptionGroupSpec("lint", false, setOf("analysis"), false),

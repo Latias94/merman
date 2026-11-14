@@ -30,9 +30,15 @@ export interface MermanLayoutEnvironment {
   readonly screenAvailableWidth?: number;
 }
 
+export interface MermanRuntimeSnapshot {
+  readonly unixMillis: number;
+  readonly localOffsetMinutes: number;
+}
+
 export interface MermanOperationOptions {
   readonly diagramFont?: DiagramFont;
   readonly layoutEnvironment?: MermanLayoutEnvironment;
+  readonly runtimeSnapshot?: MermanRuntimeSnapshot;
   readonly themePresetId?: string | null;
   readonly themeRecipeJson?: string | null;
   readonly themeAppearance?: ThemeAppearance | null;
@@ -91,6 +97,7 @@ export interface FreezeRenderOperationInput {
   readonly compareEnabled: boolean;
   readonly diagnosticsEnabled: boolean;
   readonly layoutEnvironment: MermanLayoutEnvironment;
+  readonly runtimeSnapshot?: MermanRuntimeSnapshot;
   readonly versions: RenderOperationVersions;
   readonly viewport: RealmViewport | null;
   readonly workspace: Readonly<WorkspaceSnapshot>;
@@ -110,6 +117,7 @@ export function configuredMermanOperationInput(
   return freezeConfiguredInput(source, theme, configJson, {
     diagramFont: options?.diagramFont ?? DEFAULT_WORKSPACE_SNAPSHOT.diagramFont,
     layoutEnvironment: options?.layoutEnvironment,
+    runtimeSnapshot: options?.runtimeSnapshot,
     themePresetId:
       options?.themePresetId ?? DEFAULT_WORKSPACE_SNAPSHOT.themePresetId,
     themeRecipeJson: options?.themeRecipeJson ?? null,
@@ -126,6 +134,7 @@ export function freezeRenderOperation({
   compareEnabled,
   diagnosticsEnabled,
   layoutEnvironment,
+  runtimeSnapshot = captureMermanRuntimeSnapshot(),
   versions,
   viewport,
   workspace,
@@ -152,6 +161,7 @@ export function freezeRenderOperation({
     {
       diagramFont: workspace.diagramFont,
       layoutEnvironment: frozenLayout,
+      runtimeSnapshot,
       themePresetId: unavailableThemePresetId === null ? workspace.themePresetId : null,
       themeRecipeJson: workspace.themeRecipeJson,
       themeAppearance: unavailableThemePresetId === null ? selection.appearance : null,
@@ -221,6 +231,8 @@ export function sameRenderOperation(
     left.themeRecipeJson === right.themeRecipeJson &&
     left.unavailableThemePresetId === right.unavailableThemePresetId &&
     left.textMeasurementMode === right.textMeasurementMode &&
+    left.bindingOptions.fixed_unix_millis === right.bindingOptions.fixed_unix_millis &&
+    left.bindingOptions.fixed_local_offset_minutes === right.bindingOptions.fixed_local_offset_minutes &&
     left.diagramFont === right.diagramFont &&
     left.layoutEnvironment.containerWidth ===
       right.layoutEnvironment.containerWidth &&
@@ -242,6 +254,7 @@ export function sameRenderOperation(
 interface NormalizedMermanOptions {
   readonly diagramFont: DiagramFont;
   readonly layoutEnvironment?: Readonly<MermanLayoutEnvironment>;
+  readonly runtimeSnapshot?: MermanRuntimeSnapshot;
   readonly themePresetId: string | null;
   readonly themeRecipeJson: string | null;
   readonly themeAppearance: ThemeAppearance | null;
@@ -314,11 +327,23 @@ function bindingOptionsForRender(
     : undefined;
   return Object.freeze({
     version: BINDING_OPTIONS_SCHEMA_VERSION,
+    ...(options.runtimeSnapshot ? {
+      fixed_unix_millis: options.runtimeSnapshot.unixMillis,
+      fixed_local_offset_minutes: options.runtimeSnapshot.localOffsetMinutes,
+    } : {}),
     ...(theme ? { theme } : {}),
     ...(initializationConfig ? { site_config: initializationConfig } : {}),
     ...(svg ? { svg } : {}),
     ...(layout ? { layout } : {}),
   });
+}
+
+export function captureMermanRuntimeSnapshot(): MermanRuntimeSnapshot {
+  const instant = new Date();
+  return {
+    unixMillis: instant.getTime(),
+    localOffsetMinutes: -instant.getTimezoneOffset(),
+  };
 }
 
 function freezeLayoutEnvironment(

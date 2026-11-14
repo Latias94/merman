@@ -178,6 +178,12 @@ export const BINDING_OPTION_GROUP_SPECS = [
     "requires_svg_pipeline": false
   },
   {
+    "id": "fixed_unix_millis",
+    "always_available": true,
+    "any_capability_ids": [],
+    "requires_svg_pipeline": false
+  },
+  {
     "id": "jpeg",
     "always_available": false,
     "any_capability_ids": [

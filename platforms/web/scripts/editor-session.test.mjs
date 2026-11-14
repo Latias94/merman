@@ -230,6 +230,7 @@ const SVG_METADATA_IDS = [
 const EDITOR_OPTION_GROUP_IDS = [
   "fixed_local_offset_minutes",
   "fixed_today",
+  "fixed_unix_millis",
   "lint",
   "parse",
   "resources",
@@ -241,6 +242,7 @@ const SVG_OPTION_GROUP_IDS = [
   "environment",
   "fixed_local_offset_minutes",
   "fixed_today",
+  "fixed_unix_millis",
   "layout",
   "parse",
   "resources",
@@ -856,6 +858,7 @@ test("runtime catalog accepts unknown future IDs", async () => {
   assert.deepEqual(catalog.option_group_ids, [
     "fixed_local_offset_minutes",
     "fixed_today",
+    "fixed_unix_millis",
     "future-option",
     "lint",
     "parse",

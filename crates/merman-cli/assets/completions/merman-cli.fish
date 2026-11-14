@@ -95,6 +95,7 @@ redux-dark-color\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand parse" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand parse" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand parse" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand parse" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand parse" -l resource-profile -d 'Resource policy for input, semantic models, output, and CLI acquisition' -r -f -a "interactive\t'General interactive applications and public binding surfaces'
 constrained\t'Constrained rendering for untrusted or publicly submitted documents'
@@ -153,6 +154,7 @@ redux-dark-color\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-file -d 'Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
@@ -283,6 +285,7 @@ redux-dark-color\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-file -d 'Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
@@ -347,6 +350,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -s c -l conf
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -l lint-profile -d 'Built-in lint rule profile: core, recommended, or strict' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand lint" -l enable-rule -d 'Enable a configurable lint rule by stable rule id. Can be repeated' -r
@@ -373,6 +377,7 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -s c -l confi
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -l lint-profile -d 'Built-in lint rule profile: core, recommended, or strict' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand fix" -l enable-rule -d 'Enable a configurable lint rule by stable rule id. Can be repeated' -r
@@ -411,6 +416,7 @@ redux-dark-color\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default; `ratex` requires `math`' -r -f -a "none\t''
 ratex\t''"
@@ -465,6 +471,7 @@ neutral\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l runtime -d 'Runtime source for clock, local timezone, and operation randomness' -r -f -a "deterministic\t''
 native\t''"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-today -d 'Override the local "today" date for time-dependent diagrams' -r
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-unix-millis -d 'Override the clock with exact Unix milliseconds within the JavaScript Date range.' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l fixed-local-offset-minutes -d 'Override the local timezone offset in minutes for time-dependent diagrams' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-file -d 'Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence' -r -F
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"

@@ -569,6 +569,8 @@ test("deduplicates only when both the operation and facade authority are unchang
 
 test("freezes only the latest input after the complete debounce window", async (t) => {
   const { coordinator, domainFacade, renderedSources, frozenSources } = timedCoordinator(t);
+  const startedAt = Date.now();
+  const offset = t.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
   coordinator.setInput(input("first", domainFacade));
   await advanceClock(t, 299);
   assert.deepEqual(frozenSources, []);
@@ -580,7 +582,28 @@ test("freezes only the latest input after the complete debounce window", async (
   await advanceClock(t, 1);
   assert.deepEqual(frozenSources, ["latest"]);
   assert.deepEqual(renderedSources, ["latest"]);
-  assert.equal(coordinator.store.getState().status, "success");
+  const completed = coordinator.store.getState();
+  assert.equal(completed.status, "success");
+  if (completed.status !== "success") return;
+  assert.equal(completed.snapshot.operation.bindingOptions.fixed_unix_millis, startedAt + 599);
+  assert.equal(completed.snapshot.operation.bindingOptions.fixed_local_offset_minutes, 345);
+  assert.equal(offset.mock.callCount(), 1);
+
+  await advanceClock(t, 86_400_000);
+  coordinator.setInput(input("latest", domainFacade));
+  await advanceClock(t, 300);
+  assert.equal(coordinator.store.getState(), completed);
+  assert.deepEqual(frozenSources, ["latest"]);
+  assert.equal(offset.mock.callCount(), 1);
+
+  coordinator.refresh();
+  const refreshedAt = Date.now();
+  await advanceClock(t, 0);
+  const refreshed = coordinator.store.getState();
+  assert.equal(refreshed.status, "success");
+  if (refreshed.status !== "success") return;
+  assert.equal(refreshed.snapshot.operation.bindingOptions.fixed_unix_millis, refreshedAt);
+  assert.equal(offset.mock.callCount(), 2);
 });
 
 for (const change of ["refresh", "features", "resume", "reenable"] as const) {
@@ -821,10 +844,14 @@ test("does not inspect hidden workspace source until rendering resumes", async (
   assert.ok(sourceReads > 0);
 });
 
-test("passes one frozen base-theme preview to every projection while preserving an unknown preset", async () => {
+test("passes one frozen base-theme preview to every projection while preserving an unknown preset", async (t) => {
+  const unixMillis = Date.parse("2026-11-14T05:23:45.678Z");
+  t.mock.timers.enable({ apis: ["Date"], now: unixMillis });
+  t.mock.method(Date.prototype, "getTimezoneOffset", () => -345);
   const operations: FrozenRenderOperation[] = [];
   const capture = (input: ConfiguredMermanOperationInput) => {
     operations.push(input as FrozenRenderOperation);
+    t.mock.timers.tick(1_000);
     return input as FrozenRenderOperation;
   };
   const domainFacade: MermanDomainFacade = {
@@ -884,6 +911,10 @@ test("passes one frozen base-theme preview to every projection while preserving 
   assert.equal(state.snapshot.operation.themePresetId, "future-theme");
   assert.equal(state.snapshot.operation.unavailableThemePresetId, "future-theme");
   assert.equal(state.snapshot.operation.bindingOptions.theme, undefined);
+  for (const operation of operations) {
+    assert.equal(operation.bindingOptions.fixed_unix_millis, unixMillis);
+    assert.equal(operation.bindingOptions.fixed_local_offset_minutes, 345);
+  }
   assert.equal(Object.isFrozen(state), true);
   assert.equal(Object.isFrozen(state.detection), true);
   assert.equal(Object.isFrozen(state.diagnostics), true);

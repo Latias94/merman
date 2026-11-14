@@ -105,6 +105,17 @@ discards stale completions, and atomically publishes only the latest coherent Me
 Request parse, render, or SVG-safety failures remain request artifacts and never transition the
 Merman runtime to `error`.
 
+Interactive operation freezing also captures one browser `Date` after debounce, passing its exact
+Unix milliseconds and current UTC offset through the shared binding options. Parse/layout
+diagnostics, immediate or deferred ASCII output, and later raster exports reuse that snapshot.
+Current-diagram theme previews use the same capture helper at their scheduled render entry;
+fixed showcase samples keep deterministic inputs.
+The library and benchmark adapters retain their explicit deterministic defaults. The offset is
+fixed for the operation; it does not supply browser time-zone transition rules for other task dates.
+Compare runs the unmodified Mermaid runtime against its own browser clock. Its today marker can
+therefore differ by the load/render delay on very short time axes or across midnight; it does not
+claim identical capture instants.
+
 The Mermaid source and Config editor document share one source-configuration boundary: the
 [operation builder](../../playground/src/lib/mermaid-config.ts) inserts the complete Config object
 after frontmatter and before authored directives. Host initialization admits only a known theme

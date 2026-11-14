@@ -184,6 +184,7 @@ describe("language intelligence adoption", () => {
     for (const setting of [
       "merman.analysis.fixed_today",
       "merman.analysis.fixed_local_offset_minutes",
+      "merman.analysis.fixed_unix_millis",
       "merman.analysis.site_config",
       "merman.analysis.resources.limits.max_source_bytes",
       "merman.analysis.resources.limits.max_document_diagrams",
@@ -211,6 +212,12 @@ describe("language intelligence adoption", () => {
     ]);
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.minimum, -1439);
     assert.equal(properties["merman.analysis.fixed_local_offset_minutes"]?.maximum, 1439);
+    assert.deepEqual(properties["merman.analysis.fixed_unix_millis"]?.type, [
+      "integer",
+      "null",
+    ]);
+    assert.equal(properties["merman.analysis.fixed_unix_millis"]?.minimum, -8640000000000000);
+    assert.equal(properties["merman.analysis.fixed_unix_millis"]?.maximum, 8640000000000000);
     assert.equal(properties["merman.analysis.site_config"]?.type, "object");
     assert.deepEqual(properties["merman.analysis.resources.limits.max_source_bytes"]?.type, [
       "integer",
@@ -255,6 +262,7 @@ describe("language intelligence adoption", () => {
       "merman.diagnostics.enabled",
       "merman.analysis.fixed_today",
       "merman.analysis.fixed_local_offset_minutes",
+      "merman.analysis.fixed_unix_millis",
       "merman.analysis.site_config",
       "merman.analysis.resources.limits.max_source_bytes",
       "merman.analysis.lint.profile",

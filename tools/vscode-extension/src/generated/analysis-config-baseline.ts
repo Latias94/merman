@@ -69,6 +69,16 @@ export const BUNDLED_ANALYSIS_CONFIG_PROJECTION = {
         }
       },
       {
+        "path": "fixed_unix_millis",
+        "change_scope": "snapshot_affecting",
+        "runtime_constraints": [],
+        "normalization": {
+          "kind": "integer",
+          "minimum": -8640000000000000,
+          "maximum": 8640000000000000
+        }
+      },
+      {
         "path": "site_config",
         "change_scope": "snapshot_affecting",
         "runtime_constraints": [],

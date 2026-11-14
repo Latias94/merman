@@ -30,6 +30,23 @@ renderSvgToElement(target, `flowchart TD
 ```
 
 Use `renderSvg()` when the host needs the serialized SVG string instead of a mounted element.
+
+The runtime defaults to Unix epoch time and UTC for reproducible output. For a live Gantt today
+marker, capture the browser clock explicitly and reuse the same options for related operations:
+
+```ts
+import { renderSvg } from "@mermanjs/web";
+
+const instant = new Date();
+const svg = renderSvg(source, {
+  fixed_unix_millis: instant.getTime(),
+  fixed_local_offset_minutes: -instant.getTimezoneOffset(),
+});
+```
+
+This preserves time of day. The date-only `fixed_today` option instead selects local midnight;
+only one of those clock selectors may be non-null. The offset above is a fixed snapshot rather
+than a complete daylight-saving rule set. See the [shared options reference](../../../../docs/bindings/OPTIONS_JSON.md#fixed-time-options).
 Use `prepareSource()` for repeated SVG, layout and geometry outputs from frozen parse facts.
 Dispose the returned snapshot when finished; see the
 [prepared-source guide](https://github.com/Latias94/merman/blob/main/platforms/web/README.md#reuse-a-parsed-source).
