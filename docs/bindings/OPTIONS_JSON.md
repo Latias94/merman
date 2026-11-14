@@ -602,7 +602,7 @@ LSP adapters use the same `options_json` envelope. Analysis consumers honor opti
 deterministic time, Mermaid site config, and resource limits while retaining family parse failures
 in the closed analysis snapshot:
 
-- `fixed_today` and `fixed_local_offset_minutes` for time-dependent diagram semantics;
+- `fixed_today` or `fixed_unix_millis`, together with `fixed_local_offset_minutes`, for time-dependent diagram semantics;
 - `site_config` and diagram directives for Mermaid-compatible parse/config behavior;
 - `resources.*` for source and model budgets.
 
