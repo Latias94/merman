@@ -285,10 +285,13 @@ fn branching_chain_graph(compound: bool, direction: GraphDirection) -> AsciiGrap
 
 #[test]
 fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
-    for compound in [false, true] {
+    for graph in [
+        branching_chain_graph(false, GraphDirection::LeftRight),
+        branching_chain_graph(true, GraphDirection::LeftRight),
+        group_endpoint_merge_graph(),
+    ] {
         let options = AsciiRenderOptions::unicode();
         let charset = GraphCharset::for_options(&options);
-        let graph = branching_chain_graph(compound, GraphDirection::LeftRight);
         let layout = layout_graph(&graph, &options);
         let policy = AsciiResourcePolicy::unbounded();
         let mut measured = ResourceContext::new(policy);
@@ -342,6 +345,64 @@ fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
         };
         assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
         if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
+    }
+}
+
+fn group_endpoint_merge_graph() -> AsciiGraph {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for id in ["A", "B", "C", "member", "Z"] {
+        graph.add_node(id, id);
+    }
+    graph.add_group_with_style(
+        "group",
+        "Group",
+        None,
+        vec!["member".into()],
+        crate::graph::model::GraphGroupStyle::default(),
+    );
+    for from in ["A", "B", "C"] {
+        graph.add_edge_with_attrs(
+            from,
+            "group",
+            GraphEdgeAttrs {
+                label: Some(format!("via {from}")),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
+    graph.add_edge("group", "Z");
+    graph
+}
+
+#[test]
+fn group_merge_uses_distinct_border_contacts_without_entering_its_member() {
+    let graph = group_endpoint_merge_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset).unwrap();
+    let group = layout
+        .groups
+        .iter()
+        .find(|group| group.id == "group")
+        .unwrap();
+    let contacts = scene
+        .routes
+        .iter()
+        .filter(|route| route.owner.to == "group")
+        .map(|route| route.plan.attachments.unwrap().end.contact)
+        .collect::<rustc_hash::FxHashSet<_>>();
+    assert_eq!(contacts.len(), 3);
+    for route in &scene.routes {
+        for (_, cell) in route.plan.active_cells() {
+            assert!(
+                !(group.x < cell.coord.x
+                    && cell.coord.x < group.right()
+                    && group.y < cell.coord.y
+                    && cell.coord.y < group.bottom()),
+                "a container endpoint must keep external transit out of its interior"
+            );
+        }
     }
 }
 

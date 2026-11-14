@@ -334,6 +334,7 @@ impl ProtectedGeometry<'_> {
 
 #[derive(Debug)]
 pub(super) struct SceneOccupancy<'layout> {
+    graph_layout: &'layout GraphLayout,
     pub(super) route_cells: HashMap<CanvasCoord, RouteCellOccupancy>,
     pub(super) route_bounds: Vec<Option<RouteBounds>>,
     terminal_claims: HashMap<CanvasCoord, Vec<TerminalClaim>>,
@@ -410,6 +411,7 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         let mut scene = Self {
+            graph_layout,
             route_cells: HashMap::default(),
             route_bounds: Vec::new(),
             terminal_claims: HashMap::default(),
@@ -567,12 +569,12 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         self.checkpoint_layout()?;
-        if !self.plan_labels_have_clear_candidate(plan, resources)? {
-            return Ok(None);
-        }
-
         let mut marker_pressure = 0usize;
-        for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
+        let mut marker_berths = [None; 2];
+        for (index, endpoint) in [MarkerEndpoint::Start, MarkerEndpoint::End]
+            .into_iter()
+            .enumerate()
+        {
             let Some(candidates) = plan.marker_candidates(endpoint, diagram_type, resources)?
             else {
                 return Ok(None);
@@ -597,6 +599,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     resources,
                 )? {
                     MarkerCandidateDisposition::Available => {
+                        marker_berths[index].get_or_insert(candidate.coord);
                         available = resources.checked_work_add(available, 1)?;
                         predecessor = Some(candidate);
                     }
@@ -613,6 +616,13 @@ impl<'layout> SceneOccupancy<'layout> {
                 marker_pressure,
                 MAX_MARKER_CANDIDATES.saturating_sub(available.min(MAX_MARKER_CANDIDATES)),
             )?;
+        }
+
+        if marker_berths[0].is_some() && marker_berths[0] == marker_berths[1] {
+            return Ok(None);
+        }
+        if !self.plan_labels_have_clear_candidate(plan, owner, marker_berths, resources)? {
+            return Ok(None);
         }
 
         self.checkpoint_layout()?;
@@ -774,6 +784,8 @@ impl<'layout> SceneOccupancy<'layout> {
     fn plan_labels_have_clear_candidate(
         &self,
         plan: &RoutePlan,
+        owner: &RouteOwner,
+        marker_berths: [Option<CanvasCoord>; 2],
         resources: &mut ResourceContext,
     ) -> Result<bool> {
         if plan.labels.is_empty() {
@@ -822,7 +834,13 @@ impl<'layout> SceneOccupancy<'layout> {
                     label.line_count(),
                     resources,
                 )?;
-                if self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)? {
+                if self.label_region_is_clear(owner, footprint, resources)?
+                    && !marker_berths
+                        .into_iter()
+                        .flatten()
+                        .any(|coord| footprint.contains(coord.x, coord.y))
+                    && self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)?
+                {
                     clear = true;
                     break;
                 }
@@ -1427,10 +1445,14 @@ impl<'layout> SceneOccupancy<'layout> {
     pub(super) fn label_candidate_is_clear(
         &self,
         route_index: usize,
+        owner: &RouteOwner,
         anchor: LabelAnchor,
         candidate: OccupiedRect,
         resources: &mut ResourceContext,
     ) -> Result<bool> {
+        if !self.label_region_is_clear(owner, candidate, resources)? {
+            return Ok(false);
+        }
         for protected in &self.protected {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
@@ -1463,6 +1485,65 @@ impl<'layout> SceneOccupancy<'layout> {
                         }
                     }
                 }
+            }
+        }
+        Ok(true)
+    }
+
+    fn label_region_is_clear(
+        &self,
+        owner: &RouteOwner,
+        candidate: OccupiedRect,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        for group in &self.graph_layout.groups {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if group.kind != GraphGroupKind::Container {
+                continue;
+            }
+            let endpoint_inside =
+                |id: &str| -> Result<bool> {
+                    resources.charge_layout_work(resources.checked_work_add(
+                        self.graph_layout.nodes.len(),
+                        self.graph_layout.groups.len(),
+                    )?)?;
+                    Ok(self.graph_layout.nodes.iter().any(|node| {
+                        node.id == id && super::geometry::group_contains_node(group, node)
+                    }) || self.graph_layout.groups.iter().any(|child| {
+                        child.id == id
+                            && group.x < child.x
+                            && child.right() < group.right()
+                            && group.y < child.y
+                            && child.bottom() < group.bottom()
+                    }))
+                };
+            let from_inside = endpoint_inside(&owner.from)?;
+            let to_inside = endpoint_inside(&owner.to)?;
+            let interior = if group.id == owner.from {
+                to_inside
+            } else if group.id == owner.to {
+                from_inside
+            } else {
+                from_inside && to_inside
+            };
+            if interior {
+                if candidate.x <= group.x
+                    || candidate.right > group.right()
+                    || candidate.y <= group.y
+                    || candidate.bottom > group.bottom()
+                {
+                    return Ok(false);
+                }
+            } else if (group.id == owner.from
+                || group.id == owner.to
+                || (!from_inside && !to_inside))
+                && candidate.x <= group.right()
+                && group.x < candidate.right
+                && candidate.y <= group.bottom()
+                && group.y < candidate.bottom
+            {
+                return Ok(false);
             }
         }
         Ok(true)

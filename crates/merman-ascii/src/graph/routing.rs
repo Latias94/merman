@@ -476,10 +476,9 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
-        if plan::endpoints_are_nodes(request, topology.as_ref())
-            && selected
-                .as_ref()
-                .is_none_or(|(score, _, _)| score.has_congestion())
+        if selected
+            .as_ref()
+            .is_none_or(|(score, _, _)| score.has_congestion())
             && let Some((score, plan)) = terminal::plan_terminal_route(
                 request,
                 path::RouteObstacles {
@@ -591,11 +590,35 @@ fn admit_route_candidate(
     plan: RoutePlan,
     resources: &mut ResourceContext,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
-    let Some(plan) =
-        plan.resolve_node_attachments(request.from, request.to, request.charset, resources)?
+    let Some(plan) = plan.resolve_endpoint_attachments(
+        plan::EndpointGeometry::for_route(
+            request.from,
+            request.to,
+            request.graph_layout,
+            resources,
+        )?,
+        plan::EndpointGeometry::for_route(
+            request.to,
+            request.from,
+            request.graph_layout,
+            resources,
+        )?,
+        request.charset,
+        resources,
+    )?
     else {
         return Ok(None);
     };
+    if !(geometry::CompoundRouteGeometry {
+        layout: request.graph_layout,
+        from: request.from,
+        to: request.to,
+        attachments: plan.attachments,
+    })
+    .endpoints_allow_plan(&plan, resources)?
+    {
+        return Ok(None);
+    }
     let plan = plan
         .with_marker_requests(
             request.edge.start_marker,

@@ -551,6 +551,7 @@ impl GroupRouteGeometry<'_> {
             layout: self.layout,
             from: self.from,
             to: self.to,
+            attachments: self.scene.map(|scene| scene.attachments),
         })
         .segment(from, to, resources, execution)?
         {

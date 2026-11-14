@@ -90,8 +90,10 @@ reference implementation is only an implementation aid.
   feedback. Node-to-node routes across nested subgraphs use the same containment and transverse
   crossing constraints as coarse-grid recovery. Aligned edges blocked by intermediate nodes reserve
   a bypass lane in their nearest common container; group-title footprints include a horizontal
-  reading gap where space permits. Explicit local directions remain authoritative. Group endpoints
-  retain dedicated compound routing. Parent layouts account for complete child-content spans;
+  reading gap where space permits. Explicit local directions remain authoritative. Container
+  endpoints participate in terminal-cell recovery with distinct exterior and ancestor/member
+  interior contacts; only the selected endpoint contact may touch that frame. Divider endpoints
+  retain dedicated routing. Parent layouts account for complete child-content spans;
   sibling subgraphs remain separate units during local-direction placement. Clear direct routes
   remain direct, and Dagre ranks do not change. Optional quality repair has a fixed expansion cap
   across port pairs; required recovery is bounded by scene extent and the shared work ledger.
@@ -113,11 +115,17 @@ reference implementation is only an implementation aid.
   host instead of dropping it. Transverse normal/dotted/thick crossings preserve each axis's
   stroke; Unicode uses
   `┿` or `╂` when one axis is heavy. Incompatible mixed-stroke overlaps must use another lane.
-  Arbitrary dense routing, terminal-cell search for group endpoints, and non-transverse mixed-stroke
-  junctions remain outside the admitted boundary.
+  Labels respect endpoint-container ownership, shared ancestor interiors, and planned marker
+  berths. External group labels cannot leak into member space. Single-cell terminal paths require
+  at most one visible endpoint marker; dual-marker edges try another port pair. Arbitrary dense
+  routing, terminal-cell search for Divider endpoints and group self-loops, and non-transverse
+  mixed-stroke junctions remain outside the admitted boundary.
 - Node ranks use the shared Dagre-compatible acyclic/nesting/ranker phases and retain `minlen`,
   cycle ownership, compound constraints, and root direction. Local subgraph direction transforms
   reapply forward cross-boundary rank constraints after moving the group block.
+- Coarse external-node separation uses member envelopes, while axis projection resolves terminal
+  frame padding. These coordinate systems are not interchangeable; repeated terminal-padding
+  expansion on the coarse grid previously produced large blank offsets for group endpoint edges.
 - `BT` and `RL` remain root-direction transforms only.
 - `FlowSubgraph.dir` ships nested local-direction overrides across boundary edges. Isolated
   subgraphs without an explicit direction use the pinned Mermaid baseline's perpendicular effective-parent

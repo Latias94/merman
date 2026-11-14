@@ -5,7 +5,6 @@ use crate::error::Result;
 use crate::operation::AsciiExecution;
 use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
-use rustc_hash::FxHashSet as HashSet;
 
 mod bounds;
 mod direction;
@@ -19,8 +18,8 @@ pub(super) use spacing::reserve_compound_axis_spacing;
 
 use self::bounds::RawBounds;
 use self::members::{
-    graph_endpoint_group_ids, group_bounds_for_placements, group_member_indices,
-    member_grid_bounds, shift_member_indices_x, shift_member_indices_y,
+    graph_endpoint_group_ids, group_member_indices, member_grid_bounds, shift_member_indices_x,
+    shift_member_indices_y,
 };
 
 #[derive(Debug)]
@@ -65,7 +64,6 @@ fn separate_external_nodes_from_groups(
     graph: &AsciiGraph,
     placements: &mut [GridCoord],
     topology: &GraphGroupTopology<'_>,
-    policy: &GraphLayoutPolicy,
     resources: &mut ResourceContext,
 ) -> Result<()> {
     if graph.groups.is_empty() || placements.is_empty() {
@@ -99,14 +97,9 @@ fn separate_external_nodes_from_groups(
             if member_indices.is_empty() {
                 continue;
             }
-            let Some(group_bounds) = group_bounds_for_placements(
-                graph,
-                group_index,
-                &member_indices,
-                placements,
-                policy,
-                resources,
-            )?
+            // Frame padding is measured in terminal cells and is resolved by axis projection.
+            // Only overlapping member envelopes require movement on this coarse grid.
+            let Some(group_bounds) = member_grid_bounds(&member_indices, placements, resources)?
             else {
                 continue;
             };
@@ -382,12 +375,11 @@ fn shift_external_nodes_away_from_group(
     placements: &mut [GridCoord],
     resources: &mut ResourceContext,
 ) -> Result<bool> {
-    let member_indices = member_indices.iter().copied().collect::<HashSet<_>>();
     let graph_direction = graph.direction.canonical();
     let mut changed = false;
 
     for index in 0..placements.len() {
-        if member_indices.contains(&index) {
+        if member_indices.binary_search(&index).is_ok() {
             continue;
         }
         if !raw_bounds_intersects(group_bounds, node_bounds(placements[index], resources)?) {
@@ -482,6 +474,31 @@ mod tests {
         ResourceContext::new(AsciiResourcePolicy::for_profile(
             ResourceProfile::UnboundedForTrustedInput,
         ))
+    }
+
+    #[test]
+    fn separated_group_endpoints_do_not_repeatedly_shift_their_members() {
+        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+        graph.add_node("x", "X");
+        graph.add_node("y", "Y");
+        for (id, node) in [("source", "x"), ("target", "y")] {
+            graph.add_group_with_style(id, id, None, vec![node.into()], GraphGroupStyle::default());
+        }
+        graph.add_edge("source", "target");
+        let mut resources = unbounded_resources();
+        let topology = GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
+        for original in [
+            [GridCoord { x: 0, y: 0 }, GridCoord { x: 4, y: 0 }],
+            [GridCoord { x: 0, y: 0 }, GridCoord { x: 0, y: 4 }],
+        ] {
+            let mut placements = original;
+            separate_external_nodes_from_groups(&graph, &mut placements, &topology, &mut resources)
+                .unwrap();
+            assert_eq!(
+                placements, original,
+                "frame clearance must be resolved by projection"
+            );
+        }
     }
 
     #[test]

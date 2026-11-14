@@ -68,7 +68,13 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
                 line_count,
                 resources,
             )?;
-            if occupancy.label_candidate_is_clear(route_index, anchor, candidate_rect, resources)? {
+            if occupancy.label_candidate_is_clear(
+                route_index,
+                &route.owner,
+                anchor,
+                candidate_rect,
+                resources,
+            )? {
                 selected = Some((candidate, candidate_rect));
                 break;
             }

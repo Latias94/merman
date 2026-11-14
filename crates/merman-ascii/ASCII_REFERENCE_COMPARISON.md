@@ -61,14 +61,21 @@ exercise perpendicular local directions, and cover cross-sibling merges and labe
 all four root directions. Coarse-grid and terminal-cell searches share frame containment and
 transverse crossing rules. Obstructed aligned edges reserve an interior bypass lane in the nearest
 common container, and routes preserve the title's horizontal reading gap. Assertions check actual
-target contacts and complete frame geometry rather than accepting arrow counts alone. Group
-endpoints retain dedicated compound routing; arbitrary dense compound scenes remain a bounded
-support limitation.
+target contacts and complete frame geometry rather than accepting arrow counts alone. Arbitrary
+dense compound scenes remain a bounded support limitation.
 
 Nested sibling-chain coverage also protects parent placement: child subgraphs reserve their
 complete member spans rather than a fixed node-sized placeholder. Moving unrelated nodes during
 an incomplete local-direction pass could split a previously placed child and make its frame
 enclose a sibling; local placement now moves complete children before shared frame spacing.
+
+Container endpoint regressions extend that evidence to fan-in, fan-out, labeled parallel edges,
+feedback, nested endpoints, and ancestor/member connections. Exterior routes stop at the group
+frame without entering its member space; ancestor/member routes and labels use the frame's
+interior. Independent target contacts, label ownership, and dual endpoint marker berths remain
+explicit assertions. Coarse member-envelope separation and terminal frame padding have distinct
+owners, avoiding repeated group displacement and large blank offsets. Divider endpoints and
+group self-loops retain their previous routing limitations.
 
 The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from

@@ -13,7 +13,7 @@ use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 mod attachment;
 mod boundary;
-pub(super) use attachment::{NodeAttachment, NodeAttachments};
+pub(super) use attachment::{EndpointGeometry, NodeAttachment, NodeAttachments};
 mod candidates;
 mod compound;
 mod edges;
@@ -24,8 +24,8 @@ mod same_rank;
 mod select;
 mod top_down;
 
+pub(super) use candidates::plan_obstacle_aware_edge_route;
 pub(super) use candidates::{EdgeRouteCandidates, plan_edge_route_candidates_with_topology};
-pub(super) use candidates::{endpoints_are_nodes, plan_obstacle_aware_edge_route};
 #[cfg(test)]
 pub(super) use select::EdgeRoutePlan;
 pub(super) use select::EdgeRouteRequest;
@@ -165,25 +165,39 @@ impl RoutePlan {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn resolve_node_attachments(
-        mut self,
+        self,
         from: &NodeLayout,
         to: &NodeLayout,
         charset: &GraphCharset,
         resources: &ResourceContext,
     ) -> Result<Option<Self>> {
+        self.resolve_endpoint_attachments(
+            EndpointGeometry::node(from),
+            EndpointGeometry::node(to),
+            charset,
+            resources,
+        )
+    }
+
+    pub(super) fn resolve_endpoint_attachments(
+        mut self,
+        from_geometry: EndpointGeometry<'_>,
+        to_geometry: EndpointGeometry<'_>,
+        charset: &GraphCharset,
+        resources: &ResourceContext,
+    ) -> Result<Option<Self>> {
+        let from = from_geometry.layout;
+        let to = to_geometry.layout;
         let start_coord = self.marker_coord(self.anchors.start, self.diagram_type)?;
         let end_coord = self.marker_coord(self.anchors.end, self.diagram_type)?;
-        let Some(start) = NodeAttachment::resolve(
-            from,
-            start_coord,
-            self.anchors.start.point_direction,
-            charset,
-        ) else {
+        let Some(start) =
+            from_geometry.resolve(start_coord, self.anchors.start.point_direction, charset)
+        else {
             return Ok(None);
         };
-        let Some(end) =
-            NodeAttachment::resolve(to, end_coord, self.anchors.end.point_direction, charset)
+        let Some(end) = to_geometry.resolve(end_coord, self.anchors.end.point_direction, charset)
         else {
             return Ok(None);
         };

@@ -132,9 +132,11 @@ does not prevent alternate candidates or bounded recovery from running. Parent l
 layouts reserve the full span of child contents and move each child as a unit before frame spacing
 is resolved. Optional improvement of an already valid route has a shared expansion cap across
 port pairs; required collision recovery remains bounded by the scene extent and operation work
-budget. Edges whose endpoint is a group
-itself retain dedicated compound routing. All attempts charge the same work ledger and observe
-cancellation.
+budget. Container endpoints also use terminal-cell recovery: external edges contact the outside
+of the frame, while ancestor/member edges contact its inside. The selected frame contact is the
+only permitted terminal crossing. Ports near the center and inset from frame corners provide
+alternatives around titles and member nodes. Divider endpoints retain their dedicated routing.
+All attempts charge the same work ledger and observe cancellation.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
 transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
@@ -143,7 +145,10 @@ edges are planned. Parallel self-loops reserve nested lane space before node pro
 their labels as one route batch before unrelated edges are planned. A graph with no safe route,
 label placement, or independent marker berth still returns a structured diagnostic rather than a
 partial drawing. Boundary routes with no vertical transit segment retain their labels on an
-available inline segment.
+available inline segment. Label candidates respect container ownership and the route's planned
+marker berths: external group labels stay outside the endpoint frame, and internal labels stay
+inside their common container. Coarse placement separates overlapping member envelopes; terminal
+frame clearance is resolved once during axis projection instead of repeatedly moving groups.
 
 Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
 and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower

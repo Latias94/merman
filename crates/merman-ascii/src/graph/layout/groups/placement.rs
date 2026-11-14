@@ -54,7 +54,7 @@ pub(super) fn apply_group_placement_adjustments(
         execution,
     )?;
     reserve_group_left_constraint_space(graph, placements, topology, policy, resources)?;
-    separate_external_nodes_from_groups(graph, placements, topology, policy, resources)?;
+    separate_external_nodes_from_groups(graph, placements, topology, resources)?;
 
     if !placement_state_is_valid(
         graph.direction,
@@ -79,7 +79,7 @@ pub(super) fn apply_group_placement_adjustments(
             execution,
         )?;
         reserve_group_left_constraint_space(graph, placements, topology, policy, resources)?;
-        separate_external_nodes_from_groups(graph, placements, topology, policy, resources)?;
+        separate_external_nodes_from_groups(graph, placements, topology, resources)?;
     }
 
     if !placement_state_is_valid(
@@ -90,7 +90,7 @@ pub(super) fn apply_group_placement_adjustments(
         execution,
     )? {
         restore_grid_placements(placements, &original_placements, resources)?;
-        separate_external_nodes_from_groups(graph, placements, topology, policy, resources)?;
+        separate_external_nodes_from_groups(graph, placements, topology, resources)?;
     }
 
     Ok(())

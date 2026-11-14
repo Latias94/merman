@@ -131,12 +131,12 @@ fn label_can_cover_only_its_own_host_segment() {
 
     assert!(
         occupancy
-            .label_candidate_is_clear(0, anchor, host_cell, &mut resources)
+            .label_candidate_is_clear(0, &routes[0].owner, anchor, host_cell, &mut resources)
             .unwrap()
     );
     assert!(
         !occupancy
-            .label_candidate_is_clear(0, anchor, non_host_cell, &mut resources)
+            .label_candidate_is_clear(0, &routes[0].owner, anchor, non_host_cell, &mut resources)
             .unwrap()
     );
 }
@@ -166,7 +166,7 @@ fn route_scene_relocates_labels_away_from_nodes_groups_and_other_labels() {
 
     let group_layout = grouped_graph_layout(&options);
     let group = &group_layout.groups[0];
-    let group_route = labeled_plan(group.x, group.y, "group");
+    let group_route = labeled_plan(group.right(), group.y + 1, "group");
     let mut group_routes = vec![PreparedRoute::for_test(group_route, 0)];
     let mut resources = unbounded_resources();
     allocate_test_label_placements(&mut group_routes, &group_layout, &mut resources)
@@ -187,6 +187,10 @@ fn route_scene_relocates_labels_away_from_nodes_groups_and_other_labels() {
             .protected
             .iter()
             .all(|protected| !protected.shape.intersects(label_rect))
+    );
+    assert!(
+        label_rect.x > group.right(),
+        "an external label must stay outside the group"
     );
 
     let mut routes = vec![

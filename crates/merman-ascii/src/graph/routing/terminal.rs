@@ -1,10 +1,11 @@
 use super::geometry::{CompoundRouteGeometry, FrameSegment};
 use super::occupancy::RouteCandidateScore;
 use super::path::{RouteObstacles, StepDirection};
-use super::plan::{EdgeRouteRequest, NodeAttachment, NodeAttachments, RoutePlan};
+use super::plan::{EdgeRouteRequest, EndpointGeometry, NodeAttachment, NodeAttachments, RoutePlan};
 use super::{admit_route_candidate, layout_allocation_failed};
 use crate::error::Result;
-use crate::graph::layout::{CanvasCoord, NodeLayout, ROUTING_GRID_MARGIN};
+use crate::graph::layout::{CanvasCoord, ROUTING_GRID_MARGIN};
+use crate::graph::model::GraphGroupKind;
 use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::operation::AsciiExecution;
@@ -44,8 +45,21 @@ pub(super) fn plan_terminal_route(
     if request.from.id == request.to.id {
         return Ok(None);
     }
-    let starts = terminal_ports(request.from, request, resources)?;
-    let ends = terminal_ports(request.to, request, resources)?;
+    for group in &request.graph_layout.groups {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if (group.id == request.from.id || group.id == request.to.id)
+            && group.kind != GraphGroupKind::Container
+        {
+            return Ok(None);
+        }
+    }
+    let from =
+        EndpointGeometry::for_route(request.from, request.to, request.graph_layout, resources)?;
+    let to =
+        EndpointGeometry::for_route(request.to, request.from, request.graph_layout, resources)?;
+    let starts = terminal_ports(from, request, resources)?;
+    let ends = terminal_ports(to, request, resources)?;
     let mut pairs = Vec::new();
     pairs
         .try_reserve(resources.checked_work_mul(starts.len(), ends.len())?)
@@ -102,6 +116,10 @@ pub(super) fn plan_terminal_route(
                 layout: request.graph_layout,
                 from: request.from,
                 to: request.to,
+                attachments: Some(NodeAttachments {
+                    start: start.attachment,
+                    end: end.attachment,
+                }),
             },
         };
         let Some(path) = find_path(geometry, &mut expansions_left, resources, execution)? else {
@@ -140,60 +158,87 @@ pub(super) fn plan_terminal_route(
 }
 
 fn terminal_ports(
-    node: &NodeLayout,
+    geometry: EndpointGeometry<'_>,
     request: EdgeRouteRequest<'_>,
     resources: &ResourceContext,
 ) -> Result<Vec<TerminalPort>> {
+    let node = geometry.layout;
     let mut ports = Vec::new();
     ports
-        .try_reserve(12)
+        .try_reserve(if geometry.group { 28 } else { 12 })
         .map_err(|_| layout_allocation_failed())?;
     for outward in DIRECTIONS {
-        for offset in [0, -1, 1] {
+        let (first, center, last) = match outward {
+            StepDirection::Left | StepDirection::Right => (node.y, node.center_y(), node.bottom()),
+            StepDirection::Up | StepDirection::Down => (node.x, node.center_x(), node.right()),
+        };
+        let contacts = [
+            Some(center),
+            center.checked_sub(1),
+            center.checked_add(1),
+            geometry.group.then(|| first.checked_add(1)).flatten(),
+            geometry.group.then(|| first.checked_add(2)).flatten(),
+            geometry.group.then(|| last.checked_sub(1)).flatten(),
+            geometry.group.then(|| last.checked_sub(2)).flatten(),
+        ];
+        for intercept in contacts.into_iter().flatten() {
             resources.checkpoint()?;
             resources.charge_layout_work(1)?;
+            if intercept <= first || intercept >= last {
+                continue;
+            }
             let berth = match outward {
                 StepDirection::Left | StepDirection::Right => {
-                    let Some(y) = node.center_y().checked_add_signed(offset) else {
-                        continue;
-                    };
-                    if y <= node.y || y >= node.bottom() {
-                        continue;
-                    }
+                    let y = intercept;
                     let x = match outward {
                         StepDirection::Left => {
-                            let Some(x) = node.x.checked_sub(1) else {
+                            let Some(x) = (if geometry.interior {
+                                node.x.checked_add(1)
+                            } else {
+                                node.x.checked_sub(1)
+                            }) else {
                                 continue;
                             };
                             x
                         }
+                        _ if geometry.interior => node.right() - 1,
                         _ => resources.checked_grid_add(node.right(), 1)?,
                     };
                     CanvasCoord { x, y }
                 }
                 StepDirection::Up | StepDirection::Down => {
-                    let Some(x) = node.center_x().checked_add_signed(offset) else {
-                        continue;
-                    };
-                    if x <= node.x || x >= node.right() {
-                        continue;
-                    }
+                    let x = intercept;
                     let y = match outward {
                         StepDirection::Up => {
-                            let Some(y) = node.y.checked_sub(1) else {
+                            let Some(y) = (if geometry.interior {
+                                node.y.checked_add(1)
+                            } else {
+                                node.y.checked_sub(1)
+                            }) else {
                                 continue;
                             };
                             y
                         }
+                        _ if geometry.interior => node.bottom() - 1,
                         _ => resources.checked_grid_add(node.bottom(), 1)?,
                     };
                     CanvasCoord { x, y }
                 }
             };
-            if let Some(attachment) =
-                NodeAttachment::resolve(node, berth, outward.opposite(), request.charset)
+            let departure = if geometry.interior {
+                outward.opposite()
+            } else {
+                outward
+            };
+            if let Some(attachment) = geometry.resolve(berth, departure.opposite(), request.charset)
             {
-                ports.push(TerminalPort { attachment, berth });
+                resources.charge_layout_work(ports.len())?;
+                if !ports
+                    .iter()
+                    .any(|port: &TerminalPort| port.attachment == attachment)
+                {
+                    ports.push(TerminalPort { attachment, berth });
+                }
             }
         }
     }

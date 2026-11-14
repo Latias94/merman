@@ -1,6 +1,6 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::CanvasCoord;
-use super::super::super::model::AsciiGraphEdge;
+use super::super::super::model::{AsciiGraphEdge, GraphEdgeMarker};
 use super::super::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
 use super::super::label::RoutedLabelDescriptor;
 use super::super::path::StepDirection;
@@ -19,10 +19,17 @@ pub(in crate::graph::routing) fn plan_terminal_path(
     charset: &GraphCharset,
     resources: &mut ResourceContext,
 ) -> Result<Option<RoutePlan>> {
-    if path.len() < 2 {
+    if path.is_empty() {
         return Ok(None);
     }
     let NodeAttachments { start, end } = attachments;
+    if path.len() == 1
+        && (start.outward != end.outward.opposite()
+            || (edge.start_marker != GraphEdgeMarker::Open
+                && edge.end_marker != GraphEdgeMarker::Open))
+    {
+        return Ok(None);
+    }
     let mut cells = PlannedRouteCells::new();
     if let Some(connector) = start.connector {
         cells.try_push(resources, || {

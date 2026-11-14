@@ -211,7 +211,7 @@ pub(in crate::graph::routing) fn plan_obstacle_aware_edge_route(
     Ok(selected.map(|(_, plan)| plan))
 }
 
-pub(in crate::graph::routing) fn endpoints_are_nodes(
+fn endpoints_are_nodes(
     request: EdgeRouteRequest<'_>,
     topology: Option<&GraphGroupTopology<'_>>,
 ) -> bool {
