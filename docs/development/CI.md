@@ -398,12 +398,13 @@ The tagged crates workflow reuses the strict feature matrix and Web build/smoke 
 Ubuntu CLI-validator and wheel-repair dependency installation has a ten-minute step limit, bounded network timeouts, and finite retries. Failed package-index updates stop the step rather than silently using stale metadata; these limits prevent a stalled mirror from consuming the full build-job timeout.
 
 Ubuntu jobs run `sudo python3 scripts/configure_ubuntu_apt.py` before their first APT or browser
-dependency installation. The helper prefers the MIT mirror through APT's native `mirror+file`
-transport and retains the original Ubuntu URI as a fallback. Existing runner mirror lists keep
-their original hosts and selection metadata. APT handles per-file failover, including package
-downloads, while Ubuntu `Signed-By` metadata, keyrings, and external repositories remain intact.
-Its persistent bounded APT configuration also covers sudo child installers such as Playwright
-and Puppeteer. Failed index updates still fail the job after all configured mirrors are exhausted.
+dependency installation. The helper configures finite retries, network timeouts and strict index
+updates without rewriting repository URIs or mirror lists. The runner owns its regional mirror
+selection, fallback priorities and signing policy. Forcing a shared external mirror ahead of those
+sources can repeatedly stall individual index and package downloads even after an earlier file
+has fallen back successfully. Containers likewise retain the pinned Ubuntu image's repositories.
+The persistent bounded APT configuration also covers sudo child installers such as Playwright
+and Puppeteer. Failed index updates still fail the job.
 
 ## Evidence Ownership
 
