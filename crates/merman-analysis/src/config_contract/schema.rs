@@ -53,13 +53,23 @@ fn analysis_options_schema(
     configurable_rule_ids: &[String],
     host_defaults: AnalysisConfigHostDefaults,
 ) -> Value {
-    object_schema(
+    let mut schema = object_schema(
         AnalysisConfigObjectId::Options,
         profiles,
         severities,
         configurable_rule_ids,
         host_defaults,
-    )
+    );
+    schema["allOf"] = json!([{
+        "not": {
+            "required": ["fixed_today", "fixed_unix_millis"],
+            "properties": {
+                "fixed_today": { "not": { "type": "null" } },
+                "fixed_unix_millis": { "not": { "type": "null" } }
+            }
+        }
+    }]);
+    schema
 }
 
 fn object_schema(

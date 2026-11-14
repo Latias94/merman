@@ -254,11 +254,12 @@ mod tests {
     #[test]
     fn config_schema_response_projects_the_analysis_contract_over_the_transport_seam() {
         let response = ConfigSchemaResponse::current();
+        let client = AnalysisConfigContract::current().client_projection();
 
         assert_eq!(response.version, CONFIG_SCHEMA_RESPONSE_VERSION);
         assert_eq!(response.rule_catalog_method, RULE_CATALOG_METHOD);
         assert_eq!(response.accepted_roots, ["direct", "merman", "analysis"]);
-        assert_eq!(response.constraints.settings.len(), 9);
+        assert_eq!(response.constraints, client.constraints);
         assert!(!response.profiles.is_empty());
         assert!(!response.severities.is_empty());
         assert!(!response.configurable_rule_ids.is_empty());
@@ -267,7 +268,10 @@ mod tests {
         let wire = serde_json::to_value(&response).unwrap();
         assert_eq!(wire["version"], CONFIG_SCHEMA_RESPONSE_VERSION);
         assert_eq!(wire["rule_catalog_method"], RULE_CATALOG_METHOD);
-        assert!(wire["constraints"].is_object());
+        assert_eq!(
+            wire["constraints"],
+            serde_json::to_value(&client.constraints).unwrap()
+        );
         assert!(wire["schema"].is_object());
     }
 }

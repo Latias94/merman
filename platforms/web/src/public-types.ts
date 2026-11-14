@@ -840,8 +840,10 @@ export interface MermaidSiteConfig {
 }
 
 export interface AnalysisBindingOptions {
-  fixed_today?: string;
-  fixed_local_offset_minutes?: number;
+  fixed_today?: string | null;
+  /** Exact host-supplied Unix milliseconds; mutually exclusive with a non-null fixed_today. */
+  fixed_unix_millis?: number | null;
+  fixed_local_offset_minutes?: number | null;
   site_config?: MermaidSiteConfig;
   resources?: ResourceOptions;
   lint?: LintBindingOptions;

@@ -466,4 +466,16 @@ async fn lsp_service_smoke_serves_config_schema_custom_request() {
         result["schema"]["$defs"]["analysisOptions"]["properties"]["fixed_today"]["pattern"],
         FIXED_TODAY_SCHEMA_PATTERN
     );
+    let fixed_unix_millis =
+        &result["schema"]["$defs"]["analysisOptions"]["properties"]["fixed_unix_millis"];
+    assert_eq!(
+        fixed_unix_millis["type"],
+        serde_json::json!(["integer", "null"])
+    );
+    assert_eq!(fixed_unix_millis["minimum"], -8_640_000_000_000_000_i64);
+    assert_eq!(fixed_unix_millis["maximum"], 8_640_000_000_000_000_i64);
+    assert_eq!(
+        fixed_unix_millis["x-merman-change-scope"],
+        "snapshot_affecting"
+    );
 }

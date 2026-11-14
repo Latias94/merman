@@ -492,6 +492,12 @@ const Map<String, MermanBindingOptionGroupSpec> mermanBindingOptionGroupSpecs =
     anyCapabilityIds: <String>{},
     requiresSvgPipeline: false,
   ),
+  "fixed_unix_millis": MermanBindingOptionGroupSpec(
+    id: "fixed_unix_millis",
+    alwaysAvailable: true,
+    anyCapabilityIds: <String>{},
+    requiresSvgPipeline: false,
+  ),
   "jpeg": MermanBindingOptionGroupSpec(
     id: "jpeg",
     alwaysAvailable: false,

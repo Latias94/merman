@@ -72,6 +72,53 @@ test("current-diagram handoff preserves the exact frozen source, options and con
   }
 });
 
+for (const clock of [
+  { name: "native theme", unixMillis: 1_794_633_825_678, localOffsetMinutes: 345, themeRecipeJson: null },
+  {
+    name: "raw theme recipe", unixMillis: 0, localOffsetMinutes: -210,
+    themeRecipeJson: `${recipe.replace('"schema_version": 1', '"schema_version": 1, "schema_version": 1')}\n\n`,
+  },
+] as const) {
+  test(`${clock.name} consumers replay the captured operation clock after time advances`, (t) => {
+    t.mock.timers.enable({ apis: ["Date"], now: clock.unixMillis });
+    t.mock.method(Date.prototype, "getTimezoneOffset", () => -clock.localOffsetMinutes);
+    const value = { ...workspace, themeRecipeJson: clock.themeRecipeJson };
+    const state = completed(value);
+    t.mock.timers.tick(86_400_000);
+    const snapshot = capture(value, state);
+
+    for (const consumer of [
+      { target: "rust", rustAssets: "files" },
+      { target: "rust", rustAssets: "inline" },
+      { target: "cli" },
+      { target: "web" },
+    ] as const) {
+      const bundle = generateProjectHandoff(snapshot, { scope: "diagram", ...consumer });
+      t.mock.timers.tick(86_400_000);
+      assert.deepEqual(generateProjectHandoff(snapshot, { scope: "diagram", ...consumer }), bundle);
+      const options = JSON.parse(bundle.files["options.json"]);
+      assert.equal(options.fixed_unix_millis, clock.unixMillis);
+      assert.equal(options.fixed_local_offset_minutes, clock.localOffsetMinutes);
+      assert.equal(options.fixed_today, undefined);
+      if (clock.themeRecipeJson !== null) {
+        assert.equal(bundle.files["theme.json"], clock.themeRecipeJson);
+        assert.ok(bundle.files["options.json"].includes(`"theme":${clock.themeRecipeJson}`));
+      }
+
+      if (consumer.target === "rust") {
+        assert.match(bundle.code, /use merman::model::runtime::RuntimePolicy;/);
+        assert.ok(bundle.code.includes(`RuntimePolicy::deterministic()\n        .with_fixed_unix_millis(${clock.unixMillis})\n        .try_with_fixed_local_offset_minutes(${clock.localOffsetMinutes})?;`));
+        assert.match(bundle.code, /Renderer::new\(\)\s*\.with_presentation_engine\(engine\)\s*\.with_runtime_policy\(runtime_policy\)\s*\.render\(request\)\?/);
+      } else if (consumer.target === "cli") {
+        assert.ok(bundle.code.includes(`--fixed-unix-millis ${clock.unixMillis} --fixed-local-offset-minutes ${clock.localOffsetMinutes}`));
+        assert.ok(bundle.files["render.py"].includes(`"--fixed-unix-millis","${clock.unixMillis}","--fixed-local-offset-minutes","${clock.localOffsetMinutes}"`));
+      } else {
+        assert.match(bundle.code, /readText\(new URL\("\.\/options\.json", import\.meta\.url\)\)/);
+      }
+    }
+  });
+}
+
 test("independent recipes remain authored bytes and never turn exploration names into preset IDs", () => {
   const snapshot = capture();
   for (const target of ["rust", "cli", "web"] as const) {
@@ -91,7 +138,22 @@ test("independent recipes remain authored bytes and never turn exploration names
   assert.match(web.code, /createBrowserTextMeasurementSession/);
 });
 
-test("Rust asset files remain the default with paths relative to src/main.rs", () => {
+test("theme-only handoffs keep deterministic example clocks across repeated generation", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: Date.parse("2026-11-14T05:23:45.678Z") });
+  const snapshot = capture();
+  for (const target of ["rust", "cli", "web"] as const) {
+    const first = generateProjectHandoff(snapshot, { scope: "theme", target });
+    t.mock.timers.tick(86_400_000);
+    const second = generateProjectHandoff(snapshot, { scope: "theme", target });
+    assert.deepEqual(second, first);
+    const options = JSON.parse(first.files["options.json"]);
+    assert.equal(options.fixed_unix_millis, 0);
+    assert.equal(options.fixed_local_offset_minutes, 0);
+  }
+});
+
+test("Rust asset files remain the default with paths relative to src/main.rs", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_794_633_825_678 });
   const snapshot = capture();
   for (const scope of ["diagram", "theme"] as const) {
     const bundle = generateProjectHandoff(snapshot, { scope, target: "rust" });
@@ -172,7 +234,8 @@ test("Rust optional inputs are emitted only when present, for either asset mode"
   }
 });
 
-test("CLI and Web handoffs ignore the Rust asset selection", () => {
+test("CLI and Web handoffs ignore the Rust asset selection", (t) => {
+  t.mock.timers.enable({ apis: ["Date"], now: 1_794_633_825_678 });
   const snapshot = capture();
   for (const target of ["cli", "web"] as const) {
     for (const scope of ["diagram", "theme"] as const) {

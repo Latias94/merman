@@ -178,6 +178,17 @@
             "minimum": -1439,
             "maximum": 1439
           },
+          "merman.analysis.fixed_unix_millis": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "markdownDescription": "Optional precise deterministic Unix timestamp in milliseconds forwarded to `merman-lsp`. Leave unset or set `null` to use the connected server's default. Cannot be combined with `merman.analysis.fixed_today`.",
+            "scope": "window",
+            "order": 25,
+            "minimum": -8640000000000000,
+            "maximum": 8640000000000000
+          },
           "merman.analysis.site_config": {
             "type": "object",
             "markdownDescription": "Optional Mermaid site configuration object forwarded to `merman-lsp` analysis options. Leave unset to use the connected server's default.",

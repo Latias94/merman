@@ -9,6 +9,37 @@ use support::{
 };
 
 #[test]
+fn mmdc_gantt_uses_precise_host_instants_with_fixed_offsets() {
+    let source = "gantt\ndateFormat x\nTask: task,0,1000ms\n";
+    for offset in ["0", "480", "-60"] {
+        let output = run_with_stdin(
+            &[
+                "mmdc",
+                "-i",
+                "-",
+                "-o",
+                "-",
+                "--fixed-unix-millis",
+                "375",
+                "--fixed-local-offset-minutes",
+                offset,
+            ],
+            source,
+        );
+        assert!(output.status.success(), "stderr: {:?}", output.stderr);
+        let svg = std::str::from_utf8(&output.stdout).unwrap();
+        let document = roxmltree::Document::parse(svg).unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .expect("precise Gantt today marker");
+
+        assert_eq!(marker.attribute("x1"), Some("319"));
+        assert_eq!(marker.attribute("x2"), Some("319"));
+    }
+}
+
+#[test]
 fn mmdc_gantt_fixed_today_is_carried_through_compatibility_args() {
     let diagram = r#"gantt
 dateFormat YYYY-MM-DD

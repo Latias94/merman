@@ -1928,6 +1928,7 @@ fn runtime_options_are_configured(options: &RuntimeCliArgs) -> bool {
             }
         }
         || options.fixed_today.is_some()
+        || options.fixed_unix_millis.is_some()
         || options.fixed_local_offset_minutes.is_some()
 }
 

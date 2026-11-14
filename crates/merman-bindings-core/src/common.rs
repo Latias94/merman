@@ -30,8 +30,9 @@ use crate::resource_contract::{
 pub const BINDING_OPTIONS_SCHEMA_VERSION: u32 = 3;
 pub const BINDING_RESULT_PAYLOAD_VERSION: u32 = 1;
 const BINDING_JSON_SAFE_INTEGER_MAX: u64 = crate::RUNTIME_CATALOG_MAX_SAFE_INTEGER;
-const BINDING_ANALYSIS_OPTION_KEYS: [&str; 5] = [
+const BINDING_ANALYSIS_OPTION_KEYS: [&str; 6] = [
     "fixed_today",
+    "fixed_unix_millis",
     "fixed_local_offset_minutes",
     "site_config",
     "resources",
@@ -813,11 +814,38 @@ pub(crate) struct BindingOptions {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub(crate) struct BindingAnalysisOptionsJson {
     pub(crate) fixed_today: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_fixed_unix_millis")]
+    pub(crate) fixed_unix_millis: Option<i64>,
     pub(crate) fixed_local_offset_minutes: Option<i32>,
     pub(crate) site_config: Option<Value>,
     pub(crate) resources: Option<ResourceOptionsJson>,
     #[cfg(feature = "analysis")]
     pub(crate) lint: Option<merman_analysis::LintOptionsJson>,
+}
+
+fn deserialize_fixed_unix_millis<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = Option::<serde_json::Number>::deserialize(deserializer)?;
+    value
+        .map(|value| {
+            value
+                .as_i64()
+                .or_else(|| {
+                    let value = value.as_f64()?;
+                    (value.is_finite()
+                        && value.fract() == 0.0
+                        && (-8_640_000_000_000_000.0..=8_640_000_000_000_000.0).contains(&value))
+                    .then_some(value as i64)
+                })
+                .ok_or_else(|| {
+                    serde::de::Error::custom(
+                        "fixed_unix_millis must be an integer between -8640000000000000 and 8640000000000000",
+                    )
+                })
+        })
+        .transpose()
 }
 
 #[allow(dead_code)]
@@ -2214,6 +2242,7 @@ fn binding_analysis_options_json_from_json_value(
         .map_err(BindingError::from)?;
     Ok(BindingAnalysisOptionsJson {
         fixed_today: decoded.fixed_today,
+        fixed_unix_millis: decoded.fixed_unix_millis,
         fixed_local_offset_minutes: decoded.fixed_local_offset_minutes,
         site_config: decoded.site_config,
         resources,
@@ -2368,6 +2397,25 @@ pub(crate) fn binding_runtime_policy_from(
     mut runtime_policy: merman::model::runtime::RuntimePolicy,
 ) -> Result<merman::model::runtime::RuntimePolicy, BindingError> {
     let today = binding_fixed_today(options)?;
+    let unix_millis = options.analysis.fixed_unix_millis;
+    if let Some(unix_millis) = unix_millis {
+        const MAX_FIXED_UNIX_MILLIS: i64 = 8_640_000_000_000_000;
+        if !(-MAX_FIXED_UNIX_MILLIS..=MAX_FIXED_UNIX_MILLIS).contains(&unix_millis) {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "fixed_unix_millis must be between -8640000000000000 and 8640000000000000",
+            ));
+        }
+        if today.is_some() {
+            return Err(BindingError::new(
+                BindingStatus::InvalidArgument,
+                "fixed_today and fixed_unix_millis must not both be set",
+            ));
+        }
+        runtime_policy = runtime_policy
+            .with_fixed_today(None)
+            .with_fixed_unix_millis(unix_millis);
+    }
     let offset_minutes = binding_fixed_local_offset_minutes(options)?;
     if let Some(offset_minutes) = offset_minutes {
         runtime_policy = runtime_policy
@@ -2457,6 +2505,7 @@ pub(crate) fn artifact_analysis_options(
 
     let analysis = merman_analysis::AnalysisOptionsJson {
         fixed_today: options.analysis.fixed_today.clone(),
+        fixed_unix_millis: options.analysis.fixed_unix_millis,
         fixed_local_offset_minutes: options.analysis.fixed_local_offset_minutes,
         site_config: options.analysis.site_config.clone(),
         resources: (!limits.is_empty()).then_some(merman_analysis::ResourceOptionsJson { limits }),
@@ -3091,9 +3140,11 @@ impl<'de> Deserialize<'de> for ThemeProfileProbeField {
                     "merman" => ThemeProfileProbeField::Merman,
                     "profile" => ThemeProfileProbeField::Profile,
                     "limits" => ThemeProfileProbeField::Limits,
-                    "fixed_today" | "fixed_local_offset_minutes" | "site_config" | "lint" => {
-                        ThemeProfileProbeField::AnalysisOption
-                    }
+                    "fixed_today"
+                    | "fixed_unix_millis"
+                    | "fixed_local_offset_minutes"
+                    | "site_config"
+                    | "lint" => ThemeProfileProbeField::AnalysisOption,
                     _ => ThemeProfileProbeField::Other,
                 })
             }

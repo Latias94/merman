@@ -55,6 +55,44 @@ describe("analysis settings normalization", () => {
     })), {});
   });
 
+  it("preserves precise instants within the JavaScript Date range", () => {
+    for (const instant of [-8640000000000000, -1, 0, 375, 8640000000000000]) {
+      assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+        fixed_unix_millis: instant,
+        fixed_local_offset_minutes: -60,
+      })), {
+        fixed_unix_millis: instant,
+        fixed_local_offset_minutes: -60,
+      });
+      assert.equal(normalizeAnalysisSettings(rawSettings({
+        fixed_unix_millis: instant,
+      }), BUNDLED_ANALYSIS_CONFIG).fixed_unix_millis, instant);
+    }
+  });
+
+  it("omits malformed, unset, and out-of-range instants", () => {
+    for (const instant of [
+      -8640000000000001,
+      8640000000000001,
+      0.5,
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      "375",
+      true,
+      [],
+      {},
+      null,
+      undefined,
+    ]) {
+      assert.deepEqual(bootstrapAnalysisSettings(rawSettings({
+        fixed_unix_millis: instant,
+      })), {});
+      assert.equal(normalizeAnalysisSettings(rawSettings({
+        fixed_unix_millis: instant,
+      }), BUNDLED_ANALYSIS_CONFIG).fixed_unix_millis, undefined);
+    }
+  });
+
   it("uses the same bundled constraints for negotiated normalization", () => {
     assert.deepEqual(normalizeAnalysisSettings(rawSettings({
       fixed_today: "2024-02-29",
@@ -112,6 +150,7 @@ describe("analysis settings normalization", () => {
     assert.deepEqual(normalizeAnalysisSettings({
       fixed_today: undefined,
       fixed_local_offset_minutes: undefined,
+      fixed_unix_millis: undefined,
       site_config: undefined,
       "resources.limits.max_source_bytes": undefined,
       "resources.limits.max_document_diagrams": undefined,
@@ -219,6 +258,7 @@ function rawSettings(overrides: RawAnalysisSettings = {}): RawAnalysisSettings {
   return {
     fixed_today: "",
     fixed_local_offset_minutes: null,
+    fixed_unix_millis: null,
     site_config: {},
     "resources.limits.max_source_bytes": null,
     "resources.limits.max_document_diagrams": null,

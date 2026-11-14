@@ -59,13 +59,18 @@ describe("analysis config negotiation", () => {
     assert.equal(contract.version, 2);
     assert.deepEqual(contract.acceptedRoots, BUNDLED_ANALYSIS_CONFIG.acceptedRoots);
     assert.deepEqual(contract.configurableRuleIds, ["merman.future.rule"]);
-    assert.equal(contract.settings.length, 9);
+    assert.equal(contract.settings.length, 10);
     assert.equal(contract.settings[0]?.changeScope, "snapshot_affecting");
-    assert.equal(contract.settings[5]?.changeScope, "diagnostics_only");
+    assert.equal(contract.settings[6]?.changeScope, "diagnostics_only");
     assert.deepEqual(contract.settings[0]?.runtimeConstraints[1], {
       kind: "representable_local_midnight",
       offsetSettingPath: "fixed_local_offset_minutes",
     });
+    assert.deepEqual(
+      contract.settings.find((setting) => setting.path === "fixed_unix_millis")
+        ?.normalization,
+      { kind: "integer", minimum: -8640000000000000, maximum: 8640000000000000 },
+    );
     assert.deepEqual(
       contract.settings.find((setting) =>
         setting.path === "resources.limits.max_source_bytes"
@@ -106,7 +111,7 @@ describe("analysis config negotiation", () => {
   });
 
   it("loads the generated bundled baseline through the same DTO parser", () => {
-    assert.equal(BUNDLED_ANALYSIS_CONFIG.settings.length, 9);
+    assert.equal(BUNDLED_ANALYSIS_CONFIG.settings.length, 10);
     assert.equal(
       BUNDLED_ANALYSIS_CONFIG.settings.find((setting) =>
         setting.path === "resources.limits.max_source_bytes"
@@ -173,7 +178,7 @@ describe("analysis config negotiation", () => {
           constraints: {
             version: 1,
             settings: bundledClientSettings().map((setting, index) =>
-              index === 8
+              index === 9
                 ? {
                     ...(setting as Record<string, unknown>),
                     normalization: {

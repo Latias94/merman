@@ -6,6 +6,8 @@ use merman_analysis::{AnalysisRuleProfile, DiagnosticSeverity, configurable_rule
 use std::path::PathBuf;
 use std::str::FromStr;
 
+pub(crate) const MAX_FIXED_UNIX_MILLIS: i64 = 8_640_000_000_000_000;
+
 #[derive(Debug, Parser)]
 #[command(
     name = "merman-cli",
@@ -672,10 +674,22 @@ pub(crate) struct RuntimeCliArgs {
     )]
     pub(crate) fixed_today: Option<CivilDate>,
 
+    #[arg(
+        long = "fixed-unix-millis",
+        value_parser = parse_fixed_unix_millis,
+        allow_hyphen_values = true,
+        conflicts_with = "fixed_today",
+        help = "Override the clock with exact Unix milliseconds within the JavaScript Date range.",
+        help_heading = "Runtime policy",
+        hide_short_help = true
+    )]
+    pub(crate) fixed_unix_millis: Option<i64>,
+
     /// Override the local timezone offset in minutes for time-dependent diagrams.
     #[arg(
         long = "fixed-local-offset-minutes",
         value_parser = parse_fixed_local_offset_minutes,
+        allow_hyphen_values = true,
         help_heading = "Runtime policy",
         hide_short_help = true
     )]
@@ -2299,6 +2313,18 @@ fn parse_fixed_local_offset_minutes(value: &str) -> Result<i32, String> {
         .map_err(|_| "expected a timezone offset in minutes".to_string())?;
     if UtcOffset::from_minutes(parsed).is_none() {
         return Err("expected a timezone offset in minutes between -1439 and 1439".to_string());
+    }
+    Ok(parsed)
+}
+
+fn parse_fixed_unix_millis(value: &str) -> Result<i64, String> {
+    let parsed = value
+        .parse::<i64>()
+        .map_err(|_| "expected an integer Unix timestamp in milliseconds".to_string())?;
+    if !(-MAX_FIXED_UNIX_MILLIS..=MAX_FIXED_UNIX_MILLIS).contains(&parsed) {
+        return Err(format!(
+            "expected Unix milliseconds between -{MAX_FIXED_UNIX_MILLIS} and {MAX_FIXED_UNIX_MILLIS}"
+        ));
     }
     Ok(parsed)
 }

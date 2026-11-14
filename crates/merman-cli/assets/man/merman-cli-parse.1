@@ -4,7 +4,7 @@
 .SH NAME
 merman\-cli\-parse \- Parse Mermaid source and print the semantic JSON model
 .SH SYNOPSIS
-\fBmerman\-cli parse\fR [\fB\-\-pretty\fR] [\fB\-\-meta\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli parse\fR [\fB\-\-pretty\fR] [\fB\-\-meta\fR] [\fB\-\-suppress\-errors\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-t\fR|\fB\-\-theme\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-unix\-millis\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Parse Mermaid source and print the semantic JSON model
 .SH OPTIONS
@@ -86,6 +86,9 @@ Enable operation timing diagnostics through the compiled system timing adapter
 .TP
 \fB\-\-fixed\-today\fR \fI<FIXED_TODAY>\fR
 Override the local "today" date for time\-dependent diagrams
+.TP
+\fB\-\-fixed\-unix\-millis\fR \fI<FIXED_UNIX_MILLIS>\fR
+Override the clock with exact Unix milliseconds within the JavaScript Date range.
 .TP
 \fB\-\-fixed\-local\-offset\-minutes\fR \fI<FIXED_LOCAL_OFFSET_MINUTES>\fR
 Override the local timezone offset in minutes for time\-dependent diagrams

@@ -173,6 +173,8 @@ function createFacade(measureText: HostTextMeasurer): MermanDomainFacade {
           ascii: renderAscii(input.configuredSource, {
             version: BINDING_OPTIONS_SCHEMA_VERSION,
             site_config: input.bindingOptions.site_config,
+            fixed_unix_millis: input.bindingOptions.fixed_unix_millis,
+            fixed_local_offset_minutes: input.bindingOptions.fixed_local_offset_minutes,
           }),
           error: null,
           status: "success",

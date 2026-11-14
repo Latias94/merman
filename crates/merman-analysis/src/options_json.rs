@@ -13,6 +13,8 @@ use std::error::Error as StdError;
 use std::fmt::{Display, Formatter};
 use std::str::FromStr;
 
+pub(crate) const MAX_FIXED_UNIX_MILLIS: i64 = 8_640_000_000_000_000;
+
 /// The forward-compatible root JSON shape for analysis configuration.
 ///
 /// Unknown fields at this root and inside `lint` are ignored so configuration transports can add
@@ -22,6 +24,7 @@ use std::str::FromStr;
 pub struct AnalysisOptionsJson {
     pub fixed_today: Option<String>,
     pub fixed_local_offset_minutes: Option<i32>,
+    pub fixed_unix_millis: Option<i64>,
     pub site_config: Option<Value>,
     pub resources: Option<ResourceOptionsJson>,
     pub lint: Option<LintOptionsJson>,
@@ -123,6 +126,18 @@ pub fn analysis_options_json_from_json_value(
 
 impl AnalysisOptionsJson {
     pub fn to_analysis_options(&self) -> Result<AnalysisOptions, AnalysisOptionsJsonError> {
+        if self.fixed_today.is_some() && self.fixed_unix_millis.is_some() {
+            return Err(AnalysisOptionsJsonError::new(
+                "fixed_today and fixed_unix_millis cannot be combined",
+            ));
+        }
+        if let Some(unix_millis) = self.fixed_unix_millis
+            && !(-MAX_FIXED_UNIX_MILLIS..=MAX_FIXED_UNIX_MILLIS).contains(&unix_millis)
+        {
+            return Err(AnalysisOptionsJsonError::new(format!(
+                "fixed_unix_millis must be between -{MAX_FIXED_UNIX_MILLIS} and {MAX_FIXED_UNIX_MILLIS}"
+            )));
+        }
         let today = self.fixed_today()?;
         let offset_minutes = self.fixed_local_offset_minutes()?;
         let limits = self.validated_resource_limits()?;
@@ -143,6 +158,13 @@ impl AnalysisOptionsJson {
             analysis = analysis
                 .try_with_fixed_local_offset_minutes(offset_minutes)
                 .map_err(|error| AnalysisOptionsJsonError::new(error.to_string()))?;
+        }
+        if let Some(unix_millis) = self.fixed_unix_millis {
+            let runtime_policy = analysis
+                .runtime_policy()
+                .clone()
+                .with_fixed_unix_millis(unix_millis);
+            analysis = analysis.with_runtime_policy(runtime_policy);
         }
         if let Some(today) = today {
             analysis = analysis
@@ -319,6 +341,71 @@ mod tests {
         assert_eq!(
             context.clock_source(),
             merman_model::runtime::RuntimeValueSource::Fixed
+        );
+    }
+
+    #[test]
+    fn shared_analysis_options_json_preserves_precise_instants_and_local_dates() {
+        for unix_millis in [-MAX_FIXED_UNIX_MILLIS, -1, 0, 375, MAX_FIXED_UNIX_MILLIS] {
+            let options = AnalysisOptionsJson {
+                fixed_unix_millis: Some(unix_millis),
+                ..Default::default()
+            };
+            let analysis = options.to_analysis_options().unwrap();
+            let first = analysis.runtime_policy().begin_operation().unwrap();
+            let second = analysis.runtime_policy().begin_operation().unwrap();
+
+            assert_eq!(first.unix_millis(), unix_millis);
+            assert_eq!(first, second);
+            assert_eq!(first.local_time_zone().fixed_offset_minutes(), Some(0));
+            assert_eq!(
+                first.clock_source(),
+                merman_model::runtime::RuntimeValueSource::Fixed
+            );
+        }
+
+        let options = AnalysisOptionsJson {
+            fixed_unix_millis: Some(375),
+            fixed_local_offset_minutes: Some(-60),
+            ..Default::default()
+        };
+        let analysis = options.to_analysis_options().unwrap();
+        let context = analysis.runtime_policy().begin_operation().unwrap();
+
+        assert_eq!(context.unix_millis(), 375);
+        assert_eq!(context.today_local(), CivilDate::new(1969, 12, 31).unwrap());
+        assert_eq!(context.local_time_zone().fixed_offset_minutes(), Some(-60));
+        assert_eq!(analysis.runtime_policy().fixed_today(), None);
+    }
+
+    #[test]
+    fn shared_analysis_options_json_validates_programmatic_instants() {
+        for unix_millis in [
+            i64::MIN,
+            -MAX_FIXED_UNIX_MILLIS - 1,
+            MAX_FIXED_UNIX_MILLIS + 1,
+            i64::MAX,
+        ] {
+            let options = AnalysisOptionsJson {
+                fixed_unix_millis: Some(unix_millis),
+                ..Default::default()
+            };
+            let error = options.to_analysis_options().unwrap_err();
+
+            assert!(error.to_string().contains("fixed_unix_millis"));
+        }
+
+        let options = AnalysisOptionsJson {
+            fixed_today: Some("2026-01-15".to_string()),
+            fixed_unix_millis: Some(0),
+            ..Default::default()
+        };
+        let error = options.to_analysis_options().unwrap_err();
+
+        assert!(
+            error
+                .to_string()
+                .contains("fixed_today and fixed_unix_millis")
         );
     }
 

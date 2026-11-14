@@ -1,7 +1,7 @@
 use crate::{
     AnalysisOptions, AnalysisRuleProfile, DiagnosticSeverity,
     MAX_DOCUMENT_DIAGRAMS_RESOURCE_LIMIT_ID,
-    options_json::{AnalysisOptionsJson, AnalysisOptionsJsonError},
+    options_json::{AnalysisOptionsJson, AnalysisOptionsJsonError, MAX_FIXED_UNIX_MILLIS},
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -149,6 +149,7 @@ impl AnalysisConfigFieldId {
 enum AnalysisOptionsFieldId {
     FixedToday,
     FixedLocalOffsetMinutes,
+    FixedUnixMillis,
     SiteConfig,
     Resources,
     Lint,
@@ -175,8 +176,7 @@ enum RuleSeverityOverrideFieldId {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 enum AnalysisConfigPolicyId {
-    FixedToday,
-    FixedLocalOffsetMinutes,
+    Runtime,
     SiteConfig,
     Resources,
     Lint,
@@ -191,13 +191,7 @@ struct AnalysisConfigPolicyDescriptor {
 impl AnalysisConfigPolicyDescriptor {
     fn changed(self, current: &AnalysisOptions, next: &AnalysisOptions) -> bool {
         match self.id {
-            AnalysisConfigPolicyId::FixedToday => {
-                current.runtime_policy().fixed_today() != next.runtime_policy().fixed_today()
-            }
-            AnalysisConfigPolicyId::FixedLocalOffsetMinutes => {
-                current.runtime_policy().fixed_local_offset_minutes()
-                    != next.runtime_policy().fixed_local_offset_minutes()
-            }
+            AnalysisConfigPolicyId::Runtime => current.runtime_policy() != next.runtime_policy(),
             AnalysisConfigPolicyId::SiteConfig => current.site_config() != next.site_config(),
             AnalysisConfigPolicyId::Resources => {
                 current.snapshot_policy().resources != next.snapshot_policy().resources
@@ -207,13 +201,9 @@ impl AnalysisConfigPolicyDescriptor {
     }
 }
 
-const ANALYSIS_CONFIG_POLICIES: [AnalysisConfigPolicyDescriptor; 5] = [
+const ANALYSIS_CONFIG_POLICIES: [AnalysisConfigPolicyDescriptor; 4] = [
     AnalysisConfigPolicyDescriptor {
-        id: AnalysisConfigPolicyId::FixedToday,
-        change_scope: AnalysisConfigChangeScope::SnapshotAffecting,
-    },
-    AnalysisConfigPolicyDescriptor {
-        id: AnalysisConfigPolicyId::FixedLocalOffsetMinutes,
+        id: AnalysisConfigPolicyId::Runtime,
         change_scope: AnalysisConfigChangeScope::SnapshotAffecting,
     },
     AnalysisConfigPolicyDescriptor {
@@ -336,12 +326,12 @@ const ANALYSIS_CONFIG_OBJECTS: [AnalysisConfigObjectDescriptor; 4] = [
     },
 ];
 
-const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 12] = [
+const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 13] = [
     AnalysisConfigFieldDescriptor {
         id: AnalysisConfigFieldId::Options(AnalysisOptionsFieldId::FixedToday),
         key: "fixed_today",
         path: "fixed_today",
-        policy: AnalysisConfigPolicyId::FixedToday,
+        policy: AnalysisConfigPolicyId::Runtime,
         value_kind: AnalysisConfigValueKind::String {
             enum_source: None,
             pattern: Some(FIXED_TODAY_SCHEMA_PATTERN),
@@ -361,7 +351,7 @@ const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 12] = [
         id: AnalysisConfigFieldId::Options(AnalysisOptionsFieldId::FixedLocalOffsetMinutes),
         key: "fixed_local_offset_minutes",
         path: "fixed_local_offset_minutes",
-        policy: AnalysisConfigPolicyId::FixedLocalOffsetMinutes,
+        policy: AnalysisConfigPolicyId::Runtime,
         value_kind: AnalysisConfigValueKind::Integer {
             minimum: -1439,
             maximum: 1439,
@@ -370,6 +360,21 @@ const ANALYSIS_CONFIG_FIELDS: [AnalysisConfigFieldDescriptor; 12] = [
         required: false,
         default: AnalysisConfigDefault::None,
         description: "Fixed local UTC offset in minutes.",
+        runtime_constraints: &[],
+    },
+    AnalysisConfigFieldDescriptor {
+        id: AnalysisConfigFieldId::Options(AnalysisOptionsFieldId::FixedUnixMillis),
+        key: "fixed_unix_millis",
+        path: "fixed_unix_millis",
+        policy: AnalysisConfigPolicyId::Runtime,
+        value_kind: AnalysisConfigValueKind::Integer {
+            minimum: -MAX_FIXED_UNIX_MILLIS,
+            maximum: MAX_FIXED_UNIX_MILLIS,
+        },
+        nullable: true,
+        required: false,
+        default: AnalysisConfigDefault::None,
+        description: "Fixed Unix timestamp in milliseconds within the JavaScript Date TimeClip range. Cannot be combined with fixed_today.",
         runtime_constraints: &[],
     },
     AnalysisConfigFieldDescriptor {

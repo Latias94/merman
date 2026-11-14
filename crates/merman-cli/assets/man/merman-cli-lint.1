@@ -4,7 +4,7 @@
 .SH NAME
 merman\-cli\-lint \- Analyze Mermaid source and print diagnostics JSON or text
 .SH SYNOPSIS
-\fBmerman\-cli lint\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-\-format\fR] [\fB\-\-pretty\fR] [\fB\-\-markdown\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-lint\-profile\fR] [\fB\-\-enable\-rule\fR] [\fB\-\-disable\-rule\fR] [\fB\-\-rule\-severity\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
+\fBmerman\-cli lint\fR [\fB\-\-stdin\-file\-name\fR] [\fB\-\-format\fR] [\fB\-\-pretty\fR] [\fB\-\-markdown\fR] [\fB\-c\fR|\fB\-\-config\-file\fR] [\fB\-\-runtime\fR] [\fB\-\-system\-clock\fR] [\fB\-\-system\-timezone\fR] [\fB\-\-system\-random\fR] [\fB\-\-system\-timing\fR] [\fB\-\-fixed\-today\fR] [\fB\-\-fixed\-unix\-millis\fR] [\fB\-\-fixed\-local\-offset\-minutes\fR] [\fB\-\-lint\-profile\fR] [\fB\-\-enable\-rule\fR] [\fB\-\-disable\-rule\fR] [\fB\-\-rule\-severity\fR] [\fB\-\-resource\-profile\fR] [\fB\-\-resource\-limit\fR] [\fB\-h\fR|\fB\-\-help\fR] [\fB\-V\fR|\fB\-\-version\fR] [\fIINPUT\fR]
 .SH DESCRIPTION
 Analyze Mermaid source and print diagnostics JSON or text
 .SH OPTIONS
@@ -71,6 +71,9 @@ Enable operation timing diagnostics through the compiled system timing adapter
 .TP
 \fB\-\-fixed\-today\fR \fI<FIXED_TODAY>\fR
 Override the local "today" date for time\-dependent diagrams
+.TP
+\fB\-\-fixed\-unix\-millis\fR \fI<FIXED_UNIX_MILLIS>\fR
+Override the clock with exact Unix milliseconds within the JavaScript Date range.
 .TP
 \fB\-\-fixed\-local\-offset\-minutes\fR \fI<FIXED_LOCAL_OFFSET_MINUTES>\fR
 Override the local timezone offset in minutes for time\-dependent diagrams

@@ -1061,6 +1061,97 @@ Missing ref: id2,after missing,1d
     }
 
     #[test]
+    fn gantt_today_marker_uses_the_host_instant_and_respects_source_options() {
+        let source = "gantt\ndateFormat x\nTask: task,0,1000ms\n";
+        let options = br#"{"fixed_unix_millis":375,"fixed_local_offset_minutes":0}"#;
+        let svg = render_svg(source.as_bytes(), options).expect("host clock is accepted");
+        let document = roxmltree::Document::parse(std::str::from_utf8(&svg).unwrap()).unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .expect("today marker is rendered");
+        // The 0..1000ms domain maps onto the default 75..725px task area.
+        assert_eq!(marker.attribute("x1"), Some("319"));
+        assert_eq!(marker.attribute("x1"), marker.attribute("x2"));
+
+        let disabled = source.replace("dateFormat x", "dateFormat x\ntodayMarker off");
+        let svg = render_svg(disabled.as_bytes(), options).expect("disabled marker renders");
+        let document = roxmltree::Document::parse(std::str::from_utf8(&svg).unwrap()).unwrap();
+        assert!(
+            !document.descendants().any(|node| {
+                node.has_tag_name("line") && node.attribute("class") == Some("today")
+            })
+        );
+
+        let styled = source.replace(
+            "dateFormat x",
+            "dateFormat x\ntodayMarker stroke:#123456,stroke-width:4px",
+        );
+        let svg = render_svg(styled.as_bytes(), options).expect("styled marker renders");
+        let document = roxmltree::Document::parse(std::str::from_utf8(&svg).unwrap()).unwrap();
+        let marker = document
+            .descendants()
+            .find(|node| node.has_tag_name("line") && node.attribute("class") == Some("today"))
+            .unwrap();
+        assert_eq!(marker.attribute("x1"), Some("319"));
+        assert_eq!(
+            marker.attribute("style"),
+            Some("stroke:#123456;stroke-width:4px")
+        );
+    }
+
+    #[test]
+    fn fixed_unix_millis_request_requires_clearing_an_inherited_fixed_today() {
+        let engine = crate::BindingEngine::new(br#"{"fixed_today":"2026-11-14"}"#).unwrap();
+        let source = b"gantt\ndateFormat x\nTask: task,0,1000ms\n";
+        let error = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", source)
+                    .with_options_json(br#"{"analysis":{"fixed_unix_millis":375}}"#),
+            )
+            .unwrap_err();
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("fixed_today"));
+        assert!(error.message().contains("fixed_unix_millis"));
+
+        let output = engine
+            .execute(
+                crate::BindingOperationRequest::new("svg", source).with_options_json(
+                    br#"{"analysis":{"fixed_today":null,"fixed_unix_millis":375}}"#,
+                ),
+            )
+            .expect("request can explicitly replace its clock selector");
+        let svg = std::str::from_utf8(output.data()).unwrap();
+        assert!(svg.contains(r#"<line x1="319" x2="319""#));
+        let unchanged = engine
+            .execute(crate::BindingOperationRequest::new("svg", source))
+            .expect("constructor clock is retained by later operations");
+        assert_ne!(output.data(), unchanged.data());
+    }
+
+    #[test]
+    fn fixed_unix_millis_accepts_integral_json_number_notations() {
+        let source = b"gantt\ndateFormat x\nTask: task,0,1000ms\n";
+        for notation in ["375", "375.0", "375e0"] {
+            for wrapper in [None, Some("analysis"), Some("merman")] {
+                let clock = format!(r#"{{"fixed_unix_millis":{notation}}}"#);
+                let options = match wrapper {
+                    Some(wrapper) => format!(r#"{{"{wrapper}":{clock}}}"#),
+                    None => clock,
+                };
+                let svg = render_svg(source, options.as_bytes()).expect("integral JSON instant");
+                assert!(
+                    std::str::from_utf8(&svg)
+                        .unwrap()
+                        .contains(r#"<line x1="319" x2="319""#)
+                );
+            }
+        }
+        let error = render_svg(source, br#"{"fixed_unix_millis":375.5}"#).unwrap_err();
+        assert!(error.message().contains("fixed_unix_millis"));
+    }
+
+    #[test]
     fn invalid_fixed_time_options_return_invalid_argument() {
         for (options, expected) in [
             (
@@ -1070,6 +1161,18 @@ Missing ref: id2,after missing,1d
             (
                 br#"{ "fixed_local_offset_minutes": 1440 }"#.as_slice(),
                 "fixed_local_offset_minutes",
+            ),
+            (
+                br#"{"fixed_unix_millis":8640000000000001}"#.as_slice(),
+                "fixed_unix_millis",
+            ),
+            (
+                br#"{"fixed_unix_millis":-8640000000000001}"#.as_slice(),
+                "fixed_unix_millis",
+            ),
+            (
+                br#"{"fixed_today":"2026-11-14","fixed_unix_millis":375}"#.as_slice(),
+                "fixed_unix_millis",
             ),
         ] {
             let err = crate::parse_json(b"flowchart TD\nA[Hello]", options).unwrap_err();

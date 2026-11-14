@@ -311,6 +311,36 @@ test("Compare isolates container-sensitive Gantt rendering from pane width", asy
   errors.assertNone();
 });
 
+test("Compare keeps both Gantt today markers inside the visible range", async ({ page }) => {
+  const errors = monitorBrowserErrors(page);
+  await page.clock.setFixedTime(new Date("2026-11-14T05:23:45.678Z"));
+  await openPlayground(page);
+  await replaceEditorSource(page, [
+    "gantt",
+    "  title A Gantt Diagram",
+    "  dateFormat YYYY-MM-DD",
+    "  section A",
+    "  Task1 :a1, 2026-11-12, 6d",
+  ].join("\n"));
+  await openWorkbenchTool(page, "Compare");
+  for (const engine of ["merman", "mermaid"] as const) {
+    const host = page.locator(
+      `[data-merman-compare-engine="${engine}"] .preview-container > div`,
+    );
+    await expect.poll(() => host.evaluate((preview) => {
+      const svg = preview.shadowRoot?.querySelector<SVGSVGElement>("svg");
+      const markers = svg?.querySelectorAll<SVGLineElement>("line.today");
+      if (!svg || markers?.length !== 1) return false;
+      const marker = markers[0];
+      const x = marker.x1.baseVal.value;
+      const viewBox = svg.viewBox.baseVal;
+      return Number.isFinite(x) && x >= viewBox.x && x <= viewBox.x + viewBox.width &&
+        marker.y2.baseVal.value > marker.y1.baseVal.value;
+    }), { message: `${engine} today marker is inside its SVG viewBox` }).toBe(true);
+  }
+  errors.assertNone();
+});
+
 async function compareSvgTexts(
   page: import("@playwright/test").Page,
 ): Promise<string[]> {

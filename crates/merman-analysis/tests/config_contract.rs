@@ -145,6 +145,21 @@ fn analysis_owns_configuration_change_classification() {
         AnalysisOptions::default().with_max_source_bytes(Some(1)),
         AnalysisOptions::default().with_max_document_diagrams(Some(0)),
         AnalysisOptions::default().with_fixed_today(Some("2026-08-11".parse().unwrap())),
+        AnalysisOptions::default()
+            .try_with_fixed_local_offset_minutes(60)
+            .unwrap(),
+        contract
+            .decode(&json!({ "fixed_unix_millis": 375 }))
+            .unwrap(),
+        contract
+            .decode(&json!({
+                "fixed_unix_millis": 375,
+                "lint": { "profile": "recommended" }
+            }))
+            .unwrap(),
+        AnalysisOptions::default().with_runtime_policy(
+            merman_model::runtime::RuntimePolicy::deterministic().with_fixed_seed(42),
+        ),
     ];
 
     assert_eq!(
@@ -165,6 +180,90 @@ fn analysis_owns_configuration_change_classification() {
     assert_eq!(DiagnosticSeverity::ALL.len(), 4);
 }
 
+#[test]
+fn precise_instants_are_decoded_under_each_supported_root() {
+    let contract = AnalysisConfigContract::current();
+    let first = json!({ "fixed_unix_millis": 375, "fixed_local_offset_minutes": -60 });
+    let second = json!({ "fixed_unix_millis": 376, "fixed_local_offset_minutes": -60 });
+    let first = contract.decode(&first).unwrap();
+    let second = contract.decode(&second).unwrap();
+
+    assert_eq!(
+        contract.classify_change(&first, &second),
+        AnalysisConfigChange::SnapshotAffecting
+    );
+
+    for value in [
+        json!({ "fixed_unix_millis": 375, "fixed_local_offset_minutes": -60 }),
+        json!({ "analysis": { "fixed_unix_millis": 375, "fixed_local_offset_minutes": -60 } }),
+        json!({ "merman": { "fixed_unix_millis": 375, "fixed_local_offset_minutes": -60 } }),
+    ] {
+        let decoded = contract.decode_json(&value).unwrap();
+        assert_eq!(decoded.fixed_unix_millis, Some(375));
+        assert_eq!(decoded.fixed_local_offset_minutes, Some(-60));
+        assert_eq!(decoded.to_analysis_options().unwrap(), first);
+        let context = first.runtime_policy().begin_operation().unwrap();
+        assert_eq!(context.unix_millis(), 375);
+        assert_eq!(context.today_local().to_string(), "1969-12-31");
+    }
+}
+
+#[test]
+fn fixed_instant_schema_and_runtime_agree_for_each_supported_root() {
+    let contract = AnalysisConfigContract::current();
+    let projection = contract.json_schema(AnalysisConfigHostDefaults::default());
+    let validator = jsonschema::options()
+        .with_draft(jsonschema::Draft::Draft202012)
+        .build(&projection.schema)
+        .unwrap();
+    let maximum: i64 = 8_640_000_000_000_000;
+
+    for (options, accepted) in [
+        (json!({ "fixed_unix_millis": -maximum }), true),
+        (json!({ "fixed_unix_millis": maximum }), true),
+        (json!({ "fixed_unix_millis": -1 }), true),
+        (json!({ "fixed_unix_millis": 0.0 }), true),
+        (json!({ "fixed_unix_millis": 375 }), true),
+        (json!({ "fixed_unix_millis": null }), true),
+        (
+            json!({ "fixed_today": null, "fixed_unix_millis": null }),
+            true,
+        ),
+        (
+            json!({ "fixed_today": null, "fixed_unix_millis": 375 }),
+            true,
+        ),
+        (
+            json!({ "fixed_today": "2026-01-15", "fixed_unix_millis": null }),
+            true,
+        ),
+        (
+            json!({ "fixed_today": "2026-01-15", "fixed_unix_millis": 0 }),
+            false,
+        ),
+        (json!({ "fixed_unix_millis": -maximum - 1 }), false),
+        (json!({ "fixed_unix_millis": maximum + 1 }), false),
+        (json!({ "fixed_unix_millis": 0.5 }), false),
+        (json!({ "fixed_unix_millis": "375" }), false),
+        (json!({ "fixed_unix_millis": true }), false),
+        (json!({ "fixed_unix_millis": [] }), false),
+        (json!({ "fixed_unix_millis": {} }), false),
+    ] {
+        for value in [
+            options.clone(),
+            json!({ "analysis": options.clone() }),
+            json!({ "merman": options.clone() }),
+        ] {
+            assert_eq!(validator.is_valid(&value), accepted, "schema: {value}");
+            assert_eq!(
+                contract.decode(&value).is_ok(),
+                accepted,
+                "runtime: {value}"
+            );
+        }
+    }
+}
+
 fn config_cases() -> Vec<ConfigCase> {
     vec![
         accepted("empty direct root", json!({})),
@@ -174,6 +273,7 @@ fn config_cases() -> Vec<ConfigCase> {
             json!({
                 "fixed_today": null,
                 "fixed_local_offset_minutes": null,
+                "fixed_unix_millis": null,
                 "site_config": null,
                 "resources": null,
                 "lint": null
