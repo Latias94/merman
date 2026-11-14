@@ -1,0 +1,6 @@
+graph LR
+A[Read request and identify the environment] --> B{Is the production environment approved?}
+B -->|Approval is required before production writes| C[Wait for the authorized operator]
+B -->|The operation is read only| D[Run validation and collect detailed results]
+C --> E[Report the final outcome to the user]
+D --> E

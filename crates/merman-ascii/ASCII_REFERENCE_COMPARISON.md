@@ -1,13 +1,14 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
-notes what may be visible in the two optional local reference checkouts:
+notes what may be visible in the optional local reference checkouts:
 
 - `AlexanderGrooff/mermaid-ascii` at copied-source commit `6fffb8e2714acab2c4cb41c78894fabbc62cee56`; `repo-ref/mermaid-ascii` may move beyond it.
 - `lukilabs/beautiful-mermaid` at reference commit `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488`; `repo-ref/beautiful-mermaid` is research-only.
+- `xai-org/grok-build` at reference commit `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`; its first-party terminal module is Apache-2.0 and remains a behavior/presentation reference. Its separate MIT SVG component does not license that terminal module.
 
 It is not a support gate. The shipped support matrices and gap registry remain the authoritative
 product boundary.
@@ -19,6 +20,9 @@ product boundary.
   also contains a newer ER renderer, but that post-snapshot code is discovery evidence only.
 - `beautiful-mermaid` is the broad reference. It covers more families and more terminal styling
   ideas, but it is not always semantically faithful to Mermaid.
+- Grok provides compact terminal graph examples with shared trunks and endpoint markers. Its
+  truncation and group-endpoint abstraction require separate information checks; smaller output
+  is not by itself evidence that a reader can recover the same graph.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
 - Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph now render as compact
@@ -44,6 +48,71 @@ product boundary.
 - The SVG compare CLI keeps per-diagram entrypoints, but common fixture discovery, upstream/local
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
+
+## Terminal Presentation Floor
+
+Terminal graph presentation is best effort. A finite, non-zoomable terminal cannot display every
+graph as continuous artwork. For the common supported comparison corpus, the refactor targets
+comprehension at least as good as the best qualified Grok or mermaid-ascii result. This is a
+per-case acceptance target, not a claim that the current renderer already meets it or that one
+algorithm dominates every possible graph.
+
+The original inputs and reading questions live in
+[`tests/testdata/local-semantic/flowchart/presentation/`](tests/testdata/local-semantic/flowchart/presentation/README.md).
+They are independent of copied upstream fixtures. They cover shared branches/merges, feedback,
+member endpoints, distinguishing label suffixes, CJK text, and narrow/tall output. The first
+capture compares 13 inputs with native unbounded output and an explicit 80-column request across
+Merman, Grok's original terminal module, and the moving mermaid-ascii reference named below.
+
+Selected measured output dimensions are **columns × rows**:
+
+| Input / request | Merman | Grok | mermaid-ascii |
+| --- | --- | --- | --- |
+| `five-edge`, unbounded | 35 × 8, diagram | 32 × 6, diagram | 25 × 15, diagram |
+| `fork-merge`, unbounded | 26 × 25, diagram | 21 × 13, diagram | 24 × 25, diagram |
+| `fan-out-12-lr`, unbounded | 31 × 115, diagram | 28 × 48, diagram | 29 × 115, diagram |
+| `fan-in-12-lr`, unbounded | 28 × 117, diagram | 25 × 48, diagram | 26 × 115, diagram |
+| `fan-out-16-td`, 80 columns | 41 × 640, model-field fallback | 77 × 20, source frame | 171 × 11, over-width diagram |
+| `long-labels`, 80 columns | 69 × 205, model-field fallback | 80 × 12, source frame | 225 × 11, over-width diagram |
+
+The Merman code baseline is `f09aa799d6f42a2b84fc392508b7a9b3aaf94935`, built with defaults off
+and `ascii,diagram-flowchart,diagram-state,diagram-swimlane`. Captures use plain Unicode output
+and the Interactive resource profile. Bounded requests use Auto with Fallback. Grok compiles its
+unmodified `xai-grok-markdown/src/mermaid.rs` in a local adapter with the upstream lock's direct
+`ratatui 0.29.0` and `unicode-width 0.2.0` versions; backend features are unnecessary for its plain
+lines. mermaid-ascii is built unmodified at `5a9df1560871e1ef8037c052b3b5d87de503bc9e` with its
+native default Unicode settings and numeric width request. This moving reference does not replace
+the existing copied-fixture pin. Common measurements use `unicode-width 0.2.0`; raw text, input
+hashes, binary hashes, and local adapters remain under ignored `target/`.
+
+The output kinds in the table matter. A source frame is not a diagram; an over-width result does
+not satisfy the request; a full model-field listing is not automatically useful terminal
+presentation. Dimensions and successful exit codes do not qualify information correctness.
+For example, Grok truncates both targets in `distinct-suffixes` before the distinguishing
+PRODUCTION/STAGING text. That smaller result cannot set a complete-information floor for this
+input.
+
+Reading the captured outputs before consulting their sources also identifies two limits of
+geometric comparison. Grok emits identical output for the two group-member inputs even though
+one connects Worker to Broker and the other Ingress to Store. In `feedback`, Merman's separate
+return lanes preserve the two condition/endpoint triples; Grok's label placement and
+mermaid-ascii's multiple-source/multiple-target bus make their pairing uncertain. These examples
+qualify individual reference results rather than establishing a renderer-wide ranking.
+
+The refactor may share compatible common-source or common-target trunks and arrows, simplify
+expensive outlines with retained type cues, place full labels behind unique visible keys, and
+replace difficult long connectors with named continuations. A separate arrowhead per semantic
+edge is not an information requirement. Mixed marker kinds, branch conditions, multiplicity,
+and actual member endpoints must remain understandable. Shared geometry must not imply unrelated
+source/target pairs. Partial overviews must identify their scope and provide an available detail
+route; they cannot pass as complete diagrams.
+
+These are comparison and refactoring criteria. Existing production behavior and support gates
+remain as documented by the support matrix until their implementation and tests change. The
+comparison subset is not full State/Swimlane, all-direction, marker, generated, or resource
+acceptance. It also does not require reference source or binaries in release CI.
+The historical notes below describe the existing implementation and its regressions; independent
+arrowhead counts are not a permanent requirement for a future unambiguous shared presentation.
 
 ## Reference Corpus Snapshot
 
