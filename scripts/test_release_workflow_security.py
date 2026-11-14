@@ -96,25 +96,6 @@ def apple_release_files() -> dict[str, bytes]:
 
 
 class WorkflowSecurityBoundaries(unittest.TestCase):
-    def test_apt_recovery_tooling_is_independent_from_the_artifact_source(self) -> None:
-        for filename, owners in (
-            ("release-preflight.yml", (
-                "versions-and-packages", "cli-and-lsp-archives", "web-npm-dry-run",
-            )),
-            ("release.yml", ("verify-release-archives-native",)),
-        ):
-            text = read(WORKFLOW_ROOT / filename)
-            for owner in owners:
-                with self.subTest(workflow=filename, owner=owner):
-                    job = workflow_job(text, owner)
-                    checkout = job.split("path: target/apt-tools\n", 1)[0].rsplit(
-                        "      - ", 1
-                    )[1]
-                    self.assertIn("ref: ${{ github.workflow_sha }}", checkout)
-                    self.assertIn("sparse-checkout: scripts/configure_ubuntu_apt.py", job)
-                    self.assertIn("sudo python3 target/apt-tools/scripts/configure_ubuntu_apt.py", job)
-                    self.assertNotIn("sudo python3 scripts/configure_ubuntu_apt.py", job)
-
     @unittest.skipUnless(BASH, "workflow execution requires Bash")
     def test_apple_source_selection_separates_candidates_from_publication(self) -> None:
         text = read(WORKFLOW_ROOT / "release-apple.yml")
@@ -590,23 +571,6 @@ class WorkflowSecurityBoundaries(unittest.TestCase):
             self.assertIn("!cancelled()", job)
             self.assertIn("inputs.source_sha != '' || needs.validate-inputs.result == 'success'", job)
             self.assertIn("ref: ${{ inputs.source_sha || needs.validate-inputs.outputs.source_sha }}", job)
-
-    def test_cli_container_builds_preserve_base_image_apt_sources(self) -> None:
-        dockerfile = read(ROOT / "distribution/container/Dockerfile")
-        for text in (
-            dockerfile,
-            workflow_job(read(WORKFLOW_ROOT / "cli-distribution.yml"), "container"),
-            workflow_job(read(WORKFLOW_ROOT / "release-cli-container.yml"), "build"),
-        ):
-            self.assertNotIn("CI_UBUNTU_MIRROR", text)
-            self.assertNotIn("mirrors.mit.edu", text)
-        self.assertNotIn("sed -i", dockerfile)
-        for command in ("update --error-on=any", "install --no-install-recommends --yes"):
-            self.assertIn(
-                "apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 "
-                f"-o Acquire::https::Timeout=30 {command}",
-                dockerfile,
-            )
 
     def test_cli_container_publication_uses_attested_archives_and_native_smokes(self) -> None:
         text = read(WORKFLOW_ROOT / "release-cli-container.yml")

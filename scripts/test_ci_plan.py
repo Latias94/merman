@@ -1272,7 +1272,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
 
         workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
         job = workflow_job(workflow, "feature-contracts")
-        self.assertIn("runs-on: ubuntu-24.04", job)
+        self.assertIn("runs-on: ubuntu-26.04", job)
         self.assertIn(
             "cargo test --locked -p merman-core --no-default-features --features diagram-flowchart,diagram-sequence,diagram-state --doc",
             job,
@@ -1324,9 +1324,6 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
                 packages = installs[0].split("--yes ", 1)[1].split()
                 self.assertTrue({"libfontconfig1-dev", "pkg-config"}.issubset(packages))
                 self.assertIn("timeout-minutes: 10", setup)
-                self.assertIn("Acquire::Retries=3", setup)
-                self.assertIn("Acquire::http::Timeout=30", setup)
-                self.assertIn("Acquire::https::Timeout=30", setup)
                 self.assertIn("update --error-on=any", setup)
                 self.assertLess(job.index(f"- name: {setup_name}"), job.index(command))
                 if owner == "build-test":

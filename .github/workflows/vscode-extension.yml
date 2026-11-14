@@ -34,7 +34,7 @@ jobs:
   validate-inputs:
     name: validate-inputs
     if: ${{ inputs.source_sha == '' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       source_sha: ${{ steps.pin-source.outputs.source_sha }}
     steps:
@@ -127,7 +127,7 @@ jobs:
     needs: validate-inputs
     if: ${{ !cancelled() && (inputs.package_vscode || inputs.source_sha == '') && (inputs.source_sha != '' || needs.validate-inputs.result == 'success') }}
     name: editor-language-contract
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1

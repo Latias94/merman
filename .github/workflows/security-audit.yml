@@ -22,7 +22,7 @@ concurrency:
 jobs:
   audit-plan:
     name: discover tracked audit locks
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       cargo: ${{ steps.plan.outputs.cargo }}
     steps:
@@ -37,7 +37,7 @@ jobs:
   cargo-audit:
     name: cargo-audit (${{ matrix.lockfile }})
     needs: audit-plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.audit-plan.outputs.cargo) }}
@@ -61,7 +61,7 @@ jobs:
 
   cargo-dependency-policy:
     name: cargo-deny dependency policy
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:

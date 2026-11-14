@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   native:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -104,7 +104,7 @@ jobs:
         run: npm run build:node --prefix distribution/tree-sitter-mermaid
 
   wasm:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7.0.1
@@ -156,7 +156,7 @@ jobs:
           npm run test:wasm --prefix distribution/tree-sitter-mermaid
 
   packages:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:

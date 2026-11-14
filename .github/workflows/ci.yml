@@ -28,7 +28,7 @@ concurrency:
 jobs:
   ci-plan:
     name: ci-plan
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     outputs:
       # Keep cross-job data bounded; the detailed plan contains every changed path.
       owners: ${{ steps.plan.outputs.owners }}
@@ -109,7 +109,7 @@ jobs:
     name: workflow-analysis
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.workflow == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -166,7 +166,7 @@ jobs:
     name: hygiene
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.hygiene == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -227,7 +227,7 @@ jobs:
     name: cli-contracts
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.cli == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     env:
       CARGO_INCREMENTAL: "0"
@@ -256,10 +256,8 @@ jobs:
       - name: Install CLI build dependencies and asset validators
         timeout-minutes: 10
         run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes elvish fish libfontconfig1-dev mandoc pkg-config zsh
 
       - name: Verify generated CLI distribution assets
         run: python3 scripts/generate_cli_assets.py --check
@@ -277,7 +275,7 @@ jobs:
     name: nix-cli-package
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.cli == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7.0.1
@@ -328,7 +326,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-24.04
+          - os: ubuntu-26.04
             parity: true
           - os: macos-15
             parity: false
@@ -418,10 +416,8 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
 
       - name: Verify pinned Mermaid reference before runtime install
         if: matrix.parity
@@ -463,9 +459,8 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes fonts-dejavu-core fonts-noto-cjk
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes fonts-dejavu-core fonts-noto-cjk
 
       - name: Test full workspace (Linux and safety-net lifecycles)
         if: runner.os == 'Linux' || github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
@@ -538,7 +533,7 @@ jobs:
     name: feature-contracts
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.core == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     env:
       CARGO_INCREMENTAL: "0"
@@ -582,10 +577,8 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
 
       - name: Verify representative Cargo feature matrix
         run: cargo run --locked -p xtask -- verify-feature-matrix
@@ -691,7 +684,7 @@ jobs:
     name: theme-contracts
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.core == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     env:
       CARGO_INCREMENTAL: "0"
@@ -732,10 +725,8 @@ jobs:
         timeout-minutes: 10
         shell: bash
         run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
-          apt_options=(-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
-          sudo apt-get "${apt_options[@]}" update --error-on=any
-          sudo apt-get "${apt_options[@]}" install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
+          sudo apt-get update --error-on=any
+          sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config fonts-dejavu-core fonts-noto-cjk
 
       - name: Test preset qualification and family terminal behavior
         run: |
@@ -770,7 +761,7 @@ jobs:
     name: svg-parity
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.svg_parity == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 60
     env:
       CARGO_INCREMENTAL: "0"
@@ -785,7 +776,6 @@ jobs:
           cache-targets: false
       - name: Install Linux font build dependencies
         run: |
-          sudo python3 scripts/configure_ubuntu_apt.py
           sudo apt-get update --error-on=any
           sudo apt-get install --no-install-recommends --yes libfontconfig1-dev pkg-config
       - uses: actions/setup-node@v7.1.0
@@ -877,7 +867,7 @@ jobs:
     name: node-contracts (${{ matrix.candidate }})
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.node == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 30
     strategy:
       fail-fast: false
@@ -991,7 +981,7 @@ jobs:
     name: typst-package
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.typst == 'true' && github.event_name != 'push' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -1078,7 +1068,7 @@ jobs:
     name: typst-package-compat
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.typst == 'true' && github.event_name == 'push' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -1154,7 +1144,7 @@ jobs:
     name: platform-script-syntax
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -1191,7 +1181,7 @@ jobs:
     name: platform-bindings
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -1231,7 +1221,7 @@ jobs:
     name: android-instrumentation
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     env:
       CARGO_INCREMENTAL: "0"
       CARGO_PROFILE_DEV_DEBUG: "0"
@@ -1312,7 +1302,7 @@ jobs:
     name: python-uniffi-wheel
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.python == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -1341,7 +1331,7 @@ jobs:
     name: c-ffi-example
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.platform == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -1504,7 +1494,7 @@ jobs:
     name: performance-contracts
     needs: ci-plan
     if: ${{ needs.ci-plan.outputs.performance == 'true' }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
@@ -1562,7 +1552,7 @@ jobs:
       - web-owner
       - native-runtime-owner
       - performance-contracts
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7.0.1
         with:
