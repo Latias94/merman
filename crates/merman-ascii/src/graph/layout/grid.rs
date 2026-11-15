@@ -1,3 +1,4 @@
+use super::super::demand::SceneDemand;
 use super::super::horizontal_label::HorizontalLabelPadding;
 use super::super::label::{
     GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle, try_measure_edge_label,
@@ -7,7 +8,7 @@ use super::super::model::{
 };
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
-use super::{GridCoord, NodeLayout, ROUTING_GRID_MARGIN, charge_sort_work};
+use super::{GridCoord, NodeLayout, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
@@ -45,7 +46,6 @@ pub(super) struct AxisProjection {
 impl AxisProjection {
     fn try_new(
         axis_sizes: &AxisSizes,
-        routing_cell_count: usize,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
         checkpoint_iteration: &mut usize,
@@ -61,7 +61,7 @@ impl AxisProjection {
             .map(|index| resources.checked_grid_add(index, 1))
             .transpose()?
             .unwrap_or_default();
-        let cell_count = content_cells.max(routing_cell_count);
+        let cell_count = content_cells;
         let prefix_count = resources.checked_grid_add(cell_count, 1)?;
         resources.grid_extent(prefix_count, 1)?;
         resources.charge_layout_work(cell_count)?;
@@ -177,13 +177,26 @@ pub(super) fn layout_nodes(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
+    let demand = SceneDemand::try_new(graph, policy, resources)?;
     match graph.direction.canonical() {
-        GraphDirection::LeftRight => {
-            layout_left_right_grid_nodes(graph, policy, topology, label_plans, resources, execution)
-        }
-        GraphDirection::TopDown => {
-            layout_top_down_grid_nodes(graph, policy, topology, label_plans, resources, execution)
-        }
+        GraphDirection::LeftRight => layout_left_right_grid_nodes(
+            graph,
+            policy,
+            topology,
+            label_plans,
+            &demand,
+            resources,
+            execution,
+        ),
+        GraphDirection::TopDown => layout_top_down_grid_nodes(
+            graph,
+            policy,
+            topology,
+            label_plans,
+            &demand,
+            resources,
+            execution,
+        ),
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
 }
@@ -269,6 +282,7 @@ fn layout_left_right_grid_nodes(
     policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
+    demand: &SceneDemand<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
@@ -285,7 +299,12 @@ fn layout_left_right_grid_nodes(
         let label_plan = label_plans
             .get(index)
             .ok_or_else(|| invalid_node_label_plans(graph.diagram_type()))?;
-        let shape_size = node_shape_size(node, label_plan, policy, resources)?;
+        let shape_size = demand.size_for_node(
+            &node.id,
+            node.shape,
+            node_shape_size(node, label_plan, policy, resources)?,
+            resources,
+        )?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -344,7 +363,15 @@ fn layout_left_right_grid_nodes(
         };
         let from = placements[from_index];
         let to = placements[to_index];
-        apply_horizontal_edge_spacing(edge, from, to, policy, &mut column_widths, resources)?;
+        apply_horizontal_edge_spacing(
+            edge,
+            from,
+            to,
+            policy,
+            &occupied,
+            &mut column_widths,
+            resources,
+        )?;
         reserve_branch_rank_spacing(
             graph,
             edge,
@@ -364,6 +391,7 @@ fn layout_left_right_grid_nodes(
                 from,
                 to,
                 policy,
+                &occupied,
                 &mut column_widths,
                 &mut row_heights,
                 resources,
@@ -375,6 +403,7 @@ fn layout_left_right_grid_nodes(
         graph,
         placements,
         label_plans,
+        demand,
         topology,
         policy,
         &mut column_widths,
@@ -450,6 +479,7 @@ fn layout_top_down_grid_nodes(
     policy: &GraphLayoutPolicy,
     topology: Option<&GraphGroupTopology<'_>>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
+    demand: &SceneDemand<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
@@ -466,7 +496,12 @@ fn layout_top_down_grid_nodes(
         let label_plan = label_plans
             .get(index)
             .ok_or_else(|| invalid_node_label_plans(graph.diagram_type()))?;
-        let shape_size = node_shape_size(node, label_plan, policy, resources)?;
+        let shape_size = demand.size_for_node(
+            &node.id,
+            node.shape,
+            node_shape_size(node, label_plan, policy, resources)?,
+            resources,
+        )?;
         set_axis_size(&mut column_widths, coord.x, 1);
         set_axis_size(
             &mut column_widths,
@@ -530,6 +565,7 @@ fn layout_top_down_grid_nodes(
             from,
             to,
             policy,
+            &occupied,
             &mut column_widths,
             &mut row_heights,
             resources,
@@ -548,7 +584,15 @@ fn layout_top_down_grid_nodes(
             resources,
         )?;
         if to.x != from.x && from.y == to.y {
-            apply_horizontal_edge_spacing(edge, from, to, policy, &mut column_widths, resources)?;
+            apply_horizontal_edge_spacing(
+                edge,
+                from,
+                to,
+                policy,
+                &occupied,
+                &mut column_widths,
+                resources,
+            )?;
         }
     }
 
@@ -556,6 +600,7 @@ fn layout_top_down_grid_nodes(
         graph,
         placements,
         label_plans,
+        demand,
         topology,
         policy,
         &mut column_widths,
@@ -688,23 +733,38 @@ fn reserve_self_loop_lanes(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn apply_vertical_edge_spacing(
     edge: &AsciiGraphEdge,
     from: GridCoord,
     to: GridCoord,
     policy: &GraphLayoutPolicy,
+    occupied: &NodeAxisBands,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
-    if to.y == from.y {
+    if to.y.abs_diff(from.y) <= 2 {
         return Ok(());
     }
+    let separator = last_free_separator(from.y, to.y, &occupied.rows, resources)?;
+    let Some(separator) = separator else {
+        return Ok(());
+    };
 
     let length_gap = resources.checked_grid_add(
         policy.rank_gap_y,
         resources.checked_grid_mul(edge.length.saturating_sub(1), 2)?,
     )?;
+    let marker_cells = [edge.start_marker, edge.end_marker]
+        .into_iter()
+        .filter(|marker| *marker != GraphEdgeMarker::Open)
+        .count();
+    let stroke_gap = if edge.stroke.is_visible() {
+        marker_cells + 1
+    } else {
+        0
+    };
     let label_metrics = edge
         .label
         .as_deref()
@@ -722,7 +782,11 @@ fn apply_vertical_edge_spacing(
     } else {
         0
     };
-    set_axis_size(row_heights, from.y.max(to.y) - 1, length_gap.max(label_gap));
+    set_axis_size(
+        row_heights,
+        separator,
+        length_gap.max(label_gap).max(stroke_gap),
+    );
     if from.x == to.x
         && let Some(metrics) = label_metrics
     {
@@ -740,12 +804,17 @@ fn apply_horizontal_edge_spacing(
     from: GridCoord,
     to: GridCoord,
     policy: &GraphLayoutPolicy,
+    occupied: &NodeAxisBands,
     column_widths: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
-    if to.x == from.x {
+    if to.x.abs_diff(from.x) <= 2 {
         return Ok(());
     }
+    let separator = last_free_separator(from.x, to.x, &occupied.columns, resources)?;
+    let Some(separator) = separator else {
+        return Ok(());
+    };
 
     let length_gap = resources.checked_grid_add(
         policy.rank_gap_x,
@@ -766,12 +835,41 @@ fn apply_horizontal_edge_spacing(
         })
         .transpose()?
         .unwrap_or_default();
+    let stroke_gap = if edge.stroke.is_visible() {
+        [edge.start_marker, edge.end_marker]
+            .into_iter()
+            .filter(|marker| *marker != GraphEdgeMarker::Open)
+            .count()
+            + 1
+    } else {
+        0
+    };
     set_axis_size(
         column_widths,
-        from.x.max(to.x) - 1,
-        length_gap.max(label_gap),
+        separator,
+        length_gap.max(label_gap).max(stroke_gap),
     );
     Ok(())
+}
+
+fn last_free_separator(
+    from: usize,
+    to: usize,
+    occupied: &HashSet<usize>,
+    resources: &ResourceContext,
+) -> Result<Option<usize>> {
+    let first = resources.checked_grid_add(from.min(to), 3)?;
+    let last = from.max(to);
+    for index in (first..last).rev() {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if !occupied.contains(&index) {
+            return Ok(Some(index));
+        }
+    }
+    // Independent contours stay inside their allocated bands. If unrelated nodes cover
+    // every separator, widening the last one shifts their centers without stretching them.
+    Ok((first < last).then(|| last - 1))
 }
 
 fn place_top_down_grid_nodes(
@@ -895,17 +993,10 @@ fn reserve_branch_rank_spacing(
         ),
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     };
-    // All nodes share axis projections, including unrelated local-direction scopes. Expanding
-    // any node-owned band would stretch its contour, so only a globally empty band may grow.
-    if last - first > 2 {
-        for separator in (resources.checked_grid_add(first, 3)?..last).rev() {
-            resources.checkpoint()?;
-            resources.charge_layout_work(1)?;
-            if !occupied.contains(&separator) {
-                set_axis_size(sizes, separator, MINIMUM_BRANCH_RANK_GAP);
-                break;
-            }
-        }
+    if last - first > 2
+        && let Some(separator) = last_free_separator(first, last, occupied, resources)?
+    {
+        set_axis_size(sizes, separator, MINIMUM_BRANCH_RANK_GAP);
     }
     Ok(())
 }
@@ -929,7 +1020,6 @@ fn finalize_node_layouts(
     resources.transaction(|resources| {
         let mut checkpoint_iteration = 0usize;
         let (column_projection, row_projection) = finalize_axis_projections(
-            placements.iter().copied(),
             column_widths,
             row_heights,
             resources,
@@ -951,50 +1041,16 @@ fn finalize_node_layouts(
 }
 
 fn finalize_axis_projections(
-    placements: impl ExactSizeIterator<Item = GridCoord>,
     column_widths: &AxisSizes,
     row_heights: &AxisSizes,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
     checkpoint_iteration: &mut usize,
 ) -> Result<(AxisProjection, AxisProjection)> {
-    let (routing_columns, routing_rows) =
-        routing_projection_cell_counts(placements, resources, execution)?;
-    let columns = AxisProjection::try_new(
-        column_widths,
-        routing_columns,
-        resources,
-        execution,
-        checkpoint_iteration,
-    )?;
-    let rows = AxisProjection::try_new(
-        row_heights,
-        routing_rows,
-        resources,
-        execution,
-        checkpoint_iteration,
-    )?;
+    let columns =
+        AxisProjection::try_new(column_widths, resources, execution, checkpoint_iteration)?;
+    let rows = AxisProjection::try_new(row_heights, resources, execution, checkpoint_iteration)?;
     Ok((columns, rows))
-}
-
-fn routing_projection_cell_counts(
-    placements: impl ExactSizeIterator<Item = GridCoord>,
-    resources: &ResourceContext,
-    execution: AsciiExecution<'_>,
-) -> Result<(usize, usize)> {
-    resources.charge_layout_work(placements.len())?;
-    let mut max_x = 0usize;
-    let mut max_y = 0usize;
-    for (index, coord) in placements.enumerate() {
-        checkpoint_layout(execution, index)?;
-        max_x = max_x.max(resources.checked_grid_add(coord.x, 2)?);
-        max_y = max_y.max(resources.checked_grid_add(coord.y, 2)?);
-    }
-    let routing_span = resources.checked_grid_add(ROUTING_GRID_MARGIN, 1)?;
-    Ok((
-        resources.checked_grid_add(max_x, routing_span)?,
-        resources.checked_grid_add(max_y, routing_span)?,
-    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1002,6 +1058,7 @@ fn finalize_compound_node_layouts(
     graph: &AsciiGraph,
     placements: Vec<GridCoord>,
     label_plans: &[GraphNodeLabelPlanHandle<'_>],
+    demand: &SceneDemand<'_>,
     topology: Option<&GraphGroupTopology<'_>>,
     policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
@@ -1009,6 +1066,18 @@ fn finalize_compound_node_layouts(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
+    let mut sizes = Vec::new();
+    try_reserve_vec(&mut sizes, graph.nodes.len())?;
+    for (node, plan) in graph.nodes.iter().zip(label_plans) {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        sizes.push(demand.size_for_node(
+            &node.id,
+            node.shape,
+            node_shape_size(node, plan, policy, resources)?,
+            resources,
+        )?);
+    }
     let (mut nodes, columns, rows) = finalize_node_layouts(
         graph,
         placements,
@@ -1019,19 +1088,16 @@ fn finalize_compound_node_layouts(
         execution,
     )?;
     let Some(topology) = topology else {
-        let mut sizes = Vec::new();
-        try_reserve_vec(&mut sizes, graph.nodes.len())?;
-        for (node, plan) in graph.nodes.iter().zip(label_plans) {
-            sizes.push(node_shape_size(node, plan, policy, resources)?);
-        }
-        order::compact_nodes(graph, &mut nodes, &sizes, policy, resources)?;
+        order::compact_nodes(graph, &mut nodes, &sizes, demand, policy, resources)?;
         return Ok((nodes, columns, rows));
     };
+    fit_node_contours(&mut nodes, &sizes, &columns, &rows, resources)?;
     groups::reserve_compound_axis_spacing(
         graph,
         &nodes,
         topology,
         policy,
+        demand,
         column_widths,
         row_heights,
         resources,
@@ -1040,23 +1106,41 @@ fn finalize_compound_node_layouts(
     resources.transaction(|resources| {
         let mut checkpoint_iteration = 0usize;
         let (columns, rows) = finalize_axis_projections(
-            nodes.iter().map(|node| node.grid),
             column_widths,
             row_heights,
             resources,
             execution,
             &mut checkpoint_iteration,
         )?;
-        resources.charge_layout_work(nodes.len())?;
-        for node in &mut nodes {
-            checkpoint_projection(execution, &mut checkpoint_iteration)?;
-            node.x = columns.position(node.grid.x);
-            node.y = rows.position(node.grid.y);
-            node.width = columns.span(node.grid.x, 3);
-            node.height = rows.span(node.grid.y, 3);
-        }
+        fit_node_contours(&mut nodes, &sizes, &columns, &rows, resources)?;
         Ok((nodes, columns, rows))
     })
+}
+
+fn fit_node_contours(
+    nodes: &mut [NodeLayout],
+    sizes: &[GraphNodeShapeSize],
+    columns: &AxisProjection,
+    rows: &AxisProjection,
+    resources: &ResourceContext,
+) -> Result<()> {
+    resources.charge_layout_work(nodes.len())?;
+    for (node, size) in nodes.iter_mut().zip(sizes) {
+        resources.checkpoint()?;
+        let spare_x = columns
+            .span(node.grid.x, 3)
+            .checked_sub(size.width)
+            .ok_or_else(|| invalid_node_label_plans("graph"))?;
+        let spare_y = rows
+            .span(node.grid.y, 3)
+            .checked_sub(size.height)
+            .ok_or_else(|| invalid_node_label_plans("graph"))?;
+        node.x = resources.checked_grid_add(columns.position(node.grid.x), spare_x / 2)?;
+        node.y = resources.checked_grid_add(rows.position(node.grid.y), spare_y / 2)?;
+        node.width = size.width;
+        node.height = size.height;
+    }
+    Ok(())
 }
 
 fn build_node_layouts(
@@ -1294,7 +1378,7 @@ mod tests {
                     }
                     let tail = &layout.nodes[9];
                     let (from, to) = if fan_in { (hub, tail) } else { (tail, hub) };
-                    assert_eq!(node_rank_gap(from, to, direction), preferred_gap.max(1));
+                    assert_eq!(node_rank_gap(from, to, direction), preferred_gap.max(2));
                     for (node, control_node) in layout.nodes.iter().zip(&control.nodes) {
                         assert_eq!(node.grid, control_node.grid);
                         assert_eq!(node.width, control_node.width);
@@ -1367,6 +1451,7 @@ mod tests {
     #[test]
     fn self_loops_do_not_turn_single_edges_into_branches() {
         let options = AsciiRenderOptions::ascii()
+            .with_node_padding(1)
             .with_graph_padding_x(0)
             .with_graph_padding_y(0);
         for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
@@ -1421,8 +1506,9 @@ mod tests {
                     );
                     let layout = layout_graph(&graph, &options);
                     for node in &layout.nodes {
-                        assert_eq!(node.width, 3, "{root:?}, {local:?}, {node:?}");
-                        assert_eq!(node.height, 3, "{root:?}, {local:?}, {node:?}");
+                        let expected = if node.id == "T" { 5 } else { 3 };
+                        assert_eq!(node.width, expected, "{root:?}, {local:?}, {node:?}");
+                        assert_eq!(node.height, expected, "{root:?}, {local:?}, {node:?}");
                     }
                     let hub = &layout.nodes[2];
                     for leaf in &layout.nodes[..2] {
@@ -1472,8 +1558,14 @@ mod tests {
             let control = layout_graph(&invisible, &options);
             for (node, control) in layout.nodes.iter().zip(&control.nodes) {
                 assert_eq!(node.grid, control.grid);
-                assert_eq!(node.width, control.width, "{root:?}, {local:?}, {node:?}");
-                assert_eq!(node.height, control.height, "{root:?}, {local:?}, {node:?}");
+                if node.id == "A" {
+                    // A owns both the branch and the merge. Its private contacts grow;
+                    // their shared bands must not stretch any unrelated contour.
+                    assert_eq!((node.width, node.height), (5, 5));
+                } else {
+                    assert_eq!(node.width, control.width, "{root:?}, {local:?}, {node:?}");
+                    assert_eq!(node.height, control.height, "{root:?}, {local:?}, {node:?}");
+                }
             }
         }
     }
@@ -1486,12 +1578,14 @@ mod tests {
         row_heights: &mut AxisSizes,
         resources: &ResourceContext,
     ) -> Result<()> {
+        let occupied = NodeAxisBands::try_new(&[], resources)?;
         match direction {
             GraphDirection::LeftRight => apply_horizontal_edge_spacing(
                 edge,
                 GridCoord { x: 0, y: 0 },
                 GridCoord { x: 4, y: 0 },
                 &options.flowchart_layout().graph_policy(),
+                &occupied,
                 column_widths,
                 resources,
             ),
@@ -1500,6 +1594,7 @@ mod tests {
                 GridCoord { x: 0, y: 0 },
                 GridCoord { x: 0, y: 4 },
                 &options.flowchart_layout().graph_policy(),
+                &occupied,
                 column_widths,
                 row_heights,
                 resources,
@@ -1641,7 +1736,7 @@ mod tests {
     }
 
     #[test]
-    fn routing_projection_covers_every_search_track_without_growing_diagram_content() {
+    fn axis_projection_stores_only_allocated_node_and_spacing_bands() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         graph.add_node("node", "Node");
         let mut columns = AxisSizes::default();
@@ -1663,13 +1758,10 @@ mod tests {
             &resources,
             AsciiExecution::for_test(&policy),
         )
-        .expect("bounded routing tracks should be projected");
-        let max_search_index = 2 + ROUTING_GRID_MARGIN;
+        .expect("allocated layout bands should be projected");
         for projection in [&columns, &rows] {
-            for index in 0..max_search_index {
-                assert!(projection.position(index) < projection.position(index + 1));
-            }
-            assert_eq!(projection.position(3) - projection.position(2), 2);
+            assert_eq!(projection.prefix_sizes.len(), 4);
+            assert_eq!(projection.position(3), projection.total());
         }
         assert_eq!(nodes[0].x, 0);
         assert_eq!(nodes[0].y, 0);
@@ -1682,7 +1774,7 @@ mod tests {
     #[test]
     fn sparse_axis_projection_admits_linear_work_before_materializing_layouts() {
         const NODE_COUNT: usize = 256;
-        const EXPECTED_WORK: usize = 2_321;
+        const EXPECTED_WORK: usize = 2_053;
 
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         let mut placements = Vec::with_capacity(NODE_COUNT);
@@ -1714,11 +1806,8 @@ mod tests {
         )
         .expect("sparse axis projection should materialize");
         assert_eq!(layouts.len(), NODE_COUNT);
-        assert_eq!(
-            columns.total(),
-            NODE_COUNT * 3 + (NODE_COUNT - 1) * 2 + ROUTING_GRID_MARGIN * 2
-        );
-        assert_eq!(rows.total(), 3 + ROUTING_GRID_MARGIN * 2);
+        assert_eq!(columns.total(), NODE_COUNT * 3 + (NODE_COUNT - 1) * 2);
+        assert_eq!(rows.total(), 3);
         assert_eq!(measured.layout_work_used(), EXPECTED_WORK);
 
         let exact_policy = unbounded

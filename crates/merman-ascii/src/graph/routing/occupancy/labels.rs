@@ -43,6 +43,10 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
 ) -> Result<()> {
     let lane_radius = occupancy.label_lane_radius;
     let label_len = route.plan.labels.len();
+    if label_len == 0 {
+        return Ok(());
+    }
+    let reading_guards = occupancy.label_reading_guards(&route.plan, resources)?;
     for label_index in 0..label_len {
         let (original, line_count, unresolved_anchor) = {
             let label = &route.plan.labels[label_index];
@@ -75,7 +79,11 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
                 line_count,
                 resources,
             )?;
-            if occupancy.label_candidate_is_clear(
+            if occupancy.label_preserves_route_reading(
+                &reading_guards,
+                candidate_rect,
+                resources,
+            )? && occupancy.label_candidate_is_clear(
                 route_index,
                 &route.owner,
                 anchor,
@@ -90,9 +98,9 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
         }
 
         let Some((placement, footprint)) = selected else {
-            return Err(AsciiError::UnsupportedFeature {
+            return Err(AsciiError::RoutingSearchExhausted {
                 diagram_type,
-                feature: "edge label placement exhausted after bounded route-local search",
+                edge_index: route.owner.source_edge_index,
             });
         };
         route.plan.labels[label_index].placement = placement;
@@ -146,11 +154,10 @@ pub(super) fn resolve_label_anchor(
 const fn planned_segment_order(segment: PlannedRouteSegment) -> u8 {
     match segment {
         PlannedRouteSegment::Direct => 0,
-        PlannedRouteSegment::Boundary => 1,
     }
 }
 
-pub(super) fn label_anchor_contains(
+pub(in crate::graph::routing) fn label_anchor_contains(
     anchor: LabelAnchor,
     coord: CanvasCoord,
     route_segment: PlannedRouteSegment,
@@ -188,7 +195,7 @@ enum LabelAnchorAxis {
 
 /// Reserve the text and its perpendicular gap to the host together. A later route must
 /// not pass between them and make the text appear to identify that unrelated route.
-pub(super) fn label_reservation(
+pub(in crate::graph::routing) fn label_reservation(
     anchor: LabelAnchor,
     text: OccupiedRect,
     lane_radius: usize,

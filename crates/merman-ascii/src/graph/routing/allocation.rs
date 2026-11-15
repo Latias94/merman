@@ -8,7 +8,7 @@ use crate::error::Result;
 use crate::graph::charset::GraphCharset;
 use crate::graph::label::try_measure_edge_label;
 use crate::graph::layout::{CanvasCoord, GraphLayout, NodeLayout, charge_sort_work};
-use crate::graph::model::{AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeMarker};
+use crate::graph::model::{AsciiGraph, AsciiGraphEdge, GraphDirection};
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
@@ -157,6 +157,11 @@ impl BranchAllocation {
                 // An unresolved real endpoint must never alias an existing endpoint.
                 return Ok(Self::default());
             };
+            // Invisible edges constrain layout but consume no route or endpoint cells.
+            // Match SceneDemand's visible topology, retaining canonical edge indices.
+            if !edge.stroke.is_visible() {
+                continue;
+            }
             if source == target {
                 blocked_endpoints[source] = [true; 2];
             }
@@ -169,9 +174,9 @@ impl BranchAllocation {
             });
         }
 
-        // A repeated unordered pair means duplicate targets, parallel multiplicity, or
-        // reciprocal edges. Block every participating endpoint, including invisible edges,
-        // without an adjacency matrix or a per-edge scan of the rest of the scene.
+        // A repeated visible unordered pair means duplicate targets, parallel
+        // multiplicity, or reciprocal edges. Block every participating endpoint without
+        // an adjacency matrix or a per-edge scan of the rest of the scene.
         scene.execution.checkpoint(OperationPhase::Layout)?;
         charge_sort_work(indexed.len(), resources)?;
         indexed.sort_unstable_by_key(|edge| (edge.unordered_pair(), edge.source, edge.canonical));
@@ -308,10 +313,9 @@ impl AllocationScene<'_> {
             self.scan()?;
             let edge = &self.edges[indexed.canonical];
             let baseline = &self.edges[group[0].canonical];
-            if !edge.stroke.is_visible()
-                || branches[indexed.canonical].is_some()
+            if branches[indexed.canonical].is_some()
                 || match shared_endpoint {
-                    MarkerEndpoint::Start => edge.start_marker != GraphEdgeMarker::Open,
+                    MarkerEndpoint::Start => edge.start_marker != baseline.start_marker,
                     MarkerEndpoint::End => edge.end_marker != baseline.end_marker,
                 }
                 || edge.stroke != baseline.stroke
@@ -490,7 +494,7 @@ mod tests {
     use crate::color::AsciiRgb;
     use crate::error::AsciiError;
     use crate::graph::layout::{GridCoord, layout_graph};
-    use crate::graph::model::{GraphEdgeStroke, GraphGroupStyle, GraphNodeShape};
+    use crate::graph::model::{GraphEdgeMarker, GraphEdgeStroke, GraphGroupStyle, GraphNodeShape};
     use crate::resource::{AsciiResourceLimitCause, AsciiResourceLimitId, AsciiResourcePolicy};
     use merman_model::{CancelReason, OperationControl};
 
@@ -532,7 +536,6 @@ mod tests {
             // Deliberately unrelated to the terminal positions and even to each other.
             node.grid = GridCoord { x: 999, y: 999 };
         }
-        layout.grid_aligned = false;
         (graph, layout, charset)
     }
 
@@ -679,15 +682,14 @@ mod tests {
     #[test]
     fn merging_rejects_incompatible_markers_styles_and_parallel_or_reciprocal_edges() {
         for direction in DIRECTIONS {
-            for mismatch in 0..7 {
+            for mismatch in 0..6 {
                 let (mut graph, layout, charset) = fanin(direction, 8, GraphNodeShape::Rect);
                 match mismatch {
                     0 => graph.edges[7].end_marker = GraphEdgeMarker::Circle,
                     1 => graph.edges[7].stroke = GraphEdgeStroke::Dotted,
-                    2 => graph.edges[7].stroke = GraphEdgeStroke::Invisible,
-                    3 => graph.edges[7].style.arrow = Some(AsciiRgb::new(20, 40, 60)),
-                    4 => graph.add_edge("target-00", "source"),
-                    5 => graph.add_edge("source", "target-00"),
+                    2 => graph.edges[7].style.arrow = Some(AsciiRgb::new(20, 40, 60)),
+                    3 => graph.add_edge("target-00", "source"),
+                    4 => graph.add_edge("source", "target-00"),
                     _ => graph.add_edge("source", "source"),
                 }
                 assert_unallocated(&allocate(&graph, &layout, &charset), graph.edges.len());
@@ -774,19 +776,76 @@ mod tests {
     }
 
     #[test]
-    fn mixed_strokes_styles_and_visibility_reject_the_whole_source_group() {
+    fn mixed_visible_strokes_and_styles_reject_the_whole_source_group() {
         for direction in DIRECTIONS {
-            for mismatch in 0..5 {
+            for mismatch in 0..4 {
                 let (mut graph, layout, charset) = fanout(direction, 8, GraphNodeShape::Rect);
                 let edge = &mut graph.edges[7];
                 match mismatch {
                     0 => edge.stroke = GraphEdgeStroke::Dotted,
-                    1 => edge.stroke = GraphEdgeStroke::Invisible,
-                    2 => edge.style.line = Some(AsciiRgb::new(20, 40, 60)),
-                    3 => edge.style.arrow = Some(AsciiRgb::new(20, 40, 60)),
+                    1 => edge.style.line = Some(AsciiRgb::new(20, 40, 60)),
+                    2 => edge.style.arrow = Some(AsciiRgb::new(20, 40, 60)),
                     _ => edge.style.label = Some(AsciiRgb::new(20, 40, 60)),
                 }
                 assert_unallocated(&allocate(&graph, &layout, &charset), graph.edges.len());
+            }
+        }
+    }
+
+    #[test]
+    fn invisible_constraints_preserve_visible_channels_and_canonical_edge_indices() {
+        for direction in DIRECTIONS {
+            for merging in [false, true] {
+                let (mut graph, layout, charset) = if merging {
+                    fanin(direction, 9, GraphNodeShape::Rect)
+                } else {
+                    fanout(direction, 9, GraphNodeShape::Rect)
+                };
+                for edge in &mut graph.edges {
+                    if merging {
+                        edge.end_marker = GraphEdgeMarker::Circle;
+                    } else {
+                        edge.start_marker = GraphEdgeMarker::Circle;
+                    }
+                }
+                let expected = allocate(&graph, &layout, &charset);
+                let mut invisible = graph.edges[0].clone();
+                invisible.stroke = GraphEdgeStroke::Invisible;
+                invisible.start_marker = GraphEdgeMarker::Cross;
+                invisible.end_marker = GraphEdgeMarker::Cross;
+                invisible.style.line = Some(AsciiRgb::new(20, 40, 60));
+                // A leading duplicate, a reciprocal constraint, and a self-loop must
+                // neither consume a port nor change visible endpoint compatibility.
+                graph.edges.insert(0, invisible.clone());
+                std::mem::swap(&mut invisible.from, &mut invisible.to);
+                graph.edges.push(invisible.clone());
+                invisible.from = "source".into();
+                invisible.to = "source".into();
+                graph.edges.push(invisible);
+
+                let allocation = allocate(&graph, &layout, &charset);
+                for index in 0..9 {
+                    let before = expected.get(index).unwrap();
+                    let after = allocation
+                        .get(index + 1)
+                        .expect("invisible constraints must preserve the visible channel");
+                    assert_eq!(after.group, 1);
+                    assert_eq!(after.shared_endpoint, before.shared_endpoint);
+                    assert_eq!(after.attachments, before.attachments);
+                    assert_eq!(after.points, before.points);
+                    assert_eq!(after.label_host, before.label_host);
+                }
+                for index in [0, 10, 11] {
+                    assert!(allocation.get(index).is_none());
+                }
+
+                // Removing one visible branch leaves the remaining compatible group.
+                graph.edges[9].stroke = GraphEdgeStroke::Invisible;
+                let reduced = allocate(&graph, &layout, &charset);
+                for index in 1..9 {
+                    assert_eq!(reduced.get(index), allocation.get(index));
+                }
+                assert!(reduced.get(9).is_none());
             }
         }
     }
@@ -989,11 +1048,14 @@ mod tests {
     #[test]
     fn exact_work_is_admitted_and_one_unit_less_fails() {
         for merging in [false, true] {
-            let (graph, layout, charset) = if merging {
+            let (mut graph, layout, charset) = if merging {
                 fanin(GraphDirection::TopDown, 16, GraphNodeShape::LeanLeft)
             } else {
                 fanout(GraphDirection::TopDown, 16, GraphNodeShape::LeanLeft)
             };
+            let mut invisible = graph.edges[0].clone();
+            invisible.stroke = GraphEdgeStroke::Invisible;
+            graph.edges.push(invisible);
             let policy = AsciiResourcePolicy::unbounded();
             let measured = ResourceContext::new(policy);
             let expected = BranchAllocation::try_new(
@@ -1005,6 +1067,8 @@ mod tests {
                 AsciiExecution::for_test(&policy),
             )
             .unwrap();
+            assert!(expected.get(0).is_some());
+            assert!(expected.get(graph.edges.len() - 1).is_none());
             let work = measured.layout_work_used();
             for (limit, succeeds) in [(work, true), (work - 1, false)] {
                 let policy = policy

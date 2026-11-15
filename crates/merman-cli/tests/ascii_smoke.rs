@@ -852,7 +852,25 @@ fn node_vertical_padding_changes_rendered_report_without_collapsing_rank_gaps() 
         );
         assert!(default.status.success(), "stderr: {:?}", default.stderr);
         let default = assert_plain_ascii_report(&default.stdout);
-        assert_eq!(default["emitted_height"], 25);
+        assert_eq!(default["emitted_height"], 13);
+
+        let spacious = run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--format",
+                format,
+                "--ascii-report",
+                "--ascii-node-padding",
+                "1",
+                "--ascii-graph-padding-y",
+                "5",
+            ],
+            source,
+        );
+        assert!(spacious.status.success(), "stderr: {:?}", spacious.stderr);
+        let spacious = assert_plain_ascii_report(&spacious.stdout);
+        assert_eq!(spacious["emitted_height"], 25);
 
         let compact_nodes = run_with_stdin(
             &[
@@ -861,6 +879,10 @@ fn node_vertical_padding_changes_rendered_report_without_collapsing_rank_gaps() 
                 "--format",
                 format,
                 "--ascii-report",
+                "--ascii-node-padding",
+                "1",
+                "--ascii-graph-padding-y",
+                "5",
                 "--ascii-node-padding-y",
                 "0",
             ],

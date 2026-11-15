@@ -11,7 +11,7 @@ mod clearance;
 mod grid;
 mod groups;
 
-/// Additional coarse-grid coordinates available to bounded graph routing.
+/// Additional terminal cells available to bounded graph routing.
 pub(super) const ROUTING_GRID_MARGIN: usize = 6;
 
 pub(super) fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
@@ -29,20 +29,6 @@ pub(super) struct GraphLayout {
     pub(super) groups: Vec<GroupLayout>,
     /// Group indices ordered from containing backgrounds to nested backgrounds.
     pub(super) group_background_order: Vec<usize>,
-    column_widths: grid::AxisProjection,
-    row_heights: grid::AxisProjection,
-    offset_x: usize,
-    offset_y: usize,
-    pub(super) grid_aligned: bool,
-}
-
-impl GraphLayout {
-    pub(super) fn grid_to_canvas(&self, coord: GridCoord) -> CanvasCoord {
-        CanvasCoord {
-            x: self.offset_x + self.column_widths.position(coord.x),
-            y: self.offset_y + self.row_heights.position(coord.y),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -153,7 +139,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
     };
     check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
     checkpoint_layout(execution)?;
-    let (mut nodes, column_widths, row_heights) = grid::layout_nodes(
+    let (mut nodes, _, _) = grid::layout_nodes(
         graph,
         layout_policy,
         topology.as_ref(),
@@ -162,7 +148,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
         execution,
     )?;
     checkpoint_layout(execution)?;
-    let (mut laid_out_groups, group_offset_x, group_offset_y) = if graph.groups.is_empty() {
+    let (mut laid_out_groups, _, _) = if graph.groups.is_empty() {
         (
             groups::LaidOutGroups {
                 items: Vec::new(),
@@ -183,43 +169,16 @@ pub(super) fn layout_graph_with_resources_and_execution(
             execution,
         )?
     };
-    let (exterior_x, exterior_y) = clearance::reserve_exterior_routing(
-        graph,
-        &mut nodes,
-        &mut laid_out_groups.items,
-        resources,
-    )?;
-    let offset_x = nodes
-        .first()
-        .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
-        .unwrap_or(resources.checked_grid_add(group_offset_x, exterior_x)?);
-    let offset_y = nodes
-        .first()
-        .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
-        .unwrap_or(resources.checked_grid_add(group_offset_y, exterior_y)?);
+    clearance::reserve_exterior_routing(graph, &mut nodes, &mut laid_out_groups.items, resources)?;
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
     grid::materialize_node_labels(&mut nodes, graph, &label_plans, resources)?;
     checkpoint_layout(execution)?;
-    resources.charge_layout_work(nodes.len())?;
-    let mut grid_aligned = true;
-    for (index, node) in nodes.iter().enumerate() {
-        execution.checkpoint_loop(merman_model::OperationPhase::Layout, index)?;
-        grid_aligned &= Some(node.x) == offset_x.checked_add(column_widths.position(node.grid.x))
-            && Some(node.y) == offset_y.checked_add(row_heights.position(node.grid.y))
-            && node.width == column_widths.span(node.grid.x, 3)
-            && node.height == row_heights.span(node.grid.y, 3);
-    }
     Ok(GraphLayout {
         nodes,
         groups,
         group_background_order: laid_out_groups.background_order,
-        column_widths,
-        row_heights,
-        offset_x,
-        offset_y,
-        grid_aligned,
     })
 }
 
@@ -298,7 +257,7 @@ mod tests {
     use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
-    fn dense_marked_fanout_keeps_dimensions_and_translates_scene_and_grid_together() {
+    fn dense_marked_fanout_keeps_dimensions_and_translates_the_complete_scene() {
         use crate::graph::model::GraphEdgeMarker;
         for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
             let mut graph = AsciiGraph::new(direction);
@@ -336,15 +295,6 @@ mod tests {
                 assert_eq!(
                     (marked_node.x, marked_node.y),
                     (base_node.x + translation.0, base_node.y + translation.1)
-                );
-                let marked_coord = marked.grid_to_canvas(marked_node.grid);
-                let base_coord = baseline.grid_to_canvas(base_node.grid);
-                assert_eq!(
-                    marked_coord,
-                    CanvasCoord {
-                        x: base_coord.x + translation.0,
-                        y: base_coord.y + translation.1
-                    }
                 );
             }
         }
@@ -591,7 +541,7 @@ mod tests {
     }
 
     #[test]
-    fn scoped_empty_subtrees_keep_node_projection_and_unrelated_frame_gutters() {
+    fn scoped_empty_subtrees_preserve_containment_and_unrelated_frame_gutters() {
         for direction in [
             GraphDirection::LeftRight,
             GraphDirection::RightLeft,
@@ -626,14 +576,6 @@ mod tests {
                             .with_graph_padding_y(0);
                     }
                     let layout = layout_graph(&graph, &options);
-                    for node in &layout.nodes {
-                        let projected = layout.grid_to_canvas(node.grid);
-                        assert_eq!(
-                            (projected.x, projected.y),
-                            (node.x, node.y),
-                            "scope placement must preserve the routing projection contract"
-                        );
-                    }
                     let left = layout.groups.iter().find(|group| group.id == "L").unwrap();
                     let right = layout.groups.iter().find(|group| group.id == "R").unwrap();
                     let empty = layout.groups.iter().find(|group| group.id == "E").unwrap();

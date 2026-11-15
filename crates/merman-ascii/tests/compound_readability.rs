@@ -167,10 +167,31 @@ fn assert_group_frame(
         } else {
             (1, 0, 2, 8)
         };
+        let continues = |forward: bool, direction| {
+            let at = |distance: usize| {
+                let next_y = if forward {
+                    y.checked_add(dy * distance)
+                } else {
+                    y.checked_sub(dy * distance)
+                }?;
+                let next_x = if forward {
+                    x.checked_add(dx * distance)
+                } else {
+                    x.checked_sub(dx * distance)
+                }?;
+                rows.get(next_y)?.get(next_x).copied()
+            };
+            let Some(first) = at(1) else { return false };
+            // A horizontal overpass leaves exactly one cell of a vertical route
+            // unpainted. Require its immediate continuation beyond that crossing.
+            route_directions(first) & direction != 0
+                || (horizontal
+                    && first == '─'
+                    && at(2).is_some_and(|second| route_directions(second) & direction != 0))
+        };
         assert!(
-            route_directions(rows[y - dy][x - dx]) & before != 0
-                && route_directions(rows[y + dy][x + dx]) & after != 0,
-            "a route crossing {title} must continue straight on both sides of its frame:\n{rendered}"
+            continues(false, before) && continues(true, after),
+            "a route crossing {title} at ({x}, {y}) must continue straight on both sides of its frame:\n{rendered}"
         );
     }
 }

@@ -19,6 +19,7 @@ use rustc_hash::FxHashMap as HashMap;
 use std::cmp::Ordering;
 
 mod allocation;
+mod capacity;
 mod cell;
 mod geometry;
 mod label;
@@ -29,6 +30,7 @@ mod repair;
 mod terminal;
 #[cfg(test)]
 mod tests;
+mod validate;
 
 pub(super) use cell::RouteCells;
 use cell::{RouteCellPaint, set_edge_cell_with_paint, set_route_cell_with_paint};
@@ -45,12 +47,7 @@ use occupancy::{
 };
 #[cfg(test)]
 use path::StepDirection;
-#[cfg(test)]
-use plan::plan_edge_route;
-use plan::{
-    EdgeRouteCandidates, EdgeRouteRequest, MarkerEndpoint, PlannedRouteCellKind, RoutePlan,
-    plan_edge_route_candidates_with_topology, plan_obstacle_aware_edge_route,
-};
+use plan::{EdgeRouteRequest, MarkerEndpoint, PlannedRouteCellKind, RoutePlan};
 #[cfg(test)]
 use plan::{LabelAnchor, PlannedRouteSegment};
 
@@ -119,6 +116,7 @@ impl<'execution> RoutePaintCursor<'execution> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RouteOwner {
     canonical_edge_index: usize,
+    source_edge_index: usize,
     from: String,
     to: String,
     stroke: GraphEdgeStroke,
@@ -155,6 +153,7 @@ impl RouteOwner {
     fn for_test(canonical_edge_index: usize, from: &str, to: &str) -> Self {
         Self {
             canonical_edge_index,
+            source_edge_index: canonical_edge_index,
             from: from.to_string(),
             to: to.to_string(),
             stroke: GraphEdgeStroke::Normal,
@@ -408,11 +407,23 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         charset.width_profile,
         resources,
     )?;
-    let canonical_edges = canonical_edges.values;
+    let CanonicalEdges {
+        values: canonical_edges,
+        source_indices,
+    } = canonical_edges;
     let branch_allocation = allocation::BranchAllocation::try_new(
         graph,
         graph_layout,
         &canonical_edges,
+        charset,
+        resources,
+        execution,
+    )?;
+    capacity::preflight_fixed_port_capacity(
+        graph,
+        graph_layout,
+        &canonical_edges,
+        &branch_allocation,
         charset,
         resources,
         execution,
@@ -444,8 +455,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     let mut repair_budget = repair::SceneRepairBudget::default();
 
     let mut pending_self_loop_start = None::<usize>;
-    for ordinal in 0..route_order.as_ref().map_or(canonical_edges.len(), Vec::len) {
-        let edge_index = route_order.as_ref().map_or(ordinal, |order| order[ordinal]);
+    for edge_index in route_order {
         let edge = &canonical_edges[edge_index];
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
         if let Some(start) = pending_self_loop_start
@@ -490,21 +500,22 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             edge,
             charset,
         };
-        let EdgeRouteCandidates {
-            plans: candidates,
-            unsupported,
-        } = plan_edge_route_candidates_with_topology(
-            request,
-            topology.as_ref(),
-            label_plans.descriptor(edge_index),
-            resources,
-            execution,
-        )?;
+        let candidates = if edge.from == edge.to {
+            terminal::plan_self_loop_candidates(
+                request,
+                label_plans.descriptor(edge_index),
+                resources,
+                execution,
+            )?
+        } else {
+            Vec::new()
+        };
 
         let boundary_group_indices =
             route_boundary_group_indices(graph, topology.as_ref(), edge, resources)?;
         let mut owner = RouteOwner {
             canonical_edge_index: edge_index,
+            source_edge_index: source_indices[edge_index],
             from: edge.from.clone(),
             to: edge.to.clone(),
             stroke: edge.stroke,
@@ -568,7 +579,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             }
         }
         if !honors_allocation
-            && !graph_layout.grid_aligned
+            && !(edge.from == edge.to && selected.is_some())
             && let Some((score, plan)) = terminal::plan_direct_route(
                 request,
                 path::RouteObstacles {
@@ -624,6 +635,24 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 .map(|(score, plan)| (score, index, plan));
             }
         }
+        // Reconsider the bounded conflict component before a first-path search can spend
+        // the remaining operation budget exploring geometry that earlier routes occupy.
+        if selected.is_none()
+            && edge.from != edge.to
+            && repair::reorder_failed_route(
+                request,
+                topology.as_ref(),
+                &label_plans,
+                &owner,
+                &mut routes,
+                &mut occupancy,
+                &mut repair_budget,
+                resources,
+                execution,
+            )?
+        {
+            continue;
+        }
         if needs_terminal_search
             && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
                 request,
@@ -648,44 +677,12 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         }
         let plan = match selected {
             Some((_, _, plan)) => plan,
-            None => match plan_obstacle_aware_edge_route(
-                request,
-                topology.as_ref(),
-                path::RouteObstacles {
-                    scene: &occupancy,
-                    routes: &routes,
-                    owner: &owner,
-                },
-                label_plans.descriptor(edge_index),
-                resources,
-                execution,
-            )? {
-                Some(plan) => plan,
-                None => {
-                    if edge.from != edge.to
-                        && repair::reorder_failed_route(
-                            request,
-                            topology.as_ref(),
-                            &label_plans,
-                            &owner,
-                            &mut routes,
-                            &mut occupancy,
-                            &mut repair_budget,
-                            resources,
-                            execution,
-                        )?
-                    {
-                        continue;
-                    }
-                    return Err(AsciiError::UnsupportedFeature {
-                        diagram_type: graph.diagram_type(),
-                        feature: unsupported
-                            .map_or("routes crossing reserved graph geometry", |route| {
-                                route.feature()
-                            }),
-                    });
-                }
-            },
+            None => {
+                return Err(AsciiError::RoutingSearchExhausted {
+                    diagram_type: graph.diagram_type(),
+                    edge_index: source_indices[edge_index],
+                });
+            }
         };
         let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
         occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
@@ -750,12 +747,27 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     }
 
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    Ok(RouteScenePlan {
+    let scene = RouteScenePlan {
         routes,
         extent: (width, height),
         planned_cell_count,
         labels: label_plans,
-    })
+    };
+    if let Some(index) = validate::first_invalid_edge(
+        graph,
+        graph_layout,
+        &canonical_edges,
+        &scene,
+        charset,
+        resources,
+        execution,
+    )? {
+        return Err(AsciiError::RoutingSearchExhausted {
+            diagram_type: graph.diagram_type(),
+            edge_index: source_indices[index],
+        });
+    }
+    Ok(scene)
 }
 
 fn plan_allocated_channel(
@@ -808,10 +820,7 @@ fn plan_route_order(
     layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     resources: &ResourceContext,
-) -> Result<Option<Vec<usize>>> {
-    if layout.grid_aligned {
-        return Ok(None);
-    }
+) -> Result<Vec<usize>> {
     resources.charge_layout_work(resources.checked_work_add(layout.nodes.len(), edges.len())?)?;
     let mut visible_count = 0;
     for (index, edge) in edges.iter().enumerate() {
@@ -825,7 +834,7 @@ fn plan_route_order(
         .try_reserve(visible_count)
         .map_err(|_| layout_allocation_failed())?;
     if visible_count == 0 {
-        return Ok(Some(order));
+        return Ok(order);
     }
     let mut levels = HashMap::default();
     levels
@@ -849,14 +858,16 @@ fn plan_route_order(
     super::layout::charge_sort_work(order.len(), resources)?;
     order.sort_unstable_by_key(|&index| {
         let edge = &edges[index];
-        let feedback = edge.from != edge.to
-            && levels
-                .get(edge.from.as_str())
-                .zip(levels.get(edge.to.as_str()))
-                .is_some_and(|(from, to)| from >= to);
-        (!feedback, index)
+        let ranks = levels
+            .get(edge.from.as_str())
+            .zip(levels.get(edge.to.as_str()));
+        let feedback = edge.from != edge.to && ranks.is_some_and(|(from, to)| from >= to);
+        // Short rank intervals have fewer places for contacts and complete conditions.
+        // Reserve them before flexible skip edges can occupy their only direct corridor.
+        let span = ranks.map_or(usize::MAX, |(from, to)| from.abs_diff(*to));
+        (!feedback, span, index)
     });
-    Ok(Some(order))
+    Ok(order)
 }
 
 fn admit_route_candidate(

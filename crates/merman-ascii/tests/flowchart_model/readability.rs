@@ -100,7 +100,7 @@ fn four_to_six_incoming_edges_share_one_unstacked_target_head() {
 }
 
 #[test]
-fn wide_fan_in_shares_its_head_and_marked_fan_out_stays_independent_at_zero_padding() {
+fn wide_fan_in_and_marked_fan_out_share_only_compatible_common_heads_at_zero_padding() {
     for (incoming, marked_source) in [
         (8, false),
         (12, false),
@@ -125,7 +125,7 @@ fn wide_fan_in_shares_its_head_and_marked_fan_out_stays_independent_at_zero_padd
                 });
                 assert_readable_target_heads(
                     &rendered,
-                    if marked_source { incoming * 2 } else { 1 },
+                    if marked_source { incoming + 1 } else { 1 },
                 );
                 let common = if marked_source { "SOURCE" } else { "TARGET" };
                 assert_labels_once(&rendered, &[common]);
@@ -148,7 +148,7 @@ fn wide_fan_in_shares_its_head_and_marked_fan_out_stays_independent_at_zero_padd
 }
 
 #[test]
-fn dense_marked_fanout_keeps_every_head_readable_across_profiles_and_padding() {
+fn dense_marked_fanout_keeps_private_targets_and_a_shared_source_across_profiles_and_padding() {
     for count in [12, 14] {
         for direction in ["TD", "BT", "LR", "RL"] {
             let mut source = format!("flowchart {direction}\n");
@@ -165,7 +165,7 @@ fn dense_marked_fanout_keeps_every_head_readable_across_profiles_and_padding() {
                     let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
                         panic!("{count} marked branches, {direction}, {options:?}: {error}")
                     });
-                    assert_readable_target_heads(&rendered, count * 2);
+                    assert_readable_target_heads(&rendered, count + 1);
                     assert_labels_once(&rendered, &["SOURCE"]);
                     for index in 1..=count {
                         let label = format!("N{index:02}");

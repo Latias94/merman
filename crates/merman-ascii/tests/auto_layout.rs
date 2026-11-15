@@ -139,9 +139,15 @@ fn auto_applies_error_or_structured_fallback_to_the_selected_primary_extent() {
     assert_eq!(fallback.outcome, AsciiOutputOutcome::Fallback);
     assert_eq!(fallback.projection, AsciiProjection::StructuredText);
     assert!(fallback.emitted_extent.width <= 60);
-    for word in ["many", "words", "sometime"] {
-        assert_eq!(fallback.text.matches(word).count(), 4, "{}", fallback.text);
-    }
+    let complete_records = fallback.text.replace('\n', "");
+    assert_eq!(
+        complete_records
+            .matches("many words are too much sometime")
+            .count(),
+        4,
+        "{}",
+        fallback.text
+    );
 }
 
 #[test]
@@ -487,7 +493,7 @@ fn compact_and_auto_keep_sibling_group_frames_separate_at_width_fifty() {
         )
         .unwrap();
         assert_eq!(compact.primary_extent.width, 50);
-        assert_eq!(compact.primary_extent.height, 11);
+        assert_eq!(compact.primary_extent.height, 9);
         let automatic = render_model_report(
             &model,
             &options.with_layout_profile(AsciiLayoutProfile::Auto),

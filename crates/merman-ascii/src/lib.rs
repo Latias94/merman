@@ -658,11 +658,11 @@ fn render_flowchart_model(
             // A viewport fallback reuses the render-wide ledger. Preserve the work spent proving
             // that the primary graph is too wide, but discard its speculative document cells.
             Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
-            Err(error @ AsciiError::UnsupportedFeature { .. })
-                if execution.is_optional_layout_candidate() =>
-            {
-                Ok(Err(error))
-            }
+            Err(
+                error @ (AsciiError::UnsupportedFeature { .. }
+                | AsciiError::RoutingSearchExhausted { .. }
+                | AsciiError::PortCapacityExceeded { .. }),
+            ) if execution.is_optional_layout_candidate() => Ok(Err(error)),
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }
@@ -793,11 +793,11 @@ fn render_state_model(
         match result {
             // State diagrams share the graph renderer and the same render-wide fallback ledger.
             Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
-            Err(error @ AsciiError::UnsupportedFeature { .. })
-                if execution.is_optional_layout_candidate() =>
-            {
-                Ok(Err(error))
-            }
+            Err(
+                error @ (AsciiError::UnsupportedFeature { .. }
+                | AsciiError::RoutingSearchExhausted { .. }
+                | AsciiError::PortCapacityExceeded { .. }),
+            ) if execution.is_optional_layout_candidate() => Ok(Err(error)),
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }
@@ -1304,7 +1304,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "+---+     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n+---+     +---+\n"
+            "+---+     +---+\n| A |---->| B |\n+---+     +---+\n"
         );
     }
 
@@ -1345,7 +1345,7 @@ mod tests {
 
         assert_eq!(
             rendered,
-            "+---+          +---+\n|   |          |   |\n| A |--label-->| B |\n|   |          |   |\n+---+          +---+\n"
+            "+---+          +---+\n| A |--label-->| B |\n+---+          +---+\n"
         );
     }
 
@@ -1413,9 +1413,7 @@ mod tests {
                 "|       |\n",
                 "|       |\n",
                 "| +---+ |\n",
-                "| |   | |\n",
                 "| | A | |\n",
-                "| |   | |\n",
                 "| +---+ |\n",
                 "|       |\n",
                 "+-------+\n",
@@ -1452,9 +1450,7 @@ mod tests {
                 "|       |\n",
                 "|       |\n",
                 "| +---+ |\n",
-                "| |   | |\n",
                 "| | A | |\n",
-                "| |   | |\n",
                 "| +---+ |\n",
                 "|       |\n",
                 "+-------+\n",

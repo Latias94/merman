@@ -12,6 +12,7 @@ use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
 
 /// One visibly empty cell separates unrelated frames and their contents.
+#[cfg(test)]
 const COMPOUND_READING_GUTTER: isize = 1;
 
 #[derive(Clone, Copy)]
@@ -44,6 +45,7 @@ struct GroupEnvelope {
     members: Vec<usize>,
     grid: GridBounds,
     canvas: RawBounds,
+    gutter: isize,
 }
 
 /// Convert measured frame overhang into shared axis dimensions before final projection. A
@@ -55,6 +57,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
     nodes: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    demand: &crate::graph::demand::SceneDemand<'_>,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &mut ResourceContext,
@@ -66,6 +69,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
             nodes,
             topology,
             policy,
+            demand,
             column_widths,
             row_heights,
             resources,
@@ -80,6 +84,7 @@ fn reserve_compound_axis_spacing_inner(
     nodes: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    demand: &crate::graph::demand::SceneDemand<'_>,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -94,7 +99,7 @@ fn reserve_compound_axis_spacing_inner(
     let group_bounds =
         raw_group_bounds_batch(graph, nodes, topology, policy, resources, execution)?;
     let mut membership_resources = resources.clone();
-    for group_index in 0..graph.groups.len() {
+    for (group_index, group) in graph.groups.iter().enumerate() {
         execution.checkpoint_loop(OperationPhase::Layout, group_index)?;
         let members = group_member_indices(topology, group_index, &mut membership_resources)?;
         let Some(first) = members.first().and_then(|index| nodes.get(*index)) else {
@@ -118,6 +123,7 @@ fn reserve_compound_axis_spacing_inner(
             members,
             grid,
             canvas,
+            gutter: demand.group_clearance(&group.id, resources)?,
         });
     }
 
@@ -163,6 +169,7 @@ fn reserve_envelope_spacing(
                 GridBounds::for_node(node.grid, resources)?,
                 node_canvas_bounds(node, resources)?,
                 direction,
+                envelope.gutter,
                 column_widths,
                 row_heights,
                 &mut column_requirements,
@@ -180,6 +187,7 @@ fn reserve_envelope_spacing(
                 other.grid,
                 other.canvas,
                 direction,
+                envelope.gutter.max(other.gutter),
                 column_widths,
                 row_heights,
                 &mut column_requirements,
@@ -215,6 +223,7 @@ fn reserve_pair_spacing(
     right_grid: GridBounds,
     right_canvas: RawBounds,
     direction: GraphDirection,
+    gutter: isize,
     columns: &AxisSizes,
     rows: &AxisSizes,
     column_requirements: &mut AxisSizes,
@@ -294,7 +303,7 @@ fn reserve_pair_spacing(
         .checked_sub(before_border)
         .and_then(|gap| gap.checked_sub(1))
         .ok_or_else(|| resources.grid_overflow())?;
-    let extra = COMPOUND_READING_GUTTER
+    let extra = gutter
         .checked_sub(current_gutter)
         .ok_or_else(|| resources.grid_overflow())?;
     if extra <= 0 {
@@ -360,6 +369,7 @@ mod tests {
         ];
         let envelopes = vec![
             GroupEnvelope {
+                gutter: COMPOUND_READING_GUTTER,
                 members: vec![0],
                 grid: GridBounds {
                     x: 0,
@@ -375,6 +385,7 @@ mod tests {
                 },
             },
             GroupEnvelope {
+                gutter: COMPOUND_READING_GUTTER,
                 members: vec![1],
                 grid: GridBounds {
                     x: 4,
@@ -426,6 +437,7 @@ mod tests {
                 bottom: 8,
             },
             GraphDirection::LeftRight,
+            COMPOUND_READING_GUTTER,
             &columns,
             &rows,
             &mut column_requirements,

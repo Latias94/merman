@@ -84,7 +84,13 @@ pub(super) fn group_routing_policies(
         };
         let vertical = from.center_x() == to.center_x() && from.center_y() != to.center_y();
         let horizontal = from.center_y() == to.center_y() && from.center_x() != to.center_x();
-        if !vertical && !horizontal {
+        let label = edge
+            .label
+            .as_deref()
+            .map(|label| try_measure_edge_label(label, policy.terminal_width_profile, resources))
+            .transpose()?
+            .flatten();
+        if !vertical && !horizontal && label.is_none() {
             continue;
         }
         let mut blocked = false;
@@ -99,7 +105,7 @@ pub(super) fn group_routing_policies(
                     && from.center_x() <= resources.checked_grid_add(node.right(), 1)?
                     && node.y <= from.center_y().max(to.center_y())
                     && node.bottom() >= from.center_y().min(to.center_y());
-            } else {
+            } else if horizontal {
                 blocked = node.y.saturating_sub(1) <= from.center_y()
                     && from.center_y() <= resources.checked_grid_add(node.bottom(), 1)?
                     && node.x <= from.center_x().max(to.center_x())
@@ -109,7 +115,7 @@ pub(super) fn group_routing_policies(
                 break;
             }
         }
-        if !blocked {
+        if !blocked && label.is_none() {
             continue;
         }
         let mut topology_resources = resources.clone();
@@ -132,11 +138,39 @@ pub(super) fn group_routing_policies(
             }
         }
         if let Some((_, group_index)) = innermost {
+            let requested_title_clearance = policy.group_title_clearance;
             let policy = &mut policies[group_index];
-            if vertical {
+            if blocked && vertical {
                 policy.group_padding_x = policy.group_padding_x.max(MIN_TRANSIT_PADDING);
-            } else {
+            } else if blocked && horizontal {
                 policy.group_padding_y = policy.group_padding_y.max(MIN_TRANSIT_PADDING);
+            }
+            if let Some(label) = label {
+                // Node contours no longer grow with their shared axis bands. Preserve the
+                // internal channel's complete label block in the enclosing frame instead.
+                let span_x = resources
+                    .checked_grid_add(from.right().max(to.right()) - from.x.min(to.x), 1)?;
+                let span_y = resources
+                    .checked_grid_add(from.bottom().max(to.bottom()) - from.y.min(to.y), 1)?;
+                let extra_x = resources
+                    .checked_grid_add(label.max_width, 2)?
+                    .saturating_sub(span_x)
+                    .div_ceil(2);
+                let extra_y = resources
+                    .checked_grid_add(label.line_count, 2)?
+                    .saturating_sub(span_y)
+                    .div_ceil(2);
+                policy.group_padding_x = policy
+                    .group_padding_x
+                    .max(resources.checked_grid_add(extra_x, 1)?);
+                policy.group_padding_y = policy
+                    .group_padding_y
+                    .max(resources.checked_grid_add(extra_y, 1)?);
+                // The upper envelope uses title clearance, while group_padding_y owns
+                // only the bottom. Admit both halves of a centered multiline condition.
+                policy.group_title_clearance = policy
+                    .group_title_clearance
+                    .max(resources.checked_grid_add(requested_title_clearance, extra_y)?);
             }
         }
     }

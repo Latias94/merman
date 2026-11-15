@@ -1,6 +1,7 @@
 use super::rank::RankLevels;
 use super::{GridCoord, charge_sort_work, index_order, node_indices_by_id, try_reserve_vec};
 use crate::error::Result;
+use crate::graph::demand::SceneDemand;
 use crate::graph::layout::NodeLayout;
 use crate::graph::model::{AsciiGraph, GraphDirection, GraphNodeSide};
 use crate::graph::shape::GraphNodeShapeSize;
@@ -140,6 +141,7 @@ pub(super) fn compact_nodes(
     graph: &AsciiGraph,
     nodes: &mut [NodeLayout],
     sizes: &[GraphNodeShapeSize],
+    demand: &SceneDemand<'_>,
     policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<()> {
@@ -204,11 +206,12 @@ pub(super) fn compact_nodes(
                 } else {
                     sizes[index].width
                 };
-                let center = resources.checked_grid_add(cursor, size / 2)?;
+                let extent = demand.cross_extent(&nodes[index].id, size, resources)?;
+                let center = resources.checked_grid_add(cursor, extent / 2)?;
                 offsets[index] = resources.checked_grid_mul(center, 2)?;
                 positions[index] = offsets[index];
                 cursor =
-                    resources.checked_grid_add(resources.checked_grid_add(cursor, size)?, gap)?;
+                    resources.checked_grid_add(resources.checked_grid_add(cursor, extent)?, gap)?;
             }
             layers.push(start..end);
             start = end;

@@ -62,10 +62,6 @@ impl RoutedLabelPlacement {
         Self { x, y, width }
     }
 
-    pub(in crate::graph) fn canvas_extent_for_lines(self, line_count: usize) -> (usize, usize) {
-        (self.x + self.width, self.y + line_count.max(1))
-    }
-
     pub(in crate::graph) fn x(self) -> usize {
         self.x
     }
@@ -394,49 +390,6 @@ pub(super) fn routed_label_placement_for_descriptor(
     Some(RoutedLabelPlacement::new(x, y, descriptor.width()))
 }
 
-#[cfg(test)]
-pub(super) fn routed_label_right_of_vertical_route_placement(
-    start: CanvasCoord,
-    end: CanvasCoord,
-    text: &str,
-) -> Option<RoutedLabelPlacement> {
-    let text = RoutedLabelText::new(text)?;
-    routed_label_right_of_vertical_route_placement_for_text(start, end, &text)
-}
-
-#[cfg(test)]
-pub(super) fn routed_label_right_of_vertical_route_placement_for_text(
-    start: CanvasCoord,
-    end: CanvasCoord,
-    text: &RoutedLabelText,
-) -> Option<RoutedLabelPlacement> {
-    routed_label_right_of_vertical_route_placement_for_descriptor(
-        start,
-        end,
-        RoutedLabelDescriptor {
-            catalog_index: 0,
-            width: text.width(),
-            line_count: text.line_count(),
-        },
-    )
-}
-
-pub(super) fn routed_label_right_of_vertical_route_placement_for_descriptor(
-    start: CanvasCoord,
-    end: CanvasCoord,
-    descriptor: RoutedLabelDescriptor,
-) -> Option<RoutedLabelPlacement> {
-    if start.x != end.x {
-        return None;
-    }
-
-    Some(RoutedLabelPlacement::new(
-        start.x + 1,
-        label_block_y(vertical_label_y(start, end), descriptor.line_count()),
-        descriptor.width(),
-    ))
-}
-
 fn horizontal_label_x(start: CanvasCoord, end: CanvasCoord, width: usize) -> usize {
     let min_x = start.x.min(end.x);
     let max_x = start.x.max(end.x);
@@ -539,29 +492,6 @@ mod tests {
         assert_eq!(
             routed_label_placement(start, end, "north<br>south"),
             Some(RoutedLabelPlacement::new(6, 5, 5))
-        );
-        assert_eq!(
-            routed_label_right_of_vertical_route_placement(start, end, "north<br>south"),
-            None
-        );
-    }
-
-    #[test]
-    fn routed_label_right_of_vertical_route_requires_vertical_route() {
-        let start = CanvasCoord { x: 10, y: 1 };
-        let end = CanvasCoord { x: 10, y: 7 };
-
-        assert_eq!(
-            routed_label_right_of_vertical_route_placement(start, end, "back"),
-            Some(RoutedLabelPlacement::new(11, 4, 4))
-        );
-        assert_eq!(
-            routed_label_right_of_vertical_route_placement(
-                CanvasCoord { x: 1, y: 1 },
-                CanvasCoord { x: 4, y: 1 },
-                "bad",
-            ),
-            None
         );
     }
 

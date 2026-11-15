@@ -152,15 +152,15 @@ forward/backward barycenter ordering and integer layer compaction, allowing both
 merges to influence alignment. State side constraints remain part of the ordering. Compound
 placement continues to enforce containment and local direction before frame allocation.
 
-For scenes without containers, terminal coordinates and node dimensions follow each node's own
-text and shape demand. A coarse projection is not authoritative after this compaction. Coarse
-route candidates are admitted only while node coordinates and dimensions still match that
-projection; actual-contact orthogonal candidates and terminal search serve the resulting geometry.
+Terminal coordinates and node dimensions follow each node's own text, shape, and contact demand,
+including scenes with containers. Shared axis bands reserve channel space without stretching
+unrelated node contours. Compound frames retain the complete internal label footprint separately
+from node outlines. Actual-contact orthogonal channels and terminal search own route geometry.
 Finite candidate paths admit their retained cells before allocation. The final scene owns the
 two-dimensional grid admission, so a discarded projection or unselected exterior candidate cannot
 reject a fitting diagram by charging an imaginary canvas.
 
-Non-aligned scenes identify feedback connections before route admission. Short direct and exterior
+Scenes identify feedback connections before route admission. Short direct and exterior
 channels are compared before terminal search. Candidate labels receive valid host positions before
 scoring, and scene growth includes those positions. A growing scene can trigger bounded refinement
 even without a port conflict. Optional repairs share one scene-wide expansion allowance, while a
@@ -168,19 +168,44 @@ search for the first valid path remains subject to the operation budget. Predete
 self-loops retain deferred label placement until their complete nested batch is known. Exhausting
 the optional allowance cannot flush that batch. Every candidate must carry its visible edge label;
 geometry that drops a condition is not admissible. These changes replace the sequential node-slot
-placement mechanism. General port/channel negotiation remains separate work;
-this ordering change alone does not establish the terminal presentation comparison floor.
+placement mechanism. The common presentation corpus separately checks complete output and tracing
+effort; layer alignment by itself is insufficient evidence.
+
+## Whole-scene demand and compact contours
+
+Before allocating coordinates, scene demand validates every endpoint, including invisible layout
+constraints, and measures complete edge-label blocks. Compatible flat branches and merges may
+reserve one common contact. Parallel, reciprocal, mixed-style, and compound demand retains private
+contact capacity. Invisible constraints do not disable an otherwise valid visible channel. Compound
+scenes reserve both contact axes before local directions and boundary routing choose a side.
+Growing a slanted contour also grows its width, preserving the label's interior clearance.
+
+Flowchart and Swimlane default to zero vertical node padding and a one-cell preferred vertical
+rank gap. Canonical horizontal rank spacing and Compact's family-specific wrap and horizontal gap
+remain unchanged. Explicit axis padding or `with_node_padding` / `with_graph_padding_y` overrides
+retain their requested values. State resolves its original family policy independently.
+Visible edges reserve marker cells and an actual stroke even at zero preferred spacing. A label
+cannot replace a turn or either immediate continuation at a crossed container frame. Those reading
+guards are extracted once per plan and reused across candidate label positions.
 
 ## Reversible route contributions
 
-If ordinary routing finishes without a valid path for a non-loop edge, scene routing may give
-that edge priority over one earlier contributor. A scene shares a four-proposal allowance and
+If ordinary routing has no valid path for a non-loop edge, scene routing may give
+that edge priority over a bounded set of earlier contributors. A scene shares a four-proposal allowance and
 the existing optional terminal-search expansion allowance. Each proposal replays the retained
 contributors into a provisional occupancy, admits the blocked edge, and replans the displaced
-edge. Both routes must materialize their markers and labels before the proposal replaces the
+edges. Every replacement must materialize its markers and labels before the proposal replaces the
 incumbent. Routine proposal failure restores the original route order without allocating or
 replaying the old scene. Cancellation and resource failures restore geometry and propagate;
 consumed work is never refunded.
+
+Search uses an implicit compressed orthogonal channel graph. Its sorted axes contain obstacle
+boundaries, actual contour ports, route turns, marker claims, and complete label-reservation
+boundaries with reading/transit clearance. The Cartesian product is never allocated. A* moves
+between adjacent coordinate events, preserving direction, bend, crossing, and congestion costs;
+each segment still checks every covered terminal cell against occupancy and container access.
+Only a winning channel expands to the unit-cell path used by the existing canvas. Long empty
+spans therefore consume few search states without skipping resource work or collision checks.
 
 Replaying preserves canonical edge identities while remapping dense occupancy indices. Active
 cells, exact materialized markers, label-to-host reservations, and original terminal candidate
@@ -188,17 +213,26 @@ claims are distinct contributions. A relocated marker must not create a new cand
 when its route is replayed. Provisional occupancy retains and admits the original scene's route
 capacity, including replacement and later edges.
 
-This is a bounded one-contributor repair, not joint port/channel negotiation. It runs after
-ordinary required search and the coarse fallback finish without a route; it does not recover
-from a search that has already terminated the operation through cancellation or resource limits.
-No-route results remain heuristic failures, not certified spatial impossibility. Changing that
-stage order and improving shared-trunk presentation require separate whole-scene evidence.
+Repair considers at most three recent contributors intersecting the blocked corridor. It tries
+each alone, then the complete retained conflict set, before required terminal search can consume
+the remaining operation budget. The two-contributor regression requires both earlier conditions
+to move; neither single removal opens the new edge. No-route results remain heuristic failures,
+not certified spatial impossibility. `RoutingSearchExhausted` retains the original, zero-based
+authored edge index through canonical ordering and public diagnostics. Resource and cancellation
+errors remain distinct and terminal.
+
+Fixed Text, State pseudostate, choice, and fork/join contours also have a necessary capacity
+preflight after joint allocation. It counts independent marked endpoints against an upper bound
+of admitted contacts times the bounded marker-candidate window, collapsing only explicitly shared
+heads. `PortCapacityExceeded` certifies pressure beyond that current presentation's bound; it does
+not establish that every alternative layout or representation is impossible. Obstacles and failed
+heuristic searches cannot tighten this certificate.
 
 ## Compatible branch and merge channels
 
 Flat forward branches or merges may allocate their common contact, channel, and private endpoint
 contacts as a group before route selection. The group retains every canonical edge identity and
-keeps conditions on private legs. Common-source groups require open source markers; their target
+keeps conditions on private legs. Common-source groups require the same source marker kind; their target
 markers remain independent. Common-target groups require the same target marker kind; their source
 markers remain independent. Both require distinct private endpoints with distinct cross-axis
 intercepts and compatible strokes and styles. Parallel, reciprocal, self-loop, container,
@@ -207,19 +241,48 @@ label measurements and authored minimum main-axis spans are checked before an al
 
 An edge belongs to at most one channel group. Source groups have deterministic precedence over
 target groups, avoiding a joined bus that implies unrelated source/target pairs. A common target
-marker may share only its allocated terminal berth. Each route retains its own materialized marker;
+marker or common source marker may share only its allocated terminal berth. Each route retains its own materialized marker;
 occupancy needs one representative, which replay chooses again after removing any contributor.
 Marker relocation does not grant a new sharing position.
 
 Each admitted contributor owns its allocated geometry, not just a sharing identifier. A valid
 joint channel takes precedence over shorter per-edge alternatives. Optional searches cannot
-dismantle it, and a one-contributor reorder must re-admit the same channel or reject the proposal.
+dismantle it, and a congestion reorder must re-admit the same channel or reject the proposal.
 Its compatibility identity allows shared trunk cells without a congestion penalty. Unrelated
 contributors may cross transversely but cannot merge collinearly into that trunk and imply new
 source/target combinations. Conditions require a private label host; placing clear text beside
 an already shared host is insufficient.
 
-This channel allocation removes independent wrapping wires in ordinary compatible fan-outs and
-fan-ins. It does not compact node outlines or cross-axis spacing, negotiate whole conflict
-components, or replace the full-field width fallback. Those are separate remaining parts of
-terminal presentation planning.
+Collinear sharing requires a declared compatible channel, an exact common terminal ray, or the
+actual shared contact. Unrelated same-stroke routes may cross transversely but cannot join into a
+bus that implies an additional relationship. Short rank intervals reserve their scarce corridors
+before flexible skip edges. Canonical edge identity breaks ties deterministically.
+
+An unrelated transverse crossing paints the horizontal stroke as an overpass, leaving a one-cell
+gap in the vertical stroke. The retained plan keeps both directions and stroke identities; a real
+branch or merge retains its junction. Frame portals remain part of the closed container outline.
+This distinguishes a crossing from a shared bus without adding a legend to ordinary diagrams.
+
+Before materialization, the retained scene is checked against canonical edge identity, endpoint
+ownership, complete labels, marker requests, shape contacts, container access, and shared-channel
+geometry. The canonical leader of an allocation may have taken a private route; validation uses
+the actual retained members as its geometric representatives. Validation performs no route search.
+Reciprocal step connectivity joins both terminals and every active contribution, allowing only
+the suppressed terminal-tail exception. One retained presentation index detects label/host-gap
+collisions with other relationships, markers, and labels before text overlay can erase information.
+
+## Readable graph width fallback
+
+Flowchart, State, and Swimlane use a graph document when the selected primary exceeds an explicit
+Fallback viewport. Node and group keys distinguish identity, membership, and actual endpoints;
+each edge retains a separate relationship record with its markers, stroke, and complete condition.
+Flowchart declares nodes on first relationship use, reducing duplicate tables and key lookups;
+isolated nodes and extra authored details remain available. Legends describe distinctions that
+are actually used. State retains its pseudostates, composite membership, concurrency, notes, and
+authored document facts. Grapheme-safe reflow preserves complete text under Unicode and CJK width
+policies, using the existing bounded serialization and shared operation ledger.
+
+This changes presentation without adding a backend option or changing report schema 3. Allow,
+Error, fixed layout profiles, Auto's two-attempt bound, Plain-only fallback admission, and the
+precedence of cancellation/resource errors retain their established meanings. A failed initial
+route search does not turn into a width fallback.

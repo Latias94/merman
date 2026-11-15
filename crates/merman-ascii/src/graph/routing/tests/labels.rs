@@ -1,6 +1,150 @@
 use super::*;
 
 #[test]
+fn exhausted_label_search_keeps_the_authored_edge_index_and_heuristic_diagnostic() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("blocker", "B");
+    let mut layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    layout.nodes[0].x = 0;
+    layout.nodes[0].y = 0;
+    layout.nodes[0].width = 100;
+    layout.nodes[0].height = 100;
+    let mut label = PlannedRouteLabel::new(
+        RoutedLabelText::new("tag").unwrap(),
+        RoutedLabelPlacement::new(3, 2, 3),
+    );
+    label.anchor = LabelAnchor::Segment {
+        start: CanvasCoord { x: 2, y: 2 },
+        end: CanvasCoord { x: 8, y: 2 },
+        route_segment: None,
+    };
+    let plan = RoutePlan::new_without_markers_for_test(
+        (2..=8)
+            .map(|x| planned_cell(x, 2, '-', PlannedRouteCellKind::EdgeLine))
+            .collect(),
+        vec![label],
+    );
+    // Simulate a retained contribution after geometry has consumed its last local
+    // label lane. The bounded label allocator must report a search miss, not claim
+    // that the diagram's label semantics are unsupported.
+    let mut routes = vec![PreparedRoute::for_test(plan, 0)];
+    routes[0].owner.source_edge_index = 37;
+    let mut resources = unbounded_resources();
+    let mut occupancy =
+        SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
+    assert_eq!(
+        allocate_committed_route_labels(
+            &mut routes[0],
+            0,
+            &mut occupancy,
+            &mut resources,
+            "flowchart"
+        ),
+        Err(AsciiError::RoutingSearchExhausted {
+            diagram_type: "flowchart",
+            edge_index: 37
+        }),
+    );
+}
+
+#[test]
+fn feedback_conditions_do_not_float_away_to_claim_an_already_occupied_row() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for (id, label) in [
+        ("A", "Input"),
+        ("B", "Parse"),
+        ("C", "Validate"),
+        ("D", "Write"),
+        ("E", "Done"),
+    ] {
+        graph.add_node(id, label);
+    }
+    for (from, to) in [("A", "B"), ("B", "C"), ("C", "D"), ("D", "E")] {
+        graph.add_edge(from, to);
+    }
+    for (from, to, label) in [("C", "B", "retry"), ("D", "A", "failed")] {
+        graph.add_edge_with_attrs(
+            from,
+            to,
+            GraphEdgeAttrs {
+                label: Some(label.into()),
+                ..Default::default()
+            },
+        );
+    }
+    let options = AsciiRenderOptions::unicode();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut unbounded_resources(),
+    )
+    .unwrap();
+    for route in &scene.routes {
+        for label in &route.plan.labels {
+            let LabelAnchor::Segment { start, end, .. } = label.anchor else {
+                panic!("feedback conditions must retain an actual segment");
+            };
+            let gap = if start.y == end.y {
+                start
+                    .y
+                    .saturating_sub(label.placement.y() + label.line_count())
+                    .max(label.placement.y().saturating_sub(start.y + 1))
+            } else {
+                start
+                    .x
+                    .saturating_sub(label.placement.x() + label.placement.width())
+                    .max(label.placement.x().saturating_sub(start.x + 1))
+            };
+            assert_eq!(
+                gap, 0,
+                "{} -> {}: {label:?}",
+                route.owner.from, route.owner.to
+            );
+        }
+    }
+}
+
+#[test]
+fn label_reading_guards_do_not_rescan_nodes_for_every_path_cell_and_candidate() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for index in 0..100 {
+        graph.add_node(format!("n{index}"), "N");
+    }
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    let mut resources = unbounded_resources();
+    let policy = resources.policy();
+    let occupancy = SceneOccupancy::try_new_for_routes(
+        &layout,
+        1,
+        4,
+        &mut resources,
+        AsciiExecution::for_test(&policy),
+    )
+    .unwrap();
+    let plan = RoutePlan::new_without_markers_for_test(
+        (0..200)
+            .map(|x| planned_cell(x, 0, '-', PlannedRouteCellKind::EdgeLine))
+            .collect(),
+        Vec::new(),
+    );
+    let before = resources.layout_work_used();
+    let guards = occupancy.label_reading_guards(&plan, &resources).unwrap();
+    assert!(guards.is_empty());
+    for x in 0..40 {
+        let candidate = OccupiedRect::try_new(x, 2, 5, 1, &resources).unwrap();
+        assert!(
+            occupancy
+                .label_preserves_route_reading(&guards, candidate, &resources)
+                .unwrap()
+        );
+    }
+    assert!(resources.layout_work_used() - before <= 301);
+}
+
+#[test]
 fn route_scene_relocates_labels_that_cover_endpoint_markers() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);

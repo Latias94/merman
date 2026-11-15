@@ -52,9 +52,9 @@ product boundary.
 ## Terminal Presentation Floor
 
 Terminal graph presentation is best effort. A finite, non-zoomable terminal cannot display every
-graph as continuous artwork. For the common supported comparison corpus, the refactor targets
+graph as continuous artwork. For the common supported comparison corpus, the planner is evaluated for
 comprehension at least as good as the best qualified Grok or mermaid-ascii result. This is a
-per-case acceptance target, not a claim that the current renderer already meets it or that one
+per-case acceptance target, not a claim that one
 algorithm dominates every possible graph.
 
 The original inputs and reading questions live in
@@ -114,27 +114,51 @@ acceptance. It also does not require reference source or binaries in release CI.
 The historical notes below describe the existing implementation and its regressions; independent
 arrowhead counts are not a permanent requirement for a future unambiguous shared presentation.
 
-Terminal layer ordering and independent node sizing have their own semantic and resource tests.
-The Issue #53 viewport characterization changes from 74×57 to 76×57 in Canonical and from
-56×67 to 57×67 in Compact, retaining the same fit classifications at 60/80/100/120 columns.
-Those small width increases are recorded tradeoffs, not comparison-floor wins. The frozen gallery
-above remains the pre-refactor baseline. Layer alignment alone does not resolve tall fan-outs,
-shared terminal capacity, or the full-field width fallback; the common-case presentation floor
-still requires joint allocation and route reconsideration.
+## Terminal planner comparison
 
-Compatible common-source branches and common-target merges now retain an explicit shared-channel
-allocation through route commitment and bounded replay. In the original unbounded `fan-out-12-lr`
-input, the current output is 29×115 with one trunk and private target branches, compared with the
-frozen 31×115 baseline's independent wrapping wires. The `fan-in-12-lr` output is 26×115 with one
-merge channel and shared target head, compared with the frozen 28×117 baseline. Source markers and
-conditions remain private, and incompatible target marker kinds cannot share a head. An edge
-cannot join two independent channel groups and imply additional relationships. Group proposals
-remain subject to label and marker occupancy; a crowded private label can retain an independent
-route instead of joining the proposed channel.
+The frozen table above retains the pre-refactor baseline. Current terminal planning uses whole-scene
+endpoint/label demand, independent contours, jointly allocated compatible channels, and reversible
+local conflict repair. Actual-contact channels and compressed orthogonal search replace the old
+coarse route selectors and emergency detours. Source and target heads may share their precise allocated
+berth; incompatible markers, conditions, and unrelated endpoint pairs remain distinct.
 
-The unchanged 115-row height remains a presentation gap against Grok's qualified 28×48 fan-out
-and 25×48 fan-in results. The 80-column sixteen-way and long-label requests still emit the existing
-full-field fallback; channel improvements do not establish the complete comparison floor.
+Current measured output dimensions, including all detail rows, are **columns × rows**:
+
+| Input / request | Current Merman | Frozen Merman | Qualified comparison |
+| --- | --- | --- | --- |
+| `five-edge`, unbounded | 35 × 6, diagram | 35 × 8, diagram | Grok: 32 × 6; all five direct relationships remain traceable |
+| `fork-merge`, unbounded | 22 × 15, diagram | 26 × 25, diagram | Grok: 21 × 13; short explicit branches and merge |
+| `fan-out-12-lr`, unbounded | 29 × 47, diagram | 31 × 115, diagram | Grok: 28 × 48; twelve private target branches |
+| `fan-in-12-lr`, unbounded | 26 × 47, diagram | 28 × 117, diagram | Grok: 25 × 48; twelve sources and one explicit sink |
+| `fan-out-16-td`, 80 columns | 62 × 19, graph document | 41 × 640, model-field fallback | Grok: 77 × 20 source frame; first-use target declarations avoid a second lookup table |
+| `long-labels`, 80 columns | 80 × 11, graph document | 69 × 205, model-field fallback | Grok: 80 × 12 source frame; both complete conditions and all endpoints remain recoverable |
+
+The width matrix is executable in `tests/presentation_floor.rs`, using the same original 13 inputs
+at unbounded/60/80/100/120 cells, ASCII/Unicode structure, and Unicode/CJK width profiles. At those
+four bounded widths, sixteen-way TD uses 20/19/19/19 rows, and long-label output uses 13/11/11/9.
+The fallback declares each Flowchart node with its first relationship, then refers to its key;
+complete labels may continue on the following physical row. Group membership, real member
+endpoints, types, marker/stroke distinctions, and per-edge conditions remain explicit. The document
+does not reproduce a diagram's spatial direction, and reports `structured_text` and
+`presentation_only` through the existing output contract.
+
+Geometry alone remains insufficient. The `feedback` comparison keeps `retry` on Validate→Parse
+and `failed` on Write→Input. Conditions cannot float away from their host to claim a smaller area,
+and a transverse crossing paints a horizontal overpass rather than a joined bus. The two
+group-member examples retain different actual endpoints, where Grok's identical frame-level output
+does not supply a qualified reference. Distinguishing PRODUCTION/STAGING suffixes remain complete.
+
+The independent generated oracle fixes 486 Interactive scene attempts and 3,042 visible edge
+contributions, with up to eight nodes/twelve edges, nine topology categories, three edge orders,
+and LR/TD plus normal/zero preferred gaps. Failures remain in the denominator. The historical
+baseline-success set includes 54 ordered-chain attempts independently checked for continuity and
+direction. Existing State/Swimlane, four-direction, marker, container, CJK, and cancellation tests
+cover the additional family boundaries; this finite corpus is not an arbitrary-graph guarantee.
+
+Issue #53 changes from the historical 74×57/56×67 characterization to 76×40 Canonical and 63×50
+Compact. Compact narrows the scene while retaining visible turns, spending more area and blank
+cells than current Canonical. That tradeoff is recorded explicitly rather than counted as a
+universal density improvement. All original frozen reference captures remain unchanged.
 
 ## Reference Corpus Snapshot
 
@@ -142,7 +166,8 @@ The 2026-11-14 routing follow-up inspected the optional `mermaid-ascii` checkout
 `5a9df1560871e1ef8037c052b3b5d87de503bc9e`. Its
 `backlink_with_short_y_padding.txt` contains the five-edge graph `A -> B`, `A -> C`, `B -> C`,
 `B -> D`, `D -> C`, but the copied output shows four arrowheads after sharing the merge terminal.
-Merman keeps the DAG ranks and all five independent heads instead of copying that layout. Local
+The pre-refactor Merman baseline kept the DAG ranks and all five independent heads. The current
+planner permits a shared head when its compatible merge retains all five direct relationships. Local
 regressions additionally cover four-to-six-way merges, six-way branch/merge graphs, mixed strokes,
 edge-order permutations, wide labels, and long labeled feedback in Canonical and Compact output.
 The improvements remain implementation policy rather than a new byte-level reference oracle.
@@ -158,7 +183,7 @@ direction and reserves a real separator outside endpoint content. Neither refere
 independent-marker oracle for arbitrary degree, and dense marked fan-out remains bounded.
 Boundary endpoints reserve exterior transit space when marked demand exceeds their reachable
 shape-valid contacts. Complete scene translation preserves ranks, node sizes, compound frames,
-and the coarse-grid origin. Different branches at the same endpoint cannot form an adjacent
+and open region spans. Different branches at the same endpoint cannot form an adjacent
 pointing-axis marker chain; same-pair parallel edges retain their independent contiguous markers.
 The expanded search also exposed repeated futile searches through sealed frame approaches and
 quadratic duplicate scans while generating label positions. Recovery now traces required straight
@@ -168,8 +193,8 @@ retain the unchanged Interactive work ceiling; these are resource-bound repairs,
 
 Compound follow-up regressions wrap the same five-edge graph in single and nested subgraphs,
 exercise perpendicular local directions, and cover cross-sibling merges and labeled feedback in
-all four root directions. Coarse-grid and terminal-cell searches share frame containment and
-transverse crossing rules. Obstructed aligned edges reserve an interior bypass lane in the nearest
+all four root directions. Actual-contact candidates and compressed channel search share frame
+containment and transverse crossing rules. Obstructed aligned edges reserve an interior bypass lane in the nearest
 common container, and routes preserve the title's horizontal reading gap. Assertions check actual
 target contacts and complete frame geometry rather than accepting arrow counts alone. Arbitrary
 dense compound scenes remain a bounded support limitation.
@@ -308,9 +333,9 @@ expected output.
 
 - CJK and emoji placement is covered for the current renderer families; keep the same semantic
   gate for new families and more complex grapheme clusters.
-- Flowchart route-label placement beyond the shipped boundary transit-lane policy: general
-  grid-path and dense multi-edge labels still need explicit route-plan policy before complex local
-  fixtures should be admitted.
+- Flowchart dense compound scenes beyond the bounded channel-search and congestion-repair budgets.
+  The shared planner validates complete label ownership and route connectivity, but a search miss
+  remains an explicit diagnostic rather than a claim that no presentation is possible.
 - Class and ER dense relation topologies beyond the admitted strict planar K2×2 cycle; new policy
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.

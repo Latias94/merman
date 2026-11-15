@@ -152,6 +152,47 @@ fn flowchart_one_cell_text_source_keeps_its_branch_contact() {
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
+fn flowchart_twelve_way_branches_and_merges_fit_the_terminal_reading_floor() {
+    for direction in ["LR", "RL"] {
+        for merging in [false, true] {
+            let mut source = format!("flowchart {direction}\nH[Hub]\n");
+            for index in 0..12 {
+                source.push_str(&format!("N{index}[Job {index:02}]\n"));
+                source.push_str(&if merging {
+                    format!("N{index} --> H\n")
+                } else {
+                    format!("H --> N{index}\n")
+                });
+            }
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let rendered = render(&source, options);
+                assert!(
+                    rendered.lines().count() <= 48,
+                    "ordinary twelve-way routing must not become a long wire ladder:\n{rendered}"
+                );
+                let hub = frame_for_label(&rendered, "Hub");
+                for index in 0..12 {
+                    let label = format!("Job {index:02}");
+                    assert_eq!(rendered.matches(&label).count(), 1, "{rendered}");
+                    let leaf = frame_for_label(&rendered, &label);
+                    assert!(hub.is_disjoint(leaf), "{rendered}");
+                    assert_progresses(
+                        &rendered,
+                        direction,
+                        &if merging {
+                            [&label, "Hub"]
+                        } else {
+                            ["Hub", &label]
+                        },
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
 fn flowchart_merge_keeps_private_conditions_and_one_shared_arrow_in_all_directions() {
     for (direction, ascii_arrow, unicode_arrow) in [
         ("LR", '>', '►'),

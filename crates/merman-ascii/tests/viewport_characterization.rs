@@ -256,8 +256,8 @@ fn issue_53_width_matrix_preserves_semantics_and_terminal_extent() {
     let source = local_semantic_input("flowchart/issue_53_long_node_labels.mmd");
     let model = parse_model(&source);
     let layouts = [
-        ("canonical", AsciiLayoutProfile::Canonical, (76, 57)),
-        ("compact", AsciiLayoutProfile::Compact, (57, 67)),
+        ("canonical", AsciiLayoutProfile::Canonical, (76, 40)),
+        ("compact", AsciiLayoutProfile::Compact, (63, 50)),
     ];
 
     for (layout_name, layout_profile, expected_extent) in layouts {
@@ -308,7 +308,7 @@ fn issue_53_width_matrix_preserves_semantics_and_terminal_extent() {
 }
 
 #[test]
-fn issue_53_compact_candidate_reduces_width_and_total_blank_cells() {
+fn issue_53_compact_keeps_visible_turns_while_reducing_width() {
     let source = local_semantic_input("flowchart/issue_53_long_node_labels.mmd");
     let model = parse_model(&source);
     let canonical = render_model(&model, &AsciiRenderOptions::ascii())
@@ -324,16 +324,15 @@ fn issue_53_compact_candidate_reduces_width_and_total_blank_cells() {
     let (canonical_blank_cells, canonical_longest_blank_run) = blank_cell_metrics(&canonical);
     let (compact_blank_cells, compact_longest_blank_run) = blank_cell_metrics(&compact);
 
-    assert_eq!(canonical_extent, (76, 57));
-    assert_eq!(compact_extent, (57, 67));
-    assert_eq!(canonical_blank_cells, 3_367);
-    assert_eq!(compact_blank_cells, 2_990);
-    assert_eq!(canonical_longest_blank_run, 52);
-    assert_eq!(compact_longest_blank_run, 36);
+    assert_issue_53_semantics(&canonical);
+    assert_issue_53_semantics(&compact);
+    assert_eq!(canonical_extent, (76, 40));
+    assert_eq!(compact_extent, (63, 50));
     assert!(compact_extent.0 < canonical_extent.0);
     assert!(compact_extent.1 > canonical_extent.1);
-    assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);
-    assert!(compact_blank_cells < canonical_blank_cells);
+    // Complete conditions can no longer erase a route's bends to claim a smaller
+    // rectangle. Compact optimizes width; retain the measured whitespace tradeoff.
+    assert_eq!((canonical_blank_cells, compact_blank_cells), (2_104, 2_246));
     assert!(compact_longest_blank_run < canonical_longest_blank_run);
 }
 

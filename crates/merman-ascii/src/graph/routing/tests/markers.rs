@@ -426,9 +426,9 @@ fn branch_and_merge_marker_spacing_agrees_before_and_after_commit() {
                     let expected = if available {
                         Ok(())
                     } else {
-                        Err(AsciiError::UnsupportedFeature {
+                        Err(AsciiError::RoutingSearchExhausted {
                             diagram_type: "flowchart",
-                            feature: "independent endpoint marker berth exhausted",
+                            edge_index: 1,
                         })
                     };
                     assert_eq!(allocation, expected, "{case:?}");
@@ -482,15 +482,16 @@ fn marker_berth_exhaustion_is_explicit() {
         PreparedRoute::for_test(marker_request_plan(GraphEdgeMarker::Cross, 1), 1),
     ];
     let mut resources = unbounded_resources();
+    routes[1].owner.source_edge_index = 71;
 
     let error = allocate_test_marker_berths(&mut routes, &charset, &mut resources)
         .expect_err("one terminal cell cannot host two marker owners");
 
     assert_eq!(
         error,
-        AsciiError::UnsupportedFeature {
+        AsciiError::RoutingSearchExhausted {
             diagram_type: "flowchart",
-            feature: "independent endpoint marker berth exhausted",
+            edge_index: 71,
         }
     );
 }
@@ -995,9 +996,9 @@ fn marker_allocation_rejects_an_interior_berth_past_an_unrelated_crossing() {
 
     assert_eq!(
         error,
-        AsciiError::UnsupportedFeature {
+        AsciiError::RoutingSearchExhausted {
             diagram_type: "flowchart",
-            feature: "independent endpoint marker berth exhausted",
+            edge_index: 0,
         }
     );
 }
@@ -1033,9 +1034,9 @@ fn marker_allocation_does_not_jump_over_an_unrelated_interior_crossing() {
 
     assert_eq!(
         error,
-        AsciiError::UnsupportedFeature {
+        AsciiError::RoutingSearchExhausted {
             diagram_type: "flowchart",
-            feature: "independent endpoint marker berth exhausted",
+            edge_index: 1,
         }
     );
 }

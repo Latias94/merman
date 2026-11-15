@@ -56,7 +56,7 @@ fn renderer_renders_ascii_flowchart_from_mermaid_text() {
 
     assert_eq!(
         rendered.text,
-        "+---+     +---+\n|   |     |   |\n| A |---->| B |\n|   |     |   |\n+---+     +---+\n"
+        "+---+     +---+\n| A |---->| B |\n+---+     +---+\n"
     );
 }
 
@@ -169,7 +169,7 @@ bar [4, 8]
 
 #[test]
 fn renderer_uses_ascii_options_for_padding() {
-    let mut options = AsciiRenderOptions::ascii();
+    let mut options = AsciiRenderOptions::ascii().with_node_padding(1);
     options.graph_padding_x = 2;
     options.graph_padding_y = 1;
     let output = Renderer::new()

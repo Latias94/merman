@@ -30,9 +30,12 @@ pub(super) enum SearchBudget<'a> {
     Optional(&'a mut usize),
 }
 
+mod channels;
 mod direct;
+mod loops;
 pub(super) use direct::direct_path;
 pub(super) use direct::plan_direct_route;
+pub(super) use loops::plan_self_loop_candidates;
 
 #[derive(Clone, Copy)]
 struct TerminalPort {
@@ -216,8 +219,8 @@ fn port_intercept(port: TerminalPort) -> usize {
     }
 }
 
-/// Resolve congestion at actual terminal-cell ports, after the cheaper coarse routes have
-/// been compared. The finite scene bounds and the operation ledger bound every search.
+/// Resolve congestion at actual terminal-cell ports after finite channels have been compared.
+/// The finite scene bounds and the operation ledger bound every search.
 #[cfg(test)]
 pub(super) fn plan_terminal_route(
     request: EdgeRouteRequest<'_>,
@@ -288,7 +291,6 @@ pub(super) fn plan_terminal_route_with_budget(
         resources.charge_layout_work(1)?;
         end.usage = obstacles.scene.target_port_usage(end.attachment);
     }
-    let mut pairs = PortPairs::new(starts, ends, resources)?;
     let extent = obstacles.scene.occupied_extent();
     let mut max_x = extent.x;
     let mut max_y = extent.y;
@@ -308,6 +310,9 @@ pub(super) fn plan_terminal_route_with_budget(
         x: resources.checked_grid_add(max_x, ROUTING_GRID_MARGIN)?,
         y: resources.checked_grid_add(max_y, ROUTING_GRID_MARGIN)?,
     };
+    let channels =
+        channels::ChannelAxes::new(obstacles, &starts, &ends, bounds, resources, execution)?;
+    let mut pairs = PortPairs::new(starts, ends, resources)?;
     while expansions_left != 0 {
         let Some((start, end)) = pairs.next(resources, execution)? else {
             break;
@@ -331,7 +336,13 @@ pub(super) fn plan_terminal_route_with_budget(
                 }),
             },
         };
-        let path = find_path(geometry, &mut expansions_left, resources, execution)?;
+        let path = find_path(
+            geometry,
+            &channels,
+            &mut expansions_left,
+            resources,
+            execution,
+        )?;
         if let SearchBudget::Optional(remaining) = &mut budget {
             **remaining = expansions_left;
         }
@@ -475,7 +486,7 @@ struct Position {
     heading: StepDirection,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Cost {
     total: usize,
     shared: usize,
@@ -508,6 +519,7 @@ impl PartialOrd for OpenEntry {
 
 fn find_path(
     geometry: SearchGeometry<'_>,
+    channels: &channels::ChannelAxes,
     expansions_left: &mut usize,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -571,10 +583,6 @@ fn find_path(
     let mut sequence = 0;
     while let Some(entry) = open.pop() {
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
-        if *expansions_left == 0 {
-            return Ok(None);
-        }
-        *expansions_left -= 1;
         resources.charge_layout_work(1)?;
         if costs
             .get(&entry.position)
@@ -582,22 +590,14 @@ fn find_path(
         {
             continue;
         }
+        if *expansions_left == 0 {
+            return Ok(None);
+        }
+        *expansions_left -= 1;
         if entry.position.coord == geometry.end.berth
             && entry.position.heading == geometry.end.attachment.outward.opposite()
         {
-            let mut path = Vec::new();
-            path.try_reserve(resources.checked_work_add(entry.cost.length, 1)?)
-                .map_err(|_| layout_allocation_failed())?;
-            let mut cursor = entry.position;
-            path.push(cursor.coord);
-            while let Some(previous) = parents.get(&cursor).copied() {
-                resources.checkpoint()?;
-                resources.charge_layout_work(1)?;
-                path.push(previous.coord);
-                cursor = previous;
-            }
-            path.reverse();
-            return Ok(Some(path));
+            return reconstruct_path(entry, &parents, resources, execution).map(Some);
         }
         for heading in DIRECTIONS {
             resources.checkpoint()?;
@@ -607,54 +607,31 @@ fn find_path(
             {
                 continue;
             }
-            let Some(next) = neighbor(entry.position.coord, heading, geometry.bounds) else {
+            let Some(next) =
+                channels.neighbor(entry.position.coord, heading, resources, execution)?
+            else {
                 continue;
             };
             if next == geometry.end.berth && heading != geometry.end.attachment.outward.opposite() {
                 continue;
             }
-            if geometry
-                .groups
-                .segment(entry.position.coord, next, resources, execution)?
-                == FrameSegment::Blocked
-            {
-                continue;
-            }
-            let corner_mask =
-                direction_mask(entry.position.heading.opposite()) | direction_mask(heading);
-            if !geometry.obstacles.scene.route_cell_is_clear(
-                geometry.obstacles.routes,
-                geometry.obstacles.owner,
-                attachments,
-                entry.position.coord,
-                corner_mask,
-                resources,
-            )? {
-                continue;
-            }
-            if !geometry.obstacles.scene.route_cell_is_clear(
-                geometry.obstacles.routes,
-                geometry.obstacles.owner,
-                attachments,
+            let Some(segment) = channels::segment_cost(
+                geometry,
+                entry.position,
                 next,
-                axis_mask(heading),
+                heading,
                 resources,
-            )? {
+                execution,
+            )?
+            else {
                 continue;
-            }
+            };
             let position = Position {
                 coord: next,
                 heading,
             };
-            let congestion = geometry.obstacles.scene.route_cell_congestion(
-                geometry.obstacles.routes,
-                geometry.obstacles.owner,
-                attachments,
-                next,
-                resources,
-            )?;
-            let shared = resources.checked_work_add(entry.cost.shared, congestion)?;
-            let length = resources.checked_work_add(entry.cost.length, 1)?;
+            let shared = resources.checked_work_add(entry.cost.shared, segment.shared)?;
+            let length = resources.checked_work_add(entry.cost.length, segment.length)?;
             let cost = Cost {
                 total: resources.checked_work_add(length, shared)?,
                 shared,
@@ -702,7 +679,52 @@ fn find_path(
     Ok(None)
 }
 
-fn neighbor(
+fn reconstruct_path(
+    winner: OpenEntry,
+    parents: &HashMap<Position, Position>,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<CanvasCoord>> {
+    execution.checkpoint(merman_model::OperationPhase::Layout)?;
+    let mut path = Vec::new();
+    path.try_reserve(resources.checked_work_add(winner.cost.length, 1)?)
+        .map_err(|_| layout_allocation_failed())?;
+    let mut cursor = winner.position;
+    path.push(cursor.coord);
+    while let Some(previous) = parents.get(&cursor).copied() {
+        let mut coord = cursor.coord;
+        while coord != previous.coord {
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
+            resources.charge_layout_work(1)?;
+            // Parent links join adjacent critical coordinates on one axis. Expand only
+            // this winning chain; the frontier never stores intervening terminal cells.
+            if coord.x < previous.coord.x {
+                coord.x += 1;
+            } else if coord.x > previous.coord.x {
+                coord.x -= 1;
+            } else if coord.y < previous.coord.y {
+                coord.y += 1;
+            } else {
+                coord.y -= 1;
+            }
+            path.try_reserve(1)
+                .map_err(|_| layout_allocation_failed())?;
+            path.push(coord);
+        }
+        cursor = previous;
+    }
+    for index in 0..path.len() / 2 {
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        let opposite = path.len() - 1 - index;
+        path.swap(index, opposite);
+    }
+    Ok(path)
+}
+
+// Unit traversal is used only for semantic inspection and forced-port preflight,
+// never to generate search states.
+fn unit_neighbor(
     coord: CanvasCoord,
     heading: StepDirection,
     bounds: CanvasCoord,
@@ -737,7 +759,7 @@ fn terminal_corridor_is_open(
     loop {
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
-        let Some(transit) = neighbor(previous, outward, geometry.bounds) else {
+        let Some(transit) = unit_neighbor(previous, outward, geometry.bounds) else {
             return Ok(false);
         };
         if geometry
@@ -764,7 +786,7 @@ fn terminal_corridor_is_open(
             if heading == outward || heading == outward.opposite() {
                 continue;
             }
-            let Some(next) = neighbor(transit, heading, geometry.bounds) else {
+            let Some(next) = unit_neighbor(transit, heading, geometry.bounds) else {
                 continue;
             };
             let mask = direction_mask(outward.opposite()) | direction_mask(heading);

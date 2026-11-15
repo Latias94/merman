@@ -6,7 +6,6 @@ use super::terminal::{self, SearchBudget};
 use super::{
     PreparedRoute, RouteCandidateScore, RouteOwner, admit_route_candidate,
     allocate_committed_route_labels, allocate_committed_route_marker_berths, endpoint_layout,
-    plan_edge_route_candidates_with_topology,
 };
 use crate::error::{AsciiError, Result};
 use crate::graph::layout::ROUTING_GRID_MARGIN;
@@ -20,6 +19,7 @@ mod tests;
 
 // A scene shares both allowances. A failed proposal consumes its attempt and search work.
 const MAX_REORDER_ATTEMPTS: usize = 4;
+const MAX_CONFLICT_CONTRIBUTORS: usize = 3;
 
 pub(super) struct SceneRepairBudget {
     pub(super) expansions: usize,
@@ -35,8 +35,8 @@ impl Default for SceneRepairBudget {
     }
 }
 
-/// Give a blocked edge priority over one earlier contributor. The original occupancy
-/// remains live until both replacement routes, their markers, and their labels are valid.
+/// Give a blocked edge priority over a bounded conflict set. The original occupancy
+/// remains live until every replacement, its markers, and its labels are valid.
 #[allow(clippy::too_many_arguments)]
 pub(super) fn reorder_failed_route(
     request: EdgeRouteRequest<'_>,
@@ -72,24 +72,56 @@ pub(super) fn reorder_failed_route(
     )?;
     let corridor = OccupiedRect::try_new(left, top, right - left, bottom - top, resources)?;
     let original_len = routes.len();
+    resources.charge_layout_work(MAX_CONFLICT_CONTRIBUTORS)?;
+    let mut conflicts = Vec::new();
+    conflicts
+        .try_reserve_exact(MAX_CONFLICT_CONTRIBUTORS)
+        .map_err(|_| super::layout_allocation_failed())?;
     for removed_index in (0..original_len).rev() {
         execution.checkpoint(OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
-        if budget.attempts == 0 {
-            break;
-        }
         if !occupancy.route_bounds[removed_index].is_some_and(|bounds| bounds.intersects(corridor))
         {
             continue;
         }
+        conflicts.push(removed_index);
+        if conflicts.len() == MAX_CONFLICT_CONTRIBUTORS {
+            break;
+        }
+    }
+    // Try individual contributors first, then their complete local conflict component.
+    // Storage and proposal counts remain independent of graph degree.
+    for proposal in 0..conflicts.len() + usize::from(conflicts.len() > 1) {
+        if budget.attempts == 0 {
+            break;
+        }
+        execution.checkpoint(OperationPhase::Layout)?;
+        let mut omitted = [0; MAX_CONFLICT_CONTRIBUTORS];
+        let count = if proposal < conflicts.len() {
+            omitted[0] = conflicts[proposal];
+            1
+        } else {
+            omitted[..conflicts.len()].copy_from_slice(&conflicts);
+            omitted[..conflicts.len()].sort_unstable();
+            conflicts.len()
+        };
+        let omitted = &omitted[..count];
+        resources.charge_layout_work(count)?;
+        let mut displaced = Vec::new();
+        displaced
+            .try_reserve_exact(count)
+            .map_err(|_| super::layout_allocation_failed())?;
         budget.attempts -= 1;
         let mut trial = occupancy.rebuild_for_routes(
             routes,
-            Some(removed_index),
+            omitted,
             resources,
             request.graph.diagram_type(),
         )?;
-        let displaced = routes.remove(removed_index);
+        for &index in omitted.iter().rev() {
+            displaced.push((index, routes.remove(index)));
+        }
+        displaced.reverse();
         let result = (|| {
             let Some(plan) = select_route(
                 request,
@@ -106,44 +138,47 @@ pub(super) fn reorder_failed_route(
                 return Ok(false);
             };
             append_route(request, owner, plan, routes, &mut trial, resources)?;
-            let edge_index = displaced.owner.canonical_edge_index;
-            let edge = &request.edges[edge_index];
-            let Some(from) = endpoint_layout(request.graph_layout, &edge.from, request.charset)
-            else {
-                return Ok(false);
-            };
-            let Some(to) = endpoint_layout(request.graph_layout, &edge.to, request.charset) else {
-                return Ok(false);
-            };
-            let displaced_request = EdgeRouteRequest {
-                from: &from,
-                to: &to,
-                edge_index,
-                edge,
-                ..request
-            };
-            let Some(plan) = select_route(
-                displaced_request,
-                topology,
-                labels.descriptor(edge_index),
-                &displaced.owner,
-                routes,
-                &trial,
-                budget,
-                resources,
-                execution,
-            )?
-            else {
-                return Ok(false);
-            };
-            append_route(
-                displaced_request,
-                &displaced.owner,
-                plan,
-                routes,
-                &mut trial,
-                resources,
-            )?;
+            for (_, displaced) in &displaced {
+                let edge_index = displaced.owner.canonical_edge_index;
+                let edge = &request.edges[edge_index];
+                let Some(from) = endpoint_layout(request.graph_layout, &edge.from, request.charset)
+                else {
+                    return Ok(false);
+                };
+                let Some(to) = endpoint_layout(request.graph_layout, &edge.to, request.charset)
+                else {
+                    return Ok(false);
+                };
+                let displaced_request = EdgeRouteRequest {
+                    from: &from,
+                    to: &to,
+                    edge_index,
+                    edge,
+                    ..request
+                };
+                let Some(plan) = select_route(
+                    displaced_request,
+                    topology,
+                    labels.descriptor(edge_index),
+                    &displaced.owner,
+                    routes,
+                    &trial,
+                    budget,
+                    resources,
+                    execution,
+                )?
+                else {
+                    return Ok(false);
+                };
+                append_route(
+                    displaced_request,
+                    &displaced.owner,
+                    plan,
+                    routes,
+                    &mut trial,
+                    resources,
+                )?;
+            }
             execution.checkpoint(OperationPhase::Layout)?;
             Ok(true)
         })();
@@ -153,10 +188,15 @@ pub(super) fn reorder_failed_route(
         }
         // The original plans and occupancy were retained. No replay, allocation, or
         // cancellation checkpoint is needed to roll back an unsuccessful proposal.
-        routes.truncate(original_len - 1);
-        routes.insert(removed_index, displaced);
+        routes.truncate(original_len - count);
+        for (index, route) in displaced {
+            routes.insert(index, route);
+        }
         match result {
-            Ok(false) | Err(AsciiError::UnsupportedFeature { .. }) => {}
+            Ok(false)
+            | Err(
+                AsciiError::UnsupportedFeature { .. } | AsciiError::RoutingSearchExhausted { .. },
+            ) => {}
             Err(error) => return Err(error),
             Ok(true) => unreachable!("successful proposals return before rollback"),
         }
@@ -167,7 +207,7 @@ pub(super) fn reorder_failed_route(
 #[allow(clippy::too_many_arguments)]
 fn select_route(
     request: EdgeRouteRequest<'_>,
-    topology: Option<&GraphGroupTopology<'_>>,
+    _topology: Option<&GraphGroupTopology<'_>>,
     label: Option<RoutedLabelDescriptor>,
     owner: &RouteOwner,
     routes: &[PreparedRoute],
@@ -194,19 +234,17 @@ fn select_route(
         );
     }
     let mut best: Option<(RouteCandidateScore, RoutePlan)> = None;
-    for plan in
-        plan_edge_route_candidates_with_topology(request, topology, label, resources, execution)?
-            .plans
-    {
-        if let Some(candidate) = admit_route_candidate(request, obstacles, plan, resources)?
-            && best.as_ref().is_none_or(|(score, _)| candidate.0 < *score)
-        {
-            best = Some(candidate);
+    if request.edge.from == request.edge.to {
+        for plan in terminal::plan_self_loop_candidates(request, label, resources, execution)? {
+            if let Some(candidate) = admit_route_candidate(request, obstacles, plan, resources)?
+                && best.as_ref().is_none_or(|(score, _)| candidate.0 < *score)
+            {
+                best = Some(candidate);
+            }
         }
     }
-    if !request.graph_layout.grid_aligned
-        && let Some(candidate) =
-            terminal::plan_direct_route(request, obstacles, label, resources, execution)?
+    if let Some(candidate) =
+        terminal::plan_direct_route(request, obstacles, label, resources, execution)?
         && best.as_ref().is_none_or(|(score, _)| candidate.0 < *score)
     {
         best = Some(candidate);

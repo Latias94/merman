@@ -18,6 +18,7 @@ use merman_model::{OperationControl, OperationPhase};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::hash_map::Entry;
 
+mod channels;
 mod labels;
 mod marker;
 mod rebuild;
@@ -28,9 +29,8 @@ type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
 pub(super) use labels::allocate_committed_route_labels;
 #[cfg(test)]
 pub(super) use labels::allocate_route_label_placements;
-use labels::{
-    label_anchor_contains, label_reservation, resolve_label_anchor, route_label_candidates,
-};
+pub(in crate::graph::routing) use labels::{label_anchor_contains, label_reservation};
+use labels::{resolve_label_anchor, route_label_candidates};
 #[cfg(test)]
 pub(super) use marker::allocate_marker_berths;
 use marker::marker_candidate_continues_chain;
@@ -755,8 +755,7 @@ impl<'layout> SceneOccupancy<'layout> {
             cell_count = resources.checked_work_add(cell_count, 1)?;
         }
         let mut total_cost = resources.checked_work_add(cell_count, shared_cells)?;
-        let mut scene_growth = 0;
-        if !self.graph_layout.grid_aligned {
+        let scene_growth = {
             let (mut width, mut height) = plan.body_extent_with_resources(resources)?;
             for (label, (placement, _)) in plan.labels.iter().zip(&placements) {
                 width = width.max(resources.checked_grid_add(placement.x(), placement.width())?);
@@ -767,9 +766,10 @@ impl<'layout> SceneOccupancy<'layout> {
             let current_area = resources.checked_work_mul(current_width, current_height)?;
             let candidate_area =
                 resources.checked_work_mul(width.max(current_width), height.max(current_height))?;
-            scene_growth = candidate_area - current_area;
+            let scene_growth = candidate_area - current_area;
             total_cost = resources.checked_work_add(total_cost, scene_growth)?;
-        }
+            scene_growth
+        };
         let target_port_reuse = plan
             .attachments
             .map_or(0, |ports| self.target_port_usage(ports.end));
@@ -918,6 +918,25 @@ impl<'layout> SceneOccupancy<'layout> {
                     super::cell::is_transverse_crossing(directions, existing_directions);
                 let shares_allocated_channel = owner.shared_channel_group().is_some()
                     && owner.shared_channel_group() == existing.owner.shared_channel_group();
+                let shares_terminal_ray = attachments.zip(existing.plan.attachments).is_some_and(
+                    |(current, previous)| {
+                        (owner.from == existing.owner.from
+                            && current.start == previous.start
+                            && current.start.allows_escape(coord))
+                            || (owner.to == existing.owner.to
+                                && current.end == previous.end
+                                && current.end.allows_escape(coord))
+                    },
+                );
+                if !shares_allocated_channel
+                    && !shares_terminal_ray
+                    && !shared_contact
+                    && !transverse
+                {
+                    // Collinear sharing is a semantic decision. An unrelated route may
+                    // cross a channel, but cannot join it and invent another endpoint pair.
+                    return Ok(false);
+                }
                 if (owner.shared_channel_group().is_some()
                     || existing.owner.shared_channel_group().is_some())
                     && !shares_allocated_channel
@@ -959,6 +978,7 @@ impl<'layout> SceneOccupancy<'layout> {
         if plan.labels.is_empty() {
             return Ok(Some(placements));
         }
+        let reading_guards = self.label_reading_guards(plan, resources)?;
 
         self.checkpoint_layout()?;
         let mut route_bounds = None;
@@ -973,6 +993,18 @@ impl<'layout> SceneOccupancy<'layout> {
             bounds.include(cell.coord);
             route_bounds = Some(bounds);
         }
+        let body_width = resources.checked_grid_add(
+            route_bounds.map_or(self.occupied_extent.x, |bounds| {
+                bounds.max_x.max(self.occupied_extent.x)
+            }),
+            1,
+        )?;
+        let body_height = resources.checked_grid_add(
+            route_bounds.map_or(self.occupied_extent.y, |bounds| {
+                bounds.max_y.max(self.occupied_extent.y)
+            }),
+            1,
+        )?;
 
         for label in &plan.labels {
             self.checkpoint_layout()?;
@@ -1036,20 +1068,21 @@ impl<'layout> SceneOccupancy<'layout> {
                                 )
                             })
                         })
-                    && self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)?
+                    && self.plan_label_candidate_is_clear(
+                        plan,
+                        anchor,
+                        footprint,
+                        &reading_guards,
+                        resources,
+                    )?
                 {
-                    let width = footprint
-                        .right
-                        .max(resources.checked_grid_add(self.occupied_extent.x, 1)?);
-                    let height = footprint
-                        .bottom
-                        .max(resources.checked_grid_add(self.occupied_extent.y, 1)?);
+                    // The route already needs its full envelope. Ignoring it here can
+                    // float a condition away from its host without saving a single cell.
+                    let width = footprint.right.max(body_width);
+                    let height = footprint.bottom.max(body_height);
                     let area = resources.checked_work_mul(width, height)?;
                     if selected.as_ref().is_none_or(|(best, _)| area < *best) {
                         selected = Some((area, candidate));
-                    }
-                    if self.graph_layout.grid_aligned {
-                        break;
                     }
                 }
             }
@@ -1066,8 +1099,12 @@ impl<'layout> SceneOccupancy<'layout> {
         plan: &RoutePlan,
         anchor: LabelAnchor,
         candidate: OccupiedRect,
+        reading_guards: &[CanvasCoord],
         resources: &mut ResourceContext,
     ) -> Result<bool> {
+        if !self.label_preserves_route_reading(reading_guards, candidate, resources)? {
+            return Ok(false);
+        }
         let Some(reservation) =
             label_reservation(anchor, candidate, self.label_lane_radius, resources)?
         else {
@@ -1112,6 +1149,105 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
+    pub(super) fn label_reading_guards(
+        &self,
+        plan: &RoutePlan,
+        resources: &ResourceContext,
+    ) -> Result<Vec<CanvasCoord>> {
+        let mut borders = Vec::new();
+        for protected in &self.protected {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if protected.kind == ProtectedKind::GroupBorder {
+                borders
+                    .try_reserve(1)
+                    .map_err(|_| layout_allocation_failed())?;
+                borders.push(protected);
+            }
+        }
+        let mut guards = Vec::new();
+        // A label can replace its own host stroke, but not the immediate continuation
+        // of a frame crossing: otherwise the frame looks connected to the label itself.
+        for (_, cell) in plan.active_cells() {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            let directions = if cell.directions == 0 {
+                route_char_directions(cell.ch)
+            } else {
+                cell.directions
+            };
+            if directions.count_ones() > 1
+                && directions != (DIR_LEFT | DIR_RIGHT)
+                && directions != (DIR_UP | DIR_DOWN)
+            {
+                // Hiding a turn makes a condition appear to connect two unrelated
+                // continuation columns. Inline text may replace only a straight host.
+                guards
+                    .try_reserve(1)
+                    .map_err(|_| layout_allocation_failed())?;
+                guards.push(cell.coord);
+            }
+            for protected in &borders {
+                resources.charge_layout_work(1)?;
+                let Some(border) = protected
+                    .shape
+                    .transverse_border_directions(cell.coord, directions)
+                else {
+                    continue;
+                };
+                let neighbors = if border == (DIR_LEFT | DIR_RIGHT) {
+                    [
+                        cell.coord
+                            .y
+                            .checked_sub(1)
+                            .map(|y| CanvasCoord { y, ..cell.coord }),
+                        cell.coord
+                            .y
+                            .checked_add(1)
+                            .map(|y| CanvasCoord { y, ..cell.coord }),
+                    ]
+                } else {
+                    [
+                        cell.coord
+                            .x
+                            .checked_sub(1)
+                            .map(|x| CanvasCoord { x, ..cell.coord }),
+                        cell.coord
+                            .x
+                            .checked_add(1)
+                            .map(|x| CanvasCoord { x, ..cell.coord }),
+                    ]
+                };
+                for coord in neighbors.into_iter().flatten() {
+                    guards
+                        .try_reserve(1)
+                        .map_err(|_| layout_allocation_failed())?;
+                    guards.push(coord);
+                }
+            }
+        }
+        crate::graph::layout::charge_sort_work(guards.len(), resources)?;
+        guards.sort_unstable_by_key(|coord| (coord.y, coord.x));
+        guards.dedup();
+        Ok(guards)
+    }
+
+    pub(super) fn label_preserves_route_reading(
+        &self,
+        guards: &[CanvasCoord],
+        candidate: OccupiedRect,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        for coord in guards {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if candidate.contains(coord.x, coord.y) {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     pub(super) fn marker_candidate_disposition_before_commit(
         &self,
         existing_routes: &[PreparedRoute],
@@ -1124,6 +1260,7 @@ impl<'layout> SceneOccupancy<'layout> {
         if !self.marker_reading_clearance_is_clear(
             existing_routes,
             owner,
+            plan,
             endpoint,
             candidate,
             resources,
@@ -1216,6 +1353,7 @@ impl<'layout> SceneOccupancy<'layout> {
         &self,
         routes: &[PreparedRoute],
         owner: &RouteOwner,
+        plan: &RoutePlan,
         endpoint: MarkerEndpoint,
         candidate: MarkerCandidate,
         resources: &ResourceContext,
@@ -1267,13 +1405,16 @@ impl<'layout> SceneOccupancy<'layout> {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
             if let Some(marker) = self.markers.get(&coord) {
-                let existing = &routes[marker.route_index].owner;
+                let existing = &routes[marker.route_index];
                 if marker_occupant_is_compatible(
                     routes,
                     *marker,
                     owner.endpoint_id(endpoint),
                     candidate.point_direction,
-                ) && (owner.from != existing.from || owner.to != existing.to)
+                ) && (owner.from != existing.owner.from
+                    || owner.to != existing.owner.to
+                    || !plan.labels.is_empty()
+                    || !existing.plan.labels.is_empty())
                 {
                     return Ok(false);
                 }
@@ -1357,6 +1498,7 @@ impl<'layout> SceneOccupancy<'layout> {
                         directions | border_directions,
                         cell.unicode,
                     );
+                    cell.directions = directions;
                     cell.kind = PlannedRouteCellKind::EdgeLine;
                 }
             }
@@ -1614,6 +1756,7 @@ impl<'layout> SceneOccupancy<'layout> {
         if !self.marker_reading_clearance_is_clear(
             routes,
             &routes[route_index].owner,
+            &routes[route_index].plan,
             endpoint,
             candidate,
             resources,

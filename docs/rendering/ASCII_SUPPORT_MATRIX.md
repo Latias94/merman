@@ -61,7 +61,10 @@ incrementally, then commits one render-wide resource admission. Overflow remains
 result (`allow`, `fallback`, or `error`), never a resource success or resource failure. Cancellation
 and resource errors retain precedence over fallback selection. Semantic fallback applies typed-model
 complexity preflight; Flowchart's typed projection uses a bounded cancellation-aware JSON writer
-before flattening under bounded profiles.
+under bounded profiles. Flowchart, State, and Swimlane width fallback presents keyed nodes/groups
+and individual relationships with complete labels, markers, strokes, membership, and authored
+details. Flowchart first-use declarations avoid a separate repeated node table. Other families
+retain their existing fallback projections.
 
 ### Admitted profile combinations
 
@@ -184,14 +187,28 @@ parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative
 
 | Fixture | Layout | Extent | Blank cells | Longest blank run |
 | --- | --- | ---: | ---: | ---: |
-| Issue #53 Flowchart | canonical | `74×57` | 3158 | 52 |
-| Issue #53 Flowchart | compact | `56×67` | 2849 | 42 |
+| Issue #53 Flowchart | canonical | `76×40` | 2104 | 52 |
+| Issue #53 Flowchart | compact | `63×50` | 2246 | 44 |
 | Sequence self-messages/notes | canonical | `107×58` | 4681 | 41 |
 | Sequence self-messages/notes | compact | `105×58` | 4567 | 41 |
 
 These values are characterization evidence, not universal quality scores. Admission still requires
 complete authored-field retention and typed overflow behavior; a narrower result that drops a field
-is rejected.
+is rejected. Issue #53 Compact reduces width while spending more rows and blank cells to retain
+visible turns beside complete conditions; it is not an area improvement over Canonical.
+
+`presentation_floor.rs` fixes the complete-document outcomes for the original 13-case terminal
+gallery at 60/80/100/120 cells, in ASCII/Unicode and Unicode/CJK width profiles. Twelve-way LR
+branches and merges occupy 47 rows. Sixteen-way TD fallback occupies 20 rows at 60 cells and
+19 at 80/100/120; long-label fallback occupies 13/11/11/9 rows. Legends and detail rows count toward
+these limits. `graph_layout_quality.rs` and the independent generated scene oracle protect the
+endpoint, type, condition, multiplicity, and containment questions behind these measurements.
+
+The generated supported-small-graph set fixes 486 Interactive scene attempts and 3,042 visible
+edge contributions, with 2/5/8 nodes and at most 12 edges. All attempts remain in its denominator,
+including failures. The generator covers nine topology categories, LR/TD, three structural/gap
+requests, and three edge orders. Four-direction, CJK, State concurrency, and Swimlane containment
+have their own public semantic tests; the generator does not claim to exhaust arbitrary graphs.
 
 - Use exact snapshots when the ASCII shape itself is the contract.
 - Use semantic assertions for structured-text output and relation-summary fallback, ensuring every retained entity/endpoint/label remains visible.

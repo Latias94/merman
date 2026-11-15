@@ -1,5 +1,165 @@
 use super::*;
 
+#[test]
+fn multiline_internal_conditions_reserve_both_halves_of_the_container() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "g",
+        "Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    graph.add_edge_with_attrs(
+        "a",
+        "b",
+        GraphEdgeAttrs {
+            label: Some(vec!["x"; 21].join("\n")),
+            ..Default::default()
+        },
+    );
+    let options = AsciiRenderOptions::ascii();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut unbounded_resources(),
+    )
+    .expect("the enclosing frame must reserve the full condition block");
+    assert_eq!(scene.routes[0].plan.labels[0].line_count(), 21);
+    let label = &scene.routes[0].plan.labels[0];
+    let frame = &layout.groups[0];
+    assert!(label.placement.y() > frame.y);
+    assert!(label.placement.y() + label.line_count() <= frame.bottom());
+}
+
+#[test]
+#[cfg(feature = "diagram-state")]
+fn state_composite_routes_keep_long_conditions_and_notes_separate() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+    use merman_model::families::state::StateTerminalView;
+    let parsed = SemanticParser::new()
+        .parse_diagram_sync(concat!(
+            "stateDiagram-v2\ndirection LR\nstate Session {\ndirection TB\n",
+            "[*] --> Ready\n",
+            "Ready --> Running: permission granted for the complete production operation\n",
+            "Running --> [*]: finished\n",
+            "note right of Ready: Only authorized operators may start the operation\n",
+            "}\nSession --> Closed: close the complete session\n",
+        ))
+        .unwrap();
+    let SemanticDiagramModel::State(model) = &parsed.model else {
+        panic!("expected state");
+    };
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::for_test(&policy);
+    let options = AsciiRenderOptions::ascii();
+    let graph = crate::state::from_state_view_with_context_and_execution(
+        StateTerminalView::from_semantic(model),
+        options.terminal_width_profile,
+        &mut resources,
+        execution,
+    )
+    .unwrap();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut resources,
+    );
+    assert!(scene.is_ok(), "{:?}; layout={layout:?}", scene.err());
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn nested_container_endpoints_reserve_complete_labeled_channels() {
+    use merman_core::{ParseOptions, presentation::MermaidEngine};
+    use merman_model::presentation::RenderSemanticModel;
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/flowchart/",
+        "upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_and_edge_labels_063.mmd"
+    ));
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected flowchart");
+    };
+    let options = AsciiRenderOptions::ascii();
+    let graph =
+        crate::graph::adapter::from_flowchart_model(model, &options, &mut unbounded_resources())
+            .unwrap();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut unbounded_resources(),
+    );
+    assert!(scene.is_ok(), "{:?}; layout={layout:?}", scene.err());
+}
+
+#[test]
+fn compact_disconnected_containers_keep_their_internal_chains_routable() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for (id, label) in [
+        ("t1", "Today AI"),
+        ("t2", "Today Markdown"),
+        ("t3", "Today Reads"),
+        ("n1", "Next AI"),
+        ("n2", "Next Widget"),
+        ("n3", "Next Acts"),
+    ] {
+        graph.add_node(id, label);
+    }
+    graph.add_group_with_style(
+        "today",
+        "Today",
+        None,
+        vec!["t1".into(), "t2".into(), "t3".into()],
+        Default::default(),
+    );
+    graph.add_group_with_style(
+        "next",
+        "Next Wave",
+        None,
+        vec!["n1".into(), "n2".into(), "n3".into()],
+        Default::default(),
+    );
+    for (from, to) in [("t1", "t2"), ("t2", "t3"), ("n1", "n2"), ("n2", "n3")] {
+        graph.add_edge(from, to);
+    }
+    let options =
+        AsciiRenderOptions::unicode().with_layout_profile(crate::AsciiLayoutProfile::Compact);
+    let layout = layout_graph(&graph, &options);
+    let mut resources = unbounded_resources();
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut resources,
+    );
+    assert!(
+        scene.is_ok(),
+        "{:?}; nodes={:?}; groups={:?}",
+        scene.err(),
+        layout.nodes,
+        layout.groups
+    );
+}
+
 fn assert_allocated_geometry(route: &PreparedRoute) {
     let branch = route
         .owner
@@ -252,7 +412,6 @@ fn an_unrelated_transverse_crossing_does_not_dismantle_a_joint_channel() {
         node.width = width;
         node.height = 5;
     }
-    layout.grid_aligned = false;
     let mut resources = unbounded_resources();
     let scene = prepare_route_scene_with_resources(
         &graph,
@@ -296,24 +455,31 @@ fn an_unrelated_transverse_crossing_does_not_dismantle_a_joint_channel() {
 }
 
 #[test]
-fn aligned_scenes_do_not_allocate_or_charge_an_unused_feedback_order() {
+fn scene_route_order_uses_an_exact_shared_work_budget() {
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
     graph.add_node("a", "A");
     graph.add_node("b", "B");
     graph.add_edge("a", "b");
     let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
-    assert!(layout.grid_aligned);
-    let resources = ResourceContext::new(
-        AsciiResourcePolicy::unbounded()
-            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
-            .unwrap(),
-    );
-    assert!(
-        plan_route_order(&graph, &layout, &graph.edges, &resources)
-            .unwrap()
-            .is_none()
-    );
-    assert_eq!(resources.layout_work_used(), 0);
+    let measured = unbounded_resources();
+    let order = plan_route_order(&graph, &layout, &graph.edges, &measured).unwrap();
+    assert_eq!(order, vec![0]);
+    let exact = measured.layout_work_used();
+    assert!(exact > 0);
+    for (limit, passes) in [(exact, true), (exact - 1, false)] {
+        let resources = ResourceContext::new(
+            AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap(),
+        );
+        let result = plan_route_order(&graph, &layout, &graph.edges, &resources);
+        if passes {
+            assert_eq!(result.unwrap(), order);
+            assert_eq!(resources.layout_work_used(), exact);
+        } else {
+            assert!(matches!(result, Err(AsciiError::ResourceLimitExceeded(_))));
+        }
+    }
 }
 
 #[test]
@@ -322,8 +488,7 @@ fn invisible_parallel_constraints_do_not_inflate_feedback_planning_work() {
     graph.add_node("a", "A");
     graph.add_node("b", "B");
     graph.add_edge("a", "b");
-    let mut layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
-    layout.grid_aligned = false;
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
     graph.edges[0].stroke = GraphEdgeStroke::Invisible;
     graph.edges.resize(10_000, graph.edges[0].clone());
     let resources = ResourceContext::new(
@@ -334,13 +499,12 @@ fn invisible_parallel_constraints_do_not_inflate_feedback_planning_work() {
     assert!(
         plan_route_order(&graph, &layout, &graph.edges, &resources)
             .unwrap()
-            .unwrap()
             .is_empty()
     );
 }
 
 #[test]
-fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
+fn edge_canvas_extent_accounts_for_boundary_label_width() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
@@ -364,41 +528,26 @@ fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
         },
     );
     let graph_layout = layout_graph(&graph, &options);
-    let edge = &graph.edges[1];
-    let from =
-        endpoint_layout(&graph_layout, &edge.from, &charset).expect("source layout should exist");
-    let to =
-        endpoint_layout(&graph_layout, &edge.to, &charset).expect("target layout should exist");
-    let plan = plan_edge_route(EdgeRouteRequest {
-        graph: &graph,
-        graph_layout: &graph_layout,
-        edges: &graph.edges,
-        from: &from,
-        to: &to,
-        edge_index: 1,
-        edge,
-        charset: &charset,
-    })
-    .expect("boundary route should plan");
+    let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+        .expect("boundary scene should render");
+    let plan = &scene
+        .routes
+        .iter()
+        .find(|route| route.owner.from == "b" && route.owner.to == "y")
+        .expect("boundary route should plan")
+        .plan;
     let label = plan.labels.first().expect("boundary route should label");
     assert_eq!(
         label.placement.width(),
         "boundary label with enough width".len()
     );
 
-    let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
-        .expect("boundary scene should render");
     let (edge_width, _) = scene.canvas_extent();
     let required_width = scene
         .routes
         .iter()
         .flat_map(|route| &route.plan.labels)
-        .map(|label| {
-            label
-                .placement
-                .canvas_extent_for_lines(label.line_count())
-                .0
-        })
+        .map(|label| label.placement.x() + label.placement.width())
         .max()
         .expect("prepared boundary label should exist");
 
@@ -1056,93 +1205,6 @@ fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
         if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
 }
 
-#[test]
-fn scene_aware_grid_cancellation_precedes_projected_cell_work_debit() {
-    use path::{Port, PortPair, RouteObstacles, route_grid_path_avoiding_obstacles};
-
-    let options = AsciiRenderOptions::unicode();
-    let charset = GraphCharset::for_options(&options);
-    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    graph.add_edge("a", "b");
-    let layout = layout_graph(&graph, &options);
-    let from = layout.nodes.iter().find(|node| node.id == "a").unwrap();
-    let to = layout.nodes.iter().find(|node| node.id == "b").unwrap();
-    assert!(layout.groups.is_empty());
-    assert_eq!(from.grid.y, to.grid.y);
-    assert!(from.grid.x + 3 < to.grid.x);
-
-    let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-    let owner = RouteOwner::for_test(0, "a", "b");
-    let mut work_at_projection = None;
-    // Measure cancellation at the first projected cell, repeat with exactly that budget,
-    // then keep the scene active to verify that the pending protected-geometry debit fails.
-    for cancel_scene in [true, true, false] {
-        let policy = work_at_projection.map_or(unbounded, |work| {
-            unbounded
-                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, work)
-                .unwrap()
-        });
-        let scene_control = OperationControl::new();
-        let search_control = OperationControl::new();
-        let mut setup = ResourceContext::new(unbounded);
-        let occupancy = SceneOccupancy::try_new_for_routes(
-            &layout,
-            1,
-            options
-                .flowchart_layout()
-                .graph_policy()
-                .edge_label_lane_radius,
-            &mut setup,
-            AsciiExecution::new(&scene_control, &unbounded),
-        )
-        .unwrap();
-        assert_eq!(occupancy.protected.len(), layout.nodes.len());
-        let mut resources = ResourceContext::new(policy);
-        // Coarse search and resource accounting stay active independently of the scene.
-        // With no groups, the scene control is first checked inside projected cell inspection.
-        if cancel_scene {
-            scene_control.cancel_after_checkpoints(0);
-        }
-        let error = route_grid_path_avoiding_obstacles(
-            &layout,
-            from,
-            to,
-            PortPair::new(Port::Right, Port::Left),
-            &charset,
-            RouteObstacles {
-                scene: &occupancy,
-                routes: &[],
-                owner: &owner,
-            },
-            &mut resources,
-            AsciiExecution::new(&search_control, &policy),
-        )
-        .expect_err("projected-cell failures must propagate instead of returning a grid path");
-
-        assert_eq!(scene_control.is_cancelled(), cancel_scene);
-        assert!(!search_control.is_cancelled());
-        let work = resources.layout_work_used();
-        if cancel_scene {
-            assert!(matches!(error, AsciiError::Cancelled(cancelled)
-                if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == CancelReason::Requested));
-        } else {
-            assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-                    && details.max == work
-                    && details.actual == work + occupancy.protected.len()));
-        }
-        if let Some(expected) = work_at_projection {
-            assert_eq!(work, expected);
-        } else {
-            assert!(work > 0, "coarse search must run before scene cancellation");
-            work_at_projection = Some(work);
-        }
-    }
-}
-
 fn obstacle_aware_feedback_graph() -> AsciiGraph {
     let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
     graph.add_node("A", "Start");
@@ -1174,9 +1236,10 @@ fn prepare_route_scene_reports_missing_endpoint_layouts_before_painting() {
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
     graph.add_node("a", "A");
     graph.add_node("b", "B");
-    graph.add_edge("a", "missing");
+    graph.add_edge("a", "b");
     let options = AsciiRenderOptions::ascii();
     let graph_layout = layout_graph(&graph, &options);
+    graph.edges[0].to = "missing".into();
     let charset = GraphCharset::for_options(&options);
 
     let error = match prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset) {

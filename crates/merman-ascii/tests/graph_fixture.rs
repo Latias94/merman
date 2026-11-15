@@ -19,16 +19,19 @@ impl GraphFixture {
     }
 
     fn options(self) -> AsciiRenderOptions {
-        let mut options = match self.directory {
+        let options = match self.directory {
             "ascii" => AsciiRenderOptions::ascii(),
             "extended-chars" => AsciiRenderOptions::unicode(),
             other => panic!("unsupported graph fixture directory: {other}"),
         };
 
         let (graph_padding_x, graph_padding_y) = self.graph_padding();
-        options.graph_padding_x = graph_padding_x;
-        options.graph_padding_y = graph_padding_y;
+        // The copied corpus specifies its own one-cell node padding and graph gaps.
+        // Keep those reference requests explicit when product defaults evolve.
         options
+            .with_node_padding(1)
+            .with_graph_padding_x(graph_padding_x)
+            .with_graph_padding_y(graph_padding_y)
     }
 
     fn graph_padding(self) -> (usize, usize) {

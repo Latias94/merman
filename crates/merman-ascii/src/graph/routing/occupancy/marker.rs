@@ -156,9 +156,9 @@ fn allocate_pending_markers(
             }
         }
         let Some(candidate) = selected else {
-            return Err(AsciiError::UnsupportedFeature {
+            return Err(AsciiError::RoutingSearchExhausted {
                 diagram_type,
-                feature: "independent endpoint marker berth exhausted",
+                edge_index: routes[marker.route_index].owner.source_edge_index,
             });
         };
         routes[marker.route_index].plan.materialize_marker_at(

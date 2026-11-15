@@ -14,13 +14,14 @@ impl<'layout> SceneOccupancy<'layout> {
     pub(in crate::graph::routing) fn rebuild_for_routes(
         &self,
         routes: &[PreparedRoute],
-        omitted: Option<usize>,
+        omitted: &[usize],
         resources: &mut ResourceContext,
         diagram_type: &'static str,
     ) -> Result<Self> {
         self.checkpoint_layout()?;
         debug_assert_eq!(routes.len(), self.route_bounds.len());
-        debug_assert!(omitted.is_none_or(|index| index < routes.len()));
+        debug_assert!(omitted.iter().all(|&index| index < routes.len()));
+        debug_assert!(omitted.windows(2).all(|pair| pair[0] < pair[1]));
         // This view shares the original ledger, including all failed replay work.
         let mut replay_resources =
             resources.controlled(self.control.clone(), OperationPhase::Layout);
@@ -43,7 +44,8 @@ impl<'layout> SceneOccupancy<'layout> {
         )?;
 
         for (old_index, route) in routes.iter().enumerate() {
-            if omitted == Some(old_index) {
+            resources.charge_layout_work(omitted.len())?;
+            if omitted.binary_search(&old_index).is_ok() {
                 continue;
             }
             let route_index = rebuilt.route_bounds.len();
@@ -93,10 +95,10 @@ impl<'layout> SceneOccupancy<'layout> {
         for (&coord, claims) in &self.terminal_claims {
             for claim in claims {
                 rebuilt.checkpoint_layout()?;
-                resources.charge_layout_work(1)?;
-                if omitted != Some(claim.route_index) {
+                resources.charge_layout_work(resources.checked_work_add(omitted.len(), 1)?)?;
+                if omitted.binary_search(&claim.route_index).is_err() {
                     let route_index = claim.route_index
-                        - usize::from(omitted.is_some_and(|index| index < claim.route_index));
+                        - omitted.partition_point(|&index| index < claim.route_index);
                     rebuilt.register_terminal_claim(
                         coord,
                         TerminalClaim {
@@ -249,22 +251,33 @@ mod tests {
                 let scene =
                     SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
                 let scene = scene
-                    .rebuild_for_routes(&routes, None, &mut resources, "flowchart")
+                    .rebuild_for_routes(&routes, &[], &mut resources, "flowchart")
                     .unwrap();
                 let original = geometry(&scene);
-                for omitted in [None, Some(0), Some(1), Some(2)] {
+                for omitted in [
+                    &[][..],
+                    &[0][..],
+                    &[1][..],
+                    &[2][..],
+                    &[0, 1][..],
+                    &[0, 2][..],
+                    &[1, 2][..],
+                    &[0, 1, 2][..],
+                ] {
                     let rebuilt = scene
                         .rebuild_for_routes(&routes, omitted, &mut resources, "flowchart")
                         .unwrap();
-                    let retained = 3 - usize::from(omitted.is_some());
-                    assert_eq!(rebuilt.markers.len(), retained + 1);
-                    let representative = rebuilt.markers.get(&common.coord).unwrap();
-                    assert_eq!(representative.route_index, 0);
-                    assert_eq!(representative.shared_group, Some(0));
-                    assert_eq!(representative.endpoint, MarkerEndpoint::End);
+                    let retained = 3 - omitted.len();
+                    assert_eq!(rebuilt.markers.len(), retained + usize::from(retained > 0));
+                    if retained > 0 {
+                        let representative = rebuilt.markers.get(&common.coord).unwrap();
+                        assert_eq!(representative.route_index, 0);
+                        assert_eq!(representative.shared_group, Some(0));
+                        assert_eq!(representative.endpoint, MarkerEndpoint::End);
+                    }
                     assert_eq!(rebuilt.route_bounds.len(), retained);
                     for (old_index, route) in routes.iter().enumerate() {
-                        if omitted == Some(old_index) {
+                        if omitted.contains(&old_index) {
                             continue;
                         }
                         let source_marker = route
@@ -277,7 +290,7 @@ mod tests {
                         assert_eq!(source.shared_group, None);
                         assert_eq!(
                             source.route_index,
-                            old_index - usize::from(omitted.is_some_and(|index| index < old_index))
+                            old_index - omitted.partition_point(|&index| index < old_index)
                         );
                         assert_eq!(route.plan.labels.len(), 1);
                         let label = &route.plan.labels[0];
@@ -326,7 +339,7 @@ mod tests {
             .unwrap();
         let before = resources.layout_work_used();
         let rebuilt = scene
-            .rebuild_for_routes(&routes, None, &mut resources, "flowchart")
+            .rebuild_for_routes(&routes, &[], &mut resources, "flowchart")
             .unwrap();
         assert_eq!(rebuilt.route_capacity, 64);
         assert!(rebuilt.route_bounds.capacity() >= 64);
@@ -348,7 +361,7 @@ mod tests {
             2
         );
         scene = scene
-            .rebuild_for_routes(&routes, Some(0), &mut resources, "flowchart")
+            .rebuild_for_routes(&routes, &[0], &mut resources, "flowchart")
             .unwrap();
         routes.remove(0);
         assert_eq!(routes[0].owner.canonical_edge_index, 77);
@@ -432,7 +445,7 @@ mod tests {
         );
         let plan = routes[1].plan.clone();
         scene = scene
-            .rebuild_for_routes(&routes, Some(0), &mut resources, "flowchart")
+            .rebuild_for_routes(&routes, &[0], &mut resources, "flowchart")
             .unwrap();
         let removed_ports = routes.remove(0).plan.attachments.unwrap();
         assert_eq!(routes[0].plan, plan);
@@ -490,7 +503,7 @@ mod tests {
             19
         );
         let rebuilt = scene
-            .rebuild_for_routes(&routes, None, &mut resources, "flowchart")
+            .rebuild_for_routes(&routes, &[], &mut resources, "flowchart")
             .unwrap();
         assert_eq!(rebuilt.terminal_claims, scene.terminal_claims);
         assert!(
@@ -558,7 +571,7 @@ mod tests {
             }
             let spent = resources.layout_work_used();
             let error = scene
-                .rebuild_for_routes(&[route(11, 0)], None, &mut resources, "flowchart")
+                .rebuild_for_routes(&[route(11, 0)], &[], &mut resources, "flowchart")
                 .unwrap_err();
             if cancel {
                 assert!(matches!(error, AsciiError::Cancelled(cancelled)

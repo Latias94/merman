@@ -226,17 +226,24 @@ fn central_ports(
     Ok(central)
 }
 
-pub(in crate::graph::routing) fn direct_path(
-    points: [CanvasCoord; 4],
+pub(in crate::graph::routing) fn direct_path<const N: usize>(
+    points: [CanvasCoord; N],
     departure: StepDirection,
     arrival: StepDirection,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<Vec<CanvasCoord>>> {
+    // Direct channels have at most three bends. Keep validation and scratch storage bounded
+    // even if another internal caller instantiates this helper with a larger array.
+    if N == 0 || N > 5 {
+        return Ok(None);
+    }
     let start = points[0];
     let mut length = 1;
     let mut first = None;
     let mut last = None;
+    let mut segments = [(start, start); 4];
+    let mut segment_count = 0;
     for pair in points.windows(2) {
         let (from, to) = (pair[0], pair[1]);
         if from == to {
@@ -259,6 +266,8 @@ pub(in crate::graph::routing) fn direct_path(
         }
         first.get_or_insert(heading);
         last = Some(heading);
+        segments[segment_count] = (from, to);
+        segment_count += 1;
         let span = resources.checked_work_add(from.x.abs_diff(to.x), from.y.abs_diff(to.y))?;
         length = resources.checked_work_add(length, span)?;
     }
@@ -268,15 +277,19 @@ pub(in crate::graph::routing) fn direct_path(
     {
         return Ok(None);
     }
-    if points[0] != points[1]
-        && points[1] != points[2]
-        && points[2] != points[3]
-        && points[0].x.min(points[1].x) <= points[2].x.max(points[3].x)
-        && points[2].x.min(points[3].x) <= points[0].x.max(points[1].x)
-        && points[0].y.min(points[1].y) <= points[2].y.max(points[3].y)
-        && points[2].y.min(points[3].y) <= points[0].y.max(points[1].y)
-    {
-        return Ok(None);
+    // Collapse empty segments before checking adjacency: [a, b, b, c] still has two
+    // adjacent segments, whereas a fourth nonempty segment can cross the first one.
+    let segments = &segments[..segment_count];
+    for (first, &(a, b)) in segments.iter().enumerate() {
+        for &(c, d) in segments.iter().skip(first + 2) {
+            if a.x.min(b.x) <= c.x.max(d.x)
+                && c.x.min(d.x) <= a.x.max(b.x)
+                && a.y.min(b.y) <= c.y.max(d.y)
+                && c.y.min(d.y) <= a.y.max(b.y)
+            {
+                return Ok(None);
+            }
+        }
     }
     execution.checkpoint(OperationPhase::Layout)?;
     resources.grid_extent(length, 1)?;
@@ -316,6 +329,70 @@ mod tests {
     use crate::graph::routing::RouteOwner;
     use crate::graph::routing::occupancy::SceneOccupancy;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+
+    #[test]
+    fn five_point_channels_reject_crossings_and_keep_distinct_terminal_berths() {
+        let policy = AsciiResourcePolicy::unbounded();
+        let resources = ResourceContext::new(policy);
+        let execution = AsciiExecution::for_test(&policy);
+        let points = [
+            CanvasCoord { x: 3, y: 2 },
+            CanvasCoord { x: 9, y: 2 },
+            CanvasCoord { x: 9, y: 8 },
+            CanvasCoord { x: 5, y: 8 },
+            CanvasCoord { x: 5, y: 4 },
+        ];
+        let path = direct_path(
+            points,
+            StepDirection::Right,
+            StepDirection::Up,
+            &resources,
+            execution,
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(path.first(), Some(&points[0]));
+        assert_eq!(path.last(), Some(&points[4]));
+        assert!(
+            path.windows(2)
+                .all(|pair| { pair[0].x.abs_diff(pair[1].x) + pair[0].y.abs_diff(pair[1].y) == 1 })
+        );
+        for end in [CanvasCoord { x: 5, y: 1 }, CanvasCoord { x: 5, y: 2 }] {
+            assert!(
+                direct_path(
+                    [points[0], points[1], points[2], points[3], end],
+                    StepDirection::Right,
+                    StepDirection::Up,
+                    &resources,
+                    execution,
+                )
+                .unwrap()
+                .is_none()
+            );
+        }
+        assert!(
+            direct_path(
+                [points[0]; 6],
+                StepDirection::Right,
+                StepDirection::Right,
+                &resources,
+                execution
+            )
+            .unwrap()
+            .is_none()
+        );
+        assert!(
+            direct_path(
+                [],
+                StepDirection::Right,
+                StepDirection::Right,
+                &resources,
+                execution
+            )
+            .unwrap()
+            .is_none()
+        );
+    }
 
     #[test]
     fn collapsed_middle_channel_retains_a_continuous_straight_path() {

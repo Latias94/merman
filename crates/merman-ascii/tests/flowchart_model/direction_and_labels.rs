@@ -214,22 +214,31 @@ fn flowchart_node_label_wrapping_uses_the_selected_width_profile() {
 
 #[test]
 fn flowchart_parser_lr_chain_matches_upstream_ascii_golden() {
-    let rendered = render_flowchart("flowchart LR\nA --> B", &AsciiRenderOptions::ascii()).unwrap();
+    // Keep the copied upstream fixture immutable by requesting its historical spacing.
+    let options = AsciiRenderOptions::ascii()
+        .with_node_padding(1)
+        .with_graph_padding_y(5);
+    let rendered = render_flowchart("flowchart LR\nA --> B", &options).unwrap();
 
     assert_eq!(rendered, fixture_expected("ascii", "two_nodes_linked.txt"));
 }
 
 #[test]
 fn flowchart_graph_alias_lr_chain_matches_upstream_ascii_golden() {
-    let rendered = render_flowchart("graph LR\nA --> B", &AsciiRenderOptions::ascii()).unwrap();
+    let options = AsciiRenderOptions::ascii()
+        .with_node_padding(1)
+        .with_graph_padding_y(5);
+    let rendered = render_flowchart("graph LR\nA --> B", &options).unwrap();
 
     assert_eq!(rendered, fixture_expected("ascii", "two_nodes_linked.txt"));
 }
 
 #[test]
 fn flowchart_parser_lr_chain_matches_upstream_unicode_golden() {
-    let rendered =
-        render_flowchart("flowchart LR\nA --> B", &AsciiRenderOptions::unicode()).unwrap();
+    let options = AsciiRenderOptions::unicode()
+        .with_node_padding(1)
+        .with_graph_padding_y(5);
+    let rendered = render_flowchart("flowchart LR\nA --> B", &options).unwrap();
 
     assert_eq!(
         rendered,
@@ -239,11 +248,10 @@ fn flowchart_parser_lr_chain_matches_upstream_unicode_golden() {
 
 #[test]
 fn flowchart_parser_tb_chain_matches_upstream_ascii_golden() {
-    let rendered = render_flowchart(
-        "flowchart TB\nA --> B\nB --> C",
-        &AsciiRenderOptions::ascii(),
-    )
-    .unwrap();
+    let options = AsciiRenderOptions::ascii()
+        .with_node_padding(1)
+        .with_graph_padding_y(5);
+    let rendered = render_flowchart("flowchart TB\nA --> B\nB --> C", &options).unwrap();
 
     assert_eq!(
         rendered,
@@ -259,8 +267,7 @@ fn flowchart_parser_bt_root_direction_renders_with_vertical_flip() {
     assert_eq!(
         rendered,
         concat!(
-            "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n", "  ^  \n", "  |  \n", "  |  \n",
-            "  |  \n", "  |  \n", "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n",
+            "+---+\n", "| B |\n", "+---+\n", "  ^  \n", "  |  \n", "+---+\n", "| A |\n", "+---+\n",
         )
     );
 }
@@ -291,9 +298,7 @@ fn flowchart_parser_rl_root_direction_renders_with_horizontal_mirror() {
         rendered,
         concat!(
             "+---+     +---+\n",
-            "|   |     |   |\n",
             "| B |<----| A |\n",
-            "|   |     |   |\n",
             "+---+     +---+\n",
         )
     );
@@ -311,9 +316,7 @@ fn flowchart_parser_rl_multi_character_node_labels_stay_readable() {
         rendered,
         concat!(
             "+-------------+     +-------------+\n",
-            "|             |     |             |\n",
             "| LongerName2 |<----| LongerName1 |\n",
-            "|             |     |             |\n",
             "+-------------+     +-------------+\n",
         )
     );
@@ -331,9 +334,7 @@ fn flowchart_parser_rl_cjk_node_labels_reserve_display_cells() {
         rendered,
         concat!(
             "+-----+     +-----+\n",
-            "|     |     |     |\n",
             "| 终B |<----| 中A |\n",
-            "|     |     |     |\n",
             "+-----+     +-----+\n",
         )
     );
@@ -398,9 +399,7 @@ fn flowchart_parser_rl_edge_labels_stay_readable() {
         rendered,
         concat!(
             "+---+          +---+\n",
-            "|   |          |   |\n",
             "| B |<--hello--| A |\n",
-            "|   |          |   |\n",
             "+---+          +---+\n",
         )
     );
@@ -415,9 +414,7 @@ fn flowchart_parser_rl_chain_mirrors_unicode_connectors() {
         rendered,
         concat!(
             "┌───┐     ┌───┐\n",
-            "│   │     │   │\n",
             "│ B │◄────┤ A │\n",
-            "│   │     │   │\n",
             "└───┘     └───┘\n",
         )
     );
@@ -435,9 +432,7 @@ fn flowchart_parser_lr_edge_label_renders_on_edge_line() {
         rendered,
         concat!(
             "+---+          +---+\n",
-            "|   |          |   |\n",
             "| A |--hello-->| B |\n",
-            "|   |          |   |\n",
             "+---+          +---+\n",
         )
     );
@@ -451,8 +446,8 @@ fn flowchart_parser_tb_edge_label_renders_between_nodes() {
     assert_eq!(
         rendered,
         concat!(
-            "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n", "  |  \n", "  |  \n", " yes \n",
-            "  |  \n", "  v  \n", "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n",
+            "+---+\n", "| A |\n", "+---+\n", "  |  \n", " yes \n", "  |  \n", "  v  \n", "+---+\n",
+            "| B |\n", "+---+\n",
         )
     );
 }

@@ -42,7 +42,6 @@ fn constrained_scene() -> (AsciiGraph, GraphLayout, GraphCharset) {
         node.width = 3;
         node.height = 3;
     }
-    layout.grid_aligned = false;
     (graph, layout, GraphCharset::for_options(&options))
 }
 
@@ -219,10 +218,221 @@ fn reorder_opens_a_blocked_exit_and_preserves_both_relationships_and_the_conditi
         );
     }
     let restored = occupancy
-        .rebuild_for_routes(&routes, None, &mut resources, "flowchart")
+        .rebuild_for_routes(&routes, &[], &mut resources, "flowchart")
         .unwrap();
     assert_eq!(restored.occupied_extent(), occupancy.occupied_extent());
     assert_eq!(budget.attempts, MAX_REORDER_ATTEMPTS - 1);
+}
+
+#[test]
+fn reorder_requires_both_blocking_contributors_and_preserves_their_relationships_and_conditions() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for id in [
+        "a", "b", "c", "d", "s", "t", "left", "above_s", "below_s", "right", "above_t", "below_t",
+    ] {
+        graph.add_node(id, id);
+    }
+    for (from, to, condition) in [("a", "b", "p"), ("c", "d", "q")] {
+        graph.add_edge_with_attrs(
+            from,
+            to,
+            GraphEdgeAttrs {
+                label: Some(condition.to_owned()),
+                ..Default::default()
+            },
+        );
+    }
+    graph.add_edge("s", "t");
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut layout = layout_graph(&graph, &options);
+    // Independent nodes leave only s.right and t.left open. Each admitted
+    // vertical route puts its condition in one of those two terminal berths;
+    // either remaining condition still seals the new relationship.
+    for (node, (x, y)) in layout.nodes.iter_mut().zip([
+        (14, 3),
+        (14, 17),
+        (21, 3),
+        (21, 17),
+        (10, 10),
+        (25, 10),
+        (6, 10),
+        (10, 6),
+        (10, 14),
+        (29, 10),
+        (25, 6),
+        (25, 14),
+    ]) {
+        node.x = x;
+        node.y = y;
+        node.width = 3;
+        node.height = 3;
+    }
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::for_test(&policy);
+    let labels = RoutedLabelCatalogPlan::try_new(
+        &graph.edges,
+        &[0, 1, 2],
+        charset.width_profile,
+        &resources,
+    )
+    .unwrap();
+    let mut occupancy =
+        SceneOccupancy::try_new_for_routes(&layout, 3, 2, &mut resources, execution).unwrap();
+    let mut routes = Vec::with_capacity(3);
+    for (index, x, label_x) in [(0, 15, 13), (1, 22, 24)] {
+        let path: Vec<_> = (6..17).map(|y| CanvasCoord { x, y }).collect();
+        let attachments = NodeAttachments {
+            start: NodeAttachment {
+                contact: CanvasCoord { x, y: 5 },
+                outward: StepDirection::Down,
+                connector: Some('v'),
+            },
+            end: NodeAttachment {
+                contact: CanvasCoord { x, y: 17 },
+                outward: StepDirection::Up,
+                connector: None,
+            },
+        };
+        let placement = RoutedLabelPlacement::new(label_x, 11, 1);
+        let mut label = PlannedRouteLabel::new(labels.descriptor(index).unwrap(), placement);
+        label.anchor = LabelAnchor::Segment {
+            start: path[0],
+            end: path[path.len() - 1],
+            route_segment: None,
+        };
+        let prior = request(&graph, &layout, &charset, index);
+        let owner = RouteOwner::for_test(index, &prior.edge.from, &prior.edge.to);
+        let plan = plan_terminal_path(
+            &path,
+            attachments,
+            prior.edge,
+            Some(label),
+            &charset,
+            &mut resources,
+        )
+        .unwrap()
+        .unwrap();
+        let (_, plan) = admit_route_candidate(
+            prior,
+            RouteObstacles {
+                scene: &occupancy,
+                routes: &routes,
+                owner: &owner,
+            },
+            plan,
+            &mut resources,
+        )
+        .unwrap()
+        .expect("the original path and its blocking condition must be admissible");
+        append_route(
+            prior,
+            &owner,
+            plan,
+            &mut routes,
+            &mut occupancy,
+            &mut resources,
+        )
+        .unwrap();
+        assert_eq!(routes[index].plan.labels[0].placement, placement);
+    }
+    let old: Vec<_> = routes
+        .iter()
+        .map(|route| (route.owner.clone(), route.plan.clone()))
+        .collect();
+    let blocked = request(&graph, &layout, &charset, 2);
+    let owner = RouteOwner::for_test(2, "s", "t");
+    for (omitted, retained) in [
+        (&[][..], &routes[..]),
+        (&[0][..], &routes[1..]),
+        (&[1][..], &routes[..1]),
+    ] {
+        let trial = occupancy
+            .rebuild_for_routes(&routes, omitted, &mut resources, "flowchart")
+            .unwrap();
+        let mut budget = SceneRepairBudget::default();
+        assert!(
+            select_route(
+                blocked,
+                None,
+                None,
+                &owner,
+                retained,
+                &trial,
+                &mut budget,
+                &mut resources,
+                execution,
+            )
+            .unwrap()
+            .is_none(),
+            "removing {omitted:?} must leave at least one terminal sealed"
+        );
+        assert!(
+            budget.expansions > 0,
+            "single-contributor failure must not depend on exhausted search work"
+        );
+    }
+    let mut budget = SceneRepairBudget::default();
+    assert!(
+        reorder_failed_route(
+            blocked,
+            None,
+            &labels,
+            &owner,
+            &mut routes,
+            &mut occupancy,
+            &mut budget,
+            &mut resources,
+            execution,
+        )
+        .unwrap()
+    );
+    assert_eq!(budget.attempts, MAX_REORDER_ATTEMPTS - 3);
+    assert_eq!(routes.len(), 3);
+    assert_eq!(
+        routes
+            .iter()
+            .map(|route| route.owner.canonical_edge_index)
+            .collect::<Vec<_>>(),
+        [2, 0, 1]
+    );
+    assert_eq!(routes[0].owner, owner);
+    assert!(routes[0].plan.labels.is_empty());
+    for (route, (old_owner, old_plan)) in routes[1..].iter().zip(&old) {
+        assert_eq!(&route.owner, old_owner);
+        assert_ne!(&route.plan, old_plan);
+        assert_eq!(route.plan.labels.len(), 1);
+        assert_eq!(
+            route.plan.labels[0].descriptor,
+            old_plan.labels[0].descriptor
+        );
+        assert_ne!(route.plan.labels[0].placement, old_plan.labels[0].placement);
+    }
+    let restored = occupancy
+        .rebuild_for_routes(&routes, &[], &mut resources, "flowchart")
+        .unwrap();
+    assert_eq!(restored.occupied_extent(), occupancy.occupied_extent());
+    for route in &routes {
+        let edge = request(&graph, &layout, &charset, route.owner.canonical_edge_index);
+        let ports = route.plan.attachments.unwrap();
+        for (contact, node) in [
+            (ports.start.contact, edge.from),
+            (ports.end.contact, edge.to),
+        ] {
+            assert!(contact.x >= node.x && contact.x <= node.right());
+            assert!(contact.y >= node.y && contact.y <= node.bottom());
+        }
+        assert!(
+            route
+                .plan
+                .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                .unwrap()
+                .is_some()
+        );
+        assert_eq!(occupancy.target_port_usage(ports.end), 1);
+        assert_eq!(restored.target_port_usage(ports.end), 1);
+    }
 }
 
 #[test]

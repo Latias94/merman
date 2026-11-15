@@ -303,9 +303,11 @@ fn reverse_edge_labels_keep_reading_clearance() {
 #[test]
 fn zero_vertical_padding_reduces_only_node_height() {
     let input = "flowchart TD\n A[Write code] --> B[Open PR] --> C[Merge]\n";
-    let default = render_flowchart(input, &AsciiRenderOptions::unicode()).unwrap();
-    let compact_nodes =
-        render_flowchart(input, &AsciiRenderOptions::unicode().with_node_padding_y(0)).unwrap();
+    let options = AsciiRenderOptions::unicode()
+        .with_node_padding(1)
+        .with_graph_padding_y(5);
+    let default = render_flowchart(input, &options).unwrap();
+    let compact_nodes = render_flowchart(input, &options.with_node_padding_y(0)).unwrap();
     assert_eq!(default.lines().count(), 25);
     assert_eq!(compact_nodes.lines().count(), 19);
     assert_eq!(

@@ -16,8 +16,7 @@ mod transit;
 
 use self::bounds::RawBounds;
 use self::members::{
-    graph_endpoint_group_ids, group_member_indices, member_grid_bounds, shift_member_indices_x,
-    shift_member_indices_y,
+    group_member_indices, member_grid_bounds, shift_member_indices_x, shift_member_indices_y,
 };
 
 #[derive(Debug)]
@@ -45,6 +44,7 @@ pub(super) fn reserve_compound_axis_spacing(
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    demand: &crate::graph::demand::SceneDemand<'_>,
     column_widths: &mut super::grid::AxisSizes,
     row_heights: &mut super::grid::AxisSizes,
     resources: &mut ResourceContext,
@@ -82,6 +82,7 @@ pub(super) fn reserve_compound_axis_spacing(
             layouts,
             topology,
             policy,
+            demand,
             column_widths,
             row_heights,
             &mut spacing_resources,
@@ -122,11 +123,6 @@ fn separate_external_nodes_from_groups(
     if graph.groups.is_empty() || placements.is_empty() {
         return Ok(());
     }
-    let endpoint_group_ids = graph_endpoint_group_ids(graph, resources)?;
-    if endpoint_group_ids.is_empty() {
-        return Ok(());
-    }
-
     let max_passes = graph
         .groups
         .len()
@@ -142,9 +138,7 @@ fn separate_external_nodes_from_groups(
         let mut changed = false;
         for group_index in 0..graph.groups.len() {
             resources.charge_layout_work(1)?;
-            if graph.groups[group_index].kind != GraphGroupKind::Container
-                || !endpoint_group_ids.contains(graph.groups[group_index].id.as_str())
-            {
+            if graph.groups[group_index].kind != GraphGroupKind::Container {
                 continue;
             }
             resources.charge_layout_work(graph.nodes.len())?;

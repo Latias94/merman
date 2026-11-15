@@ -7,13 +7,13 @@
       "id": "max_ascii_grid_cells",
       "phase": "ascii_layout",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 135
+      "exact": 72
     },
     {
       "id": "max_ascii_layout_work_units",
       "phase": "ascii_layout_work",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 3065
+      "exact": 901
     },
     {
       "id": "max_ascii_document_cells",
@@ -25,7 +25,7 @@
       "id": "max_ascii_output_bytes",
       "phase": "ascii_output",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 256
+      "exact": 164
     },
     {
       "id": "max_ascii_grapheme_bytes",
@@ -45,19 +45,19 @@
       "id": "max_ascii_output_bytes",
       "phase": "ascii_output",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 150
+      "exact": 80
     },
     "uniffi_interactive": {
       "id": "max_ascii_output_bytes",
       "phase": "ascii_output",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 256
+      "exact": 164
     },
     "wasm_interactive": {
       "id": "max_ascii_output_bytes",
       "phase": "ascii_output",
       "source": "flowchart TD\nA[Hello] --> B[World]",
-      "exact": 256
+      "exact": 164
     }
   }
 }

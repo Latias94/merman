@@ -80,7 +80,7 @@ pub(super) fn reserve_exterior_routing(
         return Ok(offset);
     }
 
-    // Translate the whole scene, including the coarse-grid origin and open region spans.
+    // Translate the whole scene, including open region spans.
     // Relative ranks, contours, labels, and containment remain unchanged.
     for node in nodes {
         resources.checkpoint()?;

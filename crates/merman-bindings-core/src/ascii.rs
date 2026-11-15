@@ -389,6 +389,10 @@ fn classify_render_error(
                 | merman::ascii::AsciiError::UnsupportedFeature { .. } => {
                     BindingStatus::UnsupportedOperation
                 }
+                merman::ascii::AsciiError::RoutingSearchExhausted { .. }
+                | merman::ascii::AsciiError::PortCapacityExceeded { .. } => {
+                    BindingStatus::RenderError
+                }
                 _ => BindingStatus::RenderError,
             };
             let error = merman::ascii::AsciiDiagnostic::from(err);
@@ -469,6 +473,109 @@ mod tests {
         assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
         assert!(error.message().contains("THEME_COLOR_LIMIT"));
         assert_eq!(error.resource_details(), None);
+    }
+
+    #[test]
+    fn routing_search_exhaustion_preserves_render_status_and_safe_diagnostic_payload() {
+        let error = classify_render_error(
+            merman::ascii::AsciiError::RoutingSearchExhausted {
+                diagram_type: "flowchart\u{1b}\u{7}\u{9b}\u{202e}",
+                edge_index: 7,
+            }
+            .into(),
+            merman::model::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::RenderError);
+        assert_eq!(error.resource_details(), None);
+        assert!(error.message().contains("edge[7]"), "{error:?}");
+        assert!(
+            error.message().contains("did not find a valid scene"),
+            "{error:?}"
+        );
+        for misleading in [
+            "unsupported",
+            "does not support",
+            "impossible",
+            "resource limit",
+        ] {
+            assert!(!error.message().contains(misleading), "{error:?}");
+        }
+        assert!(!error.message().chars().any(char::is_control));
+        assert!(!error.message().contains('\u{202e}'));
+        let details = error
+            .diagnostic_details()
+            .expect("routing search exhaustion should preserve diagnostic details");
+        assert_eq!(details.code, "merman.ascii.routing_search_exhausted");
+        assert_eq!(details.field.as_deref(), Some("edge[7]"));
+        assert_eq!(
+            details.diagram_type.as_deref(),
+            Some("flowchart\\u{1B}\\u{7}\\u{9B}\\u{202E}")
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&error))
+                .expect("binding error payload should be JSON");
+        assert_eq!(payload["code_name"], "MERMAN_RENDER_ERROR");
+        assert_eq!(payload["message"], error.message());
+        assert_eq!(
+            payload["details"]["diagnostic"]["code"],
+            "merman.ascii.routing_search_exhausted"
+        );
+        assert_eq!(payload["details"]["diagnostic"]["field"], "edge[7]");
+        assert_eq!(
+            payload["details"]["diagnostic"]["diagram_type"],
+            "flowchart\\u{1B}\\u{7}\\u{9B}\\u{202E}"
+        );
+    }
+
+    #[test]
+    fn port_capacity_preserves_render_status_and_safe_endpoint_payload() {
+        let error = classify_render_error(
+            merman::ascii::AsciiError::PortCapacityExceeded {
+                diagram_type: "flowchart\u{1b}\u{9b}",
+                endpoint: "source\u{7}\u{202e}".to_string(),
+                required: 33,
+                available: 32,
+            }
+            .into(),
+            merman::model::resources::ResourceProfile::Interactive,
+        );
+
+        assert_eq!(error.status(), BindingStatus::RenderError);
+        assert_eq!(error.resource_details(), None);
+        assert!(error.message().contains("current presentation"));
+        assert!(
+            error
+                .message()
+                .contains("33 independent markers > upper bound 32")
+        );
+        assert!(!error.message().chars().any(char::is_control));
+        assert!(!error.message().contains('\u{202e}'));
+        let details = error.diagnostic_details().unwrap();
+        assert_eq!(details.code, "merman.ascii.port_capacity_exceeded");
+        assert_eq!(details.field.as_deref(), Some("source\\u{7}\\u{202E}"));
+        assert_eq!(
+            details.diagram_type.as_deref(),
+            Some("flowchart\\u{1B}\\u{9B}")
+        );
+
+        let payload: serde_json::Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&error)).unwrap();
+        assert_eq!(payload["code_name"], "MERMAN_RENDER_ERROR");
+        assert_eq!(payload["message"], error.message());
+        assert_eq!(
+            payload["details"]["diagnostic"]["code"],
+            "merman.ascii.port_capacity_exceeded"
+        );
+        assert_eq!(
+            payload["details"]["diagnostic"]["field"],
+            "source\\u{7}\\u{202E}"
+        );
+        assert_eq!(
+            payload["details"]["diagnostic"]["diagram_type"],
+            "flowchart\\u{1B}\\u{9B}"
+        );
     }
 
     #[test]
