@@ -4,7 +4,8 @@ use super::label::GraphLabel;
 use super::layout::CanvasCoord;
 use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
 use super::model::{
-    AsciiGraph, AsciiGraphEdge, GraphEdgeMarker, GraphEdgeStroke, GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeMarker, GraphEdgeStroke, GraphNodeShape,
+    GraphNodeStyle,
 };
 use super::surface::GraphSurface;
 use super::topology::{GraphEndpointIndex, GraphGroupTopology};
@@ -45,7 +46,6 @@ use occupancy::{
     RouteCandidateScore, SceneOccupancy, allocate_committed_route_labels,
     allocate_committed_route_marker_berths,
 };
-#[cfg(test)]
 use path::StepDirection;
 use plan::{EdgeRouteRequest, MarkerEndpoint, PlannedRouteCellKind, RoutePlan};
 #[cfg(test)]
@@ -500,6 +500,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             edge,
             charset,
         };
+        let forward = forward_route_direction(request, resources)?;
         let candidates = if edge.from == edge.to {
             terminal::plan_self_loop_candidates(
                 request,
@@ -593,7 +594,13 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             )?
             && selected
                 .as_ref()
-                .is_none_or(|(incumbent, _, _)| score < *incumbent)
+                .is_none_or(|(incumbent, _, incumbent_plan)| {
+                    route_candidate_is_better(
+                        forward,
+                        (score, plan.attachments),
+                        (*incumbent, incumbent_plan.attachments),
+                    )
+                })
         {
             selected = Some((score, usize::MAX, plan));
         }
@@ -606,8 +613,8 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
         let needs_terminal_search = !honors_allocation
             && (selected.is_none() || repair_budget.expansions != 0)
-            && selected.as_ref().is_none_or(|(score, _, _)| {
-                score.has_congestion() || (!defer_loop_labels && score.grows_scene())
+            && selected.as_ref().is_none_or(|(score, _, plan)| {
+                route_needs_search(forward, *score, plan, defer_loop_labels)
             });
         if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
             // A searched loop can choose a different side from the predetermined lanes.
@@ -662,7 +669,9 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                     owner: &owner,
                 },
                 label_plans.descriptor(edge_index),
-                selected.as_ref().map(|(score, _, _)| *score),
+                selected
+                    .as_ref()
+                    .map(|(score, _, plan)| (*score, plan.attachments)),
                 if selected.is_some() {
                     terminal::SearchBudget::Optional(&mut repair_budget.expansions)
                 } else {
@@ -815,6 +824,126 @@ fn plan_allocated_channel(
     )
 }
 
+/// Read the common scope from the resolved frames, without rerunning group placement.
+/// Unresolved implicit directions retain the existing router rather than guessing an axis.
+fn compound_route_direction(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    resources: &ResourceContext,
+) -> Result<Option<GraphDirection>> {
+    // Keep flat routing, including its exact small-grid work boundary, unchanged.
+    if graph.diagram_type() != "flowchart" || layout.groups.is_empty() || from.id == to.id {
+        return Ok(None);
+    }
+    let mut common: Option<&GroupLayout> = None;
+    for group in &layout.groups {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if group.kind == super::model::GraphGroupKind::Container
+            && geometry::group_contains_node(group, from)
+            && geometry::group_contains_node(group, to)
+            && common.is_none_or(|outer| {
+                outer.x <= group.x
+                    && group.right() <= outer.right()
+                    && outer.y <= group.y
+                    && group.bottom() <= outer.bottom()
+            })
+        {
+            common = Some(group);
+        }
+    }
+    let Some(common) = common else {
+        return Ok(Some(graph.direction.canonical()));
+    };
+    for group in &graph.groups {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if group.id == common.id {
+            return Ok(group
+                .direction
+                .map(|direction| direction.before_root_output_transform(graph.direction)));
+        }
+    }
+    Ok(None)
+}
+
+fn forward_route_direction(
+    request: EdgeRouteRequest<'_>,
+    resources: &ResourceContext,
+) -> Result<Option<StepDirection>> {
+    let Some(direction) = compound_route_direction(
+        request.graph,
+        request.graph_layout,
+        request.from,
+        request.to,
+        resources,
+    )?
+    else {
+        return Ok(None);
+    };
+    // A preference is only meaningful when the resolved contours leave a forward gap.
+    // Feedback, overlapping ranks and ancestor/member endpoints keep all their contacts.
+    Ok(match direction {
+        GraphDirection::LeftRight if request.from.right() < request.to.x => {
+            Some(StepDirection::Right)
+        }
+        GraphDirection::RightLeft if request.to.right() < request.from.x => {
+            Some(StepDirection::Left)
+        }
+        GraphDirection::TopDown if request.from.bottom() < request.to.y => {
+            Some(StepDirection::Down)
+        }
+        GraphDirection::BottomTop if request.to.bottom() < request.from.y => {
+            Some(StepDirection::Up)
+        }
+        _ => None,
+    })
+}
+
+fn contacts_follow_direction(
+    forward: Option<StepDirection>,
+    attachments: Option<plan::NodeAttachments>,
+) -> bool {
+    forward.is_none_or(|forward| {
+        attachments.is_some_and(|attachments| {
+            attachments.start.outward == forward && attachments.end.outward == forward.opposite()
+        })
+    })
+}
+
+/// Endpoint reuse precedes contact preference; legal crossings keep their geometry cost.
+/// With no known scope direction, retain the original score ordering exactly.
+fn route_candidate_is_better(
+    forward: Option<StepDirection>,
+    candidate: (RouteCandidateScore, Option<plan::NodeAttachments>),
+    incumbent: (RouteCandidateScore, Option<plan::NodeAttachments>),
+) -> bool {
+    if forward.is_none() {
+        return candidate.0 < incumbent.0;
+    }
+    let key = |(score, attachments): (RouteCandidateScore, Option<plan::NodeAttachments>)| {
+        (
+            score.port_reuse(),
+            !contacts_follow_direction(forward, attachments),
+            score,
+        )
+    };
+    key(candidate) < key(incumbent)
+}
+
+fn route_needs_search(
+    forward: Option<StepDirection>,
+    score: RouteCandidateScore,
+    plan: &RoutePlan,
+    defer_loop_labels: bool,
+) -> bool {
+    score.has_congestion()
+        || (!defer_loop_labels && score.grows_scene())
+        || !contacts_follow_direction(forward, plan.attachments)
+}
+
 fn plan_route_order(
     graph: &AsciiGraph,
     layout: &GraphLayout,
@@ -845,7 +974,7 @@ fn plan_route_order(
         resources.checkpoint()?;
         levels.insert(
             node.id.as_str(),
-            if horizontal { node.grid.x } else { node.grid.y },
+            (if horizontal { node.grid.x } else { node.grid.y }, node),
         );
     }
     resources.charge_layout_work(edges.len())?;
@@ -855,14 +984,44 @@ fn plan_route_order(
             order.push(index);
         }
     }
+    let mut scoped_ranks = HashMap::default();
+    if graph.diagram_type() == "flowchart" && !layout.groups.is_empty() {
+        resources.charge_layout_work(order.len())?;
+        scoped_ranks
+            .try_reserve(order.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for &index in &order {
+            let edge = &edges[index];
+            let Some(((_, from), (_, to))) = levels
+                .get(edge.from.as_str())
+                .zip(levels.get(edge.to.as_str()))
+            else {
+                continue;
+            };
+            let Some(direction) = compound_route_direction(graph, layout, from, to, resources)?
+            else {
+                continue;
+            };
+            let ranks = match direction {
+                GraphDirection::LeftRight => (from.center_x(), to.center_x()),
+                GraphDirection::RightLeft => (to.center_x(), from.center_x()),
+                GraphDirection::TopDown => (from.center_y(), to.center_y()),
+                GraphDirection::BottomTop => (to.center_y(), from.center_y()),
+            };
+            scoped_ranks.insert(index, ranks);
+        }
+    }
     super::layout::charge_sort_work(order.len(), resources)?;
     order.sort_unstable_by_key(|&index| {
         let edge = &edges[index];
-        let ranks = levels
-            .get(edge.from.as_str())
-            .zip(levels.get(edge.to.as_str()));
+        let ranks = scoped_ranks.get(&index).copied().or_else(|| {
+            levels
+                .get(edge.from.as_str())
+                .zip(levels.get(edge.to.as_str()))
+                .map(|((from, _), (to, _))| (*from, *to))
+        });
         let feedback = edge.from != edge.to && ranks.is_some_and(|(from, to)| from >= to);
-        let span = ranks.map_or(usize::MAX, |(from, to)| from.abs_diff(*to));
+        let span = ranks.map_or(usize::MAX, |(from, to)| from.abs_diff(to));
         (feedback, span, index)
     });
     Ok(order)

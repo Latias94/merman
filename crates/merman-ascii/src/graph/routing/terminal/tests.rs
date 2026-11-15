@@ -51,6 +51,146 @@ fn node_ports(
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
+fn compound_forward_contacts_detect_the_sealed_compact_bt_entry() {
+    use crate::AsciiLayoutProfile;
+    use merman_core::{ParseOptions, presentation::MermaidEngine};
+    use merman_model::presentation::RenderSemanticModel;
+
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/testdata/local-semantic/flowchart/nested_direction_boundary.mmd"
+    ))
+    .replacen("flowchart TD", "flowchart BT", 1);
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected flowchart");
+    };
+    for (profile, is_open) in [
+        (AsciiLayoutProfile::Canonical, true),
+        (AsciiLayoutProfile::Compact, false),
+    ] {
+        let options = AsciiRenderOptions::ascii().with_layout_profile(profile);
+        let charset = GraphCharset::for_options(&options);
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let policy = resources.policy();
+        let execution = AsciiExecution::for_test(&policy);
+        let graph =
+            crate::graph::adapter::from_flowchart_model(model, &options, &mut resources).unwrap();
+        let layout = layout_graph(&graph, &options);
+        let edge_index = graph
+            .edges
+            .iter()
+            .position(|edge| edge.from == "Entry" && edge.to == "Validate")
+            .unwrap();
+        let edge = &graph.edges[edge_index];
+        let request = EdgeRouteRequest {
+            graph: &graph,
+            graph_layout: &layout,
+            edges: &graph.edges,
+            from: layout
+                .nodes
+                .iter()
+                .find(|node| node.id == edge.from)
+                .unwrap(),
+            to: layout.nodes.iter().find(|node| node.id == edge.to).unwrap(),
+            edge_index,
+            edge,
+            charset: &charset,
+        };
+        let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+        let mut owner = RouteOwner::for_test(edge_index, "Entry", "Validate");
+        let topology =
+            crate::graph::topology::GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
+        owner.boundary_group_indices = crate::graph::routing::route_boundary_group_indices(
+            &graph,
+            Some(&topology),
+            edge,
+            &mut resources,
+        )
+        .unwrap();
+        let starts = terminal_ports(
+            EndpointGeometry::for_route(request.from, request.to, &layout, &resources).unwrap(),
+            request,
+            &resources,
+            execution,
+        )
+        .unwrap();
+        let ends = terminal_ports(
+            EndpointGeometry::for_route(request.to, request.from, &layout, &resources).unwrap(),
+            request,
+            &resources,
+            execution,
+        )
+        .unwrap();
+        let end = ends
+            .iter()
+            .copied()
+            .find(|port| port.attachment.outward == StepDirection::Left)
+            .unwrap();
+        let starts: Vec<_> = starts
+            .into_iter()
+            .filter(|port| port.attachment.outward == StepDirection::Right)
+            .collect();
+        assert_eq!(starts.len(), 1, "the entire Right side must be checked");
+        let inner = layout
+            .groups
+            .iter()
+            .find(|group| group.id == "inner")
+            .unwrap();
+        assert_eq!(inner.x - request.from.right(), if is_open { 4 } else { 2 });
+        for start in starts {
+            let geometry = SearchGeometry {
+                start,
+                end,
+                bounds: CanvasCoord { x: 40, y: 40 },
+                obstacles: RouteObstacles {
+                    scene: &occupancy,
+                    routes: &[],
+                    owner: &owner,
+                },
+                groups: CompoundRouteGeometry {
+                    layout: &layout,
+                    from: request.from,
+                    to: request.to,
+                    attachments: Some(NodeAttachments {
+                        start: start.attachment,
+                        end: end.attachment,
+                    }),
+                },
+            };
+            assert_eq!(
+                terminal_corridor_is_open(geometry, start, &mut resources, execution).unwrap(),
+                is_open,
+                "{profile:?}"
+            );
+            let axes = channels::ChannelAxes::new(
+                geometry.obstacles,
+                &[start],
+                &[end],
+                geometry.bounds,
+                &resources,
+                execution,
+            )
+            .unwrap();
+            let mut expansions = MAX_REPAIR_EXPANSIONS;
+            let path =
+                find_path(geometry, &axes, &mut expansions, &mut resources, execution).unwrap();
+            assert_eq!(path.is_some(), is_open, "{profile:?}");
+            if !is_open {
+                assert_eq!(
+                    expansions, MAX_REPAIR_EXPANSIONS,
+                    "a sealed entry needs no search"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn rectangular_ports_cover_each_noncorner_contact_in_center_out_order() {
     let policy = AsciiResourcePolicy::unbounded();
     let execution = AsciiExecution::for_test(&policy);
@@ -223,37 +363,97 @@ fn lazy_port_pairs_match_exhaustive_usage_distance_and_ordinal_order() {
     for port in &mut ends {
         port.usage = port.ordinal % 4;
     }
-    let mut expected = Vec::new();
-    for start in &starts {
-        for end in &ends {
-            expected.push((
-                end.usage,
-                start.usage,
-                distance(start.berth, end.berth, &resources).unwrap(),
-                start.ordinal,
-                end.ordinal,
-            ));
+    for forward in [None, Some(StepDirection::Down), Some(StepDirection::Right)] {
+        let mut expected = Vec::new();
+        for start in &starts {
+            for end in &ends {
+                expected.push((
+                    end.usage,
+                    start.usage,
+                    forward.is_some_and(|forward| {
+                        start.attachment.outward != forward
+                            || end.attachment.outward != forward.opposite()
+                    }),
+                    distance(start.berth, end.berth, &resources).unwrap(),
+                    start.ordinal,
+                    end.ordinal,
+                ));
+            }
+        }
+        expected.sort_unstable();
+        let mut pairs = PortPairs::new(starts.clone(), ends.clone(), &resources).unwrap();
+        pairs.prefer_forward(forward, true);
+        for expected_pair in expected {
+            let (start, end) = pairs
+                .next(&resources, execution)
+                .unwrap()
+                .expect("every legal port combination must be generated");
+            assert_eq!(
+                (
+                    end.usage,
+                    start.usage,
+                    forward.is_some_and(|forward| {
+                        start.attachment.outward != forward
+                            || end.attachment.outward != forward.opposite()
+                    }),
+                    distance(start.berth, end.berth, &resources).unwrap(),
+                    start.ordinal,
+                    end.ordinal,
+                ),
+                expected_pair
+            );
+        }
+        assert!(pairs.next(&resources, execution).unwrap().is_none());
+    }
+}
+
+#[test]
+fn lazy_port_pairs_prioritize_independent_contacts_before_forward_preference() {
+    let policy = AsciiResourcePolicy::unbounded();
+    let resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::for_test(&policy);
+    let ports = node_ports(3, 3, GraphNodeShape::Rect, &resources, execution).unwrap();
+    let port = |outward| {
+        *ports
+            .iter()
+            .find(|port| port.attachment.outward == outward)
+            .unwrap()
+    };
+    for reused_source in [false, true] {
+        for usage in [1, 2] {
+            let mut start = port(StepDirection::Down);
+            let mut end = port(StepDirection::Up);
+            let (starts, ends) = if reused_source {
+                start.usage = usage;
+                (vec![start, port(StepDirection::Right)], vec![end])
+            } else {
+                end.usage = usage;
+                (vec![start], vec![end, port(StepDirection::Left)])
+            };
+            let mut pairs = PortPairs::new(starts, ends, &resources).unwrap();
+            pairs.prefer_forward(Some(StepDirection::Down), true);
+            let (start, end) = pairs.next(&resources, execution).unwrap().unwrap();
+            assert_eq!((end.usage, start.usage), (0, 0));
+            assert!(
+                start.attachment.outward != StepDirection::Down
+                    || end.attachment.outward != StepDirection::Up
+            );
+            let (start, end) = pairs.next(&resources, execution).unwrap().unwrap();
+            assert_eq!(
+                (start.attachment.outward, end.attachment.outward),
+                (StepDirection::Down, StepDirection::Up)
+            );
+            assert_eq!(
+                (end.usage, start.usage),
+                if reused_source {
+                    (0, usage)
+                } else {
+                    (usage, 0)
+                }
+            );
+            assert!(pairs.next(&resources, execution).unwrap().is_none());
         }
     }
-    expected.sort_unstable();
-    let mut pairs = PortPairs::new(starts, ends, &resources).unwrap();
-    for expected_pair in expected {
-        let (start, end) = pairs
-            .next(&resources, execution)
-            .unwrap()
-            .expect("every legal port combination must be generated");
-        assert_eq!(
-            (
-                end.usage,
-                start.usage,
-                distance(start.berth, end.berth, &resources).unwrap(),
-                start.ordinal,
-                end.ordinal,
-            ),
-            expected_pair
-        );
-    }
-    assert!(pairs.next(&resources, execution).unwrap().is_none());
 }
 
 #[test]

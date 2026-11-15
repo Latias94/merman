@@ -246,6 +246,10 @@ pub(super) struct RouteCandidateScore {
 }
 
 impl RouteCandidateScore {
+    pub(super) fn port_reuse(self) -> (usize, usize) {
+        (self.target_port_reuse, self.source_port_reuse)
+    }
+
     pub(super) fn has_congestion(self) -> bool {
         self.target_port_reuse != 0
             || self.source_port_reuse != 0

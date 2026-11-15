@@ -233,6 +233,7 @@ fn select_route(
             admit_route_candidate(request, obstacles, plan, resources)?.map(|(_, plan)| plan)
         );
     }
+    let forward = super::forward_route_direction(request, resources)?;
     let mut best: Option<(RouteCandidateScore, RoutePlan)> = None;
     if request.edge.from == request.edge.to {
         for plan in terminal::plan_self_loop_candidates(request, label, resources, execution)? {
@@ -245,18 +246,25 @@ fn select_route(
     }
     if let Some(candidate) =
         terminal::plan_direct_route(request, obstacles, label, resources, execution)?
-        && best.as_ref().is_none_or(|(score, _)| candidate.0 < *score)
+        && best.as_ref().is_none_or(|(score, plan)| {
+            super::route_candidate_is_better(
+                forward,
+                (candidate.0, candidate.1.attachments),
+                (*score, plan.attachments),
+            )
+        })
     {
         best = Some(candidate);
     }
     if best
         .as_ref()
-        .is_none_or(|(score, _)| score.has_congestion() || score.grows_scene())
+        .is_none_or(|(score, plan)| super::route_needs_search(forward, *score, plan, false))
         && let Some(candidate) = terminal::plan_terminal_route_with_budget(
             request,
             obstacles,
             label,
-            best.as_ref().map(|(score, _)| *score),
+            best.as_ref()
+                .map(|(score, plan)| (*score, plan.attachments)),
             SearchBudget::Optional(&mut budget.expansions),
             resources,
             execution,

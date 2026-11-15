@@ -47,7 +47,7 @@ struct TerminalPort {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct PortPairEntry {
-    priority: (usize, usize, usize, usize),
+    priority: (usize, bool, usize, usize, usize),
     end_index: usize,
     end_limit: usize,
     increasing: bool,
@@ -74,6 +74,8 @@ struct PortPairs {
     ends: Vec<TerminalPort>,
     frontier: BinaryHeap<PortPairEntry>,
     next_usage_group: usize,
+    preferred: Option<StepDirection>,
+    allow_fallback: bool,
 }
 
 impl PortPairs {
@@ -95,7 +97,14 @@ impl PortPairs {
             ends,
             frontier: BinaryHeap::new(),
             next_usage_group: 0,
+            preferred: None,
+            allow_fallback: true,
         })
+    }
+
+    fn prefer_forward(&mut self, forward: Option<StepDirection>, allow_fallback: bool) {
+        self.preferred = forward;
+        self.allow_fallback = allow_fallback;
     }
 
     fn next(
@@ -106,7 +115,7 @@ impl PortPairs {
         if self.starts.is_empty() || self.ends.is_empty() {
             return Ok(None);
         }
-        if self.frontier.is_empty() {
+        while self.frontier.is_empty() {
             if self.next_usage_group == self.ends.len() {
                 return Ok(None);
             }
@@ -127,6 +136,17 @@ impl PortPairs {
                 let last = self.next_usage_group;
                 for start_index in 0..self.starts.len() {
                     let start = self.starts[start_index];
+                    if !self.allow_fallback
+                        && let Some(forward) = self.preferred
+                    {
+                        resources.checkpoint()?;
+                        resources.charge_layout_work(1)?;
+                        let preferred_pair =
+                            start.attachment.outward == forward && outward == forward.opposite();
+                        if !preferred_pair {
+                            continue;
+                        }
+                    }
                     let intercept = match outward {
                         StepDirection::Left | StepDirection::Right => start.berth.y,
                         StepDirection::Up | StepDirection::Down => start.berth.x,
@@ -157,7 +177,7 @@ impl PortPairs {
         };
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
         resources.charge_layout_work(1)?;
-        let start_index = entry.priority.2;
+        let start_index = entry.priority.3;
         let next = if entry.increasing {
             entry
                 .end_index
@@ -196,6 +216,10 @@ impl PortPairs {
         let entry = PortPairEntry {
             priority: (
                 start.usage,
+                self.preferred.is_some_and(|forward| {
+                    start.attachment.outward != forward
+                        || end.attachment.outward != forward.opposite()
+                }),
                 distance(start.berth, end.berth, resources)?,
                 start_index,
                 end.ordinal,
@@ -235,7 +259,7 @@ pub(super) fn plan_terminal_route(
         request,
         obstacles,
         label,
-        incumbent,
+        incumbent.map(|score| (score, None)),
         if incumbent.is_some() {
             SearchBudget::Optional(&mut repair_expansions)
         } else {
@@ -250,7 +274,7 @@ pub(super) fn plan_terminal_route_with_budget(
     request: EdgeRouteRequest<'_>,
     obstacles: RouteObstacles<'_>,
     label: Option<RoutedLabelDescriptor>,
-    incumbent: Option<RouteCandidateScore>,
+    incumbent: Option<(RouteCandidateScore, Option<NodeAttachments>)>,
     mut budget: SearchBudget<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
@@ -263,6 +287,12 @@ pub(super) fn plan_terminal_route_with_budget(
     if expansions_left == 0 {
         return Ok(None);
     }
+    let forward = super::forward_route_direction(request, resources)?;
+    let incumbent_is_preferred = forward.is_some()
+        && incumbent
+            .is_some_and(|(_, attachments)| super::contacts_follow_direction(forward, attachments));
+    let allow_fallback =
+        incumbent.is_none_or(|(score, _)| !incumbent_is_preferred || score.port_reuse() != (0, 0));
     for group in &request.graph_layout.groups {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
@@ -313,6 +343,7 @@ pub(super) fn plan_terminal_route_with_budget(
     let channels =
         channels::ChannelAxes::new(obstacles, &starts, &ends, bounds, resources, execution)?;
     let mut pairs = PortPairs::new(starts, ends, resources)?;
+    pairs.prefer_forward(forward, allow_fallback);
     while expansions_left != 0 {
         let Some((start, end)) = pairs.next(resources, execution)? else {
             break;
@@ -373,7 +404,9 @@ pub(super) fn plan_terminal_route_with_budget(
             else {
                 continue;
             };
-            if incumbent.is_none_or(|best| score < best) {
+            if incumbent.is_none_or(|incumbent| {
+                super::route_candidate_is_better(forward, (score, plan.attachments), incumbent)
+            }) {
                 return Ok(Some((score, plan)));
             }
         }

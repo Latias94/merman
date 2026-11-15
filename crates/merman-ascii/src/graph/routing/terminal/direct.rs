@@ -1,14 +1,17 @@
-use super::{DIRECTIONS, TerminalPort, terminal_ports};
+use super::{DIRECTIONS, TerminalPort, terminal_ports, unit_neighbor};
 use crate::error::Result;
 use crate::graph::layout::CanvasCoord;
-use crate::graph::model::GraphGroupKind;
+use crate::graph::model::{GraphEdgeMarker, GraphGroupKind};
 use crate::graph::routing::geometry::{CompoundRouteGeometry, FrameSegment};
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::graph::routing::occupancy::RouteCandidateScore;
 use crate::graph::routing::path::{RouteObstacles, StepDirection};
 use crate::graph::routing::plan::orthogonal::{plan_terminal_path, terminal_label_hosts};
 use crate::graph::routing::plan::{EdgeRouteRequest, EndpointGeometry, NodeAttachments, RoutePlan};
-use crate::graph::routing::{admit_route_candidate, layout_allocation_failed};
+use crate::graph::routing::{
+    admit_route_candidate, forward_route_direction, layout_allocation_failed,
+    route_candidate_is_better,
+};
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
@@ -60,151 +63,252 @@ pub(in crate::graph::routing) fn plan_direct_route(
     }
     let right = resources.checked_grid_add(extent.x, 2)?;
     let bottom = resources.checked_grid_add(extent.y, 2)?;
+    let forward = forward_route_direction(request, resources)?;
+    let preferred_starts = preferred_ports(
+        from, request, obstacles, forward, true, resources, execution,
+    )?;
+    let preferred_ends =
+        preferred_ports(to, request, obstacles, forward, false, resources, execution)?;
     let mut best: Option<(RouteCandidateScore, RoutePlan)> = None;
-    for start in starts.into_iter().flatten() {
-        for end in ends.into_iter().flatten() {
-            execution.checkpoint(OperationPhase::Layout)?;
-            resources.charge_layout_work(1)?;
-            if request.from.id == request.to.id
-                && start.attachment.contact == end.attachment.contact
-            {
-                continue;
-            }
-            let attachments = NodeAttachments {
-                start: start.attachment,
-                end: end.attachment,
-            };
-            let groups = CompoundRouteGeometry {
-                layout: request.graph_layout,
-                from: request.from,
-                to: request.to,
-                attachments: Some(attachments),
-            };
-            let (s, e) = (start.berth, end.berth);
-            let middle_x = resources.checked_grid_add(s.x.min(e.x), s.x.abs_diff(e.x) / 2)?;
-            let middle_y = resources.checked_grid_add(s.y.min(e.y), s.y.abs_diff(e.y) / 2)?;
-            for points in [
-                [s, CanvasCoord { x: e.x, y: s.y }, e, e],
-                [s, CanvasCoord { x: s.x, y: e.y }, e, e],
-                [
-                    s,
-                    CanvasCoord {
-                        x: middle_x,
-                        y: s.y,
-                    },
-                    CanvasCoord {
-                        x: middle_x,
-                        y: e.y,
-                    },
-                    e,
-                ],
-                [
-                    s,
-                    CanvasCoord {
-                        x: s.x,
-                        y: middle_y,
-                    },
-                    CanvasCoord {
-                        x: e.x,
-                        y: middle_y,
-                    },
-                    e,
-                ],
-                [
-                    s,
-                    CanvasCoord { x: right, y: s.y },
-                    CanvasCoord { x: right, y: e.y },
-                    e,
-                ],
-                [
-                    s,
-                    CanvasCoord { x: s.x, y: bottom },
-                    CanvasCoord { x: e.x, y: bottom },
-                    e,
-                ],
-                [
-                    s,
-                    CanvasCoord {
-                        x: first.x.saturating_sub(2),
-                        y: s.y,
-                    },
-                    CanvasCoord {
-                        x: first.x.saturating_sub(2),
-                        y: e.y,
-                    },
-                    e,
-                ],
-                [
-                    s,
-                    CanvasCoord {
-                        x: s.x,
-                        y: first.y.saturating_sub(2),
-                    },
-                    CanvasCoord {
-                        x: e.x,
-                        y: first.y.saturating_sub(2),
-                    },
-                    e,
-                ],
-            ] {
+    for (preferred, starts, ends) in [
+        (true, preferred_starts.as_slice(), preferred_ends.as_slice()),
+        (false, starts.as_slice(), ends.as_slice()),
+    ] {
+        for start in starts.iter().copied().flatten() {
+            for end in ends.iter().copied().flatten() {
                 execution.checkpoint(OperationPhase::Layout)?;
                 resources.charge_layout_work(1)?;
-                let mut clear = true;
-                for (from, to) in [
-                    (start.attachment.contact, s),
-                    (points[0], points[1]),
-                    (points[1], points[2]),
-                    (points[2], points[3]),
-                    (e, end.attachment.contact),
-                ] {
-                    if groups.segment(from, to, resources, execution)? == FrameSegment::Blocked {
-                        clear = false;
-                        break;
-                    }
-                }
-                if !clear {
+                if request.from.id == request.to.id
+                    && start.attachment.contact == end.attachment.contact
+                {
                     continue;
                 }
-                let Some(path) = direct_path(
-                    points,
-                    start.attachment.outward,
-                    end.attachment.outward.opposite(),
-                    resources,
-                    execution,
-                )?
-                else {
-                    continue;
+                let attachments = NodeAttachments {
+                    start: start.attachment,
+                    end: end.attachment,
                 };
-                for host in terminal_label_hosts(&path, label, resources)? {
+                let groups = CompoundRouteGeometry {
+                    layout: request.graph_layout,
+                    from: request.from,
+                    to: request.to,
+                    attachments: Some(attachments),
+                };
+                let (s, e) = (start.berth, end.berth);
+                let middle_x = resources.checked_grid_add(s.x.min(e.x), s.x.abs_diff(e.x) / 2)?;
+                let middle_y = resources.checked_grid_add(s.y.min(e.y), s.y.abs_diff(e.y) / 2)?;
+                let bounds = CanvasCoord {
+                    x: right,
+                    y: bottom,
+                };
+                let local_channels = if preferred {
+                    // Try turns just beyond the endpoint reading margins as well as the
+                    // midpoint. A preceding branch can occupy that midpoint channel.
+                    [
+                        unit_neighbor(s, start.attachment.outward, bounds),
+                        unit_neighbor(e, end.attachment.outward, bounds),
+                    ]
+                    .map(|turn| {
+                        turn.map(|turn| match start.attachment.outward {
+                            StepDirection::Left | StepDirection::Right => [
+                                s,
+                                CanvasCoord { x: turn.x, y: s.y },
+                                CanvasCoord { x: turn.x, y: e.y },
+                                e,
+                            ],
+                            StepDirection::Up | StepDirection::Down => [
+                                s,
+                                CanvasCoord { x: s.x, y: turn.y },
+                                CanvasCoord { x: e.x, y: turn.y },
+                                e,
+                            ],
+                        })
+                    })
+                } else {
+                    [None; 2]
+                };
+                for points in [
+                    [s, CanvasCoord { x: e.x, y: s.y }, e, e],
+                    [s, CanvasCoord { x: s.x, y: e.y }, e, e],
+                    [
+                        s,
+                        CanvasCoord {
+                            x: middle_x,
+                            y: s.y,
+                        },
+                        CanvasCoord {
+                            x: middle_x,
+                            y: e.y,
+                        },
+                        e,
+                    ],
+                    [
+                        s,
+                        CanvasCoord {
+                            x: s.x,
+                            y: middle_y,
+                        },
+                        CanvasCoord {
+                            x: e.x,
+                            y: middle_y,
+                        },
+                        e,
+                    ],
+                    [
+                        s,
+                        CanvasCoord { x: right, y: s.y },
+                        CanvasCoord { x: right, y: e.y },
+                        e,
+                    ],
+                    [
+                        s,
+                        CanvasCoord { x: s.x, y: bottom },
+                        CanvasCoord { x: e.x, y: bottom },
+                        e,
+                    ],
+                    [
+                        s,
+                        CanvasCoord {
+                            x: first.x.saturating_sub(2),
+                            y: s.y,
+                        },
+                        CanvasCoord {
+                            x: first.x.saturating_sub(2),
+                            y: e.y,
+                        },
+                        e,
+                    ],
+                    [
+                        s,
+                        CanvasCoord {
+                            x: s.x,
+                            y: first.y.saturating_sub(2),
+                        },
+                        CanvasCoord {
+                            x: e.x,
+                            y: first.y.saturating_sub(2),
+                        },
+                        e,
+                    ],
+                ]
+                .into_iter()
+                .map(Some)
+                .chain(local_channels)
+                .flatten()
+                {
                     execution.checkpoint(OperationPhase::Layout)?;
-                    let Some(plan) = plan_terminal_path(
-                        &path,
-                        attachments,
-                        request.edge,
-                        host,
-                        request.charset,
+                    resources.charge_layout_work(1)?;
+                    let mut clear = true;
+                    for (from, to) in [
+                        (start.attachment.contact, s),
+                        (points[0], points[1]),
+                        (points[1], points[2]),
+                        (points[2], points[3]),
+                        (e, end.attachment.contact),
+                    ] {
+                        if groups.segment(from, to, resources, execution)? == FrameSegment::Blocked
+                        {
+                            clear = false;
+                            break;
+                        }
+                    }
+                    if !clear {
+                        continue;
+                    }
+                    let Some(path) = direct_path(
+                        points,
+                        start.attachment.outward,
+                        end.attachment.outward.opposite(),
                         resources,
+                        execution,
                     )?
                     else {
                         continue;
                     };
-                    let Some((score, plan)) =
-                        admit_route_candidate(request, obstacles, plan, resources)?
-                    else {
-                        continue;
-                    };
-                    // Preserve enumeration order on ties without retaining a candidate list.
-                    if best
-                        .as_ref()
-                        .is_none_or(|(incumbent, _)| score < *incumbent)
-                    {
-                        best = Some((score, plan));
+                    for host in terminal_label_hosts(&path, label, resources)? {
+                        execution.checkpoint(OperationPhase::Layout)?;
+                        let Some(plan) = plan_terminal_path(
+                            &path,
+                            attachments,
+                            request.edge,
+                            host,
+                            request.charset,
+                            resources,
+                        )?
+                        else {
+                            continue;
+                        };
+                        let Some((score, plan)) =
+                            admit_route_candidate(request, obstacles, plan, resources)?
+                        else {
+                            continue;
+                        };
+                        // Preserve enumeration order on ties without retaining a candidate list.
+                        if best.as_ref().is_none_or(|(incumbent, incumbent_plan)| {
+                            route_candidate_is_better(
+                                forward,
+                                (score, plan.attachments),
+                                (*incumbent, incumbent_plan.attachments),
+                            )
+                        }) {
+                            best = Some((score, plan));
+                        }
                     }
+                }
+                // Keep an ordinary clear central route. Only blocked/congested preferred
+                // contacts need another pair; flat routing retains its original full comparison.
+                if preferred
+                    && best
+                        .as_ref()
+                        .is_some_and(|(score, _)| !score.has_congestion())
+                {
+                    return Ok(best);
                 }
             }
         }
     }
     Ok(best)
+}
+
+// At most nine preferred contact pairs, only in compound forward scenes. Existing full
+// contour recovery remains responsible for constraints beyond these inexpensive candidates.
+#[allow(clippy::too_many_arguments)]
+fn preferred_ports(
+    geometry: EndpointGeometry<'_>,
+    request: EdgeRouteRequest<'_>,
+    obstacles: RouteObstacles<'_>,
+    forward: Option<StepDirection>,
+    source: bool,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<[Option<TerminalPort>; 3]> {
+    let mut selected = [None; 3];
+    let Some(forward) = forward else {
+        return Ok(selected);
+    };
+    let outward = if source { forward } else { forward.opposite() };
+    let mut count = 0;
+    for port in terminal_ports(geometry, request, resources, execution)? {
+        execution.checkpoint(OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        if port.attachment.outward != outward {
+            continue;
+        }
+        let usage = if !source {
+            obstacles.scene.target_port_usage(port.attachment)
+        } else if request.edge.start_marker != GraphEdgeMarker::Open {
+            obstacles.scene.source_port_usage(port.attachment)
+        } else {
+            0
+        };
+        if usage == 0 {
+            selected[count] = Some(port);
+            count += 1;
+            if count == selected.len() {
+                break;
+            }
+        }
+    }
+    Ok(selected)
 }
 
 fn central_ports(

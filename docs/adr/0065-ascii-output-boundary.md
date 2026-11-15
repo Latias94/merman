@@ -178,8 +178,20 @@ geometry that drops a condition is not admissible. These changes replace the seq
 placement mechanism. The common presentation corpus separately checks complete output and tracing
 effort; layer alignment by itself is insufficient evidence.
 
-After endpoint-port reuse, candidate quality compares combined path length, shared-cell cost, and
-scene growth before the number of legal transverse crossings. A crossing does not categorically
+Compound Flowchart routing uses the nearest common frame's explicit direction, or the canonical
+root direction when an edge spans frames, to order forward links and select endpoint sides.
+Local directions are interpreted before the existing root output transform. Unresolved implicit
+scopes retain generic routing. A forward contour gap offers at most three candidate contacts per
+preferred side; direct candidates also try turns just beyond the endpoint reading margins. The
+bounded direct planner and terminal search retain the same preference when replacing coarse
+candidates or replaying a congestion proposal. Endpoint-port reuse precedes the forward-contact
+preference; a blocked preferred side or an independent alternate contact can therefore justify
+changing sides. Jointly allocated branch channels keep their scene-wide ownership. Flat graph
+routing retains its original work accounting, and optional compound refinement shares the existing
+scene allowance rather than adding a new budget.
+
+Within the selected endpoint preference, candidate quality compares combined path length,
+shared-cell cost, and scene growth before the number of legal transverse crossings. A crossing does not categorically
 justify a longer route that passes its target and returns from below. Hard occupancy checks still
 reject unrelated collinear sharing, mixed-stroke junctions, and label or marker collisions.
 Reciprocal edges obey the same crossing rule and retain separate transit paths.

@@ -699,16 +699,17 @@ fn assert_corrected_compound_geometry(input: &str, rendered: &str) {
         let &(left, top, right, bottom) = node_frames
             .get(edge.to.as_str())
             .expect("these copied edges target authored nodes");
-        let center_x = left + (right - left).div_ceil(2);
-        let center_y = top + (bottom - top).div_ceil(2);
         let mut heads = Vec::new();
         if let Some(x) = left.checked_sub(1) {
-            heads.push((x, center_y, '>'));
+            heads.extend((top + 1..bottom).map(|y| (x, y, '>')));
         }
         if let Some(y) = top.checked_sub(1) {
-            heads.push((center_x, y, 'v'));
+            heads.extend((left + 1..right).map(|x| (x, y, 'v')));
         }
-        heads.extend([(right + 1, center_y, '<'), (center_x, bottom + 1, '^')]);
+        // Preferred contacts can move around protected frame titles. Check the entire
+        // non-corner contour, keeping exact ownership and one independent head per edge.
+        heads.extend((top + 1..bottom).map(|y| (right + 1, y, '<')));
+        heads.extend((left + 1..right).map(|x| (x, bottom + 1, '^')));
         let heads = heads
             .into_iter()
             .filter(|(x, y, glyph)| rows.get(*y).and_then(|row| row.get(*x)) == Some(glyph))
