@@ -201,6 +201,20 @@ using `--exact ascii_end_to_end/flowchart_medium` or `--exact ascii_end_to_end/f
 and `--warm-up-time 1 --measurement-time 2 --sample-size 10 --noplot` for the diagnostic timing.
 Raw captures, samples, commands, and environment evidence remain under ignored `target/`.
 
+### Graph document wrapping
+
+The follow-up keeps node/relationship words and short type cues together when they fit the
+continuation width, with two-space continuation indentation. For example, the 80-column long-label
+case now retains `required` and `[diamond]` on complete physical rows. Very long tokens still use
+grapheme-safe splitting, atomic visible escapes can use the full viewport, and original field
+whitespace remains recoverable. This changes graph-document text bytes; the source-bound hashes
+above remain the historical receipt for implementation commit `65eb8bb48`.
+
+The existing presentation gate retains its complete-document row ceilings at all four widths.
+Reader-level tests still recover every node, real endpoint, condition, type, and group, including
+quoted record-like text, combining marks, emoji, and CJK labels. Exact byte/cell tests count the
+added layout indentation, and cumulative work/cancellation checks cover the streaming lookahead.
+
 ## Reference Corpus Snapshot
 
 The 2026-11-14 routing follow-up inspected the optional `mermaid-ascii` checkout at

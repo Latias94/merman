@@ -139,7 +139,11 @@ fn auto_applies_error_or_structured_fallback_to_the_selected_primary_extent() {
     assert_eq!(fallback.outcome, AsciiOutputOutcome::Fallback);
     assert_eq!(fallback.projection, AsciiProjection::StructuredText);
     assert!(fallback.emitted_extent.width <= 60);
-    let complete_records = fallback.text.replace('\n', "");
+    let complete_records: String = fallback
+        .text
+        .lines()
+        .map(|line| line.strip_prefix("  ").unwrap_or(line))
+        .collect();
     assert_eq!(
         complete_records
             .matches("many words are too much sometime")

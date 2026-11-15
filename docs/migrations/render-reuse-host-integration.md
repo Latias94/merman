@@ -223,6 +223,12 @@ report's projection and outcome metadata instead of parsing old flattened-field 
 assuming that a quoted label occupies one row. Report schema 3 and Plain-only fallback admission
 remain unchanged; Allow and Error keep their existing contracts.
 
+Wrapped node and relationship records now prefer complete words and indent physical continuations
+by two layout spaces when width permits. These spaces are presentation framing; authored spaces
+inside fields remain intact. Very long words still wrap at grapheme boundaries, and visible control
+escapes remain atomic. Consumers requiring graph facts should use typed models instead of treating
+physical text rows as records.
+
 `AsciiError::RoutingSearchExhausted` distinguishes a bounded routing search from unsupported
 semantics. Its `edge_index` is the original zero-based semantic edge index, before canonical
 ordering. The facade and bindings retain diagnostic code `merman.ascii.routing_search_exhausted`

@@ -282,6 +282,14 @@ are actually used. State retains its pseudostates, composite membership, concurr
 authored document facts. Grapheme-safe reflow preserves complete text under Unicode and CJK width
 policies, using the existing bounded serialization and shared operation ledger.
 
+Node and relationship records prefer whole space-delimited words, including short type cues.
+Physical continuations use two leading layout spaces when the next encoded fragment fits beside
+them. Long tokens still split only at safe grapheme/escape boundaries; a narrow viewport may omit
+the indent to retain an otherwise representable atomic escape. Authored spaces remain part of
+their fields. Word lookahead streams borrowed slices through the existing terminal-safe visitors
+without allocating an escaped record. Its work and all continuation bytes/cells remain charged to
+the operation, including failed or cancelled attempts.
+
 This changes presentation without adding a backend option or changing report schema 3. Allow,
 Error, fixed layout profiles, Auto's two-attempt bound, Plain-only fallback admission, and the
 precedence of cancellation/resource errors retain their established meanings. A failed initial

@@ -118,7 +118,23 @@ fn record_is_open(record: &str) -> bool {
 // Rejoin physical wraps without interpreting an inline declaration as a new top-level node.
 fn records(text: &str) -> Vec<String> {
     let mut records: Vec<String> = Vec::new();
+    let state = text.starts_with("family: stateDiagram");
     for line in text.lines() {
+        let formatted_record = records.last().is_some_and(|record| {
+            reader_key(record).is_some_and(|(key, rest)| {
+                (key.starts_with('E') && rest.starts_with(": "))
+                    || (key.starts_with('N') && rest.starts_with(" ["))
+                    || (key.starts_with('G')
+                        && ((state && rest.starts_with(" [")) || rest.starts_with(" vertex [")))
+            })
+        });
+        if let Some(continuation) = line.strip_prefix("  ").filter(|_| formatted_record) {
+            records
+                .last_mut()
+                .expect("a preceding record")
+                .push_str(continuation);
+            continue;
+        }
         let keyed = reader_key(line).is_some_and(|(_, rest)| rest.starts_with([' ', ':']));
         let boundary = keyed
             || matches!(line, "Nodes:" | "Groups:" | "Relationships:")
@@ -372,6 +388,21 @@ fn long_labels_keep_their_complete_text_and_private_branch_associations() {
     let report = fallback(source, 80);
     assert_bounded(&report, 80);
     assert!(report.emitted_extent.height <= 17, "{}", report.text);
+    assert!(
+        report.text.contains("[diamond]"),
+        "split type cue:\n{}",
+        report.text
+    );
+    assert!(
+        report.text.contains("required"),
+        "split ordinary word:\n{}",
+        report.text
+    );
+    assert!(
+        report.text.lines().any(|line| line.starts_with("  ")),
+        "wrapped records need a visible continuation indent:\n{}",
+        report.text,
+    );
     let graph = readable_graph(&report.text);
     assert_eq!(graph.nodes.len(), 5, "{graph:?}");
     assert_eq!(graph.relationships.len(), 5, "{graph:?}");
@@ -481,7 +512,7 @@ fn inline_quoted_fields_keep_escapes_and_cannot_fabricate_graph_records() {
     use merman_model::{MermaidConfig, families::flowchart::FlowchartModel};
     use serde_json::json;
 
-    let from_label = "Owner \"private\" \\ path\nN999 [diamond]: \"spoof\" --> N888\u{202e}";
+    let from_label = "Owner \"private\" \\ path\nN999 [diamond]: \"spoof\" --> N888\u{202e} e\u{301} 👩‍💻  \u{301} \u{600} ";
     let to_label = "Destination\nE999: N999 --> N888";
     let condition = "Private \"condition\" \\n E123: N999 --> N888\t保留";
     let model: FlowchartModel = serde_json::from_value(json!({
@@ -531,7 +562,7 @@ fn inline_quoted_fields_keep_escapes_and_cannot_fabricate_graph_records() {
                 .all(|declared| *declared)
         );
         assert!(!report.text.contains('\u{202e}'));
-        assert!(report.text.replace('\n', "").contains("\\u{202E}"));
+        assert!(records(&report.text).concat().contains("\\u{202E}"));
     }
 }
 
@@ -560,6 +591,22 @@ fn wrapped_cjk_and_distinguishing_suffixes_keep_separate_identities() {
         assert_ne!(from, to);
         assert_relationship(&report.text, &from, "-->", &to, &condition);
     }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn wrapped_group_titles_keep_authored_leading_spaces() {
+    let source = "flowchart LR\nsubgraph G[xxxxxx  after]\nA[One]\nend\nB[External consumer with complete descriptive text]\nA --> B";
+    let report = fallback(source, 19);
+    assert_bounded(&report, 19);
+    let group = key_for_label(&report.text, "xxxxxx  after");
+    let member = key_for_label(&report.text, "One");
+    assert!(
+        readable_graph(&report.text)
+            .memberships
+            .iter()
+            .any(|(owner, members)| { owner == &group && members.contains(&member) })
+    );
 }
 
 #[cfg(feature = "diagram-flowchart")]
@@ -606,7 +653,7 @@ fn group_endpoints_are_distinct_from_their_members_and_local_directions_survive(
             .iter()
             .any(|node| node.key == group && node.kind.contains("direction=TB (explicit)"))
     );
-    let joined = report.text.replace('\n', "");
+    let joined = records(&report.text).concat();
     assert!(
         joined.contains(&format!("members {group}: {inner}")),
         "{joined}"
@@ -728,7 +775,7 @@ fn marker_stroke_parallel_edges_and_authored_details_are_not_collapsed() {
         "the invisible constraint needs its own real endpoints: {}",
         report.text
     );
-    let joined = report.text.replace('\n', "");
+    let joined = records(&report.text).concat();
     for value in [
         "direction: RL",
         "diamond",
@@ -801,7 +848,7 @@ fn state_document_keeps_composites_pseudostates_notes_and_transition_conditions(
     );
     assert_relationship(&report.text, &start, "-->", &ready, "");
     assert_relationship(&report.text, &running, "-->", &end, "finished");
-    let joined = report.text.replace('\n', "");
+    let joined = records(&report.text).concat();
     for required in [
         "direction: LR",
         "direction=TB",
@@ -838,7 +885,7 @@ fn state_authored_details_keep_descriptions_styles_classes_and_click_ownership()
     );
     let report = fallback(source, 20);
     assert_bounded(&report, 20);
-    let joined = report.text.replace('\n', "");
+    let joined = records(&report.text).concat();
     for value in [
         "Human state label before authorization",
         "A second authored description that remains complete",
@@ -887,7 +934,7 @@ fn swimlane_uses_the_shared_graph_document_with_its_own_family_identity() {
         "Execute the approved operation and report results",
     );
     assert_relationship(&report.text, &approve, "-->", &execute, "authorized");
-    assert!(report.text.replace('\n', "").contains("members G"));
+    assert!(records(&report.text).concat().contains("members G"));
 }
 
 #[cfg(feature = "diagram-sequence")]

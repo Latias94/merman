@@ -174,7 +174,11 @@ fn frozen_presentation_corpus_keeps_complete_documents_and_width_outcomes() {
                     // The graph-document writer preserves literal text across physical wraps.
                     // The diagram corpus keeps these particular distinguishing facts unwrapped.
                     let complete = if fallback {
-                        report.text.replace('\n', "")
+                        report
+                            .text
+                            .lines()
+                            .map(|line| line.strip_prefix("  ").unwrap_or(line))
+                            .collect::<String>()
                     } else {
                         report.text.clone()
                     };

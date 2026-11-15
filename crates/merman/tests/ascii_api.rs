@@ -79,7 +79,11 @@ fn facade_report_exposes_bounded_fallback_without_remeasuring_text() {
     };
     assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
     assert!(report.emitted_extent.width <= 5);
-    let flattened = report.text.replace('\n', "");
+    let flattened: String = report
+        .text
+        .lines()
+        .map(|line| line.strip_prefix("  ").unwrap_or(line))
+        .collect();
     assert!(flattened.contains("Alpha"));
     assert!(flattened.contains("Beta"));
 }

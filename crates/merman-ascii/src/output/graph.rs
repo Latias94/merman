@@ -14,6 +14,8 @@ use super::{
     AsciiDiagram, AsciiError, AsciiResourceLimitId, RawValue, Result, SemanticFallbackWriter,
     display_width_with_profile,
 };
+use crate::TerminalWidthProfile;
+use crate::resource::ResourceContext;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
 use unicode_segmentation::UnicodeSegmentation;
@@ -515,48 +517,153 @@ fn write_relationships<'a>(
     Ok(())
 }
 
-// Compose multiple quoted fields directly through the existing bounded writer. Escapes stay
-// atomic at wraps, and labels never need an additional escaped allocation or JSON serialization.
 fn write_record(parts: &[RecordPart<'_>], lines: &mut SemanticFallbackWriter<'_>) -> Result<()> {
-    let (mut width, mut has_content) = lines.begin_line()?;
+    let (width, has_content) = lines.begin_line()?;
+    let mut record = RecordWriter {
+        lines,
+        width,
+        has_content,
+    };
     for part in parts {
-        let mut resources = lines.emit_resources.clone();
-        match part {
-            RecordPart::Plain(text) => crate::safe_text::visit_safe_line_fragments(
-                &mut resources,
-                text,
-                lines.profile,
-                |fragment, fragment_width, fragment_grapheme_bytes| {
-                    lines.push_wrapped_fragment(
-                        fragment,
-                        fragment_width,
-                        fragment_grapheme_bytes,
-                        &mut width,
-                        &mut has_content,
-                    )
-                },
-            )?,
-            RecordPart::Quoted(text) => {
-                crate::safe_text::visit_quoted_terminal_text(text, &resources, |fragment| {
-                    let mut grapheme_count = 0usize;
-                    let mut grapheme_bytes = 0usize;
-                    for grapheme in fragment.graphemes(true) {
-                        grapheme_count = grapheme_count.saturating_add(1);
-                        grapheme_bytes = grapheme_bytes.max(grapheme.len());
-                    }
-                    resources.charge_layout_work(grapheme_count)?;
-                    lines.push_wrapped_fragment(
-                        fragment,
-                        display_width_with_profile(fragment, lines.profile),
-                        grapheme_bytes,
-                        &mut width,
-                        &mut has_content,
-                    )
-                })?;
+        let (text, quoted) = match part {
+            RecordPart::Plain(text) => (*text, false),
+            RecordPart::Quoted(text) => (*text, true),
+        };
+        record.text(text, quoted)?;
+    }
+    record.lines.finish_line()
+}
+
+struct RecordWriter<'a, 'operation> {
+    lines: &'a mut SemanticFallbackWriter<'operation>,
+    width: usize,
+    has_content: bool,
+}
+
+impl RecordWriter<'_, '_> {
+    fn text(&mut self, text: &str, quoted: bool) -> Result<()> {
+        let resources = self.lines.emit_resources.clone();
+        let mut start = 0;
+        let mut trailing_space = false;
+        for (index, grapheme) in text.grapheme_indices(true) {
+            resources.charge_layout_work(1)?;
+            let end = index + grapheme.len();
+            trailing_space = grapheme == " ";
+            if trailing_space && end < text.len() {
+                self.word(&text[start..end], quoted, start == 0, false, true)?;
+                start = end;
             }
         }
+        self.word(&text[start..], quoted, start == 0, true, trailing_space)
     }
-    lines.finish_line()
+
+    fn word(
+        &mut self,
+        text: &str,
+        quoted: bool,
+        first: bool,
+        last: bool,
+        trailing_space: bool,
+    ) -> Result<()> {
+        let mut resources = self.lines.emit_resources.clone();
+        let mut word_width = usize::from(quoted && first) + usize::from(quoted && last);
+        visit_record_text(
+            &text[..text.len() - usize::from(trailing_space)],
+            quoted,
+            &mut resources,
+            self.lines.profile,
+            |_, width, _| {
+                word_width = self
+                    .lines
+                    .candidate_resources
+                    .checked_grid_add(word_width, width)?;
+                Ok(())
+            },
+        )?;
+        if self.has_content
+            && word_width <= self.lines.max_width.saturating_sub(2)
+            && self
+                .lines
+                .candidate_resources
+                .checked_grid_add(self.width, word_width)?
+                > self.lines.max_width
+        {
+            self.continue_line(word_width)?;
+        }
+        if quoted && first {
+            self.fragment("\"", 1, 1)?;
+        }
+        visit_record_text(
+            text,
+            quoted,
+            &mut resources,
+            self.lines.profile,
+            |fragment, width, bytes| self.fragment(fragment, width, bytes),
+        )?;
+        if quoted && last {
+            self.fragment("\"", 1, 1)?;
+        }
+        Ok(())
+    }
+
+    fn continue_line(&mut self, next_width: usize) -> Result<()> {
+        self.lines.push_fragment("\n", 1)?;
+        self.width = 0;
+        self.has_content = false;
+        if next_width <= self.lines.max_width.saturating_sub(2) && self.lines.max_width > 2 {
+            self.lines
+                .push_wrapped_fragment("  ", 2, 1, &mut self.width, &mut self.has_content)?;
+        }
+        Ok(())
+    }
+
+    fn fragment(&mut self, fragment: &str, width: usize, bytes: usize) -> Result<()> {
+        if self.has_content
+            && self
+                .lines
+                .candidate_resources
+                .checked_grid_add(self.width, width)?
+                > self.lines.max_width
+        {
+            self.continue_line(width)?;
+        }
+        self.lines.push_wrapped_fragment(
+            fragment,
+            width,
+            bytes,
+            &mut self.width,
+            &mut self.has_content,
+        )
+    }
+}
+
+fn visit_record_text(
+    text: &str,
+    quoted: bool,
+    resources: &mut ResourceContext,
+    profile: TerminalWidthProfile,
+    mut visit: impl FnMut(&str, usize, usize) -> Result<()>,
+) -> Result<()> {
+    if !quoted {
+        return crate::safe_text::visit_safe_line_fragments(resources, text, profile, visit);
+    }
+    crate::safe_text::visit_quoted_terminal_text(text, resources, |fragment| {
+        if fragment == "\"" {
+            return Ok(());
+        }
+        let mut grapheme_count = 0usize;
+        let mut grapheme_bytes = 0usize;
+        for grapheme in fragment.graphemes(true) {
+            grapheme_count = grapheme_count.saturating_add(1);
+            grapheme_bytes = grapheme_bytes.max(grapheme.len());
+        }
+        resources.charge_layout_work(grapheme_count)?;
+        visit(
+            fragment,
+            display_width_with_profile(fragment, profile),
+            grapheme_bytes,
+        )
+    })
 }
 
 fn append_direction(kind: &mut String, direction: Option<&str>, explicit: bool) {
@@ -924,5 +1031,78 @@ fn invalid_projection() -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "ascii",
         feature: "invalid serialized graph projection",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::AsciiResourcePolicy;
+    use crate::operation::AsciiExecution;
+
+    #[test]
+    fn continuation_spaces_count_at_exact_output_and_document_limits() {
+        let expected = "E1: \"alpha \n  beta \n  gamma\"";
+        for (id, exact) in [
+            (AsciiResourceLimitId::MaxOutputBytes, 28),
+            (AsciiResourceLimitId::MaxDocumentCells, 26),
+        ] {
+            for (limit, accepted) in [(exact, true), (exact - 1, false)] {
+                let policy = AsciiResourcePolicy::unbounded()
+                    .with_limit(id, limit)
+                    .unwrap();
+                let mut writer = SemanticFallbackWriter::new(
+                    AsciiExecution::for_test(&policy),
+                    12,
+                    TerminalWidthProfile::Unicode,
+                );
+                let result = write_record(
+                    &[
+                        RecordPart::Plain("E1: "),
+                        RecordPart::Quoted("alpha beta gamma"),
+                    ],
+                    &mut writer,
+                );
+                if accepted {
+                    result.unwrap();
+                    let output = writer.finish();
+                    assert_eq!(output.text(), expected);
+                    assert_eq!(output.metrics().document_cells, 26);
+                    assert_eq!(output.metrics().encoded_bytes, 28);
+                    assert_eq!(output.metrics().extent, crate::AsciiExtent::new(11, 3));
+                } else {
+                    assert!(
+                        matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                        if details.limit == id && details.actual == exact && details.max == limit)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn narrow_continuations_preserve_atomic_escapes_that_fit_the_full_width() {
+        let policy = AsciiResourcePolicy::unbounded();
+        for width in [8, 9, 10] {
+            let mut writer = SemanticFallbackWriter::new(
+                AsciiExecution::for_test(&policy),
+                width,
+                TerminalWidthProfile::Unicode,
+            );
+            write_record(
+                &[RecordPart::Plain("E1: "), RecordPart::Quoted("\u{202e}")],
+                &mut writer,
+            )
+            .unwrap();
+            let output = writer.finish();
+            assert!(output.text().contains("\\u{202E}"), "{}", output.text());
+            assert!(output.metrics().extent.width <= width, "{}", output.text());
+            let unwrapped: String = output
+                .text()
+                .lines()
+                .map(|line| line.strip_prefix("  ").unwrap_or(line))
+                .collect();
+            assert_eq!(unwrapped, "E1: \"\\u{202E}\"");
+        }
     }
 }
