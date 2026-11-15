@@ -1,5 +1,6 @@
-use super::label::GraphLabel;
+use super::label::{GRAPH_LABEL_LINE_GAP, GraphLabel};
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
+use super::surface::OutputTransform;
 use super::topology::GraphGroupTopology;
 use crate::error::Result;
 use crate::operation::AsciiExecution;
@@ -79,6 +80,7 @@ pub(super) struct GroupLayout {
     pub(super) id: String,
     pub(super) kind: GraphGroupKind,
     pub(super) title: GraphLabel,
+    pub(super) title_transform: OutputTransform,
     pub(super) style: GraphGroupStyle,
     pub(super) divider_span: Option<DividerSpan>,
     pub(super) x: usize,
@@ -94,6 +96,37 @@ impl GroupLayout {
 
     pub(super) fn bottom(&self) -> usize {
         self.y + self.height - 1
+    }
+
+    /// Shared drawing and protection coordinates within the admitted frame, before root projection.
+    pub(super) fn title_line_position(&self, line_index: usize) -> Option<CanvasCoord> {
+        if self.kind != GraphGroupKind::Container {
+            return None;
+        }
+        let line = self.title.lines().get(line_index)?;
+        let line_width = self.title.line_width(line);
+        let available_width = self.width.saturating_sub(2);
+        if line_width > available_width {
+            return None;
+        }
+        // Retain the widest line's established envelope and the transit space beside it.
+        let block_x = (self.x + self.width.saturating_sub(1) / 2)
+            .saturating_sub(self.title.width() / 2)
+            .max(self.x + 1);
+        let x = if self.title_transform == OutputTransform::HorizontalMirror {
+            block_x + self.title.width() - line_width
+        } else {
+            block_x
+        };
+        let row = if self.title_transform == OutputTransform::VerticalMirror {
+            self.title.lines().len() - 1 - line_index
+        } else {
+            line_index
+        };
+        Some(CanvasCoord {
+            x,
+            y: self.y + 1 + row * (GRAPH_LABEL_LINE_GAP + 1),
+        })
     }
 }
 

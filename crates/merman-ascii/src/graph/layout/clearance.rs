@@ -223,6 +223,7 @@ mod tests {
                 id: "region".into(),
                 kind: GraphGroupKind::Divider,
                 title: GraphLabel::empty_with_profile(crate::TerminalWidthProfile::Unicode),
+                title_transform: crate::graph::surface::OutputTransform::Identity,
                 style: Default::default(),
                 divider_span: Some(DividerSpan {
                     x_start: 0,

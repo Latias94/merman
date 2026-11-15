@@ -48,7 +48,6 @@ impl OutputTransform {
 }
 
 pub(super) trait GraphSurface {
-    fn is_identity(&self) -> bool;
     fn get(&self, x: usize, y: usize) -> Option<char>;
     fn set(&mut self, x: usize, y: usize, ch: char) -> crate::Result<()>;
     fn set_role(&mut self, x: usize, y: usize, ch: char, role: AsciiColorRole)
@@ -79,10 +78,6 @@ pub(super) trait GraphSurface {
 }
 
 impl GraphSurface for Canvas {
-    fn is_identity(&self) -> bool {
-        true
-    }
-
     fn get(&self, x: usize, y: usize) -> Option<char> {
         Canvas::get(self, x, y)
     }
@@ -188,10 +183,6 @@ impl<'a> TransformedSurface<'a> {
 }
 
 impl GraphSurface for TransformedSurface<'_> {
-    fn is_identity(&self) -> bool {
-        self.transform.is_identity()
-    }
-
     fn get(&self, x: usize, y: usize) -> Option<char> {
         let (target_x, target_y) = self.map_cell(x, y)?;
         Canvas::get(self.canvas, target_x, target_y).map(|ch| self.transform.map_char(ch))

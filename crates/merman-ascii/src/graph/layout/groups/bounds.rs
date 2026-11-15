@@ -234,6 +234,7 @@ pub(super) fn layout_groups_from_bounds(
             id: group.id.clone(),
             kind: group.kind,
             title,
+            title_transform: crate::graph::surface::OutputTransform::for_direction(graph.direction),
             style: group.style,
             divider_span: None,
             x: usize::try_from(bounds.x.max(0)).map_err(|_| grid_overflow(resources))?,

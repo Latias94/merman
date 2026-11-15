@@ -222,9 +222,17 @@ CJK structural fallback use their existing single-cell glyphs.
 | --- | --- | --- |
 | Node | Label-sized contour with the authored shape and explicit markers | Identify the operation or state without stretching unrelated nodes |
 | Ordinary wire | Light stroke, rounded turns, square junctions, solid arrowheads | Follow a path and distinguish a bend from a branch |
-| Group | Closed frame, separate complete title, internal reading clearance | Show membership and the exact node or frame touched by an external edge |
+| Group | Solid closed frame, separate complete title block, internal reading clearance | Show membership and the exact node or frame touched by an external edge |
 | Label | Complete text associated with its own route and protected reading space | Recover the condition and endpoint pair without using color |
 | Optional color | Host text, quieter structure, sparse heading/arrow emphasis | Reinforce the same hierarchy in ANSI or HTML without changing geometry |
+
+Group titles center their complete block inside the frame and align its lines to one left edge.
+This gives wrapped headings a stable reading start while retaining the transit space beside
+single-line headings. RL output keeps that alignment; BT output keeps the existing lower title
+band and upright line order. Routing protects the actual projected text and one reading cell on
+each side, using the same title geometry as drawing. Minimum-width empty groups retain their
+complete titles within the existing frame. Group borders remain solid so they are distinct from
+dotted relationships and State concurrency separators.
 
 For `A → B`, `A → C`, `B → C`, `B → D`, and `D → C`, the Unicode output keeps each direct
 relationship visible in a 35-column, six-row drawing:

@@ -343,6 +343,7 @@ mod tests {
             id: "group".into(),
             kind: GraphGroupKind::Container,
             title: GraphLabel::empty_with_profile(crate::options::TerminalWidthProfile::Unicode),
+            title_transform: crate::graph::surface::OutputTransform::Identity,
             style: crate::graph::model::GraphGroupStyle::default(),
             divider_span: None,
             x: 10,

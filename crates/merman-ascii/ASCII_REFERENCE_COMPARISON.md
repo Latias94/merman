@@ -72,11 +72,19 @@ remain authoritative. The crate's [visual-style guide](README.md#terminal-visual
 defaults. Two copied Unicode self-loops now have strict local style expectations; their original
 fixture bytes and the full 79-case denominator remain intact.
 
-Dashed Flowchart containers were considered as a second hierarchy cue. They remain a local design
-study: dotted relationships, frame contacts and State composite semantics need separate evidence
-before such a rule becomes a renderer default. A smaller or more decorative frame is not itself a
-readability improvement. The terminal Grok source remains Apache-2.0 research material; this wire
-glyph refinement does not copy or translate its implementation.
+Group titles use a centered block with left-aligned lines. Unlike centering each row separately,
+this preserves a common reading start for multiline headings. A flush-left title was also tested:
+it obstructed the direct `Start → Entry` boundary route in the nested-direction input and forced
+side contacts. Keeping the single-line envelope preserves that useful transit space. Title drawing
+and routing protection now share coordinates, including RL alignment and the upright BT row order;
+the full copied-fixture denominator and single-line expectations remain unchanged.
+
+Dashed containers were considered as a second hierarchy cue. Solid frames remain the default:
+ordinary dotted relationships and State concurrency separators already use the dotted strokes.
+Embedding the title in the top border would also consume real boundary contacts and requires its
+own multiline/port-capacity design. Neither rule is adopted merely for visual variety. The terminal
+Grok source remains Apache-2.0 research material; these refinements do not copy or translate its
+implementation.
 
 ## Terminal Presentation Floor
 

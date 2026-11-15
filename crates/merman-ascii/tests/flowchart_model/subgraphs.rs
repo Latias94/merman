@@ -269,7 +269,7 @@ fn flowchart_parser_cross_subgraph_routes_follow_compound_parent_topology() {
 }
 
 #[test]
-fn flowchart_parser_multiline_subgraph_title_renders_centered_rows() {
+fn flowchart_parser_multiline_subgraph_title_renders_aligned_block() {
     let rendered = render_flowchart(
         "flowchart TB\nsubgraph cluster [Line<br>Two]\nA\nend",
         &AsciiRenderOptions::ascii(),
@@ -282,7 +282,7 @@ fn flowchart_parser_multiline_subgraph_title_renders_centered_rows() {
             "+-------+\n",
             "| Line  |\n",
             "|       |\n",
-            "|  Two  |\n",
+            "| Two   |\n",
             "|       |\n",
             "|       |\n",
             "| +---+ |\n",
@@ -308,7 +308,7 @@ fn flowchart_parser_long_subgraph_title_wraps_to_multiple_rows() {
             "+-----------------+\n",
             "| Wrap this title |\n",
             "|                 |\n",
-            "|     nicely      |\n",
+            "| nicely          |\n",
             "|                 |\n",
             "|                 |\n",
             "| +---+     +---+ |\n",

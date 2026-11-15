@@ -1110,6 +1110,7 @@ fn compressed_segments_cross_owned_frame_sides_without_corners_or_turns_on_the_f
         id: "frame".to_owned(),
         kind: GraphGroupKind::Container,
         title: GraphLabel::new(""),
+        title_transform: crate::graph::surface::OutputTransform::Identity,
         style: GraphGroupStyle::default(),
         divider_span: None,
         x: 2,

@@ -1,6 +1,71 @@
 use super::*;
 
 #[test]
+fn group_title_protection_matches_painted_rows_after_root_projection() {
+    use crate::graph::surface::OutputTransform;
+    use std::collections::BTreeSet;
+
+    for direction in [
+        GraphDirection::LeftRight,
+        GraphDirection::RightLeft,
+        GraphDirection::TopDown,
+        GraphDirection::BottomTop,
+    ] {
+        let mut graph = AsciiGraph::new(direction);
+        graph.add_node("task", "A sufficiently wide task");
+        graph.add_group_with_style(
+            "group",
+            "Longest heading\nX",
+            None,
+            vec!["task".into()],
+            Default::default(),
+        );
+        let options = AsciiRenderOptions::unicode();
+        let layout = layout_graph(&graph, &options);
+        let mut resources = unbounded_resources();
+        let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+        let rendered = crate::graph::draw::render_graph(&graph, &options, resources.policy())
+            .expect("the complete heading should render");
+        let rows = rendered.lines().collect::<Vec<_>>();
+        let width = rows[0].chars().count();
+        let height = rows.len();
+        let transform = OutputTransform::for_direction(direction);
+
+        let mut painted_reading_cells = BTreeSet::new();
+        for title in ["Longest heading", "X"] {
+            let (y, row) = rows
+                .iter()
+                .enumerate()
+                .find(|(_, row)| row.contains(title))
+                .expect("each authored title row must survive");
+            let start = row[..row.find(title).unwrap()].chars().count();
+            for x in start - 1..=start + title.len() {
+                painted_reading_cells.insert((x, y));
+            }
+        }
+        let mut protected_cells = BTreeSet::new();
+        for protected in &occupancy.protected {
+            if protected.kind != ProtectedKind::GroupTitle {
+                continue;
+            }
+            for y in 0..height {
+                for x in 0..width {
+                    if matches!(protected.shape, occupancy::ProtectedShape::Rect(rect) if rect.contains(x, y))
+                    {
+                        protected_cells
+                            .insert((transform.text_x(x, 1, width), transform.text_y(y, height)));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            protected_cells, painted_reading_cells,
+            "{direction:?}: only the actual title rows and their reading cells need protection:\n{rendered}"
+        );
+    }
+}
+
+#[test]
 #[cfg(feature = "diagram-flowchart")]
 fn compound_forward_contacts_follow_the_edge_common_scope() {
     use crate::AsciiLayoutProfile;

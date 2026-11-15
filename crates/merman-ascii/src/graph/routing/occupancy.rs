@@ -1,4 +1,3 @@
-use super::super::label::GRAPH_LABEL_LINE_GAP;
 use super::super::layout::{CanvasCoord, GraphLayout, GroupLayout};
 use super::super::model::GraphGroupKind;
 use super::cell::{
@@ -13,7 +12,7 @@ use super::plan::{
 use super::{PreparedRoute, RouteOwner, layout_allocation_failed};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::resource::ResourceContext;
 use merman_model::{OperationControl, OperationPhase};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::hash_map::Entry;
@@ -1706,32 +1705,20 @@ impl<'layout> SceneOccupancy<'layout> {
             }
         }
 
-        let available_title_width = group.width.saturating_sub(2);
         let inner_left = resources.checked_grid_add(group.x, 1)?;
-        let center = resources.checked_grid_add(group.x, group.width.saturating_sub(1) / 2)?;
-        let line_step = resources.checked_grid_add(GRAPH_LABEL_LINE_GAP, 1)?;
         for (line_index, line) in group.title.lines().iter().enumerate() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
             let title_width = group.title.line_width(line);
-            if title_width == 0 || title_width > available_title_width {
+            if title_width == 0 {
                 continue;
             }
-            let title_x = center
-                .checked_sub(title_width / 2)
-                .ok_or_else(|| {
-                    resources
-                        .policy()
-                        .overflow(AsciiResourceLimitId::MaxGridCells)
-                })?
-                .max(inner_left);
-            let title_y = resources.checked_grid_add(
-                resources.checked_grid_add(group.y, 1)?,
-                resources.checked_grid_mul(line_index, line_step)?,
-            )?;
-            let protected_left = title_x.saturating_sub(1).max(inner_left);
+            let Some(position) = group.title_line_position(line_index) else {
+                continue;
+            };
+            let protected_left = position.x.saturating_sub(1).max(inner_left);
             let protected_right = resources
-                .checked_grid_add(resources.checked_grid_add(title_x, title_width)?, 1)?
+                .checked_grid_add(resources.checked_grid_add(position.x, title_width)?, 1)?
                 .min(group.right());
             self.protected.push(ProtectedGeometry {
                 owner_id: &group.id,
@@ -1739,7 +1726,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 kind: ProtectedKind::GroupTitle,
                 shape: ProtectedShape::Rect(OccupiedRect::try_new(
                     protected_left,
-                    title_y,
+                    position.y,
                     protected_right - protected_left,
                     1,
                     resources,

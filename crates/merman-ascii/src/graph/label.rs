@@ -220,7 +220,6 @@ impl GraphLabel {
         &self.lines
     }
 
-    #[cfg(test)]
     pub(super) fn width(&self) -> usize {
         self.width
     }

@@ -45,10 +45,6 @@ impl<'canvas, 'surface, 'execution> CooperativeSurface<'canvas, 'surface, 'execu
 }
 
 impl GraphSurface for CooperativeSurface<'_, '_, '_> {
-    fn is_identity(&self) -> bool {
-        self.inner.is_identity()
-    }
-
     fn get(&self, x: usize, y: usize) -> Option<char> {
         self.inner.get(x, y)
     }
@@ -373,23 +369,16 @@ fn paint_graph_render_controlled(
         output_transform.route_label_transform(width, height),
         execution,
     )?;
-    if output_transform.is_identity() {
-        for group in &graph_layout.groups {
-            execution.checkpoint(merman_model::OperationPhase::Emit)?;
-            draw_group_title_with_execution(&mut canvas, group, execution)?;
-        }
-    } else {
-        for group in &graph_layout.groups {
-            execution.checkpoint(merman_model::OperationPhase::Emit)?;
-            draw_transformed_group_title_with_execution(
-                &mut canvas,
-                group,
-                output_transform,
-                width,
-                height,
-                execution,
-            )?;
-        }
+    for group in &graph_layout.groups {
+        execution.checkpoint(merman_model::OperationPhase::Emit)?;
+        draw_group_title_with_execution(
+            &mut canvas,
+            group,
+            output_transform,
+            width,
+            height,
+            execution,
+        )?;
     }
 
     execution.checkpoint(merman_model::OperationPhase::Emit)?;
@@ -578,29 +567,7 @@ fn draw_group_divider(
     Ok(())
 }
 
-fn draw_group_title(canvas: &mut Canvas<'_>, group: &GroupLayout) -> Result<()> {
-    if group.kind == GraphGroupKind::Divider || !canvas.is_identity() {
-        return Ok(());
-    }
-    for (line_index, line) in group.title.lines().iter().enumerate() {
-        let Some((title_x, title_y)) = group_title_line_position(group, line, line_index) else {
-            continue;
-        };
-        write_group_title(canvas, title_x, title_y, line, group.style)?;
-    }
-    Ok(())
-}
-
-fn draw_group_title_with_execution(
-    canvas: &mut Canvas<'_>,
-    group: &GroupLayout,
-    execution: AsciiExecution<'_>,
-) -> Result<()> {
-    let mut surface = CooperativeSurface::new(canvas, execution);
-    draw_group_title(&mut surface, group)
-}
-
-fn draw_transformed_group_title(
+fn draw_group_title(
     canvas: &mut Canvas<'_>,
     group: &GroupLayout,
     transform: OutputTransform,
@@ -610,22 +577,14 @@ fn draw_transformed_group_title(
     if group.kind == GraphGroupKind::Divider {
         return Ok(());
     }
-    let line_step = GRAPH_LABEL_LINE_GAP + 1;
-    let content_y = group.y + 1;
-    let last_line_y = content_y + group.title.lines().len().saturating_sub(1) * line_step;
-    let transformed_content_y = match transform {
-        OutputTransform::VerticalMirror => height.saturating_sub(1).saturating_sub(last_line_y),
-        OutputTransform::Identity | OutputTransform::HorizontalMirror => content_y,
-    };
-
     for (line_index, line) in group.title.lines().iter().enumerate() {
-        let Some((title_x, _)) = group_title_line_position(group, line, line_index) else {
+        let Some(position) = group.title_line_position(line_index) else {
             continue;
         };
         write_group_title(
             canvas,
-            transform.text_x(title_x, group.title.line_width(line), width),
-            transformed_content_y + line_index * line_step,
+            transform.text_x(position.x, group.title.line_width(line), width),
+            transform.text_y(position.y, height),
             line,
             group.style,
         )?;
@@ -633,7 +592,7 @@ fn draw_transformed_group_title(
     Ok(())
 }
 
-fn draw_transformed_group_title_with_execution(
+fn draw_group_title_with_execution(
     canvas: &mut Canvas<'_>,
     group: &GroupLayout,
     transform: OutputTransform,
@@ -642,26 +601,7 @@ fn draw_transformed_group_title_with_execution(
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     let mut surface = CooperativeSurface::new(canvas, execution);
-    draw_transformed_group_title(&mut surface, group, transform, width, height)
-}
-
-fn group_title_line_position(
-    group: &GroupLayout,
-    line: &str,
-    line_index: usize,
-) -> Option<(usize, usize)> {
-    let title_width = group.title.line_width(line);
-    if title_width > group.width.saturating_sub(2) {
-        return None;
-    }
-
-    let title_x = (group.x + group.width.saturating_sub(1) / 2)
-        .saturating_sub(title_width / 2)
-        .max(group.x + 1);
-    Some((
-        title_x,
-        group.y + 1 + line_index * (GRAPH_LABEL_LINE_GAP + 1),
-    ))
+    draw_group_title(&mut surface, group, transform, width, height)
 }
 
 fn set_group_border(
@@ -1659,6 +1599,7 @@ mod tests {
             id: "large".to_string(),
             kind: GraphGroupKind::Container,
             title: GraphLabel::new("Large"),
+            title_transform: OutputTransform::Identity,
             style: GraphGroupStyle {
                 background: Some(crate::AsciiRgb::new(1, 2, 3)),
                 ..GraphGroupStyle::default()
