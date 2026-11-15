@@ -33,6 +33,7 @@ pub(super) struct GraphLayout {
     row_heights: grid::AxisProjection,
     offset_x: usize,
     offset_y: usize,
+    pub(super) grid_aligned: bool,
 }
 
 impl GraphLayout {
@@ -201,6 +202,15 @@ pub(super) fn layout_graph_with_resources_and_execution(
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
     grid::materialize_node_labels(&mut nodes, graph, &label_plans, resources)?;
     checkpoint_layout(execution)?;
+    resources.charge_layout_work(nodes.len())?;
+    let mut grid_aligned = true;
+    for (index, node) in nodes.iter().enumerate() {
+        execution.checkpoint_loop(merman_model::OperationPhase::Layout, index)?;
+        grid_aligned &= Some(node.x) == offset_x.checked_add(column_widths.position(node.grid.x))
+            && Some(node.y) == offset_y.checked_add(row_heights.position(node.grid.y))
+            && node.width == column_widths.span(node.grid.x, 3)
+            && node.height == row_heights.span(node.grid.y, 3);
+    }
     Ok(GraphLayout {
         nodes,
         groups,
@@ -209,6 +219,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
         row_heights,
         offset_x,
         offset_y,
+        grid_aligned,
     })
 }
 
@@ -287,7 +298,7 @@ mod tests {
     use merman_model::{CancelReason, OperationControl, OperationPhase};
 
     #[test]
-    fn dense_marked_fanout_translates_scene_and_grid_without_changing_node_dimensions() {
+    fn dense_marked_fanout_keeps_dimensions_and_translates_scene_and_grid_together() {
         use crate::graph::model::GraphEdgeMarker;
         for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
             let mut graph = AsciiGraph::new(direction);
@@ -312,6 +323,11 @@ mod tests {
                 edge.start_marker = GraphEdgeMarker::Open;
             }
             let baseline = layout_graph(&graph, &options);
+            let translation = (
+                marked.nodes[0].x - baseline.nodes[0].x,
+                marked.nodes[0].y - baseline.nodes[0].y,
+            );
+            assert!(translation.0 <= 2 && translation.1 <= 2);
             for (marked_node, base_node) in marked.nodes.iter().zip(&baseline.nodes) {
                 assert_eq!(
                     (marked_node.width, marked_node.height, marked_node.grid),
@@ -319,15 +335,15 @@ mod tests {
                 );
                 assert_eq!(
                     (marked_node.x, marked_node.y),
-                    (base_node.x + 2, base_node.y + 2)
+                    (base_node.x + translation.0, base_node.y + translation.1)
                 );
                 let marked_coord = marked.grid_to_canvas(marked_node.grid);
                 let base_coord = baseline.grid_to_canvas(base_node.grid);
                 assert_eq!(
                     marked_coord,
                     CanvasCoord {
-                        x: base_coord.x + 2,
-                        y: base_coord.y + 2
+                        x: base_coord.x + translation.0,
+                        y: base_coord.y + translation.1
                     }
                 );
             }

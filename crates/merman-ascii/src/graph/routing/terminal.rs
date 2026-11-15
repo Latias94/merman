@@ -5,7 +5,7 @@ use super::plan::{EdgeRouteRequest, EndpointGeometry, NodeAttachment, NodeAttach
 use super::{admit_route_candidate, layout_allocation_failed};
 use crate::error::Result;
 use crate::graph::layout::{CanvasCoord, ROUTING_GRID_MARGIN};
-use crate::graph::model::{GraphEdgeMarker, GraphGroupKind};
+use crate::graph::model::{GraphEdgeMarker, GraphGroupKind, GraphNodeShape};
 use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
 use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::operation::AsciiExecution;
@@ -21,9 +21,12 @@ const DIRECTIONS: [StepDirection; 4] = [
     StepDirection::Up,
 ];
 
-// This is a quality-repair effort bound across all port pairs, not an output quota.
+// One scene shares this quality-repair bound across all its edges and port pairs.
 // Resource and cancellation failures still propagate through the operation's shared ledger.
-const MAX_REPAIR_EXPANSIONS: usize = 4_096;
+pub(super) const MAX_REPAIR_EXPANSIONS: usize = 4_096;
+
+mod direct;
+pub(super) use direct::plan_direct_route;
 
 #[derive(Clone, Copy)]
 struct TerminalPort {
@@ -209,6 +212,7 @@ fn port_intercept(port: TerminalPort) -> usize {
 
 /// Resolve congestion at actual terminal-cell ports, after the cheaper coarse routes have
 /// been compared. The finite scene bounds and the operation ledger bound every search.
+#[cfg(test)]
 pub(super) fn plan_terminal_route(
     request: EdgeRouteRequest<'_>,
     obstacles: RouteObstacles<'_>,
@@ -217,7 +221,31 @@ pub(super) fn plan_terminal_route(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+    let mut repair_expansions = MAX_REPAIR_EXPANSIONS;
+    plan_terminal_route_with_budget(
+        request,
+        obstacles,
+        label,
+        incumbent,
+        &mut repair_expansions,
+        resources,
+        execution,
+    )
+}
+
+pub(super) fn plan_terminal_route_with_budget(
+    request: EdgeRouteRequest<'_>,
+    obstacles: RouteObstacles<'_>,
+    label: Option<RoutedLabelDescriptor>,
+    incumbent: Option<RouteCandidateScore>,
+    repair_expansions: &mut usize,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
+    if incumbent.is_some() && *repair_expansions == 0 {
+        return Ok(None);
+    }
     for group in &request.graph_layout.groups {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
@@ -267,7 +295,7 @@ pub(super) fn plan_terminal_route(
         y: resources.checked_grid_add(max_y, ROUTING_GRID_MARGIN)?,
     };
     let mut expansions_left = if incumbent.is_some() {
-        MAX_REPAIR_EXPANSIONS
+        *repair_expansions
     } else {
         usize::MAX
     };
@@ -294,7 +322,11 @@ pub(super) fn plan_terminal_route(
                 }),
             },
         };
-        let Some(path) = find_path(geometry, &mut expansions_left, resources, execution)? else {
+        let path = find_path(geometry, &mut expansions_left, resources, execution)?;
+        if incumbent.is_some() {
+            *repair_expansions = expansions_left;
+        }
+        let Some(path) = path else {
             if expansions_left == 0 {
                 break;
             }
@@ -350,7 +382,11 @@ fn terminal_ports(
             for intercept in contacts.into_iter().flatten() {
                 execution.checkpoint(merman_model::OperationPhase::Layout)?;
                 resources.charge_layout_work(1)?;
-                if intercept <= first || intercept >= last {
+                if intercept < first
+                    || intercept > last
+                    || (node.shape != GraphNodeShape::Text
+                        && (intercept == first || intercept == last))
+                {
                     continue;
                 }
                 let berth = match outward {

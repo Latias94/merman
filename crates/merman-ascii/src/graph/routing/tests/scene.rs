@@ -1,6 +1,50 @@
 use super::*;
 
 #[test]
+fn aligned_scenes_do_not_allocate_or_charge_an_unused_feedback_order() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    assert!(layout.grid_aligned);
+    let resources = ResourceContext::new(
+        AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap(),
+    );
+    assert!(
+        plan_route_order(&graph, &layout, &graph.edges, &resources)
+            .unwrap()
+            .is_none()
+    );
+    assert_eq!(resources.layout_work_used(), 0);
+}
+
+#[test]
+fn invisible_parallel_constraints_do_not_inflate_feedback_planning_work() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let mut layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    layout.grid_aligned = false;
+    graph.edges[0].stroke = GraphEdgeStroke::Invisible;
+    graph.edges.resize(10_000, graph.edges[0].clone());
+    let resources = ResourceContext::new(
+        AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 20_000)
+            .unwrap(),
+    );
+    assert!(
+        plan_route_order(&graph, &layout, &graph.edges, &resources)
+            .unwrap()
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
 fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);

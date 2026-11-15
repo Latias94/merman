@@ -424,8 +424,9 @@ fn long_labeled_mixed_feedback_keeps_every_label_and_target_head() {
             direction
         );
         for options in readability_options() {
-            let rendered = render_flowchart(&source, &options)
-                .expect("long labeled mixed-stroke branches must render with their feedback edge");
+            let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
+                panic!("long labeled feedback must render ({direction}, {options:?}): {error}")
+            });
             assert_readable_target_heads(&rendered, 5);
             assert_labels_once(
                 &rendered,

@@ -4,6 +4,7 @@ use super::super::model::GraphGroupKind;
 use super::cell::{
     DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions, stroke_route_char,
 };
+use super::label::RoutedLabelPlacement;
 use super::path::StepDirection;
 use super::plan::{
     LabelAnchor, MAX_MARKER_CANDIDATES, MarkerCandidate, MarkerEndpoint, NodeAttachments,
@@ -21,6 +22,7 @@ mod labels;
 mod marker;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
+type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
 
 pub(super) use labels::allocate_committed_route_labels;
 #[cfg(test)]
@@ -213,6 +215,7 @@ pub(super) struct RouteCandidateScore {
     total_cost: usize,
     shared_cells: usize,
     cell_count: usize,
+    scene_growth: usize,
     marker_pressure: usize,
 }
 
@@ -221,6 +224,10 @@ impl RouteCandidateScore {
         self.target_port_reuse != 0
             || self.source_port_reuse != 0
             || self.ambiguous_shared_cells != 0
+    }
+
+    pub(super) fn grows_scene(self) -> bool {
+        self.scene_growth != 0
     }
 }
 
@@ -479,6 +486,8 @@ impl<'layout> SceneOccupancy<'layout> {
         for node in &graph_layout.nodes {
             scene.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
+            scene.occupied_extent.x = scene.occupied_extent.x.max(node.right());
+            scene.occupied_extent.y = scene.occupied_extent.y.max(node.bottom());
             scene.protected.push(ProtectedGeometry {
                 owner_id: &node.id,
                 group_index: None,
@@ -493,6 +502,8 @@ impl<'layout> SceneOccupancy<'layout> {
             });
         }
         for (group_index, group) in graph_layout.groups.iter().enumerate() {
+            scene.occupied_extent.x = scene.occupied_extent.x.max(group.right());
+            scene.occupied_extent.y = scene.occupied_extent.y.max(group.bottom());
             scene.register_group_geometry(group_index, group, resources)?;
         }
 
@@ -565,6 +576,7 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
+    #[cfg(test)]
     pub(super) fn score_route(
         &self,
         existing_routes: &[PreparedRoute],
@@ -573,6 +585,39 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
         diagram_type: &'static str,
     ) -> Result<Option<RouteCandidateScore>> {
+        Ok(self
+            .evaluate_route(existing_routes, plan, owner, resources, diagram_type)?
+            .map(|(score, _)| score))
+    }
+
+    pub(super) fn admit_route(
+        &self,
+        existing_routes: &[PreparedRoute],
+        mut plan: RoutePlan,
+        owner: &RouteOwner,
+        resources: &mut ResourceContext,
+        diagram_type: &'static str,
+    ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+        let Some((score, placements)) =
+            self.evaluate_route(existing_routes, &plan, owner, resources, diagram_type)?
+        else {
+            return Ok(None);
+        };
+        for (label, (placement, anchor)) in plan.labels.iter_mut().zip(placements) {
+            label.placement = placement;
+            label.anchor = anchor;
+        }
+        Ok(Some((score, plan)))
+    }
+
+    fn evaluate_route(
+        &self,
+        existing_routes: &[PreparedRoute],
+        plan: &RoutePlan,
+        owner: &RouteOwner,
+        resources: &mut ResourceContext,
+        diagram_type: &'static str,
+    ) -> Result<Option<(RouteCandidateScore, RouteLabelPlacements)>> {
         let mut shared_cells = 0usize;
         let mut ambiguous_shared_cells = 0usize;
 
@@ -658,9 +703,10 @@ impl<'layout> SceneOccupancy<'layout> {
         if marker_berths[0].is_some() && marker_berths[0] == marker_berths[1] {
             return Ok(None);
         }
-        if !self.plan_labels_have_clear_candidate(plan, owner, marker_berths, resources)? {
+        let Some(placements) = self.plan_label_placements(plan, owner, marker_berths, resources)?
+        else {
             return Ok(None);
-        }
+        };
 
         self.checkpoint_layout()?;
         let mut cell_count = 0usize;
@@ -668,7 +714,22 @@ impl<'layout> SceneOccupancy<'layout> {
             self.checkpoint_layout_scan(cell_index)?;
             cell_count = resources.checked_work_add(cell_count, 1)?;
         }
-        let total_cost = resources.checked_work_add(cell_count, shared_cells)?;
+        let mut total_cost = resources.checked_work_add(cell_count, shared_cells)?;
+        let mut scene_growth = 0;
+        if !self.graph_layout.grid_aligned {
+            let (mut width, mut height) = plan.body_extent_with_resources(resources)?;
+            for (label, (placement, _)) in plan.labels.iter().zip(&placements) {
+                width = width.max(resources.checked_grid_add(placement.x(), placement.width())?);
+                height = height.max(resources.checked_grid_add(placement.y(), label.line_count())?);
+            }
+            let current_width = resources.checked_grid_add(self.occupied_extent.x, 1)?;
+            let current_height = resources.checked_grid_add(self.occupied_extent.y, 1)?;
+            let current_area = resources.checked_work_mul(current_width, current_height)?;
+            let candidate_area =
+                resources.checked_work_mul(width.max(current_width), height.max(current_height))?;
+            scene_growth = candidate_area - current_area;
+            total_cost = resources.checked_work_add(total_cost, scene_growth)?;
+        }
         let target_port_reuse = plan
             .attachments
             .map_or(0, |ports| self.target_port_usage(ports.end));
@@ -678,15 +739,19 @@ impl<'layout> SceneOccupancy<'layout> {
         } else {
             0
         };
-        Ok(Some(RouteCandidateScore {
-            target_port_reuse,
-            source_port_reuse,
-            ambiguous_shared_cells,
-            total_cost,
-            shared_cells,
-            cell_count,
-            marker_pressure,
-        }))
+        Ok(Some((
+            RouteCandidateScore {
+                target_port_reuse,
+                source_port_reuse,
+                ambiguous_shared_cells,
+                total_cost,
+                shared_cells,
+                cell_count,
+                scene_growth,
+                marker_pressure,
+            },
+            placements,
+        )))
     }
 
     // Candidate admission and obstacle-aware search use the same cell-level semantic guards.
@@ -827,15 +892,20 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
-    fn plan_labels_have_clear_candidate(
+    fn plan_label_placements(
         &self,
         plan: &RoutePlan,
         owner: &RouteOwner,
         marker_berths: [Option<CanvasCoord>; 2],
         resources: &mut ResourceContext,
-    ) -> Result<bool> {
+    ) -> Result<Option<RouteLabelPlacements>> {
+        resources.charge_layout_work(plan.labels.len())?;
+        let mut placements = Vec::new();
+        placements
+            .try_reserve(plan.labels.len())
+            .map_err(|_| layout_allocation_failed())?;
         if plan.labels.is_empty() {
-            return Ok(true);
+            return Ok(Some(placements));
         }
 
         self.checkpoint_layout()?;
@@ -871,7 +941,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources,
                 self.label_lane_radius,
             )?;
-            let mut clear = false;
+            let mut selected = None;
             for candidate in candidates {
                 let footprint = OccupiedRect::try_new(
                     candidate.x(),
@@ -899,15 +969,27 @@ impl<'layout> SceneOccupancy<'layout> {
                         })
                     && self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)?
                 {
-                    clear = true;
-                    break;
+                    let width = footprint
+                        .right
+                        .max(resources.checked_grid_add(self.occupied_extent.x, 1)?);
+                    let height = footprint
+                        .bottom
+                        .max(resources.checked_grid_add(self.occupied_extent.y, 1)?);
+                    let area = resources.checked_work_mul(width, height)?;
+                    if selected.as_ref().is_none_or(|(best, _)| area < *best) {
+                        selected = Some((area, candidate));
+                    }
+                    if self.graph_layout.grid_aligned {
+                        break;
+                    }
                 }
             }
-            if !clear {
-                return Ok(false);
-            }
+            let Some((_, placement)) = selected else {
+                return Ok(None);
+            };
+            placements.push((placement, anchor));
         }
-        Ok(true)
+        Ok(Some(placements))
     }
 
     fn plan_label_candidate_is_clear(

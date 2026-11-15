@@ -451,21 +451,8 @@ fn flowchart_parser_tb_edge_label_renders_between_nodes() {
     assert_eq!(
         rendered,
         concat!(
-            "+-----+\n",
-            "|     |\n",
-            "|  A  |\n",
-            "|     |\n",
-            "+-----+\n",
-            "   |   \n",
-            "   |   \n",
-            "  yes  \n",
-            "   |   \n",
-            "   v   \n",
-            "+-----+\n",
-            "|     |\n",
-            "|  B  |\n",
-            "|     |\n",
-            "+-----+\n",
+            "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n", "  |  \n", "  |  \n", " yes \n",
+            "  |  \n", "  v  \n", "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n",
         )
     );
 }

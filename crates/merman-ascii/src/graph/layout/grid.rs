@@ -3,7 +3,7 @@ use super::super::label::{
     GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle, try_measure_edge_label,
 };
 use super::super::model::{
-    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeMarker, GraphNodeSide,
+    AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeMarker,
 };
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
@@ -16,6 +16,7 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceCon
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::hash::Hash;
 
+mod order;
 mod rank;
 
 pub(super) use rank::rank_leaf_group_levels;
@@ -32,12 +33,12 @@ const NODE_LABEL_PLAN_CHECKPOINT_INTERVAL: usize = 64;
 
 pub(super) type AxisSizes = HashMap<usize, usize>;
 type NodeIndexById<'a> = HashMap<&'a str, usize>;
-type LevelPositions = HashMap<usize, usize>;
 pub(super) type GridNodeLayoutParts = (Vec<NodeLayout>, AxisProjection, AxisProjection);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct AxisProjection {
     prefix_sizes: Vec<usize>,
+    #[cfg(test)]
     content_cells: usize,
 }
 
@@ -76,6 +77,7 @@ impl AxisProjection {
         }
         Ok(Self {
             prefix_sizes,
+            #[cfg(test)]
             content_cells,
         })
     }
@@ -90,13 +92,14 @@ impl AxisProjection {
         start + (end - start) / 2
     }
 
-    fn span(&self, start: usize, len: usize) -> usize {
+    pub(super) fn span(&self, start: usize, len: usize) -> usize {
         let cell_count = self.prefix_sizes.len().saturating_sub(1);
         let start = start.min(cell_count);
         let end = start.saturating_add(len).min(cell_count);
         self.prefix_sizes[end] - self.prefix_sizes[start]
     }
 
+    #[cfg(test)]
     fn content_total(&self) -> usize {
         self.prefix_sizes[self.content_cells]
     }
@@ -371,6 +374,7 @@ fn layout_left_right_grid_nodes(
     finalize_compound_node_layouts(
         graph,
         placements,
+        label_plans,
         topology,
         policy,
         &mut column_widths,
@@ -426,128 +430,12 @@ fn place_ranked_grid_nodes(
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
     let rank_levels = rank::rank_levels(graph, topology, direction, resources, execution)?;
-    let mut placement_order = index_order(graph.nodes.len())?;
-    charge_sort_work(placement_order.len(), resources)?;
-    placement_order.sort_unstable_by_key(|node_index| {
-        let cross_axis_key = if direction.canonical() == GraphDirection::TopDown {
-            rank_levels.side_constraints[*node_index]
-                .map(|constraint| {
-                    let side_order = match constraint.side {
-                        GraphNodeSide::Left => 0,
-                        GraphNodeSide::Right => 2,
-                    };
-                    (constraint.anchor_node_index, side_order, *node_index)
-                })
-                .unwrap_or((*node_index, 1, *node_index))
-        } else {
-            (*node_index, 1, *node_index)
-        };
-        (rank_levels.nodes[*node_index], cross_axis_key)
-    });
-
-    let mut placements = Vec::new();
-    try_reserve_vec(&mut placements, graph.nodes.len())?;
-    placements.resize(graph.nodes.len(), None);
-    let mut occupied = new_occupied_grid(graph.nodes.len(), resources)?;
-    let mut highest_position_per_level = new_level_positions(graph.nodes.len())?;
-
-    for (iteration, node_index) in placement_order.into_iter().enumerate() {
-        checkpoint_layout(execution, iteration)?;
-        let level = rank_levels.nodes[node_index];
-        let next_available = highest_position_per_level
-            .get(&level)
-            .copied()
-            .unwrap_or_default();
-        let requested = preferred_parent_lane(
-            node_index,
-            &rank_levels.nodes,
-            &rank_levels.parent_indices,
-            &placements,
-            direction,
-            resources,
-        )?
-        .map_or(next_available, |parent_lane| {
-            parent_lane.max(next_available)
-        });
-        let requested_coord = match direction.canonical() {
-            GraphDirection::LeftRight => GridCoord {
-                x: level,
-                y: requested,
-            },
-            GraphDirection::TopDown => GridCoord {
-                x: requested,
-                y: level,
-            },
-            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-        };
-        let coord = reserve_grid_spot(&mut occupied, requested_coord, direction, resources)?;
-        let next_position = match direction.canonical() {
-            GraphDirection::LeftRight => resources.checked_grid_add(coord.y, 4)?,
-            GraphDirection::TopDown => resources.checked_grid_add(coord.x, 4)?,
-            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-        };
-        highest_position_per_level
-            .entry(level)
-            .and_modify(|current| *current = (*current).max(next_position))
-            .or_insert(next_position);
-        placements[node_index] = Some(coord);
-    }
-
+    let nodes = order::place(&rank_levels, direction, resources, execution)?;
     Ok(RankedGridPlacements {
-        nodes: finalize_ranked_placements(placements, graph.diagram_type())?,
+        nodes,
         leaf_group_levels: rank_levels.leaf_groups,
         group_directions: Vec::new(),
     })
-}
-
-fn preferred_parent_lane(
-    node_index: usize,
-    rank_levels: &[usize],
-    parent_indices: &[Vec<usize>],
-    placements: &[Option<GridCoord>],
-    direction: GraphDirection,
-    resources: &ResourceContext,
-) -> Result<Option<usize>> {
-    let mut lane_total = 0usize;
-    let mut parent_count = 0usize;
-    let parents = parent_indices
-        .get(node_index)
-        .map_or(&[][..], Vec::as_slice);
-    resources.charge_layout_work(parents.len())?;
-    for &parent_index in parents {
-        if rank_levels[parent_index] >= rank_levels[node_index] {
-            continue;
-        }
-        let Some(parent) = placements.get(parent_index).copied().flatten() else {
-            continue;
-        };
-        let lane = match direction.canonical() {
-            GraphDirection::LeftRight => parent.y,
-            GraphDirection::TopDown => parent.x,
-            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-        };
-        lane_total = resources.checked_grid_add(lane_total, lane)?;
-        parent_count = resources.checked_grid_add(parent_count, 1)?;
-    }
-    Ok(lane_total.checked_div(parent_count))
-}
-
-fn finalize_ranked_placements(
-    placements: Vec<Option<GridCoord>>,
-    diagram_type: &'static str,
-) -> Result<Vec<GridCoord>> {
-    let mut finalized = Vec::new();
-    try_reserve_vec(&mut finalized, placements.len())?;
-    for placement in placements {
-        let Some(placement) = placement else {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type,
-                feature: "Dagre-compatible terminal rank placement",
-            });
-        };
-        finalized.push(placement);
-    }
-    Ok(finalized)
 }
 
 fn index_order(len: usize) -> Result<Vec<usize>> {
@@ -555,48 +443,6 @@ fn index_order(len: usize) -> Result<Vec<usize>> {
     try_reserve_vec(&mut order, len)?;
     order.extend(0..len);
     Ok(order)
-}
-
-fn reserve_grid_spot(
-    occupied: &mut HashSet<(usize, usize)>,
-    requested_coord: GridCoord,
-    direction: GraphDirection,
-    resources: &ResourceContext,
-) -> Result<GridCoord> {
-    let mut coord = requested_coord;
-    loop {
-        resources.charge_layout_work(MINIMUM_NODE_GRID_CELLS)?;
-        if !grid_spot_occupied(occupied, coord, resources)? {
-            break;
-        }
-        match direction.canonical() {
-            GraphDirection::LeftRight => coord.y = resources.checked_grid_add(coord.y, 4)?,
-            GraphDirection::TopDown => coord.x = resources.checked_grid_add(coord.x, 4)?,
-            GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
-        }
-    }
-
-    let end_x = resources.checked_grid_add(coord.x, MINIMUM_NODE_GRID_WIDTH)?;
-    let end_y = resources.checked_grid_add(coord.y, MINIMUM_NODE_GRID_HEIGHT)?;
-    resources.charge_layout_work(MINIMUM_NODE_GRID_CELLS)?;
-    try_reserve_hash_set(occupied, MINIMUM_NODE_GRID_CELLS)?;
-    for x in coord.x..end_x {
-        for y in coord.y..end_y {
-            occupied.insert((x, y));
-        }
-    }
-
-    Ok(coord)
-}
-
-fn grid_spot_occupied(
-    occupied: &HashSet<(usize, usize)>,
-    coord: GridCoord,
-    resources: &ResourceContext,
-) -> Result<bool> {
-    let end_x = resources.checked_grid_add(coord.x, MINIMUM_NODE_GRID_WIDTH)?;
-    let end_y = resources.checked_grid_add(coord.y, MINIMUM_NODE_GRID_HEIGHT)?;
-    Ok((coord.x..end_x).any(|x| (coord.y..end_y).any(|y| occupied.contains(&(x, y)))))
 }
 
 fn layout_top_down_grid_nodes(
@@ -709,6 +555,7 @@ fn layout_top_down_grid_nodes(
     finalize_compound_node_layouts(
         graph,
         placements,
+        label_plans,
         topology,
         policy,
         &mut column_widths,
@@ -1063,24 +910,6 @@ fn reserve_branch_rank_spacing(
     Ok(())
 }
 
-fn new_occupied_grid(
-    node_count: usize,
-    resources: &ResourceContext,
-) -> Result<HashSet<(usize, usize)>> {
-    let mut occupied = HashSet::default();
-    try_reserve_hash_set(
-        &mut occupied,
-        minimum_node_grid_cells(node_count, resources)?,
-    )?;
-    Ok(occupied)
-}
-
-fn new_level_positions(node_count: usize) -> Result<LevelPositions> {
-    let mut positions = HashMap::default();
-    try_reserve_hash_map(&mut positions, node_count)?;
-    Ok(positions)
-}
-
 fn new_axis_sizes(node_count: usize, resources: &ResourceContext) -> Result<AxisSizes> {
     let mut axis_sizes = HashMap::default();
     let capacity = resources.checked_grid_mul(node_count, AXIS_ENTRIES_PER_NODE)?;
@@ -1145,8 +974,6 @@ fn finalize_axis_projections(
         execution,
         checkpoint_iteration,
     )?;
-    // Routing bands are projection storage, not unused diagram cells.
-    resources.grid_extent(columns.content_total(), rows.content_total())?;
     Ok((columns, rows))
 }
 
@@ -1174,6 +1001,7 @@ fn routing_projection_cell_counts(
 fn finalize_compound_node_layouts(
     graph: &AsciiGraph,
     placements: Vec<GridCoord>,
+    label_plans: &[GraphNodeLabelPlanHandle<'_>],
     topology: Option<&GraphGroupTopology<'_>>,
     policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
@@ -1191,6 +1019,12 @@ fn finalize_compound_node_layouts(
         execution,
     )?;
     let Some(topology) = topology else {
+        let mut sizes = Vec::new();
+        try_reserve_vec(&mut sizes, graph.nodes.len())?;
+        for (node, plan) in graph.nodes.iter().zip(label_plans) {
+            sizes.push(node_shape_size(node, plan, policy, resources)?);
+        }
+        order::compact_nodes(graph, &mut nodes, &sizes, policy, resources)?;
         return Ok((nodes, columns, rows));
     };
     groups::reserve_compound_axis_spacing(
@@ -1365,6 +1199,53 @@ mod tests {
     }
 
     #[test]
+    fn layered_placement_centers_both_ends_of_a_symmetric_fork() {
+        for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+            let mut graph = AsciiGraph::new(direction);
+            for id in ["source", "left", "right", "target"] {
+                graph.add_node(id, "N");
+            }
+            for (from, to) in [
+                ("source", "left"),
+                ("source", "right"),
+                ("left", "target"),
+                ("right", "target"),
+            ] {
+                graph.add_edge(from, to);
+            }
+            let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+            let cross = |index: usize| match direction {
+                GraphDirection::TopDown => layout.nodes[index].grid.x,
+                GraphDirection::LeftRight => layout.nodes[index].grid.y,
+                _ => unreachable!(),
+            };
+            assert_eq!(cross(0) * 2, cross(1) + cross(2));
+            assert_eq!(cross(3), cross(0));
+        }
+    }
+
+    #[test]
+    fn layered_placement_orders_declared_children_by_their_connections() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for id in ["root", "left", "right", "right_child", "left_child"] {
+            graph.add_node(id, "N");
+        }
+        for (from, to) in [
+            ("root", "left"),
+            ("root", "right"),
+            ("left", "left_child"),
+            ("right", "right_child"),
+        ] {
+            graph.add_edge(from, to);
+        }
+        let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+        let nodes = &layout.nodes;
+        assert_eq!(nodes[1].grid.x, nodes[4].grid.x);
+        assert_eq!(nodes[2].grid.x, nodes[3].grid.x);
+        assert!(nodes[4].grid.x < nodes[3].grid.x);
+    }
+
+    #[test]
     fn visible_branches_reserve_a_transit_cell_outside_endpoint_reading_margins() {
         for direction in [
             GraphDirection::TopDown,
@@ -1430,7 +1311,7 @@ mod tests {
     }
 
     #[test]
-    fn single_edges_and_invisible_branches_keep_zero_padding_rank_spacing() {
+    fn single_edges_and_invisible_branches_keep_zero_padding_rank_clearance() {
         let options = AsciiRenderOptions::ascii()
             .with_graph_padding_x(0)
             .with_graph_padding_y(0);
@@ -1473,10 +1354,9 @@ mod tests {
                             .find(|node| node.id == edge.from)
                             .unwrap();
                         let to = layout.nodes.iter().find(|node| node.id == edge.to).unwrap();
-                        assert_eq!(
-                            node_rank_gap(from, to, direction),
-                            1,
-                            "single edges and invisible constraints retain the minimum grid gap: {direction:?}, fan_in={fan_in}"
+                        assert!(
+                            node_rank_gap(from, to, direction) >= 1,
+                            "single edges and invisible constraints retain a transit cell: {direction:?}, fan_in={fan_in}"
                         );
                     }
                 }

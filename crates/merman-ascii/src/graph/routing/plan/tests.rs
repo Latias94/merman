@@ -1201,7 +1201,7 @@ fn left_right_grid_path_route_plans_unicode_connector_arrow_and_label() {
 }
 
 #[test]
-fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
+fn coarse_grid_route_rejects_nodes_moved_to_terminal_coordinates() {
     let options = AsciiRenderOptions::ascii();
     let layout = left_right_layout(&[("a", "b"), ("a", "c")], &options);
     let from = layout_node(&layout, "a");
@@ -1209,27 +1209,8 @@ fn left_right_grid_path_route_plans_bent_path_cells_and_corner() {
     let edge = edge_between("a", "c", Some("down"), GraphEdgeArrow::Point);
     let charset = GraphCharset::for_options(&options);
 
-    let plan = plan_left_right_grid_path_route(&layout, from, to, &edge, &charset).unwrap();
-
-    assert!(
-        plan.cells
-            .iter()
-            .any(|cell| cell.kind == PlannedRouteCellKind::RouteCell && cell.ch == '+')
-    );
-    assert!(
-        plan.cells
-            .iter()
-            .any(|cell| cell.kind == PlannedRouteCellKind::RouteCell && cell.ch == '|')
-    );
-    assert!(
-        plan.cells
-            .iter()
-            .any(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
-    );
-    assert_eq!(
-        plan.labels.first().map(|label| label.placement.width()),
-        Some(4)
-    );
+    assert!(!layout.grid_aligned);
+    assert!(plan_left_right_grid_path_route(&layout, from, to, &edge, &charset).is_none());
 }
 
 #[test]

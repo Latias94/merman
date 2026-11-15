@@ -114,6 +114,14 @@ acceptance. It also does not require reference source or binaries in release CI.
 The historical notes below describe the existing implementation and its regressions; independent
 arrowhead counts are not a permanent requirement for a future unambiguous shared presentation.
 
+Terminal layer ordering and independent node sizing have their own semantic and resource tests.
+The Issue #53 viewport characterization changes from 74×57 to 76×57 in Canonical and from
+56×67 to 57×67 in Compact, retaining the same fit classifications at 60/80/100/120 columns.
+Those small width increases are recorded tradeoffs, not comparison-floor wins. The frozen gallery
+above remains the pre-refactor baseline. Layer alignment alone does not resolve tall fan-outs,
+shared terminal capacity, or the full-field width fallback; the common-case presentation floor
+still requires joint allocation and route reconsideration.
+
 ## Reference Corpus Snapshot
 
 The 2026-11-14 routing follow-up inspected the optional `mermaid-ascii` checkout at
@@ -185,9 +193,13 @@ The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from
 `876b5b4` named in its inventory, contains 54 `ascii` graph fixtures, 25 `extended-chars` graph
 fixtures, 12 `sequence` fixtures, and 5 `sequence-ascii` fixtures. The graph gate currently keeps
-40 fixtures as an exact-output subset and names 39 deterministic Dagre/route/compound differences
-that must still render and retain their semantics. Copied bytes are never rewritten to match local
-output. Its 3 `multibyte` examples for accented Latin, Greek, and Cyrillic labels are useful semantic
+30 fixtures as an exact-output subset, 7 local compound-frame correction snapshots, and 42 named
+Dagre/route/terminal-placement differences that must still render and retain their semantics.
+Terminal node dimensions follow their own labels instead of stretching to an unrelated node's
+shared axis band. This intentionally changes the multiline-node and differently sized disconnected
+chain cases. The correction snapshots also reflect terminal layer ordering; independent geometry
+checks still require closed frames, containment, and actual target contacts. Copied bytes are never
+rewritten to match local output. Its 3 `multibyte` examples for accented Latin, Greek, and Cyrillic labels are useful semantic
 evidence, but they are not admitted as byte-level fixtures: `merman-ascii` preserves the labels
 readably while intentionally not copying the upstream LR label spacing byte-for-byte.
 

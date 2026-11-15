@@ -15,6 +15,7 @@ use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use rustc_hash::FxHashMap as HashMap;
 use std::cmp::Ordering;
 
 mod cell;
@@ -386,8 +387,13 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         execution,
     )?;
 
+    let route_order = plan_route_order(graph, graph_layout, &canonical_edges, resources)?;
+    let mut repair_expansions = terminal::MAX_REPAIR_EXPANSIONS;
+
     let mut pending_self_loop_start = None::<usize>;
-    for (edge_index, edge) in canonical_edges.iter().enumerate() {
+    for ordinal in 0..route_order.as_ref().map_or(canonical_edges.len(), Vec::len) {
+        let edge_index = route_order.as_ref().map_or(ordinal, |order| order[ordinal]);
+        let edge = &canonical_edges[edge_index];
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
         if let Some(start) = pending_self_loop_start
             && (edge.from != routes[start].owner.from || edge.from != edge.to)
@@ -476,6 +482,24 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
+        if !graph_layout.grid_aligned
+            && let Some((score, plan)) = terminal::plan_direct_route(
+                request,
+                path::RouteObstacles {
+                    scene: &occupancy,
+                    routes: &routes,
+                    owner: &owner,
+                },
+                label_plans.descriptor(edge_index),
+                resources,
+                execution,
+            )?
+            && selected
+                .as_ref()
+                .is_none_or(|(incumbent, _, _)| score < *incumbent)
+        {
+            selected = Some((score, usize::MAX, plan));
+        }
         let container_endpoint = matches!(
             topology
                 .as_ref()
@@ -483,9 +507,10 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             Some(GraphEndpointIndex::Group(_))
         );
         let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-        let needs_terminal_search = selected
-            .as_ref()
-            .is_none_or(|(score, _, _)| score.has_congestion());
+        let needs_terminal_search = (selected.is_none() || repair_expansions != 0)
+            && selected.as_ref().is_none_or(|(score, _, _)| {
+                score.has_congestion() || (!defer_loop_labels && score.grows_scene())
+            });
         if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
             // A searched loop can choose a different side from the predetermined lanes.
             // Protect earlier batch labels first, then re-admit the incumbent against them.
@@ -513,7 +538,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             }
         }
         if needs_terminal_search
-            && let Some((score, plan)) = terminal::plan_terminal_route(
+            && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
                 request,
                 path::RouteObstacles {
                     scene: &occupancy,
@@ -522,6 +547,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 },
                 label_plans.descriptor(edge_index),
                 selected.as_ref().map(|(score, _, _)| *score),
+                &mut repair_expansions,
                 resources,
                 execution,
             )?
@@ -621,12 +647,75 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     })
 }
 
+fn plan_route_order(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    resources: &ResourceContext,
+) -> Result<Option<Vec<usize>>> {
+    if layout.grid_aligned {
+        return Ok(None);
+    }
+    resources.charge_layout_work(resources.checked_work_add(layout.nodes.len(), edges.len())?)?;
+    let mut visible_count = 0;
+    for (index, edge) in edges.iter().enumerate() {
+        if index.is_multiple_of(64) {
+            resources.checkpoint()?;
+        }
+        visible_count += usize::from(edge.stroke.is_visible());
+    }
+    let mut order = Vec::new();
+    order
+        .try_reserve(visible_count)
+        .map_err(|_| layout_allocation_failed())?;
+    if visible_count == 0 {
+        return Ok(Some(order));
+    }
+    let mut levels = HashMap::default();
+    levels
+        .try_reserve(layout.nodes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    let horizontal = graph.direction.canonical() == super::model::GraphDirection::LeftRight;
+    for node in &layout.nodes {
+        resources.checkpoint()?;
+        levels.insert(
+            node.id.as_str(),
+            if horizontal { node.grid.x } else { node.grid.y },
+        );
+    }
+    resources.charge_layout_work(edges.len())?;
+    for (index, edge) in edges.iter().enumerate() {
+        resources.checkpoint()?;
+        if edge.stroke.is_visible() {
+            order.push(index);
+        }
+    }
+    super::layout::charge_sort_work(order.len(), resources)?;
+    order.sort_unstable_by_key(|&index| {
+        let edge = &edges[index];
+        let feedback = edge.from != edge.to
+            && levels
+                .get(edge.from.as_str())
+                .zip(levels.get(edge.to.as_str()))
+                .is_some_and(|(from, to)| from >= to);
+        (!feedback, index)
+    });
+    Ok(Some(order))
+}
+
 fn admit_route_candidate(
     request: EdgeRouteRequest<'_>,
     obstacles: path::RouteObstacles<'_>,
     plan: RoutePlan,
     resources: &mut ResourceContext,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+    if plan.labels.is_empty()
+        && let Some(raw) = request.edge.label.as_deref()
+        && super::label::try_measure_edge_label(raw, request.charset.width_profile, resources)?
+            .is_some()
+    {
+        return Ok(None);
+    }
     let Some(plan) = plan.resolve_endpoint_attachments(
         plan::EndpointGeometry::for_route(
             request.from,
@@ -663,14 +752,13 @@ fn admit_route_candidate(
             request.graph.diagram_type(),
         )?
         .with_style(request.edge.style);
-    let score = obstacles.scene.score_route(
+    obstacles.scene.admit_route(
         obstacles.routes,
-        &plan,
+        plan,
         obstacles.owner,
         resources,
         request.graph.diagram_type(),
-    )?;
-    Ok(score.map(|score| (score, plan)))
+    )
 }
 
 fn route_boundary_group_indices(

@@ -931,13 +931,7 @@ impl RoutePlan {
         &self,
         resources: &ResourceContext,
     ) -> Result<(usize, usize)> {
-        let mut width = self.min_canvas_extent.width;
-        let mut height = self.min_canvas_extent.height;
-
-        for (_, cell) in self.active_cells() {
-            width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
-            height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
-        }
+        let (mut width, mut height) = self.body_extent_with_resources(resources)?;
         for label in &self.labels {
             let label_width =
                 resources.checked_grid_add(label.placement.x(), label.placement.width())?;
@@ -946,7 +940,20 @@ impl RoutePlan {
             width = width.max(label_width);
             height = height.max(label_height);
         }
+        Ok((width, height))
+    }
 
+    pub(super) fn body_extent_with_resources(
+        &self,
+        resources: &ResourceContext,
+    ) -> Result<(usize, usize)> {
+        let mut width = self.min_canvas_extent.width;
+        let mut height = self.min_canvas_extent.height;
+
+        for (_, cell) in self.active_cells() {
+            width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
+            height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
+        }
         Ok((width, height))
     }
 }

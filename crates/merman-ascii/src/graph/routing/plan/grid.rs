@@ -209,6 +209,9 @@ pub(super) fn plan_left_right_grid_path_route_with_options_resources_and_executi
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
+    if !graph_layout.grid_aligned {
+        return Ok(None);
+    }
     let Some(route) = route_grid_path_for_layout_with_resources_and_execution(
         graph_layout,
         from,
@@ -240,6 +243,9 @@ pub(super) fn plan_obstacle_aware_grid_route(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
+    if !request.graph_layout.grid_aligned {
+        return Ok(None);
+    }
     let Some(route) = route_grid_path_avoiding_obstacles(
         request.graph_layout,
         request.from,

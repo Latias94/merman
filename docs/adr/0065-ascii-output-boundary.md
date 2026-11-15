@@ -144,3 +144,29 @@ ASCII report and metadata schema 3 add `requested_layout_profile` and `compact_a
 final output is structured fallback. Compact selection is independent from fallback selection.
 The options JSON schema remains version 2. Width fitting does not guarantee reduced height/area,
 and it does not authorize edge-label truncation or automatic direction changes.
+
+## Terminal layer ordering and coordinate ownership
+
+Flowchart, State, and Swimlane retain Dugong's rank seed. Cross-axis placement uses bounded
+forward/backward barycenter ordering and integer layer compaction, allowing both branches and
+merges to influence alignment. State side constraints remain part of the ordering. Compound
+placement continues to enforce containment and local direction before frame allocation.
+
+For scenes without containers, terminal coordinates and node dimensions follow each node's own
+text and shape demand. A coarse projection is not authoritative after this compaction. Coarse
+route candidates are admitted only while node coordinates and dimensions still match that
+projection; actual-contact orthogonal candidates and terminal search serve the resulting geometry.
+Finite candidate paths admit their retained cells before allocation. The final scene owns the
+two-dimensional grid admission, so a discarded projection or unselected exterior candidate cannot
+reject a fitting diagram by charging an imaginary canvas.
+
+Non-aligned scenes identify feedback connections before route admission. Short direct and exterior
+channels are compared before terminal search. Candidate labels receive valid host positions before
+scoring, and scene growth includes those positions. A growing scene can trigger bounded refinement
+even without a port conflict. Optional repairs share one scene-wide expansion allowance, while a
+search for the first valid path remains subject to the operation budget. Predetermined parallel
+self-loops retain deferred label placement until their complete nested batch is known. Exhausting
+the optional allowance cannot flush that batch. Every candidate must carry its visible edge label;
+geometry that drops a condition is not admissible. These changes replace the sequential node-slot
+placement mechanism. Joint port/channel allocation and reversible routing remain separate work;
+this ordering change alone does not establish the terminal presentation comparison floor.

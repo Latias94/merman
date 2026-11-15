@@ -226,7 +226,7 @@ mod shapes;
 mod subgraphs;
 
 #[test]
-fn feedback_edge_preserves_diamond_vertex_and_enters_target_side() {
+fn feedback_edge_preserves_diamond_vertices_and_enters_actual_target() {
     let input = "flowchart TD\n A[Write code] --> B{Tests pass?}\n B -- Yes --> C[Open PR]\n B -- No --> A\n";
     for mut options in [AsciiRenderOptions::unicode(), AsciiRenderOptions::ascii()] {
         for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
@@ -240,21 +240,49 @@ fn feedback_edge_preserves_diamond_vertex_and_enters_target_side() {
                 .lines()
                 .position(|line| line.contains("Tests pass?"))
                 .unwrap();
-            let vertex_x = rows[diamond_row].iter().rposition(|ch| *ch == '>').unwrap();
             assert!(
-                rows[diamond_row][vertex_x + 1..]
-                    .iter()
-                    .any(|ch| matches!(ch, '-' | '─')),
-                "the side escape must connect to the preserved diamond vertex: {rendered}"
+                rows[diamond_row].contains(&'<') && rows[diamond_row].contains(&'>'),
+                "feedback routing must preserve both decision vertices: {rendered}"
             );
             let target_row = rendered
                 .lines()
                 .position(|line| line.contains("Write code"))
                 .unwrap();
-            assert!(
-                rows[target_row].iter().any(|ch| matches!(ch, '◄' | '<')),
-                "the feedback head must point into the right side of its target: {rendered}"
+            let left = rows[target_row]
+                .iter()
+                .position(|ch| matches!(ch, '|' | '│'))
+                .unwrap();
+            let right = rows[target_row]
+                .iter()
+                .rposition(|ch| matches!(ch, '|' | '│'))
+                .unwrap();
+            let top = target_row - 2;
+            let bottom = target_row + 2;
+            let mut heads = 0;
+            for row in &rows[top + 1..bottom] {
+                heads += usize::from(
+                    left.checked_sub(1)
+                        .is_some_and(|x| matches!(row.get(x), Some('>' | '►'))),
+                );
+                heads += usize::from(matches!(row.get(right + 1), Some('<' | '◄')));
+            }
+            for x in left + 1..right {
+                heads += usize::from(
+                    top.checked_sub(1)
+                        .is_some_and(|y| matches!(rows[y].get(x), Some('v' | '▼'))),
+                );
+                heads += usize::from(matches!(
+                    rows.get(bottom + 1).and_then(|row| row.get(x)),
+                    Some('^' | '▲')
+                ));
+            }
+            assert_eq!(
+                heads, 1,
+                "feedback must enter the actual Write code node: {rendered}"
             );
+            for condition in ["Yes", "No"] {
+                assert_eq!(rendered.matches(condition).count(), 1, "{rendered}");
+            }
         }
     }
 }
