@@ -160,6 +160,47 @@ Compact. Compact narrows the scene while retaining visible turns, spending more 
 cells than current Canonical. That tradeoff is recorded explicitly rather than counted as a
 universal density improvement. All original frozen reference captures remain unchanged.
 
+### Source-bound validation
+
+The current measurements above are bound to implementation commit
+`65eb8bb48dc7d020b8e8341c29f7d2d031758e3b` (tree
+`23fba7ba4dfd0dcb1a0d159f82242a62bb8a6d7a`). Rebuilding the defaults-off CLI with
+`ascii,diagram-flowchart,diagram-state,diagram-swimlane` reproduced all 26 reviewed
+unbounded/80-column outputs byte-for-byte. All 13 input hashes match the frozen reference gallery;
+52 further captures reproduce the 60/80/100/120-column reports. The rebuilt CLI SHA-256 is
+`79f6b6927174a19fc79365a66db6fcf0881d1d090fe247ce0f5fa91f36e9bc57`.
+
+Settled-source checks passed 1,568 ASCII tests, 33 facade/CLI tests, 199 facade and binding-core
+library tests, and the two representative UniFFI/WASM exact resource boundaries. These include
+all 486 generated scenes and their 3,042 visible relationships. Strict ASCII all-target Clippy,
+scoped formatting, the three isolated graph-family builds, the WASM target build, repository path
+limits, and third-party license verification also passed. Copied upstream fixtures are unchanged.
+
+The public `ascii_pipeline` benchmark was rebuilt from the same implementation with defaults off
+and `all-diagrams,ascii`. On Windows 11, `x86_64-pc-windows-msvc`, Rust 1.100.0, and an Intel
+i9-13900KF, short diagnostic runs used a one-second warmup, a two-second requested measurement,
+and ten samples. Criterion extended the large case to approximately 6.4 seconds for ten iterations.
+These are current-artifact measurements, not an adjacent-revision speedup or U25 performance
+closeout claim. The output has intentionally changed from the frozen product baseline.
+
+| Public operation / fixture | Estimate | Reported 95% interval | Output bytes |
+| --- | --- | --- | --- |
+| `ascii_end_to_end/flowchart_medium` | 4.8112 ms | 4.6847–4.9692 ms | 13,202 |
+| `ascii_end_to_end/flowchart_large` | 809.78 ms | 751.73–867.84 ms | 75,429 |
+
+Both exact invocations retained identical preflight/postflight output. Their plain ASCII output
+SHA-256 values are respectively
+`53019517e81ce2ba2a63eb93e041681c8dcf2c7425f462af2643184827c2402e` and
+`2e28484b52fb3db21856c0836343dcde072b9b537dd26d119e02ba9df4c74bf7`.
+The benchmark executable SHA-256 is
+`738edeb19d241b52f56283febd7587a6629741f61573a4754c9b3ee6d04035c9`.
+The maintained compiled-list verifier also passed all ten benchmark registrations and preflight
+receipts. Reproduce these checks through the
+[ASCII benchmark contract](../../docs/performance/BENCHMARKING.md#ascii-semantic-depth-benchmark),
+using `--exact ascii_end_to_end/flowchart_medium` or `--exact ascii_end_to_end/flowchart_large`
+and `--warm-up-time 1 --measurement-time 2 --sample-size 10 --noplot` for the diagnostic timing.
+Raw captures, samples, commands, and environment evidence remain under ignored `target/`.
+
 ## Reference Corpus Snapshot
 
 The 2026-11-14 routing follow-up inspected the optional `mermaid-ascii` checkout at
