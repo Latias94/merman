@@ -223,6 +223,14 @@ direction. They can be taller than a valid diagram: State keeps its canonical ge
 authored-detail disclosure, and the renderer has no maximum-height selection policy. Hosts that
 need a pager or alternate view own that presentation choice.
 
+Graph detail records use word-aware wrapping with indented continuation rows. A word that fits
+the viewport can use its full width when the usual two-cell indent would split it; longer atoms
+still wrap at grapheme boundaries. Authored spaces, escapes and independently owned records
+remain complete, including repeated State descriptions and relation records.
+Complete semantic fallback records, including non-graph serialized fields, preserve data spaces
+even under `TrimTrailingSpaces` and report `trimmed: false`; the requested trim policy still
+applies to diagram canvas padding.
+
 ## Resource Policy
 
 `AsciiResourcePolicy` owns six typed limits: checked grid extent, deterministic layout work,
@@ -330,17 +338,24 @@ Header-only charts and typed plots with no terminal slots use an injective `xych
 
 ## Node padding and graph spacing
 
-Flowchart, Swimlane, and State resolve node padding independently on each axis. The default is
-one cell on each side. Use `with_node_padding_y(0)` to remove the blank rows inside ordinary
-node frames while preserving the space for edges between ranks. Use `with_node_padding(0)` to
-remove padding on both axes, or combine `with_node_padding_x` and `with_node_padding_y`.
-Fixed State symbols retain their own dimensions.
+Flowchart, Swimlane, and State resolve node padding independently on each axis. Their defaults
+prefer one cell of horizontal padding, no blank padding rows inside ordinary node frames, and
+one row between graph ranks. Required endpoint and label demand can enlarge a node or gap.
+Fixed State symbols retain their own dimensions. Independent contours in an ungrouped rank
+share its center line, so a short state and taller side notes stay aligned without stretching
+the state frame.
 
 The existing `box_border_padding` field remains the scalar compatibility default. Explicit
 `node_padding_x` and `node_padding_y` overrides take precedence, including zero. Bindings accept
-both snake_case and camelCase spellings. Graph rank gaps are separate preferences:
+both snake_case and camelCase spellings. Use `with_node_padding(1)` and
+`with_graph_padding_y(5)` to select the previous State spacing explicitly; the builders preserve
+these choices even when they equal the legacy public scalar defaults. Use
+`with_node_padding(0)` to remove preferred padding on both axes, or combine
+`with_node_padding_x` and `with_node_padding_y`. Graph rank gaps are separate preferences:
 `with_graph_padding_x` and `with_graph_padding_y` preserve explicit values under Compact.
 Required frame gutters, label clearance, and valid arrow berths can increase these gaps.
+Assigning a legacy default directly to a public numeric field carries no explicit-override
+provenance; use the corresponding builder when that value must override the family default.
 
 Sequence spacing is measured from participant names and messages before rows are painted.
 A message label occupies one interval between adjacent lifelines, including when its arrow

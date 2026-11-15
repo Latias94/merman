@@ -1326,6 +1326,32 @@ mod tests {
     }
 
     #[test]
+    fn same_rank_contours_keep_one_main_axis_center_without_stretching() {
+        for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("short", "N");
+            graph.add_node("long", "A longer label\nSecond line");
+            let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+            let [short, long] = layout.nodes.as_slice() else {
+                panic!("the two independent nodes must survive layout");
+            };
+            match direction {
+                GraphDirection::TopDown => {
+                    assert_eq!(short.grid.y, long.grid.y);
+                    assert!(short.height < long.height);
+                    assert_eq!(short.center_y(), long.center_y());
+                }
+                GraphDirection::LeftRight => {
+                    assert_eq!(short.grid.x, long.grid.x);
+                    assert!(short.width < long.width);
+                    assert_eq!(short.center_x(), long.center_x());
+                }
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[test]
     fn layered_placement_orders_declared_children_by_their_connections() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         for id in ["root", "left", "right", "right_child", "left_child"] {

@@ -40,7 +40,7 @@ fn issue_53_compact_plain_and_ansi16_share_one_flowchart_geometry() {
                 .unwrap_or_default(),
             plain.lines().count(),
         ),
-        (63, 50)
+        (59, 50)
     );
 }
 

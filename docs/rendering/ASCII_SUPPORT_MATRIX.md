@@ -195,15 +195,16 @@ parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative
 
 | Fixture | Layout | Extent | Blank cells | Longest blank run |
 | --- | --- | ---: | ---: | ---: |
-| Issue #53 Flowchart | canonical | `76×40` | 2104 | 52 |
-| Issue #53 Flowchart | compact | `63×50` | 2246 | 44 |
+| Issue #53 Flowchart | canonical | `76×40` | 2099 | 52 |
+| Issue #53 Flowchart | compact | `59×50` | 2103 | 42 |
 | Sequence self-messages/notes | canonical | `107×58` | 4681 | 41 |
 | Sequence self-messages/notes | compact | `105×58` | 4567 | 41 |
 
 These values are characterization evidence, not universal quality scores. Admission still requires
 complete authored-field retention and typed overflow behavior; a narrower result that drops a field
-is rejected. Issue #53 Compact reduces width while spending more rows and blank cells to retain
-visible turns beside complete conditions; it is not an area improvement over Canonical.
+is rejected. Issue #53 Compact spends more rows while reducing width and area. Its
+independent contours share rank centers, retaining all seven heads and complete conditions beside
+visible route turns. This remains a fixture-specific tradeoff rather than a universal density claim.
 
 `presentation_floor.rs` fixes the complete-document outcomes for the original 13-case terminal
 gallery at 60/80/100/120 cells, in ASCII/Unicode and Unicode/CJK width profiles. Twelve-way LR

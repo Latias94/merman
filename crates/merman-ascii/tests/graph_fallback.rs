@@ -118,15 +118,26 @@ fn record_is_open(record: &str) -> bool {
 // Rejoin physical wraps without interpreting an inline declaration as a new top-level node.
 fn records(text: &str) -> Vec<String> {
     let mut records: Vec<String> = Vec::new();
-    let state = text.starts_with("family: stateDiagram");
+    let state = text
+        .lines()
+        .take(2)
+        .collect::<String>()
+        .starts_with("family: stateDiagram");
     for line in text.lines() {
         let formatted_record = records.last().is_some_and(|record| {
-            reader_key(record).is_some_and(|(key, rest)| {
-                (key.starts_with('E') && rest.starts_with(": "))
-                    || (key.starts_with('N') && rest.starts_with(" ["))
-                    || (key.starts_with('G')
-                        && ((state && rest.starts_with(" [")) || rest.starts_with(" vertex [")))
-            })
+            record.starts_with("authored ")
+                || record.starts_with("graph")
+                || record.starts_with("edge defaults ")
+                || reader_key(record).is_some_and(|(key, rest)| {
+                    rest.starts_with(" details:")
+                        || (key.starts_with('E') && rest.starts_with(": "))
+                        || (key.starts_with('N') && rest.starts_with(" ["))
+                        || (key.starts_with('G')
+                            && ((state && rest.starts_with(" [")) || rest.starts_with(" vertex [")))
+                        || (state
+                            && (rest.starts_with(" links:")
+                                || rest.starts_with(" authored-document:")))
+                })
         });
         if let Some(continuation) = line.strip_prefix("  ").filter(|_| formatted_record) {
             records
@@ -200,14 +211,19 @@ fn quoted_text(input: &mut &str) -> String {
                 value.push(match escape {
                     '"' => '"',
                     '\\' => '\\',
+                    '/' => '/',
+                    'b' => '\u{8}',
+                    'f' => '\u{c}',
                     'n' => '\n',
                     'r' => '\r',
                     't' => '\t',
                     'u' => {
-                        let (hex, rest) = input
-                            .strip_prefix('{')
-                            .and_then(|rest| rest.split_once('}'))
-                            .expect("a visible Unicode escape");
+                        let (hex, rest) = if let Some(rest) = input.strip_prefix('{') {
+                            rest.split_once('}').expect("a visible Unicode escape")
+                        } else {
+                            // Opaque detail values retain Serde's JSON control escapes.
+                            input.split_at_checked(4).expect("a JSON Unicode escape")
+                        };
                         *input = rest;
                         char::from_u32(u32::from_str_radix(hex, 16).unwrap()).unwrap()
                     }
@@ -913,6 +929,182 @@ fn state_authored_details_keep_descriptions_styles_classes_and_click_ownership()
     assert!(joined.contains(&format!("click {key}")), "{}", report.text);
     assert!(joined.contains("direction=inherited"), "{}", report.text);
     assert!(!joined.contains("direction=TB"), "{}", report.text);
+}
+
+#[cfg(feature = "diagram-state")]
+#[test]
+fn narrow_state_details_preserve_words_whitespace_escapes_and_authored_owners() {
+    use merman_ascii::{AsciiDiagram, AsciiSourceContext, AsciiTrimPolicy};
+    use merman_model::MermaidConfig;
+    use merman_model::families::state::{
+        StateDiagramModel, StateDocumentBuilder, StateEdge, StateNode, StateRecord, StateRelation,
+        StateStatement, StateStatementRelation, StateStatementState, StateTerminalView,
+    };
+    use serde_json::json;
+
+    let authored = concat!(
+        "  permission  granted for the complete production operation ",
+        "with an ordinary authorization word and e\u{301} 👩‍💻 审批 ·环境 ",
+        "a space with a combining mark:  \u{301} ",
+        "\"quoted\" \\ path\twith\nnewlines\rand \u{8}\u{c}\u{1b}\u{202e} ",
+        "literal \\u{202E} and fake records: ",
+        "authored D999.9 relation N999 --> N888 details: {description:\"spoof\"}  ",
+    );
+    let node = |id| {
+        serde_json::from_value::<StateNode>(json!({
+            "id": id,
+            "label": "Repeated state label with the complete authored production description",
+            "isGroup": false,
+            "cssClasses": "",
+            "cssCompiledStyles": [],
+            "cssStyles": [],
+            "shape": "rect"
+        }))
+        .unwrap()
+    };
+    let statement = |id: &str| {
+        let mut state = StateStatementState::new(id.into());
+        state.description = Some(authored.into());
+        StateStatement::State(state)
+    };
+    let relation = StateStatement::Relation(Box::new(StateStatementRelation {
+        state1: StateStatementState::new("a".into()),
+        state2: StateStatementState::new("b".into()),
+        description: Some(authored.into()),
+    }));
+    let mut documents = StateDocumentBuilder::default();
+    let root = documents.append(vec![
+        statement("a"),
+        statement("b"),
+        relation.clone(),
+        relation,
+    ]);
+    let model = StateDiagramModel {
+        direction: "LR".into(),
+        nodes: vec![node("a"), node("b")],
+        edges: vec![StateEdge {
+            id: "edge".into(),
+            start: "a".into(),
+            end: "b".into(),
+            label: "go".into(),
+            ..StateEdge::default()
+        }],
+        states: ["a", "b"]
+            .into_iter()
+            .map(|id| {
+                (
+                    id.into(),
+                    StateRecord {
+                        id: id.into(),
+                        state_type: "default".into(),
+                        descriptions: vec![authored.into()],
+                        ..StateRecord::default()
+                    },
+                )
+            })
+            .collect(),
+        document: documents.build(Some(root)).unwrap(),
+        relations: vec![
+            StateRelation {
+                id1: "a".into(),
+                id2: "b".into(),
+                relation_title: Some(authored.into())
+            };
+            2
+        ],
+        ..StateDiagramModel::default()
+    };
+    let config = MermaidConfig::default();
+    let expected_owners = [
+        "authored state N1",
+        "authored state N2",
+        "authored D1.1 state N1",
+        "authored D1.2 state N2",
+        "authored D1.3 relation",
+        "authored D1.4 relation",
+        "authored relation 1: N1 --> N2",
+        "authored relation 2: N1 --> N2",
+    ];
+    for charset in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+            for width in [19, 40, 60, 80] {
+                for trim in [
+                    AsciiTrimPolicy::Preserve,
+                    AsciiTrimPolicy::TrimTrailingSpaces,
+                ] {
+                    let operation = RuntimePolicy::deterministic().begin_operation().unwrap();
+                    let report = AsciiRenderer::new(charset.with_terminal_width_profile(profile))
+                        .unwrap()
+                        .render_model_report(
+                            &AsciiDiagram::State(StateTerminalView::from_semantic(&model)),
+                            AsciiSourceContext {
+                                diagram_type: "stateDiagram",
+                                config: &config,
+                                semantic_config: &config,
+                                title: None,
+                            },
+                            AsciiViewportPolicy::with_max_width(width)
+                                .overflow(OverflowPolicy::Fallback)
+                                .trim(trim),
+                            &OperationControl::new(),
+                            &operation,
+                            AsciiResourcePolicy::unbounded(),
+                        )
+                        .unwrap();
+                    assert_bounded(&report, width);
+                    assert!(!report.trimmed);
+                    assert!(report.text.lines().any(|line| line.ends_with(' ')));
+                    let recovered = records(&report.text);
+                    let mut owners = Vec::new();
+                    for record in &recovered {
+                        let Some((owner, details)) = record.split_once(" details: {") else {
+                            continue;
+                        };
+                        let mut input = if let Some(input) = details.strip_prefix("descriptions:[")
+                        {
+                            input
+                        } else {
+                            details
+                                .strip_prefix("description:")
+                                .or_else(|| details.strip_prefix("relationTitle:"))
+                                .expect("an authored string detail")
+                        };
+                        assert_eq!(quoted_text(&mut input), authored, "{record}");
+                        assert!(matches!(input, "}" | "]}"), "unread detail: {input:?}");
+                        owners.push(owner);
+                    }
+                    assert_eq!(owners, expected_owners, "{}", report.text);
+                    let graph = readable_graph(&report.text);
+                    assert_eq!(graph.nodes.len(), 2, "{graph:?}");
+                    assert_eq!(graph.nodes[0].label, graph.nodes[1].label);
+                    assert_ne!(graph.nodes[0].key, graph.nodes[1].key);
+                    assert_relationship(&report.text, "N1", "-->", "N2", "go");
+                    for word in [
+                        "complete",
+                        "production",
+                        "operation",
+                        "authorization",
+                        "👩‍💻",
+                        "e\u{301}",
+                        " \u{301}",
+                    ] {
+                        assert_eq!(
+                            report.text.matches(word).count(),
+                            recovered
+                                .iter()
+                                .map(|record| record.matches(word).count())
+                                .sum::<usize>(),
+                            "split a word or grapheme {word:?} at width {width}, profile {profile:?}:\n{}",
+                            report.text
+                        );
+                    }
+                    assert!(report.text.lines().any(|line| line.starts_with("  ")));
+                    assert!(!report.text.chars().any(|ch| ch.is_control() && ch != '\n'));
+                    assert!(!report.text.contains('\u{202e}'));
+                }
+            }
+        }
+    }
 }
 
 #[cfg(feature = "diagram-swimlane")]

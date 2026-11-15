@@ -87,12 +87,13 @@ impl AsciiOutputEncoding {
     }
 }
 
-/// 输出尾部空格处理策略。
+/// Trailing canvas-space policy. Complete semantic fallback records preserve authored whitespace.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiTrimPolicy {
     #[default]
     Preserve,
+    /// Removes trailing diagram padding; semantic fallback retains data spaces and reports untrimmed.
     TrimTrailingSpaces,
 }
 
@@ -834,6 +835,12 @@ pub(crate) fn build_semantic_fallback_for_family(
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
     let candidate = fallback.finish();
+    // Semantic records have no trailing canvas padding. Row suffixes can contain authored
+    // whitespace in a wrapped field, so trimming them would make the projection lossy.
+    let context = OutputBuildContext {
+        policy: policy.trim(AsciiTrimPolicy::Preserve),
+        ..context
+    };
     finalize_fallback(
         family,
         primary_extent,

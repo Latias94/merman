@@ -518,12 +518,7 @@ fn write_relationships<'a>(
 }
 
 fn write_record(parts: &[RecordPart<'_>], lines: &mut SemanticFallbackWriter<'_>) -> Result<()> {
-    let (width, has_content) = lines.begin_line()?;
-    let mut record = RecordWriter {
-        lines,
-        width,
-        has_content,
-    };
+    let mut record = RecordWriter::new(lines)?;
     for part in parts {
         let (text, quoted) = match part {
             RecordPart::Plain(text) => (*text, false),
@@ -531,7 +526,11 @@ fn write_record(parts: &[RecordPart<'_>], lines: &mut SemanticFallbackWriter<'_>
         };
         record.text(text, quoted)?;
     }
-    record.lines.finish_line()
+    record.finish()
+}
+
+fn write_plain_record(text: &str, lines: &mut SemanticFallbackWriter<'_>) -> Result<()> {
+    write_record(&[RecordPart::Plain(text)], lines)
 }
 
 struct RecordWriter<'a, 'operation> {
@@ -540,7 +539,20 @@ struct RecordWriter<'a, 'operation> {
     has_content: bool,
 }
 
-impl RecordWriter<'_, '_> {
+impl<'a, 'operation> RecordWriter<'a, 'operation> {
+    fn new(lines: &'a mut SemanticFallbackWriter<'operation>) -> Result<Self> {
+        let (width, has_content) = lines.begin_line()?;
+        Ok(Self {
+            lines,
+            width,
+            has_content,
+        })
+    }
+
+    fn finish(self) -> Result<()> {
+        self.lines.finish_line()
+    }
+
     fn text(&mut self, text: &str, quoted: bool) -> Result<()> {
         let resources = self.lines.emit_resources.clone();
         let mut start = 0;
@@ -581,7 +593,7 @@ impl RecordWriter<'_, '_> {
             },
         )?;
         if self.has_content
-            && word_width <= self.lines.max_width.saturating_sub(2)
+            && word_width <= self.lines.max_width
             && self
                 .lines
                 .candidate_resources
@@ -610,6 +622,8 @@ impl RecordWriter<'_, '_> {
         self.lines.push_fragment("\n", 1)?;
         self.width = 0;
         self.has_content = false;
+        // Keep the full viewport available to an otherwise fitting word or atomic escape.
+        // The prefix is formatting only; authored spaces are always emitted separately.
         if next_width <= self.lines.max_width.saturating_sub(2) && self.lines.max_width > 2 {
             self.lines
                 .push_wrapped_fragment("  ", 2, 1, &mut self.width, &mut self.has_content)?;
@@ -755,11 +769,14 @@ fn state_details(
             }
             if let Some(doc) = fields.remove("doc").filter(|raw| raw.get() != "null") {
                 let doc: usize = decode(doc, lines)?;
-                lines.push(format!(
-                    "{} authored-document: D{}",
-                    authored_identity(identities, &id),
-                    doc + 1
-                ))?;
+                write_plain_record(
+                    &format!(
+                        "{} authored-document: D{}",
+                        authored_identity(identities, &id),
+                        doc + 1
+                    ),
+                    lines,
+                )?;
             }
             omit_text_default(&mut fields, "type", &["default"], lines)?;
             omit_empty(
@@ -783,11 +800,14 @@ fn state_details(
     if let Some(raw) = root.remove("links") {
         let links: Fields<'_> = decode(raw, lines)?;
         for (id, link) in links {
-            lines.push(format!(
-                "{} links: {}",
-                authored_identity(identities, &id),
-                link.get()
-            ))?;
+            write_plain_record(
+                &format!(
+                    "{} links: {}",
+                    authored_identity(identities, &id),
+                    link.get()
+                ),
+                lines,
+            )?;
         }
     }
     // The flat statement store can retain authored facts absent from the terminal graph (for
@@ -797,7 +817,7 @@ fn state_details(
         let mut document: Fields<'_> = decode(raw, lines)?;
         if let Some(root) = document.remove("root").filter(|raw| raw.get() != "null") {
             let root: usize = decode(root, lines)?;
-            lines.push(format!("authored root: D{}", root + 1))?;
+            write_plain_record(&format!("authored root: D{}", root + 1), lines)?;
         }
         for (index, raw) in take_array(&mut document, "documents", lines)?
             .into_iter()
@@ -810,7 +830,7 @@ fn state_details(
                     continue;
                 }
                 if !statement.get().starts_with('{') {
-                    lines.push(format!("{scope}: {}", statement.get()))?;
+                    write_plain_record(&format!("{scope}: {}", statement.get()), lines)?;
                     continue;
                 }
                 let mut fields: Fields<'_> = decode(statement, lines)?;
@@ -833,7 +853,7 @@ fn state_details(
                 fields.remove("idSpan");
                 if let Some(doc) = fields.remove("doc").filter(|raw| raw.get() != "null") {
                     let doc: usize = decode(doc, lines)?;
-                    lines.push(format!("{scope} document: D{}", doc + 1))?;
+                    write_plain_record(&format!("{scope} document: D{}", doc + 1), lines)?;
                 }
                 let mut endpoints = Vec::new();
                 for endpoint in ["state1", "state2"] {
@@ -846,14 +866,20 @@ fn state_details(
                             format!("{scope} {endpoint} {}", authored_identity(identities, &id));
                         if let Some(doc) = state.remove("doc") {
                             let doc: usize = decode(doc, lines)?;
-                            lines.push(format!("{endpoint_scope} document: D{}", doc + 1))?;
+                            write_plain_record(
+                                &format!("{endpoint_scope} document: D{}", doc + 1),
+                                lines,
+                            )?;
                         }
                         endpoints.push(authored_identity(identities, &id).to_owned());
                         details(&endpoint_scope, &state, lines)?;
                     }
                 }
                 if endpoints.len() == 2 {
-                    lines.push(format!("{scope}{} --> {}", endpoints[0], endpoints[1]))?;
+                    write_plain_record(
+                        &format!("{scope}{} --> {}", endpoints[0], endpoints[1]),
+                        lines,
+                    )?;
                 }
                 prune_statement_defaults(&mut fields, lines)?;
                 details(scope.trim_end(), &fields, lines)?;
@@ -878,7 +904,7 @@ fn state_details(
         );
         // Even an unlabeled relation on a detached model must keep its endpoints.
         if relation.is_empty() {
-            lines.push(scope)?;
+            write_plain_record(&scope, lines)?;
         } else {
             details(&scope, &relation, lines)?;
         }
@@ -1009,22 +1035,19 @@ fn details(scope: &str, fields: &Fields<'_>, lines: &mut SemanticFallbackWriter<
     lines
         .semantic_resources
         .check(AsciiResourceLimitId::MaxOutputBytes, length)?;
-    let mut record = String::new();
-    record
-        .try_reserve(length)
-        .map_err(|_| AsciiError::allocation_failed("ascii_graph_details"))?;
-    record.push_str(scope);
-    record.push_str(" details: {");
+    let mut record = RecordWriter::new(lines)?;
+    record.text(scope, false)?;
+    record.text(" details: {", false)?;
     for (index, (key, raw)) in fields.iter().enumerate() {
         if index > 0 {
-            record.push(',');
+            record.text(",", false)?;
         }
-        record.push_str(key);
-        record.push(':');
-        record.push_str(raw.get());
+        record.text(key, false)?;
+        record.text(":", false)?;
+        record.text(raw.get(), false)?;
     }
-    record.push('}');
-    lines.push(record)
+    record.text("}", false)?;
+    record.finish()
 }
 
 fn invalid_projection() -> AsciiError {
@@ -1104,5 +1127,141 @@ mod tests {
                 .collect();
             assert_eq!(unwrapped, "E1: \"\\u{202E}\"");
         }
+    }
+
+    #[test]
+    fn fitting_words_can_use_the_full_viewport_without_continuation_padding() {
+        let policy = AsciiResourcePolicy::unbounded();
+        for word in ["abcdefghijk", "abcdefghijkl"] {
+            let mut writer = SemanticFallbackWriter::new(
+                AsciiExecution::for_test(&policy),
+                12,
+                TerminalWidthProfile::Unicode,
+            );
+            write_plain_record(&format!("key: {word}"), &mut writer).unwrap();
+            let output = writer.finish();
+            assert_eq!(output.text(), format!("key: \n{word}"));
+            assert!(output.metrics().extent.width <= 12);
+        }
+    }
+
+    #[test]
+    fn detail_continuations_count_at_exact_output_and_document_limits() {
+        let raw = RawValue::from_string("\"alpha beta gamma\"".into()).unwrap();
+        let fields = BTreeMap::from([("description".into(), raw.as_ref())]);
+        let expected = "N1 details: {\n  description:\n  \"alpha beta \n  gamma\"}";
+        let cells = expected.lines().map(str::len).sum::<usize>();
+        for (id, exact) in [
+            (AsciiResourceLimitId::MaxOutputBytes, expected.len()),
+            (AsciiResourceLimitId::MaxDocumentCells, cells),
+        ] {
+            for (limit, accepted) in [(exact, true), (exact - 1, false)] {
+                let policy = AsciiResourcePolicy::unbounded()
+                    .with_limit(id, limit)
+                    .unwrap();
+                let mut writer = SemanticFallbackWriter::new(
+                    AsciiExecution::for_test(&policy),
+                    14,
+                    TerminalWidthProfile::Unicode,
+                );
+                let result = details("N1", &fields, &mut writer);
+                if accepted {
+                    result.unwrap();
+                    let output = writer.finish();
+                    assert_eq!(output.text(), expected);
+                    assert_eq!(output.metrics().encoded_bytes, expected.len());
+                    assert_eq!(output.metrics().document_cells, cells);
+                    assert_eq!(output.metrics().extent, crate::AsciiExtent::new(14, 4));
+                } else {
+                    assert!(
+                        matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                        if details.limit == id && details.actual == exact && details.max == limit)
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn long_detail_atoms_hard_wrap_without_losing_authored_spaces() {
+        let policy = AsciiResourcePolicy::unbounded();
+        let value = format!("  {}   tail  ", "https://example.org/long-atom".repeat(8));
+        let raw = RawValue::from_string(serde_json::to_string(&value).unwrap()).unwrap();
+        let fields = BTreeMap::from([("description".into(), raw.as_ref())]);
+        let expected = format!("authored D1.1 relation details: {{description:{raw}}}");
+        for width in [1, 2, 3, 7, 19, 40] {
+            let mut writer = SemanticFallbackWriter::new(
+                AsciiExecution::for_test(&policy),
+                width,
+                TerminalWidthProfile::Unicode,
+            );
+            details("authored D1.1 relation", &fields, &mut writer).unwrap();
+            let output = writer.finish();
+            assert!(output.metrics().extent.width <= width, "{}", output.text());
+            let recovered: String = output
+                .text()
+                .lines()
+                .map(|line| {
+                    if width > 2 {
+                        line.strip_prefix("  ").unwrap_or(line)
+                    } else {
+                        line
+                    }
+                })
+                .collect();
+            assert_eq!(recovered, expected, "width={width}: {}", output.text());
+        }
+    }
+
+    #[test]
+    fn detail_word_scans_observe_work_limits_and_emit_cancellation() {
+        let raw = RawValue::from_string(
+            serde_json::to_string(&"permission complete production operation ".repeat(256))
+                .unwrap(),
+        )
+        .unwrap();
+        let fields = BTreeMap::from([("description".into(), raw.as_ref())]);
+        let policy = AsciiResourcePolicy::unbounded();
+        let mut baseline = SemanticFallbackWriter::new(
+            AsciiExecution::for_test(&policy),
+            40,
+            TerminalWidthProfile::Unicode,
+        );
+        details("authored D1.1 relation", &fields, &mut baseline).unwrap();
+        let work = baseline.emit_resources.layout_work_used();
+        assert!(work > raw.get().len());
+        let expected = baseline.finish().into_text();
+        for (limit, accepted) in [(work, true), (work - 1, false)] {
+            let policy = AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap();
+            let mut writer = SemanticFallbackWriter::new(
+                AsciiExecution::for_test(&policy),
+                40,
+                TerminalWidthProfile::Unicode,
+            );
+            let result = details("authored D1.1 relation", &fields, &mut writer);
+            if accepted {
+                result.unwrap();
+                assert_eq!(writer.finish().into_text(), expected);
+            } else {
+                assert!(
+                    matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                    if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits)
+                );
+            }
+        }
+
+        let control = merman_model::OperationControl::new();
+        control.cancel_after_checkpoints(64);
+        let mut writer = SemanticFallbackWriter::new(
+            AsciiExecution::new(&control, &policy),
+            40,
+            TerminalWidthProfile::Unicode,
+        );
+        assert!(
+            matches!(details("authored D1.1 relation", &fields, &mut writer),
+            Err(AsciiError::Cancelled(cancelled)) if cancelled.phase == merman_model::OperationPhase::Emit)
+        );
     }
 }

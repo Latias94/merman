@@ -249,6 +249,17 @@ fn assert_issue_53_semantics(rendered: &str) {
             "missing {expected:?} in Issue #53 characterization output:\n{rendered}"
         );
     }
+    let heads = rendered
+        .matches(['>', '<', '^', '►', '◄', '▼', '▲'])
+        .count()
+        + rendered
+            .split_whitespace()
+            .filter(|token| *token == "v")
+            .count();
+    assert_eq!(
+        heads, 7,
+        "all seven Issue #53 heads must survive:\n{rendered}"
+    );
 }
 
 #[test]
@@ -257,7 +268,7 @@ fn issue_53_width_matrix_preserves_semantics_and_terminal_extent() {
     let model = parse_model(&source);
     let layouts = [
         ("canonical", AsciiLayoutProfile::Canonical, (76, 40)),
-        ("compact", AsciiLayoutProfile::Compact, (63, 50)),
+        ("compact", AsciiLayoutProfile::Compact, (59, 50)),
     ];
 
     for (layout_name, layout_profile, expected_extent) in layouts {
@@ -327,12 +338,13 @@ fn issue_53_compact_keeps_visible_turns_while_reducing_width() {
     assert_issue_53_semantics(&canonical);
     assert_issue_53_semantics(&compact);
     assert_eq!(canonical_extent, (76, 40));
-    assert_eq!(compact_extent, (63, 50));
+    assert_eq!(compact_extent, (59, 50));
     assert!(compact_extent.0 < canonical_extent.0);
     assert!(compact_extent.1 > canonical_extent.1);
-    // Complete conditions can no longer erase a route's bends to claim a smaller
-    // rectangle. Compact optimizes width; retain the measured whitespace tradeoff.
-    assert_eq!((canonical_blank_cells, compact_blank_cells), (2_104, 2_246));
+    // Independent contours share the rank center without losing complete conditions or
+    // bends. This fixture now spends more rows but less width and area.
+    assert_eq!((canonical_blank_cells, compact_blank_cells), (2_099, 2_103));
+    assert!(compact_extent.0 * compact_extent.1 < canonical_extent.0 * canonical_extent.1);
     assert!(compact_longest_blank_run < canonical_longest_blank_run);
 }
 

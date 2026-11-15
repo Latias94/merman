@@ -12,6 +12,7 @@ This document describes the current `merman-ascii` state support boundary. The r
 | Diagram family | Supported subset | `stateDiagram` and `stateDiagram-v2` inputs that parse into `StateDiagramRenderModel`. |
 | Directions | Supported subset | `LR`, `TD`, Mermaid's `TB` alias, `BT`, and `RL` root directions. `BT` and `RL` are rendered as terminal-native output transforms of the TD/LR layouts. |
 | Layout and viewport | Supported subset | Canonical-only; Compact and Auto are rejected during admission. A valid over-width diagram follows Allow, Error, or Plain structured Fallback. Resource, cancellation and required routing failures do not trigger fallback. |
+| Default spacing | Supported | Canonical prefers no blank vertical node padding and a one-row rank gap. Endpoint, label and container demand can enlarge these dimensions. Explicit scalar/axis padding and graph gaps are preserved. Fixed pseudo-state symbols keep their own sizes. |
 | States | Supported subset | Simple state nodes render as terminal graph nodes. State aliases and descriptions render as visible labels. |
 | Start/end pseudo states | Supported approximation | `[*]` start states render as visible start markers and end states render as distinct terminal final-state markers. |
 | Fork/join/choice pseudo states | Supported approximation | `<<fork>>` and `<<join>>` states render as synchronization bars. `<<choice>>` states render as visible diamond-like branch nodes. Implementation ids are omitted from terminal output. |
@@ -79,6 +80,9 @@ The parser-backed state tests live in `tests/state_model.rs` and exercise the pu
 path from Mermaid text through `merman-core` into `merman-ascii`. Region coverage includes empty
 sections, intermediate-region skip edges, feedback, independent merge heads, and nested concurrency
 with distinct start/end pseudo states.
+Canonical density coverage checks short forward/reverse lifecycles, explicit legacy spacing and
+the CJK compound lifecycle across both character sets and width conventions, retaining all nine
+transition heads and the ordered internal states.
 `tests/graph_family_viewports.rs` additionally checks Canonical-only State viewport selection,
 complete note/condition fields, logical family identity and independent display-cell measurements
 at 60/80/100/120 columns through the public parsed-report entrypoint.

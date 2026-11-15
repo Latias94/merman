@@ -276,10 +276,18 @@ pub(super) fn compact_nodes(
         let gap = previous_end.map_or(original_start, |end| original_start.saturating_sub(end + 1));
         main = resources.checked_grid_add(main, gap)?;
         for &index in &order[layer.clone()] {
-            if horizontal {
-                nodes[index].x = main;
+            // A rank owns one center line, including when its independent contours have
+            // different sizes. Top/left alignment would turn same-rank note links into bends.
+            let size = if horizontal {
+                sizes[index].width
             } else {
-                nodes[index].y = main;
+                sizes[index].height
+            };
+            let start = resources.checked_grid_add(main, main_size / 2 - size / 2)?;
+            if horizontal {
+                nodes[index].x = start;
+            } else {
+                nodes[index].y = start;
             }
         }
         main = resources.checked_grid_add(main, main_size)?;

@@ -233,7 +233,7 @@ universal density improvement. All original frozen reference captures remain unc
 ### Accepted planner boundary
 
 The shared-planner refactor is complete for the admitted Flowchart, State, and Swimlane subset.
-The final reading review used implementation `78b94dfe8ca2dc3a8cc8adf56101e90a90e83644` with
+The completion reading review used implementation `78b94dfe8ca2dc3a8cc8adf56101e90a90e83644` with
 explicit Interactive resources. Twenty-four inputs cover the thirteen frozen Flowchart cases,
 three additional nested/cross-boundary graphs, four State lifecycles/composites/notes, and four
 Swimlane member/group-endpoint and long-label cases. All 480 native/60/80/100/120 requests across
@@ -250,12 +250,12 @@ under ignored `target/`.
 
 The review explicitly accepts these remaining tradeoffs:
 
-- State has no Compact or height policy. Its CJK connection lifecycle remains a 27×63 Canonical
-  diagram. Its note/composite example uses 60×48, 80×43 and 100×42 full structured records at
-  bounded widths, versus a 119×43 diagram at 120 columns. The authored detail rows preserve more
-  than the primary diagram displays and can require additional reading. A dotted separator can
-  start the first concurrent region below the title band; readers must not infer the region count
-  from separator count alone.
+- State has no Compact or height policy. At that checkpoint its CJK connection lifecycle was a
+  27×63 Canonical diagram. Its note/composite example used 60×48, 80×43 and 100×42 full structured
+  records at bounded widths, versus a 119×43 diagram at 120 columns. The authored detail rows
+  preserve more than the primary diagram displays and can require additional reading. A dotted
+  separator can start the first concurrent region below the title band; readers must not infer
+  the region count from separator count alone.
 - The Swimlane handoff fits at 62×9. At 60 columns, Auto attempts a valid Compact candidate of the
   same width, retains Canonical on the tie, and produces 53×12 complete structured records. A
   compact request does not guarantee a narrower result.
@@ -266,6 +266,45 @@ The review explicitly accepts these remaining tradeoffs:
 Future density, label-placement, or style improvements are separate iterations. New semantic loss,
 unexplained regressions in the accepted corpus, or inaccurate diagnostics remain defects under the
 [graph presentation boundary](README.md#graph-presentation-boundary).
+
+### Canonical density and detail wrapping
+
+The 2026-11-15 follow-up against `8ed4469fbbb5a5ea65becd02c4a2ec18f92a9dc6` keeps State
+Canonical-only while removing its legacy preferred blank node rows and five-row rank gaps.
+The planner still enlarges contours and gaps for endpoints, complete labels and containers.
+Explicit padding/gap builders retain their values, including the legacy numeric defaults.
+Ungrouped independent contours share their rank center, avoiding offset side-note links when
+the note is taller than its state. The same 480-request reading matrix succeeds with no width
+violations, retaining 416 diagrams and 64 complete structured fallbacks.
+
+The native Unicode/non-CJK State comparisons are:
+
+| Case | Previous extent | Current extent |
+| --- | ---: | ---: |
+| Nested composites | 61×29 | 61×25 |
+| Concurrent regions | 37×24 | 37×16 |
+| Long condition and note | 119×43 | 119×30 |
+| CJK connection lifecycle | 27×63 | 27×48 |
+
+The CJK lifecycle retains all nine heads and its internal state order across both character
+sets and width conventions. A separate five-contour forward/reverse lifecycle fits in 23 rows;
+explicit legacy padding and gaps reproduce its 41-row layout. These are bounded presentation
+checks rather than a maximum-height guarantee. Complete labels and endpoint demand can still
+require large diagrams.
+
+Rank centering also changes the independently checked Issue #53 Compact layout from 63×50 to
+59×50, retaining seven heads, the dotted relation and every condition. It now fits the 60-column
+viewport, while Canonical remains 76×40. The current whitespace figures and encoding checks live
+in the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md#testing-policy).
+
+Graph detail records now use word-aware indented continuation, including full State authored
+documents, links and relations. Words can use the entire viewport when indentation would prevent
+them fitting; longer atoms retain grapheme-safe hard wrapping. Independent record recovery checks
+preserve original whitespace, control escapes, CJK/combined graphemes, repeated labels and each
+authored owner. All complete semantic fallbacks retain data spaces under a trim request and report
+`trimmed: false`; a non-graph Sequence property regression covers the same shared emission rule.
+Repeated authored details remain visible because identical text can belong to distinct records.
+No reference source or binary is required for these checks.
 
 ### Source-bound validation
 

@@ -1,6 +1,8 @@
 mod support;
 
-use merman_ascii::{AsciiColorMode, AsciiError, AsciiLayoutProfile, AsciiRenderOptions};
+use merman_ascii::{
+    AsciiColorMode, AsciiError, AsciiLayoutProfile, AsciiRenderOptions, TerminalWidthProfile,
+};
 use merman_core::{ParseOptions, presentation::MermaidEngine};
 use merman_model::families::state::{
     StateDiagramRenderEdge, StateDiagramRenderModel, StateDiagramRenderNode,
@@ -108,6 +110,49 @@ fn state_simple_transition_renders_through_render_model() {
         rendered.lines().any(|line| line.contains("| B")),
         "target state should render as a graph node:\n{rendered}"
     );
+}
+
+#[test]
+fn state_default_vertical_spacing_keeps_short_lifecycles_readable() {
+    for direction in ["TB", "BT"] {
+        let source = format!(
+            "stateDiagram-v2\ndirection {direction}\n[*] --> Alpha\nAlpha --> Beta\nBeta --> Gamma\nGamma --> [*]\n"
+        );
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+                let options = options.with_terminal_width_profile(profile);
+                let rendered = render_state(&source, &options).unwrap();
+                support::assert_rectangular_terminal_grid_with_profile(&rendered, profile);
+                // Five three-row contours and two routing cells per transition. The planner
+                // retains room for an independent head and a visible connecting stroke.
+                assert!(rendered.lines().count() <= 5 * 3 + 4 * 2, "{rendered}");
+                assert_eq!(
+                    rendered.matches(['v', '^', '▼', '▲']).count(),
+                    4,
+                    "{rendered}"
+                );
+                let rows = ["Alpha", "Beta", "Gamma"].map(|label| {
+                    assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+                    first_line_index_containing(&rendered, label)
+                });
+                assert!(
+                    if direction == "TB" {
+                        rows.windows(2).all(|pair| pair[0] < pair[1])
+                    } else {
+                        rows.windows(2).all(|pair| pair[0] > pair[1])
+                    },
+                    "{rendered}"
+                );
+
+                let spacious = render_state(
+                    &source,
+                    &options.with_node_padding(1).with_graph_padding_y(5),
+                )
+                .unwrap();
+                assert_eq!(spacious.lines().count(), 41, "{spacious}");
+            }
+        }
+    }
 }
 
 #[test]
@@ -1278,10 +1323,7 @@ fn state_local_semantic_fixture_covers_composite_boundaries() {
 fn state_local_semantic_fixture_covers_cjk_connection_lifecycle() {
     let input = read_local_semantic_fixture("state/cjk_connection_lifecycle.mmd");
 
-    let rendered = render_state(&input, &AsciiRenderOptions::ascii())
-        .expect("CJK local semantic state fixture should render");
-
-    for expected in [
+    let expected_text = [
         "空闲",
         "连接中",
         "已连接",
@@ -1292,30 +1334,37 @@ fn state_local_semantic_fixture_covers_cjk_connection_lifecycle() {
         "超时",
         "达到上限",
         "完成",
-    ] {
-        assert!(
-            rendered.contains(expected),
-            "CJK state fixture should keep {expected:?} visible:\n{rendered}"
-        );
+    ];
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+            let rendered = render_state(&input, &options.with_terminal_width_profile(profile))
+                .expect("CJK local semantic state fixture should render");
+            support::assert_rectangular_terminal_grid_with_profile(&rendered, profile);
+            for expected in expected_text {
+                assert!(
+                    rendered.contains(expected),
+                    "CJK state fixture should keep {expected:?} visible:\n{rendered}"
+                );
+            }
+            let rows = ["连接中", "等待", "认证", "已连接", "断开中"]
+                .map(|label| first_line_index_containing(&rendered, label));
+            assert!(
+                rows.windows(2).all(|pair| pair[0] < pair[1]),
+                "CJK state fixture should keep the composite progression in order:\n{rendered}"
+            );
+            assert_eq!(
+                rendered
+                    .matches(['>', '<', 'v', '^', '►', '◄', '▼', '▲'])
+                    .count(),
+                9,
+                "{rendered}"
+            );
+            assert!(
+                rendered.lines().count() <= 48,
+                "the Canonical lifecycle should stay within the admitted reading height:\n{rendered}"
+            );
+        }
     }
-    assert!(
-        first_line_index_containing(&rendered, "连接中")
-            < first_line_index_containing(&rendered, "等待"),
-        "CJK state fixture should keep the composite lifecycle readable:\n{rendered}"
-    );
-    assert!(
-        first_line_index_containing(&rendered, "等待")
-            < first_line_index_containing(&rendered, "认证")
-            && first_line_index_containing(&rendered, "认证")
-                < first_line_index_containing(&rendered, "已连接")
-            && first_line_index_containing(&rendered, "已连接")
-                < first_line_index_containing(&rendered, "断开中"),
-        "CJK state fixture should keep the internal lifecycle progression in order:\n{rendered}"
-    );
-    assert!(
-        rendered.lines().count() >= 7,
-        "CJK state fixture should produce a multi-line layout:\n{rendered}"
-    );
 }
 
 #[test]
