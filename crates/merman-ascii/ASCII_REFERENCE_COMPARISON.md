@@ -155,6 +155,18 @@ and reversed edge declarations. The existing generated oracle and complete-docum
 floor remain required: a clearer backbone does not justify rejecting a previously supported cycle
 or moving a condition off its connection.
 
+Compound exit regressions coalesce consecutive unallocated rank bands after a local direction
+override. Explicit spacing and edge-length requests remain allocated; expanding a separator
+counts its retained default corridor once. Canonical Unicode output for `nested_direction_boundary`
+changes from 32×33 to 32×28, `cjk_boundary_routes` from 40×41 to 40×28, and `boundary_label_lane`
+from 31×26 to 31×20. `disconnected_subgraphs` retains 22×39 and its one-cell reading gutter.
+Both Canonical and Compact are checked, including complete labels and the original group owners.
+
+Legal transverse crossings contribute to path cost rather than outranking every possible detour.
+The acyclic `multi_boundary_routes` case changes from 48×34 to 48×26 in Canonical and from 44×32
+to 44×26 in Compact, without routing a forward edge beneath its target and returning upward.
+Reciprocal routes may also cross transversely; shared collinear transit remains invalid.
+
 The independent generated oracle fixes 486 Interactive scene attempts and 3,042 visible edge
 contributions, with up to eight nodes/twelve edges, nine topology categories, three edge orders,
 and LR/TD plus normal/zero preferred gaps. Failures remain in the denominator. The historical

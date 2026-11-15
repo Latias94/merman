@@ -155,7 +155,10 @@ placement continues to enforce containment and local direction before frame allo
 Terminal coordinates and node dimensions follow each node's own text, shape, and contact demand,
 including scenes with containers. Shared axis bands reserve channel space without stretching
 unrelated node contours. Compound frames retain the complete internal label footprint separately
-from node outlines. Actual-contact orthogonal channels and terminal search own route geometry.
+from node outlines. Consecutive unallocated axis bands share one default routing corridor after
+local direction changes; explicit node, label, edge-length, spacing, and empty-group allocations
+retain their full dimensions. Vacated ranks do not accumulate empty wire tails at group exits.
+Actual-contact orthogonal channels and terminal search own route geometry.
 Finite candidate paths admit their retained cells before allocation. The final scene owns the
 two-dimensional grid admission, so a discarded projection or unselected exterior candidate cannot
 reject a fitting diagram by charging an imaginary canvas.
@@ -174,6 +177,12 @@ the optional allowance cannot flush that batch. Every candidate must carry its v
 geometry that drops a condition is not admissible. These changes replace the sequential node-slot
 placement mechanism. The common presentation corpus separately checks complete output and tracing
 effort; layer alignment by itself is insufficient evidence.
+
+After endpoint-port reuse, candidate quality compares combined path length, shared-cell cost, and
+scene growth before the number of legal transverse crossings. A crossing does not categorically
+justify a longer route that passes its target and returns from below. Hard occupancy checks still
+reject unrelated collinear sharing, mixed-stroke junctions, and label or marker collisions.
+Reciprocal edges obey the same crossing rule and retain separate transit paths.
 
 ## Whole-scene demand and compact contours
 

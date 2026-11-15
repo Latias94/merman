@@ -1,4 +1,4 @@
-use super::super::grid::{AxisSizes, effective_axis_size, set_axis_size};
+use super::super::grid::{AxisSizes, separator_expansion_base, set_axis_size};
 use super::super::{GridCoord, NodeLayout};
 use super::bounds::{RawBounds, raw_group_bounds_batch};
 use super::layout_work_allocation_failed;
@@ -310,7 +310,8 @@ fn reserve_pair_spacing(
         return Ok(());
     }
     let extra = usize::try_from(extra).map_err(|_| resources.grid_overflow())?;
-    let required_size = resources.checked_grid_add(effective_axis_size(sizes, separator), extra)?;
+    let required_size =
+        resources.checked_grid_add(separator_expansion_base(sizes, separator), extra)?;
     if !requirements.contains_key(&separator) {
         requirements
             .try_reserve(1)
@@ -449,7 +450,7 @@ mod tests {
         assert!(
             row_requirements
                 .get(&3)
-                .is_some_and(|height| *height > effective_axis_size(&rows, 3))
+                .is_some_and(|height| *height > separator_expansion_base(&rows, 3))
         );
     }
 

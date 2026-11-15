@@ -70,9 +70,17 @@ impl AxisProjection {
         try_reserve_vec(&mut prefix_sizes, prefix_count)?;
         prefix_sizes.push(0);
         let mut total = 0usize;
+        let mut in_corridor = false;
         for index in 0..cell_count {
             checkpoint_projection(execution, checkpoint_iteration)?;
-            total = resources.checked_grid_add(total, effective_axis_size(axis_sizes, index))?;
+            let explicit = axis_sizes.get(&index);
+            let size = match explicit {
+                Some(size) => (*size).max(1),
+                None if !in_corridor => ROUTING_CORRIDOR_BAND_SIZE,
+                None => 0,
+            };
+            in_corridor = explicit.is_none();
+            total = resources.checked_grid_add(total, size)?;
             prefix_sizes.push(total);
         }
         Ok(Self {
@@ -1199,12 +1207,21 @@ pub(super) fn materialize_node_labels(
     Ok(())
 }
 
-pub(super) fn effective_axis_size(axis_sizes: &AxisSizes, index: usize) -> usize {
-    axis_sizes
-        .get(&index)
-        .copied()
-        .unwrap_or(ROUTING_CORRIDOR_BAND_SIZE)
-        .max(1)
+/// Base size for expanding a separator immediately after an allocated node band.
+pub(super) fn separator_expansion_base(axis_sizes: &AxisSizes, index: usize) -> usize {
+    if let Some(size) = axis_sizes.get(&index) {
+        return (*size).max(1);
+    }
+    // Materializing the first missing band moves its corridor to the next missing band.
+    // Those cells remain in the projection, so only a single-band corridor needs replacing.
+    if index
+        .checked_add(1)
+        .is_some_and(|next| !axis_sizes.contains_key(&next))
+    {
+        0
+    } else {
+        ROUTING_CORRIDOR_BAND_SIZE
+    }
 }
 
 pub(super) fn set_axis_size(axis_sizes: &mut AxisSizes, index: usize, size: usize) {
@@ -1267,10 +1284,10 @@ fn layout_allocation_failed() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::AsciiRenderOptions;
     use crate::graph::layout::layout_graph;
     use crate::graph::model::{GraphEdgeAttrs, GraphEdgeStroke};
     use crate::resource::AsciiResourcePolicy;
+    use crate::{AsciiLayoutProfile, AsciiRenderOptions};
     use merman_model::resources::ResourceProfile;
     use merman_model::{OperationControl, OperationPhase};
 
@@ -1769,6 +1786,96 @@ mod tests {
         assert_eq!(nodes[0].height, 5);
         assert_eq!(columns.content_total(), 8);
         assert_eq!(rows.content_total(), 5);
+    }
+
+    #[test]
+    fn axis_projection_compacts_missing_runs_around_explicit_bands() {
+        let sizes = [(0, 3), (8, 7), (16, 0)].into_iter().collect();
+        let policy = AsciiResourcePolicy::unbounded();
+        let resources = ResourceContext::new(policy);
+        let projection = AxisProjection::try_new(
+            &sizes,
+            &resources,
+            AsciiExecution::for_test(&policy),
+            &mut 0,
+        )
+        .expect("missing runs should share one corridor on either side of an explicit band");
+        assert_eq!(projection.span(1, 7), ROUTING_CORRIDOR_BAND_SIZE);
+        assert_eq!(projection.span(8, 1), 7);
+        assert_eq!(projection.span(9, 7), ROUTING_CORRIDOR_BAND_SIZE);
+        assert_eq!(projection.span(16, 1), 1);
+        assert_eq!(projection.total(), 15);
+    }
+
+    #[test]
+    fn separator_axis_expansion_counts_a_retained_corridor_once() {
+        let policy = AsciiResourcePolicy::unbounded();
+        let resources = ResourceContext::new(policy);
+        for (next_band, explicit_size) in [(2, None), (8, None), (8, Some(0)), (8, Some(7))] {
+            for extra in [1, 4] {
+                let mut sizes: AxisSizes = [(0, 3), (next_band, 5)].into_iter().collect();
+                if let Some(size) = explicit_size {
+                    sizes.insert(1, size);
+                }
+                let before = AxisProjection::try_new(
+                    &sizes,
+                    &resources,
+                    AsciiExecution::for_test(&policy),
+                    &mut 0,
+                )
+                .expect("initial separator should project");
+                let required = separator_expansion_base(&sizes, 1) + extra;
+                set_axis_size(&mut sizes, 1, required);
+                let after = AxisProjection::try_new(
+                    &sizes,
+                    &resources,
+                    AsciiExecution::for_test(&policy),
+                    &mut 0,
+                )
+                .expect("expanded separator should project");
+                assert_eq!(after.total(), before.total() + extra);
+                assert_eq!(after.span(0, 1), 3);
+                assert_eq!(after.span(next_band, 1), 5);
+            }
+        }
+    }
+
+    #[test]
+    fn disconnected_groups_keep_one_reading_gutter_after_projection() {
+        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+        for (id, label) in [
+            ("T1", "Today AI"),
+            ("T2", "Today Markdown"),
+            ("T3", "Today Reads"),
+            ("N1", "Next AI"),
+            ("N2", "Next Widget"),
+            ("N3", "Next Acts"),
+        ] {
+            graph.add_node(id, label);
+        }
+        for (from, to) in [("T1", "T2"), ("T2", "T3"), ("N1", "N2"), ("N2", "N3")] {
+            graph.add_edge(from, to);
+        }
+        for (id, title, members) in [
+            ("today", "Today", ["T1", "T2", "T3"]),
+            ("tomorrow", "Next Wave", ["N1", "N2", "N3"]),
+        ] {
+            graph.add_group_with_style(
+                id,
+                title,
+                None,
+                members.into_iter().map(String::from).collect(),
+                Default::default(),
+            );
+        }
+        for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+            let options = AsciiRenderOptions::unicode().with_layout_profile(profile);
+            let layout = layout_graph(&graph, &options);
+            let today = &layout.groups[0];
+            let tomorrow = &layout.groups[1];
+            assert_eq!(tomorrow.y, today.bottom() + 2, "{profile:?}");
+            assert_eq!(tomorrow.bottom() + 1, 39, "{profile:?}");
+        }
     }
 
     #[test]

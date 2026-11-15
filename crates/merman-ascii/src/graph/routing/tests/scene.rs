@@ -1263,16 +1263,19 @@ fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
     let feedback_transit = feedback
         .plan
         .active_cells()
-        .map(|(_, cell)| cell.coord)
-        .filter(|coord| *coord != attachments.start.contact && *coord != attachments.end.contact)
-        .collect::<rustc_hash::FxHashSet<_>>();
-    assert!(
-        outgoing
-            .plan
-            .active_cells()
-            .all(|(_, cell)| !feedback_transit.contains(&cell.coord)),
-        "opposite authored edges must not share a transit path"
-    );
+        .map(|(_, cell)| (cell.coord, cell.directions))
+        .filter(|(coord, _)| {
+            *coord != attachments.start.contact && *coord != attachments.end.contact
+        })
+        .collect::<rustc_hash::FxHashMap<_, _>>();
+    for (_, cell) in outgoing.plan.active_cells() {
+        if let Some(&directions) = feedback_transit.get(&cell.coord) {
+            assert!(
+                cell::is_transverse_crossing(directions, cell.directions),
+                "opposite authored edges may cross transversely but must not share a transit path"
+            );
+        }
+    }
 
     let exact = measured.layout_work_used();
     let exact_policy = unbounded

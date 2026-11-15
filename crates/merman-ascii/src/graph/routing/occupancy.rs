@@ -237,8 +237,8 @@ pub(super) struct RouteBounds {
 pub(super) struct RouteCandidateScore {
     target_port_reuse: usize,
     source_port_reuse: usize,
-    ambiguous_shared_cells: usize,
     total_cost: usize,
+    ambiguous_shared_cells: usize,
     shared_cells: usize,
     cell_count: usize,
     scene_growth: usize,

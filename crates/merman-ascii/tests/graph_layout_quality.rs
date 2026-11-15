@@ -120,6 +120,84 @@ fn has_left_entry(rendered: &str, frame: Frame) -> bool {
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
+fn flowchart_nested_group_exits_do_not_accumulate_empty_rank_bands() {
+    use merman_ascii::AsciiLayoutProfile;
+    for source in [
+        "flowchart TD\nsubgraph g [Group]\ndirection LR\nA0 --> A1\nend\nA1 --> Done\n",
+        include_str!("testdata/local-semantic/flowchart/nested_direction_boundary.mmd"),
+        include_str!("testdata/local-semantic/flowchart/cjk_boundary_routes.mmd"),
+    ] {
+        for direction in ["TD", "BT"] {
+            let source = source.replacen("flowchart TD", &format!("flowchart {direction}"), 1);
+            for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+                for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                    let rendered = render(&source, options.with_layout_profile(profile));
+                    let mut run = 0;
+                    for line in rendered.lines() {
+                        let line = line.trim();
+                        if !line.is_empty() && line.chars().all(|ch| matches!(ch, '|' | '│' | ' '))
+                        {
+                            run += 1;
+                        } else {
+                            run = 0;
+                        }
+                        assert!(
+                            run <= 4,
+                            "an ordinary group exit needs no long empty wire tail: {direction}, {profile:?}\n{rendered}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_group_exit_compaction_preserves_requested_spacing() {
+    let source = "flowchart TD\nsubgraph g [Group]\ndirection LR\nA0 --> A1\nend\nA1 --> Done\n";
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let gap = |source: &str, options: AsciiRenderOptions| {
+            let rendered = render(source, options);
+            frame_for_label(&rendered, "Done").top - frame_for_label(&rendered, "A1").bottom
+        };
+        let ordinary = gap(source, options);
+        let longer = gap(&source.replace("A1 --> Done", "A1 ------> Done"), options);
+        let padded = gap(source, options.with_graph_padding_y(8));
+        assert!(
+            longer > ordinary,
+            "authored edge length must still add space"
+        );
+        assert!(
+            padded > ordinary && padded >= 8,
+            "requested rank gap must survive compaction"
+        );
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_forward_group_fanout_does_not_enter_targets_from_below() {
+    use merman_ascii::AsciiLayoutProfile;
+    let source = include_str!("testdata/local-semantic/flowchart/multi_boundary_routes.mmd");
+    for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            let rendered = render(source, options.with_layout_profile(profile));
+            assert_progresses(&rendered, "TD", &["Publish", "Success"]);
+            assert_progresses(&rendered, "TD", &["Publish", "Retry"]);
+            for condition in ["ok", "fail"] {
+                assert_eq!(rendered.matches(condition).count(), 1, "{rendered}");
+            }
+            assert!(
+                !rendered.chars().any(|ch| matches!(ch, '^' | '▲')),
+                "the downward acyclic fanout should not look like feedback: {profile:?}\n{rendered}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
 fn flowchart_one_cell_text_source_keeps_its_branch_contact() {
     let source =
         "flowchart TD\nA@{ shape: text, label: \"Q\" }\nX[Start]\nB[Finish]\nA --> B\nX --> B\n";

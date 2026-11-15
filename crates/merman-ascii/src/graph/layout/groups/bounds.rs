@@ -895,7 +895,7 @@ pub(super) fn empty_divider_row_requirements(
                         }
                         let extra = usize::try_from(extra).map_err(|_| grid_overflow(resources))?;
                         let height = resources.checked_grid_add(
-                            grid::effective_axis_size(row_heights, separator),
+                            grid::separator_expansion_base(row_heights, separator),
                             extra,
                         )?;
                         requirements
@@ -1325,7 +1325,7 @@ mod tests {
         )
         .expect("the measured empty section should fit in one expanded separator row");
         assert_eq!(requirements.len(), 1);
-        assert!(requirements[&3] > grid::effective_axis_size(&rows, 3));
+        assert!(requirements[&3] > grid::separator_expansion_base(&rows, 3));
         let exact_work = measured.layout_work_used();
         for limit in [exact_work, exact_work - 1] {
             let policy = unbounded
