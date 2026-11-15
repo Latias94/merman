@@ -24,6 +24,7 @@ mod label;
 mod occupancy;
 mod path;
 mod plan;
+mod repair;
 mod terminal;
 #[cfg(test)]
 mod tests;
@@ -388,7 +389,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     )?;
 
     let route_order = plan_route_order(graph, graph_layout, &canonical_edges, resources)?;
-    let mut repair_expansions = terminal::MAX_REPAIR_EXPANSIONS;
+    let mut repair_budget = repair::SceneRepairBudget::default();
 
     let mut pending_self_loop_start = None::<usize>;
     for ordinal in 0..route_order.as_ref().map_or(canonical_edges.len(), Vec::len) {
@@ -507,7 +508,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             Some(GraphEndpointIndex::Group(_))
         );
         let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-        let needs_terminal_search = (selected.is_none() || repair_expansions != 0)
+        let needs_terminal_search = (selected.is_none() || repair_budget.expansions != 0)
             && selected.as_ref().is_none_or(|(score, _, _)| {
                 score.has_congestion() || (!defer_loop_labels && score.grows_scene())
             });
@@ -547,7 +548,11 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 },
                 label_plans.descriptor(edge_index),
                 selected.as_ref().map(|(score, _, _)| *score),
-                &mut repair_expansions,
+                if selected.is_some() {
+                    terminal::SearchBudget::Optional(&mut repair_budget.expansions)
+                } else {
+                    terminal::SearchBudget::Required
+                },
                 resources,
                 execution,
             )?
@@ -557,7 +562,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         }
         let plan = match selected {
             Some((_, _, plan)) => plan,
-            None => plan_obstacle_aware_edge_route(
+            None => match plan_obstacle_aware_edge_route(
                 request,
                 topology.as_ref(),
                 path::RouteObstacles {
@@ -568,13 +573,33 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 label_plans.descriptor(edge_index),
                 resources,
                 execution,
-            )?
-            .ok_or(AsciiError::UnsupportedFeature {
-                diagram_type: graph.diagram_type(),
-                feature: unsupported.map_or("routes crossing reserved graph geometry", |route| {
-                    route.feature()
-                }),
-            })?,
+            )? {
+                Some(plan) => plan,
+                None => {
+                    if edge.from != edge.to
+                        && repair::reorder_failed_route(
+                            request,
+                            topology.as_ref(),
+                            &label_plans,
+                            &owner,
+                            &mut routes,
+                            &mut occupancy,
+                            &mut repair_budget,
+                            resources,
+                            execution,
+                        )?
+                    {
+                        continue;
+                    }
+                    return Err(AsciiError::UnsupportedFeature {
+                        diagram_type: graph.diagram_type(),
+                        feature: unsupported
+                            .map_or("routes crossing reserved graph geometry", |route| {
+                                route.feature()
+                            }),
+                    });
+                }
+            },
         };
         let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
         occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;

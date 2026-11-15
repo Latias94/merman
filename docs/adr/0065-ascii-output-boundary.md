@@ -168,5 +168,28 @@ search for the first valid path remains subject to the operation budget. Predete
 self-loops retain deferred label placement until their complete nested batch is known. Exhausting
 the optional allowance cannot flush that batch. Every candidate must carry its visible edge label;
 geometry that drops a condition is not admissible. These changes replace the sequential node-slot
-placement mechanism. Joint port/channel allocation and reversible routing remain separate work;
+placement mechanism. Joint port/channel allocation remains separate work;
 this ordering change alone does not establish the terminal presentation comparison floor.
+
+## Reversible route contributions
+
+If ordinary routing finishes without a valid path for a non-loop edge, scene routing may give
+that edge priority over one earlier contributor. A scene shares a four-proposal allowance and
+the existing optional terminal-search expansion allowance. Each proposal replays the retained
+contributors into a provisional occupancy, admits the blocked edge, and replans the displaced
+edge. Both routes must materialize their markers and labels before the proposal replaces the
+incumbent. Routine proposal failure restores the original route order without allocating or
+replaying the old scene. Cancellation and resource failures restore geometry and propagate;
+consumed work is never refunded.
+
+Replaying preserves canonical edge identities while remapping dense occupancy indices. Active
+cells, exact materialized markers, label-to-host reservations, and original terminal candidate
+claims are distinct contributions. A relocated marker must not create a new candidate window
+when its route is replayed. Provisional occupancy retains and admits the original scene's route
+capacity, including replacement and later edges.
+
+This is a bounded one-contributor repair, not joint port/channel negotiation. It runs after
+ordinary required search and the coarse fallback finish without a route; it does not recover
+from a search that has already terminated the operation through cancellation or resource limits.
+No-route results remain heuristic failures, not certified spatial impossibility. Changing that
+stage order and improving shared-trunk presentation require separate whole-scene evidence.

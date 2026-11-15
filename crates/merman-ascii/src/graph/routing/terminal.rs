@@ -25,6 +25,11 @@ const DIRECTIONS: [StepDirection; 4] = [
 // Resource and cancellation failures still propagate through the operation's shared ledger.
 pub(super) const MAX_REPAIR_EXPANSIONS: usize = 4_096;
 
+pub(super) enum SearchBudget<'a> {
+    Required,
+    Optional(&'a mut usize),
+}
+
 mod direct;
 pub(super) use direct::plan_direct_route;
 
@@ -227,7 +232,11 @@ pub(super) fn plan_terminal_route(
         obstacles,
         label,
         incumbent,
-        &mut repair_expansions,
+        if incumbent.is_some() {
+            SearchBudget::Optional(&mut repair_expansions)
+        } else {
+            SearchBudget::Required
+        },
         resources,
         execution,
     )
@@ -238,12 +247,16 @@ pub(super) fn plan_terminal_route_with_budget(
     obstacles: RouteObstacles<'_>,
     label: Option<RoutedLabelDescriptor>,
     incumbent: Option<RouteCandidateScore>,
-    repair_expansions: &mut usize,
+    mut budget: SearchBudget<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    if incumbent.is_some() && *repair_expansions == 0 {
+    let mut expansions_left = match &budget {
+        SearchBudget::Required => usize::MAX,
+        SearchBudget::Optional(remaining) => **remaining,
+    };
+    if expansions_left == 0 {
         return Ok(None);
     }
     for group in &request.graph_layout.groups {
@@ -294,11 +307,6 @@ pub(super) fn plan_terminal_route_with_budget(
         x: resources.checked_grid_add(max_x, ROUTING_GRID_MARGIN)?,
         y: resources.checked_grid_add(max_y, ROUTING_GRID_MARGIN)?,
     };
-    let mut expansions_left = if incumbent.is_some() {
-        *repair_expansions
-    } else {
-        usize::MAX
-    };
     while expansions_left != 0 {
         let Some((start, end)) = pairs.next(resources, execution)? else {
             break;
@@ -323,8 +331,8 @@ pub(super) fn plan_terminal_route_with_budget(
             },
         };
         let path = find_path(geometry, &mut expansions_left, resources, execution)?;
-        if incumbent.is_some() {
-            *repair_expansions = expansions_left;
+        if let SearchBudget::Optional(remaining) = &mut budget {
+            **remaining = expansions_left;
         }
         let Some(path) = path else {
             if expansions_left == 0 {

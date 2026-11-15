@@ -20,6 +20,7 @@ use std::collections::hash_map::Entry;
 
 mod labels;
 mod marker;
+mod rebuild;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
@@ -232,6 +233,13 @@ impl RouteCandidateScore {
 }
 
 impl RouteBounds {
+    pub(super) fn intersects(self, rect: OccupiedRect) -> bool {
+        self.min_x < rect.right
+            && rect.x <= self.max_x
+            && self.min_y < rect.bottom
+            && rect.y <= self.max_y
+    }
+
     fn include(&mut self, coord: CanvasCoord) {
         self.min_x = self.min_x.min(coord.x);
         self.max_x = self.max_x.max(coord.x);
@@ -367,6 +375,7 @@ impl ProtectedGeometry<'_> {
 #[derive(Debug)]
 pub(super) struct SceneOccupancy<'layout> {
     graph_layout: &'layout GraphLayout,
+    route_capacity: usize,
     pub(super) route_cells: HashMap<CanvasCoord, RouteCellOccupancy>,
     pub(super) route_bounds: Vec<Option<RouteBounds>>,
     terminal_claims: HashMap<CanvasCoord, Vec<TerminalClaim>>,
@@ -454,6 +463,7 @@ impl<'layout> SceneOccupancy<'layout> {
 
         let mut scene = Self {
             graph_layout,
+            route_capacity,
             route_cells: HashMap::default(),
             route_bounds: Vec::new(),
             terminal_claims: HashMap::default(),
@@ -1308,6 +1318,29 @@ impl<'layout> SceneOccupancy<'layout> {
         end: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<()> {
+        self.commit_route_geometry(route_index, route, resources)?;
+        for (endpoint, candidate) in [(MarkerEndpoint::Start, start), (MarkerEndpoint::End, end)] {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            self.register_terminal_claim(
+                candidate.coord,
+                TerminalClaim {
+                    route_index,
+                    endpoint,
+                    point_direction: candidate.point_direction,
+                    primary: true,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    fn commit_route_geometry(
+        &mut self,
+        route_index: usize,
+        route: &PreparedRoute,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
         debug_assert_eq!(self.route_bounds.len(), route_index);
         if let Some(ports) = route.plan.attachments {
             resources.charge_layout_work(1)?;
@@ -1376,19 +1409,6 @@ impl<'layout> SceneOccupancy<'layout> {
         }
         self.route_bounds.push(bounds);
 
-        for (endpoint, candidate) in [(MarkerEndpoint::Start, start), (MarkerEndpoint::End, end)] {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            self.register_terminal_claim(
-                candidate.coord,
-                TerminalClaim {
-                    route_index,
-                    endpoint,
-                    point_direction: candidate.point_direction,
-                    primary: true,
-                },
-            )?;
-        }
         Ok(())
     }
 
