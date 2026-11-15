@@ -3,7 +3,7 @@
 Status: Active supported subset
 
 This document describes the current `merman-ascii` flowchart support boundary. The renderer consumes
-`merman-core` `FlowchartModel` values; it does not parse Mermaid text itself.
+`merman-model` Flowchart terminal views; it does not parse Mermaid text itself.
 
 ## Supported
 
@@ -15,10 +15,10 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Ordinary Flowchart node labels wrap before node sizing at the configurable `flowchart_node_label_wrap_width` terminal-cell limit (canonical default `40`; Compact default `24` unless explicitly overridden), using one grapheme-safe plan for measurement and materialization. Missing labels fall back to node ids. This terminal policy is independent of Mermaid's CSS-pixel `wrappingWidth`. |
 | Edges | Supported subset | Independent source/target point, circle, cross, or open markers; mixed and double-ended forms; visible normal/dotted/thick strokes; invisible layout constraints; explicit/generated edge identity; multiline labels; deterministic length spacing; and TD merge/skip edges. Endpoint markers remain unresolved until scene allocation assigns each owner an independent terminal berth. Labels keep their planned footprint when clear and otherwise use bounded route-local lanes that avoid endpoint markers, nodes, group borders/titles, and accepted labels. Clear spans use direct ports; obstructed spans use family-owned alternate lanes. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, authored local directions across boundary edges, and the pinned Mermaid baseline's perpendicular default for isolated implicit subgraphs. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
-| Layout profiles | Supported subset | `canonical` remains the default. The explicit `compact` profile keeps the same topology and routing semantics while resolving the family-owned node-label wrap default from 40 to 24 cells. Caller overrides remain authoritative. Flowchart policy is resolved separately from State and other graph-backed families. |
+| Layout profiles | Supported subset | `canonical` remains the default. The explicit `compact` profile keeps the same topology and routing semantics while resolving the family-owned node-label wrap default from 40 to 24 cells and horizontal rank gap from 5 to 3. Caller overrides remain authoritative. Flowchart and Swimlane share these profiles; State remains Canonical-only. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 | Color roles and styles | Supported subset | Plain, ANSI16, ANSI256, TrueColor, and HTML encoders share one layout. ANSI16 keeps primary text at terminal Reset and uses sparse named accents for renderer-owned structure. Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` declarations can supply supported foreground/background roles. Supported style properties are `color` for text/labels, `stroke` for borders/edges, and `fill`/`background` for node and subgraph backgrounds. |
-| Viewport/report behavior | Supported | Allow preserves complete wide output, Error returns a typed width diagnostic, and Plain Fallback selects one complete typed structured projection. Styled fallback is rejected by capability preflight. Schema-2 output metadata identifies the encoding and does not count the final line terminator as a logical row. |
+| Viewport/report behavior | Supported | Allow preserves complete wide output, Error returns a typed width diagnostic, and Plain Fallback selects one complete typed structured projection. Styled fallback is rejected by capability preflight. Schema-3 output metadata identifies encoding, requested/effective layout profiles and Compact attempts; the final line terminator does not count as a logical row. |
 | Resource policy | Supported | Typed limits bound checked grid extent, layout work, logical document cells, encoded bytes, grapheme size, and nesting depth before amplification. |
 
 ## V1.1 Compatibility Plan
@@ -67,7 +67,12 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
 | Icon, image, browser-only metadata, and any future unsupported uncommon shapes | `non-rectangular node shapes` |
 | Hand-built models with edges whose endpoints are missing from `nodes` | `edges with missing endpoint nodes` |
-| Routes or labels that exhaust bounded non-destructive candidates | `routes crossing reserved graph geometry` or `edge label placement exhausted after bounded route-local search` |
+
+Required route or label search exhaustion returns `AsciiError::RoutingSearchExhausted` with the
+authored edge index. Independent marker demand above the current fixed presentation's capacity
+upper bound returns `AsciiError::PortCapacityExceeded`. These diagnostics do not establish that
+other layouts are impossible and do not trigger structured width fallback. See the
+[graph presentation boundary](README.md#graph-presentation-boundary).
 
 ## `beautiful-mermaid` Delta Triage
 
@@ -124,7 +129,7 @@ reference implementation is only an implementation aid.
   exhaust recovery or the work budget; sixteen-edge TD/BT cases can exhaust the Interactive work
   budget at default and zero preferred graph padding.
   Alternate candidates and recovery still run
-  when the primary route family is unavailable. Candidate exhaustion produces `UnsupportedFeature`;
+  when the primary route family is unavailable. Candidate exhaustion produces `RoutingSearchExhausted`;
   resource and cancellation failures remain terminal errors rather than a partial drawing.
 - LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
   duplicate and bidirectional label lanes for the supported graph subset.
@@ -171,9 +176,9 @@ reference implementation is only an implementation aid.
   shape geometry and ports are computed. This is an ASCII terminal policy, not a conversion of
   Mermaid's SVG `wrappingWidth` pixels. State labels and Flowchart edge labels retain their own
   family policies.
-- Compact is a Flowchart-owned admission, not a global graph-density mutation. The current evidence
-  candidate changes only the unresolved ordinary-node wrap default from 40 to 24 display cells;
-  explicit wrap widths win, and State remains canonical-only.
+- Compact is a Flowchart/Swimlane-owned admission, not a global graph-density mutation. It changes
+  the unresolved ordinary-node wrap default from 40 to 24 display cells and the horizontal rank gap
+  from 5 to 3; explicit spacing/wrap builders win, and State remains Canonical-only.
 - Mermaid classes/styles are rendered only for terminal-safe color properties in opt-in ANSI/HTML
   modes: `color`, `stroke`, `fill`, and `background` support hex colors and a small named-color
   set. Stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not
@@ -186,16 +191,14 @@ reference implementation is only an implementation aid.
 
 The support boundary is covered by:
 
-- `cargo nextest run -p merman-ascii graph::`
-- `cargo nextest run -p merman-ascii graph_golden`
-- `cargo nextest run -p merman-ascii graph_fixture`
-- `cargo nextest run -p merman-ascii flowchart`
-- `cargo nextest run -p merman-ascii --features all-diagrams --test flowchart_model -E 'test(readability::)'`
-- `cargo nextest run -p merman-ascii --test viewport_characterization -j1`
+- `cargo nextest run -p merman-ascii --all-features -j 2`
+- `cargo nextest run -p merman-ascii --features diagram-flowchart --test presentation_floor -j 2`
 
 Golden tests compare against immutable copied `mermaid-ascii` fixtures for the supported subset. The
-current corpus has 79 graph fixtures: 40 remain exact byte matches and 39 are named deterministic
-layout/route differences that must still render and are covered by parser-backed semantic tests.
+current corpus has 79 graph fixtures: 28 exact upstream matches, seven strict corrected compound
+snapshots, two strict local wire-style snapshots, and 42 named deterministic layout/route differences.
+The [fixture inventory](tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md) owns these dispositions;
+all cases must render and preserve their admitted text and parser-backed semantic contracts.
 The viewport characterization matrix additionally exercises canonical/compact, ASCII/Unicode,
 Unicode/CJK width profiles, Plain/ANSI16/ANSI256/TrueColor/HTML geometry parity, and
 60/80/100/120-cell Allow/Fallback/Error outcomes over the Issue #53 fixture.

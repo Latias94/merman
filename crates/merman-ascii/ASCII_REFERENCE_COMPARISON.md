@@ -168,7 +168,7 @@ Current measured output dimensions, including all detail rows, are **columns × 
 | `fan-out-12-lr`, unbounded | 29 × 47, diagram | 31 × 115, diagram | Grok: 28 × 48; twelve private target branches |
 | `fan-in-12-lr`, unbounded | 26 × 47, diagram | 28 × 117, diagram | Grok: 25 × 48; twelve sources and one explicit sink |
 | `fan-out-16-td`, 80 columns | 62 × 19, graph document | 41 × 640, model-field fallback | Grok: 77 × 20 source frame; first-use target declarations avoid a second lookup table |
-| `long-labels`, 80 columns | 80 × 11, graph document | 69 × 205, model-field fallback | Grok: 80 × 12 source frame; both complete conditions and all endpoints remain recoverable |
+| `long-labels`, 80 columns | 79 × 11, graph document | 69 × 205, model-field fallback | Grok: 80 × 12 source frame; both complete conditions and all endpoints remain recoverable |
 
 The width matrix is executable in `tests/presentation_floor.rs`, using the same original 13 inputs
 at unbounded/60/80/100/120 cells, ASCII/Unicode structure, and Unicode/CJK width profiles. At those
@@ -229,6 +229,43 @@ Issue #53 changes from the historical 74×57/56×67 characterization to 76×40 C
 Compact. Compact narrows the scene while retaining visible turns, spending more area and blank
 cells than current Canonical. That tradeoff is recorded explicitly rather than counted as a
 universal density improvement. All original frozen reference captures remain unchanged.
+
+### Accepted planner boundary
+
+The shared-planner refactor is complete for the admitted Flowchart, State, and Swimlane subset.
+The final reading review used implementation `78b94dfe8ca2dc3a8cc8adf56101e90a90e83644` with
+explicit Interactive resources. Twenty-four inputs cover the thirteen frozen Flowchart cases,
+three additional nested/cross-boundary graphs, four State lifecycles/composites/notes, and four
+Swimlane member/group-endpoint and long-label cases. All 480 native/60/80/100/120 requests across
+ASCII/Unicode and Unicode/CJK width profiles succeeded within their requested widths. Failures
+were retained in the attempted denominator. This finite review supplements the generated and
+semantic oracles; success and dimensions alone do not prove arbitrary-graph readability.
+
+State requests used Canonical; bounded Flowchart/Swimlane requests used Auto with Plain Fallback.
+Of the 480 results, 416 remained diagrams and 64 used structured graph records. The reading review
+retained separate branch conditions, forward/feedback identity, group versus member contacts,
+concurrent State region separation, complete distinguishing suffixes, and CJK text. No reference
+source or binary is required in CI. Raw reports, inputs, hashes, and the comparison gallery remain
+under ignored `target/`.
+
+The review explicitly accepts these remaining tradeoffs:
+
+- State has no Compact or height policy. Its CJK connection lifecycle remains a 27×63 Canonical
+  diagram. Its note/composite example uses 60×48, 80×43 and 100×42 full structured records at
+  bounded widths, versus a 119×43 diagram at 120 columns. The authored detail rows preserve more
+  than the primary diagram displays and can require additional reading. A dotted separator can
+  start the first concurrent region below the title band; readers must not infer the region count
+  from separator count alone.
+- The Swimlane handoff fits at 62×9. At 60 columns, Auto attempts a valid Compact candidate of the
+  same width, retains Canonical on the tie, and produces 53×12 complete structured records. A
+  compact request does not guarantee a narrower result.
+- Dense compounds and marked endpoint demand can still exhaust bounded routing or fixed
+  presentation capacity. Required search/capacity errors do not select width fallback and do not
+  prove that another layout is impossible. Resource and cancellation errors remain terminal.
+
+Future density, label-placement, or style improvements are separate iterations. New semantic loss,
+unexplained regressions in the accepted corpus, or inaccurate diagnostics remain defects under the
+[graph presentation boundary](README.md#graph-presentation-boundary).
 
 ### Source-bound validation
 

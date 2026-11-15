@@ -78,11 +78,12 @@ canonical layout only. All supported families admit Plain, ANSI16, ANSI256, True
 primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
-Detached model entrypoints identify a family by the model kind. Because Swimlane reuses the
-Flowchart model, a Swimlane-only consumer must pass the parser-owned value through `render_parsed`
-or `render_parsed_report`; this retains its logical language identity during admission. Enabling
-one graph language does not enable the other. Report `family` retains the existing model-kind
-identity; query `ascii_capabilities()` for logical language availability.
+Swimlane reuses the Flowchart model kind. Use `render_parsed` or `render_parsed_report` to retain
+the parser-owned logical language identity, or provide the matching `AsciiSourceContext` when
+rendering a borrowed model. Report `family` preserves that source identity, such as `swimlane`,
+including through viewport fallback. Shared internal graph diagnostics can still name `flowchart`.
+Enabling one graph language does not enable the other; query `ascii_capabilities()` for logical
+language availability.
 
 The canonical report API is `AsciiRenderer::render_model_report` or
 `AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
@@ -181,8 +182,8 @@ inside their common container. Coarse placement reserves a separator band and mo
 sibling branches together. Axis projection uses a valid separating axis for measured frame
 clearance, keeping external nodes outside their endpoint containers even at zero preferred padding.
 
-Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
-and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
+Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart,
+Swimlane, and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
 valid diagram (Canonical on ties). The existing `Allow`, `Error`, or `Fallback` policy applies to
 the selected candidate. A narrower diagram may be taller; Auto does not change direction or
 truncate labels. String-only renderer methods without a viewport reject Auto.
@@ -192,6 +193,35 @@ truncate labels. String-only renderer methods without a viewport reject Auto.
 one work budget and cancellation control. Retained candidate text counts toward storage admission.
 Use the spacing builders for explicit overrides, including a value equal to the default; direct
 assignment of a default-valued public field cannot record that intent.
+
+## Graph Presentation Boundary
+
+Flowchart, Swimlane, and State share whole-scene endpoint and label demand, compatible channel
+allocation, bounded reversible congestion repair, and final route validation. The terminal planner
+refactor is complete for this admitted subset; future density or style improvements are separate
+iterations. The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/README.md),
+generated small-graph oracle, compound tests, and family tests define the finite acceptance boundary.
+They do not establish globally optimal or complete routing for arbitrary graphs.
+The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
+also checks State/Swimlane selection, logical identity, complete fields and measured extents across
+60/80/100/120 columns in both character sets and width profiles.
+
+| Request or result | Behavior |
+| --- | --- |
+| Valid diagram fits the viewport | Return complete diagrammatic output, preserving markers, conditions and actual node/group endpoints. |
+| Flowchart or Swimlane Auto exceeds the viewport | Try Compact once and retain the narrower valid diagram; preserve Canonical on ties or an unsupported/search/capacity failure in the optional Compact attempt. |
+| Selected valid diagram remains too wide | Apply the host's Allow, Error, or Plain Fallback policy. Fallback emits complete keyed graph records and reports `structured_text`, `fallback`, and `presentation_only`. |
+| State width request | Use Canonical and the same overflow policies; Compact and Auto are not admitted. |
+| Required routing search finds no valid scene | Return `RoutingSearchExhausted`; this is a bounded search miss, not a proof that no layout exists. |
+| Independent markers exceed the fixed presentation's certified capacity | Return `PortCapacityExceeded`; the certificate does not apply to other layouts or presentations. |
+| Resource, cancellation, or unsupported semantic input | Return the corresponding error. Width fallback does not conceal these failures. |
+
+Graph planning precedes viewport admission, so a narrower width cannot bypass a required routing
+failure. All attempts share the operation's work budget. Structured graph records preserve full
+labels, typed connectors, membership and per-edge conditions, but do not reproduce spatial
+direction. They can be taller than a valid diagram: State keeps its canonical geometry and full
+authored-detail disclosure, and the renderer has no maximum-height selection policy. Hosts that
+need a pager or alternate view own that presentation choice.
 
 ## Resource Policy
 

@@ -51,10 +51,18 @@ is rejected. Rust and binding result APIs can return styled text because their s
 identifies it. Viewport Fallback is also Plain-only; styled fallback combinations are rejected by
 capability preflight, even when that particular input would fit.
 
-Auto requires an explicit width and is available only for Flowchart and Sequence. It tries Compact
+Auto requires an explicit width and is available only for Flowchart, Swimlane, and Sequence. It tries Compact
 once after Canonical exceeds that width, chooses the narrower valid candidate, and keeps Canonical
 on ties. The host's overflow policy still governs a result that remains wide. Narrower output can
 be taller; Auto does not choose a graph direction or truncate long labels.
+
+State remains Canonical-only. Graph planning occurs before viewport admission: a required
+`RoutingSearchExhausted` or `PortCapacityExceeded` result is returned without selecting width
+fallback. The former is a bounded search miss; the latter certifies only the current fixed-terminal
+presentation's marker capacity. Neither proves that the graph has no other readable layout.
+An optional Compact attempt can retain Canonical on these failures; resource and cancellation
+errors remain terminal. The [graph presentation boundary](../../crates/merman-ascii/README.md#graph-presentation-boundary)
+defines the completed shared-planner scope and the remaining density/height limitations.
 
 A measured candidate owns its metrics once; fallback construction checks width and output ceilings
 incrementally, then commits one render-wide resource admission. Overflow remains a presentation
