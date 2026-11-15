@@ -76,6 +76,15 @@ platform-font builds have fetched its dependencies. Rust caches retain registry 
 `cache-targets: false`; these jobs do not transfer compiled targets or reuse results from a
 different source revision.
 
+On macOS safety-net runs, the full workspace suite completes before
+`cargo clean --workspace --profile dev` reclaims its workspace artifacts. The subsequent
+font and feature recipes rebuild workspace packages while reusing third-party dependency
+artifacts. This bounds accumulation across the two phases on the hosted runner's limited
+disk without removing any feature recipe or test. Ordinary host runs keep their compiled
+workspace artifacts. The macOS job logs target size and available disk before and after
+reclamation, and reports disk usage on both success and failure. These measurements distinguish
+workspace accumulation from dependency or runner-image growth.
+
 ## Apple Binding Checks
 
 The platform owner separates compiler compatibility from Apple SDK integration:

@@ -1267,6 +1267,32 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("Test explicit native fonts on every host", job)
         self.assertIn("candidate: [node-wasm, napi]", workflow_job(ci, "node-contracts"))
 
+    def test_macos_safety_net_reclaims_workspace_artifacts_before_feature_recipes(self) -> None:
+        from scripts.test_release_workflow_security import workflow_job
+
+        ci = (Path(__file__).resolve().parents[1] / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+        job = workflow_job(ci, "build-test")
+        reclaim_name = "Reclaim completed macOS workspace build artifacts"
+        reclaim = job.split(f"- name: {reclaim_name}\n", 1)[1].split("\n      - ", 1)[0]
+        self.assertIn(
+            "if: runner.os == 'macOS' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')",
+            reclaim,
+        )
+        # Clean only completed workspace packages; retain dependency artifacts and
+        # leave ordinary host runs and other platforms' build reuse unchanged.
+        self.assertIn("cargo clean --workspace --profile dev", reclaim)
+        self.assertEqual(job.count("cargo clean"), 1)
+        self.assertLess(job.index("Test full workspace"), job.index(reclaim_name))
+        self.assertLess(job.index(reclaim_name), job.index("Test theme authoring and font resource boundaries"))
+        self.assertLess(reclaim.index("du -sh target"), reclaim.index("cargo clean"))
+        self.assertLess(reclaim.index("cargo clean"), reclaim.rindex("du -sh target"))
+
+        report = job.split("- name: Report macOS build disk usage\n", 1)[1]
+        self.assertIn("if: always() && runner.os == 'macOS'", report)
+        self.assertIn("df -h .", report)
+        self.assertIn("du -sh target", report)
+        self.assertLess(job.index("Test experimental platform font CLI contracts"), job.index("Report macOS build disk usage"))
+
     def test_lean_core_compile_fail_contracts_have_a_feature_contract_owner(self) -> None:
         from scripts.test_release_workflow_security import workflow_job
 
