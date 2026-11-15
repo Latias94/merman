@@ -119,7 +119,9 @@ resolved into family-local policies and do not affect State, Class, ER, XYChart,
 families.
 
 Graph routing compares deterministic candidates using target-port congestion, marked-source port
-congestion, ambiguous shared cells, and route length. Open starts can retain shared outgoing stems;
+congestion, and combined route length, shared-cell cost and scene growth. Compound Flowchart routes
+with a known common-scope direction prefer forward departure/arrival contacts after endpoint
+congestion, while retaining alternate sides for obstructed routes. Open starts can retain shared outgoing stems;
 visible source markers prefer independent contacts. Clear direct routes stay direct. Ordinary
 candidates retain all cardinal port combinations instead of discarding mixed horizontal/vertical
 choices before scene admission.
@@ -206,6 +208,40 @@ so copying options cannot implicitly copy or replace an operation's resource bud
 Resource limits are hard errors. They never select a relation summary or another lower-fidelity
 projection. Plain, ANSI16, ANSI256, TrueColor, and HTML use the same logical document accounting,
 while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
+
+## Terminal Visual Style
+
+Merman's terminal diagrams use compact, readable structure before decoration. The graph renderer
+keeps the author's node shapes, uses rounded `╭╮╰╯` turns for ordinary Unicode wires, and retains
+square branch junctions and frame contacts. A rectangular node therefore remains `┌─┐`, while a
+wire turning around it reads as a continuous path. Rounded nodes still mean the rounded shape
+selected in the source; thick and dotted relationships retain their own strokes. ASCII and the
+CJK structural fallback use their existing single-cell glyphs.
+
+| Element | Visual rule | Reading purpose |
+| --- | --- | --- |
+| Node | Label-sized contour with the authored shape and explicit markers | Identify the operation or state without stretching unrelated nodes |
+| Ordinary wire | Light stroke, rounded turns, square junctions, solid arrowheads | Follow a path and distinguish a bend from a branch |
+| Group | Closed frame, separate complete title, internal reading clearance | Show membership and the exact node or frame touched by an external edge |
+| Label | Complete text associated with its own route and protected reading space | Recover the condition and endpoint pair without using color |
+| Optional color | Host text, quieter structure, sparse heading/arrow emphasis | Reinforce the same hierarchy in ANSI or HTML without changing geometry |
+
+For `A → B`, `A → C`, `B → C`, `B → D`, and `D → C`, the Unicode output keeps each direct
+relationship visible in a 35-column, six-row drawing:
+
+```text
+┌───┐     ┌───┐     ┌───┐     ┌───┐
+│ A ├────►│ B ├────►│ D ├────►│ C │
+└──┬┘     └──┬┘     └───┘     └───┘
+   │         │                 ▲▲
+   │         ╰─────────────────╯│
+   ╰────────────────────────────╯
+```
+
+The visual style is a renderer default, independent of Canonical/Compact layout and host color
+encoding. It does not introduce a second layout backend or a separate theme preset registry.
+Plain output must remain understandable on its own. Width-constrained structured output preserves
+the same complete names and relationships instead of adding decoration that consumes the viewport.
 
 ## Terminal Theme API
 

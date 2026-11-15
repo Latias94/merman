@@ -248,13 +248,15 @@ pub(super) fn stroke_route_char(stroke: GraphEdgeStroke, directions: u8, unicode
 }
 
 fn unicode_normal_route_char(dirs: u8) -> char {
+    // Round only wire-owned turns. Node contours, frame contacts and branching
+    // junctions keep their own glyphs so the reader can distinguish paths from boxes.
     match dirs {
         DIR_HORIZONTAL => '─',
         DIR_VERTICAL => '│',
-        dirs if dirs == (DIR_RIGHT | DIR_DOWN) => '┌',
-        dirs if dirs == (DIR_DOWN | DIR_LEFT) => '┐',
-        dirs if dirs == (DIR_UP | DIR_RIGHT) => '└',
-        dirs if dirs == (DIR_UP | DIR_LEFT) => '┘',
+        dirs if dirs == (DIR_RIGHT | DIR_DOWN) => '╭',
+        dirs if dirs == (DIR_DOWN | DIR_LEFT) => '╮',
+        dirs if dirs == (DIR_UP | DIR_RIGHT) => '╰',
+        dirs if dirs == (DIR_UP | DIR_LEFT) => '╯',
         dirs if dirs == (DIR_UP | DIR_RIGHT | DIR_DOWN) => '├',
         dirs if dirs == (DIR_UP | DIR_DOWN | DIR_LEFT) => '┤',
         dirs if dirs == (DIR_RIGHT | DIR_DOWN | DIR_LEFT) => '┬',
@@ -325,7 +327,7 @@ mod tests {
     fn stroke_route_char_preserves_unicode_corner_and_line_identity() {
         assert_eq!(
             stroke_route_char(GraphEdgeStroke::Normal, DIR_RIGHT | DIR_DOWN, true),
-            '┌'
+            '╭'
         );
         assert_eq!(
             stroke_route_char(GraphEdgeStroke::Dotted, DIR_HORIZONTAL, true),

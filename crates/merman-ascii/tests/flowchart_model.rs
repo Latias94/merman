@@ -368,15 +368,16 @@ fn diamond_self_loop_source_head_keeps_its_straight_berth_and_bend() {
                     &chars[head + 1..]
                 };
                 assert!(
-                    after_head
-                        .iter()
-                        .any(|ch| matches!(ch, '+' | '┌' | '┐' | '└' | '┘')),
+                    after_head.iter().any(|ch| matches!(
+                        ch,
+                        '+' | '┌' | '┐' | '└' | '┘' | '╭' | '╮' | '╰' | '╯'
+                    )),
                     "the source marker must leave the exterior bend intact: {rendered}"
                 );
                 assert!(
                     after_head.iter().all(|ch| *ch == ' '
                         || *ch == horizontal
-                        || matches!(ch, '+' | '┌' | '┐' | '└' | '┘')),
+                        || matches!(ch, '+' | '┌' | '┐' | '└' | '┘' | '╭' | '╮' | '╰' | '╯')),
                     "source head must remain on the straight terminal run: {rendered}"
                 );
             }

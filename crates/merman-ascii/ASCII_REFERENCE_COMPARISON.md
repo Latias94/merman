@@ -49,6 +49,35 @@ product boundary.
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
 
+## Terminal Visual Direction
+
+Grok's pinned terminal implementation provides useful examples of compact text and restrained
+host styling. Its ordinary mask-based wires use square turns; rounded turns appear explicitly in
+Flowchart self-loops and Sequence self-messages. Node rectangles use square corners, while both
+Round and Diamond map to rounded boxes. Group frames are solid rectangles with a title inserted
+into the top border. See the pinned
+[wire masks](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-markdown/src/mermaid.rs#L1730),
+[frames](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-markdown/src/mermaid.rs#L2273),
+and [node/self-loop drawing](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-markdown/src/mermaid.rs#L3052).
+Its text wrapping defaults to 24 columns and four lines. These density limits are presentation
+evidence, not permission to truncate Merman's complete labels. Grok maps visual classes to host
+Markdown styles rather than prescribing a fixed terminal RGB palette.
+
+Merman uses a distinct, independently implemented graph grammar: label-sized authored node
+contours, rounded turns for every ordinary Unicode wire, square branch junctions and frame
+contacts, solid arrowheads, and complete labels. This separates a path from a rectangular object
+without spending extra cells or requiring color. Shape-specific node outlines, dotted and thick
+edge meanings, ASCII/CJK structural fallback, container ownership, and width/resource policy
+remain authoritative. The crate's [visual-style guide](README.md#terminal-visual-style) owns these
+defaults. Two copied Unicode self-loops now have strict local style expectations; their original
+fixture bytes and the full 79-case denominator remain intact.
+
+Dashed Flowchart containers were considered as a second hierarchy cue. They remain a local design
+study: dotted relationships, frame contacts and State composite semantics need separate evidence
+before such a rule becomes a renderer default. A smaller or more decorative frame is not itself a
+readability improvement. The terminal Grok source remains Apache-2.0 research material; this wire
+glyph refinement does not copy or translate its implementation.
+
 ## Terminal Presentation Floor
 
 Terminal graph presentation is best effort. A finite, non-zoomable terminal cannot display every
@@ -167,6 +196,20 @@ The acyclic `multi_boundary_routes` case changes from 48×34 to 48×26 in Canoni
 to 44×26 in Compact, without routing a forward edge beneath its target and returning upward.
 Reciprocal routes may also cross transversely; shared collinear transit remains invalid.
 
+Compound forward routing additionally resolves the edge's common explicit scope before selecting
+its endpoint sides. In `multi_boundary_routes`, Validate→Publish stays on the internal LR chain,
+while Publish→Success/Retry leave downward and enter their targets from above. In
+`nested_direction_boundary` and its CJK counterpart, the terminal group exit now follows the root
+TD direction instead of entering Done from the side. The local 46-output comparison against
+`bae4152236b62e5a682a64fbf8dbf414cf2c1620` retains every width, height, and width-fallback outcome:
+six outputs change route geometry, thirty change only ordinary wire-corner glyphs, and ten remain
+identical. This is a finite presentation check, not a claim that forward contacts improve every
+possible scene. Scope-direction tests also cover the mirrored BT root, a sealed Compact ingress,
+and preferred contacts that must yield to independent alternate ports. Frame titles and node
+reading margins remain hard constraints. Two independent ASCII compound snapshots now use
+bottom exits and may contact a target away from its side center; their geometry checks cover the
+complete non-corner target contour without changing the copied upstream files.
+
 The independent generated oracle fixes 486 Interactive scene attempts and 3,042 visible edge
 contributions, with up to eight nodes/twelve edges, nine topology categories, three edge orders,
 and LR/TD plus normal/zero preferred gaps. Failures remain in the denominator. The historical
@@ -181,7 +224,7 @@ universal density improvement. All original frozen reference captures remain unc
 
 ### Source-bound validation
 
-The current measurements above are bound to implementation commit
+The initial whole-scene routing measurements were bound to implementation commit
 `65eb8bb48dc7d020b8e8341c29f7d2d031758e3b` (tree
 `23fba7ba4dfd0dcb1a0d159f82242a62bb8a6d7a`). Rebuilding the defaults-off CLI with
 `ascii,diagram-flowchart,diagram-state,diagram-swimlane` reproduced all 26 reviewed
@@ -306,7 +349,8 @@ The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from
 `876b5b4` named in its inventory, contains 54 `ascii` graph fixtures, 25 `extended-chars` graph
 fixtures, 12 `sequence` fixtures, and 5 `sequence-ascii` fixtures. The graph gate currently keeps
-30 fixtures as an exact-output subset, 7 local compound-frame correction snapshots, and 42 named
+28 fixtures as an exact upstream-output subset, 2 strict local Unicode wire-style snapshots,
+7 local compound-frame correction snapshots, and 42 named
 Dagre/route/terminal-placement differences that must still render and retain their semantics.
 Terminal node dimensions follow their own labels instead of stretching to an unrelated node's
 shared axis band. This intentionally changes the multiline-node and differently sized disconnected

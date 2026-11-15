@@ -8,9 +8,10 @@ gap inventory live in `tests/graph_fixture.rs`.
 ## Current Status
 
 - Copied corpus: 79 fixtures from the pinned `mermaid-ascii` source boundary.
-- Exact-output subset: 33 fixtures, derived as the corpus minus named gaps and corrections.
+- Exact upstream-output subset: 28 fixtures, derived as the corpus minus named gaps and corrections.
 - Strict corrected-output subset: 7 fixtures, listed in `GRAPH_FIXTURE_CORRECTIONS`.
-- Named intentional layout differences: 39 fixtures.
+- Strict local style subset: 2 fixtures, listed in `GRAPH_FIXTURE_STYLE_CORRECTIONS`.
+- Named intentional layout differences: 42 fixtures.
 - Every exact fixture must still match byte-for-byte.
 - Every named gap must still render successfully and retain every non-marker visible text token
   from the copied output; parser-backed semantic tests own topology, endpoint, direction, and
@@ -57,6 +58,16 @@ first-parent node ownership, full node containment, full nested-group containmen
 arrowhead entering the declared target for every edge. It also
 requires an actual route/frame crossing so a named disposition cannot silently become obsolete.
 
+## Named Style Oracles
+
+The Unicode `self_reference.txt` and `self_reference_with_edge.txt` cases use rounded ordinary
+wire turns. Their complete local output expectations live beside the executable inventory in
+`tests/graph_fixture.rs`; the copied source bytes remain unchanged. These two strict snapshots
+retain the exact upstream geometry, labels, arrow positions, rectangular node contours and branch
+junctions. An additional comparison permits only the four equivalent corner-glyph substitutions
+between the local expectation and its copied output. They are style decisions, not tolerated
+layout gaps. All 79 original graph cases remain covered.
+
 ## Named Gaps
 
 ASCII:
@@ -74,6 +85,7 @@ ASCII:
 - `comments.txt`
 - `duplicate_edge_labels.txt`
 - `graph_tb_direction.txt`
+- `multiline_single_node.txt`
 - `preserve_order_of_definition.txt`
 - `subgraph_complex_nested.txt`
 - `subgraph_complex_mixed.txt`
@@ -88,6 +100,7 @@ ASCII:
 - `tight_arrow_mixed.txt`
 - `two_layer_single_graph.txt`
 - `two_layer_single_graph_longer_names.txt`
+- `two_root_nodes_longer_names.txt`
 
 Unicode:
 
@@ -103,10 +116,13 @@ Unicode:
 - `tight_arrow_mixed.txt`
 - `two_layer_single_graph_longer_names.txt`
 - `two_layer_single_graph.txt`
+- `two_root_nodes_longer_names.txt`
 
 ## Executable Evidence
 
 - `graph_fixture_exact_subset_matches_upstream` protects the remaining byte oracle.
+- `graph_fixture_style_corrections_keep_exact_geometry_and_rectangular_node_contours` protects
+  the two strict Unicode style expectations without rewriting copied fixture bytes.
 - `graph_fixture_named_corrections_preserve_closed_compound_frames` protects strict corrected
   snapshots and frame/node geometry independently of copied output.
 - `graph_fixture_named_gaps_preserve_visible_text_and_render` prevents named differences from

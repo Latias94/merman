@@ -424,6 +424,35 @@ const GRAPH_FIXTURE_CORRECTIONS: &[GraphFixture] = &[
     graph_fixture("ascii", "subgraph_two_separate.txt"),
 ];
 
+// These local snapshots change only ordinary wire turns, preserving the copied
+// inputs, geometry, rectangular contours, junctions and marker positions exactly.
+const GRAPH_FIXTURE_STYLE_CORRECTIONS: &[(GraphFixture, &str)] = &[
+    (
+        graph_fixture("extended-chars", "self_reference.txt"),
+        concat!(
+            "┌───┐  \n",
+            "│   │  \n",
+            "│ A ├─╮\n",
+            "│   │ │\n",
+            "└───┘ │\n",
+            "  ▲   │\n",
+            "  ╰───╯\n",
+        ),
+    ),
+    (
+        graph_fixture("extended-chars", "self_reference_with_edge.txt"),
+        concat!(
+            "┌───┐     ┌───┐\n",
+            "│   │     │   │\n",
+            "│ A ├──┬─►│ B │\n",
+            "│   │  │  │   │\n",
+            "└───┘  │  └───┘\n",
+            "  ▲    │       \n",
+            "  ╰────╯       \n",
+        ),
+    ),
+];
+
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(input, ParseOptions::strict())
@@ -477,7 +506,12 @@ fn graph_fixture_exact_subset_matches_upstream() {
     let mut exact_count = 0;
     let mut mismatches = Vec::new();
     for fixture in GRAPH_FIXTURE_CORPUS {
-        if gaps.contains(&fixture.key()) || corrections.contains(&fixture.key()) {
+        if gaps.contains(&fixture.key())
+            || corrections.contains(&fixture.key())
+            || GRAPH_FIXTURE_STYLE_CORRECTIONS
+                .iter()
+                .any(|(styled, _)| styled == fixture)
+        {
             continue;
         }
         exact_count += 1;
@@ -491,7 +525,7 @@ fn graph_fixture_exact_subset_matches_upstream() {
     }
 
     assert_eq!(
-        exact_count, 30,
+        exact_count, 28,
         "the immutable exact subset must remain explicit"
     );
     assert!(
@@ -499,6 +533,39 @@ fn graph_fixture_exact_subset_matches_upstream() {
         "copied graph fixtures no longer match exactly:\n{}",
         mismatches.join("\n")
     );
+}
+
+#[test]
+fn graph_fixture_style_corrections_keep_exact_geometry_and_rectangular_node_contours() {
+    for (fixture, expected) in GRAPH_FIXTURE_STYLE_CORRECTIONS {
+        let (input, copied) = split_fixture(&fixture_path(*fixture));
+        assert_ne!(
+            *expected,
+            copied,
+            "{} must retain a style change",
+            fixture.key()
+        );
+        assert_eq!(expected.chars().count(), copied.chars().count());
+        for (styled, original) in expected.chars().zip(copied.chars()) {
+            assert!(
+                styled == original
+                    || matches!(
+                        (styled, original),
+                        ('╭', '┌') | ('╮', '┐') | ('╰', '└') | ('╯', '┘')
+                    ),
+                "{} permits only equivalent corner glyphs",
+                fixture.key()
+            );
+        }
+        let rendered = render_flowchart(&input, &fixture.options())
+            .unwrap_or_else(|error| panic!("{}: {error}", fixture.key()));
+        assert_eq!(
+            rendered,
+            *expected,
+            "{} styled output changed",
+            fixture.key()
+        );
+    }
 }
 
 #[test]
@@ -827,10 +894,18 @@ fn graph_fixture_gap_inventory_covers_all_graph_fixtures() {
     let corpus = graph_fixture_keys(GRAPH_FIXTURE_CORPUS);
     let gaps = graph_fixture_keys(GRAPH_FIXTURE_GAPS);
     let corrections = graph_fixture_keys(GRAPH_FIXTURE_CORRECTIONS);
+    let style_corrections = GRAPH_FIXTURE_STYLE_CORRECTIONS
+        .iter()
+        .map(|(fixture, _)| fixture.key())
+        .collect::<BTreeSet<_>>();
     assert_eq!(corpus.len(), GRAPH_FIXTURE_CORPUS.len());
     assert_eq!(gaps.len(), GRAPH_FIXTURE_GAPS.len());
     assert_eq!(corrections.len(), GRAPH_FIXTURE_CORRECTIONS.len());
     assert_eq!((corpus.len(), gaps.len(), corrections.len()), (79, 42, 7));
+    assert_eq!(style_corrections.len(), 2);
+    assert!(style_corrections.is_subset(&corpus));
+    assert!(style_corrections.is_disjoint(&gaps));
+    assert!(style_corrections.is_disjoint(&corrections));
     assert!(
         corrections.is_subset(&corpus),
         "every correction must belong to the copied corpus"
