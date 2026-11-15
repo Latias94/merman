@@ -152,6 +152,45 @@ fn flowchart_one_cell_text_source_keeps_its_branch_contact() {
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
+fn flowchart_merge_keeps_private_conditions_and_one_shared_arrow_in_all_directions() {
+    for (direction, ascii_arrow, unicode_arrow) in [
+        ("LR", '>', '►'),
+        ("RL", '<', '◄'),
+        ("TD", 'v', '▼'),
+        ("BT", '^', '▲'),
+    ] {
+        let declarations = format!("flowchart {direction}\nA[Alpha]\nB[Beta]\nS[Sink]\n");
+        for (options, arrow) in [
+            (AsciiRenderOptions::ascii(), ascii_arrow),
+            (AsciiRenderOptions::unicode(), unicode_arrow),
+        ] {
+            let mut expected = None;
+            for edges in [
+                "A -->|one| S\nB -->|two| S\n",
+                "B -->|two| S\nA -->|one| S\n",
+            ] {
+                let rendered = render(&format!("{declarations}{edges}"), options);
+                assert_progresses(&rendered, direction, &["Alpha", "one", "Sink"]);
+                assert_progresses(&rendered, direction, &["Beta", "two", "Sink"]);
+                assert_eq!(rendered.matches("one").count(), 1, "{rendered}");
+                assert_eq!(rendered.matches("two").count(), 1, "{rendered}");
+                assert_eq!(
+                    rendered.chars().filter(|ch| *ch == arrow).count(),
+                    1,
+                    "{rendered}"
+                );
+                if let Some(expected) = &expected {
+                    assert_eq!(&rendered, expected);
+                } else {
+                    expected = Some(rendered);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
 fn flowchart_small_holdout_keeps_endpoints_and_conditions_in_authored_direction() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(

@@ -122,11 +122,18 @@ above remains the pre-refactor baseline. Layer alignment alone does not resolve 
 shared terminal capacity, or the full-field width fallback; the common-case presentation floor
 still requires joint allocation and route reconsideration.
 
-Compatible common-source branches now retain an explicit shared-channel allocation through route
-commitment and bounded replay. In the original unbounded `fan-out-12-lr` input, the current output
-is 29×115 with one trunk and private target branches, compared with the frozen 31×115 baseline's
-independent wrapping wires. The unchanged 115-row height remains a presentation gap against Grok's
-qualified 28×48 result. The 80-column sixteen-way and long-label requests still emit the existing
+Compatible common-source branches and common-target merges now retain an explicit shared-channel
+allocation through route commitment and bounded replay. In the original unbounded `fan-out-12-lr`
+input, the current output is 29×115 with one trunk and private target branches, compared with the
+frozen 31×115 baseline's independent wrapping wires. The `fan-in-12-lr` output is 26×115 with one
+merge channel and shared target head, compared with the frozen 28×117 baseline. Source markers and
+conditions remain private, and incompatible target marker kinds cannot share a head. An edge
+cannot join two independent channel groups and imply additional relationships. Group proposals
+remain subject to label and marker occupancy; a crowded private label can retain an independent
+route instead of joining the proposed channel.
+
+The unchanged 115-row height remains a presentation gap against Grok's qualified 28×48 fan-out
+and 25×48 fan-in results. The 80-column sixteen-way and long-label requests still emit the existing
 full-field fallback; channel improvements do not establish the complete comparison floor.
 
 ## Reference Corpus Snapshot

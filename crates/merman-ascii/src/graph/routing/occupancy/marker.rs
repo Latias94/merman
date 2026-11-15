@@ -187,6 +187,9 @@ fn allocate_pending_markers(
                 route_index: marker.route_index,
                 endpoint: marker.endpoint,
                 point_direction: candidate.point_direction,
+                shared_group: routes[marker.route_index]
+                    .owner
+                    .shared_marker_group(marker.endpoint, cell.coord),
             },
             resources,
             diagram_type,

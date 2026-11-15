@@ -23,7 +23,7 @@ fn assert_readable_target_heads(rendered: &str, expected: usize) {
     assert_eq!(
         markers.len(),
         expected,
-        "every semantic edge must retain its target marker:\n{rendered}"
+        "the presentation must retain its admitted target markers:\n{rendered}"
     );
 
     for &(x, y, ch) in &markers {
@@ -77,7 +77,7 @@ fn assert_node_order(rendered: &str, direction: &str, labels: &[&str]) {
 }
 
 #[test]
-fn four_to_six_incoming_edges_keep_unstacked_target_heads() {
+fn four_to_six_incoming_edges_share_one_unstacked_target_head() {
     for incoming in 4..=6 {
         for direction in ["TD", "BT", "LR", "RL"] {
             let mut source = format!("flowchart {direction}\n");
@@ -88,7 +88,7 @@ fn four_to_six_incoming_edges_keep_unstacked_target_heads() {
                 let rendered = render_flowchart(&source, &options).unwrap_or_else(|error| {
                     panic!("{incoming} incoming edges must render ({direction}): {error}")
                 });
-                assert_readable_target_heads(&rendered, incoming);
+                assert_readable_target_heads(&rendered, 1);
                 assert_labels_once(&rendered, &["T"]);
                 for node in ["A", "B", "C", "D", "E", "F"].into_iter().take(incoming) {
                     assert_labels_once(&rendered, &[node]);
@@ -100,7 +100,7 @@ fn four_to_six_incoming_edges_keep_unstacked_target_heads() {
 }
 
 #[test]
-fn wide_fan_in_and_marked_fan_out_keep_independent_heads_at_zero_padding() {
+fn wide_fan_in_shares_its_head_and_marked_fan_out_stays_independent_at_zero_padding() {
     for (incoming, marked_source) in [
         (8, false),
         (12, false),
@@ -125,10 +125,22 @@ fn wide_fan_in_and_marked_fan_out_keep_independent_heads_at_zero_padding() {
                 });
                 assert_readable_target_heads(
                     &rendered,
-                    incoming * if marked_source { 2 } else { 1 },
+                    if marked_source { incoming * 2 } else { 1 },
                 );
+                let common = if marked_source { "SOURCE" } else { "TARGET" };
+                assert_labels_once(&rendered, &[common]);
                 for index in 1..=incoming {
-                    assert_labels_once(&rendered, &[&format!("N{index:02}")]);
+                    let label = format!("N{index:02}");
+                    assert_labels_once(&rendered, &[&label]);
+                    assert_node_order(
+                        &rendered,
+                        direction,
+                        &if marked_source {
+                            [common, &label]
+                        } else {
+                            [&label, common]
+                        },
+                    );
                 }
             }
         }
@@ -167,15 +179,15 @@ fn dense_marked_fanout_keeps_every_head_readable_across_profiles_and_padding() {
 }
 
 #[test]
-fn six_way_branch_and_merge_preserves_all_twelve_target_heads() {
+fn six_way_branch_and_merge_preserves_each_branch_and_one_shared_merge_head() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(
             "flowchart {direction}\nS --> A & B & C & D & E & F\nA & B & C & D & E & F --> T\n"
         );
         for options in readability_options() {
             let rendered = render_flowchart(&source, &options)
-                .expect("a six-way branch and merge must keep every target marker readable");
-            assert_readable_target_heads(&rendered, 12);
+                .expect("a six-way branch and merge must keep every endpoint readable");
+            assert_readable_target_heads(&rendered, 7);
             assert_labels_once(&rendered, &["S", "A", "B", "C", "D", "E", "F", "T"]);
             for node in ["A", "B", "C", "D", "E", "F"] {
                 assert_node_order(&rendered, direction, &["S", node, "T"]);
@@ -258,15 +270,15 @@ fn mixed_stroke_skip_and_merge_routes_independently_of_edge_order() {
 }
 
 #[test]
-fn wide_labeled_feedback_and_merge_keep_unstacked_target_heads() {
+fn wide_labeled_feedback_keeps_private_heads_beside_a_shared_merge() {
     for direction in ["TD", "BT", "LR", "RL"] {
         let source = format!(
             "flowchart {direction}\nS[開始] --> A[確認待ち]\nA -->|承認済み| B[保存先]\nA -->|差し戻し| C[修正待ち]\nC -->|再試行| A\nB --> T[完了]\nC --> T\n"
         );
         for options in readability_options() {
             let rendered = render_flowchart(&source, &options)
-                .expect("wide labels must leave independent heads for feedback and merge edges");
-            assert_readable_target_heads(&rendered, 6);
+                .expect("wide labels must leave readable feedback and a shared merge head");
+            assert_readable_target_heads(&rendered, 5);
             assert_labels_once(
                 &rendered,
                 &[

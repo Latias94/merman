@@ -121,7 +121,7 @@ fn complete_fanouts_honor_joint_channels_in_both_orientations() {
                 let start = scene.routes[0].plan.attachments.unwrap().start;
                 for route in &scene.routes {
                     assert_eq!(
-                        route.owner.shared_source_group(),
+                        route.owner.shared_channel_group(),
                         Some(0),
                         "a local path must not dismantle the joint channel: {direction:?}, {count}, {}",
                         route.owner.to
@@ -142,6 +142,79 @@ fn complete_fanouts_honor_joint_channels_in_both_orientations() {
                         route
                             .plan
                             .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                            .unwrap()
+                            .is_some()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn complete_fanins_keep_private_sources_and_share_one_target_marker() {
+    for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+        for count in [2, 8, 12, 16] {
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let mut graph = AsciiGraph::new(direction);
+                graph.add_node("target", "Collector");
+                for index in 0..count {
+                    let id = format!("source-{index:02}");
+                    graph.add_node(&id, format!("Job {index}"));
+                    graph.add_edge_with_attrs(
+                        &id,
+                        "target",
+                        GraphEdgeAttrs {
+                            start_marker: if index % 2 == 0 {
+                                GraphEdgeMarker::Circle
+                            } else {
+                                GraphEdgeMarker::Cross
+                            },
+                            end_marker: GraphEdgeMarker::Point,
+                            ..GraphEdgeAttrs::default()
+                        },
+                    );
+                }
+                let layout = layout_graph(&graph, &options);
+                let mut resources = unbounded_resources();
+                let scene = prepare_route_scene_with_resources(
+                    &graph,
+                    &layout,
+                    &graph.edges,
+                    &GraphCharset::for_options(&options),
+                    &mut resources,
+                )
+                .unwrap();
+                assert_eq!(scene.routes.len(), count);
+                let end = scene.routes[0].plan.attachments.unwrap().end;
+                let marker = scene.routes[0]
+                    .plan
+                    .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                    .unwrap()
+                    .unwrap()
+                    .coord;
+                let mut sources = std::collections::HashSet::new();
+                for route in &scene.routes {
+                    assert!(
+                        route.owner.allocated_branch.is_some(),
+                        "a merge needs a joint channel: {direction:?}, {count}, {}",
+                        route.owner.from
+                    );
+                    let ports = route.plan.attachments.unwrap();
+                    assert_eq!(ports.end, end);
+                    assert!(sources.insert(ports.start.contact));
+                    assert_eq!(ports.end.outward, ports.start.outward.opposite());
+                    assert_allocated_geometry(route);
+                    let cell = route
+                        .plan
+                        .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(cell.coord, marker);
+                    assert!(
+                        route
+                            .plan
+                            .materialized_marker_cell(MarkerEndpoint::Start, "flowchart")
                             .unwrap()
                             .is_some()
                     );
@@ -217,7 +290,7 @@ fn an_unrelated_transverse_crossing_does_not_dismantle_a_joint_channel() {
         .iter()
         .filter(|route| route.owner.from == "source")
     {
-        assert_eq!(route.owner.shared_source_group(), Some(1));
+        assert_eq!(route.owner.shared_channel_group(), Some(1));
         assert_allocated_geometry(route);
     }
 }

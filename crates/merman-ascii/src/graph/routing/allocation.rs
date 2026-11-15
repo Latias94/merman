@@ -1,9 +1,9 @@
-//! Whole-scene candidates for compatible common-source branches in flat, canonical scenes.
+//! Whole-scene candidates for compatible branching and merging channels in flat scenes.
 //! Admission against node, route, label, and marker occupancy remains the caller's job.
 
 use super::layout_allocation_failed;
 use super::path::StepDirection;
-use super::plan::{NodeAttachment, NodeAttachments};
+use super::plan::{MarkerEndpoint, NodeAttachment, NodeAttachments};
 use crate::error::Result;
 use crate::graph::charset::GraphCharset;
 use crate::graph::label::try_measure_edge_label;
@@ -24,13 +24,14 @@ pub(super) struct BranchAllocation {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct AllocatedBranch {
-    /// The first canonical edge index of this complete common-source group.
+    /// The first canonical edge index of this complete branch or merge group.
     pub(super) group: usize,
+    pub(super) shared_endpoint: MarkerEndpoint,
     pub(super) attachments: NodeAttachments,
     /// Source berth, source/channel turn, channel/target turn, target berth.
     pub(super) points: [CanvasCoord; 4],
-    /// Inclusive host endpoints strictly inside the private target leg. The caller must use
-    /// these instead of choosing a label host on the shared source stem or channel.
+    /// Inclusive host endpoints strictly inside the private leg. The caller must use
+    /// these instead of choosing a label host on the shared stem or channel.
     /// A missing host is allowed only for an edge without a nonempty normalized label.
     pub(super) label_host: Option<[CanvasCoord; 2]>,
 }
@@ -40,12 +41,27 @@ struct IndexedEdge {
     canonical: usize,
     source: usize,
     target: usize,
+    source_cross: usize,
     target_cross: usize,
 }
 
 impl IndexedEdge {
     fn unordered_pair(self) -> (usize, usize) {
         (self.source.min(self.target), self.source.max(self.target))
+    }
+
+    fn shared_node(self, endpoint: MarkerEndpoint) -> usize {
+        match endpoint {
+            MarkerEndpoint::Start => self.source,
+            MarkerEndpoint::End => self.target,
+        }
+    }
+
+    fn private_cross(self, endpoint: MarkerEndpoint) -> usize {
+        match endpoint {
+            MarkerEndpoint::Start => self.target_cross,
+            MarkerEndpoint::End => self.source_cross,
+        }
     }
 }
 
@@ -118,12 +134,12 @@ impl BranchAllocation {
             }
         }
 
-        resources.charge_layout_work(layout.nodes.len())?;
-        let mut blocked_sources = Vec::new();
-        blocked_sources
+        resources.charge_layout_work_product(layout.nodes.len(), 2)?;
+        let mut blocked_endpoints = Vec::new();
+        blocked_endpoints
             .try_reserve_exact(layout.nodes.len())
             .map_err(|_| layout_allocation_failed())?;
-        blocked_sources.resize(layout.nodes.len(), false);
+        blocked_endpoints.resize(layout.nodes.len(), [false; 2]);
 
         resources.charge_layout_work(canonical_edges.len())?;
         let mut indexed = Vec::new();
@@ -141,17 +157,20 @@ impl BranchAllocation {
                 // An unresolved real endpoint must never alias an existing endpoint.
                 return Ok(Self::default());
             };
-            blocked_sources[source] |= source == target;
+            if source == target {
+                blocked_endpoints[source] = [true; 2];
+            }
             indexed.push(IndexedEdge {
                 canonical,
                 source,
                 target,
+                source_cross: scene.cross_center(&layout.nodes[source]),
                 target_cross: scene.cross_center(&layout.nodes[target]),
             });
         }
 
         // A repeated unordered pair means duplicate targets, parallel multiplicity, or
-        // reciprocal edges. Block every participating source, including invisible edges,
+        // reciprocal edges. Block every participating endpoint, including invisible edges,
         // without an adjacency matrix or a per-edge scan of the rest of the scene.
         scene.execution.checkpoint(OperationPhase::Layout)?;
         charge_sort_work(indexed.len(), resources)?;
@@ -160,14 +179,13 @@ impl BranchAllocation {
         for pair in indexed.windows(2) {
             scene.scan()?;
             if pair[0].unordered_pair() == pair[1].unordered_pair() {
-                blocked_sources[pair[0].source] = true;
-                blocked_sources[pair[1].source] = true;
+                for edge in pair {
+                    blocked_endpoints[edge.source][0] = true;
+                    blocked_endpoints[edge.target][1] = true;
+                }
             }
         }
 
-        charge_sort_work(indexed.len(), resources)?;
-        indexed.sort_unstable_by_key(|edge| (edge.source, edge.target_cross, edge.canonical));
-        scene.execution.checkpoint(OperationPhase::Layout)?;
         resources.charge_layout_work(canonical_edges.len())?;
         let mut branches = Vec::new();
         branches
@@ -175,19 +193,35 @@ impl BranchAllocation {
             .map_err(|_| layout_allocation_failed())?;
         branches.resize(canonical_edges.len(), None);
 
-        let mut first = 0;
-        while first < indexed.len() {
-            scene.scan()?;
-            let source = indexed[first].source;
-            let mut end = resources.checked_work_add(first, 1)?;
-            while end < indexed.len() && indexed[end].source == source {
+        // An edge belongs to at most one channel group. Source groups have deterministic
+        // precedence; merging two branch trees could otherwise imply all-to-all relations.
+        for (endpoint_index, endpoint) in [MarkerEndpoint::Start, MarkerEndpoint::End]
+            .into_iter()
+            .enumerate()
+        {
+            charge_sort_work(indexed.len(), resources)?;
+            indexed.sort_unstable_by_key(|edge| {
+                (
+                    edge.shared_node(endpoint),
+                    edge.private_cross(endpoint),
+                    edge.canonical,
+                )
+            });
+            scene.execution.checkpoint(OperationPhase::Layout)?;
+            let mut first = 0;
+            while first < indexed.len() {
                 scene.scan()?;
-                end = resources.checked_work_add(end, 1)?;
+                let shared = indexed[first].shared_node(endpoint);
+                let mut end = resources.checked_work_add(first, 1)?;
+                while end < indexed.len() && indexed[end].shared_node(endpoint) == shared {
+                    scene.scan()?;
+                    end = resources.checked_work_add(end, 1)?;
+                }
+                if !blocked_endpoints[shared][endpoint_index] && end - first >= 2 {
+                    scene.allocate_group(&indexed[first..end], endpoint, &mut branches)?;
+                }
+                first = end;
             }
-            if !blocked_sources[source] && end - first >= 2 {
-                scene.allocate_group(&indexed[first..end], &mut branches)?;
-            }
-            first = end;
         }
         execution.checkpoint(OperationPhase::Layout)?;
         Ok(Self { branches })
@@ -265,6 +299,7 @@ impl AllocationScene<'_> {
     fn allocate_group(
         &self,
         group: &[IndexedEdge],
+        shared_endpoint: MarkerEndpoint,
         branches: &mut [Option<AllocatedBranch>],
     ) -> Result<()> {
         let mut first_canonical = usize::MAX;
@@ -274,36 +309,61 @@ impl AllocationScene<'_> {
             let edge = &self.edges[indexed.canonical];
             let baseline = &self.edges[group[0].canonical];
             if !edge.stroke.is_visible()
-                || edge.start_marker != GraphEdgeMarker::Open
+                || branches[indexed.canonical].is_some()
+                || match shared_endpoint {
+                    MarkerEndpoint::Start => edge.start_marker != GraphEdgeMarker::Open,
+                    MarkerEndpoint::End => edge.end_marker != baseline.end_marker,
+                }
                 || edge.stroke != baseline.stroke
                 || edge.style != baseline.style
-                // Distinct targets on the same intercept would share their target legs.
-                || previous_cross == Some(indexed.target_cross)
+                // Private legs cannot share an intercept and erase endpoint identity.
+                || previous_cross == Some(indexed.private_cross(shared_endpoint))
             {
                 return Ok(());
             }
-            previous_cross = Some(indexed.target_cross);
+            previous_cross = Some(indexed.private_cross(shared_endpoint));
             first_canonical = first_canonical.min(indexed.canonical);
         }
 
-        let source = &self.layout.nodes[group[0].source];
-        let Some(start) = self.port(source, true)? else {
+        let shared = &self.layout.nodes[group[0].shared_node(shared_endpoint)];
+        let is_source = shared_endpoint == MarkerEndpoint::Start;
+        let Some(shared_port) = self.port(shared, is_source)? else {
             return Ok(());
         };
-        let source_far = if self.horizontal {
-            source.right()
+        let shared_boundary = if is_source {
+            if self.horizontal {
+                shared.right()
+            } else {
+                shared.bottom()
+            }
+        } else if self.horizontal {
+            shared.x
         } else {
-            source.bottom()
+            shared.y
         };
         let clearance = self
             .resources
             .checked_grid_add(READING_MARGIN, TURN_CELLS)?;
-        // Use the first available channel to maximize the private target label spans.
+        // Use the closest channel to maximize the private label spans.
         // Bounding envelopes conservatively contain every actual shape contour.
-        let channel = self.resources.checked_grid_add(source_far, clearance)?;
+        let channel = if is_source {
+            self.resources
+                .checked_grid_add(shared_boundary, clearance)?
+        } else {
+            let Some(channel) = shared_boundary.checked_sub(clearance) else {
+                return Ok(());
+            };
+            channel
+        };
         for (position, indexed) in group.iter().enumerate() {
             self.scan()?;
-            let branch = self.branch(*indexed, first_canonical, start, source_far, channel)?;
+            let branch = self.branch(
+                *indexed,
+                first_canonical,
+                shared_endpoint,
+                shared_port,
+                channel,
+            )?;
             let Some(branch) = branch else {
                 // A group is all-or-nothing; never leave a compatible subset after a late
                 // target, authored-length, or full-label fit failure.
@@ -322,11 +382,17 @@ impl AllocationScene<'_> {
         &self,
         indexed: IndexedEdge,
         group: usize,
-        start: Port,
-        source_far: usize,
+        shared_endpoint: MarkerEndpoint,
+        shared_port: Port,
         channel: usize,
     ) -> Result<Option<AllocatedBranch>> {
         let edge = &self.edges[indexed.canonical];
+        let source = &self.layout.nodes[indexed.source];
+        let source_far = if self.horizontal {
+            source.right()
+        } else {
+            source.bottom()
+        };
         let target = &self.layout.nodes[indexed.target];
         let target_near = if self.horizontal { target.x } else { target.y };
         // Match layout's two additional main-axis cells per extra authored length.
@@ -347,28 +413,40 @@ impl AllocationScene<'_> {
         {
             return Ok(None);
         }
-        let Some(end) = self.port(target, false)? else {
+        let private_port = match shared_endpoint {
+            MarkerEndpoint::Start => self.port(target, false)?,
+            MarkerEndpoint::End => self.port(source, true)?,
+        };
+        let Some(private_port) = private_port else {
             return Ok(None);
+        };
+        let (start, end) = match shared_endpoint {
+            MarkerEndpoint::Start => (shared_port, private_port),
+            MarkerEndpoint::End => (private_port, shared_port),
         };
         let points = [
             start.berth,
-            self.coord(
-                channel,
-                self.cross_center(&self.layout.nodes[indexed.source]),
-            ),
+            self.coord(channel, indexed.source_cross),
             self.coord(channel, indexed.target_cross),
             end.berth,
         ];
 
-        // Exclude the channel turn and the target's reading/marker berth. These hosts
-        // cannot overwrite the shared channel, even when a target aligns with the source.
-        let host_first = self.resources.checked_grid_add(channel, TURN_CELLS)?;
-        let host_last =
-            target_near.checked_sub(self.resources.checked_grid_add(READING_MARGIN, 1)?);
+        // Exclude the channel turn and the private terminal's reading/marker berth.
+        let (host_first, host_last) = match shared_endpoint {
+            MarkerEndpoint::Start => (
+                self.resources.checked_grid_add(channel, TURN_CELLS)?,
+                target_near.checked_sub(clearance),
+            ),
+            MarkerEndpoint::End => (
+                self.resources.checked_grid_add(source_far, clearance)?,
+                channel.checked_sub(TURN_CELLS),
+            ),
+        };
+        let private_cross = indexed.private_cross(shared_endpoint);
         let label_host = host_last.filter(|last| *last >= host_first).map(|last| {
             [
-                self.coord(host_first, indexed.target_cross),
-                self.coord(last, indexed.target_cross),
+                self.coord(host_first, private_cross),
+                self.coord(last, private_cross),
             ]
         });
         if let Some(raw) = edge.label.as_deref() {
@@ -394,6 +472,7 @@ impl AllocationScene<'_> {
         }
         Ok(Some(AllocatedBranch {
             group,
+            shared_endpoint,
             attachments: NodeAttachments {
                 start: start.attachment,
                 end: end.attachment,
@@ -454,6 +533,25 @@ mod tests {
             node.grid = GridCoord { x: 999, y: 999 };
         }
         layout.grid_aligned = false;
+        (graph, layout, charset)
+    }
+
+    fn fanin(
+        direction: GraphDirection,
+        count: usize,
+        shape: GraphNodeShape,
+    ) -> (AsciiGraph, GraphLayout, GraphCharset) {
+        let (mut graph, mut layout, charset) = fanout(direction, count, shape);
+        for edge in &mut graph.edges {
+            std::mem::swap(&mut edge.from, &mut edge.to);
+        }
+        for node in &mut layout.nodes {
+            if direction == GraphDirection::LeftRight {
+                node.x = 128 - node.x - node.width;
+            } else {
+                node.y = 128 - node.y - node.height;
+            }
+        }
         (graph, layout, charset)
     }
 
@@ -522,6 +620,98 @@ mod tests {
                 assert!(allocation.get(count).is_none());
             }
         }
+    }
+
+    #[test]
+    fn merging_preserves_private_source_markers_and_labels_for_every_shared_marker_kind() {
+        for direction in DIRECTIONS {
+            for marker in [
+                GraphEdgeMarker::Open,
+                GraphEdgeMarker::Point,
+                GraphEdgeMarker::Circle,
+                GraphEdgeMarker::Cross,
+            ] {
+                let (mut graph, layout, charset) = fanin(direction, 12, GraphNodeShape::Diamond);
+                for (index, edge) in graph.edges.iter_mut().enumerate() {
+                    edge.end_marker = marker;
+                    edge.start_marker = if index % 2 == 0 {
+                        GraphEdgeMarker::Circle
+                    } else {
+                        GraphEdgeMarker::Cross
+                    };
+                    edge.label = Some(format!("if-{index}"));
+                }
+                let original = graph.clone();
+                let allocation = allocate(&graph, &layout, &charset);
+                assert_eq!(graph, original);
+                assert_eq!(allocation, allocate(&graph, &layout, &charset));
+                let common = allocation.get(0).unwrap();
+                for (index, edge) in graph.edges.iter().enumerate() {
+                    let branch = allocation.get(index).unwrap();
+                    assert_eq!(branch.shared_endpoint, MarkerEndpoint::End);
+                    assert_eq!(branch.group, 0);
+                    assert_eq!(branch.points[2..], common.points[2..]);
+                    assert_eq!(branch.attachments.end, common.attachments.end);
+                    let source = layout
+                        .nodes
+                        .iter()
+                        .find(|node| node.id == edge.from)
+                        .unwrap();
+                    let (source_far, channel, host_start, host_end) =
+                        if direction == GraphDirection::LeftRight {
+                            let [first, last] = branch.label_host.unwrap();
+                            assert_eq!(first.y, source.center_y());
+                            assert_eq!(last.y, source.center_y());
+                            (source.right(), branch.points[1].x, first.x, last.x)
+                        } else {
+                            let [first, last] = branch.label_host.unwrap();
+                            assert_eq!(first.x, source.center_x());
+                            assert_eq!(last.x, source.center_x());
+                            (source.bottom(), branch.points[1].y, first.y, last.y)
+                        };
+                    assert!(host_start > source_far + 1);
+                    assert!(host_end < channel);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn merging_rejects_incompatible_markers_styles_and_parallel_or_reciprocal_edges() {
+        for direction in DIRECTIONS {
+            for mismatch in 0..7 {
+                let (mut graph, layout, charset) = fanin(direction, 8, GraphNodeShape::Rect);
+                match mismatch {
+                    0 => graph.edges[7].end_marker = GraphEdgeMarker::Circle,
+                    1 => graph.edges[7].stroke = GraphEdgeStroke::Dotted,
+                    2 => graph.edges[7].stroke = GraphEdgeStroke::Invisible,
+                    3 => graph.edges[7].style.arrow = Some(AsciiRgb::new(20, 40, 60)),
+                    4 => graph.add_edge("target-00", "source"),
+                    5 => graph.add_edge("source", "target-00"),
+                    _ => graph.add_edge("source", "source"),
+                }
+                assert_unallocated(&allocate(&graph, &layout, &charset), graph.edges.len());
+            }
+        }
+    }
+
+    #[test]
+    fn a_route_cannot_connect_two_independent_shared_channel_groups() {
+        let (mut graph, mut layout, charset) =
+            fanout(GraphDirection::LeftRight, 2, GraphNodeShape::Rect);
+        graph.add_node("other", "Other");
+        graph.add_edge("other", "target-00");
+        let mut other = layout.nodes[0].clone();
+        other.id = "other".into();
+        other.y += 30;
+        layout.nodes.push(other);
+        let allocation = allocate(&graph, &layout, &charset);
+        for index in [0, 1] {
+            let branch = allocation.get(index).unwrap();
+            assert_eq!(branch.group, 0);
+            assert_eq!(branch.shared_endpoint, MarkerEndpoint::Start);
+        }
+        assert!(allocation.get(2).is_none());
     }
 
     #[test]
@@ -712,28 +902,34 @@ mod tests {
     #[test]
     fn labels_fit_exactly_on_private_legs_and_never_fall_back_to_the_shared_channel() {
         for direction in DIRECTIONS {
-            let (mut graph, layout, charset) = fanout(direction, 8, GraphNodeShape::Rect);
-            let initial = allocate(&graph, &layout, &charset);
-            let [first, last] = initial.get(7).unwrap().label_host.unwrap();
-            let capacity = first.x.abs_diff(last.x) + first.y.abs_diff(last.y) + 1;
-            graph.edges[7].label = Some(if direction == GraphDirection::LeftRight {
-                "x".repeat(capacity)
-            } else {
-                std::iter::repeat_n("x", capacity)
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            });
-            let exact = allocate(&graph, &layout, &charset);
-            assert!((0..8).all(|index| exact.get(index).is_some()));
-            assert_eq!(exact.get(7).unwrap().label_host, Some([first, last]));
-            graph.edges[7].label.as_mut().unwrap().push_str(
-                if direction == GraphDirection::LeftRight {
-                    "x"
+            for merging in [false, true] {
+                let (mut graph, layout, charset) = if merging {
+                    fanin(direction, 8, GraphNodeShape::Rect)
                 } else {
-                    "\nx"
-                },
-            );
-            assert_unallocated(&allocate(&graph, &layout, &charset), graph.edges.len());
+                    fanout(direction, 8, GraphNodeShape::Rect)
+                };
+                let initial = allocate(&graph, &layout, &charset);
+                let [first, last] = initial.get(7).unwrap().label_host.unwrap();
+                let capacity = first.x.abs_diff(last.x) + first.y.abs_diff(last.y) + 1;
+                graph.edges[7].label = Some(if direction == GraphDirection::LeftRight {
+                    "x".repeat(capacity)
+                } else {
+                    std::iter::repeat_n("x", capacity)
+                        .collect::<Vec<_>>()
+                        .join("\n")
+                });
+                let exact = allocate(&graph, &layout, &charset);
+                assert!((0..8).all(|index| exact.get(index).is_some()));
+                assert_eq!(exact.get(7).unwrap().label_host, Some([first, last]));
+                graph.edges[7].label.as_mut().unwrap().push_str(
+                    if direction == GraphDirection::LeftRight {
+                        "x"
+                    } else {
+                        "\nx"
+                    },
+                );
+                assert_unallocated(&allocate(&graph, &layout, &charset), graph.edges.len());
+            }
         }
     }
 
@@ -792,42 +988,47 @@ mod tests {
 
     #[test]
     fn exact_work_is_admitted_and_one_unit_less_fails() {
-        let (graph, layout, charset) =
-            fanout(GraphDirection::TopDown, 16, GraphNodeShape::LeanLeft);
-        let policy = AsciiResourcePolicy::unbounded();
-        let measured = ResourceContext::new(policy);
-        let expected = BranchAllocation::try_new(
-            &graph,
-            &layout,
-            &graph.edges,
-            &charset,
-            &measured,
-            AsciiExecution::for_test(&policy),
-        )
-        .unwrap();
-        let work = measured.layout_work_used();
-        for (limit, succeeds) in [(work, true), (work - 1, false)] {
-            let policy = policy
-                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
-                .unwrap();
-            let resources = ResourceContext::new(policy);
-            let result = BranchAllocation::try_new(
+        for merging in [false, true] {
+            let (graph, layout, charset) = if merging {
+                fanin(GraphDirection::TopDown, 16, GraphNodeShape::LeanLeft)
+            } else {
+                fanout(GraphDirection::TopDown, 16, GraphNodeShape::LeanLeft)
+            };
+            let policy = AsciiResourcePolicy::unbounded();
+            let measured = ResourceContext::new(policy);
+            let expected = BranchAllocation::try_new(
                 &graph,
                 &layout,
                 &graph.edges,
                 &charset,
-                &resources,
+                &measured,
                 AsciiExecution::for_test(&policy),
-            );
-            if succeeds {
-                assert_eq!(result.unwrap(), expected);
-                assert_eq!(resources.layout_work_used(), work);
-            } else {
-                assert!(
-                    matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+            )
+            .unwrap();
+            let work = measured.layout_work_used();
+            for (limit, succeeds) in [(work, true), (work - 1, false)] {
+                let policy = policy
+                    .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                    .unwrap();
+                let resources = ResourceContext::new(policy);
+                let result = BranchAllocation::try_new(
+                    &graph,
+                    &layout,
+                    &graph.edges,
+                    &charset,
+                    &resources,
+                    AsciiExecution::for_test(&policy),
+                );
+                if succeeds {
+                    assert_eq!(result.unwrap(), expected);
+                    assert_eq!(resources.layout_work_used(), work);
+                } else {
+                    assert!(
+                        matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
                     if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
                         && details.actual == work && details.max == limit)
-                );
+                    );
+                }
             }
         }
     }

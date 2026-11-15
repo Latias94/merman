@@ -62,6 +62,7 @@ impl<'layout> SceneOccupancy<'layout> {
                             route_index,
                             endpoint,
                             point_direction: route.plan.marker_point_direction(endpoint),
+                            shared_group: route.owner.shared_marker_group(endpoint, cell.coord),
                         },
                         resources,
                         diagram_type,
@@ -190,6 +191,108 @@ mod tests {
                 scene.occupied_extent,
             )
         )
+    }
+
+    #[test]
+    fn removing_a_merge_contributor_preserves_the_shared_marker_with_dense_indices() {
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            for marker in [
+                GraphEdgeMarker::Point,
+                GraphEdgeMarker::Circle,
+                GraphEdgeMarker::Cross,
+            ] {
+                let mut graph = AsciiGraph::new(direction);
+                graph.add_node("target", "Target");
+                for id in ["a", "b", "c"] {
+                    graph.add_node(id, id);
+                    graph.add_edge(id, "target");
+                }
+                for (index, edge) in graph.edges.iter_mut().enumerate() {
+                    edge.end_marker = marker;
+                    edge.start_marker = if index % 2 == 0 {
+                        GraphEdgeMarker::Circle
+                    } else {
+                        GraphEdgeMarker::Cross
+                    };
+                    edge.label = Some(format!("if-{}", edge.from));
+                }
+                // Keep condition reading margins inside the private legs. This test owns
+                // replay of an admitted merge, rather than choosing a denser presentation.
+                let options = AsciiRenderOptions::unicode()
+                    .with_graph_padding_x(12)
+                    .with_graph_padding_y(12);
+                let charset = GraphCharset::for_options(&options);
+                let layout = layout_graph(&graph, &options);
+                let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+                let routes = crate::graph::routing::prepare_route_scene_with_resources(
+                    &graph,
+                    &layout,
+                    &graph.edges,
+                    &charset,
+                    &mut resources,
+                )
+                .unwrap()
+                .routes;
+                assert!(
+                    routes
+                        .iter()
+                        .all(|route| route.owner.allocated_branch.is_some()),
+                    "merge allocation was not retained: {direction:?}, {marker:?}, nodes={:?}, owners={:?}",
+                    layout.nodes,
+                    routes.iter().map(|route| &route.owner).collect::<Vec<_>>()
+                );
+                let common = routes[0]
+                    .plan
+                    .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                    .unwrap()
+                    .unwrap();
+                let scene =
+                    SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
+                let scene = scene
+                    .rebuild_for_routes(&routes, None, &mut resources, "flowchart")
+                    .unwrap();
+                let original = geometry(&scene);
+                for omitted in [None, Some(0), Some(1), Some(2)] {
+                    let rebuilt = scene
+                        .rebuild_for_routes(&routes, omitted, &mut resources, "flowchart")
+                        .unwrap();
+                    let retained = 3 - usize::from(omitted.is_some());
+                    assert_eq!(rebuilt.markers.len(), retained + 1);
+                    let representative = rebuilt.markers.get(&common.coord).unwrap();
+                    assert_eq!(representative.route_index, 0);
+                    assert_eq!(representative.shared_group, Some(0));
+                    assert_eq!(representative.endpoint, MarkerEndpoint::End);
+                    assert_eq!(rebuilt.route_bounds.len(), retained);
+                    for (old_index, route) in routes.iter().enumerate() {
+                        if omitted == Some(old_index) {
+                            continue;
+                        }
+                        let source_marker = route
+                            .plan
+                            .materialized_marker_cell(MarkerEndpoint::Start, "flowchart")
+                            .unwrap()
+                            .unwrap();
+                        let source = rebuilt.markers.get(&source_marker.coord).unwrap();
+                        assert_eq!(source.endpoint, MarkerEndpoint::Start);
+                        assert_eq!(source.shared_group, None);
+                        assert_eq!(
+                            source.route_index,
+                            old_index - usize::from(omitted.is_some_and(|index| index < old_index))
+                        );
+                        assert_eq!(route.plan.labels.len(), 1);
+                        let label = &route.plan.labels[0];
+                        for y in label.placement.y()..label.placement.y() + label.line_count() {
+                            for x in
+                                label.placement.x()..label.placement.x() + label.placement.width()
+                            {
+                                assert!(rebuilt.labels.contains(&CanvasCoord { x, y }));
+                            }
+                        }
+                    }
+                    assert_eq!(geometry(&scene), original);
+                }
+            }
+        }
     }
 
     #[test]

@@ -127,8 +127,21 @@ struct RouteOwner {
 }
 
 impl RouteOwner {
-    fn shared_source_group(&self) -> Option<usize> {
+    fn shared_channel_group(&self) -> Option<usize> {
         self.allocated_branch.map(|branch| branch.group)
+    }
+
+    fn shared_marker_group(
+        &self,
+        endpoint: MarkerEndpoint,
+        coord: super::layout::CanvasCoord,
+    ) -> Option<usize> {
+        let branch = self.allocated_branch?;
+        let berth = match endpoint {
+            MarkerEndpoint::Start => branch.points[0],
+            MarkerEndpoint::End => branch.points[3],
+        };
+        (branch.shared_endpoint == endpoint && berth == coord).then_some(branch.group)
     }
 
     fn endpoint_id(&self, endpoint: MarkerEndpoint) -> &str {
@@ -156,6 +169,7 @@ impl RouteOwner {
         let end = CanvasCoord { x: 10, y: 0 };
         self.allocated_branch = group.map(|group| allocation::AllocatedBranch {
             group,
+            shared_endpoint: MarkerEndpoint::Start,
             attachments: plan::NodeAttachments {
                 start: plan::NodeAttachment {
                     contact: start,

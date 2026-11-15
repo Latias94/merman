@@ -67,6 +67,31 @@ fn marker_occupant_is_compatible(
     })
 }
 
+fn occupied_marker_disposition(
+    routes: &[PreparedRoute],
+    owner: &RouteOwner,
+    endpoint: MarkerEndpoint,
+    candidate: MarkerCandidate,
+    marker: MarkerOccupant,
+) -> MarkerCandidateDisposition {
+    if !marker_occupant_is_compatible(
+        routes,
+        marker,
+        owner.endpoint_id(endpoint),
+        candidate.point_direction,
+    ) {
+        return MarkerCandidateDisposition::Blocked;
+    }
+    if marker.endpoint == endpoint
+        && marker.shared_group.is_some()
+        && marker.shared_group == owner.shared_marker_group(endpoint, candidate.coord)
+    {
+        MarkerCandidateDisposition::Available
+    } else {
+        MarkerCandidateDisposition::CompatiblePassThrough
+    }
+}
+
 fn terminal_claim_is_compatible(
     routes: &[PreparedRoute],
     claim: &TerminalClaim,
@@ -277,6 +302,7 @@ struct MarkerOccupant {
     route_index: usize,
     endpoint: MarkerEndpoint,
     point_direction: StepDirection,
+    shared_group: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -436,9 +462,9 @@ impl<'layout> SceneOccupancy<'layout> {
                                 && current.end == previous.end
                                 && current.end.allows_escape(coord))
                     });
-            let shares_allocated_source = owner.shared_source_group().is_some()
-                && owner.shared_source_group() == existing.owner.shared_source_group();
-            if !shares_terminal_ray && !shares_allocated_source {
+            let shares_allocated_channel = owner.shared_channel_group().is_some()
+                && owner.shared_channel_group() == existing.owner.shared_channel_group();
+            if !shares_terminal_ray && !shares_allocated_channel {
                 penalty = resources.checked_work_add(penalty, 1)?;
             }
         }
@@ -656,7 +682,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     cell.coord,
                     resources,
                 )?;
-                if owner.shared_source_group().is_none() || penalty != 0 {
+                if owner.shared_channel_group().is_none() || penalty != 0 {
                     shared_cells = resources.checked_work_add(shared_cells, 1)?;
                 }
                 ambiguous_shared_cells =
@@ -890,16 +916,16 @@ impl<'layout> SceneOccupancy<'layout> {
                 };
                 let transverse =
                     super::cell::is_transverse_crossing(directions, existing_directions);
-                let shares_allocated_source = owner.shared_source_group().is_some()
-                    && owner.shared_source_group() == existing.owner.shared_source_group();
-                if (owner.shared_source_group().is_some()
-                    || existing.owner.shared_source_group().is_some())
-                    && !shares_allocated_source
+                let shares_allocated_channel = owner.shared_channel_group().is_some()
+                    && owner.shared_channel_group() == existing.owner.shared_channel_group();
+                if (owner.shared_channel_group().is_some()
+                    || existing.owner.shared_channel_group().is_some())
+                    && !shares_allocated_channel
                     && !shared_contact
                     && !transverse
                 {
-                    // A shared branch tree has one real source. Another contribution
-                    // cannot join its trunk and imply new source/target combinations.
+                    // A shared channel has one real common endpoint. Another contribution
+                    // cannot join it and imply new source/target combinations.
                     return Ok(false);
                 }
                 if owner.stroke != existing.owner.stroke && !shared_contact && !transverse {
@@ -959,7 +985,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources,
             )?;
             let anchor = resolve_label_anchor(plan, label.anchor, original, resources)?;
-            if owner.shared_source_group().is_some()
+            if owner.shared_channel_group().is_some()
                 && let LabelAnchor::Segment { start, end, .. } = anchor
             {
                 // A condition on a common trunk would appear to annotate other
@@ -1129,18 +1155,13 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return Ok(
-                if marker_occupant_is_compatible(
-                    existing_routes,
-                    *marker,
-                    endpoint_id,
-                    candidate.point_direction,
-                ) {
-                    MarkerCandidateDisposition::CompatiblePassThrough
-                } else {
-                    MarkerCandidateDisposition::Blocked
-                },
-            );
+            return Ok(occupied_marker_disposition(
+                existing_routes,
+                owner,
+                endpoint,
+                candidate,
+                *marker,
+            ));
         }
 
         let claims = self.terminal_claims.get(&candidate.coord);
@@ -1633,18 +1654,13 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return Ok(
-                if marker_occupant_is_compatible(
-                    routes,
-                    *marker,
-                    endpoint_id,
-                    candidate.point_direction,
-                ) {
-                    MarkerCandidateDisposition::CompatiblePassThrough
-                } else {
-                    MarkerCandidateDisposition::Blocked
-                },
-            );
+            return Ok(occupied_marker_disposition(
+                routes,
+                &routes[route_index].owner,
+                endpoint,
+                candidate,
+                *marker,
+            ));
         }
 
         let Some(route_cell) = self.route_cells.get(&candidate.coord) else {
@@ -1771,6 +1787,15 @@ impl<'layout> SceneOccupancy<'layout> {
         resources.charge_layout_work(1)?;
         match self.markers.entry(coord) {
             Entry::Occupied(existing) => {
+                if marker.shared_group.is_some()
+                    && marker.shared_group == existing.get().shared_group
+                    && marker.endpoint == existing.get().endpoint
+                    && marker.point_direction == existing.get().point_direction
+                {
+                    // Each route retains its materialized marker. The map only needs a
+                    // representative; replay chooses one again if that route is removed.
+                    return Ok(());
+                }
                 debug_assert!(
                     existing.get().route_index != marker.route_index
                         || existing.get().endpoint != marker.endpoint

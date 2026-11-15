@@ -246,6 +246,7 @@ fn reorder_cannot_assign_a_different_path_to_a_joint_channel_contributor() {
     let end = CanvasCoord { x: 15, y: 16 };
     routes[0].owner.allocated_branch = Some(crate::graph::routing::allocation::AllocatedBranch {
         group: 0,
+        shared_endpoint: MarkerEndpoint::Start,
         attachments: routes[0].plan.attachments.unwrap(),
         points: [start, end, end, end],
         label_host: Some([start, end]),

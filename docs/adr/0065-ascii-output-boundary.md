@@ -194,15 +194,22 @@ from a search that has already terminated the operation through cancellation or 
 No-route results remain heuristic failures, not certified spatial impossibility. Changing that
 stage order and improving shared-trunk presentation require separate whole-scene evidence.
 
-## Compatible common-source channels
+## Compatible branch and merge channels
 
-Flat forward branches may allocate their source contact, common channel, and private target
-contacts as a group before route selection. The group retains every canonical edge identity;
-target markers and labels remain independent. The first implementation admits distinct targets
-with distinct cross-axis intercepts, open source markers, and compatible strokes and styles.
-Parallel, reciprocal, self-loop, container, incompatible, or insufficient-space groups continue
-through ordinary route planning. Complete label measurements and authored minimum main-axis
-spans are checked before an allocation is offered.
+Flat forward branches or merges may allocate their common contact, channel, and private endpoint
+contacts as a group before route selection. The group retains every canonical edge identity and
+keeps conditions on private legs. Common-source groups require open source markers; their target
+markers remain independent. Common-target groups require the same target marker kind; their source
+markers remain independent. Both require distinct private endpoints with distinct cross-axis
+intercepts and compatible strokes and styles. Parallel, reciprocal, self-loop, container,
+incompatible, or insufficient-space groups continue through ordinary route planning. Complete
+label measurements and authored minimum main-axis spans are checked before an allocation is offered.
+
+An edge belongs to at most one channel group. Source groups have deterministic precedence over
+target groups, avoiding a joined bus that implies unrelated source/target pairs. A common target
+marker may share only its allocated terminal berth. Each route retains its own materialized marker;
+occupancy needs one representative, which replay chooses again after removing any contributor.
+Marker relocation does not grant a new sharing position.
 
 Each admitted contributor owns its allocated geometry, not just a sharing identifier. A valid
 joint channel takes precedence over shorter per-edge alternatives. Optional searches cannot
@@ -212,7 +219,7 @@ contributors may cross transversely but cannot merge collinearly into that trunk
 source/target combinations. Conditions require a private label host; placing clear text beside
 an already shared host is insufficient.
 
-This channel allocation removes independent wrapping wires in ordinary compatible fan-outs. It
-does not compact node outlines or cross-axis spacing, allocate shared target markers, negotiate
-whole conflict components, or replace the full-field width fallback. Those are separate remaining
-parts of terminal presentation planning.
+This channel allocation removes independent wrapping wires in ordinary compatible fan-outs and
+fan-ins. It does not compact node outlines or cross-axis spacing, negotiate whole conflict
+components, or replace the full-field width fallback. Those are separate remaining parts of
+terminal presentation planning.
