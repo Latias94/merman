@@ -862,10 +862,8 @@ fn plan_route_order(
             .get(edge.from.as_str())
             .zip(levels.get(edge.to.as_str()));
         let feedback = edge.from != edge.to && ranks.is_some_and(|(from, to)| from >= to);
-        // Short rank intervals have fewer places for contacts and complete conditions.
-        // Reserve them before flexible skip edges can occupy their only direct corridor.
         let span = ranks.map_or(usize::MAX, |(from, to)| from.abs_diff(*to));
-        (!feedback, span, index)
+        (feedback, span, index)
     });
     Ok(order)
 }

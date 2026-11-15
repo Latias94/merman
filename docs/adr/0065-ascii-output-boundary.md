@@ -160,7 +160,11 @@ Finite candidate paths admit their retained cells before allocation. The final s
 two-dimensional grid admission, so a discarded projection or unselected exterior candidate cannot
 reject a fitting diagram by charging an imaginary canvas.
 
-Scenes identify feedback connections before route admission. Short direct and exterior
+Scenes identify feedback connections before route admission. Forward links reserve their channels
+before feedback connections; within each class, shorter rank spans precede flexible skip edges.
+This keeps a return arrow from consuming an aligned forward link's only straight corridor.
+Feedback routes still pass the same endpoint, label, and scene validation, with bounded congestion
+repair available when an earlier commitment blocks them. Short direct and exterior
 channels are compared before terminal search. Candidate labels receive valid host positions before
 scoring, and scene growth includes those positions. A growing scene can trigger bounded refinement
 even without a port conflict. Optional repairs share one scene-wide expansion allowance, while a

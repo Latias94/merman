@@ -148,6 +148,13 @@ and a transverse crossing paints a horizontal overpass rather than a joined bus.
 group-member examples retain different actual endpoints, where Grok's identical frame-level output
 does not supply a qualified reference. Distinguishing PRODUCTION/STAGING suffixes remain complete.
 
+Route admission reserves the forward backbone before feedback lanes. The `feedback` presentation
+keeps Input→Parse→Validate→Write→Done straight, retains `retry` on Validate→Parse and `failed` on
+Write→Input, and remains 78×7. The regression exercises all four directions, both character sets,
+and reversed edge declarations. The existing generated oracle and complete-document presentation
+floor remain required: a clearer backbone does not justify rejecting a previously supported cycle
+or moving a condition off its connection.
+
 The independent generated oracle fixes 486 Interactive scene attempts and 3,042 visible edge
 contributions, with up to eight nodes/twelve edges, nine topology categories, three edge orders,
 and LR/TD plus normal/zero preferred gaps. Failures remain in the denominator. The historical

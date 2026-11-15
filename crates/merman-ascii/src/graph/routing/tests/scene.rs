@@ -1,6 +1,102 @@
 use super::*;
 
 #[test]
+fn feedback_cycles_leave_aligned_forward_links_straight() {
+    for direction in [
+        GraphDirection::LeftRight,
+        GraphDirection::RightLeft,
+        GraphDirection::TopDown,
+        GraphDirection::BottomTop,
+    ] {
+        for reverse in [false, true] {
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let mut graph = AsciiGraph::new(direction);
+                for (id, label) in [
+                    ("a", "Input"),
+                    ("b", "Parse"),
+                    ("c", "Validate"),
+                    ("d", "Write"),
+                    ("e", "Done"),
+                ] {
+                    graph.add_node(id, label);
+                }
+                for (from, to, label) in [
+                    ("a", "b", None),
+                    ("b", "c", None),
+                    ("c", "d", None),
+                    ("d", "e", None),
+                    ("c", "b", Some("retry")),
+                    ("d", "a", Some("failed")),
+                ] {
+                    graph.add_edge_with_attrs(
+                        from,
+                        to,
+                        GraphEdgeAttrs {
+                            label: label.map(str::to_owned),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if reverse {
+                    graph.edges.reverse();
+                }
+                let layout = layout_graph(&graph, &options);
+                let charset = GraphCharset::for_options(&options);
+                let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset).unwrap();
+                let mut straight_links = 0;
+                for route in &scene.routes {
+                    if !matches!(
+                        (route.owner.from.as_str(), route.owner.to.as_str()),
+                        ("a", "b") | ("b", "c") | ("c", "d") | ("d", "e")
+                    ) {
+                        continue;
+                    }
+                    let from = layout
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == route.owner.from)
+                        .unwrap();
+                    let to = layout
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == route.owner.to)
+                        .unwrap();
+                    let horizontal = matches!(
+                        direction,
+                        GraphDirection::LeftRight | GraphDirection::RightLeft
+                    );
+                    let aligned = if horizontal {
+                        from.center_y() == to.center_y()
+                    } else {
+                        from.center_x() == to.center_x()
+                    };
+                    if aligned {
+                        straight_links += 1;
+                        assert!(
+                            route.plan.active_cells().all(|(_, cell)| {
+                                if horizontal {
+                                    cell.coord.y == from.center_y()
+                                } else {
+                                    cell.coord.x == from.center_x()
+                                }
+                            }),
+                            "aligned forward link {} -> {} should stay straight: {direction:?}; {:?}",
+                            route.owner.from,
+                            route.owner.to,
+                            route.plan.cells,
+                        );
+                    }
+                }
+                assert_eq!(
+                    straight_links, 4,
+                    "the full backbone must be exercised: {direction:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn multiline_internal_conditions_reserve_both_halves_of_the_container() {
     let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
     graph.add_node("a", "A");
