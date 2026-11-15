@@ -24,6 +24,14 @@ single-cell ASCII structure even when `AsciiCharset::Unicode` was requested. Aut
 is preserved. This deterministic fallback prevents borders and routes from occupying two grid
 cells per structural token.
 
+Browser previews must also preserve terminal cell geometry. A CSS `monospace` family can use a
+fallback font whose CJK glyphs are narrower than two Latin cells, shifting every border after a
+Chinese label even when the text grid is correct. Use a compatible terminal font or normalize
+font advances (for example, `font-size-adjust: ch-width 0.5` in supporting browsers), disable
+ligatures, and verify mixed-script positions in the rendered preview. Line height must also match
+the structural font when continuous vertical strokes matter. Selecting the CJK width profile
+does not correct a browser font's pixel advances.
+
 `merman-ascii` has an empty default feature set. Select the positive `diagram-*` features for
 required families, or `all-diagrams` for the complete data and terminal-adapter surface.
 Each selector enables model data and this crate's local handler when one exists. It does not enable
