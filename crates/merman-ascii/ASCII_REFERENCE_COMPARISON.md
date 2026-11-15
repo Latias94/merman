@@ -122,6 +122,13 @@ above remains the pre-refactor baseline. Layer alignment alone does not resolve 
 shared terminal capacity, or the full-field width fallback; the common-case presentation floor
 still requires joint allocation and route reconsideration.
 
+Compatible common-source branches now retain an explicit shared-channel allocation through route
+commitment and bounded replay. In the original unbounded `fan-out-12-lr` input, the current output
+is 29×115 with one trunk and private target branches, compared with the frozen 31×115 baseline's
+independent wrapping wires. The unchanged 115-row height remains a presentation gap against Grok's
+qualified 28×48 result. The 80-column sixteen-way and long-label requests still emit the existing
+full-field fallback; channel improvements do not establish the complete comparison floor.
+
 ## Reference Corpus Snapshot
 
 The 2026-11-14 routing follow-up inspected the optional `mermaid-ascii` checkout at

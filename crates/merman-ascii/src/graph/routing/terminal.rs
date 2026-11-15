@@ -31,6 +31,7 @@ pub(super) enum SearchBudget<'a> {
 }
 
 mod direct;
+pub(super) use direct::direct_path;
 pub(super) use direct::plan_direct_route;
 
 #[derive(Clone, Copy)]

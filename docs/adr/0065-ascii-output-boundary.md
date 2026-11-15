@@ -168,7 +168,7 @@ search for the first valid path remains subject to the operation budget. Predete
 self-loops retain deferred label placement until their complete nested batch is known. Exhausting
 the optional allowance cannot flush that batch. Every candidate must carry its visible edge label;
 geometry that drops a condition is not admissible. These changes replace the sequential node-slot
-placement mechanism. Joint port/channel allocation remains separate work;
+placement mechanism. General port/channel negotiation remains separate work;
 this ordering change alone does not establish the terminal presentation comparison floor.
 
 ## Reversible route contributions
@@ -193,3 +193,26 @@ ordinary required search and the coarse fallback finish without a route; it does
 from a search that has already terminated the operation through cancellation or resource limits.
 No-route results remain heuristic failures, not certified spatial impossibility. Changing that
 stage order and improving shared-trunk presentation require separate whole-scene evidence.
+
+## Compatible common-source channels
+
+Flat forward branches may allocate their source contact, common channel, and private target
+contacts as a group before route selection. The group retains every canonical edge identity;
+target markers and labels remain independent. The first implementation admits distinct targets
+with distinct cross-axis intercepts, open source markers, and compatible strokes and styles.
+Parallel, reciprocal, self-loop, container, incompatible, or insufficient-space groups continue
+through ordinary route planning. Complete label measurements and authored minimum main-axis
+spans are checked before an allocation is offered.
+
+Each admitted contributor owns its allocated geometry, not just a sharing identifier. A valid
+joint channel takes precedence over shorter per-edge alternatives. Optional searches cannot
+dismantle it, and a one-contributor reorder must re-admit the same channel or reject the proposal.
+Its compatibility identity allows shared trunk cells without a congestion penalty. Unrelated
+contributors may cross transversely but cannot merge collinearly into that trunk and imply new
+source/target combinations. Conditions require a private label host; placing clear text beside
+an already shared host is insufficient.
+
+This channel allocation removes independent wrapping wires in ordinary compatible fan-outs. It
+does not compact node outlines or cross-axis spacing, allocate shared target markers, negotiate
+whole conflict components, or replace the full-field width fallback. Those are separate remaining
+parts of terminal presentation planning.

@@ -1,5 +1,227 @@
 use super::*;
 
+fn assert_allocated_geometry(route: &PreparedRoute) {
+    let branch = route
+        .owner
+        .allocated_branch
+        .expect("a shared route owns its allocation");
+    assert_eq!(route.plan.attachments, Some(branch.attachments));
+    for (_, cell) in route.plan.active_cells() {
+        let coord = cell.coord;
+        assert!(
+            coord == branch.attachments.start.contact
+                || branch.points.windows(2).any(|pair| {
+                    let (from, to) = (pair[0], pair[1]);
+                    (from.x == to.x
+                        && coord.x == from.x
+                        && (from.y.min(to.y)..=from.y.max(to.y)).contains(&coord.y))
+                        || (from.y == to.y
+                            && coord.y == from.y
+                            && (from.x.min(to.x)..=from.x.max(to.x)).contains(&coord.x))
+                }),
+            "route {} -> {} left its allocated channel at {coord:?}",
+            route.owner.from,
+            route.owner.to
+        );
+    }
+}
+
+#[test]
+fn allocated_branch_trunks_share_only_their_declared_source_group() {
+    let graph = AsciiGraph::new(GraphDirection::LeftRight);
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    let mut resources = unbounded_resources();
+    let plan = RoutePlan::new_without_markers_for_test(
+        (0..11)
+            .map(|x| planned_cell(x, 0, '-', PlannedRouteCellKind::EdgeLine))
+            .collect(),
+        Vec::new(),
+    );
+    let mut route = PreparedRoute::for_test_with_endpoints(plan, 2, "source", "first");
+    route.owner.set_source_group_for_test(Some(2));
+    let routes = [route];
+    let scene = SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
+    let coord = CanvasCoord { x: 5, y: 0 };
+    let horizontal = cell::DIR_LEFT | cell::DIR_RIGHT;
+    let vertical = cell::DIR_UP | cell::DIR_DOWN;
+    let mut compatible = RouteOwner::for_test(3, "source", "second");
+    compatible.set_source_group_for_test(Some(2));
+    assert!(
+        scene
+            .route_cell_is_clear(
+                &routes,
+                &compatible,
+                None,
+                coord,
+                horizontal,
+                &mut resources
+            )
+            .unwrap()
+    );
+    assert_eq!(
+        scene
+            .route_cell_congestion(&routes, &compatible, None, coord, &mut resources)
+            .unwrap(),
+        0
+    );
+    for group in [None, Some(7)] {
+        let mut unrelated = RouteOwner::for_test(7, "different", "third");
+        unrelated.set_source_group_for_test(group);
+        assert!(
+            !scene
+                .route_cell_is_clear(&routes, &unrelated, None, coord, horizontal, &mut resources)
+                .unwrap()
+        );
+        assert!(
+            scene
+                .route_cell_is_clear(&routes, &unrelated, None, coord, vertical, &mut resources)
+                .unwrap()
+        );
+    }
+    compatible.set_source_group_for_test(None);
+    assert!(
+        !scene
+            .route_cell_is_clear(
+                &routes,
+                &compatible,
+                None,
+                coord,
+                horizontal,
+                &mut resources
+            )
+            .unwrap(),
+        "endpoint text alone cannot assign a branch group"
+    );
+}
+
+#[test]
+fn complete_fanouts_honor_joint_channels_in_both_orientations() {
+    for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+        for count in [2, 8, 12, 16] {
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let mut graph = AsciiGraph::new(direction);
+                graph.add_node("source", "Dispatcher");
+                for index in 0..count {
+                    let id = format!("target-{index:02}");
+                    graph.add_node(&id, format!("Job {index}"));
+                    graph.add_edge("source", &id);
+                }
+                let layout = layout_graph(&graph, &options);
+                let charset = GraphCharset::for_options(&options);
+                let mut resources = unbounded_resources();
+                let scene = prepare_route_scene_with_resources(
+                    &graph,
+                    &layout,
+                    &graph.edges,
+                    &charset,
+                    &mut resources,
+                )
+                .unwrap();
+                assert_eq!(scene.routes.len(), count);
+                let start = scene.routes[0].plan.attachments.unwrap().start;
+                for route in &scene.routes {
+                    assert_eq!(
+                        route.owner.shared_source_group(),
+                        Some(0),
+                        "a local path must not dismantle the joint channel: {direction:?}, {count}, {}",
+                        route.owner.to
+                    );
+                    let ports = route.plan.attachments.unwrap();
+                    assert_eq!(ports.start, start);
+                    assert_eq!(
+                        ports.start.outward,
+                        if direction == GraphDirection::LeftRight {
+                            StepDirection::Right
+                        } else {
+                            StepDirection::Down
+                        }
+                    );
+                    assert_eq!(ports.end.outward, ports.start.outward.opposite());
+                    assert_allocated_geometry(route);
+                    assert!(
+                        route
+                            .plan
+                            .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                            .unwrap()
+                            .is_some()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn an_unrelated_transverse_crossing_does_not_dismantle_a_joint_channel() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for (id, text) in [
+        ("a", "A"),
+        ("b", "B"),
+        ("source", "S"),
+        ("t0", "T0"),
+        ("t1", "T1"),
+    ] {
+        graph.add_node(id, text);
+    }
+    for (from, to) in [("a", "b"), ("source", "t0"), ("source", "t1")] {
+        graph.add_edge(from, to);
+    }
+    let options = AsciiRenderOptions::ascii();
+    let mut layout = layout_graph(&graph, &options);
+    for (node, (x, y, width)) in
+        layout
+            .nodes
+            .iter_mut()
+            .zip([(2, 6, 5), (31, 6, 5), (6, 12, 7), (22, 0, 7), (22, 24, 7)])
+    {
+        node.x = x;
+        node.y = y;
+        node.width = width;
+        node.height = 5;
+    }
+    layout.grid_aligned = false;
+    let mut resources = unbounded_resources();
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut resources,
+    )
+    .unwrap();
+    let crossing = CanvasCoord { x: 14, y: 8 };
+    let unrelated = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.from == "a")
+        .unwrap();
+    assert!(
+        unrelated
+            .plan
+            .active_cells()
+            .any(|(_, cell)| cell.coord == crossing)
+    );
+    let upper = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.to == "t0")
+        .unwrap();
+    assert!(
+        upper
+            .plan
+            .active_cells()
+            .any(|(_, cell)| cell.coord == crossing)
+    );
+    for route in scene
+        .routes
+        .iter()
+        .filter(|route| route.owner.from == "source")
+    {
+        assert_eq!(route.owner.shared_source_group(), Some(1));
+        assert_allocated_geometry(route);
+    }
+}
+
 #[test]
 fn aligned_scenes_do_not_allocate_or_charge_an_unused_feedback_order() {
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);

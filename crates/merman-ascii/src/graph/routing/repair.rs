@@ -181,6 +181,18 @@ fn select_route(
         routes,
         owner,
     };
+    if let Some(branch) = owner.allocated_branch {
+        let Some(plan) =
+            super::plan_allocated_channel(request, &branch, label, resources, execution)?
+        else {
+            return Ok(None);
+        };
+        // A branch cannot leave a joint channel while retaining its sharing identity.
+        // If replaying that channel fails, reject the whole reorder proposal.
+        return Ok(
+            admit_route_candidate(request, obstacles, plan, resources)?.map(|(_, plan)| plan)
+        );
+    }
     let mut best: Option<(RouteCandidateScore, RoutePlan)> = None;
     for plan in
         plan_edge_route_candidates_with_topology(request, topology, label, resources, execution)?

@@ -226,7 +226,7 @@ fn central_ports(
     Ok(central)
 }
 
-fn direct_path(
+pub(in crate::graph::routing) fn direct_path(
     points: [CanvasCoord; 4],
     departure: StepDirection,
     arrival: StepDirection,
@@ -269,6 +269,7 @@ fn direct_path(
         return Ok(None);
     }
     if points[0] != points[1]
+        && points[1] != points[2]
         && points[2] != points[3]
         && points[0].x.min(points[1].x) <= points[2].x.max(points[3].x)
         && points[2].x.min(points[3].x) <= points[0].x.max(points[1].x)
@@ -315,6 +316,32 @@ mod tests {
     use crate::graph::routing::RouteOwner;
     use crate::graph::routing::occupancy::SceneOccupancy;
     use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy};
+
+    #[test]
+    fn collapsed_middle_channel_retains_a_continuous_straight_path() {
+        let policy = AsciiResourcePolicy::unbounded();
+        let resources = ResourceContext::new(policy);
+        let path = direct_path(
+            [
+                CanvasCoord { x: 3, y: 8 },
+                CanvasCoord { x: 5, y: 8 },
+                CanvasCoord { x: 5, y: 8 },
+                CanvasCoord { x: 10, y: 8 },
+            ],
+            StepDirection::Right,
+            StepDirection::Right,
+            &resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .unwrap()
+        .unwrap();
+        assert_eq!(
+            path,
+            (3..=10)
+                .map(|x| CanvasCoord { x, y: 8 })
+                .collect::<Vec<_>>()
+        );
+    }
 
     #[test]
     fn direct_routes_use_actual_central_shape_contacts_deterministically() {

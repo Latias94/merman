@@ -18,6 +18,7 @@ use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use rustc_hash::FxHashMap as HashMap;
 use std::cmp::Ordering;
 
+mod allocation;
 mod cell;
 mod geometry;
 mod label;
@@ -122,9 +123,14 @@ struct RouteOwner {
     to: String,
     stroke: GraphEdgeStroke,
     boundary_group_indices: Vec<usize>,
+    allocated_branch: Option<allocation::AllocatedBranch>,
 }
 
 impl RouteOwner {
+    fn shared_source_group(&self) -> Option<usize> {
+        self.allocated_branch.map(|branch| branch.group)
+    }
+
     fn endpoint_id(&self, endpoint: MarkerEndpoint) -> &str {
         match endpoint {
             MarkerEndpoint::Start => &self.from,
@@ -140,7 +146,31 @@ impl RouteOwner {
             to: to.to_string(),
             stroke: GraphEdgeStroke::Normal,
             boundary_group_indices: Vec::new(),
+            allocated_branch: None,
         }
+    }
+
+    #[cfg(test)]
+    fn set_source_group_for_test(&mut self, group: Option<usize>) {
+        let start = CanvasCoord { x: 0, y: 0 };
+        let end = CanvasCoord { x: 10, y: 0 };
+        self.allocated_branch = group.map(|group| allocation::AllocatedBranch {
+            group,
+            attachments: plan::NodeAttachments {
+                start: plan::NodeAttachment {
+                    contact: start,
+                    outward: StepDirection::Right,
+                    connector: None,
+                },
+                end: plan::NodeAttachment {
+                    contact: end,
+                    outward: StepDirection::Left,
+                    connector: None,
+                },
+            },
+            points: [start, end, end, end],
+            label_host: None,
+        });
     }
 }
 
@@ -365,6 +395,14 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         resources,
     )?;
     let canonical_edges = canonical_edges.values;
+    let branch_allocation = allocation::BranchAllocation::try_new(
+        graph,
+        graph_layout,
+        &canonical_edges,
+        charset,
+        resources,
+        execution,
+    )?;
     let mut routes: Vec<PreparedRoute> = Vec::new();
     routes
         .try_reserve(canonical_edges.len())
@@ -451,12 +489,13 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
 
         let boundary_group_indices =
             route_boundary_group_indices(graph, topology.as_ref(), edge, resources)?;
-        let owner = RouteOwner {
+        let mut owner = RouteOwner {
             canonical_edge_index: edge_index,
             from: edge.from.clone(),
             to: edge.to.clone(),
             stroke: edge.stroke,
             boundary_group_indices,
+            allocated_branch: None,
         };
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
@@ -483,7 +522,39 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
-        if !graph_layout.grid_aligned
+        let mut honors_allocation = false;
+        if let Some(branch) = branch_allocation.get(edge_index) {
+            owner.allocated_branch = Some(*branch);
+            let candidate = match plan_allocated_channel(
+                request,
+                branch,
+                label_plans.descriptor(edge_index),
+                resources,
+                execution,
+            )? {
+                Some(plan) => admit_route_candidate(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    plan,
+                    resources,
+                )?,
+                None => None,
+            };
+            if let Some((score, plan)) = candidate {
+                // A jointly allocated trunk is a scene decision. Choosing a shorter
+                // private detour per edge would dismantle that decision one branch at a time.
+                selected = Some((score, usize::MAX, plan));
+                honors_allocation = true;
+            } else {
+                owner.allocated_branch = None;
+            }
+        }
+        if !honors_allocation
+            && !graph_layout.grid_aligned
             && let Some((score, plan)) = terminal::plan_direct_route(
                 request,
                 path::RouteObstacles {
@@ -508,7 +579,8 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             Some(GraphEndpointIndex::Group(_))
         );
         let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-        let needs_terminal_search = (selected.is_none() || repair_budget.expansions != 0)
+        let needs_terminal_search = !honors_allocation
+            && (selected.is_none() || repair_budget.expansions != 0)
             && selected.as_ref().is_none_or(|(score, _, _)| {
                 score.has_congestion() || (!defer_loop_labels && score.grows_scene())
             });
@@ -670,6 +742,51 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         planned_cell_count,
         labels: label_plans,
     })
+}
+
+fn plan_allocated_channel(
+    request: EdgeRouteRequest<'_>,
+    branch: &allocation::AllocatedBranch,
+    descriptor: Option<label::RoutedLabelDescriptor>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<RoutePlan>> {
+    let Some(path) = terminal::direct_path(
+        branch.points,
+        branch.attachments.start.outward,
+        branch.attachments.end.outward.opposite(),
+        resources,
+        execution,
+    )?
+    else {
+        return Ok(None);
+    };
+    let label = if let Some(descriptor) = descriptor {
+        let Some([start, end]) = branch.label_host else {
+            return Ok(None);
+        };
+        let Some(placement) = label::routed_label_placement_for_descriptor(start, end, descriptor)
+        else {
+            return Ok(None);
+        };
+        let mut label = plan::PlannedRouteLabel::new(descriptor, placement);
+        label.anchor = plan::LabelAnchor::Segment {
+            start,
+            end,
+            route_segment: None,
+        };
+        Some(label)
+    } else {
+        None
+    };
+    plan::orthogonal::plan_terminal_path(
+        &path,
+        branch.attachments,
+        request.edge,
+        label,
+        request.charset,
+        resources,
+    )
 }
 
 fn plan_route_order(

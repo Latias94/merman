@@ -436,7 +436,9 @@ impl<'layout> SceneOccupancy<'layout> {
                                 && current.end == previous.end
                                 && current.end.allows_escape(coord))
                     });
-            if !shares_terminal_ray {
+            let shares_allocated_source = owner.shared_source_group().is_some()
+                && owner.shared_source_group() == existing.owner.shared_source_group();
+            if !shares_terminal_ray && !shares_allocated_source {
                 penalty = resources.checked_work_add(penalty, 1)?;
             }
         }
@@ -647,7 +649,6 @@ impl<'layout> SceneOccupancy<'layout> {
                 return Ok(None);
             }
             if self.route_cells.contains_key(&cell.coord) {
-                shared_cells = resources.checked_work_add(shared_cells, 1)?;
                 let penalty = self.route_cell_congestion(
                     existing_routes,
                     owner,
@@ -655,6 +656,9 @@ impl<'layout> SceneOccupancy<'layout> {
                     cell.coord,
                     resources,
                 )?;
+                if owner.shared_source_group().is_none() || penalty != 0 {
+                    shared_cells = resources.checked_work_add(shared_cells, 1)?;
+                }
                 ambiguous_shared_cells =
                     resources.checked_work_add(ambiguous_shared_cells, penalty)?;
             }
@@ -886,6 +890,18 @@ impl<'layout> SceneOccupancy<'layout> {
                 };
                 let transverse =
                     super::cell::is_transverse_crossing(directions, existing_directions);
+                let shares_allocated_source = owner.shared_source_group().is_some()
+                    && owner.shared_source_group() == existing.owner.shared_source_group();
+                if (owner.shared_source_group().is_some()
+                    || existing.owner.shared_source_group().is_some())
+                    && !shares_allocated_source
+                    && !shared_contact
+                    && !transverse
+                {
+                    // A shared branch tree has one real source. Another contribution
+                    // cannot join its trunk and imply new source/target combinations.
+                    return Ok(false);
+                }
                 if owner.stroke != existing.owner.stroke && !shared_contact && !transverse {
                     // A painted cell cannot retain two stroke identities. Reject the route
                     // here so another lane can be tried before emission starts.
@@ -943,6 +959,23 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources,
             )?;
             let anchor = resolve_label_anchor(plan, label.anchor, original, resources)?;
+            if owner.shared_source_group().is_some()
+                && let LabelAnchor::Segment { start, end, .. } = anchor
+            {
+                // A condition on a common trunk would appear to annotate other
+                // branches. Its host must be private apart from its end junctions.
+                for (_, cell) in plan.active_cells() {
+                    self.checkpoint_layout()?;
+                    resources.charge_layout_work(1)?;
+                    if cell.coord != start
+                        && cell.coord != end
+                        && label_anchor_contains(anchor, cell.coord, cell.segment)
+                        && self.route_cells.contains_key(&cell.coord)
+                    {
+                        return Ok(None);
+                    }
+                }
+            }
             let candidates = route_label_candidates(
                 label.placement,
                 label.line_count(),

@@ -485,6 +485,80 @@ mod tests {
     use merman_model::resources::ResourceProfile;
 
     #[test]
+    fn shared_branch_conditions_require_a_private_host_even_with_clear_text_space() {
+        use crate::color::AsciiColorRole;
+        use crate::graph::layout::layout_graph;
+        use crate::graph::model::{AsciiGraph, GraphDirection, GraphEdgeStroke};
+        use crate::graph::routing::RouteOwner;
+        use crate::graph::routing::label::RoutedLabelText;
+        use crate::graph::routing::plan::{
+            PlannedRouteCell, PlannedRouteCellKind, PlannedRouteLabel, PlannedRoutePaint,
+        };
+
+        let layout = layout_graph(
+            &AsciiGraph::new(GraphDirection::LeftRight),
+            &crate::AsciiRenderOptions::ascii(),
+        );
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let cells: Vec<_> = (0..21)
+            .map(|x| PlannedRouteCell {
+                coord: CanvasCoord { x, y: 4 },
+                ch: '-',
+                kind: PlannedRouteCellKind::EdgeLine,
+                segment: PlannedRouteSegment::Direct,
+                stroke: GraphEdgeStroke::Normal,
+                directions: 0,
+                unicode: false,
+                paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
+            })
+            .collect();
+        let existing = PreparedRoute::for_test_with_endpoints(
+            RoutePlan::new_without_markers_for_test(cells[..11].to_vec(), Vec::new()),
+            0,
+            "source",
+            "first",
+        );
+        let occupancy =
+            SceneOccupancy::try_new(&[existing], &layout, &mut resources, "flowchart").unwrap();
+        let mut label = PlannedRouteLabel::new(
+            RoutedLabelText::new("q").unwrap(),
+            RoutedLabelPlacement::new(3, 5, 1),
+        );
+        label.anchor = LabelAnchor::Segment {
+            start: CanvasCoord { x: 0, y: 4 },
+            end: CanvasCoord { x: 10, y: 4 },
+            route_segment: None,
+        };
+        let mut plan = RoutePlan::new_without_markers_for_test(cells, vec![label]);
+        let mut owner = RouteOwner::for_test(1, "source", "second");
+        assert!(
+            occupancy
+                .plan_label_placements(&plan, &owner, [None; 2], &mut resources)
+                .unwrap()
+                .is_some()
+        );
+        owner.set_source_group_for_test(Some(0));
+        assert!(
+            occupancy
+                .plan_label_placements(&plan, &owner, [None; 2], &mut resources)
+                .unwrap()
+                .is_none()
+        );
+        plan.labels[0].placement = RoutedLabelPlacement::new(13, 5, 1);
+        plan.labels[0].anchor = LabelAnchor::Segment {
+            start: CanvasCoord { x: 11, y: 4 },
+            end: CanvasCoord { x: 20, y: 4 },
+            route_segment: None,
+        };
+        assert!(
+            occupancy
+                .plan_label_placements(&plan, &owner, [None; 2], &mut resources)
+                .unwrap()
+                .is_some()
+        );
+    }
+
+    #[test]
     fn candidate_dedup_preserves_first_order_with_linear_work_admission() {
         for distinct in [8, 64, 256] {
             let attempts = distinct * 2;

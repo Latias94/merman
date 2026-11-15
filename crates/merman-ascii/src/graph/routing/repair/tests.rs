@@ -226,6 +226,56 @@ fn reorder_opens_a_blocked_exit_and_preserves_both_relationships_and_the_conditi
 }
 
 #[test]
+fn reorder_cannot_assign_a_different_path_to_a_joint_channel_contributor() {
+    let (graph, layout, charset) = constrained_scene();
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::for_test(&policy);
+    let labels =
+        RoutedLabelCatalogPlan::try_new(&graph.edges, &[0, 1], charset.width_profile, &resources)
+            .unwrap();
+    let (mut routes, mut occupancy) = initial_routes(
+        &graph,
+        &layout,
+        &charset,
+        &labels,
+        &mut resources,
+        execution,
+    );
+    let start = CanvasCoord { x: 15, y: 6 };
+    let end = CanvasCoord { x: 15, y: 16 };
+    routes[0].owner.allocated_branch = Some(crate::graph::routing::allocation::AllocatedBranch {
+        group: 0,
+        attachments: routes[0].plan.attachments.unwrap(),
+        points: [start, end, end, end],
+        label_host: Some([start, end]),
+    });
+    let old = routes[0].plan.clone();
+    let allocation = routes[0].owner.allocated_branch;
+    let owner = RouteOwner::for_test(1, "s", "t");
+    // The ordinary version of this scene is repairable (tested above). Here the
+    // required private label host crosses the proposed new edge, so this one-edge
+    // reorder must fail rather than detach a branch from its retained allocation.
+    assert!(
+        !reorder_failed_route(
+            request(&graph, &layout, &charset, 1),
+            None,
+            &labels,
+            &owner,
+            &mut routes,
+            &mut occupancy,
+            &mut SceneRepairBudget::default(),
+            &mut resources,
+            execution
+        )
+        .unwrap()
+    );
+    assert_eq!(routes.len(), 1);
+    assert_eq!(routes[0].plan, old);
+    assert_eq!(routes[0].owner.allocated_branch, allocation);
+}
+
+#[test]
 fn unsuccessful_reorder_keeps_the_original_routes_and_their_reservations() {
     let (mut graph, mut layout, charset) = constrained_scene();
     // These independent nodes surround the target. Removing an earlier edge
