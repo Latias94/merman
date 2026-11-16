@@ -71,8 +71,11 @@ and resource errors retain precedence over fallback selection. Semantic fallback
 complexity preflight; Flowchart's typed projection uses a bounded cancellation-aware JSON writer
 under bounded profiles. Flowchart, State, and Swimlane width fallback presents keyed nodes/groups
 and individual relationships with complete labels, markers, strokes, membership, and authored
-details. Flowchart first-use declarations avoid a separate repeated node table. Other families
-retain their existing fallback projections.
+details. Flowchart first-use declarations avoid a separate repeated node table. Class and ER
+width fallback uses family-owned keyed declarations, members/attributes, and individual
+relationships with independent markers or cardinalities. Known defaults and derived layout
+caches are omitted; nondefault metadata and source configuration stay with their owner. Other
+families retain their existing fallback projections.
 
 ### Admitted profile combinations
 

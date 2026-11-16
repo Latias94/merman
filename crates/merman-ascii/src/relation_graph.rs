@@ -166,7 +166,7 @@ pub(crate) use self::layered::{
 #[cfg(test)]
 use self::layered::{
     LayeredRelationRoutePlan, LayeredRelationRouteRequest, LayeredRelationScene,
-    LayeredRouteBatchError, PairwiseValidationWork, PlacedRelationGraphBox,
+    LayeredRouteBatchError, PairwiseValidationWork, PlacedRelationGraphBox, compact_private_scene,
     measure_pairwise_validation_work, parallel_relation_lane_offsets, plan_layered_relation_boxes,
     plan_layered_relation_component_result, plan_layered_relation_route, plan_layered_route_batch,
     spanning_lane_offset_around_intermediate_boxes, write_centered_relation_label,

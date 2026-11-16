@@ -186,6 +186,11 @@ fn multi_parent_geometry_is_stable_when_declarations_are_reordered() {
 
 #[test]
 fn cyclic_channel_draws_are_continuous_between_the_actual_box_contacts() {
+    assert_cyclic_channel_contacts(false);
+    assert_cyclic_channel_contacts(true);
+}
+
+fn assert_cyclic_channel_contacts(compact: bool) {
     use std::collections::{BTreeSet, VecDeque};
 
     for size in [3, 4, 5] {
@@ -229,7 +234,7 @@ fn cyclic_channel_draws_are_continuous_between_the_actual_box_contacts() {
                 })
                 .collect();
             let mut resources = test_resources(AsciiResourcePolicy::default());
-            let scene = LayeredRelationScene::new_with_direction(
+            let mut scene = LayeredRelationScene::new_with_direction(
                 &boxes.iter().collect::<Vec<_>>(),
                 edges,
                 4,
@@ -238,13 +243,22 @@ fn cyclic_channel_draws_are_continuous_between_the_actual_box_contacts() {
                 &mut resources,
             )
             .expect("cycle scene should fit");
-            let (routes, _) = plan_layered_route_batch(
+            let (mut routes, _) = plan_layered_route_batch(
                 &scene,
                 &relations.iter().collect::<Vec<_>>(),
                 &resources,
                 &adapter,
             )
             .expect("cycle routes should fit");
+            if compact {
+                let old_extent = (scene.width(), scene.height());
+                assert!(compact_private_scene(&mut scene, &mut routes, &resources).unwrap());
+                assert!(scene.width() <= old_extent.0 && scene.height() <= old_extent.1);
+                for node in scene.placed_boxes() {
+                    assert_eq!(node.right() - node.x() + 1, node.width());
+                    assert_eq!(node.bottom() - node.y() + 1, node.height());
+                }
+            }
             assert_eq!(routes.len(), size);
             for route in &routes {
                 let geometry = route.geometry();
@@ -320,6 +334,75 @@ fn cyclic_channel_draws_are_continuous_between_the_actual_box_contacts() {
                     );
                 }
             }
+        }
+    }
+}
+
+#[test]
+fn whole_scene_compaction_admits_resident_scratch_and_observes_late_cancellation() {
+    use merman_model::{OperationControl, OperationPhase};
+
+    let boxes = multi_parent_boxes();
+    let relations = [("a", "c"), ("a", "d"), ("c", "b"), ("d", "b")];
+    let adapter = TestRelationAdapter {
+        summary_reason: Cell::new(None),
+        overlap: TestRelationOverlap::None,
+    };
+    let mut required = 0;
+    for attempt in 0..4 {
+        let mut planning = test_resources(AsciiResourcePolicy::unbounded());
+        let mut scene = multi_parent_scene(&boxes, multi_parent_edges(relations), &mut planning);
+        let (mut routes, _) = plan_layered_route_batch(
+            &scene,
+            &relations.iter().collect::<Vec<_>>(),
+            &planning,
+            &adapter,
+        )
+        .unwrap();
+        let limit = match attempt {
+            0 => 1,
+            1 | 3 => required,
+            _ => required - 1,
+        };
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxGridCells, limit)
+            .unwrap();
+        let control = OperationControl::new();
+        let resources =
+            ResourceContext::new(policy).controlled(control.clone(), OperationPhase::Layout);
+        if attempt == 3 {
+            control.cancel_after_checkpoints(64);
+        }
+        let result = compact_private_scene(&mut scene, &mut routes, &resources);
+        if attempt == 1 {
+            assert!(
+                result.unwrap(),
+                "the exact scratch budget must permit compaction"
+            );
+        } else if attempt == 3 {
+            assert!(
+                matches!(result, Err(AsciiError::Cancelled(cancelled)) if cancelled.phase == OperationPhase::Layout)
+            );
+            assert!(
+                resources.layout_work_used() > 0,
+                "cancellation must occur inside compaction"
+            );
+        } else {
+            let Err(AsciiError::ResourceLimitExceeded(details)) = result else {
+                panic!("insufficient resident scratch must remain a resource error: {result:?}");
+            };
+            assert_eq!(details.limit, AsciiResourceLimitId::MaxGridCells);
+            if attempt == 0 {
+                required = details.actual;
+                assert!(
+                    required > scene.width() + scene.height(),
+                    "route allocations must be admitted alongside both axis maps"
+                );
+            } else {
+                assert_eq!(details.actual, required);
+                assert_eq!(details.max, required - 1);
+            }
+            assert_eq!(resources.document_cells_used(), 0);
         }
     }
 }

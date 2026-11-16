@@ -23,7 +23,21 @@ assert the topology policy directly instead of inferring it only from rendered t
 strongly connected components and the condensation DAG determine directed ranks. Bounded private
 channels keep box contacts, exterior returns, and label reading areas distinct. Rings and DAG
 diamonds use these shared rules in all four directions, replacing the earlier strict K2×2
-exception. Dense topology can still select a complete summary.
+exception. After route validation, shared axis compaction removes redundant straight-channel
+rows and columns. It preserves box and text footprints, distinct terminals and bends, and at
+least one cell between separated features; the compacted scene is validated again before paint.
+This improves canonical geometry without admitting a separate Compact layout profile or changing
+the authored direction. Dense topology can still select a complete summary.
+
+Viewport overflow has a separate Plain reading document: keyed declarations retain full names,
+namespace/group ownership, members/attributes, interfaces/notes, and individual relationships.
+Class marker types and endpoint labels remain independent. Qualified aliases retain their authored
+reference and resolved namespace owner; interface references follow the primary topology's identity
+selection, including repeated IDs. ER cardinalities attach to the actual
+first/second endpoint and use conventional ranges, with a stroke legend for relationship
+identification. Known defaults, redundant display labels, native generated ER IDs, and Class's
+derived topology cache are omitted; nondefault metadata and source configuration remain complete.
+The bounded serializer and reading-record writer are shared with other semantic fallbacks.
 
 ## Class Diagram Matrix
 

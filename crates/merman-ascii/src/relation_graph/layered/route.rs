@@ -661,6 +661,107 @@ pub(crate) struct LayeredRelationRoutePlan {
 }
 
 impl LayeredRelationRoutePlan {
+    pub(super) fn retained_compaction_cells(&self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_grid_add(self.geometry.segments.capacity(), self.overlays.capacity())
+    }
+
+    pub(super) fn protect_compaction_features(
+        &self,
+        x: &mut super::compact::CompactAxis,
+        y: &mut super::compact::CompactAxis,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        for port in [self.geometry.source, self.geometry.target] {
+            x.protect(port.marker_x, port.marker_x + 1, resources)?;
+            y.protect(port.marker_y, port.marker_y + 1, resources)?;
+        }
+        for segment in self.geometry.segments() {
+            resources.checkpoint()?;
+            let (left, top, right, bottom) = match segment {
+                LayeredRelationRouteSegment::Horizontal { y, left, right } => (left, y, right, y),
+                LayeredRelationRouteSegment::Vertical { x, top, bottom } => (x, top, x, bottom),
+            };
+            for coordinate in [left, right] {
+                x.protect(coordinate, coordinate + 1, resources)?;
+            }
+            for coordinate in [top, bottom] {
+                y.protect(coordinate, coordinate + 1, resources)?;
+            }
+        }
+        for overlay in &self.overlays {
+            resources.checkpoint()?;
+            if let Some(bounds) = overlay.bounds() {
+                x.protect(bounds.left, bounds.right, resources)?;
+                y.protect(bounds.top, bounds.bottom, resources)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn compact_axes(
+        &mut self,
+        x: &super::compact::CompactAxis,
+        y: &super::compact::CompactAxis,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        resources.charge_layout_work(self.segment_count() + self.overlay_count() + 2)?;
+        for port in [&mut self.geometry.source, &mut self.geometry.target] {
+            port.marker_x = x.map(port.marker_x);
+            port.path_x = x.map(port.path_x);
+            port.marker_y = y.map(port.marker_y);
+            port.path_y = y.map(port.path_y);
+        }
+        for segment in &mut self.geometry.segments {
+            match segment {
+                LayeredRelationRouteSegment::Horizontal {
+                    y: row,
+                    left,
+                    right,
+                } => {
+                    *row = y.map(*row);
+                    *left = x.map(*left);
+                    *right = x.map(*right);
+                }
+                LayeredRelationRouteSegment::Vertical {
+                    x: col,
+                    top,
+                    bottom,
+                } => {
+                    *col = x.map(*col);
+                    *top = y.map(*top);
+                    *bottom = y.map(*bottom);
+                }
+            }
+        }
+        match &mut self.geometry.label_placement {
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => {
+                *route_y = y.map(*route_y)
+            }
+            LayeredRelationLabelPlacement::Private { center_x, y: row } => {
+                *center_x = x.map_unused_anchor(*center_x);
+                *row = y.map_unused_anchor(*row);
+            }
+        }
+        for overlay in &mut self.overlays {
+            match overlay {
+                RelationOverlay::Glyph { x: col, y: row, .. } => {
+                    *col = x.map(*col);
+                    *row = y.map(*row);
+                }
+                RelationOverlay::Text {
+                    center_x, y: row, ..
+                }
+                | RelationOverlay::Label {
+                    center_x, y: row, ..
+                } => {
+                    *center_x = x.map(*center_x);
+                    *row = y.map(*row);
+                }
+            }
+        }
+        Ok(())
+    }
+
     pub(super) fn bounds(&self) -> (usize, usize, usize, usize) {
         let source = self.geometry.source;
         let target = self.geometry.target;

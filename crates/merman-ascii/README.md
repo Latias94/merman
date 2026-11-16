@@ -385,11 +385,29 @@ four-node topology exception; three-, four-, and five-node rings and DAG diamond
 planning rules in all four directions. It remains a best-effort terminal layout rather than a
 complete graph-routing algorithm.
 
+Once the routes pass validation, the whole scene compacts redundant straight-channel rows and
+columns. Boxes and text keep their dimensions; terminals and bends remain distinct; separated
+features retain at least one cell of clearance. The scene is checked again before painting.
+This applies to canonical Class/ER geometry and does not add Compact or Auto profile support.
+
 Private Unicode route bends use rounded corners and the edge-line color role. A bend does not
 claim a branch or crossing; ASCII and CJK structure keep single-cell `+` turns. Endpoint markers,
 cardinalities, and labels retain their family-owned meanings.
 
 Class and ER diagrams fall back to readable `relations:` summary sections when bounded planning cannot produce a complete terminal grid, contacts do not fit, or route/overlay checks would damage another object. Simple relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; byte-length-framed fields disclose the authored member identity. Dense or colliding namespace scenes retain the complete summary. Default output hides the planning reason. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add `reason: route_collision` or `reason: overlay_collision` under `relations:`; contact and exhausted-channel failures use `route_collision`. Resource limits return `AsciiError::ResourceLimitExceeded` instead of selecting a summary.
+
+When the complete primary result exceeds an explicit viewport with Plain `Fallback`, Class and
+ER emit a family-owned reading document. Short keys identify classes/entities, namespaces/groups,
+interfaces, notes, and individual relationships. Class endpoints retain independent marker types
+and endpoint labels. Qualified class aliases identify their resolved class and preserve the
+authored reference; interface references reuse the primary topology's identities. ER endpoints
+use `1`, `0..1`, `1..*`, `0..*`, or `parent`, with an explicit
+identifying/non-identifying stroke legend. Member/method and attribute records remain with their
+owner, including keys and comments. Quoted fields wrap without truncating or rebinding identities.
+Known empty/default properties, duplicate labels, native generated ER IDs, and Class's derived
+topology cache are omitted. Nondefault styles, metadata, custom constant tables, source title, and
+source configuration remain disclosed. These records reuse the admitted bounded serialization and
+the same output/resource/cancellation rules as other viewport fallbacks.
 
 ## Direct Model API
 

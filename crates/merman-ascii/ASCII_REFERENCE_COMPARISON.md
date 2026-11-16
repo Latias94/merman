@@ -43,6 +43,8 @@ product boundary.
   Independent relation subgraphs split before planning, so unrelated pairs do not force each other
   into one relation scene. Directed component ranks and bounded private channels now replace the
   strict K2×2 exception, with declaration-order-stable rings and direction-preserving DAG diamonds.
+  Validated scenes compact redundant straight-channel space together, preserving box/text
+  footprints, terminal and bend coordinates, and gaps between separate features.
   Other dense, crossing, or
   collision-prone topologies remain eligible for the lossless Summary path. Summary reasons are
   preserved at that seam for direct topology-policy tests.
@@ -538,7 +540,7 @@ expected output.
 - Flowchart dense compound scenes beyond the bounded channel-search and congestion-repair budgets.
   The shared planner validates complete label ownership and route connectivity, but a search miss
   remains an explicit diagnostic rather than a claim that no presentation is possible.
-- Class and ER dense relation topologies beyond the admitted strict planar K2×2 cycle; new policy
+- Class and ER dense relation topologies beyond the admitted directed rings and DAG diamonds; new policy
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.
 - XYChart dense-layout policy beyond the shipped compact plot and `values:` disclosure rows.

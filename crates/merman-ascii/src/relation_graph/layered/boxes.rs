@@ -232,6 +232,22 @@ impl<'a> LayeredRelationPlan<'a> {
         self.width = width;
         self.height = height;
     }
+
+    pub(super) fn compact_axes(
+        &mut self,
+        x: &super::compact::CompactAxis,
+        y: &super::compact::CompactAxis,
+    ) {
+        for node in &mut self.placed {
+            node.x = x.map(node.x);
+            node.center_x = x.map(node.center_x);
+            node.right = x.map(node.right);
+            node.y = y.map(node.y);
+            node.bottom = y.map(node.bottom);
+        }
+        self.width = x.extent();
+        self.height = y.extent();
+    }
 }
 
 #[derive(Debug)]

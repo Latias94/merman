@@ -165,6 +165,14 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         self.plan.height()
     }
 
+    pub(super) fn compact_axes(
+        &mut self,
+        x: &super::compact::CompactAxis,
+        y: &super::compact::CompactAxis,
+    ) {
+        self.plan.compact_axes(x, y);
+    }
+
     pub(super) fn crop_to_content(
         &mut self,
         routes: &mut [LayeredRelationRoutePlan],

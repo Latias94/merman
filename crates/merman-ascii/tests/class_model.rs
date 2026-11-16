@@ -256,7 +256,7 @@ fn class_color_html_wraps_layered_relation_roles_without_changing_plain_text() {
         "<span style=\"color:#202020\">Animal</span>",
         "<span style=\"color:#303030\">|</span>",
         "<span style=\"color:#404040\">^</span>",
-        "<span style=\"color:#303030\">+----+</span>",
+        "<span style=\"color:#303030\">+---+</span>",
     ] {
         assert!(
             rendered.contains(expected_fragment),

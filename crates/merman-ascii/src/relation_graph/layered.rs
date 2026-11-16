@@ -1,6 +1,7 @@
 mod batch;
 mod boxes;
 mod channels;
+mod compact;
 mod draw;
 mod lanes;
 mod route;
@@ -31,6 +32,8 @@ pub(crate) use self::boxes::{
 };
 #[cfg(test)]
 pub(crate) use self::boxes::{PlacedRelationGraphBox, plan_layered_relation_boxes};
+#[cfg(test)]
+pub(super) use self::compact::compact_private_scene;
 #[cfg(test)]
 pub(crate) use self::draw::write_centered_relation_label;
 pub(crate) use self::draw::{

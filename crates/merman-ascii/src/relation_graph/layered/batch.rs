@@ -80,6 +80,13 @@ where
 
     if scene.uses_private_channels() {
         scene.crop_to_content(&mut route_plans, resources)?;
+        if super::compact::compact_private_scene(&mut scene, &mut route_plans, resources)? {
+            match validate_layered_route_batch(&scene, &route_plans, resources) {
+                Ok(()) => {}
+                Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
+                Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
+            }
+        }
     }
     let extent = resources.grid_extent(scene.width(), scene.height())?;
 
