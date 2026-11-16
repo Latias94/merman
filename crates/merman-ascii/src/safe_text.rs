@@ -91,7 +91,8 @@ pub(crate) use label::{
 )]
 pub(crate) use layout::{
     NormalizedTextPlan, NormalizedTrimmedTextPlan, try_clone_layout_text, try_concat_layout_text,
-    try_plan_normalized_text, try_plan_normalized_trimmed_text, try_repeat_layout_char,
+    try_plan_normalized_text, try_plan_normalized_trimmed_literal_rows,
+    try_plan_normalized_trimmed_text, try_repeat_layout_char,
 };
 #[cfg_attr(
     not(feature = "all-diagrams"),

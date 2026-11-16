@@ -148,7 +148,13 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
                 edge.label
                     .as_deref()
                     .map(|raw| {
-                        RoutedLabelPlan::try_new(catalog_index, raw, width_profile, resources)
+                        RoutedLabelPlan::try_new(
+                            catalog_index,
+                            raw,
+                            width_profile,
+                            edge.label_break_policy,
+                            resources,
+                        )
                     })
                     .transpose()?
                     .flatten()
@@ -229,6 +235,7 @@ impl<'a> RoutedLabelPlan<'a> {
         catalog_index: usize,
         raw: &'a str,
         width_profile: TerminalWidthProfile,
+        break_policy: LabelBreakPolicy,
         resources: &ResourceContext,
     ) -> Result<Option<Self>> {
         let Some(normalized) = try_plan_normalized_label_lines_with_policy(
@@ -236,7 +243,7 @@ impl<'a> RoutedLabelPlan<'a> {
             width_profile,
             true,
             None,
-            LabelBreakPolicy::MermaidLabelBreaks,
+            break_policy,
             resources,
         )?
         else {
@@ -454,6 +461,7 @@ mod tests {
             from: from.to_string(),
             to: to.to_string(),
             label: Some(label.to_string()),
+            label_break_policy: LabelBreakPolicy::MermaidLabelBreaks,
             stroke: GraphEdgeStroke::Normal,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Point,

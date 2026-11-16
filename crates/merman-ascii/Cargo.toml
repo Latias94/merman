@@ -63,7 +63,7 @@ diagram-er = ["merman-model/diagram-er", "merman-core/diagram-er"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling", "merman-core/diagram-event-modeling"]
 diagram-agentflow = ["merman-model/diagram-agentflow", "merman-core/diagram-agentflow"]
 diagram-usecase = ["merman-model/diagram-usecase", "merman-core/diagram-usecase"]
-diagram-flowchart = ["merman-model/diagram-flowchart", "merman-core/diagram-flowchart", "dep:dugong", "dep:rustc-hash"]
+diagram-flowchart = ["merman-model/diagram-flowchart", "merman-core/diagram-flowchart", "dep:dugong", "dep:rustc-hash", "dep:pulldown-cmark"]
 diagram-gantt = ["merman-model/diagram-gantt", "merman-core/diagram-gantt"]
 diagram-git-graph = ["merman-model/diagram-git-graph", "merman-core/diagram-git-graph"]
 diagram-info = ["merman-model/diagram-info", "merman-core/diagram-info"]
@@ -80,7 +80,7 @@ diagram-requirement = ["merman-model/diagram-requirement", "merman-core/diagram-
 diagram-sankey = ["merman-model/diagram-sankey", "merman-core/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "merman-core/diagram-sequence"]
 diagram-state = ["merman-model/diagram-state", "merman-core/diagram-state", "dep:dugong", "dep:rustc-hash"]
-diagram-swimlane = ["merman-model/diagram-swimlane", "merman-core/diagram-swimlane", "dep:dugong", "dep:rustc-hash"]
+diagram-swimlane = ["merman-model/diagram-swimlane", "merman-core/diagram-swimlane", "dep:dugong", "dep:rustc-hash", "dep:pulldown-cmark"]
 diagram-timeline = ["merman-model/diagram-timeline", "merman-core/diagram-timeline"]
 diagram-tree-view = ["merman-model/diagram-tree-view", "merman-core/diagram-tree-view"]
 diagram-treemap = ["merman-model/diagram-treemap", "merman-core/diagram-treemap"]
@@ -100,6 +100,7 @@ thiserror.workspace = true
 unicode-segmentation.workspace = true
 unicode-width = { workspace = true, features = ["cjk"] }
 rustc-hash = { workspace = true, optional = true }
+pulldown-cmark = { workspace = true, optional = true }
 
 [dev-dependencies]
 data-encoding.workspace = true

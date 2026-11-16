@@ -79,6 +79,7 @@ fn model() -> FlowchartModel {
         subgraphs: vec![subgraph("G", &["H"]), subgraph("H", &["A", "B"])],
         dropped_subgraph_members: Vec::new(),
         subgraph_vertex_styles: Default::default(),
+        label_sources: Default::default(),
         tooltips: Default::default(),
         warning_facts: Vec::new(),
     }
@@ -257,11 +258,6 @@ fn context_rejects_foreign_labels_and_wrong_declaration_owners() {
                 .insert_edge(model.edges.len(), "label".to_owned());
             context
         }),
-        ("edge order", {
-            let mut context = base.clone();
-            context.labels.edges.swap(0, 1);
-            context
-        }),
         ("subgraph range", {
             let mut context = base.clone();
             context.labels.insert_subgraph(
@@ -312,6 +308,105 @@ fn context_also_validates_the_canonical_css_sidecar() {
             .unwrap()
             .is_err()
     );
+}
+
+#[test]
+fn context_shares_canonical_labels_without_counting_their_storage_twice() {
+    let mut model = model();
+    model
+        .label_sources
+        .insert_node("A".to_owned(), "&lt;Node&gt;".to_owned());
+    let context = FlowchartRenderContext::from_model(&model);
+    assert_eq!(
+        context.node_label_for_render(&model.nodes[0]),
+        Some("&lt;Node&gt;")
+    );
+    assert_eq!(context.retained_bytes_for_model(&model), 0);
+    assert_eq!(context.retained_bytes(), "A&lt;Node&gt;".len());
+
+    let mut independent = FlowchartRenderContext::default();
+    independent
+        .labels
+        .insert_node("A".to_owned(), "&lt;Node&gt;".to_owned());
+    assert_eq!(
+        independent.retained_bytes_for_model(&model),
+        independent.retained_bytes()
+    );
+
+    model
+        .label_sources
+        .insert_node("missing".to_owned(), "label".to_owned());
+    assert!(
+        context
+            .validate_for_model_controlled(&model, &OperationControl::new())
+            .unwrap()
+            .is_err()
+    );
+    assert_eq!(
+        context.node_label_for_render(&model.nodes[0]),
+        Some("&lt;Node&gt;")
+    );
+    assert_eq!(
+        context.retained_bytes_for_model(&model),
+        context.retained_bytes()
+    );
+}
+
+#[test]
+fn context_requires_matching_sources_for_every_owner() {
+    let mut original = model();
+    original
+        .label_sources
+        .insert_node("A".to_owned(), "node &lt;T&gt;".to_owned());
+    original
+        .label_sources
+        .insert_edge(1, "edge &lt;T&gt;".to_owned());
+    original
+        .label_sources
+        .insert_subgraph("H".to_owned(), 1, Some("group &lt;T&gt;".to_owned()));
+    let context = FlowchartRenderContext::from_model(&original);
+    assert_eq!(context.retained_bytes_for_model(&original), 0);
+
+    let mut changed_node = original.clone();
+    changed_node
+        .label_sources
+        .insert_node("A".to_owned(), "different node".to_owned());
+    let mut changed_edge = original.clone();
+    changed_edge
+        .label_sources
+        .insert_edge(1, "different edge".to_owned());
+    let mut changed_subgraph = original.clone();
+    changed_subgraph.label_sources.insert_subgraph(
+        "H".to_owned(),
+        1,
+        Some("different group".to_owned()),
+    );
+
+    for (model, message) in [
+        (
+            changed_node,
+            "flowchart node label sources differ between model and render context",
+        ),
+        (
+            changed_edge,
+            "flowchart edge label sources differ between model and render context",
+        ),
+        (
+            changed_subgraph,
+            "flowchart subgraph label sources differ between model and render context",
+        ),
+    ] {
+        assert_eq!(
+            context
+                .validate_for_model_controlled(&model, &OperationControl::new())
+                .unwrap(),
+            Err(message)
+        );
+        assert_eq!(
+            context.retained_bytes_for_model(&model),
+            context.retained_bytes()
+        );
+    }
 }
 
 #[test]

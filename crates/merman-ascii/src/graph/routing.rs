@@ -1035,8 +1035,13 @@ fn admit_route_candidate(
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
     if plan.labels.is_empty()
         && let Some(raw) = request.edge.label.as_deref()
-        && super::label::try_measure_edge_label(raw, request.charset.width_profile, resources)?
-            .is_some()
+        && super::label::try_measure_edge_label(
+            raw,
+            request.charset.width_profile,
+            resources,
+            request.edge.label_break_policy,
+        )?
+        .is_some()
     {
         return Ok(None);
     }

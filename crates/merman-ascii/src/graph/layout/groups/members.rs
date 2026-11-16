@@ -237,7 +237,7 @@ pub(super) fn shift_member_indices_x(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::graph::{
+    use crate::graph::model::{
         GraphDirection, GraphGroupStyle, GraphNodeSemantics, GraphNodeShape, GraphNodeSide,
         GraphNodeSideConstraint, GraphNodeStyle,
     };

@@ -482,7 +482,9 @@ fn flowchart_text_bytes(model: &FlowchartModel) -> usize {
             .saturating_add(id.len())
             .saturating_add(value.len())
     });
-    total.saturating_add(model.subgraph_vertex_styles.retained_bytes())
+    total
+        .saturating_add(model.subgraph_vertex_styles.retained_bytes())
+        .saturating_add(model.label_sources.retained_bytes())
 }
 
 #[cfg(all(

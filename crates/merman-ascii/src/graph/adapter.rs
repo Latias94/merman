@@ -1,4 +1,5 @@
 use super::label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
+use super::markup::FlowchartLabels;
 use super::model::{
     AsciiGraph, GraphDirection, GraphEdgeAttrs, GraphEdgeMarker, GraphEdgeStroke,
     GraphNodeSemantics,
@@ -13,7 +14,8 @@ use crate::options::AsciiRenderOptions;
 use crate::options::{FlowchartLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    NormalizedTextPlan, NormalizedTrimmedTextPlan, charge_text_layout, try_plan_normalized_text,
+    LabelBreakPolicy, NormalizedTextPlan, NormalizedTrimmedTextPlan, charge_text_layout,
+    try_plan_normalized_text, try_plan_normalized_trimmed_literal_rows,
     try_plan_normalized_trimmed_text,
 };
 use merman_model::families::flowchart::{
@@ -83,8 +85,9 @@ fn from_flowchart_model_transactional(
             message: "must be greater than 0",
         },
     )?;
+    let labels = FlowchartLabels::new(model, layout_policy.terminal_width_profile, resources)?;
     let projection_plan = FlowchartProjectionPlan::try_new(
-        model,
+        &labels,
         &memberships,
         direction,
         Some(wrap_width.get()),
@@ -146,14 +149,16 @@ fn from_flowchart_model_transactional(
         checkpoint_projection(execution, index)?;
         let from = try_clone_projection_string(&edge.from, resources)?;
         let to = try_clone_projection_string(&edge.to, resources)?;
-        graph.add_edge_with_attrs(
+        let label_break_policy =
+            label_plan.map_or(LabelBreakPolicy::MermaidLabelBreaks, |(_, policy)| policy);
+        graph.add_edge_with_label_policy(
             from,
             to,
             GraphEdgeAttrs {
                 id: Some(try_clone_projection_string(&edge.id, resources)?),
                 is_user_defined_id: edge.is_user_defined_id,
                 label: label_plan
-                    .map(|plan| {
+                    .map(|(plan, _)| {
                         plan.materialize_after_admission_with_checkpoint(|iteration| {
                             checkpoint_projection(execution, iteration)
                         })
@@ -165,6 +170,7 @@ fn from_flowchart_model_transactional(
                 length: edge.length,
                 style,
             },
+            label_break_policy,
         );
     }
 
@@ -192,7 +198,7 @@ fn from_flowchart_model_transactional(
             checkpoint_projection(execution, member_index)?;
             members.push(try_clone_projection_string(member, resources)?);
         }
-        graph.add_group_with_style(
+        graph.add_group_with_title_policy(
             try_clone_projection_string(&subgraph.id, resources)?,
             group_plan
                 .title
@@ -202,6 +208,7 @@ fn from_flowchart_model_transactional(
             group_plan.direction,
             members,
             style,
+            group_plan.title_break_policy,
         );
     }
 
@@ -533,7 +540,7 @@ fn preflight_subgraph_nesting(
 #[derive(Debug)]
 struct FlowchartProjectionPlan<'a> {
     nodes: Vec<Option<FlowchartNodeProjectionPlan<'a>>>,
-    edge_labels: Vec<Option<NormalizedTrimmedTextPlan<'a>>>,
+    edge_labels: Vec<Option<(NormalizedTrimmedTextPlan<'a>, LabelBreakPolicy)>>,
     groups: Vec<FlowchartGroupProjectionPlan<'a>>,
 }
 
@@ -547,6 +554,7 @@ struct FlowchartNodeProjectionPlan<'a> {
 struct FlowchartGroupProjectionPlan<'a> {
     canonical_index: usize,
     title: NormalizedTextPlan<'a>,
+    title_break_policy: LabelBreakPolicy,
     direction: Option<GraphDirection>,
 }
 
@@ -624,7 +632,7 @@ impl ProjectionMaterializationAdmission {
 
 impl<'a> FlowchartProjectionPlan<'a> {
     fn try_new(
-        model: &'a FlowchartModel,
+        labels: &'a FlowchartLabels<'_>,
         memberships: &FlowchartMembershipIndex<'_>,
         direction: GraphDirection,
         wrap_width: Option<usize>,
@@ -632,6 +640,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
+        let model = labels.model;
         let plan_entries = resources.checked_work_add(
             resources.checked_work_add(model.nodes.len(), model.edges.len())?,
             memberships.canonical_group_indices().len(),
@@ -652,13 +661,15 @@ impl<'a> FlowchartProjectionPlan<'a> {
                 continue;
             }
             let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
-            let projected_label = shape.projected_label(node.label.as_deref().unwrap_or(&node.id));
+            let (label, break_policy) = labels.node(index);
+            let projected_label = shape.projected_label(label);
             let text = DeferredGraphNodeLabelPlan::single(
-                DeferredGraphLabelSectionPlan::try_single(
+                DeferredGraphLabelSectionPlan::try_single_with_break_policy(
                     projected_label,
                     wrap_width,
                     "flowchart",
                     width_profile,
+                    break_policy,
                     resources,
                 )?,
                 wrap_width,
@@ -680,11 +691,16 @@ impl<'a> FlowchartProjectionPlan<'a> {
             admission.include_copy(&edge.from, resources)?;
             admission.include_copy(&edge.to, resources)?;
             admission.include_copy(&edge.id, resources)?;
-            let label_plan = match edge.label.as_deref() {
-                Some(label) => try_plan_normalized_trimmed_text(label, width_profile, resources)?,
+            let label_plan = match labels.edge(index) {
+                Some((label, policy)) => (if policy == LabelBreakPolicy::LiteralRows {
+                    try_plan_normalized_trimmed_literal_rows(label, width_profile, resources)?
+                } else {
+                    try_plan_normalized_trimmed_text(label, width_profile, resources)?
+                })
+                .map(|plan| (plan, policy)),
                 None => None,
             };
-            if let Some(label_plan) = label_plan {
+            if let Some((label_plan, _)) = label_plan {
                 admission.include_visible_text(label_plan, resources)?;
             }
             edge_labels.push(label_plan);
@@ -700,7 +716,8 @@ impl<'a> FlowchartProjectionPlan<'a> {
             checkpoint_projection(execution, index)?;
             let subgraph = &model.subgraphs[canonical_index];
             admission.include_copy(&subgraph.id, resources)?;
-            let title = try_plan_normalized_text(&subgraph.title, width_profile, resources)?;
+            let (label, title_break_policy) = labels.group(canonical_index);
+            let title = try_plan_normalized_text(label, width_profile, resources)?;
             admission.include_visible_text(title, resources)?;
             for (member_index, member) in canonical_members.iter().enumerate() {
                 checkpoint_projection(execution, member_index)?;
@@ -715,6 +732,7 @@ impl<'a> FlowchartProjectionPlan<'a> {
             groups.push(FlowchartGroupProjectionPlan {
                 canonical_index,
                 title,
+                title_break_policy,
                 direction,
             });
         }
@@ -912,6 +930,7 @@ mod tests {
             subgraphs: Vec::new(),
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }
@@ -974,6 +993,7 @@ mod tests {
             subgraphs,
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }
@@ -1280,6 +1300,7 @@ mod tests {
             subgraphs: Vec::new(),
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };
@@ -1381,6 +1402,7 @@ mod tests {
             }],
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };
@@ -1443,6 +1465,7 @@ mod tests {
             }],
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         };

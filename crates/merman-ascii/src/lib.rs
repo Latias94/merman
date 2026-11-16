@@ -968,6 +968,7 @@ mod tests {
             subgraphs: Vec::new(),
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }

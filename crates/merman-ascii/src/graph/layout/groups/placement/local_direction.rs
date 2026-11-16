@@ -179,6 +179,7 @@ fn build_group_override_graph(
             from,
             to,
             label: None,
+            label_break_policy: edge.label_break_policy,
             stroke: GraphEdgeStroke::Normal,
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Point,

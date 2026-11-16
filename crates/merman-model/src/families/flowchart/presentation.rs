@@ -1,118 +1,11 @@
 //! Source-faithful labels and frozen Flowchart render facts.
 
-use super::{FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartSubgraphStyles};
+use super::{
+    FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderLabelSources,
+    FlowchartSubgraphStyles,
+};
 use crate::{OperationControl, OperationControlResult};
 use rustc_hash::{FxHashMap, FxHashSet};
-
-/// Source-faithful labels indexed by canonical model identity and encounter ordinal.
-#[derive(Debug, Clone, Default)]
-pub struct FlowchartRenderLabelSources {
-    nodes: FxHashMap<String, String>,
-    edges: Vec<(usize, String)>,
-    subgraphs: Vec<Option<FlowSubgraphRenderLabelSource>>,
-}
-
-#[derive(Debug, Clone)]
-struct FlowSubgraphRenderLabelSource {
-    id: String,
-    source: String,
-}
-
-impl FlowchartRenderLabelSources {
-    pub fn node_label_for_render<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
-        self.nodes
-            .get(&node.id)
-            .map(String::as_str)
-            .or(node.label.as_deref())
-    }
-
-    pub fn edge_label_for_render<'a>(
-        &'a self,
-        semantic_index: usize,
-        edge: &'a FlowEdge,
-    ) -> Option<&'a str> {
-        self.edges
-            .binary_search_by_key(&semantic_index, |(index, _)| *index)
-            .ok()
-            .map(|position| self.edges[position].1.as_str())
-            .or(edge.label.as_deref())
-    }
-
-    pub fn subgraph_title_for_render<'a>(
-        &'a self,
-        declaration_ordinal: usize,
-        subgraph: &'a FlowSubgraph,
-    ) -> &'a str {
-        self.subgraphs
-            .get(declaration_ordinal)
-            .and_then(Option::as_ref)
-            .filter(|source| source.id == subgraph.id)
-            .map(|source| source.source.as_str())
-            .unwrap_or(subgraph.title.as_str())
-    }
-
-    pub fn insert_node(&mut self, id: String, source: String) {
-        self.nodes.insert(id, source);
-    }
-
-    pub fn insert_edge(&mut self, semantic_index: usize, source: String) {
-        if self
-            .edges
-            .last()
-            .is_none_or(|(last_index, _)| *last_index < semantic_index)
-        {
-            self.edges.push((semantic_index, source));
-            return;
-        }
-
-        match self
-            .edges
-            .binary_search_by_key(&semantic_index, |(index, _)| *index)
-        {
-            Ok(position) => self.edges[position].1 = source,
-            Err(position) => self.edges.insert(position, (semantic_index, source)),
-        }
-    }
-
-    pub fn insert_subgraph(
-        &mut self,
-        id: String,
-        declaration_ordinal: usize,
-        source: Option<String>,
-    ) {
-        if let Some(source) = source {
-            if self.subgraphs.len() <= declaration_ordinal {
-                self.subgraphs.resize_with(declaration_ordinal + 1, || None);
-            }
-            self.subgraphs[declaration_ordinal] =
-                Some(FlowSubgraphRenderLabelSource { id, source });
-        }
-    }
-
-    pub fn retained_bytes(&self) -> usize {
-        self.nodes
-            .iter()
-            .fold(0usize, |total, (id, label)| {
-                total.saturating_add(id.len()).saturating_add(label.len())
-            })
-            .saturating_add(
-                self.edges
-                    .iter()
-                    .map(|(_, source)| source.len())
-                    .sum::<usize>(),
-            )
-            .saturating_add(
-                self.subgraphs
-                    .iter()
-                    .flatten()
-                    .fold(0usize, |total, source| {
-                        total
-                            .saturating_add(source.id.len())
-                            .saturating_add(source.source.len())
-                    }),
-            )
-    }
-}
 
 /// Frozen render facts and a shared view of canonical authored subgraph CSS.
 #[doc(hidden)]
@@ -127,10 +20,11 @@ pub struct FlowchartRenderContext {
 }
 
 impl FlowchartRenderContext {
-    /// Inherits canonical CSS without adding labels, collapse facts, or source-assigned IDs.
-    /// The canonical model already accounts for the shared CSS allocation.
+    /// Inherits canonical labels and CSS without adding collapse facts or source-assigned IDs.
+    /// The canonical model already accounts for the shared allocations.
     pub fn from_model(model: &FlowchartModel) -> Self {
         Self {
+            labels: model.label_sources.clone(),
             styles: model.subgraph_vertex_styles.clone(),
             ..Self::default()
         }
@@ -158,39 +52,24 @@ impl FlowchartRenderContext {
             subgraph_ids.insert(subgraph.id.as_str());
         }
 
-        for id in self.labels.nodes.keys() {
-            control.checkpoint()?;
-            if !node_ids.contains(id.as_str()) {
-                return Ok(Err("flowchart node label refers to an unknown node"));
-            }
+        if let Err(message) = model
+            .label_sources
+            .validate_with_node_ids(model, &node_ids, control)?
+        {
+            return Ok(Err(message));
         }
-        let mut previous_edge_index = None;
-        for (index, _) in &self.labels.edges {
-            control.checkpoint()?;
-            if *index >= model.edges.len() {
-                return Ok(Err("flowchart edge label semantic index is out of range"));
-            }
-            if previous_edge_index.is_some_and(|previous| previous >= *index) {
-                return Ok(Err(
-                    "flowchart edge label semantic indices are not strictly increasing",
-                ));
-            }
-            previous_edge_index = Some(*index);
-        }
-        control.checkpoint()?;
-        if self.labels.subgraphs.len() > model.subgraphs.len() {
-            return Ok(Err(
-                "flowchart subgraph label declaration ordinal is out of range",
-            ));
-        }
-        for (ordinal, source) in self.labels.subgraphs.iter().enumerate() {
-            control.checkpoint()?;
-            if let Some(source) = source
-                && model.subgraphs[ordinal].id != source.id
+        if !self.labels.shares_storage_with(&model.label_sources) {
+            if let Err(message) = self
+                .labels
+                .validate_with_node_ids(model, &node_ids, control)?
             {
-                return Ok(Err(
-                    "flowchart subgraph label ID does not match its declaration ordinal",
-                ));
+                return Ok(Err(message));
+            }
+            if let Err(message) = self
+                .labels
+                .validate_compatible_with_controlled(&model.label_sources, control)?
+            {
+                return Ok(Err(message));
             }
         }
         if let Err(message) = model
@@ -367,8 +246,11 @@ impl FlowchartRenderContext {
     }
 
     pub fn retained_bytes(&self) -> usize {
-        self.labels
-            .retained_bytes()
+        self.retained_bytes_with_labels(self.labels.retained_bytes())
+    }
+
+    fn retained_bytes_with_labels(&self, label_bytes: usize) -> usize {
+        label_bytes
             .saturating_add(
                 self.collapsed_subgraphs
                     .iter()
@@ -393,6 +275,18 @@ impl FlowchartRenderContext {
                             .saturating_add(std::mem::size_of::<usize>())
                     }),
             )
+    }
+
+    /// Counts context text not already owned by this model's shared label allocation.
+    pub fn retained_bytes_for_model(&self, model: &FlowchartModel) -> usize {
+        let label_bytes = self.labels.retained_bytes();
+        let shared = if self.labels.shares_storage_with(&model.label_sources) {
+            label_bytes
+        } else {
+            0
+        };
+        self.retained_bytes_with_labels(label_bytes)
+            .saturating_sub(shared)
     }
 }
 

@@ -2,6 +2,7 @@ use super::label::{GraphNodeLabelPlan, PreparedGraphNodeText};
 use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::resource::AsciiResourceLimitPhase;
+use crate::safe_text::LabelBreakPolicy;
 use std::num::NonZeroUsize;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -290,6 +291,7 @@ pub(super) struct AsciiGraphEdge {
     pub(super) from: String,
     pub(super) to: String,
     pub(super) label: Option<String>,
+    pub(super) label_break_policy: LabelBreakPolicy,
     pub(super) stroke: GraphEdgeStroke,
     pub(super) start_marker: GraphEdgeMarker,
     pub(super) end_marker: GraphEdgeMarker,
@@ -335,6 +337,7 @@ pub(crate) struct GraphEdgeStyle {
 pub(super) struct AsciiGraphGroup {
     pub(super) id: String,
     pub(super) title: String,
+    pub(super) title_break_policy: LabelBreakPolicy,
     pub(super) kind: GraphGroupKind,
     pub(super) direction: Option<GraphDirection>,
     pub(super) nodes: Vec<String>,
@@ -500,9 +503,20 @@ impl AsciiGraph {
         to: impl Into<String>,
         attrs: GraphEdgeAttrs,
     ) {
+        self.add_edge_with_label_policy(from, to, attrs, LabelBreakPolicy::MermaidLabelBreaks);
+    }
+
+    pub(crate) fn add_edge_with_label_policy(
+        &mut self,
+        from: impl Into<String>,
+        to: impl Into<String>,
+        attrs: GraphEdgeAttrs,
+        label_break_policy: LabelBreakPolicy,
+    ) {
         self.edges.push(AsciiGraphEdge {
             id: attrs.id,
             is_user_defined_id: attrs.is_user_defined_id,
+            label_break_policy,
             from: from.into(),
             to: to.into(),
             label: attrs.label,
@@ -544,10 +558,26 @@ impl AsciiGraph {
         self.groups.push(AsciiGraphGroup {
             id: id.into(),
             title: title.into(),
+            title_break_policy: LabelBreakPolicy::MermaidLabelBreaks,
             kind,
             direction,
             nodes,
             style,
         });
+    }
+
+    pub(crate) fn add_group_with_title_policy(
+        &mut self,
+        id: impl Into<String>,
+        title: impl Into<String>,
+        direction: Option<GraphDirection>,
+        nodes: Vec<String>,
+        style: GraphGroupStyle,
+        title_break_policy: LabelBreakPolicy,
+    ) {
+        self.add_group_with_style(id, title, direction, nodes, style);
+        if let Some(group) = self.groups.last_mut() {
+            group.title_break_policy = title_break_policy;
+        }
     }
 }

@@ -133,6 +133,15 @@ unless the caller explicitly overrides the corresponding family option. These ad
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
 
+Flowchart and Swimlane also consume the model's sparse sanitized label sources. Text entities
+are decoded once after authored line breaks are resolved, preserving literal text such as
+`returns &lt;T&gt;` and preventing `&lt;br&gt;` from acquiring newline semantics. Markdown emphasis
+and strong markers do not occupy terminal cells; plain-label punctuation, code, and link notation
+remain authored text. The same projection feeds node sizing, edge routing, and group titles.
+Complete source spellings remain available in bounded Plain fallback records. Compatibility JSON
+keeps its pinned Mermaid projection; its decoded label strings are not a replacement for these
+source facts.
+
 Graph routing compares deterministic candidates using target-port congestion, marked-source port
 congestion, and combined route length, shared-cell cost and scene growth. Compound Flowchart routes
 with a known common-scope direction prefer forward departure/arrival contacts after endpoint

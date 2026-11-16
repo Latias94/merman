@@ -455,9 +455,12 @@ impl AllocationScene<'_> {
         });
         if let Some(raw) = edge.label.as_deref() {
             self.scan()?;
-            if let Some(metrics) =
-                try_measure_edge_label(raw, self.charset.width_profile, self.resources)?
-            {
+            if let Some(metrics) = try_measure_edge_label(
+                raw,
+                self.charset.width_profile,
+                self.resources,
+                edge.label_break_policy,
+            )? {
                 let Some([first, last]) = label_host else {
                     return Ok(None);
                 };

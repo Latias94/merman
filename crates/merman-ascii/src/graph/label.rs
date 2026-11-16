@@ -20,7 +20,20 @@ pub(super) fn try_measure_edge_label(
     raw: &str,
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
+    break_policy: LabelBreakPolicy,
 ) -> crate::Result<Option<NormalizedLabelMetrics>> {
+    if break_policy == LabelBreakPolicy::LiteralRows {
+        return Ok(try_plan_normalized_label_lines_with_policy(
+            raw,
+            width_profile,
+            true,
+            None,
+            break_policy,
+            resources,
+        )?
+        .map(|plan| plan.metrics())
+        .filter(|metrics| metrics.max_width > 0));
+    }
     Ok(
         try_measure_normalized_label_lines(raw, width_profile, true, resources)?
             .filter(|metrics| metrics.max_width > 0),
@@ -173,6 +186,7 @@ impl GraphLabel {
         }
     }
 
+    #[cfg(test)]
     pub(super) fn try_new_with_profile(
         raw: &str,
         width_profile: TerminalWidthProfile,
@@ -207,6 +221,7 @@ impl GraphLabel {
         )
     }
 
+    #[cfg(test)]
     pub(super) fn try_wrapped_with_profile(
         raw: &str,
         max_width: usize,
@@ -290,14 +305,37 @@ impl GraphLabel {
         }
     }
 
+    #[cfg(test)]
     fn try_single_with_profile(
         raw: &str,
         wrap_width: Option<usize>,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Self> {
+        Self::try_with_break_policy(
+            raw,
+            wrap_width,
+            width_profile,
+            LabelBreakPolicy::MermaidLabelBreaks,
+            resources,
+        )
+    }
+
+    pub(super) fn try_with_break_policy(
+        raw: &str,
+        wrap_width: Option<usize>,
+        width_profile: TerminalWidthProfile,
+        break_policy: LabelBreakPolicy,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
         resources.transaction(|resources| {
-            Self::try_single_with_profile_transactional(raw, wrap_width, width_profile, resources)
+            Self::try_single_with_profile_transactional(
+                raw,
+                wrap_width,
+                width_profile,
+                break_policy,
+                resources,
+            )
         })
     }
 
@@ -305,13 +343,15 @@ impl GraphLabel {
         raw: &str,
         wrap_width: Option<usize>,
         width_profile: TerminalWidthProfile,
+        break_policy: LabelBreakPolicy,
         resources: &ResourceContext,
     ) -> crate::Result<Self> {
-        let plan = required_label_plan(
+        let plan = required_label_plan_with_policy(
             raw,
             wrap_width,
             GENERIC_GRAPH_DIAGRAM_TYPE,
             width_profile,
+            break_policy,
             resources,
         )?;
         let metrics = plan.metrics();
@@ -324,6 +364,33 @@ impl GraphLabel {
             width_profile,
             compartment_break_after: None,
         })
+    }
+
+    pub(super) fn try_measure_with_break_policy(
+        raw: &str,
+        wrap_width: Option<usize>,
+        width_profile: TerminalWidthProfile,
+        break_policy: LabelBreakPolicy,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabelMetrics> {
+        if break_policy == LabelBreakPolicy::MermaidLabelBreaks {
+            return match wrap_width {
+                Some(width) => {
+                    Self::try_measure_wrapped_with_profile(raw, width, width_profile, resources)
+                }
+                None => Self::try_measure_with_profile(raw, width_profile, resources),
+            };
+        }
+        let metrics = required_label_plan_with_policy(
+            raw,
+            wrap_width,
+            GENERIC_GRAPH_DIAGRAM_TYPE,
+            width_profile,
+            break_policy,
+            resources,
+        )?
+        .metrics();
+        graph_label_metrics(metrics.max_width, metrics.line_count, resources)
     }
 }
 
@@ -399,7 +466,32 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Self> {
-        let plan = required_label_plan(raw, wrap_width, diagram_type, width_profile, resources)?;
+        Self::try_single_with_break_policy(
+            raw,
+            wrap_width,
+            diagram_type,
+            width_profile,
+            LabelBreakPolicy::MermaidLabelBreaks,
+            resources,
+        )
+    }
+
+    pub(crate) fn try_single_with_break_policy(
+        raw: &'a str,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        break_policy: LabelBreakPolicy,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let plan = required_label_plan_with_policy(
+            raw,
+            wrap_width,
+            diagram_type,
+            width_profile,
+            break_policy,
+            resources,
+        )?;
         let mut parts = Vec::new();
         parts
             .try_reserve_exact(1)
@@ -1006,12 +1098,30 @@ fn required_label_plan(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> crate::Result<NormalizedLabelPlan> {
+    required_label_plan_with_policy(
+        raw,
+        wrap_width,
+        diagram_type,
+        width_profile,
+        LabelBreakPolicy::MermaidLabelBreaks,
+        resources,
+    )
+}
+
+fn required_label_plan_with_policy(
+    raw: &str,
+    wrap_width: Option<usize>,
+    diagram_type: &'static str,
+    width_profile: TerminalWidthProfile,
+    break_policy: LabelBreakPolicy,
+    resources: &ResourceContext,
+) -> crate::Result<NormalizedLabelPlan> {
     try_plan_normalized_label_lines_with_policy(
         raw,
         width_profile,
         false,
         wrap_width,
-        LabelBreakPolicy::MermaidLabelBreaks,
+        break_policy,
         resources,
     )?
     .ok_or(crate::error::AsciiError::UnsupportedFeature {

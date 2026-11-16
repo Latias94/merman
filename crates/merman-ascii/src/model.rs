@@ -267,11 +267,18 @@ impl Serialize for AsciiDiagram<'_> {
                         &'a merman_model::families::flowchart::FlowchartSubgraphStyles,
                     #[serde(rename = "subgraphExplicitDirections")]
                     subgraph_explicit_directions: SubgraphExplicitDirections<'a>,
+                    #[serde(
+                        rename = "labelSources",
+                        skip_serializing_if = "merman_model::families::flowchart::FlowchartRenderLabelSources::is_empty"
+                    )]
+                    label_sources:
+                        &'a merman_model::families::flowchart::FlowchartRenderLabelSources,
                 }
                 Projection {
                     model,
                     subgraph_vertex_styles: &model.subgraph_vertex_styles,
                     subgraph_explicit_directions: SubgraphExplicitDirections(&model.subgraphs),
+                    label_sources: &model.label_sources,
                 }
                 .serialize(serializer)
             }

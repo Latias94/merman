@@ -119,10 +119,7 @@ pub(crate) use ast::{
 use ast::{
     FlowchartAst, StatementArena, StatementEvent, StatementId, StatementList, Stmt, SubgraphBlock,
 };
-#[cfg(all(
-    feature = "presentation",
-    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
-))]
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_model::families::flowchart::FlowchartRenderLabelSources;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 pub(crate) use model::sanitize_common_db_fields;
@@ -1994,19 +1991,12 @@ impl FlowchartSemanticSource {
         }
 
         let mut render_nodes = Vec::with_capacity(nodes.len());
-        #[cfg(feature = "presentation")]
-        let mut render_label_sources =
-            _collect_render_context.then(FlowchartRenderLabelSources::default);
+        let mut label_sources = FlowchartRenderLabelSources::default();
         for (index, node) in nodes.into_iter().enumerate() {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let node = flow_node_to_model(
-                node,
-                meta.diagram_config(),
-                #[cfg(feature = "presentation")]
-                render_label_sources.as_mut(),
-            );
+            let node = flow_node_to_model(node, meta.diagram_config(), &mut label_sources);
             render_nodes.push(node);
         }
         let mut render_edges = Vec::with_capacity(edges.len());
@@ -2014,14 +2004,7 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            match flow_edge_to_model(
-                edge,
-                meta,
-                #[cfg(feature = "presentation")]
-                render_label_sources
-                    .as_mut()
-                    .map(|sources| (index, sources)),
-            ) {
+            match flow_edge_to_model(edge, meta, index, &mut label_sources) {
                 Ok(edge) => {
                     render_edges.push(edge);
                 }
@@ -2033,14 +2016,8 @@ impl FlowchartSemanticSource {
             if index % 128 == 0 {
                 control.checkpoint()?;
             }
-            let subgraph = flow_subgraph_to_model(
-                subgraph,
-                meta.diagram_config(),
-                #[cfg(feature = "presentation")]
-                render_label_sources
-                    .as_mut()
-                    .map(|sources| (index, sources)),
-            );
+            let subgraph =
+                flow_subgraph_to_model(subgraph, meta.diagram_config(), index, &mut label_sources);
             render_subgraphs.push(subgraph);
         }
         let mut render_tooltips = rustc_hash::FxHashMap::default();
@@ -2067,6 +2044,7 @@ impl FlowchartSemanticSource {
             nodes: render_nodes,
             edges: render_edges,
             subgraphs: render_subgraphs,
+            label_sources,
             dropped_subgraph_members,
             subgraph_vertex_styles,
             tooltips: render_tooltips,
@@ -2075,7 +2053,7 @@ impl FlowchartSemanticSource {
         #[cfg(feature = "presentation")]
         let render_context = if _collect_render_context {
             Some(FlowchartRenderContext::new(
-                render_label_sources.expect("render labels are collected for render consumers"),
+                model.label_sources.clone(),
                 model.subgraph_vertex_styles.clone(),
                 collapsed_subgraphs
                     .expect("collapsed subgraphs are collected for render consumers"),
@@ -2143,19 +2121,16 @@ fn append_missing_subgraph_nodes(
 fn flow_node_to_model(
     n: Node,
     config: &MermaidConfig,
-    #[cfg(feature = "presentation")] render_label_sources: Option<&mut FlowchartRenderLabelSources>,
+    label_sources: &mut FlowchartRenderLabelSources,
 ) -> FlowNode {
     let layout_shape = layout_shape_for_node(&n);
     let label = sanitized_node_label(&n, config);
-    #[cfg(feature = "presentation")]
-    if let Some(sources) = render_label_sources {
-        let label_raw = n.label.as_deref().unwrap_or(&n.id);
-        if let Some(source) = render_label_source_needs_provenance(label_raw)
-            .then(|| sanitized_node_render_label_source(&n, config))
-            .filter(|source| *source != label)
-        {
-            sources.insert_node(n.id.clone(), source);
-        }
+    let label_raw = n.label.as_deref().unwrap_or(&n.id);
+    if let Some(source) = render_label_source_needs_provenance(label_raw)
+        .then(|| sanitized_node_render_label_source(&n, config))
+        .filter(|source| *source != label)
+    {
+        label_sources.insert_node(n.id.clone(), source);
     }
 
     FlowNode {
@@ -2184,24 +2159,19 @@ fn flow_node_to_model(
 fn flow_edge_to_model<M: FlowchartMetadata>(
     e: Edge,
     meta: &M,
-    #[cfg(feature = "presentation")] render_label_sources: Option<(
-        usize,
-        &mut FlowchartRenderLabelSources,
-    )>,
+    semantic_index: usize,
+    label_sources: &mut FlowchartRenderLabelSources,
 ) -> Result<FlowEdge> {
     let label = sanitized_optional_label(e.label.as_deref(), meta.diagram_config());
-    #[cfg(feature = "presentation")]
-    if let Some((index, sources)) = render_label_sources {
-        let render_label_source = e
-            .label
-            .as_deref()
-            .filter(|raw| render_label_source_needs_provenance(raw))
-            .map(|raw| sanitized_render_label_source(raw, meta.diagram_config()));
-        if let (Some(label), Some(source)) = (&label, render_label_source)
-            && *label != source
-        {
-            sources.insert_edge(index, source);
-        }
+    let render_label_source = e
+        .label
+        .as_deref()
+        .filter(|raw| render_label_source_needs_provenance(raw))
+        .map(|raw| sanitized_render_label_source(raw, meta.diagram_config()));
+    if let (Some(label), Some(source)) = (&label, render_label_source)
+        && *label != source
+    {
+        label_sources.insert_edge(semantic_index, source);
     }
     let id = e.id.ok_or_else(|| {
         Error::diagram_parse_fallback(
@@ -2269,7 +2239,6 @@ fn sanitized_node_label(n: &Node, config: &MermaidConfig) -> String {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "presentation")]
 fn sanitized_node_render_label_source(n: &Node, config: &MermaidConfig) -> String {
     let label_raw = n.label.as_ref().unwrap_or(&n.id);
     let mut label = sanitized_render_label_source(label_raw, config);
@@ -2291,7 +2260,6 @@ fn sanitized_label(raw: &str, config: &MermaidConfig) -> String {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "presentation")]
 fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
     let flow_db_label = sanitize_text(raw, config);
     let decoded = crate::entities::restore_mermaid_entity_spelling(&flow_db_label);
@@ -2299,7 +2267,6 @@ fn sanitized_render_label_source(raw: &str, config: &MermaidConfig) -> String {
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-#[cfg(feature = "presentation")]
 fn render_label_source_needs_provenance(raw: &str) -> bool {
     raw.contains(['&', '#', 'ﬂ', '¶', '<', '>'])
 }
@@ -2316,19 +2283,16 @@ fn decode_mermaid_hash_entities(input: &str) -> std::borrow::Cow<'_, str> {
 fn flow_subgraph_to_model(
     sg: FlowSubGraph,
     config: &MermaidConfig,
-    #[cfg(feature = "presentation")] render_label_sources: Option<(
-        usize,
-        &mut FlowchartRenderLabelSources,
-    )>,
+    declaration_ordinal: usize,
+    label_sources: &mut FlowchartRenderLabelSources,
 ) -> FlowSubgraph {
     let sanitized_title = sanitize_text(&sg.title, config);
     let title = decode_mermaid_hash_entities(&sanitized_title).into_owned();
-    #[cfg(feature = "presentation")]
-    if let Some((index, sources)) = render_label_sources {
-        let render_title_source = render_label_source_needs_provenance(&sg.title)
-            .then(|| sanitized_render_label_source(&sg.title, config))
-            .filter(|source| *source != title);
-        sources.insert_subgraph(sg.id.clone(), index, render_title_source);
+    let render_title_source = render_label_source_needs_provenance(&sg.title)
+        .then(|| sanitized_render_label_source(&sg.title, config))
+        .filter(|source| *source != title);
+    if let Some(source) = render_title_source {
+        label_sources.insert_subgraph(sg.id.clone(), declaration_ordinal, Some(source));
     }
     FlowSubgraph {
         id: sg.id,
@@ -3254,11 +3218,12 @@ A -->|second &lt; owner| B
             )
             .expect("parse flowchart")
             .expect("detect flowchart");
-        assert!(parsed.retained_render_context_bytes() > 0);
+        assert_eq!(parsed.retained_render_context_bytes(), 0);
 
         let (_, crate::RenderSemanticModel::Flowchart(model)) = parsed.into_parts() else {
             panic!("expected Flowchart model");
         };
+        assert!(model.label_sources.retained_bytes() > 0);
         let json = serde_json::to_value(&model).expect("serialize Flowchart model");
         assert!(json.get("renderLabelSources").is_none());
         assert!(json.get("render_label_sources").is_none());

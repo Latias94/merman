@@ -260,6 +260,7 @@ impl MaterializedLabelRows {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LabelBreakPolicy {
     MermaidLabelBreaks,
+    LiteralRows,
     VisibleLine,
     /// Sequence HTML breaks are structural; literal `\n` remains authored text.
     SequenceMessage {
@@ -269,11 +270,11 @@ pub(crate) enum LabelBreakPolicy {
 
 impl LabelBreakPolicy {
     const fn preserve_empty_paragraphs(self) -> bool {
-        matches!(self, Self::MermaidLabelBreaks)
+        matches!(self, Self::MermaidLabelBreaks | Self::LiteralRows)
     }
 
     const fn ensure_nonempty_wrapped_output(self) -> bool {
-        matches!(self, Self::MermaidLabelBreaks)
+        matches!(self, Self::MermaidLabelBreaks | Self::LiteralRows)
     }
 }
 
@@ -815,7 +816,11 @@ fn normalized_label_selection(
                 text.len(),
             )?;
             let trimmable = match token {
-                LabelToken::Segment(segment) => segment.is_trim_whitespace(),
+                LabelToken::Segment(segment) => {
+                    segment.is_trim_whitespace()
+                        && !(break_policy == LabelBreakPolicy::LiteralRows
+                            && matches!(segment.kind, NormalizedSegmentKind::LineBreak))
+                }
                 LabelToken::AuthoredBreak(_) => false,
             };
             if !trimmable {
@@ -1542,7 +1547,10 @@ fn visit_label_tokens<F>(
 where
     F: FnMut() -> Result<()>,
 {
-    if matches!(break_policy, LabelBreakPolicy::VisibleLine) {
+    if matches!(
+        break_policy,
+        LabelBreakPolicy::VisibleLine | LabelBreakPolicy::LiteralRows
+    ) {
         checkpoint()?;
         return visit_normalized_segments(raw, |segment| {
             visit(LabelToken::Segment(segment), checkpoint)

@@ -4,6 +4,29 @@ This source change updates Rust ownership and public model types. Mermaid-compat
 its existing field names, nesting, and ordering. Upgrade coupled Merman crates together.
 For the development branch after 0.9.3, also apply the [model/source migration](model-source-boundaries.md).
 
+## Flowchart label provenance
+
+The development model retains sparse sanitized label sources in
+`FlowchartModel::label_sources`, independently of graphical presentation features. Add
+`label_sources: Default::default()` to directly constructed `FlowchartModel` values. Parsed models
+populate it automatically. `FlowchartRenderLabelSources` is now defined at
+`merman_model::families::flowchart`; import it there when supplying label facts explicitly.
+Clones share its copy-on-write storage, and source facts are admitted with model resources.
+
+These are markup source spellings, not decoded display strings. Nodes use canonical IDs, edges
+use semantic ordinals because authored IDs may repeat, and subgraphs use declaration ordinals
+plus IDs. The `node_label_source`, `edge_label_source`, and `subgraph_title_source` model getters
+fall back to canonical text. Use the optional lookups on `label_sources` when distinguishing source
+markup from an independently constructed display label; decode source text entities only once.
+Canonical and Mermaid-compatible JSON continue to omit these facts, while ASCII's complete
+fallback records retain them. Existing `label` and `title` field projection semantics are unchanged.
+When updating a parsed label, update its source fact or clear `label_sources` to use the new
+canonical text. Rebuild a graphical context with `FlowchartRenderContext::from_model` after such
+an update. Presentation construction rejects a context whose source facts conflict with, or omit,
+the model's retained facts; independently allocated equivalent facts remain valid.
+
+## Shared deep values
+
 Block's nested compatibility views now observe later style, class, type, and label updates through
 the same canonical record, matching pinned Mermaid. The former Rust subtree copies incorrectly
 froze these fields when a parent completed. Repeated composite declarations keep their first
