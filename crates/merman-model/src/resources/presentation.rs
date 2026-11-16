@@ -37,7 +37,7 @@ pub(crate) fn check_presentation_construction(
     };
     complexity.text_bytes = complexity
         .text_bytes
-        .saturating_add(context.retained_text_bytes());
+        .saturating_add(context.retained_text_bytes_for_model(model));
     if let Err(error) = policy.check_model_complexity(complexity) {
         return Ok(Err(error));
     }
@@ -169,9 +169,11 @@ pub fn model_complexity_from_render_model(model: &RenderSemanticModel) -> ModelC
 /// Counts full model data and its retained family context, without changing metadata accounting.
 pub fn model_complexity_from_presentation(diagram: &PresentationDiagram) -> ModelComplexity {
     let mut complexity = model_complexity_from_render_model(diagram.model());
-    complexity.text_bytes = complexity
-        .text_bytes
-        .saturating_add(diagram.render_context().retained_text_bytes());
+    complexity.text_bytes = complexity.text_bytes.saturating_add(
+        diagram
+            .render_context()
+            .retained_text_bytes_for_model(diagram.model()),
+    );
     complexity
 }
 

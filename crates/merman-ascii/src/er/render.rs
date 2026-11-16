@@ -1006,8 +1006,7 @@ fn er_relationship_summary_row_for_reason<'model>(
     deferred: &mut DeferredTextRegistry<'model>,
 ) -> Result<RelationGraphSummaryRow> {
     match reason {
-        relation_graph::LayeredRelationSummaryReason::Crossing
-        | relation_graph::LayeredRelationSummaryReason::RouteCollision
+        relation_graph::LayeredRelationSummaryReason::RouteCollision
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
             er_relationship_summary_row(layout, charset, width_profile, resources, deferred)
         }
@@ -1037,7 +1036,6 @@ fn er_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint entities",
         LayeredRelationError::UnrelatedBoxes => "ER relationship layouts with unrelated entities",
-        LayeredRelationError::Crossing => "crossing ER relationship layouts",
     };
     AsciiError::UnsupportedFeature {
         diagram_type: "er",
@@ -1129,11 +1127,21 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
         let horizontal =
             relationship_horizontal_line(&relationship.rel_spec.rel_type, self.charset)?;
         let relation_chars = relation_line_chars(self.charset);
+        let (source_cardinality, target_cardinality) = layout.physical_cardinalities();
+        let source_width = display_width_with_profile(
+            cardinality_marker(source_cardinality, self.charset)?,
+            self.width_profile,
+        );
+        let target_width = display_width_with_profile(
+            cardinality_marker(target_cardinality, self.charset)?,
+            self.width_profile,
+        );
         Ok(LayeredRelationRouteStyle::new(
             vertical,
             horizontal,
             relation_chars,
-            relation_graph::LayeredRelationRouteProfile::er(),
+            relation_graph::LayeredRelationRouteProfile::er()
+                .with_marker_widths([source_width, source_width], [target_width, target_width]),
         ))
     }
 
@@ -1145,8 +1153,16 @@ impl<'model> relation_graph::RelationComponentAdapter<'model, ErRelationLayout<'
     ) -> Result<Vec<RelationOverlay>> {
         resources.charge_layout_work(3)?;
         let (top_cardinality, bottom_cardinality) = layout.physical_cardinalities();
-        let top_cardinality = cardinality_marker(top_cardinality, self.charset)?;
-        let bottom_cardinality = cardinality_marker(bottom_cardinality, self.charset)?;
+        let top_cardinality = cardinality_marker_for_port(
+            top_cardinality,
+            geometry.source_port().side(),
+            self.charset,
+        )?;
+        let bottom_cardinality = cardinality_marker_for_port(
+            bottom_cardinality,
+            geometry.target_port().side(),
+            self.charset,
+        )?;
 
         let mut overlays = Vec::new();
         overlays
@@ -1349,6 +1365,21 @@ fn cardinality_marker(cardinality: &str, charset: ErCharset) -> Result<&'static 
             diagram_type: "er",
             feature: "unknown ER cardinality markers",
         }),
+    }
+}
+
+fn cardinality_marker_for_port(
+    cardinality: &str,
+    side: PhysicalPortSide,
+    charset: ErCharset,
+) -> Result<&'static str> {
+    match side {
+        PhysicalPortSide::Left | PhysicalPortSide::Right => {
+            horizontal_cardinality_marker(cardinality, side, charset)
+        }
+        PhysicalPortSide::Top | PhysicalPortSide::Bottom => {
+            cardinality_marker(cardinality, charset)
+        }
     }
 }
 

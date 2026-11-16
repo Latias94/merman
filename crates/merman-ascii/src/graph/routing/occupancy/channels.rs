@@ -66,7 +66,7 @@ impl SceneOccupancy<'_> {
         resources: &ResourceContext,
     ) -> Result<(Vec<usize>, Vec<usize>)> {
         let mut events = AxisEvents::default();
-        for protected in &self.protected {
+        for protected in self.protected.iter() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
             match protected.shape {

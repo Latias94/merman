@@ -77,6 +77,7 @@ export const DIAGRAMMATIC_ASCII_DIAGRAMS = [
   "class",
   "er",
   "flowchart",
+  "packet",
   "sequence",
   "state",
   "swimlane",

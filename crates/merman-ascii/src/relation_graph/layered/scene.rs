@@ -1,12 +1,12 @@
 use super::super::{RelationGraphBox, RelationResourceCheckpointCursor};
 use super::boxes::{
-    LayeredRelationEdge, LayeredRelationError, LayeredRelationLayoutKind, LayeredRelationPlan,
-    LayeredRelationPlanningError, PlacedRelationGraphBox, plan_layered_relation_boxes,
+    LayeredRelationEdge, LayeredRelationLayoutKind, LayeredRelationPlan,
+    LayeredRelationPlanningError, PlacedRelationGraphBox, plan_relation_boxes_for_axis,
 };
 use super::lanes::parallel_relation_lane_offsets;
 use super::route::{
     LayeredRelationRouteGeometry, LayeredRelationRoutePlan, LayeredRelationRouteRequest,
-    plan_layered_relation_route_geometry, plan_planar_k2_2_relation_route_geometry,
+    plan_layered_relation_route_geometry,
 };
 use crate::canvas::Canvas;
 use crate::options::{AsciiRenderOptions, TerminalWidthProfile};
@@ -22,17 +22,11 @@ pub(crate) struct LayeredRelationScene<'boxes> {
     plan: LayeredRelationPlan<'boxes>,
     edges: Vec<LayeredRelationEdge>,
     draw_order: Vec<(usize, isize)>,
-}
-
-#[derive(Debug)]
-pub(crate) enum LayeredRelationScenePlan<'boxes> {
-    Routed(LayeredRelationScene<'boxes>),
-    Summary(LayeredRelationSummaryReason),
+    direction: super::super::DirectionTransform,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LayeredRelationSummaryReason {
-    Crossing,
     RouteCollision,
     OverlayCollision,
 }
@@ -99,11 +93,30 @@ impl LayeredRelationBoxSnapshot {
 }
 
 impl<'boxes> LayeredRelationScene<'boxes> {
+    #[cfg(test)]
     pub(crate) fn new(
         boxes: &[&'boxes RelationGraphBox],
         edges: Vec<LayeredRelationEdge>,
         horizontal_gap: usize,
         width_profile: TerminalWidthProfile,
+        resources: &mut ResourceContext,
+    ) -> std::result::Result<Self, LayeredRelationPlanningError> {
+        Self::new_with_direction(
+            boxes,
+            edges,
+            horizontal_gap,
+            width_profile,
+            super::super::RelationDirection::TopDown.transform(),
+            resources,
+        )
+    }
+
+    pub(crate) fn new_with_direction(
+        boxes: &[&'boxes RelationGraphBox],
+        edges: Vec<LayeredRelationEdge>,
+        horizontal_gap: usize,
+        width_profile: TerminalWidthProfile,
+        direction: super::super::DirectionTransform,
         resources: &mut ResourceContext,
     ) -> std::result::Result<Self, LayeredRelationPlanningError> {
         debug_assert!(
@@ -112,7 +125,14 @@ impl<'boxes> LayeredRelationScene<'boxes> {
                 .all(|relation_box| relation_box.width_profile() == width_profile),
             "layered relation boxes must match the requested terminal width profile"
         );
-        let plan = plan_layered_relation_boxes(boxes, &edges, horizontal_gap, resources)?;
+        let plan = plan_relation_boxes_for_axis(
+            boxes,
+            &edges,
+            horizontal_gap,
+            direction.is_horizontal(),
+            direction.is_horizontal() && direction.is_reversed(),
+            resources,
+        )?;
         let lane_offsets = parallel_relation_lane_offsets(
             edges
                 .iter()
@@ -125,7 +145,16 @@ impl<'boxes> LayeredRelationScene<'boxes> {
             plan,
             edges,
             draw_order,
+            direction,
         })
+    }
+
+    pub(super) fn direction(&self) -> super::super::DirectionTransform {
+        self.direction
+    }
+
+    pub(crate) fn edge(&self, index: usize) -> Option<&LayeredRelationEdge> {
+        self.edges.get(index)
     }
 
     pub(crate) fn width(&self) -> usize {
@@ -134,6 +163,49 @@ impl<'boxes> LayeredRelationScene<'boxes> {
 
     pub(crate) fn height(&self) -> usize {
         self.plan.height()
+    }
+
+    pub(super) fn compact_axes(
+        &mut self,
+        x: &super::compact::CompactAxis,
+        y: &super::compact::CompactAxis,
+    ) {
+        self.plan.compact_axes(x, y);
+    }
+
+    pub(super) fn crop_to_content(
+        &mut self,
+        routes: &mut [LayeredRelationRoutePlan],
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let mut left = self.width();
+        let mut top = self.height();
+        let mut right = 0;
+        let mut bottom = 0;
+        for node in self.plan.placed_boxes() {
+            resources.checkpoint()?;
+            left = left.min(node.x());
+            top = top.min(node.y());
+            right = right.max(node.right() + 1);
+            bottom = bottom.max(node.bottom() + 1);
+        }
+        for route in routes.iter() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(route.segment_count() + route.overlay_count())?;
+            let (x0, y0, x1, y1) = route.bounds();
+            left = left.min(x0);
+            top = top.min(y0);
+            right = right.max(x1);
+            bottom = bottom.max(y1);
+        }
+        if right == 0 || bottom == 0 {
+            return Ok(());
+        }
+        self.plan.crop(left, top, right - left, bottom - top);
+        for route in routes {
+            route.translate_to_origin(left, top);
+        }
+        Ok(())
     }
 
     pub(crate) fn edge_ports_fit(
@@ -311,15 +383,14 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         &self.draw_order
     }
 
-    pub(crate) fn is_planar_k2_2(&self) -> bool {
-        self.plan.layout_kind() == LayeredRelationLayoutKind::PlanarK2x2
+    pub(crate) fn uses_private_channels(&self) -> bool {
+        self.plan.layout_kind() == LayeredRelationLayoutKind::Channels
     }
 
     pub(crate) fn placed_box_count(&self) -> usize {
         self.plan.placed_boxes().len()
     }
 
-    #[cfg(test)]
     pub(crate) fn placed_boxes(&self) -> &[PlacedRelationGraphBox<'boxes>] {
         self.plan.placed_boxes()
     }
@@ -353,15 +424,6 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         let Some((source, target)) = self.edge_endpoints(edge_index) else {
             return Ok(None);
         };
-        if self.is_planar_k2_2() {
-            return plan_planar_k2_2_relation_route_geometry(
-                source,
-                target,
-                self.height(),
-                profile,
-                resources,
-            );
-        }
         plan_layered_relation_route_geometry(
             LayeredRelationRouteRequest::new(
                 self.plan.placed_boxes(),
@@ -375,7 +437,7 @@ impl<'boxes> LayeredRelationScene<'boxes> {
         .map(Some)
     }
 
-    fn edge_endpoints(
+    pub(crate) fn edge_endpoints(
         &self,
         edge_index: usize,
     ) -> Option<(
@@ -418,27 +480,6 @@ fn plan_layered_draw_order(
             .sort_unstable_by_key(|(index, lane_offset)| (lane_offset.unsigned_abs(), *index));
         Ok(draw_order)
     })
-}
-
-pub(crate) fn plan_layered_relation_scene<'boxes>(
-    boxes: &[&'boxes RelationGraphBox],
-    edges: Vec<LayeredRelationEdge>,
-    horizontal_gap: usize,
-    width_profile: TerminalWidthProfile,
-    resources: &mut ResourceContext,
-) -> std::result::Result<LayeredRelationScenePlan<'boxes>, LayeredRelationPlanningError> {
-    let scene =
-        match LayeredRelationScene::new(boxes, edges, horizontal_gap, width_profile, resources) {
-            Ok(scene) => scene,
-            Err(LayeredRelationPlanningError::Semantic(LayeredRelationError::Crossing)) => {
-                return Ok(LayeredRelationScenePlan::Summary(
-                    LayeredRelationSummaryReason::Crossing,
-                ));
-            }
-            Err(error) => return Err(error),
-        };
-
-    Ok(LayeredRelationScenePlan::Routed(scene))
 }
 
 #[cfg(test)]
@@ -607,7 +648,7 @@ mod tests {
 
         let mut resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
-        let plan = plan_layered_relation_scene(
+        let plan = LayeredRelationScene::new(
             &box_refs,
             edges,
             1,
@@ -616,11 +657,11 @@ mod tests {
         )
         .expect("readable relation should plan");
 
-        assert!(matches!(plan, LayeredRelationScenePlan::Routed(_)));
+        assert_eq!(plan.placed_box_count(), 2);
     }
 
     #[test]
-    fn layered_relation_scene_plan_uses_summary_for_crossing_layouts() {
+    fn layered_relation_scene_defers_collision_decisions_until_routes_are_planned() {
         let boxes = vec![
             RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
             RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
@@ -637,19 +678,17 @@ mod tests {
 
         let mut resources = test_resources(AsciiResourcePolicy::default());
         let box_refs = relation_box_refs(&boxes);
-        let plan = plan_layered_relation_scene(
+        let plan = LayeredRelationScene::new(
             &box_refs,
             edges,
             1,
             TerminalWidthProfile::Unicode,
             &mut resources,
         )
-        .expect("crossing relation should be summarized");
+        .expect("topology should be placed before routes decide readability");
 
-        assert!(matches!(
-            plan,
-            LayeredRelationScenePlan::Summary(LayeredRelationSummaryReason::Crossing)
-        ));
+        assert_eq!(plan.placed_box_count(), 3);
+        assert!(plan.uses_private_channels());
     }
 
     #[test]
@@ -665,7 +704,7 @@ mod tests {
             .expect("test resource limit should be valid");
         let mut resources = test_resources(policy);
         let box_refs = relation_box_refs(&boxes);
-        let error = plan_layered_relation_scene(
+        let error = LayeredRelationScene::new(
             &box_refs,
             edges,
             1,

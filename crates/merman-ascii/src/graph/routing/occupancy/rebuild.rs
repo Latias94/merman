@@ -28,17 +28,13 @@ impl<'layout> SceneOccupancy<'layout> {
         let resources = &mut replay_resources;
         let policy = resources.policy();
         // Admit constructor storage: bounds, two terminal/marker slots, both ports,
-        // and an initial label slot per route, plus protected geometry.
+        // and an initial label slot per route. Immutable protection is shared with the trial.
         resources.charge_layout_work_product(self.route_capacity, 8)?;
-        resources.charge_layout_work(self.graph_layout.nodes.len())?;
-        for group in &self.graph_layout.groups {
-            resources
-                .charge_layout_work(resources.checked_work_add(4, group.title.lines().len())?)?;
-        }
-        let mut rebuilt = Self::try_new_for_routes(
+        let mut rebuilt = Self::try_new_with_protection(
             self.graph_layout,
             self.route_capacity,
             self.label_lane_radius,
+            std::rc::Rc::clone(&self.protected),
             resources,
             AsciiExecution::new(&self.control, &policy),
         )?;
@@ -267,6 +263,7 @@ mod tests {
                     let rebuilt = scene
                         .rebuild_for_routes(&routes, omitted, &mut resources, "flowchart")
                         .unwrap();
+                    assert!(std::rc::Rc::ptr_eq(&scene.protected, &rebuilt.protected));
                     let retained = 3 - omitted.len();
                     assert_eq!(rebuilt.markers.len(), retained + usize::from(retained > 0));
                     if retained > 0 {

@@ -244,37 +244,29 @@ fn class_color_html_wraps_layered_relation_roles_without_changing_plain_text() {
         .with_color_theme(theme);
 
     let rendered = render_class(
-        "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat",
+        "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat\nAnimal <|-- Fox",
         &options,
     )
     .expect("class diagram should render");
 
-    assert_eq!(
-        strip_html_spans(&rendered),
-        concat!(
-            "    +--------+\n",
-            "    | Animal |\n",
-            "    +--------+\n",
-            "         ^\n",
-            "         |\n",
-            "   +-----+----+\n",
-            "+-----+    +-----+\n",
-            "| Dog |    | Cat |\n",
-            "+-----+    +-----+\n",
-        )
-    );
+    let plain = render_class("classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Cat\nAnimal <|-- Fox", &AsciiRenderOptions::ascii()).expect("plain scene should render");
+    assert_eq!(strip_html_spans(&rendered), plain);
     for expected_fragment in [
         "<span style=\"color:#101010\">+--------+</span>",
         "<span style=\"color:#202020\">Animal</span>",
         "<span style=\"color:#303030\">|</span>",
         "<span style=\"color:#404040\">^</span>",
-        "<span style=\"color:#505050\">+</span>",
+        "<span style=\"color:#303030\">+---+</span>",
     ] {
         assert!(
             rendered.contains(expected_fragment),
             "missing {expected_fragment:?} in {rendered:?}"
         );
     }
+    assert!(
+        !rendered.contains("color:#505050"),
+        "private bends use the edge role"
+    );
 }
 
 #[test]
@@ -861,62 +853,67 @@ fn class_parser_horizontal_component_draws_each_class_once() {
 }
 
 #[test]
-fn class_parser_horizontal_unrelated_edge_crossings_use_lossless_summary() {
+fn class_parser_horizontal_unrelated_edges_use_private_channels() {
     let rendered = render_class(
-        concat!(
-            "classDiagram\n",
-            "direction LR\n",
-            "class A\n",
-            "class B\n",
-            "class C\n",
-            "class D\n",
-            "A --> C : first\n",
-            "B ..> D : second\n",
-            "A --> B : bridge",
-        ),
+        "classDiagram\ndirection LR\nA --> C : first\nB ..> D : second\nA --> B : bridge",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("unrelated horizontal crossings should remain recoverable");
-
-    assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in [
-        framed_class_summary_relation("A", "-->", "C", Some("first")),
-        framed_class_summary_relation("B", "..>", "D", Some("second")),
-        framed_class_summary_relation("A", "-->", "B", Some("bridge")),
-    ] {
-        assert!(
-            rendered.contains(&expected),
-            "summary must preserve {expected:?} after owner crossing fallback:\n{rendered}"
-        );
+    .expect("horizontal DAG should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |", "| D |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
     }
+    for label in ["first", "second", "bridge"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
+    let column = |node| line_and_column_containing(&rendered, node).1;
+    assert!(
+        column("| A |") < column("| B |")
+            && column("| B |") < column("| D |")
+            && column("| A |") < column("| C |"),
+        "{rendered}"
+    );
+    assert_eq!(
+        rendered.chars().filter(|ch| "^v<>".contains(*ch)).count(),
+        3,
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(':') || rendered.contains('.'),
+        "the dependency must retain its dotted stroke:\n{rendered}"
+    );
 }
 
 #[test]
-fn class_parser_horizontal_shared_source_crossings_use_lossless_summary() {
+fn class_parser_horizontal_shared_source_edges_have_private_labels() {
     let rendered = render_class(
-        concat!(
-            "classDiagram\n",
-            "direction LR\n",
-            "class A\n",
-            "class B\n",
-            "class C\n",
-            "A --> B : short\n",
-            "A --> C : long",
-        ),
+        "classDiagram\ndirection LR\nA --> B : short\nA --> C : long",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("shared-source horizontal crossings should remain recoverable");
-
-    assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in [
-        framed_class_summary_relation("A", "-->", "B", Some("short")),
-        framed_class_summary_relation("A", "-->", "C", Some("long")),
-    ] {
+    .expect("horizontal branch should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    for label in ["short", "long"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
+    let source = line_and_column_containing(&rendered, "| A |").1;
+    for child in ["| B |", "| C |"] {
         assert!(
-            rendered.contains(&expected),
-            "summary must preserve {expected:?} after shared-source crossing fallback:\n{rendered}"
+            source < line_and_column_containing(&rendered, child).1,
+            "{rendered}"
         );
     }
+    assert_eq!(
+        rendered.chars().filter(|ch| "^v<>".contains(*ch)).count(),
+        2,
+        "{rendered}"
+    );
+    assert!(
+        !rendered.contains("shortlong") && !rendered.contains("longshort"),
+        "{rendered}"
+    );
 }
 
 #[test]
@@ -1159,114 +1156,89 @@ fn class_parser_parallel_relationship_layout_uses_lossless_summary_when_ports_do
 }
 
 #[test]
-fn class_parser_bidirectional_relationship_layout_preserves_both_directions_in_summary() {
+fn class_parser_bidirectional_relationship_layout_preserves_both_directed_paths() {
     let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nA --> B : ab\nB --> A : ba",
+        "classDiagram\nA --> B : ab\nB --> A : ba",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("bidirectional class relationships should remain recoverable");
-
-    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
-    let ba = framed_class_summary_relation("B", "-->", "A", Some("ba"));
+    .expect("bidirectional edges should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for text in ["| A |", "| B |", "ab", "ba"] {
+        assert_eq!(rendered.matches(text).count(), 1, "{rendered}");
+    }
     assert_eq!(
-        rendered,
-        format!(
-            concat!(
-                "+---+\n",
-                "| A |\n",
-                "+---+\n",
-                "\n",
-                "+---+\n",
-                "| B |\n",
-                "+---+\n",
-                "\n",
-                "relations:\n",
-                "{}\n",
-                "{}\n",
-            ),
-            ab, ba,
-        )
+        rendered.chars().filter(|ch| "^v<>".contains(*ch)).count(),
+        2,
+        "each direction must retain an independent terminal:\n{rendered}"
     );
 }
 
 #[test]
 fn class_parser_mixed_parallel_relationship_layout_renders_each_lane() {
     let rendered = render_class(
-        "classDiagram\nclass Animal\nclass Dog\nclass Cat\nAnimal <|-- Dog\nAnimal <|-- Dog\nAnimal <|-- Cat",
+        "classDiagram\nAnimal <|-- Dog\nAnimal <|-- Dog\nAnimal <|-- Cat",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("mixed parallel class relationships should render every lane");
-
+    .expect("mixed parallel edges should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| Animal |", "| Dog |", "| Cat |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
     assert_eq!(
-        rendered,
-        concat!(
-            "       +--------+\n",
-            "       | Animal |\n",
-            "       +--------+\n",
-            "         ^  ^  ^\n",
-            "         |  |  |\n",
-            "   +-----+--+--+-+\n",
-            "   +-----+    +-----+\n",
-            "   | Dog |    | Cat |\n",
-            "   +-----+    +-----+\n",
-        )
+        rendered.matches('^').count()
+            + rendered.matches("<|").count()
+            + rendered.matches("|>").count(),
+        3,
+        "every inheritance must retain its own terminal:\n{rendered}"
     );
+    let parent = first_line_index_containing(&rendered, "| Animal |");
+    for child in ["| Dog |", "| Cat |"] {
+        assert!(
+            parent < first_line_index_containing(&rendered, child),
+            "{rendered}"
+        );
+    }
 }
 
 #[test]
-fn class_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port() {
+fn class_parser_spanning_level_relationship_layout_preserves_all_inheritance_paths() {
     let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA <|-- B\nB <|-- C\nA <|-- C",
+        "classDiagram\nA <|-- B\nB <|-- C\nA <|-- C",
         &AsciiRenderOptions::ascii(),
     )
-    .expect("spanning-level class relationships should remain recoverable");
-
-    let ab = framed_class_summary_relation("A", "<|--", "B", None);
-    let bc = framed_class_summary_relation("B", "<|--", "C", None);
-    let ac = framed_class_summary_relation("A", "<|--", "C", None);
+    .expect("spanning inheritance should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    assert!(
+        first_line_index_containing(&rendered, "| A |")
+            < first_line_index_containing(&rendered, "| B |")
+            && first_line_index_containing(&rendered, "| B |")
+                < first_line_index_containing(&rendered, "| C |"),
+        "{rendered}"
+    );
     assert_eq!(
-        rendered,
-        format!(
-            concat!(
-                "+---+\n| A |\n+---+\n\n",
-                "+---+\n| B |\n+---+\n\n",
-                "+---+\n| C |\n+---+\n\n",
-                "relations:\n",
-                "{}\n",
-                "{}\n",
-                "{}\n",
-            ),
-            ab, bc, ac,
-        )
+        rendered.matches('^').count()
+            + rendered.matches("<|").count()
+            + rendered.matches("|>").count(),
+        3,
+        "all three parent contacts must retain an extension marker:\n{rendered}"
     );
 }
 
 #[test]
-fn class_parser_cyclic_relationship_layout_summarizes_disconnected_back_edge() {
+fn class_parser_cyclic_relationship_layout_routes_the_back_edge() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> C : bc\nC --> A : ca",
         &AsciiRenderOptions::ascii(),
     )
     .expect("cyclic class relationships should render");
 
-    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
-    let bc = framed_class_summary_relation("B", "-->", "C", Some("bc"));
-    let ca = framed_class_summary_relation("C", "-->", "A", Some("ca"));
-    assert_eq!(
-        rendered,
-        format!(
-            concat!(
-                "+---+\n| A |\n+---+\n\n",
-                "+---+\n| B |\n+---+\n\n",
-                "+---+\n| C |\n+---+\n\n",
-                "relations:\n",
-                "{}\n",
-                "{}\n",
-                "{}\n",
-            ),
-            ab, bc, ca,
-        )
-    );
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for expected in ["| A |", "| B |", "| C |", "ab", "bc", "ca"] {
+        assert_eq!(rendered.matches(expected).count(), 1, "{rendered}");
+    }
 }
 
 #[test]
@@ -2013,19 +1985,21 @@ fn class_parser_extension_star_renders_all_children() {
     )
     .expect("class diagram should render");
 
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| Animal |", "| Dog |", "| Cat |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    let heads = rendered.matches('^').count()
+        + rendered.matches("<|").count()
+        + rendered.matches("|>").count();
     assert_eq!(
-        rendered,
-        concat!(
-            "    +--------+\n",
-            "    | Animal |\n",
-            "    +--------+\n",
-            "         ^\n",
-            "         |\n",
-            "   +-----+----+\n",
-            "+-----+    +-----+\n",
-            "| Dog |    | Cat |\n",
-            "+-----+    +-----+\n",
-        )
+        heads, 2,
+        "each inheritance must have its own terminal:\n{rendered}"
+    );
+    assert!(
+        first_line_index_containing(&rendered, "| Animal |")
+            < first_line_index_containing(&rendered, "| Dog |"),
+        "{rendered}"
     );
 }
 
@@ -2161,7 +2135,7 @@ fn class_parser_four_layer_relation_layout_uses_iterative_sweep_order() {
             "C1 --> D2 : c1d2\n",
             "B2 --> C1 : b2c1",
         ),
-        &AsciiRenderOptions::ascii(),
+        &AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true),
     )
     .expect("four-layer class relation topology should render");
 
@@ -2531,9 +2505,9 @@ fn class_parser_endpoint_labels_are_routed_without_fallback_summary() {
     assert_eq!(
         rendered,
         concat!(
-            "+---+\n", "| A |\n", "+---+\n", "  1\n", "  |\n", " av\n", "  *\n", "+---+\n",
-            "| B |\n", "+---+\n", "  1\n", "  |\n", " bv\n", "  *\n", "+---+\n", "| C |\n",
-            "+---+\n",
+            "+---+\n", "| A |\n", "+---+\n", "  1\n", "  |\n", " ab\n", "  |\n", "  v\n", "  *\n",
+            "+---+\n", "| B |\n", "+---+\n", "  1\n", "  |\n", " bc\n", "  |\n", "  v\n", "  *\n",
+            "+---+\n", "| C |\n", "+---+\n",
         )
     );
 }
@@ -2822,50 +2796,37 @@ fn class_parser_two_sided_markers_keep_cardinalities_and_label() {
 }
 
 #[test]
-fn class_parser_dense_crossing_relationships_fall_back_to_relation_summary() {
-    let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("dense class relationships should render through relation summary fallback");
-
-    let ab = framed_class_summary_relation("A", "-->", "B", Some("ab"));
-    let ba = framed_class_summary_relation("B", "-->", "A", Some("ba"));
-    let ac = framed_class_summary_relation("A", "-->", "C", Some("ac"));
-    let ca = framed_class_summary_relation("C", "-->", "A", Some("ca"));
-    let bc = framed_class_summary_relation("B", "-->", "C", Some("bc"));
-    let cb = framed_class_summary_relation("C", "-->", "B", Some("cb"));
-    assert_eq!(
-        rendered,
-        format!(
-            concat!(
-                "+---+\n",
-                "| A |\n",
-                "+---+\n",
-                "\n",
-                "+---+\n",
-                "| B |\n",
-                "+---+\n",
-                "\n",
-                "+---+\n",
-                "| C |\n",
-                "+---+\n",
-                "\n",
-                "relations:\n",
-                "{}\n",
-                "{}\n",
-                "{}\n",
-                "{}\n",
-                "{}\n",
-                "{}\n",
-            ),
-            ab, ba, ac, ca, bc, cb,
-        )
-    );
+fn class_parser_dense_crossing_relationships_preserve_each_directed_path() {
+    let input = "classDiagram\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb";
+    for (options, border, heads) in [
+        (AsciiRenderOptions::ascii(), '|', "^v<>"),
+        (AsciiRenderOptions::unicode(), '│', "▲▼◀▶"),
+    ] {
+        let rendered = render_class(input, &options).expect("dense directed paths should render");
+        assert!(!rendered.contains("relations:"), "{rendered}");
+        for node in ["A", "B", "C"] {
+            assert_eq!(
+                rendered
+                    .matches(&format!("{border} {node} {border}"))
+                    .count(),
+                1,
+                "{rendered}"
+            );
+        }
+        for label in ["ab", "ba", "ac", "ca", "bc", "cb"] {
+            assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+        }
+        assert_eq!(
+            rendered.chars().filter(|ch| heads.contains(*ch)).count(),
+            6,
+            "each directed path must retain its own terminal:\n{rendered}"
+        );
+    }
 }
 
 #[test]
 fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
+    // Mixed self and non-self edges deliberately exercise summary framing.
     let source = |endpoint_label: &str| {
         format!(
             concat!(
@@ -2879,7 +2840,8 @@ fn class_relation_summary_frames_multiline_endpoint_labels_injectively() {
                 "A --> C : ac\n",
                 "C --> A : ca\n",
                 "B --> C : bc\n",
-                "C --> B : cb",
+                "C --> B : cb\n",
+                "A --> A : self",
             ),
             endpoint_label
         )
@@ -2953,62 +2915,106 @@ fn class_parser_k2_2_relationships_use_a_bounded_planar_layout() {
 }
 
 #[test]
-fn class_parser_dense_realization_relationships_keep_dotted_summary_connector() {
-    let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA ..|> B : ab\nB ..|> A : ba\nA ..> C : ac\nC ..> A : ca\nB --> C : bc\nC --> B : cb",
+fn class_parser_dense_realization_relationships_preserve_marker_and_stroke_kinds() {
+    let input = "classDiagram\nA ..|> B : ab\nB ..|> A : ba\nA ..> C : ac\nC ..> A : ca\nB --> C : bc\nC --> B : cb";
+    let rendered = render_class(input, &AsciiRenderOptions::unicode())
+        .expect("dense realization paths should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["│ A │", "│ B │", "│ C │"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    for label in ["ab", "ba", "ac", "ca", "bc", "cb"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
+    assert_eq!(
+        rendered.chars().filter(|ch| "△▽◁▷".contains(*ch)).count(),
+        2,
+        "realization must keep hollow extension terminals:\n{rendered}"
+    );
+    assert_eq!(
+        rendered.chars().filter(|ch| "▲▼◀▶".contains(*ch)).count(),
+        4,
+        "associations must keep ordinary arrow terminals:\n{rendered}"
+    );
+    assert!(
+        rendered.contains('┆') || rendered.contains('╌'),
+        "dotted realization must keep its stroke:\n{rendered}"
+    );
+    let summary = render_class(
+        &format!("{input}\nA ..|> A : self"),
         &AsciiRenderOptions::ascii(),
     )
-    .expect("dense realization relationships should render through relation summary fallback");
-
-    assert!(
-        rendered.contains("relations:"),
-        "dense realization fixture should use relation summary:\n{rendered}"
-    );
-    for expected in [
-        framed_class_summary_relation("B", "<|..", "A", Some("ab")),
-        framed_class_summary_relation("A", "<|..", "B", Some("ba")),
-        framed_class_summary_relation("A", "..> ", "C", Some("ac")),
-        framed_class_summary_relation("B", "--> ", "C", Some("bc")),
+    .expect("mixed self relations should preserve connector semantics in summary");
+    assert!(summary.contains("relations:"), "{summary}");
+    for (source, connector, target, label) in [
+        ("B", "<|..", "A", "ab"),
+        ("A", "<|..", "B", "ba"),
+        ("A", "..> ", "C", "ac"),
+        ("C", "..> ", "A", "ca"),
+        ("B", "--> ", "C", "bc"),
+        ("C", "--> ", "B", "cb"),
+        ("A", "<|..", "A", "self"),
     ] {
         assert!(
-            rendered.contains(&expected),
-            "dense realization summary should keep {expected:?} visible:\n{rendered}"
+            summary.contains(&framed_class_summary_relation(
+                source,
+                connector,
+                target,
+                Some(label)
+            )),
+            "{summary}"
         );
     }
     assert!(
-        !rendered.contains("<|--"),
-        "dense realization summary should not collapse dotted realization to solid inheritance:\n{rendered}"
+        !summary.contains("<|--"),
+        "summary must not turn realization into solid inheritance:\n{summary}"
     );
 }
 
 #[test]
-fn class_parser_dense_plain_associations_keep_summary_connector() {
-    let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA -- B : ab\nB -- A : ba\nA -- C : ac\nC -- A : ca\nB -- C : bc\nC -- B : cb",
+fn class_parser_dense_plain_associations_preserve_headless_paths_and_summary_connectors() {
+    let input = "classDiagram\nA -- B : ab\nB -- A : ba\nA -- C : ac\nC -- A : ca\nB -- C : bc\nC -- B : cb";
+    let rendered = render_class(input, &AsciiRenderOptions::ascii())
+        .expect("dense plain associations should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    for label in ["ab", "ba", "ac", "ca", "bc", "cb"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
+    assert!(
+        !rendered.chars().any(|ch| "^v<>".contains(ch)),
+        "headless associations must not acquire arrows:\n{rendered}"
+    );
+    let summary = render_class(
+        &format!("{input}\nA -- A : self"),
         &AsciiRenderOptions::ascii(),
     )
-    .expect("dense plain associations should render through relation summary fallback");
-
-    assert!(
-        rendered.contains("relations:"),
-        "dense plain association fixture should use relation summary:\n{rendered}"
-    );
-    for expected in [
-        framed_class_summary_relation("A", "--", "B", Some("ab")),
-        framed_class_summary_relation("B", "--", "A", Some("ba")),
-        framed_class_summary_relation("A", "--", "C", Some("ac")),
-        framed_class_summary_relation("C", "--", "A", Some("ca")),
-        framed_class_summary_relation("B", "--", "C", Some("bc")),
-        framed_class_summary_relation("C", "--", "B", Some("cb")),
+    .expect("mixed self relations should preserve connector semantics in summary");
+    assert!(summary.contains("relations:"), "{summary}");
+    for (source, target, label) in [
+        ("A", "B", "ab"),
+        ("B", "A", "ba"),
+        ("A", "C", "ac"),
+        ("C", "A", "ca"),
+        ("B", "C", "bc"),
+        ("C", "B", "cb"),
+        ("A", "A", "self"),
     ] {
         assert!(
-            rendered.contains(&expected),
-            "dense plain association summary should keep {expected:?} visible:\n{rendered}"
+            summary.contains(&framed_class_summary_relation(
+                source,
+                "--",
+                target,
+                Some(label)
+            )),
+            "{summary}"
         );
     }
     assert!(
-        !rendered.contains("-->") && !rendered.contains("<--"),
-        "dense plain association summary should not invent arrowheads:\n{rendered}"
+        !summary.contains("-->") && !summary.contains("<--"),
+        "summary must not invent arrowheads:\n{summary}"
     );
 }
 
@@ -3032,17 +3038,17 @@ fn class_parser_relation_layout_propagates_grid_resource_errors() {
 }
 
 #[test]
-fn class_parser_relation_summary_can_show_crossing_diagnostic() {
+fn class_parser_relation_summary_can_show_collision_diagnostic() {
     let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
 
     let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
+        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb\nA --> A : self",
         &options,
     )
     .expect("class crossing summary diagnostic should render");
 
     assert!(rendered.contains("relations:"), "{rendered}");
-    assert!(rendered.contains("reason: crossing"), "{rendered}");
+    assert!(rendered.contains("reason: route_collision"), "{rendered}");
 }
 
 #[test]
@@ -3057,7 +3063,7 @@ fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_pla
         .with_color_theme(theme);
 
     let rendered = render_class(
-        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
+        "classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb\nA --> A : self",
         &options,
     )
     .expect("dense class diagram should render");
@@ -3068,6 +3074,7 @@ fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_pla
     let ca = framed_class_summary_relation("C", "-->", "A", Some("ca"));
     let bc = framed_class_summary_relation("B", "-->", "C", Some("bc"));
     let cb = framed_class_summary_relation("C", "-->", "B", Some("cb"));
+    let self_edge = framed_class_summary_relation("A", "-->", "A", Some("self"));
     assert_eq!(
         strip_ansi(&rendered),
         format!(
@@ -3091,8 +3098,9 @@ fn class_color_truecolor_marks_dense_relation_summary_roles_without_changing_pla
                 "{}\n",
                 "{}\n",
                 "{}\n",
+                "{}\n",
             ),
-            ab, ba, ac, ca, bc, cb,
+            ab, ba, ac, ca, bc, cb, self_edge,
         )
     );
     for expected_fragment in [
@@ -3261,5 +3269,205 @@ fn class_parser_flat_namespace_uses_only_explicit_container() {
         rendered.matches('┌').count(),
         2,
         "one explicit namespace and one class should produce two boxes:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_directed_cycles_share_topology_across_directions_and_declaration_order() {
+    for size in [3, 4, 5] {
+        for direction in ["TB", "BT", "LR", "RL"] {
+            for (options, vertical, heads) in [
+                (AsciiRenderOptions::ascii(), '|', "^v<>"),
+                (AsciiRenderOptions::unicode(), '│', "▲▼◀▶"),
+            ] {
+                let mut outputs = Vec::new();
+                for reversed in [false, true] {
+                    let mut input = format!("classDiagram\ndirection {direction}\n");
+                    let mut declarations = (0..size).collect::<Vec<_>>();
+                    if reversed {
+                        declarations.reverse();
+                    }
+                    for node in declarations {
+                        input.push_str(&format!("class Node{node}\n"));
+                    }
+                    for node in 0..size {
+                        input.push_str(&format!(
+                            "Node{node} --> Node{} : rel_{node}\n",
+                            (node + 1) % size
+                        ));
+                    }
+                    let rendered = render_class(&input, &options)
+                        .expect("bounded directed cycle should render");
+                    assert!(
+                        !rendered.contains("relations:"),
+                        "{direction}, {size}:\n{rendered}"
+                    );
+                    for node in 0..size {
+                        assert_eq!(
+                            rendered
+                                .matches(&format!("{vertical} Node{node} {vertical}"))
+                                .count(),
+                            1,
+                            "{rendered}"
+                        );
+                        assert_eq!(
+                            rendered.matches(&format!("rel_{node}")).count(),
+                            1,
+                            "{rendered}"
+                        );
+                    }
+                    assert_eq!(
+                        rendered.chars().filter(|ch| heads.contains(*ch)).count(),
+                        size,
+                        "every target must retain its own arrow:\n{rendered}"
+                    );
+                    outputs.push(rendered);
+                }
+                assert_eq!(
+                    outputs[0], outputs[1],
+                    "class declarations must not select a different cycle cut"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn class_diamond_uses_directed_ranks_in_every_direction() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let input = format!(
+            "classDiagram\ndirection {direction}\nRoot <|-- Worker : worker\nRoot <|-- Store : store\nWorker --> Queue : sends\nStore --> Queue : persists\n"
+        );
+        let rendered =
+            render_class(&input, &AsciiRenderOptions::ascii()).expect("DAG diamond should render");
+        assert!(!rendered.contains("relations:"), "{rendered}");
+        let positions = ["Root", "Worker", "Store", "Queue"]
+            .map(|node| line_and_column_containing(&rendered, &format!("| {node} |")));
+        let axis = |position: (usize, usize)| {
+            if matches!(direction, "LR" | "RL") {
+                position.1
+            } else {
+                position.0
+            }
+        };
+        for middle in [positions[1], positions[2]] {
+            if matches!(direction, "TB" | "LR") {
+                assert!(
+                    axis(positions[0]) < axis(middle) && axis(middle) < axis(positions[3]),
+                    "{direction}:\n{rendered}"
+                );
+            } else {
+                assert!(
+                    axis(positions[0]) > axis(middle) && axis(middle) > axis(positions[3]),
+                    "{direction}:\n{rendered}"
+                );
+            }
+        }
+        for label in ["worker", "store", "sends", "persists"] {
+            assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+        }
+        assert!(
+            !rendered.contains("sends persists") && !rendered.contains("workerstore"),
+            "labels must have private reading areas:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn class_cycle_resource_and_cancellation_failures_do_not_become_summaries() {
+    let input = "classDiagram\nA --> B : ab\nB --> C : bc\nC --> A : ca";
+    let error = render_class_with_grid_limit(input, &AsciiRenderOptions::ascii(), 1)
+        .expect_err("grid failure remains terminal");
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+    let model = parse_class_render_model(input);
+    let control = OperationControl::new();
+    control.cancel();
+    let context = MermaidEngine::new()
+        .begin_operation()
+        .expect("operation context");
+    let error = render_controlled_model(
+        &model,
+        &AsciiRenderOptions::ascii(),
+        &control,
+        &context,
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("cancelled cycles must stop");
+    assert!(matches!(error, AsciiError::Cancelled(_)));
+}
+
+#[test]
+fn class_cycle_preserves_full_relationship_labels_without_summary() {
+    let rendered = render_class(
+        "classDiagram\nA --> B : sends\nB --> C : forwards\nC --> A : returns\n",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("a labeled three-cycle should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for text in ["| A |", "| B |", "| C |", "sends", "forwards", "returns"] {
+        assert_eq!(rendered.matches(text).count(), 1, "{rendered}");
+    }
+    assert_eq!(
+        rendered.chars().filter(|ch| "^v<>".contains(*ch)).count(),
+        3,
+        "{rendered}"
+    );
+    assert!(
+        rendered.lines().count() <= 28,
+        "a simple cycle needs a bounded reading area:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().all(|line| !line.trim().is_empty()),
+        "unused outer rows must be cropped:\n{rendered}"
+    );
+}
+
+#[test]
+fn class_diamond_keeps_the_inheritance_tree_compact() {
+    let rendered = render_class("classDiagram\nRoot <|-- Worker\nRoot <|-- Store\nWorker --> Queue : writes\nStore --> Queue : reads\n", &AsciiRenderOptions::ascii())
+        .expect("the inheritance diamond should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for text in [
+        "| Root |",
+        "| Worker |",
+        "| Store |",
+        "| Queue |",
+        "writes",
+        "reads",
+    ] {
+        assert_eq!(rendered.matches(text).count(), 1, "{rendered}");
+    }
+    let root = first_line_index_containing(&rendered, "| Root |");
+    let queue = first_line_index_containing(&rendered, "| Queue |");
+    for child in ["| Worker |", "| Store |"] {
+        let child = first_line_index_containing(&rendered, child);
+        assert!(root < child && child < queue, "{rendered}");
+    }
+    assert_eq!(
+        rendered.matches('^').count()
+            + rendered.matches("<|").count()
+            + rendered.matches("|>").count(),
+        2,
+        "both inheritance markers must survive:\n{rendered}"
+    );
+    assert!(
+        rendered.lines().count() <= 25,
+        "ordinary trees must retain compact rank gaps:\n{rendered}"
+    );
+    assert!(
+        !rendered
+            .lines()
+            .next()
+            .expect("nonempty diagram")
+            .trim()
+            .is_empty()
+    );
+    assert!(
+        !rendered
+            .lines()
+            .last()
+            .expect("nonempty diagram")
+            .trim()
+            .is_empty()
     );
 }

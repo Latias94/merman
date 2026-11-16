@@ -197,8 +197,13 @@ fn loop_envelope(
                 .checked_work_add(parallel_index, usize::from(index < request.edge_index))?;
             if let Some(raw) = &edge.label {
                 label_width = label_width.max(
-                    try_measure_edge_label(raw, request.charset.width_profile, resources)?
-                        .map_or(0, |metrics| metrics.max_width),
+                    try_measure_edge_label(
+                        raw,
+                        request.charset.width_profile,
+                        resources,
+                        edge.label_break_policy,
+                    )?
+                    .map_or(0, |metrics| metrics.max_width),
                 );
             }
         } else if !reverse {

@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
 notes what may be visible in the optional local reference checkouts:
@@ -25,9 +25,14 @@ product boundary.
   is not by itself evidence that a reader can recover the same graph.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
-- Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph now render as compact
+- Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, and GitGraph render as compact
   structured-text projections; keep those projections readable and headless rather than
   browser-shaped.
+- Packet's Partial Diagrammatic contract uses a fixed two-cell bit scale for integer row widths
+  in `1..=64`, preserving exact positions, gaps, row splits, and configured bit order/number
+  display. Complete byte-framed labels and raw DB counts follow the plot; non-spatial models
+  retain complete records and report StructuredText. The Packet admission note in the phase
+  report records the complete-text comparison and verified 80/100/120-column results.
 - The Phase 0-3 evidence and R34 admission decisions are tracked in
   `docs/rendering/ASCII_PHASE_GATE_REPORT.md`. Railroad, Requirement, Ishikawa, and Quadrant remain
   Unsupported because each current prototype fails at least one required dense or typed-topology
@@ -41,13 +46,35 @@ product boundary.
   Mermaid-family semantics, while shared relation planning owns bounded iterative layer-order sweeps,
   lane placement, routed grids, and structured crossing/port-fit/route/overlay-collision fallback.
   Independent relation subgraphs split before planning, so unrelated pairs do not force each other
-  into one relation scene. A strict planar K2×2 four-node/four-edge cycle has a targeted bounded
-  layout with four disjoint routes and declaration-order-stable geometry. Other dense, crossing, or
+  into one relation scene. Directed component ranks and bounded private channels now replace the
+  strict K2×2 exception, with declaration-order-stable rings and direction-preserving DAG diamonds.
+  Validated scenes compact redundant straight-channel space together, preserving box/text
+  footprints, terminal and bend coordinates, and gaps between separate features.
+  Other dense, crossing, or
   collision-prone topologies remain eligible for the lossless Summary path. Summary reasons are
   preserved at that seam for direct topology-policy tests.
 - The SVG compare CLI keeps per-diagram entrypoints, but common fixture discovery, upstream/local
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
+
+## Static Routing Protection
+
+The local `mermaid-ascii` source at
+[`5a9df1560871e1ef8037c052b3b5d87de503bc9e`](https://github.com/AlexanderGrooff/mermaid-ascii/tree/5a9df1560871e1ef8037c052b3b5d87de503bc9e)
+is an MIT-licensed research reference, separate from the copied-fixture pin above. Its
+[`graph.go`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/graph/graph.go#L32-L62)
+stores a sparse node-occupancy grid, while
+[`arrow.go`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/graph/arrow.go#L64-L105)
+searches that node-only grid. Ordinary route search does not commit existing edges as obstacles;
+later character composition resolves their overlap. This is useful evidence for cheap static
+obstacle queries, but does not establish independent relation ownership or label/marker clearance.
+
+Merman independently compiles static protection into a bounded spatial hierarchy and shares it
+across congestion trials. Dynamic route ownership, marker berths, labels, group-boundary rules,
+and final validation remain separate and authoritative. This borrows the static/dynamic separation
+without adopting the reference's node-only collision policy. The
+[resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
+owns the complexity and admission limits. No cross-renderer speed claim is made.
 
 ## Terminal Visual Direction
 
@@ -489,10 +516,9 @@ expected output.
   not cover those families; its moving local checkout now covers ER, but that post-snapshot work has
   not been admitted into the tracked copied inventory. `beautiful-mermaid` remains capability prior
   art rather than an official output oracle.
-  Admit routed-grid Class/ER cases when the topology remains readable. The strict planar K2×2
-  four-node/four-edge case is an explicit local admission backed by Class/ER parser tests plus
-  shared route geometry, declaration-order, and exact/N−1 resource tests; it does not admit arbitrary
-  bounded topology. Admit structured
+  Admit routed-grid Class/ER cases when the topology remains readable. Directed rings and DAG
+  diamonds are local admissions backed by parser tests plus shared route geometry,
+  declaration-order, and exact/N−1 resource tests; they do not admit arbitrary dense topology. Admit structured
   relation-summary cases when dense crossings, port-fit failures, or route/overlay collisions make
   the honest terminal view a summary. Resource limits remain structured hard errors.
 - Prefer semantic assertions for local fixtures: visible labels, direction relationships, grouping,
@@ -507,14 +533,15 @@ expected output.
 | --- | --- | --- | --- | --- |
 | Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, ampersand fan-in/fan-out examples, richer shape handling, disconnected subgraph non-overlap checks, and more styling hooks, but `RL` is approximated as `LR`. | Merman preserves a broader typed surface: true `BT`/`RL`, Dagre-compatible ranking, first-parent compound ownership, boundary-aware subgraphs, scene-level occupancy, independent point/circle/cross/open endpoint markers, invisible constraints, explicit dispositions for every pinned Mermaid 11.17.2 shape name, distinct common decorated shapes, multiline labels, color roles, and terminal resource/text safety. It remains Partial for browser-only metadata, unimplemented uncommon geometry, arbitrary dense-route candidates, and non-transverse mixed-stroke junctions. | Keep `mermaid-ascii` for compact routing evidence and `beautiful-mermaid` for UI ideas, but use pinned Mermaid semantics and executable terminal recovery gates as the product oracle. |
 | Sequence | Exact copied-fixture parity for a compact sequence corpus. | Much broader parser/layout coverage, including notes, blocks, theming, and ASCII/Unicode variants. | Typed sequence support is already beyond the narrow reference: activations, create/destroy, boxes with inner padding, control blocks, mirror actors, and color roles all exist. | Remaining work is mostly layout polish and boundary tightening, not parser rescue. |
-| Class | Not part of the pinned reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | Supported subset through the shared `relation_graph` seam, with four terminal directions, independent source/target markers, endpoint cardinalities, annotation and method semantic probes, multiline relationship labels, self-relation loops, same-endpoint and bidirectional same-pair lanes, bounded iterative relation-layer sweeps, independent relation components, spanning routes, cyclic reverse-span lanes, a strict planar K2×2 bounded cycle with four disjoint routes, structured crossing/port-fit/route/overlay-collision relation-summary fallback for other complex scenes, dense multiline local semantic fixtures, and typed role colors. | Extend from typed relation facts, not from parser shape. The K2×2 path is topology-specific, not arbitrary bounded-graph support. |
-| ER | The pinned copied-source revision has no ER renderer. The moving ignored checkout at `b1b35f67` now has entity tables, crow's-foot cardinalities, aliases, self-relations, and routed labels, but no ER fixture from it is an admitted oracle. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset through the same `relation_graph` seam, with four terminal directions, entity boxes, attributes plus key markers, cardinality markers including Mermaid's parent diamond, multiline relationship labels, self-relationship loops, same-endpoint and bidirectional same-pair lanes, bounded iterative relation-layer sweeps, independent relation components, cyclic reverse-span lanes, a strict planar K2×2 bounded cycle with four disjoint routes, structured crossing/port-fit/route/overlay-collision relation-summary fallback for other complex scenes, and dense multiline local semantic fixtures. | Relation layout is the shared seam; cardinality and relationship identity stay family-specific. The K2×2 path is topology-specific, not arbitrary bounded-graph support. Moving reference code remains discovery evidence until explicitly pinned and inventoried. |
+| Class | Not part of the pinned reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | The shared `relation_graph` seam preserves four directions, independent markers, endpoint labels, namespaces, annotations, methods, self-relations, typed colors, and independent components. Directed component ranks and bounded private channels handle admitted rings and DAG diamonds, with complete summaries when route or overlay admission fails. | Extend from typed relation facts and verify traceable contacts and labels. Bounded channel search does not guarantee arbitrary dense routing. |
+| ER | The pinned copied-source revision has no ER renderer. The moving ignored checkout at `b1b35f67` has entity tables, crow's-foot cardinalities, aliases, self-relations, and routed labels; it is not an admitted byte oracle. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | The same relation planner preserves four directions, entities and attributes, keys and comments, independent cardinalities including the parent diamond, multiline labels, identifying strokes, and self-relations. Directed ranks and private channels retain admitted rings and diamonds; unsafe scenes use complete summaries. | Relation geometry is shared; cardinality and relationship identity stay family-owned. Moving reference code remains discovery evidence until explicitly pinned and inventoried. |
 | State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
-| XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | One typed terminal plan preserves model-owned x/y samples, titles, point labels, band/linear and reversed/degenerate ranges, grouped vertical/horizontal bars, missing-sample path gaps, connected horizontal lines, per-series topology-resolved ASCII/Unicode corners and crossings, mixed series, scale-aware ticks, exact data disclosure, display policy, configurable extents, terminal-safe text, and typed resource limits. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | This is a stronger semantic and operational contract than copying browser hover behavior; the remaining residual is cross-series same-cell ownership after terminal quantization. |
+| XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | One typed terminal plan preserves model-owned coordinates, grouped bars, missing-sample gaps, joint line topology, distinct series markers, shared sample cells, scale-aware ticks, and exact record-oriented disclosure after the plot. Measurement, painting, encodings, and resource admission consume the same plans. | Terminal quantization, marker reuse after six lines, dense bar/line overlap, and long individual fields still require exact records or viewport fallback. |
 | Mindmap / TreeView | Not part of the reference scope. | Broader mindmap/tree examples can suggest readable outline shapes. | Compact structured-text hierarchy outlines with preserved order and wrapped labels. | Keep the output readable and compact; do not imitate browser geometry. |
 | Timeline / Gantt | Not part of the reference scope. | Broader schedule renderers can suggest readable summary patterns. | Readable rows that preserve sections, tasks, spans, and flags. | Favor honest text summaries over pseudo-graphs. |
 | Journey / Kanban | Not part of the reference scope. | Broader board renderers can suggest grouping and actor/card metadata patterns. | Readable structured-text reports that preserve section order, actor order, and card metadata. | Keep the projection stable and compact. |
-| Packet / GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports that preserve ranges, parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
+| Packet | Not part of the reference scope. | No Packet byte-parity oracle is adopted. | Bounded Partial Diagrammatic contract: integer rows of 1..=64 bits at two terminal cells per bit, exact gaps and cross-row splitting, source-configured order/number display, and complete authored-label/raw-DB records after the plot. Non-spatial cases report StructuredText; borrowed models default to 32/ascending/showBits. | Narrow labels may use `*` with a legend and exact details; geometry never expands for text. This is a terminal admission bound, not a Mermaid syntax limit. Small/typical/dense cases pass all 80/100/120-column gates against the complete record baseline; the phase report records dimensions and vertical cost. |
+| GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports preserve parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
 | Railroad / Requirement / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report executes source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
 
 ## Intentional Differences
@@ -523,9 +550,9 @@ expected output.
   a product goal.
 - Cyclic class and ER shapes should keep rendering through the layered planner when it can produce a
   readable route, and otherwise retain every relationship in a structured summary.
-- The strict planar K2×2 four-edge cycle uses a local bounded cycle layout with four disjoint routes;
-  this targeted exception does not change the Summary boundary for arbitrary dense or colliding
-  Class/ER topology.
+- Directed Class/ER ranks follow the condensation DAG; private channels keep cyclic returns and
+  their labels separate from other edges. Rings and diamonds no longer require a topology-specific
+  exception, while dense or colliding scenes retain the Summary boundary.
 - Wide-cell handling must treat terminal continuation cells as shared ownership, not as independent
   characters.
 - Sequence `rect` and box colors should stay bounded by what the typed model and terminal can render
@@ -538,10 +565,15 @@ expected output.
 - Flowchart dense compound scenes beyond the bounded channel-search and congestion-repair budgets.
   The shared planner validates complete label ownership and route connectivity, but a search miss
   remains an explicit diagnostic rather than a claim that no presentation is possible.
-- Class and ER dense relation topologies beyond the admitted strict planar K2×2 cycle; new policy
+- Class and ER dense relation topologies beyond the admitted directed rings and DAG diamonds; new policy
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.
 - XYChart dense-layout policy beyond the shipped compact plot and `values:` disclosure rows.
+- Packet spatial admission remains bounded to integer rows of 1..=64 bits. Coordinates outside
+  the exact nonnegative integer domain, non-spatial row widths/DB bit counts, overlaps, and out-of-order fields retain complete text;
+  this does not justify label-driven width distortion or converting resource errors into success.
+  The [Packet admission note](../../docs/rendering/ASCII_PHASE_GATE_REPORT.md#packet-bounded-spatial-admission)
+  owns the verified small/typical/dense width comparison, rather than a reference parity claim.
 - Railroad, Requirement, Ishikawa, and Quadrant remain breadth candidates only after a new proposal
   supplies the complete spatial and width evidence required by
   `docs/rendering/ASCII_PHASE_GATE_REPORT.md`; summary-only output does not clear that gate.

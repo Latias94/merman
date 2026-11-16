@@ -32,6 +32,7 @@ pub(crate) enum RelationOverlay {
         y: usize,
         label: RelationGraphLabel,
         role: AsciiColorRole,
+        endpoint: bool,
     },
 }
 
@@ -67,6 +68,22 @@ impl RelationOverlay {
             y,
             label,
             role,
+            endpoint: false,
+        }
+    }
+
+    pub(crate) fn endpoint_label(
+        center_x: usize,
+        y: usize,
+        label: RelationGraphLabel,
+        role: AsciiColorRole,
+    ) -> Self {
+        Self::Label {
+            center_x,
+            y,
+            label,
+            role,
+            endpoint: true,
         }
     }
 
@@ -85,6 +102,7 @@ impl RelationOverlay {
                 y,
                 label,
                 role,
+                ..
             } => write_centered_relation_label(canvas, *center_x, *y, label, *role),
         }
     }
@@ -119,7 +137,7 @@ impl RelationOverlay {
         }
     }
 
-    fn bounds(&self) -> Option<RelationOverlayBounds> {
+    pub(super) fn bounds(&self) -> Option<RelationOverlayBounds> {
         let (center_x, y, width, height) = match self {
             Self::Glyph { x, y, .. } => return RelationOverlayBounds::new(*x, *y, 1, 1),
             Self::Text {
@@ -159,11 +177,11 @@ impl RelationOverlay {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct RelationOverlayBounds {
-    left: usize,
-    right: usize,
-    top: usize,
-    bottom: usize,
+pub(super) struct RelationOverlayBounds {
+    pub(super) left: usize,
+    pub(super) right: usize,
+    pub(super) top: usize,
+    pub(super) bottom: usize,
 }
 
 impl RelationOverlayBounds {
@@ -188,11 +206,11 @@ impl RelationOverlayBounds {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayeredRelationPhysicalPort {
-    side: PhysicalPortSide,
-    marker_x: usize,
-    marker_y: usize,
-    path_x: usize,
-    path_y: usize,
+    pub(super) side: PhysicalPortSide,
+    pub(super) marker_x: usize,
+    pub(super) marker_y: usize,
+    pub(super) path_x: usize,
+    pub(super) path_y: usize,
 }
 
 impl LayeredRelationPhysicalPort {
@@ -241,6 +259,21 @@ enum LayeredRelationRouteSegment {
 }
 
 impl LayeredRelationRouteSegment {
+    fn corner_with(self, other: Self) -> Option<(usize, usize, bool, bool)> {
+        let (y, left, right, x, top, bottom) = match (self, other) {
+            (Self::Horizontal { y, left, right }, Self::Vertical { x, top, bottom })
+            | (Self::Vertical { x, top, bottom }, Self::Horizontal { y, left, right }) => {
+                (y, left, right, x, top, bottom)
+            }
+            _ => return None,
+        };
+        if left < right && top < bottom && (x == left || x == right) && (y == top || y == bottom) {
+            Some((x, y, x == left, y == top))
+        } else {
+            None
+        }
+    }
+
     fn horizontal(start_x: usize, end_x: usize, y: usize) -> Self {
         Self::Horizontal {
             y,
@@ -350,20 +383,124 @@ impl LayeredRelationRouteSegment {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum LayeredRelationLabelPlacement {
     LegacyAfterSource { route_y: usize },
-    TopLane { center_x: usize, y: usize },
-    BottomLane { center_x: usize, y: usize },
-    Vertical { center_x: usize, center_y: usize },
+    Private { center_x: usize, y: usize },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LayeredRelationRouteGeometry {
     source: LayeredRelationPhysicalPort,
     target: LayeredRelationPhysicalPort,
-    segments: [Option<LayeredRelationRouteSegment>; 3],
+    segments: Vec<LayeredRelationRouteSegment>,
     label_placement: LayeredRelationLabelPlacement,
 }
 
 impl LayeredRelationRouteGeometry {
+    /// Private channels must start and finish at the cells touching the actual
+    /// boxes. Ordered segments also preserve the terminal normals after merging.
+    pub(crate) fn connects_boxes(
+        &self,
+        source: &PlacedRelationGraphBox<'_>,
+        target: &PlacedRelationGraphBox<'_>,
+    ) -> bool {
+        if !self.source.fits_box(source) || !self.target.fits_box(target) {
+            return false;
+        }
+        let contact = |port: LayeredRelationPhysicalPort, node: &PlacedRelationGraphBox<'_>| {
+            match port.side {
+                PhysicalPortSide::Top => node.y().checked_sub(1).map(|y| (port.path_x, y)),
+                PhysicalPortSide::Bottom => node.bottom().checked_add(1).map(|y| (port.path_x, y)),
+                PhysicalPortSide::Left => node.x().checked_sub(1).map(|x| (x, port.path_y)),
+                PhysicalPortSide::Right => node.right().checked_add(1).map(|x| (x, port.path_y)),
+            }
+        };
+        let Some(mut current) = contact(self.source, source) else {
+            return false;
+        };
+        let end = contact(self.target, target);
+        for (index, segment) in self.segments.iter().enumerate() {
+            let (first, last) = match *segment {
+                LayeredRelationRouteSegment::Horizontal { y, left, right } => {
+                    ((left, y), (right, y))
+                }
+                LayeredRelationRouteSegment::Vertical { x, top, bottom } => ((x, top), (x, bottom)),
+            };
+            let next = if current == first {
+                last
+            } else if current == last {
+                first
+            } else {
+                return false;
+            };
+            let normal = |from: (usize, usize), to: (usize, usize), side| match side {
+                PhysicalPortSide::Top => from.0 == to.0 && from.1 > to.1,
+                PhysicalPortSide::Right => from.1 == to.1 && from.0 < to.0,
+                PhysicalPortSide::Bottom => from.0 == to.0 && from.1 < to.1,
+                PhysicalPortSide::Left => from.1 == to.1 && from.0 > to.0,
+            };
+            if index == 0 && !normal(current, next, self.source.side) {
+                return false;
+            }
+            if index + 1 == self.segments.len()
+                && !normal(current, next, self.target.side.opposite())
+            {
+                return false;
+            }
+            current = next;
+        }
+        !self.segments.is_empty() && Some(current) == end
+    }
+
+    pub(super) fn from_channel_path(
+        source: LayeredRelationPhysicalPort,
+        target: LayeredRelationPhysicalPort,
+        path: &[(usize, usize)],
+        label_anchor: (usize, usize),
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        resources.charge_layout_work(path.len().max(1))?;
+        let mut segments = Vec::new();
+        segments
+            .try_reserve_exact(path.len())
+            .map_err(|_| layout_allocation_failed())?;
+        if let Some(&first) = path.first() {
+            let mut start = first;
+            let mut previous = first;
+            let mut horizontal = None;
+            for &point in path.iter().skip(1) {
+                resources.checkpoint()?;
+                let next_horizontal = point.1 == previous.1;
+                if horizontal.is_some_and(|axis| axis != next_horizontal) {
+                    segments.push(if horizontal == Some(true) {
+                        LayeredRelationRouteSegment::horizontal(start.0, previous.0, start.1)
+                    } else {
+                        LayeredRelationRouteSegment::vertical(start.0, start.1, previous.1)
+                    });
+                    start = previous;
+                }
+                horizontal = Some(next_horizontal);
+                previous = point;
+            }
+            segments.push(if horizontal == Some(true) {
+                LayeredRelationRouteSegment::horizontal(start.0, previous.0, start.1)
+            } else {
+                LayeredRelationRouteSegment::vertical(start.0, start.1, previous.1)
+            });
+        }
+        Ok(Self {
+            source,
+            target,
+            segments,
+            label_placement: LayeredRelationLabelPlacement::Private {
+                center_x: label_anchor.0,
+                y: label_anchor.1,
+            },
+        })
+    }
+
+    pub(super) fn set_private_label_anchor(&mut self, center_x: usize, y: usize) {
+        self.label_placement = LayeredRelationLabelPlacement::Private { center_x, y };
+    }
+
     pub(crate) fn source_port(&self) -> LayeredRelationPhysicalPort {
         self.source
     }
@@ -392,9 +529,7 @@ impl LayeredRelationRouteGeometry {
     pub(crate) fn route_y(&self) -> usize {
         match self.label_placement {
             LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => route_y,
-            LayeredRelationLabelPlacement::TopLane { y, .. }
-            | LayeredRelationLabelPlacement::BottomLane { y, .. } => y,
-            LayeredRelationLabelPlacement::Vertical { center_y, .. } => center_y,
+            LayeredRelationLabelPlacement::Private { y, .. } => y,
         }
     }
 
@@ -421,7 +556,7 @@ impl LayeredRelationRouteGeometry {
         line_count: usize,
         resources: &ResourceContext,
     ) -> Result<(usize, usize)> {
-        let line_count = line_count.max(1);
+        let _ = line_count;
         match self.label_placement {
             LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => {
                 let y = if self.source.marker_y <= self.target.marker_y {
@@ -436,17 +571,7 @@ impl LayeredRelationRouteGeometry {
                     y,
                 ))
             }
-            LayeredRelationLabelPlacement::TopLane { center_x, y } => Ok((center_x, y)),
-            LayeredRelationLabelPlacement::BottomLane { center_x, y } => Ok((
-                center_x,
-                y.checked_add(1)
-                    .and_then(|bottom| bottom.checked_sub(line_count))
-                    .ok_or_else(|| grid_overflow(resources))?,
-            )),
-            LayeredRelationLabelPlacement::Vertical { center_x, center_y } => Ok((
-                center_x,
-                center_y.saturating_sub(line_count.saturating_sub(1) / 2),
-            )),
+            LayeredRelationLabelPlacement::Private { center_x, y } => Ok((center_x, y)),
         }
     }
 
@@ -463,13 +588,15 @@ impl LayeredRelationRouteGeometry {
                 .marker_y
                 .checked_sub(line_count)
                 .ok_or_else(|| grid_overflow(resources))?,
-            PhysicalPortSide::Left | PhysicalPortSide::Right => port.marker_y,
+            PhysicalPortSide::Left | PhysicalPortSide::Right => {
+                resources.checked_grid_add(port.marker_y, 1)?
+            }
         };
         Ok((port.marker_x, y))
     }
 
     fn segments(&self) -> impl Iterator<Item = LayeredRelationRouteSegment> + '_ {
-        self.segments.iter().flatten().copied()
+        self.segments.iter().copied()
     }
 
     pub(crate) fn segment_count(&self) -> usize {
@@ -488,7 +615,7 @@ impl LayeredRelationRouteGeometry {
         if matches!(
             self.label_placement,
             LayeredRelationLabelPlacement::LegacyAfterSource { .. }
-        ) && self.segments[1].is_none()
+        ) && self.source.path_x == self.target.path_x
         {
             return resources.checked_work_add(segment_work, 1);
         }
@@ -534,6 +661,192 @@ pub(crate) struct LayeredRelationRoutePlan {
 }
 
 impl LayeredRelationRoutePlan {
+    pub(super) fn retained_compaction_cells(&self, resources: &ResourceContext) -> Result<usize> {
+        resources.checked_grid_add(self.geometry.segments.capacity(), self.overlays.capacity())
+    }
+
+    pub(super) fn protect_compaction_features(
+        &self,
+        x: &mut super::compact::CompactAxis,
+        y: &mut super::compact::CompactAxis,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        for port in [self.geometry.source, self.geometry.target] {
+            x.protect(port.marker_x, port.marker_x + 1, resources)?;
+            y.protect(port.marker_y, port.marker_y + 1, resources)?;
+        }
+        for segment in self.geometry.segments() {
+            resources.checkpoint()?;
+            let (left, top, right, bottom) = match segment {
+                LayeredRelationRouteSegment::Horizontal { y, left, right } => (left, y, right, y),
+                LayeredRelationRouteSegment::Vertical { x, top, bottom } => (x, top, x, bottom),
+            };
+            for coordinate in [left, right] {
+                x.protect(coordinate, coordinate + 1, resources)?;
+            }
+            for coordinate in [top, bottom] {
+                y.protect(coordinate, coordinate + 1, resources)?;
+            }
+        }
+        for overlay in &self.overlays {
+            resources.checkpoint()?;
+            if let Some(bounds) = overlay.bounds() {
+                x.protect(bounds.left, bounds.right, resources)?;
+                y.protect(bounds.top, bounds.bottom, resources)?;
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn compact_axes(
+        &mut self,
+        x: &super::compact::CompactAxis,
+        y: &super::compact::CompactAxis,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        resources.charge_layout_work(self.segment_count() + self.overlay_count() + 2)?;
+        for port in [&mut self.geometry.source, &mut self.geometry.target] {
+            port.marker_x = x.map(port.marker_x);
+            port.path_x = x.map(port.path_x);
+            port.marker_y = y.map(port.marker_y);
+            port.path_y = y.map(port.path_y);
+        }
+        for segment in &mut self.geometry.segments {
+            match segment {
+                LayeredRelationRouteSegment::Horizontal {
+                    y: row,
+                    left,
+                    right,
+                } => {
+                    *row = y.map(*row);
+                    *left = x.map(*left);
+                    *right = x.map(*right);
+                }
+                LayeredRelationRouteSegment::Vertical {
+                    x: col,
+                    top,
+                    bottom,
+                } => {
+                    *col = x.map(*col);
+                    *top = y.map(*top);
+                    *bottom = y.map(*bottom);
+                }
+            }
+        }
+        match &mut self.geometry.label_placement {
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => {
+                *route_y = y.map(*route_y)
+            }
+            LayeredRelationLabelPlacement::Private { center_x, y: row } => {
+                *center_x = x.map_unused_anchor(*center_x);
+                *row = y.map_unused_anchor(*row);
+            }
+        }
+        for overlay in &mut self.overlays {
+            match overlay {
+                RelationOverlay::Glyph { x: col, y: row, .. } => {
+                    *col = x.map(*col);
+                    *row = y.map(*row);
+                }
+                RelationOverlay::Text {
+                    center_x, y: row, ..
+                }
+                | RelationOverlay::Label {
+                    center_x, y: row, ..
+                } => {
+                    *center_x = x.map(*center_x);
+                    *row = y.map(*row);
+                }
+            }
+        }
+        Ok(())
+    }
+
+    pub(super) fn bounds(&self) -> (usize, usize, usize, usize) {
+        let source = self.geometry.source;
+        let target = self.geometry.target;
+        let mut left = source.marker_x.min(target.marker_x);
+        let mut top = source.marker_y.min(target.marker_y);
+        let mut right = source.marker_x.max(target.marker_x) + 1;
+        let mut bottom = source.marker_y.max(target.marker_y) + 1;
+        for segment in self.geometry.segments() {
+            let (x0, y0, x1, y1) = match segment {
+                LayeredRelationRouteSegment::Horizontal { y, left, right } => {
+                    (left, y, right + 1, y + 1)
+                }
+                LayeredRelationRouteSegment::Vertical { x, top, bottom } => {
+                    (x, top, x + 1, bottom + 1)
+                }
+            };
+            left = left.min(x0);
+            top = top.min(y0);
+            right = right.max(x1);
+            bottom = bottom.max(y1);
+        }
+        for overlay in &self.overlays {
+            if let Some(bounds) = overlay.bounds() {
+                left = left.min(bounds.left);
+                top = top.min(bounds.top);
+                right = right.max(bounds.right);
+                bottom = bottom.max(bounds.bottom);
+            }
+        }
+        (left, top, right, bottom)
+    }
+
+    pub(super) fn translate_to_origin(&mut self, left: usize, top: usize) {
+        for port in [&mut self.geometry.source, &mut self.geometry.target] {
+            port.marker_x -= left;
+            port.path_x -= left;
+            port.marker_y -= top;
+            port.path_y -= top;
+        }
+        for segment in &mut self.geometry.segments {
+            match segment {
+                LayeredRelationRouteSegment::Horizontal {
+                    y,
+                    left: start,
+                    right,
+                } => {
+                    *y -= top;
+                    *start -= left;
+                    *right -= left;
+                }
+                LayeredRelationRouteSegment::Vertical {
+                    x,
+                    top: start,
+                    bottom,
+                } => {
+                    *x -= left;
+                    *start -= top;
+                    *bottom -= top;
+                }
+            }
+        }
+        match &mut self.geometry.label_placement {
+            LayeredRelationLabelPlacement::LegacyAfterSource { route_y } => *route_y -= top,
+            // An unused label anchor is metadata and may lie outside painted
+            // bounds. Real overlays below remain strictly translated.
+            LayeredRelationLabelPlacement::Private { center_x, y } => {
+                *center_x = center_x.saturating_sub(left);
+                *y = y.saturating_sub(top);
+            }
+        }
+        for overlay in &mut self.overlays {
+            match overlay {
+                RelationOverlay::Glyph { x, y, .. } => {
+                    *x -= left;
+                    *y -= top;
+                }
+                RelationOverlay::Text { center_x, y, .. }
+                | RelationOverlay::Label { center_x, y, .. } => {
+                    *center_x -= left;
+                    *y -= top;
+                }
+            }
+        }
+    }
+
     pub(crate) fn new(
         geometry: LayeredRelationRouteGeometry,
         vertical_char: char,
@@ -566,6 +879,23 @@ impl LayeredRelationRoutePlan {
                 resources,
                 &mut checkpoints,
             )?;
+        }
+        if matches!(
+            self.geometry.label_placement,
+            LayeredRelationLabelPlacement::Private { .. }
+        ) {
+            resources.charge_layout_work(self.geometry.segments.len())?;
+            for pair in self.geometry.segments.windows(2) {
+                checkpoints.tick(resources)?;
+                if let Some((x, y, east, south)) = pair[0].corner_with(pair[1]) {
+                    canvas.try_set_role(
+                        x,
+                        y,
+                        self.relation_chars.private_corner(east, south),
+                        AsciiColorRole::EdgeLine,
+                    )?;
+                }
+            }
         }
         Ok(())
     }
@@ -643,11 +973,13 @@ impl LayeredRelationRoutePlan {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct LayeredRelationRouteProfile {
-    min_vertical_gap: usize,
-    source_path_start_offset: usize,
-    route_y_offset_from_target: usize,
-    target_path_end_offset_from_target: usize,
-    endpoint_label_gap: usize,
+    pub(super) min_vertical_gap: usize,
+    pub(super) source_path_start_offset: usize,
+    pub(super) route_y_offset_from_target: usize,
+    pub(super) target_path_end_offset_from_target: usize,
+    pub(super) endpoint_label_gap: usize,
+    pub(super) source_marker_widths: [usize; 2],
+    pub(super) target_marker_widths: [usize; 2],
 }
 
 impl LayeredRelationRouteProfile {
@@ -664,6 +996,8 @@ impl LayeredRelationRouteProfile {
             route_y_offset_from_target,
             target_path_end_offset_from_target,
             endpoint_label_gap,
+            source_marker_widths: [1, 2],
+            target_marker_widths: [1, 2],
         }
     }
 
@@ -676,7 +1010,17 @@ impl LayeredRelationRouteProfile {
     }
 
     pub(crate) const fn er() -> Self {
-        Self::new(2, 2, 2, 1, 0)
+        Self::new(2, 2, 2, 1, 0).with_marker_widths([2, 2], [2, 2])
+    }
+
+    pub(crate) const fn with_marker_widths(
+        mut self,
+        source: [usize; 2],
+        target: [usize; 2],
+    ) -> Self {
+        self.source_marker_widths = source;
+        self.target_marker_widths = target;
+        self
     }
 }
 
@@ -743,23 +1087,6 @@ pub(crate) fn plan_layered_relation_route_geometry(
     let geometry = plan_layered_relation_route(request, resources)?;
     resources.charge_layout_work(geometry.work(resources)?)?;
     Ok(geometry)
-}
-
-pub(crate) fn plan_planar_k2_2_relation_route_geometry(
-    source: &PlacedRelationGraphBox<'_>,
-    target: &PlacedRelationGraphBox<'_>,
-    scene_height: usize,
-    profile: LayeredRelationRouteProfile,
-    resources: &ResourceContext,
-) -> Result<Option<LayeredRelationRouteGeometry>> {
-    resources.charge_layout_work(2)?;
-    let Some(geometry) =
-        plan_planar_k2_2_relation_route(source, target, scene_height, profile, resources)?
-    else {
-        return Ok(None);
-    };
-    resources.charge_layout_work(geometry.work(resources)?)?;
-    Ok(Some(geometry))
 }
 
 pub(crate) fn materialize_layered_relation_route_plan(
@@ -1013,167 +1340,33 @@ pub(crate) fn plan_layered_relation_route(
     ))
 }
 
-fn plan_planar_k2_2_relation_route(
-    source_box: &PlacedRelationGraphBox<'_>,
-    target_box: &PlacedRelationGraphBox<'_>,
-    scene_height: usize,
-    profile: LayeredRelationRouteProfile,
-    resources: &ResourceContext,
-) -> Result<Option<LayeredRelationRouteGeometry>> {
-    if source_box.y() == target_box.y() {
-        let (side, route_y, placement) = if source_box.y() < scene_height / 2 {
-            (
-                PhysicalPortSide::Top,
-                0,
-                LayeredRelationLabelPlacement::TopLane {
-                    center_x: resources
-                        .checked_grid_add(source_box.center_x(), target_box.center_x())?
-                        / 2,
-                    y: 0,
-                },
-            )
-        } else {
-            let route_y = scene_height
-                .checked_sub(1)
-                .ok_or_else(|| grid_overflow(resources))?;
-            (
-                PhysicalPortSide::Bottom,
-                route_y,
-                LayeredRelationLabelPlacement::BottomLane {
-                    center_x: resources
-                        .checked_grid_add(source_box.center_x(), target_box.center_x())?
-                        / 2,
-                    y: route_y,
-                },
-            )
-        };
-        let source = physical_port(source_box, side, true, profile, resources)?;
-        let target = physical_port(target_box, side, false, profile, resources)?;
-        return Ok(Some(three_segment_geometry(
-            source, target, route_y, placement,
-        )));
-    }
-
-    let (source_side, target_side) = if source_box.y() < target_box.y() {
-        (PhysicalPortSide::Bottom, PhysicalPortSide::Top)
-    } else {
-        (PhysicalPortSide::Top, PhysicalPortSide::Bottom)
-    };
-    let source = physical_port(source_box, source_side, true, profile, resources)?;
-    let target = physical_port(target_box, target_side, false, profile, resources)?;
-    if source.path_x != target.path_x {
-        return Ok(None);
-    }
-    let center_y = source
-        .path_y
-        .checked_add(target.path_y)
-        .ok_or_else(|| grid_overflow(resources))?
-        / 2;
-    Ok(Some(LayeredRelationRouteGeometry {
-        source,
-        target,
-        segments: [
-            Some(LayeredRelationRouteSegment::vertical(
-                source.path_x,
-                source.path_y,
-                target.path_y,
-            )),
-            None,
-            None,
-        ],
-        label_placement: LayeredRelationLabelPlacement::Vertical {
-            center_x: source.path_x,
-            center_y,
-        },
-    }))
-}
-
-fn physical_port(
-    relation_box: &PlacedRelationGraphBox<'_>,
-    side: PhysicalPortSide,
-    source: bool,
-    profile: LayeredRelationRouteProfile,
-    resources: &ResourceContext,
-) -> Result<LayeredRelationPhysicalPort> {
-    debug_assert!(PhysicalPortSide::ALL.contains(&side));
-    let gap = profile.endpoint_label_gap;
-    let marker_offset = resources.checked_grid_add(1, gap)?;
-    let path_offset = if source {
-        resources.checked_grid_add(profile.source_path_start_offset, gap)?
-    } else {
-        resources.checked_grid_add(
-            resources.checked_grid_add(profile.target_path_end_offset_from_target, gap)?,
-            1,
-        )?
-    };
-    match side {
-        PhysicalPortSide::Top => Ok(LayeredRelationPhysicalPort {
-            side,
-            marker_x: relation_box.center_x(),
-            marker_y: relation_box
-                .y()
-                .checked_sub(marker_offset)
-                .ok_or_else(|| grid_overflow(resources))?,
-            path_x: relation_box.center_x(),
-            path_y: relation_box
-                .y()
-                .checked_sub(path_offset)
-                .ok_or_else(|| grid_overflow(resources))?,
-        }),
-        PhysicalPortSide::Bottom => Ok(LayeredRelationPhysicalPort {
-            side,
-            marker_x: relation_box.center_x(),
-            marker_y: resources.checked_grid_add(relation_box.bottom(), marker_offset)?,
-            path_x: relation_box.center_x(),
-            path_y: resources.checked_grid_add(relation_box.bottom(), path_offset)?,
-        }),
-        PhysicalPortSide::Left => Ok(LayeredRelationPhysicalPort {
-            side,
-            marker_x: relation_box
-                .x()
-                .checked_sub(marker_offset)
-                .ok_or_else(|| grid_overflow(resources))?,
-            marker_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
-            path_x: relation_box
-                .x()
-                .checked_sub(path_offset)
-                .ok_or_else(|| grid_overflow(resources))?,
-            path_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
-        }),
-        PhysicalPortSide::Right => Ok(LayeredRelationPhysicalPort {
-            side,
-            marker_x: resources.checked_grid_add(relation_box.right(), marker_offset)?,
-            marker_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
-            path_x: resources.checked_grid_add(relation_box.right(), path_offset)?,
-            path_y: resources.checked_grid_add(relation_box.y(), relation_box.height() / 2)?,
-        }),
-    }
-}
-
 fn three_segment_geometry(
     source: LayeredRelationPhysicalPort,
     target: LayeredRelationPhysicalPort,
     route_y: usize,
     label_placement: LayeredRelationLabelPlacement,
 ) -> LayeredRelationRouteGeometry {
-    let horizontal = (source.path_x != target.path_x)
-        .then(|| LayeredRelationRouteSegment::horizontal(source.path_x, target.path_x, route_y));
+    let mut segments = vec![LayeredRelationRouteSegment::vertical(
+        source.path_x,
+        source.path_y,
+        route_y,
+    )];
+    if source.path_x != target.path_x {
+        segments.push(LayeredRelationRouteSegment::horizontal(
+            source.path_x,
+            target.path_x,
+            route_y,
+        ));
+    }
+    segments.push(LayeredRelationRouteSegment::vertical(
+        target.path_x,
+        route_y,
+        target.path_y,
+    ));
     LayeredRelationRouteGeometry {
         source,
         target,
-        segments: [
-            Some(LayeredRelationRouteSegment::vertical(
-                source.path_x,
-                source.path_y,
-                route_y,
-            )),
-            horizontal,
-            Some(LayeredRelationRouteSegment::vertical(
-                target.path_x,
-                route_y,
-                target.path_y,
-            )),
-        ],
+        segments,
         label_placement,
     }
 }

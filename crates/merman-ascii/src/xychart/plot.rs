@@ -64,24 +64,57 @@ impl<'a> XyChartCheckpointCursor<'a> {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+enum LineOwnership {
+    #[default]
+    Empty,
+    Series(usize),
+    Shared,
+}
+
+impl LineOwnership {
+    fn include(&mut self, series_index: usize) {
+        *self = match *self {
+            Self::Empty => Self::Series(series_index),
+            Self::Series(owner) if owner == series_index => *self,
+            _ => Self::Shared,
+        };
+    }
+
+    fn role(self) -> AsciiColorRole {
+        match self {
+            Self::Series(index) => AsciiColorRole::ChartSeries(index),
+            Self::Empty | Self::Shared => AsciiColorRole::ChartAxis,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Default)]
-struct LineTopologyCell(u8);
+struct LineTopologyCell {
+    mask: u8,
+    owner: LineOwnership,
+    point_owner: LineOwnership,
+}
 
 impl LineTopologyCell {
-    fn add(&mut self, mask: u8) {
-        self.0 |= mask;
+    fn add(&mut self, mask: u8, series_index: usize) {
+        self.mask |= mask;
+        self.owner.include(series_index);
+        if mask & LINE_POINT != 0 {
+            self.point_owner.include(series_index);
+        }
     }
 
     fn connections(self) -> u8 {
-        self.0 & !LINE_POINT
+        self.mask & !LINE_POINT
     }
 
     fn is_point(self) -> bool {
-        self.0 & LINE_POINT != 0
+        self.mask & LINE_POINT != 0
     }
 
     fn is_empty(self) -> bool {
-        self.0 == 0
+        self.mask == 0
     }
 }
 
@@ -297,10 +330,17 @@ impl ChartChars {
         }
     }
 
-    pub(super) fn legend_symbol(self, plot_type: XyChartPlotType) -> char {
-        match plot_type {
+    pub(super) fn series_symbol(self, series: &SeriesPlan<'_>) -> char {
+        match series.plot_type {
             XyChartPlotType::Bar => self.bar,
-            XyChartPlotType::Line => self.line_point,
+            XyChartPlotType::Line => {
+                let markers = if self.line_point == '*' {
+                    ['*', 'o', 's', '^', 'd', 'v']
+                } else {
+                    ['●', '○', '□', '▲', '◆', '▼']
+                };
+                markers[series.kind_index % markers.len()]
+            }
         }
     }
 
@@ -495,6 +535,7 @@ pub(super) struct SeriesDatum<'a> {
 #[derive(Debug, Clone)]
 pub(super) struct SeriesPlan<'a> {
     pub(super) series_index: usize,
+    pub(super) kind_index: usize,
     pub(super) plot_type: XyChartPlotType,
     pub(super) title: Option<&'a str>,
     pub(super) data: Vec<SeriesDatum<'a>>,
@@ -707,18 +748,20 @@ impl<'a> TerminalChartPlan<'a> {
                 charge_authored_bytes(resources, title)?;
             }
             has_authored_x |= !plot.data.is_empty();
-            let lane = if plot.plot_type == XyChartPlotType::Bar {
-                let lane = bar_lane;
+            let kind_index = if plot.plot_type == XyChartPlotType::Bar {
+                bar_lane
+            } else {
+                line_series_count
+            };
+            if plot.plot_type == XyChartPlotType::Bar {
                 bar_lane = resources.checked_grid_add(bar_lane, 1)?;
-                Some(lane)
             } else {
                 line_series_count = resources.checked_grid_add(line_series_count, 1)?;
-                None
-            };
+            }
             series.push(build_series_plan(
                 plot,
                 series_index,
-                lane,
+                kind_index,
                 &x_axis,
                 &category_labels,
                 slot_count,
@@ -1448,7 +1491,7 @@ fn build_horizontal_axis_labels<'a>(
 fn build_series_plan<'a>(
     plot: &'a XyChartPlotModel,
     series_index: usize,
-    bar_lane: Option<usize>,
+    kind_index: usize,
     x_axis: &AxisPlan,
     category_labels: &[String],
     slot_count: usize,
@@ -1503,11 +1546,12 @@ fn build_series_plan<'a>(
 
     Ok(SeriesPlan {
         series_index,
+        kind_index,
         plot_type: plot.plot_type,
         title: plot.title.as_deref(),
         data,
         has_orphan_point_labels,
-        bar_lane,
+        bar_lane: (plot.plot_type == XyChartPlotType::Bar).then_some(kind_index),
     })
 }
 
@@ -2319,6 +2363,7 @@ impl LineTopology {
         &mut self,
         from: (usize, usize),
         to: (usize, usize),
+        series_index: usize,
         resources: &mut ResourceContext,
         checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -2328,19 +2373,40 @@ impl LineTopology {
                     row,
                     from_col,
                     to_col,
-                } => self.connect_horizontal(row, from_col, to_col, resources, checkpoints)?,
+                } => self.connect_horizontal(
+                    row,
+                    from_col,
+                    to_col,
+                    series_index,
+                    resources,
+                    checkpoints,
+                )?,
                 OrthogonalSegment::Vertical {
                     col,
                     from_row,
                     to_row,
-                } => self.connect_vertical(col, from_row, to_row, resources, checkpoints)?,
+                } => self.connect_vertical(
+                    col,
+                    from_row,
+                    to_row,
+                    series_index,
+                    resources,
+                    checkpoints,
+                )?,
             }
         }
         Ok(())
     }
 
-    fn mark_point(&mut self, row: usize, col: usize, resources: &ResourceContext) -> Result<()> {
-        self.cell_mut(row, col, resources)?.add(LINE_POINT);
+    fn mark_point(
+        &mut self,
+        row: usize,
+        col: usize,
+        series_index: usize,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.cell_mut(row, col, resources)?
+            .add(LINE_POINT, series_index);
         Ok(())
     }
 
@@ -2348,7 +2414,7 @@ impl LineTopology {
         &self,
         rows: &mut [StyledLine],
         chars: ChartChars,
-        role: AsciiColorRole,
+        plan: &TerminalChartPlan<'_>,
         resources: &mut ResourceContext,
         checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -2360,7 +2426,15 @@ impl LineTopology {
             }
             let row = index / self.width;
             let col = index % self.width;
-            set_cell(rows, row, col, chars.line_glyph(cell), role)?;
+            let (glyph, role) = match cell.point_owner {
+                LineOwnership::Series(owner) => (
+                    chars.series_symbol(&plan.series[owner]),
+                    AsciiColorRole::ChartSeries(owner),
+                ),
+                LineOwnership::Shared => ('X', AsciiColorRole::ChartAxis),
+                LineOwnership::Empty => (chars.line_glyph(cell), cell.owner.role()),
+            };
+            set_cell(rows, row, col, glyph, role)?;
         }
         Ok(())
     }
@@ -2370,6 +2444,7 @@ impl LineTopology {
         row: usize,
         from_col: usize,
         to_col: usize,
+        series_index: usize,
         resources: &mut ResourceContext,
         checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -2379,8 +2454,10 @@ impl LineTopology {
         resources.charge_layout_work(steps)?;
         for col in start..end {
             checkpoints.tick(OperationPhase::Layout)?;
-            self.cell_mut(row, col, resources)?.add(LINE_EAST);
-            self.cell_mut(row, col + 1, resources)?.add(LINE_WEST);
+            self.cell_mut(row, col, resources)?
+                .add(LINE_EAST, series_index);
+            self.cell_mut(row, col + 1, resources)?
+                .add(LINE_WEST, series_index);
         }
         Ok(())
     }
@@ -2390,6 +2467,7 @@ impl LineTopology {
         col: usize,
         from_row: usize,
         to_row: usize,
+        series_index: usize,
         resources: &mut ResourceContext,
         checkpoints: &mut XyChartCheckpointCursor<'_>,
     ) -> Result<()> {
@@ -2399,8 +2477,10 @@ impl LineTopology {
         resources.charge_layout_work(steps)?;
         for row in start..end {
             checkpoints.tick(OperationPhase::Layout)?;
-            self.cell_mut(row, col, resources)?.add(LINE_SOUTH);
-            self.cell_mut(row + 1, col, resources)?.add(LINE_NORTH);
+            self.cell_mut(row, col, resources)?
+                .add(LINE_SOUTH, series_index);
+            self.cell_mut(row + 1, col, resources)?
+                .add(LINE_NORTH, series_index);
         }
         Ok(())
     }
@@ -2458,20 +2538,23 @@ pub(super) fn build_vertical_plot(
         }
     }
 
-    for series in &plan.series {
-        resources.charge_layout_work(1)?;
-        if series.plot_type == XyChartPlotType::Line {
-            draw_vertical_line_plot(
-                &mut rows,
-                series,
-                plan,
-                chars,
-                plot_area,
-                width,
-                resources,
-                checkpoints,
-            )?;
+    if plan.line_series_count > 0 {
+        let mut topology = LineTopology::new(width, rows.len(), resources, checkpoints)?;
+        for series in &plan.series {
+            resources.charge_layout_work(1)?;
+            if series.plot_type == XyChartPlotType::Line {
+                plan_vertical_line(
+                    &mut topology,
+                    series,
+                    plan,
+                    plot_area,
+                    width,
+                    resources,
+                    checkpoints,
+                )?;
+            }
         }
+        topology.paint(&mut rows, chars, plan, resources, checkpoints)?;
     }
 
     Ok(VerticalPlot { rows, width })
@@ -2539,42 +2622,49 @@ pub(super) fn build_horizontal_plot_rows(
         }
     }
 
-    for series in &plan.series {
-        resources.charge_layout_work(1)?;
-        if series.plot_type != XyChartPlotType::Line {
-            continue;
-        }
-        let role = AsciiColorRole::ChartSeries(series.series_index);
+    if plan.line_series_count > 0 {
         let mut topology = LineTopology::new(
             plot_area.horizontal_width,
             plot_extent.height(),
             resources,
             checkpoints,
         )?;
-        let mut previous = None;
-        for datum in &series.data {
-            checkpoints.tick(OperationPhase::Layout)?;
+        for series in &plan.series {
             resources.charge_layout_work(1)?;
-            let Some(value) = datum.value.filter(|value| value.is_finite()) else {
-                previous = None;
+            if series.plot_type != XyChartPlotType::Line {
                 continue;
-            };
-            let slot = plan.sample_slot(datum);
-            let row = plan.horizontal_anchor_row(slot, resources)?;
-            let col = checked_grid_sub(
-                resources,
-                line_level(value, plan.y_range, plot_area.horizontal_width),
-                1,
-            )?;
-            let point = (row, col);
-            if let Some(previous) = previous {
-                topology.connect(previous, point, resources, checkpoints)?;
             }
-            resources.charge_layout_work(1)?;
-            topology.mark_point(row, col, resources)?;
-            previous = Some(point);
+            let mut previous = None;
+            for datum in &series.data {
+                checkpoints.tick(OperationPhase::Layout)?;
+                resources.charge_layout_work(1)?;
+                let Some(value) = datum.value.filter(|value| value.is_finite()) else {
+                    previous = None;
+                    continue;
+                };
+                let slot = plan.sample_slot(datum);
+                let row = plan.horizontal_anchor_row(slot, resources)?;
+                let col = checked_grid_sub(
+                    resources,
+                    line_level(value, plan.y_range, plot_area.horizontal_width),
+                    1,
+                )?;
+                let point = (row, col);
+                if let Some(previous) = previous {
+                    topology.connect(
+                        previous,
+                        point,
+                        series.series_index,
+                        resources,
+                        checkpoints,
+                    )?;
+                }
+                resources.charge_layout_work(1)?;
+                topology.mark_point(row, col, series.series_index, resources)?;
+                previous = Some(point);
+            }
         }
-        topology.paint(&mut lines, chars, role, resources, checkpoints)?;
+        topology.paint(&mut lines, chars, plan, resources, checkpoints)?;
     }
 
     let mut rows = Vec::new();
@@ -2688,18 +2778,15 @@ fn draw_vertical_bar_plot(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn draw_vertical_line_plot(
-    rows: &mut [StyledLine],
+fn plan_vertical_line(
+    topology: &mut LineTopology,
     series: &SeriesPlan<'_>,
     plan: &TerminalChartPlan<'_>,
-    chars: ChartChars,
     plot_area: XyChartPlotArea,
     plot_width: usize,
     resources: &mut ResourceContext,
     checkpoints: &mut XyChartCheckpointCursor<'_>,
 ) -> Result<()> {
-    let role = AsciiColorRole::ChartSeries(series.series_index);
-    let mut topology = LineTopology::new(plot_width, rows.len(), resources, checkpoints)?;
     let mut previous = None;
     for datum in &series.data {
         checkpoints.tick(OperationPhase::Layout)?;
@@ -2713,13 +2800,13 @@ fn draw_vertical_line_plot(
         let col = plan.sample_vertical_column(datum, plot_width, plot_area, resources)?;
         let point = (row, col);
         if let Some(previous) = previous {
-            topology.connect(previous, point, resources, checkpoints)?;
+            topology.connect(previous, point, series.series_index, resources, checkpoints)?;
         }
         resources.charge_layout_work(1)?;
-        topology.mark_point(row, col, resources)?;
+        topology.mark_point(row, col, series.series_index, resources)?;
         previous = Some(point);
     }
-    topology.paint(rows, chars, role, resources, checkpoints)
+    Ok(())
 }
 
 fn vertical_bar_span(
@@ -3411,7 +3498,7 @@ mod tests {
         let mut checkpoints = XyChartCheckpointCursor::new(AsciiExecution::new(&control, &policy));
 
         let error = topology
-            .connect((0, 0), (0, 65), &mut resources, &mut checkpoints)
+            .connect((0, 0), (0, 65), 0, &mut resources, &mut checkpoints)
             .expect_err("the second cadence checkpoint must stop segment routing");
 
         assert!(matches!(

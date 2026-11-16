@@ -1044,7 +1044,7 @@ mod tests {
     fn render_ascii_accepts_relation_summary_diagnostics_option() {
         let text = String::from_utf8(
             render_ascii(
-                b"classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb",
+                b"classDiagram\nclass A\nclass B\nclass C\nA --> B : ab\nB --> A : ba\nA --> C : ac\nC --> A : ca\nB --> C : bc\nC --> B : cb\nA --> A : self",
                 br#"{ "resources": { "limits": { "max_ascii_grid_cells": 10000 } }, "ascii": { "charset": "ascii", "relationSummaryDiagnostics": true } }"#,
             )
             .unwrap(),
@@ -1052,7 +1052,7 @@ mod tests {
         .unwrap();
 
         assert!(text.contains("relations:"), "{text}");
-        assert!(text.contains("reason: crossing"), "{text}");
+        assert!(text.contains("reason: route_collision"), "{text}");
     }
 
     #[test]

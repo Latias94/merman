@@ -146,7 +146,8 @@ pub(crate) struct ResourceCliArgs {
     ///
     /// Use interactive for cooperative editor-like workloads, constrained for
     /// untrusted or multi-tenant input, and trusted-native for controlled local
-    /// workloads. The unbounded profile retains hard implementation and protocol guards.
+    /// workloads. Unbounded-for-trusted-input removes all policy budgets, retaining
+    /// hard implementation and protocol guards. Use --resource-limit for a scoped increase.
     #[arg(
         long = "resource-profile",
         value_parser = resource_profile_value_parser(),
@@ -182,7 +183,9 @@ pub(crate) struct OperationCliArgs {
     /// Cancel the complete command operation after this many milliseconds.
     ///
     /// The deadline starts before input acquisition and covers generation, rendering, and
-    /// publication. Zero cancels at the first cooperative checkpoint.
+    /// publication. Omit this option for no deadline. Zero cancels at the first cooperative
+    /// checkpoint. Resource budgets are independent; an unbounded resource profile does not
+    /// disable this deadline. Blocking backend calls return to a checkpoint before cancellation.
     #[arg(
         long = "operation-timeout-ms",
         value_name = "MILLISECONDS",

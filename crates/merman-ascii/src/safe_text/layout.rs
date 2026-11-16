@@ -1,4 +1,4 @@
-use super::normalization::visit_normalized_segments;
+use super::normalization::{NormalizedSegmentKind, visit_normalized_segments};
 use crate::Result;
 use crate::error::AsciiError;
 use crate::options::TerminalWidthProfile;
@@ -120,6 +120,23 @@ pub(crate) fn try_plan_normalized_trimmed_text<'a>(
     width_profile: TerminalWidthProfile,
     resources: &ResourceContext,
 ) -> Result<Option<NormalizedTrimmedTextPlan<'a>>> {
+    plan_trimmed_text(value, width_profile, false, resources)
+}
+
+pub(crate) fn try_plan_normalized_trimmed_literal_rows<'a>(
+    value: &'a str,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedTrimmedTextPlan<'a>>> {
+    plan_trimmed_text(value, width_profile, true, resources)
+}
+
+fn plan_trimmed_text<'a>(
+    value: &'a str,
+    width_profile: TerminalWidthProfile,
+    preserve_line_breaks: bool,
+    resources: &ResourceContext,
+) -> Result<Option<NormalizedTrimmedTextPlan<'a>>> {
     let mut offset = 0usize;
     let mut start = None;
     let mut end = 0usize;
@@ -132,7 +149,9 @@ pub(crate) fn try_plan_normalized_trimmed_text<'a>(
         let text = segment.text(&mut buffer);
         resources.charge_layout_work(text.len().max(1))?;
         let segment_end = resources.checked_work_add(offset, text.len())?;
-        if !segment.is_trim_whitespace() {
+        if !segment.is_trim_whitespace()
+            || preserve_line_breaks && matches!(segment.kind, NormalizedSegmentKind::LineBreak)
+        {
             start.get_or_insert(offset);
             end = segment_end;
         }

@@ -266,6 +266,7 @@ impl AsciiRenderer {
             &policies,
             execution,
             context.local_time_zone(),
+            None,
         )
     }
 
@@ -334,6 +335,7 @@ impl AsciiRenderer {
                     &policies,
                     candidate_execution,
                     context.local_time_zone(),
+                    Some(metadata.semantic_config),
                 )
             },
         )?;
@@ -353,7 +355,13 @@ impl AsciiRenderer {
             .options
             .with_layout_profile(selected.profile)
             .resolve_policies();
-        let projection = output::projection_for(capability);
+        let projection = match model {
+            #[cfg(feature = "diagram-packet")]
+            AsciiDiagram::Packet(packet) => {
+                packet::primary_projection(packet, Some(metadata.semantic_config), execution)?
+            }
+            _ => output::projection_for(capability),
+        };
         let fallback_capability = capability.is_some_and(|capability| {
             capability.supports_fallback_encoding(policies.output.encoding)
         });
@@ -461,6 +469,7 @@ impl AsciiRenderer {
             &policies,
             execution,
             context.local_time_zone(),
+            Some(source.semantic_config),
         )
     }
 
@@ -488,6 +497,7 @@ fn render_model_with_execution(
     policies: &ResolvedAsciiPolicies,
     execution: operation::AsciiExecution<'_>,
     _local_time_zone: &merman_model::time::LocalTimeZone,
+    _semantic_config: Option<&merman_model::MermaidConfig>,
 ) -> Result<String> {
     execution.checkpoint(merman_model::OperationPhase::Admission)?;
     options.validate()?;
@@ -522,7 +532,9 @@ fn render_model_with_execution(
         #[cfg(feature = "diagram-mindmap")]
         AsciiDiagram::Mindmap(model) => render_mindmap_model(*model, options, &execution),
         #[cfg(feature = "diagram-packet")]
-        AsciiDiagram::Packet(model) => render_packet_model(model, options, &execution),
+        AsciiDiagram::Packet(model) => {
+            render_packet_model(model, options, _semantic_config, &execution)
+        }
         #[cfg(feature = "diagram-sequence")]
         AsciiDiagram::Sequence(model) => {
             render_sequence_model(model, options, policies.layout.sequence, &execution)
@@ -751,10 +763,21 @@ fn render_mindmap_model(
 fn render_packet_model(
     model: &PacketDiagramModel,
     options: &AsciiRenderOptions,
+    config: Option<&merman_model::MermaidConfig>,
     execution: &operation::AsciiExecution<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    packet::render_packet_diagram(model, options, *execution)
+    let resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
+    resources.transaction(|resources| {
+        let result = resources.transaction_preserving_layout_work(|_| {
+            packet::render_packet_diagram(model, options, config, *execution)
+        });
+        match result {
+            Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
 }
 
 #[cfg(feature = "diagram-sequence")]
@@ -945,6 +968,7 @@ mod tests {
             subgraphs: Vec::new(),
             dropped_subgraph_members: Vec::new(),
             subgraph_vertex_styles: Default::default(),
+            label_sources: Default::default(),
             tooltips: Default::default(),
             warning_facts: Vec::new(),
         }

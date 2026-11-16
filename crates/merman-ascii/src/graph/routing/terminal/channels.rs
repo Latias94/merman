@@ -10,6 +10,15 @@ use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
 
+#[cfg(test)]
+mod tests;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(super) struct ChannelPoint {
+    column: usize,
+    row: usize,
+}
+
 /// An implicit orthogonal graph: only the axes are stored, never their Cartesian product.
 /// All port pairs in one search share the same scene and terminal escape coordinates.
 pub(super) struct ChannelAxes {
@@ -70,43 +79,75 @@ impl ChannelAxes {
         push_axis(&mut self.y, coord.y, resources, execution)
     }
 
-    pub(super) fn neighbor(
+    pub(super) fn locate(
         &self,
         coord: CanvasCoord,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Option<ChannelPoint>> {
+        let Some(column) = locate_axis(&self.x, coord.x, resources, execution)? else {
+            return Ok(None);
+        };
+        let Some(row) = locate_axis(&self.y, coord.y, resources, execution)? else {
+            return Ok(None);
+        };
+        Ok(Some(ChannelPoint { column, row }))
+    }
+
+    pub(super) fn coord(&self, point: ChannelPoint) -> Option<CanvasCoord> {
+        Some(CanvasCoord {
+            x: *self.x.get(point.column)?,
+            y: *self.y.get(point.row)?,
+        })
+    }
+
+    pub(super) fn neighbor(
+        &self,
+        point: ChannelPoint,
         heading: StepDirection,
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
-    ) -> Result<Option<CanvasCoord>> {
-        let (axis, value) = match heading {
-            StepDirection::Left | StepDirection::Right => (&self.x, coord.x),
-            StepDirection::Up | StepDirection::Down => (&self.y, coord.y),
-        };
-        let mut first = 0;
-        let mut last = axis.len();
-        while first < last {
-            execution.checkpoint(OperationPhase::Layout)?;
-            resources.charge_layout_work(1)?;
-            let middle = first + (last - first) / 2;
-            if axis[middle] < value {
-                first = middle + 1;
-            } else {
-                last = middle;
-            }
-        }
-        if axis.get(first) != Some(&value) {
-            return Ok(None);
-        }
+    ) -> Result<Option<ChannelPoint>> {
+        execution.checkpoint(OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        let mut next = point;
         let adjacent = match heading {
-            StepDirection::Left | StepDirection::Up => first.checked_sub(1),
-            StepDirection::Right | StepDirection::Down => first.checked_add(1),
+            StepDirection::Left => point.column.checked_sub(1),
+            StepDirection::Right => point.column.checked_add(1),
+            StepDirection::Up => point.row.checked_sub(1),
+            StepDirection::Down => point.row.checked_add(1),
         };
-        Ok(adjacent
-            .and_then(|index| axis.get(index))
-            .map(|value| match heading {
-                StepDirection::Left | StepDirection::Right => CanvasCoord { x: *value, ..coord },
-                StepDirection::Up | StepDirection::Down => CanvasCoord { y: *value, ..coord },
-            }))
+        let Some(adjacent) = adjacent else {
+            return Ok(None);
+        };
+        match heading {
+            StepDirection::Left | StepDirection::Right => next.column = adjacent,
+            StepDirection::Up | StepDirection::Down => next.row = adjacent,
+        }
+        Ok(self.coord(next).map(|_| next))
     }
+}
+
+fn locate_axis(
+    axis: &[usize],
+    value: usize,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<usize>> {
+    execution.checkpoint(OperationPhase::Layout)?;
+    let mut first = 0;
+    let mut last = axis.len();
+    while first < last {
+        execution.checkpoint(OperationPhase::Layout)?;
+        resources.charge_layout_work(1)?;
+        let middle = first + (last - first) / 2;
+        if axis[middle] < value {
+            first = middle + 1;
+        } else {
+            last = middle;
+        }
+    }
+    Ok((axis.get(first) == Some(&value)).then_some(first))
 }
 
 fn push_axis(

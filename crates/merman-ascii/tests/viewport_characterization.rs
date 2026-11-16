@@ -918,7 +918,7 @@ fn representative_finalizers_expose_stable_extents_and_semantic_fields() {
             source: local_semantic_input("xychart/horizontal_mixed_cjk.mmd"),
             required_fields: &["营收", "北区", "南区", "分数", "4"],
             rectangular: false,
-            expected_extent: (270, 10),
+            expected_extent: (76, 18),
         },
         Case {
             name: "structured-text",

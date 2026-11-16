@@ -71,7 +71,7 @@ fn packet_ascii_accepts_source_split_widths_including_zero_and_fractional_bits()
         AsciiResourcePolicy::default(),
     )
     .unwrap();
-    assert_eq!(text.lines().count(), 6);
+    assert_eq!(text.matches("word ").count(), 3);
     assert_eq!(text.matches("bits=0 ").count(), 3);
 
     let parsed = SemanticParser::new()

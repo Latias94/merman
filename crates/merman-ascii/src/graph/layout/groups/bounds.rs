@@ -68,9 +68,13 @@ fn empty_group_title(
     resources: &ResourceContext,
 ) -> Result<GraphLabel> {
     match group.kind {
-        GraphGroupKind::Container => {
-            GraphLabel::try_new_with_profile(&group.title, width_profile, resources)
-        }
+        GraphGroupKind::Container => GraphLabel::try_with_break_policy(
+            &group.title,
+            None,
+            width_profile,
+            group.title_break_policy,
+            resources,
+        ),
         GraphGroupKind::Divider => Ok(GraphLabel::empty_with_profile(width_profile)),
     }
 }
@@ -81,9 +85,13 @@ fn empty_group_title_metrics(
     resources: &ResourceContext,
 ) -> Result<GraphLabelMetrics> {
     match group.kind {
-        GraphGroupKind::Container => {
-            GraphLabel::try_measure_with_profile(&group.title, width_profile, resources)
-        }
+        GraphGroupKind::Container => GraphLabel::try_measure_with_break_policy(
+            &group.title,
+            None,
+            width_profile,
+            group.title_break_policy,
+            resources,
+        ),
         GraphGroupKind::Divider => {
             GraphLabel::try_measure_with_profile("", width_profile, resources)
         }
@@ -221,10 +229,11 @@ pub(super) fn layout_groups_from_bounds(
                 let title_width = resources
                     .checked_grid_add(width.saturating_sub(padding).saturating_sub(1), 3)?
                     .max(1);
-                GraphLabel::try_wrapped_with_profile(
+                GraphLabel::try_with_break_policy(
                     &group.title,
-                    title_width,
+                    Some(title_width),
                     policy.terminal_width_profile,
+                    group.title_break_policy,
                     resources,
                 )?
             }
@@ -574,10 +583,11 @@ pub(super) fn raw_group_bounds_for_members(
                 .and_then(|width| usize::try_from(width).ok())
                 .ok_or_else(|| grid_overflow(resources))?
                 .max(1);
-            let title = GraphLabel::try_measure_wrapped_with_profile(
+            let title = GraphLabel::try_measure_with_break_policy(
                 &group.title,
-                title_width,
+                Some(title_width),
                 policy.terminal_width_profile,
+                group.title_break_policy,
                 resources,
             )?;
             let title_space = title

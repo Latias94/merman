@@ -8,6 +8,189 @@ fn rendered_terminal_width(rendered: &str) -> usize {
         .unwrap_or_default()
 }
 
+#[test]
+fn flowchart_markdown_emphasis_is_projected_before_node_edge_and_group_layout() {
+    let cases = [
+        (
+            "flowchart LR\nA[\"`**Ingest** the nightly feed`\"] --> B[\"`Reconcile *all* ledgers`\"]",
+            &["Ingest the nightly feed", "Reconcile all ledgers"][..],
+        ),
+        (
+            "flowchart LR\nA -->|\"`**returns** *value*`\"| B",
+            &["returns value"][..],
+        ),
+        (
+            "flowchart LR\nsubgraph SG[\"`**Batch** *jobs*`\"]\nA[Work]\nend\nA --> B[Done]",
+            &["Batch jobs", "Work", "Done"][..],
+        ),
+    ];
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for (source, expected) in cases {
+            let rendered = render_flowchart(source, &options).expect("Markdown should render");
+            for label in expected {
+                assert!(rendered.contains(label), "missing {label:?}:\n{rendered}");
+            }
+            assert!(
+                !rendered.contains('*'),
+                "formatting should not occupy cells:\n{rendered}"
+            );
+            assert_rectangular_terminal_grid(&rendered);
+        }
+    }
+}
+
+#[test]
+fn flowchart_plain_labels_keep_markdown_punctuation_literal() {
+    let source = "flowchart LR\nA[\"**literal** *stars* file_name\"] -->|raw * value| B";
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let rendered = render_flowchart(source, &options).expect("plain text should render");
+        for expected in ["**literal** *stars* file_name", "raw * value"] {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?}:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_source_entities_retain_node_edge_and_group_text() {
+    let cases = [
+        (
+            "flowchart LR\nA[\"request &lt;T&gt;\"] -->|returns &lt;T&gt;| B",
+            &["request <T>", "returns <T>"][..],
+        ),
+        (
+            "flowchart LR\nsubgraph SG[\"schema &lt;T&gt;\"]\nA[Work]\nend",
+            &["schema <T>", "Work"][..],
+        ),
+        (
+            "flowchart LR\nA[\"`**request** &lt;T&gt;`\"] -->|\"`*returns* &lt;T&gt;`\"| B",
+            &["request <T>", "returns <T>"][..],
+        ),
+    ];
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for (source, expected) in cases {
+            let rendered =
+                render_flowchart(source, &options).expect("source entities should render");
+            for label in expected {
+                assert!(rendered.contains(label), "missing {label:?}:\n{rendered}");
+            }
+            assert_rectangular_terminal_grid(&rendered);
+        }
+    }
+}
+
+#[test]
+fn flowchart_markdown_edge_projection_preserves_leading_and_trailing_hard_breaks() {
+    for direction in ["LR", "TD"] {
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            let plain = format!("flowchart {direction}\nA -->|<br>value<br>| B");
+            let markdown = format!("flowchart {direction}\nA -->|\"`<br>**value**<br>`\"| B");
+            assert_eq!(
+                render_flowchart(&markdown, &options).unwrap(),
+                render_flowchart(&plain, &options).unwrap(),
+                "{direction}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_entity_and_html_breaks_follow_pinned_flowdb_markdown_order() {
+    for (source, expected) in [
+        (
+            "flowchart LR\nA[\"`&ast;literal&ast;<br>tail`\"]",
+            "literal",
+        ),
+        (
+            "flowchart LR\nA[\"`**bold** &ast;literal&ast;<br>tail`\"]",
+            "bold literal",
+        ),
+        ("flowchart LR\nA[\"`&lt;br&gt;<br>tail`\"]", "<br>"),
+    ] {
+        let rendered = render_flowchart(source, &AsciiRenderOptions::unicode()).unwrap();
+        assert!(
+            rendered.contains(expected),
+            "missing label {expected:?}:\n{rendered}"
+        );
+        let first = first_line_index_containing(&rendered, expected);
+        let second = first_line_index_containing(&rendered, "tail");
+        assert!(
+            second > first,
+            "authored HTML break should remain structural: {rendered}"
+        );
+    }
+}
+
+#[test]
+fn flowchart_entity_decoding_does_not_create_new_label_syntax() {
+    for (authored, expected) in [
+        ("&lt;br&gt;", "<br>"),
+        ("&amp;lt;T&amp;gt;", "&lt;T&gt;"),
+        ("&#92;n", r"\n"),
+        ("&ast;bold&ast;", "*bold*"),
+    ] {
+        for markdown in [false, true] {
+            let label = if markdown {
+                format!("`{authored}`")
+            } else {
+                authored.to_owned()
+            };
+            let source = format!("flowchart LR\nA[\"{label}\"]");
+            let rendered = render_flowchart(&source, &AsciiRenderOptions::ascii()).unwrap();
+            assert!(
+                rendered.contains(expected),
+                "missing literal {expected:?}:\n{rendered}"
+            );
+            assert_eq!(
+                rendered.lines().count(),
+                3,
+                "decoded text must stay in one row:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn flowchart_projected_labels_keep_cjk_geometry_and_encoder_safety() {
+    let source = "flowchart TD\nA[\"`**中文 👩‍💻 é** &lt;T&gt;`\"] -->|returns &lt;T&gt;| B[Done]";
+    for profile in [
+        merman_ascii::TerminalWidthProfile::Unicode,
+        merman_ascii::TerminalWidthProfile::Cjk,
+    ] {
+        let plain = AsciiRenderOptions::unicode().with_terminal_width_profile(profile);
+        let baseline = render_flowchart(source, &plain).unwrap();
+        for mode in [AsciiColorMode::Ansi16, AsciiColorMode::Html] {
+            let encoded = render_flowchart(source, &plain.with_color_mode(mode)).unwrap();
+            let decoded = if mode == AsciiColorMode::Html {
+                strip_html_spans(&encoded)
+            } else {
+                strip_ansi(&encoded)
+            };
+            assert_eq!(decoded, baseline, "{mode:?}/{profile:?}");
+            if mode == AsciiColorMode::Html {
+                assert!(
+                    !encoded.contains("<T>"),
+                    "decoded text must cross the HTML encoder: {encoded}"
+                );
+                assert!(encoded.contains("&lt;T&gt;"), "{encoded}");
+            }
+        }
+        assert!(baseline.contains("中文 👩‍💻 é <T>"), "{baseline}");
+    }
+    let rendered = render_flowchart(
+        "flowchart LR\nA[\"&lt;T&gt;&#27;[31m\"]",
+        &AsciiRenderOptions::ascii(),
+    )
+    .unwrap();
+    assert!(
+        !rendered.contains('\u{1b}'),
+        "decoded controls must not reach the terminal"
+    );
+    assert!(rendered.contains("<T>"), "{rendered}");
+}
+
 fn assert_issue_53_semantics(rendered: &str) {
     for expected in [
         "browser / agent",

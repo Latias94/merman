@@ -539,6 +539,42 @@ fn auto_color_honors_process_environment_before_rendering() {
 }
 
 #[test]
+fn ascii_resource_failure_explains_budget_recovery() {
+    let output =
+        run_ascii_with_resource_limit("max_ascii_layout_work_units", 1, "flowchart LR\nA --> B");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("UTF-8 diagnostic");
+    for hint in [
+        "--resource-limit max_ascii_layout_work_units=",
+        "first rejected charge",
+        "--resource-profile unbounded-for-trusted-input",
+        "--operation-timeout-ms 30000",
+    ] {
+        assert!(stderr.contains(hint), "missing {hint:?}:\n{stderr}");
+    }
+}
+
+#[test]
+fn ascii_long_help_explains_resource_choices() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["render", "--help"])
+        .output()
+        .expect("render long help");
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let help = String::from_utf8(output.stdout).expect("UTF-8 help");
+    for example in [
+        "--resource-limit max_ascii_layout_work_units=",
+        "--resource-profile unbounded-for-trusted-input",
+        "--operation-timeout-ms 30000",
+    ] {
+        assert!(help.contains(example), "missing {example:?}:\n{help}");
+    }
+    assert!(help.contains("all policy budgets"), "{help}");
+}
+
+#[test]
 fn ascii_report_resource_failure_preserves_stable_limit_details() {
     let output = run_with_stdin(
         &[
@@ -564,6 +600,12 @@ fn ascii_report_resource_failure_preserves_stable_limit_details() {
     assert_eq!(resource["cause"], "ceiling");
     assert_eq!(resource["profile"], "trusted-native");
     assert!(resource["actual"].as_u64().is_some_and(|actual| actual > 1));
+    assert!(
+        report["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--resource-limit max_ascii_output_bytes=")),
+        "{report}"
+    );
 }
 
 #[test]
@@ -754,6 +796,47 @@ fn cli_rejects_duplicate_generic_and_legacy_ascii_grid_overrides() {
     assert!(!output.status.success());
     let stderr = String::from_utf8(output.stderr).expect("stderr should be utf8");
     assert!(stderr.contains("specified by both"), "{stderr}");
+}
+
+#[cfg(feature = "diagram-packet")]
+#[test]
+fn packet_reports_distinguish_spatial_text_and_viewport_fallback_output() {
+    for (bits_per_row, max_width, projection, outcome) in [
+        ("16", "80", "diagrammatic", "primary"),
+        ("65", "80", "structured_text", "primary"),
+        ("32", "32", "structured_text", "fallback"),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  packet:\n    bitsPerRow: {bits_per_row}\n    bitOrder: descending\n---\npacket\n0-7: \"Header\"\n8-15: \"Body\""
+        );
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "ascii",
+                "--ascii-report",
+                "--ascii-max-width",
+                max_width,
+                "--ascii-overflow",
+                "fallback",
+                "-",
+            ],
+            &source,
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = assert_plain_ascii_report(&output.stdout);
+        assert_eq!(report["family"], "packet");
+        assert_eq!(report["projection"], projection);
+        assert_eq!(report["outcome"], outcome);
+        assert!(report["text"].as_str().unwrap().contains("Header"));
+        if projection == "diagrammatic" {
+            assert!(report["text"].as_str().unwrap().contains("7..0"));
+        }
+    }
 }
 
 #[cfg(feature = "svg")]

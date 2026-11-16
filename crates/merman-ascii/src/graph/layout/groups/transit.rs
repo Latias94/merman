@@ -57,6 +57,7 @@ pub(super) fn group_routing_policies(
                                 label,
                                 policy.terminal_width_profile,
                                 resources,
+                                edge.label_break_policy,
                             )?
                             .map_or(0, |metrics| metrics.max_width),
                         );
@@ -87,7 +88,14 @@ pub(super) fn group_routing_policies(
         let label = edge
             .label
             .as_deref()
-            .map(|label| try_measure_edge_label(label, policy.terminal_width_profile, resources))
+            .map(|label| {
+                try_measure_edge_label(
+                    label,
+                    policy.terminal_width_profile,
+                    resources,
+                    edge.label_break_policy,
+                )
+            })
             .transpose()?
             .flatten();
         if !vertical && !horizontal && label.is_none() {

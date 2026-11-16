@@ -26,8 +26,8 @@ use crate::text::{StyledLine, display_width_with_profile, truncate_display_width
 use crate::{AsciiRenderOptions, Result};
 use disclosure::{
     TitleOwner, band_domain_disclosure_line_width, linear_domain_disclosure_line_widths,
-    push_title_display_line, push_value_disclosure_lines, title_display_line_width,
-    value_disclosure_line_width,
+    measure_value_disclosure, push_title_display_line, push_value_disclosure_lines,
+    title_display_line_width,
 };
 #[cfg(test)]
 use merman_model::families::xy_chart::XyChartDiagramRenderModel;
@@ -36,6 +36,7 @@ use merman_model::families::xy_chart::{
 };
 type ChartLine = StyledLine;
 type CategoryLabel = String;
+const SHARED_SAMPLE_LEGEND: &str = "  X shared samples";
 
 #[derive(Debug, Default)]
 struct ChartDocument {
@@ -456,12 +457,6 @@ fn render_vertical(
         let mut out = ChartDocument::default();
         push_title_lines(&mut out, model, options, resources)?;
         push_legend_line(&mut out, plan, chars, options, resources)?;
-        if requires_disclosure {
-            push_value_disclosure_lines(
-                &mut out, model, plan, chars, disclosure, options, resources,
-            )?;
-        }
-
         if model.display.show_data_label && uses_compact_bar_data_labels(model) {
             if model.display.show_data_label_outside_bar {
                 if let Some(labels) = outside_data_labels.as_deref()
@@ -555,6 +550,11 @@ fn render_vertical(
             && let Some(title) = nonempty_axis_title(&model.x_axis)
         {
             push_title_display_line(&mut out, TitleOwner::XAxis, title, options, resources)?;
+        }
+        if requires_disclosure {
+            push_value_disclosure_lines(
+                &mut out, model, plan, chars, disclosure, options, resources,
+            )?;
         }
         Ok(out)
     })?;
@@ -651,12 +651,6 @@ fn render_horizontal(
         let mut out = ChartDocument::default();
         push_title_lines(&mut out, model, options, resources)?;
         push_legend_line(&mut out, plan, chars, options, resources)?;
-        if requires_disclosure {
-            push_value_disclosure_lines(
-                &mut out, model, plan, chars, disclosure, options, resources,
-            )?;
-        }
-
         for plot_row in &plot_rows {
             checkpoints.tick(merman_model::OperationPhase::Emit)?;
             resources.charge_layout_work(1)?;
@@ -756,6 +750,11 @@ fn render_horizontal(
             && let Some(title) = nonempty_axis_title(&model.x_axis)
         {
             push_title_display_line(&mut out, TitleOwner::XAxis, title, options, resources)?;
+        }
+        if requires_disclosure {
+            push_value_disclosure_lines(
+                &mut out, model, plan, chars, disclosure, options, resources,
+            )?;
         }
         Ok(out)
     })?;
@@ -1048,6 +1047,9 @@ fn legend_line_width(
         };
         width = resources.checked_grid_add(width, label_width)?;
     }
+    if plan.line_series_count > 1 {
+        width = resources.checked_grid_add(width, SHARED_SAMPLE_LEGEND.len())?;
+    }
     Ok(Some(width))
 }
 
@@ -1077,12 +1079,7 @@ fn measure_value_disclosure_lines(
         return Ok(());
     }
     for series in &plan.series {
-        resources.charge_layout_work(1)?;
-        if let Some(width) =
-            value_disclosure_line_width(model, series, plan, chars, options, resources)?
-        {
-            document.include_line(width, resources)?;
-        }
+        measure_value_disclosure(document, model, series, plan, chars, options, resources)?;
     }
     Ok(())
 }
@@ -1422,7 +1419,7 @@ fn legend_line(
 
         resources.charge_layout_work(2)?;
         line.try_push_role_char(
-            chars.legend_symbol(series.plot_type),
+            chars.series_symbol(series),
             AsciiColorRole::ChartSeries(series.series_index),
         )?;
         line.try_push_plain_char(' ')?;
@@ -1433,6 +1430,15 @@ fn legend_line(
             resources,
         )?;
         line.try_push_role_text(&label, AsciiColorRole::Text)?;
+    }
+
+    if series
+        .iter()
+        .filter(|series| series.plot_type == XyChartPlotType::Line)
+        .count()
+        > 1
+    {
+        line.try_push_role_text(SHARED_SAMPLE_LEGEND, AsciiColorRole::ChartAxis)?;
     }
 
     Ok(line)
@@ -2739,7 +2745,7 @@ mod tests {
             .lines()
             .map(|line| super::display_width_with_profile(line, options.terminal_width_profile))
             .sum::<usize>();
-        assert_eq!(exact_cells, 316);
+        assert_eq!(exact_cells, 343);
 
         let exact = resources_with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_cells);
         let rendered = render_xychart_diagram_with_resources(&model, &options, exact)
@@ -2799,10 +2805,10 @@ mod tests {
         assert_eq!(
             reference,
             concat!(
+                "###\n",
+                "###\n",
                 "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
                 "yDomain: linear authored=[0,1] resolved=[0,1]\n",
-                "###\n",
-                "###\n",
             )
         );
         assert_eq!(exact_cells, 102);
@@ -3013,7 +3019,7 @@ mod tests {
             .with_xychart_category_band_width(4);
         let reference = render_xychart_diagram(&model, &options)
             .expect("the unrestricted overlapping-label fixture should render");
-        assert!(reference.ends_with("\n 9\n"), "{reference}");
+        assert!(reference.starts_with("\n 9\n"), "{reference}");
         let exact_cells = reference
             .lines()
             .map(|line| display_width_with_profile(line, options.terminal_width_profile))
@@ -3157,10 +3163,10 @@ mod tests {
         assert_eq!(
             rendered,
             concat!(
+                "#\n",
+                "#\n",
                 "xDomain: band categories=[bytes=1=\"A\"]\n",
                 "yDomain: linear authored=[0,1] resolved=[0,1]\n",
-                "#\n",
-                "#\n",
             )
         );
 
@@ -3226,7 +3232,7 @@ mod tests {
         // This is a fixed semantic boundary for the compact fixture. It covers the declared
         // cardinality, series/sample planning, retained-width admission, paint, and encoding
         // work; it is intentionally not derived from a renderer-reported usage value.
-        const REQUIRED_LAYOUT_WORK: usize = 319;
+        const REQUIRED_LAYOUT_WORK: usize = 318;
         let accepted = resources_with_limit(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             REQUIRED_LAYOUT_WORK,

@@ -281,7 +281,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "length-framed namespace facade member identity",
             "self-relation loops",
             "bounded iterative relation-layer sweeps",
-            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
+            "directed component ranks and private channels for bounded cycles and DAG diamonds",
             "routed relation lanes",
             "independent relation components",
             "lossless crossing, port-fit, route, and overlay collision summaries",
@@ -290,7 +290,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "dense or colliding cross-namespace relationships render as lossless relation summaries",
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "dense or collision-prone relation scenes can summarize",
-            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
+            "bounded private-channel search does not guarantee a route for every topology",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -306,12 +306,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/class_model.rs",
-                note: "class_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 Class component remains diagrammatic",
+                note: "class_directed_cycles_share_topology_across_directions_and_declaration_order and class_diamond_uses_directed_ranks_in_every_direction cover directed rings and DAG ranks",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/src/relation_graph/tests/",
-                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
+                note: "shared topology and private-channel tests retain declaration-order stability, disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -336,7 +336,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "top-down, bottom-up, left-right, and right-left directions",
             "self-relationship loops",
             "bounded iterative relation-layer sweeps",
-            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
+            "directed component ranks and private channels for bounded cycles and DAG diamonds",
             "routed relation lanes",
             "independent relation components",
             "lossless crossing, port-fit, route, and overlay collision summaries",
@@ -344,7 +344,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         limits: &[
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "complex cyclic or collision-prone topology can summarize",
-            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
+            "bounded private-channel search does not guarantee a route for every topology",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
             "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
@@ -363,12 +363,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/er_model.rs",
-                note: "er_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 ER component remains diagrammatic",
+                note: "er_directed_cycles_share_topology_across_directions_and_declaration_order and er_diamond_uses_directed_ranks_and_private_relationship_labels cover directed rings and DAG ranks",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/src/relation_graph/tests/",
-                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
+                note: "shared topology and private-channel tests retain declaration-order stability, disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -593,23 +593,39 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         diagram_type: "packet",
         display_name: "Packet",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
-        primary_projection: AsciiPrimaryProjection::StructuredText,
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
         structured_text_fallback: true,
-        supported_semantics: &["bit ranges", "labels", "row splitting", "multi-row packets"],
+        supported_semantics: &[
+            "fixed two-terminal-cell bit grid",
+            "exact bit positions, gaps, and cross-row field splitting",
+            "ascending and descending bit order",
+            "optional bit-number display",
+            "source packet.bitsPerRow, packet.bitOrder, and packet.showBits configuration",
+            "length-framed authored labels and raw start/end/bits records after the plot",
+        ],
         limits: &[
-            "output is an ordered row report rather than a spatial bit-width grid",
+            "spatial admission requires integer packet.bitsPerRow in 1..=64; this is a terminal bound, not a Mermaid syntax limit",
+            "borrowed render_model defaults to 32 bits per row, ascending order, and visible bit numbers",
+            "row widths outside the spatial domain, coordinates outside exact nonnegative integers, fractional/non-finite/negative DB bits, overlaps, or out-of-order blocks retain complete structured records and report StructuredText",
+            "narrow field labels may use '*' with an explicit legend and complete detail records; labels never widen fields",
+            "stored DB bits can differ from inclusive range width after upstream row splitting and are preserved without correction",
             "visual styling beyond terminal borders is not represented",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/packet_grid.rs",
+                note: "owns bounded spatial admission, bit positions, configuration, exact records, viewport, encoding, and resource checks",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests render packet ranges as terminal-native rows",
+                note: "typed-model compatibility tests retain packet ranges, DB bit counts, and injective labels",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-                note: "support matrix classifies Packet as partial structured text",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#packet-bit-grid",
+                note: "support matrix bounds Packet's partial spatial projection and complete record-only cases",
             },
         ],
     },
@@ -768,13 +784,16 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "titles and axes",
             "legends",
             "length-framed exact data labels and semantic disclosure",
+            "record-oriented disclosure after the plot",
+            "joint line topology with distinct series markers and shared sample cells",
             "length-framed empty-chart metadata disclosure",
             "configurable plot dimensions",
         ],
         limits: &[
             "browser hover tooltips are replaced by deterministic terminal disclosure",
             "typed chart coordinates are independently quantized by the terminal plan",
-            "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
+            "quantized shared line samples use X plus exact disclosure; line markers repeat after six series",
+            "line paths overlay bars; quantized bar and line overlap still requires exact disclosure",
             "unknown direct-model orientations and band y-axes are rejected",
             "accessibility title and description metadata are intentionally omitted from terminal output",
         ],
@@ -792,7 +811,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
                 source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
-                note: "cross-series same-cell ownership remains an explicit compact-layout residual",
+                note: "shared line topology retains sample ownership; terminal quantization, dense bars, and marker reuse remain explicit compact-layout limits",
             },
         ],
     },
@@ -962,6 +981,11 @@ mod tests {
         ),
         (
             "docs/rendering/ASCII_SUPPORT_MATRIX.md",
+            "packet-bit-grid",
+            "### Packet bit grid",
+        ),
+        (
+            "docs/rendering/ASCII_SUPPORT_MATRIX.md",
             "structured-text-outputs",
             "## Structured-Text Outputs",
         ),
@@ -1023,6 +1047,7 @@ mod tests {
                 "class",
                 "er",
                 "flowchart",
+                "packet",
                 "sequence",
                 "state",
                 "swimlane",
@@ -1054,9 +1079,15 @@ mod tests {
             assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
         }
 
-        let state = find("state");
-        assert_eq!(state.layout_profiles, &[AsciiLayoutProfile::Canonical]);
-        assert!(!state.supports_layout_profile(AsciiLayoutProfile::Compact));
+        for diagram_type in ["state", "packet"] {
+            let capability = find(diagram_type);
+            assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
+            assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Compact));
+            assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Auto));
+            assert_eq!(capability.width_profiles, TERMINAL_WIDTH_PROFILES);
+            assert_eq!(capability.encodings, OUTPUT_ENCODINGS);
+            assert_eq!(capability.fallback_encodings, &[AsciiOutputEncoding::Plain]);
+        }
 
         let unsupported = find("zenuml");
         assert!(unsupported.layout_profiles.is_empty());
@@ -1087,13 +1118,17 @@ mod tests {
 
         assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Partial);
         assert_eq!(find("sequence").support_level, AsciiSupportLevel::Partial);
-        assert_eq!(find("packet").support_level, AsciiSupportLevel::Summary);
+        assert_eq!(find("packet").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(
+            find("packet").primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
         assert_eq!(find("treeView").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
 
         for diagram_type in [
-            "gantt", "gitgraph", "journey", "kanban", "mindmap", "packet", "timeline", "treeView",
+            "gantt", "gitgraph", "journey", "kanban", "mindmap", "timeline", "treeView",
         ] {
             let capability = find(diagram_type);
             assert_eq!(
@@ -1142,35 +1177,35 @@ mod tests {
     }
 
     #[test]
-    fn class_and_er_capabilities_disclose_the_strict_planar_k2_2_boundary() {
+    fn class_and_er_capabilities_disclose_bounded_directed_channel_planning() {
         for (diagram_type, parser_test) in [
             (
                 "class",
-                "class_parser_k2_2_relationships_use_a_bounded_planar_layout",
+                "class_directed_cycles_share_topology_across_directions_and_declaration_order",
             ),
             (
                 "er",
-                "er_parser_k2_2_relationships_use_a_bounded_planar_layout",
+                "er_directed_cycles_share_topology_across_directions_and_declaration_order",
             ),
         ] {
             let capability = find(diagram_type);
 
             assert!(capability.supported_semantics.contains(
-                &"strict planar K2×2 four-node, four-edge components with four disjoint routes"
+                &"directed component ranks and private channels for bounded cycles and DAG diamonds"
             ));
             assert!(capability.limits.contains(
-                &"strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
+                &"bounded private-channel search does not guarantee a route for every topology"
             ));
             assert!(
                 capability
                     .evidence
                     .iter()
                     .any(|evidence| evidence.note.contains(parser_test)),
-                "{diagram_type} should cite its parser-backed strict K2×2 test",
+                "{diagram_type} should cite its parser-backed cycle and direction tests",
             );
             assert!(capability.evidence.iter().any(|evidence| {
                 evidence.source.ends_with("relation_graph/tests/")
-                    && evidence.note.contains("four disjoint routes")
+                    && evidence.note.contains("disjoint routes")
                     && evidence.note.contains("exact/N-1")
             }));
         }

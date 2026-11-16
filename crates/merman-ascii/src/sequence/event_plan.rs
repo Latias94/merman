@@ -232,17 +232,12 @@ pub(super) fn message_label_plan(
         return Ok(None);
     }
 
-    let (wrap_width, break_policy) = if message.wrap {
-        (Some(max_width), LabelBreakPolicy::StructuralParagraphs)
-    } else {
-        (None, LabelBreakPolicy::VisibleLine)
-    };
     try_plan_sequence_label(
         &message.label,
         width_profile,
         false,
-        wrap_width,
-        break_policy,
+        message.wrap.then_some(max_width),
+        LabelBreakPolicy::SequenceMessage { wrap: message.wrap },
         resources,
         checkpoints,
     )

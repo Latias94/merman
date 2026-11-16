@@ -88,6 +88,81 @@ fn facade_report_exposes_bounded_fallback_without_remeasuring_text() {
     assert!(flattened.contains("Beta"));
 }
 
+#[test]
+fn facade_ascii_keeps_source_label_entities_in_primary_and_narrow_fallback() {
+    let source = "flowchart LR\nA[\"`**request** &lt;T&gt;`\"] -->|returns &lt;T&gt;| B[Done]";
+    for width in [120, 12] {
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::unicode(),
+                    viewport: AsciiViewportPolicy::with_max_width(width)
+                        .overflow(OverflowPolicy::Fallback),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(report)) = output else {
+            panic!("expected ASCII output");
+        };
+        assert!(report.emitted_extent.width <= width);
+        if width == 120 {
+            assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
+            assert!(report.text.contains("request <T>"), "{}", report.text);
+            assert!(report.text.contains("returns <T>"), "{}", report.text);
+            assert!(!report.text.contains("**request**"), "{}", report.text);
+        } else {
+            assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+            let flattened: String = report
+                .text
+                .lines()
+                .map(|line| line.strip_prefix("  ").unwrap_or(line))
+                .collect();
+            for expected in ["labelSources", "request", "returns &lt;T&gt;"] {
+                assert!(
+                    flattened.contains(expected),
+                    "missing {expected:?}: {}",
+                    report.text
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-packet")]
+#[test]
+fn packet_facade_retains_source_geometry_policy_and_actual_projection() {
+    for (width, projection) in [("16", "diagrammatic"), ("65", "structured_text")] {
+        let source = format!(
+            "---\nconfig:\n  packet:\n    bitsPerRow: {width}\n    bitOrder: descending\n---\npacket\n0-7: \"Header\"\n8-15: \"Body\""
+        );
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                &source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::ascii(),
+                    viewport: AsciiViewportPolicy::with_max_width(80)
+                        .overflow(OverflowPolicy::Error),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(output)) = output else {
+            panic!("Packet not detected")
+        };
+        assert_eq!(output.projection.as_str(), projection);
+        assert!(output.text.contains("Header"));
+        if width == "16" {
+            assert!(output.text.contains("7..0"), "{}", output.text);
+            assert!(output.text.contains("15..8"));
+            assert!(output.text.contains("|     Body      |    Header     |"));
+        }
+    }
+}
+
 #[cfg(all(
     feature = "diagram-class",
     feature = "diagram-er",

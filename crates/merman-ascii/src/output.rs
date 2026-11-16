@@ -18,6 +18,18 @@ use unicode_segmentation::UnicodeSegmentation;
     feature = "diagram-swimlane"
 ))]
 mod graph;
+#[cfg(feature = "diagram-packet")]
+mod packet;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-state",
+    feature = "diagram-swimlane",
+    feature = "diagram-class",
+    feature = "diagram-er"
+))]
+mod record;
+#[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
+mod relation;
 
 pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 3;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
@@ -831,7 +843,15 @@ pub(crate) fn build_semantic_fallback_for_family(
         feature = "diagram-swimlane"
     )))]
     let graph_document = false;
-    if !graph_document {
+    #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
+    let relation_document = relation::write_if_relation(model, &projection, &mut fallback)?;
+    #[cfg(not(any(feature = "diagram-class", feature = "diagram-er")))]
+    let relation_document = false;
+    #[cfg(feature = "diagram-packet")]
+    let packet_document = packet::write_if_packet(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-packet"))]
+    let packet_document = false;
+    if !graph_document && !relation_document && !packet_document {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
     let candidate = fallback.finish();

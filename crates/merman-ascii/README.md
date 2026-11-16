@@ -71,8 +71,27 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
-| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+
+Mindmap puts labels and hierarchy first. Distinct authored IDs, shapes, icons, and custom sections
+appear in a separate `Details:` block, referenced from the corresponding node. The standard
+branch palette is already expressed by the tree and is omitted when the complete graph follows
+that rule. Labels that could forge an annotation or lose whitespace are quoted and escaped.
+
+```text
+root
+|-- left
+|   \-- leaf
+\-- right
+```
+
+GitGraph presents newest-first history with a bounded set of branch lanes and explicit parent
+IDs. Cherry-picks identify the picked source separately from the first parent. Histories whose
+lanes would collide or exceed capacity use complete parent records in model order, as do
+repeated IDs, external/forward references, and nonchronological sequences. Messages, tags, and
+identities remain quoted; unusual sequence/type/ID metadata stays in a separate details block.
+These family presentations remain StructuredText and do not change capability admission.
 
 Every selected logical model family has one capability record, including unsupported terminal
 projections. These records describe this crate's local adapters even when another dependency selects
@@ -85,6 +104,12 @@ layout selection are currently admitted only for Flowchart, Swimlane, and Sequen
 canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
 primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+
+Packet uses two cells per bit for integer `packet.bitsPerRow` in `1..=64`, with full field records
+after the grid. Source rendering honors `bitsPerRow`, `bitOrder`, and `showBits`; detached models
+use 32 bits per row with ascending annotations and visible bit numbers. Labels never widen a field:
+`*` points to the exact record when a label or bit annotation cannot fit. Non-spatial numeric or
+overlapping models retain complete records and report `StructuredText` for that result.
 
 Swimlane reuses the Flowchart model kind. Use `render_parsed` or `render_parsed_report` to retain
 the parser-owned logical language identity, or provide the matching `AsciiSourceContext` when
@@ -126,6 +151,15 @@ and Sequence participant spacing from 5 to 3,
 unless the caller explicitly overrides the corresponding family option. These adjustments are
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
+
+Flowchart and Swimlane also consume the model's sparse sanitized label sources. Text entities
+are decoded once after authored line breaks are resolved, preserving literal text such as
+`returns &lt;T&gt;` and preventing `&lt;br&gt;` from acquiring newline semantics. Markdown emphasis
+and strong markers do not occupy terminal cells; plain-label punctuation, code, and link notation
+remain authored text. The same projection feeds node sizing, edge routing, and group titles.
+Complete source spellings remain available in bounded Plain fallback records. Compatibility JSON
+keeps its pinned Mermaid projection; its decoded label strings are not a replacement for these
+source facts.
 
 Graph routing compares deterministic candidates using target-port congestion, marked-source port
 congestion, and combined route length, shared-cell cost and scene growth. Compound Flowchart routes
@@ -174,6 +208,12 @@ All attempts charge the same work ledger and observe cancellation.
 Recovery rejects sealed straight approaches before opening the path frontier. Label candidates
 retain first-insertion order with operation-local hash-set deduplication, avoiding a repeated
 linear scan for each generated position as the contour search grows.
+The search frontier stores indices into the scene's critical-coordinate axes. Each admitted
+port-pair search resolves its starting coordinate once; adjacent-channel lookup then takes
+constant work without a dense grid or an additional coordinate map. Collision checks and path
+costs still inspect every traversed terminal cell, and only the winning path expands to cell
+coordinates. The [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#indexed-channel-adjacency)
+defines this adjacency-work bound separately from complete routing cost.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
 transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
@@ -210,6 +250,13 @@ refactor is complete for this admitted subset; future density or style improveme
 iterations. The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/README.md),
 generated small-graph oracle, compound tests, and family tests define the finite acceptance boundary.
 They do not establish globally optimal or complete routing for arbitrary graphs.
+Static node, frame, and title protection is compiled into one spatial hierarchy and shared by
+congestion trials. Cell, marker, and label queries prune unrelated bounds before applying the
+same exact protection rules. The hierarchy retains linear storage; a query can still visit every
+protected region when bounds overlap. The routing algorithm, terminal semantics, and resource
+and cancellation policies remain unchanged. Work accounting includes index preparation and
+visited hierarchy nodes; the [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
+records the changed fixed-fixture boundary.
 The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
 also checks State/Swimlane selection, logical identity, complete fields and measured extents across
 60/80/100/120 columns in both character sets and width profiles.
@@ -336,9 +383,11 @@ By default, vertical charts use a five-row value area and three-character catego
 
 Horizontal charts use a ten-character value axis by default; `AsciiRenderOptions::with_xychart_horizontal_plot_width` adjusts it. Multiple bar series receive independent rows per category, and horizontal line samples are connected rather than emitted as isolated points. Category labels come from the typed band axis when present; linear axes retain their typed numeric domain. The complete expanded plot extent is checked before row allocation.
 
-Charts with more than one series render a compact legend row before the plot. When a Mermaid plot statement includes a user-authored series title, the legend uses that typed model title; otherwise it falls back to stable terminal labels such as `Bar 1` and `Line 1`.
+Charts with more than one series render a compact legend row before the plot. When a Mermaid plot statement includes a user-authored series title, the legend uses that typed model title; otherwise it falls back to stable terminal labels such as `Bar 1` and `Line 1`. Line series cycle through six distinct point markers, matched by the legend in Plain and styled output. Their connections and sample ownership are combined before painting, so series order cannot erase an earlier point or connection. A terminal cell containing samples from multiple line series uses `X`; its exact owners and values remain in the disclosure. Shared line segments use the axis role rather than claiming one series owns them. Quantization and marker reuse beyond six line series still require the exact records for disambiguation.
 
 The renderer consumes the typed XYChart display policy from `merman-core`. `xyChart.showTitle`, `xyChart.showDataLabel`, `xyChart.showDataLabelOutsideBar`, and `xyChart.xAxis/yAxis.showLabel/showTitle/showTick/showAxisLine` affect terminal output. Tick marks can render independently from axis lines. For a single bar series, data labels stay close to the bars and respect `showDataLabelOutsideBar`. For line and multi-series charts, `showDataLabel` emits injective `values:` rows with explicit series/sample indices, plot kind, title ownership, typed x coordinates, point labels, clipping state, and orphan labels. Every authored string is UTF-8 byte-length framed and quoted with terminal-safe escaping, so authored delimiters cannot forge renderer-owned fields. Multi-series identity, clipped samples, missing values, duplicate, normalized, alignment-changing, or over-wide categories, quantized point collisions, overlapping dense bars, same-row coordinate collisions, and insufficient grouped-bar lanes also trigger deterministic disclosure so semantic facts are not silently lost when terminal geometry is approximate.
+
+Exact disclosure follows the plot. A borrowed record plan emits separate rows for series headers, samples, and orphan point labels; measurement and painting replay those same records. Adding samples therefore increases the record count instead of producing one ever-wider series row. Long individual authored fields and large chart geometry can still exceed a viewport and use the host's existing overflow policy. Record rows retain the `values:` prefix, byte framing, and complete authored values; no truncation or resource-error fallback is introduced.
 
 The public typed-model path accepts an empty orientation as the legacy vertical default and accepts `vertical` or `horizontal` case-insensitively. Other orientation strings and a Band y-axis return a precise `UnsupportedFeature` error instead of silently changing meaning. `accTitle` and `accDescr` remain browser/accessibility metadata and are intentionally omitted from terminal output.
 
@@ -375,7 +424,37 @@ interactive callers can author explicit wrapping or select their own resource li
 
 ## Relation Summary Diagnostics
 
-Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when parallel lane ports cannot land on both endpoint box faces, or when route or overlay collision checks would damage a box. Simple Class relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; the authored member identity is disclosed independently with byte-length framing. Dense or colliding cross-namespace scenes still use the lossless summary. Default output hides the internal fallback reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: crossing` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, and `overlay_collision`; port-fit failures are reported as `route_collision`. Resource limits always return `AsciiError::ResourceLimitExceeded` instead of selecting this summary path.
+Class and ER share a directed topology plan: iterative strongly connected components produce a
+condensation DAG, whose ranks preserve the direction of acyclic relationships. Cyclic components
+unfold in a stable order without changing semantic endpoints. Bounded private channels separate
+box contacts from exterior return paths and reserve label reading areas. This replaces the former
+four-node topology exception; three-, four-, and five-node rings and DAG diamonds use the same
+planning rules in all four directions. It remains a best-effort terminal layout rather than a
+complete graph-routing algorithm.
+
+Once the routes pass validation, the whole scene compacts redundant straight-channel rows and
+columns. Boxes and text keep their dimensions; terminals and bends remain distinct; separated
+features retain at least one cell of clearance. The scene is checked again before painting.
+This applies to canonical Class/ER geometry and does not add Compact or Auto profile support.
+
+Private Unicode route bends use rounded corners and the edge-line color role. A bend does not
+claim a branch or crossing; ASCII and CJK structure keep single-cell `+` turns. Endpoint markers,
+cardinalities, and labels retain their family-owned meanings.
+
+Class and ER diagrams fall back to readable `relations:` summary sections when bounded planning cannot produce a complete terminal grid, contacts do not fit, or route/overlay checks would damage another object. Simple relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; byte-length-framed fields disclose the authored member identity. Dense or colliding namespace scenes retain the complete summary. Default output hides the planning reason. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add `reason: route_collision` or `reason: overlay_collision` under `relations:`; contact and exhausted-channel failures use `route_collision`. Resource limits return `AsciiError::ResourceLimitExceeded` instead of selecting a summary.
+
+When the complete primary result exceeds an explicit viewport with Plain `Fallback`, Class and
+ER emit a family-owned reading document. Short keys identify classes/entities, namespaces/groups,
+interfaces, notes, and individual relationships. Class endpoints retain independent marker types
+and endpoint labels. Qualified class aliases identify their resolved class and preserve the
+authored reference; interface references reuse the primary topology's identities. ER endpoints
+use `1`, `0..1`, `1..*`, `0..*`, or `parent`, with an explicit
+identifying/non-identifying stroke legend. Member/method and attribute records remain with their
+owner, including keys and comments. Quoted fields wrap without truncating or rebinding identities.
+Known empty/default properties, duplicate labels, native generated ER IDs, and Class's derived
+topology cache are omitted. Nondefault styles, metadata, custom constant tables, source title, and
+source configuration remain disclosed. These records reuse the admitted bounded serialization and
+the same output/resource/cancellation rules as other viewport fallbacks.
 
 ## Direct Model API
 

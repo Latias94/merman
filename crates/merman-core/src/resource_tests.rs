@@ -157,7 +157,7 @@ mod tests {
 
     #[cfg(all(feature = "diagram-flowchart", feature = "presentation"))]
     #[test]
-    fn parsed_render_resource_checks_include_parser_owned_flowchart_label_sources() {
+    fn parsed_flowchart_label_sources_are_charged_once_across_model_and_context() {
         let parsed = crate::MermaidEngine::new()
             .parse_diagram_for_render_model_sync(
                 "flowchart LR\nA[\"&nbsp;entity&nbsp;\"] --> B\n",
@@ -166,7 +166,23 @@ mod tests {
             .unwrap()
             .unwrap();
         let model_complexity = model_complexity_from_render_model(parsed.model());
-        assert!(parsed.retained_render_context_bytes() > 0);
+        let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+            panic!("expected Flowchart model");
+        };
+        let mut without_sources = model.clone();
+        without_sources.label_sources = Default::default();
+        assert_eq!(
+            model_complexity.text_bytes,
+            FlowchartComplexity::from_model(&without_sources)
+                .as_model_complexity()
+                .text_bytes
+                + model.label_sources.retained_bytes(),
+        );
+        assert_eq!(parsed.retained_render_context_bytes(), 0);
+        assert_eq!(
+            model_complexity_from_presentation(parsed.presentation()),
+            model_complexity
+        );
 
         let policy = InputResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(
@@ -177,11 +193,19 @@ mod tests {
         policy
             .check_model_complexity(model_complexity_from_render_model(parsed.model()))
             .expect("the public model alone fits its exact text budget");
+        policy
+            .check_model_complexity(model_complexity_from_presentation(parsed.presentation()))
+            .expect("the paired context shares the model's source allocation");
         let error = policy
+            .with_limit(
+                InputResourceLimitId::MaxModelTextBytes,
+                model_complexity.text_bytes - 1,
+            )
+            .unwrap()
             .check_model_complexity(model_complexity_from_presentation(parsed.presentation()))
             .unwrap_err();
         assert_eq!(error.limit, "max_model_text_bytes");
-        assert!(error.actual > model_complexity.text_bytes);
+        assert_eq!(error.actual, model_complexity.text_bytes);
     }
 
     #[cfg(feature = "diagram-sequence")]

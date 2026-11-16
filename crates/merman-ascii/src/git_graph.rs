@@ -3,11 +3,11 @@ use crate::error::AsciiError;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
-use crate::safe_text::{
-    BudgetedTextDocument, BudgetedTextLine, push_line_field, push_line_list,
-    push_optional_document_field,
-};
+use crate::safe_text::{BudgetedTextDocument, BudgetedTextLine};
 use merman_model::families::git_graph::{GitGraphCommit, GitGraphDiagramModel};
+
+mod history;
+use history::{History, HistoryLanes};
 
 pub(super) fn render_git_graph_diagram(
     model: &GitGraphDiagramModel,
@@ -19,43 +19,120 @@ pub(super) fn render_git_graph_diagram(
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
 
-    document.push_line_with(|line| {
-        push_line_field(line, "gitGraph ", "direction", &model.direction)?;
-        push_line_field(line, " ", "current", &model.current_branch)
-    })?;
-    push_optional_document_field(&mut document, "title", model.title.as_deref())?;
-    push_optional_document_field(&mut document, "accTitle", model.acc_title.as_deref())?;
-    push_optional_document_field(&mut document, "accDescr", model.acc_descr.as_deref())?;
+    push_named_text(&mut document, "Current branch: ", &model.current_branch)?;
+    push_named_text(&mut document, "Source direction: ", &model.direction)?;
+    for (key, value) in [
+        ("Title: ", model.title.as_deref()),
+        ("Accessible title: ", model.acc_title.as_deref()),
+        ("Accessible description: ", model.acc_descr.as_deref()),
+    ] {
+        if let Some(value) = value {
+            push_named_text(&mut document, key, value)?;
+        }
+    }
     if !model.branches.is_empty() {
         for _ in &model.branches {
             execution.checkpoint(merman_model::OperationPhase::Emit)?;
         }
         document.push_line_with(|line| {
-            push_line_list(
+            line.push_str("Branches: ")?;
+            push_quoted_list(
                 line,
-                "",
-                "branches",
                 model.branches.iter().map(|branch| branch.name.as_str()),
             )
         })?;
     }
 
-    for commit in &model.commits {
+    execution.rebind_resource_context(
+        document.resources_mut(),
+        merman_model::OperationPhase::Layout,
+    );
+    let history = History::plan(&model.commits, document.resources_mut())?;
+    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
+    document.push_line("")?;
+    if let Some(reason) = history.relation_reason() {
+        document.push_line("Git history (model order; explicit parent records):")?;
+        document.push_line(reason)?;
+        for (index, commit) in model.commits.iter().enumerate() {
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
+            document.push_line_with(|line| {
+                line.write_fmt(format_args!("* #{} ", index + 1))?;
+                push_commit_text(line, commit)
+            })?;
+            document.push_line_with(|line| {
+                line.push_str("    ")?;
+                history.push_parents(line, commit, true)
+            })?;
+        }
+    } else {
+        document.push_line("Git history (newest first):")?;
+        let mut lanes = HistoryLanes::default();
+        for (index, commit) in model.commits.iter().enumerate().rev() {
+            execution.checkpoint(merman_model::OperationPhase::Emit)?;
+            let step = history.advance(&mut lanes, index, document.resources_mut())?;
+            document.push_line_with(|line| {
+                step.push_commit_prefix(line)?;
+                push_commit_text(line, commit)
+            })?;
+            if !commit.parents.is_empty() {
+                document.push_line_with(|line| {
+                    step.push_parent_prefix(line)?;
+                    history.push_parents(line, commit, false)
+                })?;
+            }
+        }
+    }
+    if model.commits.is_empty() {
+        document.push_line("  (no commits)")?;
+    }
+
+    let mut has_details = false;
+    for (index, commit) in model.commits.iter().enumerate() {
         execution.checkpoint(merman_model::OperationPhase::Emit)?;
         document.resources_mut().charge_layout_work(1)?;
+        if i64::try_from(index).ok() == Some(commit.seq)
+            && commit.custom_type.is_none()
+            && commit.custom_id.is_none()
+        {
+            continue;
+        }
+        if !has_details {
+            document.push_line("")?;
+            document.push_line("Details (commit occurrences in model order):")?;
+            has_details = true;
+        }
         document.push_line_with(|line| {
-            line.push_str("  - ")?;
-            push_commit_text(line, commit)
+            line.write_fmt(format_args!("  #{} ", index + 1))?;
+            line.push_quoted_text(&commit.id)?;
+            line.write_fmt(format_args!(": sequence {}", commit.seq))?;
+            if let Some(custom_type) = commit.custom_type {
+                line.push_str("; type override ")?;
+                if let Some(kind) = commit_kind(custom_type) {
+                    line.push_str(kind)?;
+                } else {
+                    line.write_fmt(format_args!("{custom_type}"))?;
+                }
+            }
+            if let Some(custom_id) = commit.custom_id {
+                line.push_str(if custom_id {
+                    "; ID source explicit"
+                } else {
+                    "; ID source generated"
+                })?;
+            }
+            Ok(())
         })?;
     }
 
     if !model.warning_facts.is_empty() {
-        document.push_line("warnings:")?;
+        document.push_line("")?;
+        document.push_line("Warnings:")?;
         for warning in &model.warning_facts {
             execution.checkpoint(merman_model::OperationPhase::Emit)?;
             document.resources_mut().charge_layout_work(1)?;
             document.push_line_with(|line| {
-                push_line_field(line, "  - ", "message", &warning.message)
+                line.push_str("  - ")?;
+                line.push_quoted_text(&warning.message)
             })?;
         }
     }
@@ -80,34 +157,45 @@ fn validate_commit_types(commits: &[GitGraphCommit], resources: &ResourceContext
 }
 
 fn push_commit_text(line: &mut BudgetedTextLine<'_>, commit: &GitGraphCommit) -> Result<()> {
-    line.write_fmt(format_args!("seq={}", commit.seq))?;
-    push_line_field(line, " ", "branch", &commit.branch)?;
-    push_line_field(line, " ", "id", &commit.id)?;
-    if let Some(kind) = commit_kind(commit.commit_type) {
-        line.write_fmt(format_args!(" kind={kind}"))?;
+    line.push_quoted_text(&commit.id)?;
+    line.push_str(" [")?;
+    line.push_quoted_text(&commit.branch)?;
+    if commit.commit_type != 0
+        && let Some(kind) = commit_kind(commit.commit_type)
+    {
+        line.write_fmt(format_args!("; {kind}"))?;
     }
-    push_line_field(line, " ", "message", &commit.message)?;
+    line.push_str("]")?;
+    if commit.parents.is_empty() {
+        line.push_str(" (root)")?;
+    }
+    if !commit.message.is_empty() {
+        line.push_str(" - ")?;
+        line.push_quoted_text(&commit.message)?;
+    }
     if !commit.tags.is_empty() {
-        push_line_list(line, " ", "tags", commit.tags.iter().map(String::as_str))?;
+        line.push_str("; tags: ")?;
+        push_quoted_list(line, commit.tags.iter().map(String::as_str))?;
     }
-    if !commit.parents.is_empty() {
-        push_line_list(
-            line,
-            " ",
-            "parents",
-            commit.parents.iter().map(String::as_str),
-        )?;
-    }
-    if let Some(custom_type) = commit.custom_type {
-        line.push_str(" typeOverride=")?;
-        if let Some(kind) = commit_kind(custom_type) {
-            line.push_str(kind)?;
-        } else {
-            line.write_fmt(format_args!("{custom_type}"))?;
+    Ok(())
+}
+
+fn push_named_text(document: &mut BudgetedTextDocument, key: &str, value: &str) -> Result<()> {
+    document.push_line_with(|line| {
+        line.push_str(key)?;
+        line.push_quoted_text(value)
+    })
+}
+
+fn push_quoted_list<'a>(
+    line: &mut BudgetedTextLine<'_>,
+    values: impl IntoIterator<Item = &'a str>,
+) -> Result<()> {
+    for (index, value) in values.into_iter().enumerate() {
+        if index > 0 {
+            line.push_str(", ")?;
         }
-    }
-    if commit.custom_id == Some(true) {
-        line.push_str(" idSource=explicit")?;
+        line.push_quoted_text(value)?;
     }
     Ok(())
 }
@@ -252,10 +340,80 @@ mod tests {
     }
 
     #[test]
+    fn history_index_admits_work_before_reserving_or_scanning_commit_ids() {
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .expect("positive index-work limit");
+        let resources = ResourceContext::new(policy);
+        let mut first = commit(0);
+        first.id = "unscanned".repeat(128);
+
+        let error = History::plan(&[first, commit(0)], &resources)
+            .expect_err("index admission must reject before touching the first key");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                    && details.actual == 2 && details.max == 1
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn history_planning_observes_layout_cancellation_before_allocating_the_index() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let control = OperationControl::new();
+        control.cancel();
+        let controlled = resources.controlled(control, OperationPhase::Layout);
+
+        let error = History::plan(&[commit(0)], &controlled)
+            .expect_err("cancelled history must not allocate or scan its index");
+
+        assert!(matches!(
+            error,
+            AsciiError::Cancelled(cancelled)
+                if cancelled.phase == OperationPhase::Layout
+                    && cancelled.reason == CancelReason::Requested
+        ));
+        assert_eq!(resources.layout_work_used(), 0);
+    }
+
+    #[test]
+    fn readable_history_output_honors_exact_encoded_byte_limits() {
+        let model = model_with_commits(vec![commit(0)]);
+        let options = AsciiRenderOptions::ascii();
+        let unbounded = AsciiResourcePolicy::unbounded();
+        let baseline =
+            render_git_graph_diagram(&model, &options, AsciiExecution::for_test(&unbounded))
+                .expect("unbounded history");
+        let exact = unbounded
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, baseline.len())
+            .expect("exact output limit");
+        assert_eq!(
+            render_git_graph_diagram(&model, &options, AsciiExecution::for_test(&exact),)
+                .expect("exact output limit should fit"),
+            baseline
+        );
+
+        let below = unbounded
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, baseline.len() - 1)
+            .expect("N-1 output limit");
+        let error = render_git_graph_diagram(&model, &options, AsciiExecution::for_test(&below))
+            .expect_err("N-1 must not emit a partial history");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(details)
+                if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                    && details.actual == baseline.len() && details.max == baseline.len() - 1
+        ));
+    }
+
+    #[test]
     fn document_limit_rejects_branches_before_join_or_full_branch_scan() {
         let branch_name = "branch-name-that-must-not-be-preformatted".repeat(128);
-        let header = "gitGraph direction(bytes=0)=\"\" current(bytes=0)=\"\"";
-        let branch_prefix = format!("branches=[bytes={} \"", branch_name.len());
+        let header = "Current branch: \"\"Source direction: \"\"";
+        let branch_prefix = "Branches: \"";
         let exact_prefix = header.len() + branch_prefix.len();
         let resources = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxDocumentCells, exact_prefix)

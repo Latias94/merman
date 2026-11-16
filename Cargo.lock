@@ -2375,6 +2375,7 @@ dependencies = [
  "dugong",
  "merman-core",
  "merman-model",
+ "pulldown-cmark",
  "rustc-hash",
  "ryu-js",
  "serde",

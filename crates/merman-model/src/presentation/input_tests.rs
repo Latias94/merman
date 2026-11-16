@@ -184,6 +184,159 @@ fn family_paint_declarations_require_the_matching_model() {
 
 #[cfg(feature = "diagram-flowchart")]
 #[test]
+fn independent_flowchart_label_sources_require_model_owners_without_a_context() {
+    use crate::families::flowchart::FlowchartModel;
+
+    let mut model: FlowchartModel = serde_json::from_value(json!({
+        "nodes": [], "edges": []
+    }))
+    .unwrap();
+    model
+        .label_sources
+        .insert_node("missing".to_owned(), "&lt;T&gt;".to_owned());
+    let result = PresentationDiagram::try_from_frozen(
+        PresentationMetadata {
+            diagram_type: "flowchart-v2".to_owned(),
+            config: MermaidConfig::empty_object(),
+            effective_config: PresentationConfig::empty_object(),
+            title: None,
+        },
+        RenderSemanticModel::Flowchart(model),
+        PresentationContext::None,
+        &InputResourcePolicy::default(),
+        &OperationControl::new(),
+    )
+    .unwrap();
+    assert!(matches!(
+        result,
+        Err(PresentationDataError::FamilyContext {
+            family: "flowchart",
+            message: "flowchart node label refers to an unknown node",
+        })
+    ));
+}
+
+#[cfg(feature = "diagram-flowchart")]
+mod flowchart_label_sources {
+    use super::*;
+    use crate::families::flowchart::{
+        FlowchartModel, FlowchartRenderContext, FlowchartRenderLabelSources,
+    };
+
+    fn sources() -> FlowchartRenderLabelSources {
+        let mut sources = FlowchartRenderLabelSources::default();
+        sources.insert_node("A".to_owned(), "node &lt;T&gt;".to_owned());
+        sources.insert_edge(0, "edge &lt;T&gt;".to_owned());
+        sources.insert_subgraph("G".to_owned(), 0, Some("group &lt;T&gt;".to_owned()));
+        sources
+    }
+
+    fn model() -> FlowchartModel {
+        let mut model: FlowchartModel = serde_json::from_value(json!({
+            "nodes": [{"id": "A", "label": "canonical", "layoutShape": "squareRect"}],
+            "edges": [{"id": "e", "from": "A", "to": "A", "length": 1, "label": "edge"}],
+            "subgraphs": [{"id": "G", "title": "group", "nodes": ["A"]}]
+        }))
+        .unwrap();
+        model.label_sources = sources();
+        model
+    }
+
+    fn construct(
+        model: FlowchartModel,
+        context: FlowchartRenderContext,
+    ) -> Result<PresentationDiagram, PresentationDataError> {
+        PresentationDiagram::try_from_frozen(
+            PresentationMetadata {
+                diagram_type: "flowchart-v2".to_owned(),
+                config: MermaidConfig::empty_object(),
+                effective_config: PresentationConfig::empty_object(),
+                title: None,
+            },
+            RenderSemanticModel::Flowchart(model),
+            PresentationContext::Flowchart(context),
+            &InputResourcePolicy::default(),
+            &OperationControl::new(),
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn frozen_input_rejects_context_after_model_source_copy_on_write() {
+        let mut model = model();
+        let context = FlowchartRenderContext::from_model(&model);
+        model
+            .label_sources
+            .insert_node("A".to_owned(), "New".to_owned());
+        assert!(matches!(
+            construct(model, context),
+            Err(PresentationDataError::FamilyContext {
+                family: "flowchart",
+                message: "flowchart node label sources differ between model and render context",
+            })
+        ));
+    }
+
+    #[test]
+    fn frozen_input_rejects_empty_or_partial_context_sources_when_model_has_facts() {
+        let model = model();
+        let mut partial = model.clone();
+        partial.label_sources = FlowchartRenderLabelSources::default();
+        partial
+            .label_sources
+            .insert_edge(0, "edge &lt;T&gt;".to_owned());
+        for context in [
+            FlowchartRenderContext::default(),
+            FlowchartRenderContext::from_model(&partial),
+        ] {
+            assert!(matches!(
+                construct(model.clone(), context),
+                Err(PresentationDataError::FamilyContext {
+                    family: "flowchart",
+                    ..
+                })
+            ));
+        }
+    }
+
+    #[test]
+    fn frozen_input_accepts_independent_equal_sources_and_counts_both_allocations() {
+        let model = model();
+        let mut independent = model.clone();
+        independent.label_sources = sources();
+        let context = FlowchartRenderContext::from_model(&independent);
+        let expected_context_bytes = model.label_sources.retained_bytes();
+        let diagram = construct(model, context).unwrap();
+        assert_eq!(
+            diagram.retained_render_context_bytes(),
+            expected_context_bytes
+        );
+    }
+
+    #[test]
+    fn frozen_input_keeps_historical_context_only_sources_when_model_sources_are_empty() {
+        let mut model = model();
+        let context = FlowchartRenderContext::from_model(&model);
+        let expected_context_bytes = model.label_sources.retained_bytes();
+        model.label_sources = FlowchartRenderLabelSources::default();
+        let diagram = construct(model, context).unwrap();
+        assert_eq!(
+            diagram.retained_render_context_bytes(),
+            expected_context_bytes
+        );
+        let RenderSemanticModel::Flowchart(model) = diagram.model() else {
+            panic!("expected Flowchart model");
+        };
+        let context = diagram.render_context().flowchart_render_context().unwrap();
+        assert_eq!(
+            context.node_label_for_render(&model.nodes[0]),
+            Some("node &lt;T&gt;")
+        );
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
 fn independent_flowchart_css_validation_covers_absent_context_and_keeps_error_order() {
     use crate::families::flowchart::{
         FlowSubgraphVertexStyle, FlowchartModel, FlowchartRenderContext,

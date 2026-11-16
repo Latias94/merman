@@ -13,6 +13,8 @@ mod horizontal_label;
 )]
 mod label;
 mod layout;
+#[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+mod markup;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

@@ -260,17 +260,21 @@ impl MaterializedLabelRows {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LabelBreakPolicy {
     MermaidLabelBreaks,
-    StructuralParagraphs,
+    LiteralRows,
     VisibleLine,
+    /// Sequence HTML breaks are structural; literal `\n` remains authored text.
+    SequenceMessage {
+        wrap: bool,
+    },
 }
 
 impl LabelBreakPolicy {
     const fn preserve_empty_paragraphs(self) -> bool {
-        matches!(self, Self::MermaidLabelBreaks)
+        matches!(self, Self::MermaidLabelBreaks | Self::LiteralRows)
     }
 
     const fn ensure_nonempty_wrapped_output(self) -> bool {
-        matches!(self, Self::MermaidLabelBreaks)
+        matches!(self, Self::MermaidLabelBreaks | Self::LiteralRows)
     }
 }
 
@@ -812,7 +816,11 @@ fn normalized_label_selection(
                 text.len(),
             )?;
             let trimmable = match token {
-                LabelToken::Segment(segment) => segment.is_trim_whitespace(),
+                LabelToken::Segment(segment) => {
+                    segment.is_trim_whitespace()
+                        && !(break_policy == LabelBreakPolicy::LiteralRows
+                            && matches!(segment.kind, NormalizedSegmentKind::LineBreak))
+                }
                 LabelToken::AuthoredBreak(_) => false,
             };
             if !trimmable {
@@ -1077,6 +1085,7 @@ struct WrappedLabelProcessor<S> {
     chunk_width: usize,
     line_width: usize,
     emitted_lines: usize,
+    paragraph_start_line: usize,
 }
 
 impl<S> WrappedLabelProcessor<S>
@@ -1104,6 +1113,7 @@ where
             chunk_width: 0,
             line_width: 0,
             emitted_lines: 0,
+            paragraph_start_line: 0,
         }
     }
 
@@ -1199,18 +1209,21 @@ where
         Ok(())
     }
 
-    fn finish_paragraph(&mut self) -> Result<()> {
+    fn finish_paragraph(&mut self, authored_break: bool) -> Result<()> {
         self.finish_word()?;
         self.flush_line()?;
-        if !self.paragraph_has_text && self.preserve_empty_paragraphs {
+        if self.emitted_lines == self.paragraph_start_line
+            && (authored_break || self.preserve_empty_paragraphs && !self.paragraph_has_text)
+        {
             self.emit_empty_line()?;
         }
         self.paragraph_has_text = false;
+        self.paragraph_start_line = self.emitted_lines;
         Ok(())
     }
 
-    fn finish(mut self) -> Result<S::Output> {
-        self.finish_paragraph()?;
+    fn finish(mut self, trailing_authored_break: bool) -> Result<S::Output> {
+        self.finish_paragraph(trailing_authored_break)?;
         if self.emitted_lines == 0 && self.ensure_nonempty_output {
             self.emit_empty_line()?;
         }
@@ -1406,23 +1419,33 @@ where
         replay.break_policy,
         sink,
     );
+    // Only Sequence adds empty rows for HTML breaks; other policies keep their own defaults.
+    let mut ends_with_authored_break = false;
     visit_selected_label_output_with_checkpoint(
         replay.raw,
         replay.selection,
         replay.break_policy,
         replay.policy,
         checkpoint,
-        |_source, output| {
+        |source, output| {
             match output {
-                LabelOutputSegment::LineBreak => wrapped.finish_paragraph()?,
+                LabelOutputSegment::LineBreak => {
+                    ends_with_authored_break = source.is_none()
+                        && matches!(
+                            replay.break_policy,
+                            LabelBreakPolicy::SequenceMessage { .. }
+                        );
+                    wrapped.finish_paragraph(ends_with_authored_break)?;
+                }
                 LabelOutputSegment::Segment(segment) => {
+                    ends_with_authored_break = false;
                     wrapped.push_segment(segment)?;
                 }
             }
             Ok(())
         },
     )?;
-    wrapped.finish()
+    wrapped.finish(ends_with_authored_break)
 }
 
 fn materialize_wrapped_label(
@@ -1482,12 +1505,14 @@ fn visit_selected_label_output_with_checkpoint(
                     let mut emit = |segment: NormalizedSegment<'_>| {
                         checkpoint()?;
                         let output = match (segment.kind, break_policy) {
-                            (NormalizedSegmentKind::LineBreak, LabelBreakPolicy::VisibleLine) => {
-                                LabelOutputSegment::Segment(NormalizedSegment {
-                                    kind: NormalizedSegmentKind::VisibleEscape('\n'),
-                                    ..segment
-                                })
-                            }
+                            (
+                                NormalizedSegmentKind::LineBreak,
+                                LabelBreakPolicy::VisibleLine
+                                | LabelBreakPolicy::SequenceMessage { wrap: false },
+                            ) => LabelOutputSegment::Segment(NormalizedSegment {
+                                kind: NormalizedSegmentKind::VisibleEscape('\n'),
+                                ..segment
+                            }),
                             (NormalizedSegmentKind::LineBreak, _) => LabelOutputSegment::LineBreak,
                             _ => LabelOutputSegment::Segment(segment),
                         };
@@ -1522,7 +1547,10 @@ fn visit_label_tokens<F>(
 where
     F: FnMut() -> Result<()>,
 {
-    if !matches!(break_policy, LabelBreakPolicy::MermaidLabelBreaks) {
+    if matches!(
+        break_policy,
+        LabelBreakPolicy::VisibleLine | LabelBreakPolicy::LiteralRows
+    ) {
         checkpoint()?;
         return visit_normalized_segments(raw, |segment| {
             visit(LabelToken::Segment(segment), checkpoint)
@@ -1537,8 +1565,10 @@ where
             checkpoint()?;
         }
         scalar_iteration = scalar_iteration.wrapping_add(1);
-        let label_break_end =
-            html_break_end(raw, index).or_else(|| mermaid_escaped_newline_end(raw, index));
+        let label_break_end = html_break_end(raw, index).or_else(|| match break_policy {
+            LabelBreakPolicy::MermaidLabelBreaks => mermaid_escaped_newline_end(raw, index),
+            _ => None,
+        });
         if let Some(end) = label_break_end {
             visit_normalized_segments(&raw[chunk_start..index], |segment| {
                 visit(LabelToken::Segment(segment), checkpoint)
@@ -1678,5 +1708,51 @@ mod cancellation_tests {
                     && cancelled.reason == CancelReason::Requested
         ));
         assert_eq!(checkpoints.get(), 2);
+    }
+
+    #[test]
+    fn sequence_html_break_planning_rolls_back_on_resource_failure_and_cancellation() {
+        let raw = "<br/>";
+        let policy = AsciiResourcePolicy::default()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, raw.len())
+            .expect("the source bytes should fit before the hard-break work is charged");
+
+        for cancelled in [false, true] {
+            let resources = ResourceContext::new(policy);
+            let control = OperationControl::new();
+            if cancelled {
+                control.cancel_after_checkpoints(1);
+            }
+            let execution = AsciiExecution::new(&control, &policy);
+            let error = try_plan_normalized_label_lines_with_policy_and_checkpoint(
+                raw,
+                TerminalWidthProfile::Unicode,
+                false,
+                None,
+                LabelBreakPolicy::SequenceMessage { wrap: false },
+                &resources,
+                || execution.checkpoint(OperationPhase::Layout),
+            )
+            .expect_err("planning must stop before the hard break exceeds its work budget");
+
+            if cancelled {
+                assert!(matches!(
+                    error,
+                    AsciiError::Cancelled(cancelled)
+                        if cancelled.phase == OperationPhase::Layout
+                            && cancelled.reason == CancelReason::Requested
+                ));
+            } else {
+                assert!(matches!(
+                    error,
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                            && details.actual == raw.len() + 1
+                            && details.max == raw.len()
+                ));
+            }
+            assert_eq!(resources.layout_work_used(), 0);
+            assert_eq!(resources.document_cells_used(), 0);
+        }
     }
 }

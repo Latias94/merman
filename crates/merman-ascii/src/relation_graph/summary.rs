@@ -247,7 +247,6 @@ fn measure_relation_summary(
 
 fn relation_summary_reason_text(reason: LayeredRelationSummaryReason) -> &'static str {
     match reason {
-        LayeredRelationSummaryReason::Crossing => "crossing",
         LayeredRelationSummaryReason::RouteCollision => "route_collision",
         LayeredRelationSummaryReason::OverlayCollision => "overlay_collision",
     }
@@ -445,7 +444,7 @@ mod tests {
         let rendered = render_stacked_boxes_with_relation_summary(
             &[],
             &rows,
-            Some(LayeredRelationSummaryReason::Crossing),
+            Some(LayeredRelationSummaryReason::RouteCollision),
             &options,
             &mut resources,
             &deferred,

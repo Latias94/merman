@@ -19,10 +19,25 @@ unsupported diagnostics. Dense crossings and route/overlay collisions may use th
 `relations:` summary rather than renderer-local fallback branches. Resource limits are never
 readability fallbacks: exceeding `max_ascii_grid_cells` or another ASCII limit returns a structured
 resource error. Summary fallback reasons are preserved at the `relation_graph` seam so tests can
-assert the topology policy directly instead of inferring it only from rendered text. One targeted
-topology exception is admitted: a strict planar K2×2 component with four nodes and four unique
-relations uses a bounded cycle layout with four disjoint routes. That exception is stable under
-relation declaration reordering and does not claim arbitrary bounded, crossing, or dense topology.
+assert the topology policy directly instead of inferring it only from rendered text. Iterative
+strongly connected components and the condensation DAG determine directed ranks. Bounded private
+channels keep box contacts, exterior returns, and label reading areas distinct. Rings and DAG
+diamonds use these shared rules in all four directions, replacing the earlier strict K2×2
+exception. After route validation, shared axis compaction removes redundant straight-channel
+rows and columns. It preserves box and text footprints, distinct terminals and bends, and at
+least one cell between separated features; the compacted scene is validated again before paint.
+This improves canonical geometry without admitting a separate Compact layout profile or changing
+the authored direction. Dense topology can still select a complete summary.
+
+Viewport overflow has a separate Plain reading document: keyed declarations retain full names,
+namespace/group ownership, members/attributes, interfaces/notes, and individual relationships.
+Class marker types and endpoint labels remain independent. Qualified aliases retain their authored
+reference and resolved namespace owner; interface references follow the primary topology's identity
+selection, including repeated IDs. ER cardinalities attach to the actual
+first/second endpoint and use conventional ranges, with a stroke legend for relationship
+identification. Known defaults, redundant display labels, native generated ER IDs, and Class's
+derived topology cache are omitted; nondefault metadata and source configuration remain complete.
+The bounded serializer and reading-record writer are shared with other semantic fallbacks.
 
 ## Class Diagram Matrix
 
@@ -33,8 +48,8 @@ relation declaration reordering and does not claim arbitrary bounded, crossing, 
 | Plain association (`--`, `..`) | `beautiful-mermaid` class parser and ASCII tests | Supported | Routed-grid and dense-summary regressions |
 | Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` integration tests plus local wide-text coverage | Supported | Routed-grid, structured-summary, and local semantic fixtures |
 | Same-endpoint lanes, reverse lanes, bounded cycles, spanning routes | `beautiful-mermaid` ASCII tests | Supported | Routed-grid fixtures |
-| Strict planar K2×2: four nodes and four unique relations forming one four-edge cycle | Local topology policy | Supported through the bounded planar cycle layout; declaration order is stable and all four routes are disjoint | `class_parser_k2_2_relationships_use_a_bounded_planar_layout`, `strict_k2_2_uses_a_direction_independent_cycle_with_four_disjoint_routes`, and `strict_k2_2_geometry_is_stable_when_declarations_are_reordered` |
-| Other dense, crossing, or collision-prone layouts | `beautiful-mermaid` ASCII tests plus local fallback policy | Supported through lossless `relations:` output, not arbitrary diagrammatic routing | Structured summary fixtures; `strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one` and `strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_cells` cover the admitted path's resource/fallback boundary |
+| Directed rings and DAG diamonds | Local topology policy | Shared directed ranks and private channels; declaration order is stable and labels keep reading clearance | `class_directed_cycles_share_topology_across_directions_and_declaration_order`, `class_diamond_uses_directed_ranks_in_every_direction`, and shared topology/route tests |
+| Other dense, crossing, or collision-prone layouts | `beautiful-mermaid` ASCII tests plus local fallback policy | Lossless `relations:` output remains available when bounded routing is unsafe | Structured summary fixtures and shared exact/N−1 resource/fallback tests |
 | Tight `max_ascii_grid_cells` budgets | Local policy | Supported hard error | Structured resource-error fixture with exact details |
 | Disconnected components / isolated nodes | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Namespace-qualified class names | Local semantic tests | Supported | Local semantic fixtures |
@@ -53,8 +68,8 @@ relation declaration reordering and does not claim arbitrary bounded, crossing, 
 | Cardinality variants (`||`, `o|`, `|{`, `o{`, and reversed forms) | `beautiful-mermaid` ER parser tests | Supported | Routed-grid fixtures |
 | Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` ER integration tests plus local wide-text coverage | Supported | Routed-grid, structured-summary, and local semantic fixtures |
 | Same-endpoint lanes, reverse lanes, bounded cycles, spanning routes | `beautiful-mermaid` ER ASCII tests | Supported | Routed-grid fixtures |
-| Strict planar K2×2: four entities and four unique relationships forming one four-edge cycle | Local topology policy | Supported through the bounded planar cycle layout; declaration order is stable and all four routes are disjoint | `er_parser_k2_2_relationships_use_a_bounded_planar_layout`, `strict_k2_2_uses_a_direction_independent_cycle_with_four_disjoint_routes`, and `strict_k2_2_geometry_is_stable_when_declarations_are_reordered` |
-| Other dense, crossing, or collision-prone layouts | `beautiful-mermaid` ER ASCII tests plus local fallback policy | Supported through lossless `relations:` output, not arbitrary diagrammatic routing | Structured summary fixtures; `strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one` and `strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_cells` cover the admitted path's resource/fallback boundary |
+| Directed rings and DAG diamonds | Local topology policy | Shared directed ranks and private channels; independent cardinalities and labels remain family-owned | `er_directed_cycles_share_topology_across_directions_and_declaration_order`, `er_diamond_uses_directed_ranks_and_private_relationship_labels`, and shared topology/route tests |
+| Other dense, crossing, or collision-prone layouts | `beautiful-mermaid` ER ASCII tests plus local fallback policy | Lossless `relations:` output remains available when bounded routing is unsafe | Structured summary fixtures and shared exact/N−1 resource/fallback tests |
 | Tight `max_ascii_grid_cells` budgets | Local policy | Supported hard error | Structured resource-error fixture with exact details |
 | Disconnected components / isolated entities | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
 | Unknown cardinality markers | Not represented in reference ASCII output | Explicit unsupported | Keep as `UnsupportedFeature` model tests |
@@ -70,8 +85,7 @@ relation declaration reordering and does not claim arbitrary bounded, crossing, 
 
 ## Current Gaps Worth Watching
 
-- Strict planar K2×2 is a deliberately narrow admitted topology. Arbitrary bounded or dense
-  Class/ER relation graphs remain outside that diagrammatic claim and continue to use the lossless
-  `relations:` fallback when crossing, port-fit, route, or overlay policy rejects the routed scene.
+- Private-channel search is bounded and can miss a readable arrangement. Dense Class/ER scenes
+  continue to use the lossless `relations:` fallback when contact, route, or overlay admission fails.
 - New SVG-only affordances should still be treated as new capabilities, not inferred from the
   current ASCII contract.

@@ -97,6 +97,21 @@ impl PresentationContext {
             _ => 0,
         }
     }
+
+    /// Counts context text while excluding allocations already retained by the paired model.
+    pub fn retained_text_bytes_for_model(&self, model: &super::RenderSemanticModel) -> usize {
+        match (self, model) {
+            #[cfg(any(
+                feature = "diagram-flowchart",
+                feature = "diagram-swimlane",
+                feature = "diagram-agentflow"
+            ))]
+            (Self::Flowchart(context), super::RenderSemanticModel::Flowchart(model)) => {
+                context.retained_bytes_for_model(model)
+            }
+            _ => self.retained_text_bytes(),
+        }
+    }
 }
 
 macro_rules! family_output_accessors {

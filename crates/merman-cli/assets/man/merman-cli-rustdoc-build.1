@@ -25,6 +25,6 @@ Print version
 \fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
 Cancel the complete command operation after this many milliseconds.
 
-The deadline starts before input acquisition and covers generation, rendering, and publication. Zero cancels at the first cooperative checkpoint.
+The deadline starts before input acquisition and covers generation, rendering, and publication. Omit this option for no deadline. Zero cancels at the first cooperative checkpoint. Resource budgets are independent; an unbounded resource profile does not disable this deadline. Blocking backend calls return to a checkpoint before cancellation.
 .SH VERSION
 v0.10.0

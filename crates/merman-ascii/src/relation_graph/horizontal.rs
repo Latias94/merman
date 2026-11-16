@@ -535,6 +535,44 @@ where
             }),
         });
     }
+    if edge_indices.len() > 1 {
+        resources.charge_layout_work(edge_indices.len())?;
+        let mut selected = Vec::new();
+        selected
+            .try_reserve_exact(edge_indices.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for &index in edge_indices {
+            checkpoints.tick()?;
+            selected.push(
+                relations
+                    .get(index)
+                    .ok_or_else(|| adapter.layered_error(LayeredRelationError::MissingEndpoint))?,
+            );
+        }
+        return match super::layered::plan_layered_relation_component_ref_result(
+            boxes,
+            &selected,
+            options,
+            adapter.layered_horizontal_gap(),
+            resources,
+            adapter,
+        )? {
+            Ok(plan) => Ok(RelationRegionPlan::Layered(plan)),
+            Err(_) => Ok(RelationRegionPlan::Summary(
+                plan_horizontal_relation_summary(
+                    boxes,
+                    &order,
+                    edge_indices,
+                    relations,
+                    options,
+                    resources,
+                    adapter,
+                    deferred,
+                    checkpoints,
+                )?,
+            )),
+        };
+    }
     let mut nodes = Vec::new();
     nodes
         .try_reserve_exact(boxes.len())

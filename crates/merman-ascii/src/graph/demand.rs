@@ -111,8 +111,12 @@ impl<'a> SceneDemand<'a> {
                 endpoints[from].outgoing.independent = true;
             }
             if let Some(raw) = &edge.label
-                && let Some(label) =
-                    try_measure_edge_label(raw, policy.terminal_width_profile, resources)?
+                && let Some(label) = try_measure_edge_label(
+                    raw,
+                    policy.terminal_width_profile,
+                    resources,
+                    edge.label_break_policy,
+                )?
             {
                 for endpoint in [from, to] {
                     endpoints[endpoint].label_width =

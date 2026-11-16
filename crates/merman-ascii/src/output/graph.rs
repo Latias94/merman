@@ -10,15 +10,14 @@
 //! Only non-obvious marker/stroke distinctions receive a legend. State's declarations and complete
 //! authored-document records retain their separate ownership.
 
-use super::{
-    AsciiDiagram, AsciiError, AsciiResourceLimitId, RawValue, Result, SemanticFallbackWriter,
-    display_width_with_profile,
-};
+use super::record::{RecordPart, details, write_plain_record, write_record};
+use super::{AsciiDiagram, AsciiError, RawValue, Result, SemanticFallbackWriter};
+#[cfg(test)]
 use crate::TerminalWidthProfile;
-use crate::resource::ResourceContext;
+#[cfg(test)]
+use crate::resource::AsciiResourceLimitId;
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
-use unicode_segmentation::UnicodeSegmentation;
 
 type Fields<'a> = BTreeMap<String, &'a RawValue>;
 type Identities = BTreeMap<String, String>;
@@ -39,11 +38,6 @@ struct NodeRecord<'a> {
 enum NodeLabel<'a> {
     Text(String),
     Structured(&'a RawValue),
-}
-
-enum RecordPart<'a> {
-    Plain(&'a str),
-    Quoted(&'a str),
 }
 
 impl NodeRecord<'_> {
@@ -517,169 +511,6 @@ fn write_relationships<'a>(
     Ok(())
 }
 
-fn write_record(parts: &[RecordPart<'_>], lines: &mut SemanticFallbackWriter<'_>) -> Result<()> {
-    let mut record = RecordWriter::new(lines)?;
-    for part in parts {
-        let (text, quoted) = match part {
-            RecordPart::Plain(text) => (*text, false),
-            RecordPart::Quoted(text) => (*text, true),
-        };
-        record.text(text, quoted)?;
-    }
-    record.finish()
-}
-
-fn write_plain_record(text: &str, lines: &mut SemanticFallbackWriter<'_>) -> Result<()> {
-    write_record(&[RecordPart::Plain(text)], lines)
-}
-
-struct RecordWriter<'a, 'operation> {
-    lines: &'a mut SemanticFallbackWriter<'operation>,
-    width: usize,
-    has_content: bool,
-}
-
-impl<'a, 'operation> RecordWriter<'a, 'operation> {
-    fn new(lines: &'a mut SemanticFallbackWriter<'operation>) -> Result<Self> {
-        let (width, has_content) = lines.begin_line()?;
-        Ok(Self {
-            lines,
-            width,
-            has_content,
-        })
-    }
-
-    fn finish(self) -> Result<()> {
-        self.lines.finish_line()
-    }
-
-    fn text(&mut self, text: &str, quoted: bool) -> Result<()> {
-        let resources = self.lines.emit_resources.clone();
-        let mut start = 0;
-        let mut trailing_space = false;
-        for (index, grapheme) in text.grapheme_indices(true) {
-            resources.charge_layout_work(1)?;
-            let end = index + grapheme.len();
-            trailing_space = grapheme == " ";
-            if trailing_space && end < text.len() {
-                self.word(&text[start..end], quoted, start == 0, false, true)?;
-                start = end;
-            }
-        }
-        self.word(&text[start..], quoted, start == 0, true, trailing_space)
-    }
-
-    fn word(
-        &mut self,
-        text: &str,
-        quoted: bool,
-        first: bool,
-        last: bool,
-        trailing_space: bool,
-    ) -> Result<()> {
-        let mut resources = self.lines.emit_resources.clone();
-        let mut word_width = usize::from(quoted && first) + usize::from(quoted && last);
-        visit_record_text(
-            &text[..text.len() - usize::from(trailing_space)],
-            quoted,
-            &mut resources,
-            self.lines.profile,
-            |_, width, _| {
-                word_width = self
-                    .lines
-                    .candidate_resources
-                    .checked_grid_add(word_width, width)?;
-                Ok(())
-            },
-        )?;
-        if self.has_content
-            && word_width <= self.lines.max_width
-            && self
-                .lines
-                .candidate_resources
-                .checked_grid_add(self.width, word_width)?
-                > self.lines.max_width
-        {
-            self.continue_line(word_width)?;
-        }
-        if quoted && first {
-            self.fragment("\"", 1, 1)?;
-        }
-        visit_record_text(
-            text,
-            quoted,
-            &mut resources,
-            self.lines.profile,
-            |fragment, width, bytes| self.fragment(fragment, width, bytes),
-        )?;
-        if quoted && last {
-            self.fragment("\"", 1, 1)?;
-        }
-        Ok(())
-    }
-
-    fn continue_line(&mut self, next_width: usize) -> Result<()> {
-        self.lines.push_fragment("\n", 1)?;
-        self.width = 0;
-        self.has_content = false;
-        // Keep the full viewport available to an otherwise fitting word or atomic escape.
-        // The prefix is formatting only; authored spaces are always emitted separately.
-        if next_width <= self.lines.max_width.saturating_sub(2) && self.lines.max_width > 2 {
-            self.lines
-                .push_wrapped_fragment("  ", 2, 1, &mut self.width, &mut self.has_content)?;
-        }
-        Ok(())
-    }
-
-    fn fragment(&mut self, fragment: &str, width: usize, bytes: usize) -> Result<()> {
-        if self.has_content
-            && self
-                .lines
-                .candidate_resources
-                .checked_grid_add(self.width, width)?
-                > self.lines.max_width
-        {
-            self.continue_line(width)?;
-        }
-        self.lines.push_wrapped_fragment(
-            fragment,
-            width,
-            bytes,
-            &mut self.width,
-            &mut self.has_content,
-        )
-    }
-}
-
-fn visit_record_text(
-    text: &str,
-    quoted: bool,
-    resources: &mut ResourceContext,
-    profile: TerminalWidthProfile,
-    mut visit: impl FnMut(&str, usize, usize) -> Result<()>,
-) -> Result<()> {
-    if !quoted {
-        return crate::safe_text::visit_safe_line_fragments(resources, text, profile, visit);
-    }
-    crate::safe_text::visit_quoted_terminal_text(text, resources, |fragment| {
-        if fragment == "\"" {
-            return Ok(());
-        }
-        let mut grapheme_count = 0usize;
-        let mut grapheme_bytes = 0usize;
-        for grapheme in fragment.graphemes(true) {
-            grapheme_count = grapheme_count.saturating_add(1);
-            grapheme_bytes = grapheme_bytes.max(grapheme.len());
-        }
-        resources.charge_layout_work(grapheme_count)?;
-        visit(
-            fragment,
-            display_width_with_profile(fragment, profile),
-            grapheme_bytes,
-        )
-    })
-}
-
 fn append_direction(kind: &mut String, direction: Option<&str>, explicit: bool) {
     if let Some(direction) = direction {
         if explicit {
@@ -1011,43 +842,6 @@ fn omit_empty(fields: &mut Fields<'_>, keys: &[&str]) {
             fields.remove(*key);
         }
     }
-}
-
-fn details(scope: &str, fields: &Fields<'_>, lines: &mut SemanticFallbackWriter<'_>) -> Result<()> {
-    if fields.is_empty() {
-        return Ok(());
-    }
-    let overflow = || {
-        lines
-            .semantic_resources
-            .overflow(AsciiResourceLimitId::MaxOutputBytes)
-    };
-    let mut length = scope.len().checked_add(12).ok_or_else(overflow)?;
-    for (index, (key, raw)) in fields.iter().enumerate() {
-        // Model field names are known ASCII identifiers. The opaque values remain borrowed
-        // complete JSON, including empty objects inside authored metadata/configuration.
-        length = length
-            .checked_add(key.len())
-            .and_then(|length| length.checked_add(raw.get().len()))
-            .and_then(|length| length.checked_add(if index == 0 { 1 } else { 2 }))
-            .ok_or_else(overflow)?;
-    }
-    lines
-        .semantic_resources
-        .check(AsciiResourceLimitId::MaxOutputBytes, length)?;
-    let mut record = RecordWriter::new(lines)?;
-    record.text(scope, false)?;
-    record.text(" details: {", false)?;
-    for (index, (key, raw)) in fields.iter().enumerate() {
-        if index > 0 {
-            record.text(",", false)?;
-        }
-        record.text(key, false)?;
-        record.text(":", false)?;
-        record.text(raw.get(), false)?;
-    }
-    record.text("}", false)?;
-    record.finish()
 }
 
 fn invalid_projection() -> AsciiError {

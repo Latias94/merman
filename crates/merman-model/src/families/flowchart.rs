@@ -5,6 +5,9 @@ pub mod compat;
 
 pub mod shapes;
 
+mod labels;
+pub use labels::FlowchartRenderLabelSources;
+
 use crate::warnings::DiagramWarningFact;
 use indexmap::IndexMap;
 use rustc_hash::FxHashMap;
@@ -31,6 +34,12 @@ pub struct FlowchartModel {
     pub edges: Vec<FlowEdge>,
     #[serde(default)]
     pub subgraphs: Vec<FlowSubgraph>,
+    /// Sanitized source spellings that differ from the compatibility label projection.
+    ///
+    /// Entity references remain encoded until the output consumer interprets text. These facts
+    /// are shared with graphical output and omitted from the public compatibility JSON contract.
+    #[serde(skip)]
+    pub label_sources: FlowchartRenderLabelSources,
     #[serde(
         default,
         rename = "droppedSubGraphMembers",
@@ -180,6 +189,33 @@ struct FlowSubgraphVertexStyleSource {
 }
 
 impl FlowchartModel {
+    /// Returns a node's sanitized source spelling by ID, falling back to its canonical label.
+    pub fn node_label_source<'a>(&'a self, node: &'a FlowNode) -> Option<&'a str> {
+        self.label_sources.node_label_for_render(node)
+    }
+
+    /// Returns a sanitized edge source by semantic ordinal, falling back to its canonical label.
+    ///
+    /// Use the ordinal in `self.edges`, since Mermaid permits duplicate edge IDs.
+    pub fn edge_label_source<'a>(
+        &'a self,
+        semantic_index: usize,
+        edge: &'a FlowEdge,
+    ) -> Option<&'a str> {
+        self.label_sources
+            .edge_label_for_render(semantic_index, edge)
+    }
+
+    /// Returns a sanitized title by declaration ordinal and ID, or its canonical title.
+    pub fn subgraph_title_source<'a>(
+        &'a self,
+        declaration_ordinal: usize,
+        subgraph: &'a FlowSubgraph,
+    ) -> &'a str {
+        self.label_sources
+            .subgraph_title_for_render(declaration_ordinal, subgraph)
+    }
+
     /// Returns the largest valid step, including timed gaps and concurrent equal steps.
     pub fn step_count(&self) -> f64 {
         self.edges
@@ -211,7 +247,7 @@ impl FlowchartModel {
 #[cfg(feature = "presentation-data")]
 mod presentation;
 #[cfg(feature = "presentation-data")]
-pub use presentation::{FlowchartRenderContext, FlowchartRenderLabelSources};
+pub use presentation::FlowchartRenderContext;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowEdgeDefaults {

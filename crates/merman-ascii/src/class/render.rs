@@ -2372,8 +2372,7 @@ fn class_relation_summary_row_for_reason<'a>(
     deferred_text: &mut DeferredTextRegistry<'a>,
 ) -> Result<RelationGraphSummaryRow> {
     match reason {
-        relation_graph::LayeredRelationSummaryReason::Crossing
-        | relation_graph::LayeredRelationSummaryReason::RouteCollision
+        relation_graph::LayeredRelationSummaryReason::RouteCollision
         | relation_graph::LayeredRelationSummaryReason::OverlayCollision => {
             class_relation_summary_row(layout, resources, width_profile, deferred_text)
         }
@@ -2475,7 +2474,15 @@ fn class_layered_edge(layout: &RelationLayout<'_>) -> LayeredRelationEdge {
             .iter()
             .flatten()
             .map(|label| label.line_count())
-            .max()
+            .sum(),
+    )
+    // Lateral endpoint labels are read below their attached markers. Only
+    // the main label requires space between consecutive ranks.
+    .with_rank_label_width(
+        layout
+            .label
+            .as_ref()
+            .map(RelationGraphLabel::width)
             .unwrap_or(0),
     )
     .with_reversed_route(layout.transform.reverses_vertical_order())
@@ -2485,7 +2492,6 @@ fn class_layered_error(error: LayeredRelationError) -> AsciiError {
     let feature = match error {
         LayeredRelationError::MissingEndpoint => "relationships with missing endpoint classes",
         LayeredRelationError::UnrelatedBoxes => "class relationship layouts with unrelated classes",
-        LayeredRelationError::Crossing => "crossing class relationship layouts",
     };
     AsciiError::UnsupportedFeature {
         diagram_type: "class",
@@ -2577,11 +2583,27 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
         let vertical = line_char(layout.line, self.charset);
         let horizontal = horizontal_line_char(layout.line, self.charset);
         let relation_chars = relation_line_chars(self.charset);
+        let physical = layout.physical();
+        let widths = |marker: Option<RelationMarker>| -> Result<[usize; 2]> {
+            Ok(match marker {
+                None => [0, 0],
+                Some(marker) => [
+                    1,
+                    display_width_with_profile(
+                        &horizontal_class_marker(marker, PhysicalPortSide::Left, self.charset)?,
+                        self.width_profile,
+                    ),
+                ],
+            })
+        };
         Ok(LayeredRelationRouteStyle::new(
             vertical,
             horizontal,
             relation_chars,
-            class_route_profile(layout),
+            class_route_profile(layout).with_marker_widths(
+                widths(physical.top_marker)?,
+                widths(physical.bottom_marker)?,
+            ),
         ))
     }
 
@@ -2598,9 +2620,15 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
             .try_reserve_exact(4)
             .map_err(|_| layout_allocation_failed())?;
         if let Some(label) = layout.top_endpoint_label {
-            let (center_x, y) =
+            let (center_x, mut y) =
                 geometry.endpoint_label_anchor(true, label.line_count(), resources)?;
-            overlays.push(RelationOverlay::label(
+            if matches!(
+                geometry.source_port().side(),
+                PhysicalPortSide::Right | PhysicalPortSide::Left
+            ) {
+                y = resources.checked_grid_add(y, 1)?;
+            }
+            overlays.push(RelationOverlay::endpoint_label(
                 center_x,
                 y,
                 label.clone(),
@@ -2619,35 +2647,33 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
 
         if let Some(marker) = layout.top_marker {
             let port = geometry.source_port();
-            overlays.push(RelationOverlay::glyph(
-                port.x(),
-                port.marker_y(),
-                marker_char(
-                    marker,
-                    marker_side_for_physical_port(port.side())?,
-                    self.charset,
-                )?,
-                AsciiColorRole::EdgeArrow,
-            ));
+            overlays.push(class_marker_overlay(
+                marker,
+                port,
+                self.charset,
+                self.width_profile,
+            )?);
         }
         if let Some(marker) = layout.bottom_marker {
             let port = geometry.target_port();
-            overlays.push(RelationOverlay::glyph(
-                port.x(),
-                port.marker_y(),
-                marker_char(
-                    marker,
-                    marker_side_for_physical_port(port.side())?,
-                    self.charset,
-                )?,
-                AsciiColorRole::EdgeArrow,
-            ));
+            overlays.push(class_marker_overlay(
+                marker,
+                port,
+                self.charset,
+                self.width_profile,
+            )?);
         }
 
         if let Some(label) = layout.bottom_endpoint_label {
-            let (center_x, y) =
+            let (center_x, mut y) =
                 geometry.endpoint_label_anchor(false, label.line_count(), resources)?;
-            overlays.push(RelationOverlay::label(
+            if matches!(
+                geometry.target_port().side(),
+                PhysicalPortSide::Right | PhysicalPortSide::Left
+            ) {
+                y = resources.checked_grid_add(y, 1)?;
+            }
+            overlays.push(RelationOverlay::endpoint_label(
                 center_x,
                 y,
                 label.clone(),
@@ -2733,6 +2759,29 @@ fn marker_side_for_physical_port(
                 feature: "horizontal ports in layered relationship layouts",
             })
         }
+    }
+}
+
+fn class_marker_overlay(
+    marker: RelationMarker,
+    port: relation_graph::LayeredRelationPhysicalPort,
+    charset: ClassCharset,
+    width_profile: TerminalWidthProfile,
+) -> Result<RelationOverlay> {
+    match port.side() {
+        PhysicalPortSide::Left | PhysicalPortSide::Right => Ok(RelationOverlay::text(
+            port.x(),
+            port.marker_y(),
+            horizontal_class_marker(marker, port.side(), charset)?,
+            AsciiColorRole::EdgeArrow,
+            width_profile,
+        )),
+        PhysicalPortSide::Top | PhysicalPortSide::Bottom => Ok(RelationOverlay::glyph(
+            port.x(),
+            port.marker_y(),
+            marker_char(marker, marker_side_for_physical_port(port.side())?, charset)?,
+            AsciiColorRole::EdgeArrow,
+        )),
     }
 }
 

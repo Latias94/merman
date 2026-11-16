@@ -1,9 +1,12 @@
 mod batch;
 mod boxes;
+mod channels;
+mod compact;
 mod draw;
 mod lanes;
 mod route;
 mod scene;
+mod topology;
 
 use crate::Result;
 use crate::resource::ResourceContext;
@@ -30,6 +33,8 @@ pub(crate) use self::boxes::{
 #[cfg(test)]
 pub(crate) use self::boxes::{PlacedRelationGraphBox, plan_layered_relation_boxes};
 #[cfg(test)]
+pub(super) use self::compact::compact_private_scene;
+#[cfg(test)]
 pub(crate) use self::draw::write_centered_relation_label;
 pub(crate) use self::draw::{
     RelationLineChars, centered_label_lines_with_role, centered_text_line_with_role,
@@ -47,5 +52,3 @@ pub(crate) use self::route::{
     spanning_lane_offset_around_intermediate_boxes,
 };
 pub(crate) use self::scene::{LayeredRelationScene, LayeredRelationSummaryReason};
-#[cfg(test)]
-pub(crate) use self::scene::{LayeredRelationScenePlan, plan_layered_relation_scene};

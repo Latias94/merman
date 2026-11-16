@@ -202,7 +202,7 @@ impl PresentationDiagram {
     }
 
     pub fn retained_render_context_bytes(&self) -> usize {
-        self.context.retained_text_bytes()
+        self.context.retained_text_bytes_for_model(&self.model)
     }
 
     pub fn into_parts(
@@ -231,9 +231,15 @@ fn validate_family_context(
         (RenderSemanticModel::Flowchart(model), context) => {
             let validation = match context.flowchart_render_context() {
                 Some(context) => context.validate_for_model_controlled(model, control)?,
-                None => model
-                    .subgraph_vertex_styles
-                    .validate_for_model_controlled(model, control)?,
+                None => match model
+                    .label_sources
+                    .validate_for_model_controlled(model, control)?
+                {
+                    Ok(()) => model
+                        .subgraph_vertex_styles
+                        .validate_for_model_controlled(model, control)?,
+                    Err(message) => Err(message),
+                },
             };
             if let Err(message) = validation {
                 return Ok(Err(PresentationDataError::FamilyContext {

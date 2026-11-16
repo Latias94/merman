@@ -686,8 +686,13 @@ fn reserve_self_loop_lanes(
             *count = resources.checked_work_add(*count, 1)?;
             if let Some(label) = &edge.label {
                 *width = (*width).max(
-                    try_measure_edge_label(label, policy.terminal_width_profile, resources)?
-                        .map_or(0, |metrics| metrics.max_width),
+                    try_measure_edge_label(
+                        label,
+                        policy.terminal_width_profile,
+                        resources,
+                        edge.label_break_policy,
+                    )?
+                    .map_or(0, |metrics| metrics.max_width),
                 );
             }
         }
@@ -776,7 +781,14 @@ fn apply_vertical_edge_spacing(
     let label_metrics = edge
         .label
         .as_deref()
-        .map(|label| try_measure_edge_label(label, policy.terminal_width_profile, resources))
+        .map(|label| {
+            try_measure_edge_label(
+                label,
+                policy.terminal_width_profile,
+                resources,
+                edge.label_break_policy,
+            )
+        })
         .transpose()?
         .flatten();
     let label_gap = if let Some(metrics) = label_metrics {
@@ -831,7 +843,14 @@ fn apply_horizontal_edge_spacing(
     let label_metrics = edge
         .label
         .as_deref()
-        .map(|label| try_measure_edge_label(label, policy.terminal_width_profile, resources))
+        .map(|label| {
+            try_measure_edge_label(
+                label,
+                policy.terminal_width_profile,
+                resources,
+                edge.label_break_policy,
+            )
+        })
         .transpose()?
         .flatten();
     let label_gap = label_metrics

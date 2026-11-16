@@ -5,10 +5,7 @@ use super::route::{
     LayeredRelationRouteGeometry, LayeredRelationRoutePlan, LayeredRelationRouteStyle,
     materialize_layered_relation_route_plan,
 };
-use super::scene::{
-    LayeredRelationScene, LayeredRelationScenePlan, LayeredRelationSummaryReason,
-    plan_layered_relation_scene,
-};
+use super::scene::{LayeredRelationScene, LayeredRelationSummaryReason};
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 use crate::{AsciiError, Result};
@@ -64,27 +61,34 @@ where
         resources.checkpoint()?;
         edges.push(adapter.build_edges(*relation));
     }
-    let scene = match plan_layered_relation_scene(
+    let mut scene = LayeredRelationScene::new_with_direction(
         boxes,
         edges,
         horizontal_gap,
         options.terminal_width_profile,
+        adapter.direction_transform(),
         resources,
     )
-    .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?
+    .map_err(|error| error.into_ascii_error(|semantic| adapter.layered_error(semantic)))?;
+
+    let (mut route_plans, _) = match plan_layered_route_batch(&scene, relations, resources, adapter)
     {
-        LayeredRelationScenePlan::Routed(scene) => scene,
-        LayeredRelationScenePlan::Summary(reason) => {
-            return Ok(Err(reason));
-        }
+        Ok(plan) => plan,
+        Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
+        Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
     };
 
-    let (route_plans, extent) =
-        match plan_layered_route_batch(&scene, relations, resources, adapter) {
-            Ok(plan) => plan,
-            Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
-            Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
-        };
+    if scene.uses_private_channels() {
+        scene.crop_to_content(&mut route_plans, resources)?;
+        if super::compact::compact_private_scene(&mut scene, &mut route_plans, resources)? {
+            match validate_layered_route_batch(&scene, &route_plans, resources) {
+                Ok(()) => {}
+                Err(LayeredRouteBatchError::Resource(error)) => return Err(error),
+                Err(LayeredRouteBatchError::Semantic(reason)) => return Ok(Err(reason)),
+            }
+        }
+    }
+    let extent = resources.grid_extent(scene.width(), scene.height())?;
 
     Ok(Ok(LayeredRelationPaintPlan {
         scene,
@@ -157,6 +161,12 @@ fn plan_layered_route_batch_in_transaction<'text, R, A>(
 where
     A: RelationComponentAdapter<'text, R>,
 {
+    if scene.uses_private_channels() {
+        let routes = super::channels::plan_private_routes(scene, relations, adapter, resources)?;
+        validate_layered_route_batch(scene, &routes, resources)?;
+        let extent = resources.grid_extent(scene.width(), scene.height())?;
+        return Ok((routes, extent));
+    }
     resources.charge_layout_work(scene.draw_order().len().max(1))?;
     let mut planned = Vec::new();
     planned
@@ -227,7 +237,7 @@ pub(in crate::relation_graph) struct PairwiseValidationWork {
 pub(in crate::relation_graph) fn measure_pairwise_validation_work(
     counts: impl IntoIterator<Item = (usize, usize)>,
     resources: &ResourceContext,
-    include_planar_route_pairs: bool,
+    include_route_pairs: bool,
 ) -> Result<PairwiseValidationWork> {
     let mut segment_count = 0usize;
     let mut overlay_count = 0usize;
@@ -238,7 +248,7 @@ pub(in crate::relation_graph) fn measure_pairwise_validation_work(
             pair_work,
             resources.checked_work_mul(overlays, overlay_count)?,
         )?;
-        if include_planar_route_pairs {
+        if include_route_pairs {
             let route_pairs = resources.checked_work_mul(segments, segment_count)?;
             let overlay_to_prior_routes = resources.checked_work_mul(overlays, segment_count)?;
             let route_to_prior_overlays = resources.checked_work_mul(segments, overlay_count)?;
@@ -271,16 +281,11 @@ fn validate_layered_route_geometries(
             .iter()
             .map(|route| (route.geometry.segment_count(), 0)),
         resources,
-        scene.is_planar_k2_2(),
+        scene.uses_private_channels(),
     )?;
     let box_work =
         resources.checked_work_mul(measured.segment_count, scene.placed_box_count().max(1))?;
     resources.charge_layout_work(resources.checked_work_add(box_work, measured.pair_work)?)?;
-    if scene.is_planar_k2_2() && routes.len() != 4 {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::RouteCollision,
-        ));
-    }
     for route in routes {
         resources.checkpoint()?;
         if !route.geometry.fits(scene.width(), scene.height()) {
@@ -289,7 +294,7 @@ fn validate_layered_route_geometries(
             ));
         }
     }
-    if scene.is_planar_k2_2() {
+    if scene.uses_private_channels() {
         for (index, route) in routes.iter().enumerate() {
             resources.checkpoint()?;
             for other in &routes[index + 1..] {
@@ -324,18 +329,13 @@ fn validate_layered_route_batch(
             .iter()
             .map(|route| (route.segment_count(), route.overlay_count())),
         resources,
-        scene.is_planar_k2_2(),
+        scene.uses_private_channels(),
     )?;
     let box_work = resources.checked_work_mul(
         resources.checked_work_add(measured.segment_count, measured.overlay_count)?,
         scene.placed_box_count().max(1),
     )?;
     resources.charge_layout_work(resources.checked_work_add(box_work, measured.pair_work)?)?;
-    if scene.is_planar_k2_2() && route_plans.len() != 4 {
-        return Err(LayeredRouteBatchError::Semantic(
-            LayeredRelationSummaryReason::RouteCollision,
-        ));
-    }
     for route_plan in route_plans {
         resources.checkpoint()?;
         if !route_plan.route_fits(scene.width(), scene.height()) {
@@ -363,7 +363,7 @@ fn validate_layered_route_batch(
             }
         }
     }
-    if scene.is_planar_k2_2() {
+    if scene.uses_private_channels() {
         for (index, route_plan) in route_plans.iter().enumerate() {
             resources.checkpoint()?;
             for other in &route_plans[index + 1..] {
@@ -397,4 +397,84 @@ fn validate_layered_route_batch(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::relation_graph::{
+        LayeredRelationEdge, LayeredRelationPhysicalPort, PhysicalPortSide, RelationLineChars,
+    };
+    use crate::{AsciiResourcePolicy, TerminalWidthProfile};
+
+    #[test]
+    fn route_validation_rejects_a_real_segment_through_an_intermediate_box() {
+        let boxes = ["A", "B", "C"]
+            .map(|id| RelationGraphBox::new(id.to_string(), vec![id.to_string()], 1));
+        let edges = vec![
+            LayeredRelationEdge::new("A", "B", 0, 0),
+            LayeredRelationEdge::new("B", "C", 0, 0),
+        ];
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let scene = LayeredRelationScene::new(
+            &boxes.iter().collect::<Vec<_>>(),
+            edges,
+            1,
+            TerminalWidthProfile::Unicode,
+            &mut resources,
+        )
+        .expect("scene should fit");
+        let source = scene
+            .placed_boxes()
+            .iter()
+            .find(|node| node.id() == "A")
+            .expect("source");
+        let target = scene
+            .placed_boxes()
+            .iter()
+            .find(|node| node.id() == "C")
+            .expect("target");
+        let source_port = LayeredRelationPhysicalPort {
+            side: PhysicalPortSide::Bottom,
+            marker_x: source.center_x(),
+            marker_y: source.bottom() + 1,
+            path_x: source.center_x(),
+            path_y: source.bottom() + 1,
+        };
+        let target_port = LayeredRelationPhysicalPort {
+            side: PhysicalPortSide::Top,
+            marker_x: target.center_x(),
+            marker_y: target.y() - 1,
+            path_x: target.center_x(),
+            path_y: target.y() - 1,
+        };
+        let path = (source_port.path_y..=target_port.path_y)
+            .map(|y| (source_port.path_x, y))
+            .collect::<Vec<_>>();
+        let geometry = LayeredRelationRouteGeometry::from_channel_path(
+            source_port,
+            target_port,
+            &path,
+            (0, 0),
+            &resources,
+        )
+        .expect("test geometry should fit");
+        let route = LayeredRelationRoutePlan::new(
+            geometry,
+            '|',
+            '-',
+            RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            Vec::new(),
+        );
+        assert!(
+            scene.route_overlaps_box(&route),
+            "the injected segment must actually cross B"
+        );
+        assert!(matches!(
+            validate_layered_route_batch(&scene, &[route], &resources),
+            Err(LayeredRouteBatchError::Semantic(
+                LayeredRelationSummaryReason::RouteCollision
+            ))
+        ));
+    }
 }

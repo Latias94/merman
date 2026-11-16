@@ -737,6 +737,7 @@ version = "0.10.0"
 dependencies = [
  "dugong",
  "merman-model",
+ "pulldown-cmark",
  "rustc-hash",
  "ryu-js",
  "serde",

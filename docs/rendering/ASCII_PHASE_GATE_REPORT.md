@@ -6,7 +6,7 @@ The source-bound U25 closeout evidence is maintained in
 [ASCII_U25_CLOSEOUT_RECEIPT.md](ASCII_U25_CLOSEOUT_RECEIPT.md). This phase report remains the
 historical Phase 0-3 admission artifact; it is not a second performance scorecard.
 
-Status: Phase 0-3 evidence complete; Phase 4 candidates not admitted
+Historical status: Phase 0-3 evidence complete; the four R34 Phase 4 candidates not admitted
 Baseline: pinned Mermaid `11.16.1`
 Last updated: 2026-08-15
 
@@ -24,6 +24,10 @@ The report distinguishes two decisions:
 The second decision is a conservative release disposition, not a claim that these families can
 never be useful in a terminal. A future proposal can reopen one family by supplying the complete
 spatial vertical slice and executable width evidence described below.
+
+The later [bounded Packet spatial admission](#packet-bounded-spatial-admission) reopens one
+existing StructuredText family. Its contract and pending verification are separate from the
+historical R34 decisions and measurements below.
 
 ## Authority and Reproduction
 
@@ -68,7 +72,7 @@ non-authoritative and are not substitutes for that receipt.
 | Phase 0: terminal contract | Complete | `terminal_text_safety.rs`, `resource.rs`, `canvas.rs`, binding resource tests, and exhaustive capability tests cover safe text, grapheme ownership, checked extent, document/output budgets, and all 31 typed families. | A new family must consume the same safe-text, width-profile, resource, and encoder contracts; it cannot add an unbudgeted private renderer. |
 | Phase 1: Flowchart and Sequence | Complete at Partial | The immutable graph corpus is 40/79 exact plus 39 named renderable differences. Sequence keeps 17/17 normalized copied parity. Its 322-case imported corpus contains 321 Mermaid-valid fixtures that parse and render plus one intentional-invalid stress fixture that is rejected; promoted local semantic probes own broader marker, compound, signal, control, lifecycle, and actor claims. | Common families remain Partial where documented residuals exist; their evidence is not weakened to make a new family easier to add. |
 | Phase 2: Class, ER, State, XYChart | Complete at Partial | Class/ER imported fixtures prove admission, while shared relation-component probes, State model tests, and XYChart typed-coordinate tests own the retained semantic boundary and explicit fallbacks. | A new family may reuse mechanisms such as relation planning or plot cells, but must keep family semantics in its own adapter. |
-| Phase 3: existing-family truth | Complete | Runtime capabilities classify six families as Diagrammatic and eight as StructuredText. The support matrix records the retained fields and limits for all 14 available outputs. | StructuredText remains useful output but contributes zero to the ASCII diagram count and cannot satisfy a new-family admission. |
+| Phase 3: existing-family truth | Complete | At the historical Phase 3 gate, runtime capabilities classified six families as Diagrammatic and eight as StructuredText. The support matrix recorded the retained fields and limits for all 14 available outputs. | StructuredText remains useful output but contributes zero to the ASCII diagram count and cannot satisfy a new-family admission. |
 
 The moving-reference lane records each uniquely identified path with validity, admission, semantic
 feature, and evidence dispositions. The TSV authority owns the row set and derived counts. The
@@ -76,13 +80,13 @@ copied oracle remains immutable. The complete comparison policy and exact copied
 in `crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md` and
 `crates/merman-ascii/V1_MERMAID_ASCII_COVERAGE.md`.
 
-## Existing StructuredText Dispositions
+## Original StructuredText Dispositions
 
-The Phase 3 decision is to retain Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, and
-TreeView as StructuredText. Their reports preserve typed facts useful in logs and review, but none
-claims timeline, lane, board, map, packet-width, spine, or two-dimensional tree geometry. This is a
-binding R34 rejection of a Diagrammatic promotion, not a degradation fallback selected by resource
-pressure.
+The original Phase 3 decision retained Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline,
+and TreeView as StructuredText. Those reports preserve typed facts useful in logs and review but
+do not claim timeline, lane, board, map, packet-width, spine, or two-dimensional tree geometry.
+These are deliberate projection boundaries, not fallbacks selected by resource pressure. Packet's
+later bounded contract is documented below; the other dispositions remain unchanged.
 
 | Family | Representative terminal task | Diagrammatic decision |
 | --- | --- | --- |
@@ -91,9 +95,68 @@ pressure.
 | Journey | Review ordered tasks, actors, sections, and scores. | Retain StructuredText intentionally; a browser-shaped journey adds insufficient terminal value. |
 | Kanban | Audit column/card identity, assignment, and metadata, including orphan handling. | Retain StructuredText; no spatial board was admitted. |
 | Mindmap | Recover hierarchy, identity, cycles, and disconnected components. | Retain StructuredText; the outline is useful, but it is not counted as two-dimensional geometry. |
-| Packet | Audit exact ordered bit ranges and labels. | Retain StructuredText; character width does not encode bit width. |
+| Packet | Audit exact ordered bit ranges and labels. | Originally StructuredText; the bounded spatial admission below adds exact field geometry with complete records. |
 | Timeline | Inspect direction, sections, and ordered events. | Retain StructuredText; no spatial time spine was admitted. |
 | TreeView | Inspect file/directory hierarchy and disclosed node metadata. | Retain StructuredText; charset-aware tree prefixes are an outline, not a two-dimensional diagram. |
+
+GitGraph now adds bounded branch lanes to its newest-first history report, with explicit parent
+records whenever a lane would collide, exceed capacity, or misrepresent caller-authored history.
+Mindmap now puts labels and hierarchy before referenced metadata. Both remain StructuredText:
+these readability improvements do not admit Mermaid's two-dimensional Git or node-shape layouts.
+The [support matrix](ASCII_SUPPORT_MATRIX.md#structured-text-outputs) owns their current limits.
+
+## Packet Bounded Spatial Admission
+
+Admission verified: 2026-11-16. Packet is Partial Diagrammatic within the spatial domain below;
+individual non-spatial results remain StructuredText.
+
+The terminal task is to recover field positions, relative widths, gaps, and physical row boundaries
+without reconstructing them from a range list. The Partial Diagrammatic contract uses two terminal
+cells per bit and admits integer `packet.bitsPerRow` in `1..=64`. Source rendering honors
+`bitOrder` and `showBits`; bare borrowed models default to 32 bits, ascending order, and visible
+bit numbers. Descending order mirrors fields and gaps within each row and reverses their endpoint
+annotations, even with `showBits: false`. Cross-row fields split at physical boundaries. Labels never expand fields: a narrow
+label may use `*` with a legend and complete byte-framed details. Exact authored labels and raw DB
+`start`/`end`/`bits` records follow the plot, retaining upstream split counts even when they differ
+from the inclusive range width.
+
+Coordinates outside exact nonnegative integers through `2^53 - 1`, non-spatial row widths,
+fractional/non-finite/negative DB bit counts, overlapping or out-of-order fields, and empty models
+retain complete structured records and report StructuredText locally. Resource,
+cancellation, and existing validation errors stay errors. Canonical-only admission retains both
+width profiles, all five primary encodings, and existing Plain bounded-record width fallback;
+there is no new public profile, schema, or dependency.
+
+`crates/merman-ascii/tests/packet_grid.rs` owns the spatial admission. All integer row widths from
+1 through 64 are exercised with generated field partitions and gaps; assertions inspect actual
+boundary columns rather than snapshots. Focused cases cover both bit orders, hidden bit numbers,
+cross-row fields, CJK/emoji, unsafe and narrow labels, raw split counts, non-finite values, honest
+projection classification, Plain width fallback, primary encodings, exact/N-1 output and grid
+limits, and cancellation after layout has begun. Existing Packet numeric and field-identity tests
+remain in `tests/packet_numeric_parity_test.rs` and `tests/new_family_models/packet.rs`.
+
+The small, typical, and dense comparison uses the same complete field records as the old primary
+text baseline. Dimensions include those records and the plot's scale/marker legends:
+
+| Sample and task | Record baseline | 80 columns | 100 columns | 120 columns | Added spatial information |
+| --- | --- | --- | --- | --- | --- |
+| Small: 16-bit `VER`/`HLEN`/`LEN` header | 45 × 4 | 45 × 11 | 45 × 11 | 45 × 11 | Field widths directly show the 1:1:2 ratio. |
+| Typical: two 16-bit ports followed by a 32-bit sequence number | 61 × 5 | 65 × 17 | 65 × 17 | 65 × 17 | Equal port halves and the following full word share one scale. |
+| Dense: upstream complex Packet fixture, 224 bits in seven words | 68 × 24 | 68 × 62 | 68 × 62 | 68 × 62 | All word boundaries, one-bit flags, and larger fields retain their relative widths. |
+
+All nine width cases produce Diagrammatic Primary results without dropping records. Geometry
+adds rows, so it does not replace the shorter record view's auditing value. One-bit flags use `*`
+where their full labels or numbers cannot fit; exact ranges and complete labels remain below.
+The dense source is
+`fixtures/packet/upstream_cypress_packet_spec_should_render_a_complex_packet_diagram_004.mmd`;
+the executable admission test contains the small and typical sources. The descending fixture
+`fixtures/packet/bit_order_descending.mmd` and a CJK/emoji header also passed these widths.
+
+Facade and CLI tests verify source configuration and distinguish spatial primary, non-spatial
+text primary, and viewport fallback. Capability tests, the CLI archive contract, and the generated
+Playground capability projection use the promoted descriptor. No Packet byte-parity oracle or
+claim of reference superiority is adopted: the inspected terminal references do not supply a
+Packet oracle.
 
 ## U30 Structural Closeout Disposition
 
@@ -133,6 +196,14 @@ component strategies, maps that outcome to a region or family-owned summary, agg
 and performs the final deferred document commit. New geometry belongs in the corresponding layered
 module, new encoding belongs in the document/canvas path, and any new fallback policy with an
 independent lifecycle must first be extracted behind a typed outcome.
+
+The current Class/ER relation planner supersedes the earlier strict K2×2 exception with a directed
+topology module and a private-channel module. Strongly connected components and the condensation
+DAG determine ranks before placement; all four directions consume that topology. Endpoint contacts,
+return paths, and label reading areas remain separate geometric claims. Bounded channel search and
+the final collision checks either produce a complete paint plan or retain the existing typed
+summary outcome. Parser-backed rings and DAG diamonds supplement the shared route, resource, and
+cancellation tests; this does not admit arbitrary dense topology or another Mermaid family.
 
 These are cohesion boundaries, not line-count exemptions. Repository review must reopen U30 if a
 second independent transaction, encoding lifecycle, or fallback policy is added to either retained

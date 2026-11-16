@@ -266,9 +266,14 @@ pub(crate) fn cli_command() -> clap::Command {
         });
     #[cfg(any(feature = "svg", feature = "ascii"))]
     let command = command.mut_subcommand("render", |subcommand| {
-        subcommand.after_help(
+        let subcommand = subcommand.after_help(
             "Examples:\n  merman-cli render diagram.mmd\n\nMore options: `merman-cli render --help` shows advanced renderer, resource, and security controls.",
-        )
+        );
+        #[cfg(feature = "ascii")]
+        let subcommand = subcommand.after_long_help(
+            "Examples:\n  merman-cli render diagram.mmd\n  merman-cli render diagram.mmd --format unicode --resource-limit max_ascii_layout_work_units=64000000\n  merman-cli render diagram.mmd --format unicode --resource-profile unbounded-for-trusted-input --operation-timeout-ms 30000\n\nASCII resource controls:\n  Increase a single limit with --resource-limit; it does not guarantee completion.\n  The unbounded profile removes all policy budgets, retaining hard guards.\n  The optional timeout is cooperative and independent of resource budgets.\n  No operation deadline is set unless --operation-timeout-ms is supplied.",
+        );
+        subcommand
     });
     #[cfg(feature = "markdown")]
     let command = command.mut_subcommand("batch", |subcommand| {

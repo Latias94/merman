@@ -100,6 +100,20 @@ fn strip_html_spans(input: &str) -> String {
             index += "</span>".len();
             continue;
         }
+        if let Some((entity, decoded)) = [
+            ("&quot;", '"'),
+            ("&#39;", '\''),
+            ("&lt;", '<'),
+            ("&gt;", '>'),
+            ("&amp;", '&'),
+        ]
+        .into_iter()
+        .find(|(entity, _)| rest.starts_with(entity))
+        {
+            output.push(decoded);
+            index += entity.len();
+            continue;
+        }
         let ch = rest
             .chars()
             .next()
@@ -108,6 +122,30 @@ fn strip_html_spans(input: &str) -> String {
         index += ch.len_utf8();
     }
     output
+}
+
+fn er_arrow_markers(input: &str, options: &AsciiRenderOptions, plain: &str) -> String {
+    let colored = render_er(
+        input,
+        &(*options)
+            .with_color_mode(AsciiColorMode::Html)
+            .with_color_theme(
+                AsciiColorTheme::default_light()
+                    .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x123456)),
+            ),
+    )
+    .expect("marker roles should render");
+    assert_eq!(
+        strip_html_spans(&colored),
+        plain,
+        "marker colors must preserve the exact geometry"
+    );
+    colored
+        .split("<span style=\"color:#123456\">")
+        .skip(1)
+        .map(|part| part.split_once("</span>").expect("arrow span must close").0)
+        .collect::<Vec<_>>()
+        .join("")
 }
 
 fn read_local_semantic_fixture(path: &str) -> String {
@@ -298,34 +336,29 @@ fn er_color_html_wraps_layered_relation_roles_without_changing_plain_text() {
     let rendered = render_er("erDiagram\nA ||--|| B : owns\nA ||--|| C : owns", &options)
         .expect("ER should render");
 
-    assert_eq!(
-        strip_html_spans(&rendered),
-        concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "      ||\n",
-            "  owns owns\n",
-            "  +----+---+\n",
-            " ||       ||\n",
-            "+---+    +---+\n",
-            "| B |    | C |\n",
-            "+---+    +---+\n",
-        )
-    );
+    let plain = render_er(
+        "erDiagram\nA ||--|| B : owns\nA ||--|| C : owns",
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("plain scene should render");
+    assert_eq!(strip_html_spans(&rendered), plain);
     for expected_fragment in [
         "<span style=\"color:#101010\">+---+</span>",
         "<span style=\"color:#202020\">A</span>",
-        "<span style=\"color:#303030\">----</span>",
+        "<span style=\"color:#303030\">",
         "<span style=\"color:#404040\">||</span>",
         "<span style=\"color:#505050\">owns</span>",
-        "<span style=\"color:#606060\">+</span>",
+        "<span style=\"color:#303030\">+-+</span>",
     ] {
         assert!(
             rendered.contains(expected_fragment),
             "missing {expected_fragment:?} in {rendered:?}"
         );
     }
+    assert!(
+        !rendered.contains("color:#606060"),
+        "private bends use the edge role"
+    );
 }
 
 #[test]
@@ -1016,59 +1049,74 @@ fn er_parser_horizontal_component_draws_each_entity_once() {
 }
 
 #[test]
-fn er_parser_horizontal_unrelated_edge_crossings_use_lossless_summary() {
-    let rendered = render_er(
-        concat!(
-            "erDiagram\n",
-            "direction LR\n",
-            "A {\n  string id\n}\n",
-            "B {\n  string id\n}\n",
-            "C {\n  string id\n}\n",
-            "D {\n  string id\n}\n",
-            "A ||--|| C : first\n",
-            "B }o..|| D : second\n",
-            "A ||--|| B : bridge",
-        ),
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("unrelated horizontal crossings should remain recoverable");
-
-    assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in [
-        framed_er_summary_relation("A", "||--||", "C", "first"),
-        framed_er_summary_relation("B", "}o..||", "D", "second"),
-        framed_er_summary_relation("A", "||--||", "B", "bridge"),
-    ] {
-        assert!(
-            rendered.contains(&expected),
-            "summary must preserve {expected:?} after owner crossing fallback:\n{rendered}"
-        );
+fn er_parser_horizontal_unrelated_edges_use_private_channels() {
+    let input = "erDiagram\ndirection LR\nA {\n string id\n}\nB {\n string id\n}\nC {\n string id\n}\nD {\n string id\n}\nA ||--|| C : first\nB }o..|| D : second\nA ||--|| B : bridge";
+    let options = AsciiRenderOptions::ascii();
+    let rendered = render_er(input, &options).expect("horizontal schema should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A ", "| B ", "| C ", "| D "] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
     }
+    for label in ["first", "second", "bridge"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
+    assert_eq!(
+        rendered
+            .matches(&framed_er_attribute("string", "id", &[], ""))
+            .count(),
+        4,
+        "{rendered}"
+    );
+    let column = |node| line_and_column_containing(&rendered, node).1;
+    assert!(
+        column("| A ") < column("| B ")
+            && column("| B ") < column("| D ")
+            && column("| A ") < column("| C "),
+        "{rendered}"
+    );
+    let markers = er_arrow_markers(input, &options, &rendered);
+    assert_eq!(markers.matches("||").count(), 5, "{rendered}");
+    assert_eq!(
+        markers.matches("}o").count() + markers.matches("o{").count(),
+        1,
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(':') || rendered.contains('.'),
+        "the non-identifying relationship must retain its dotted stroke:\n{rendered}"
+    );
 }
 
 #[test]
-fn er_parser_horizontal_shared_source_crossings_use_lossless_summary() {
-    let rendered = render_er(
-        concat!(
-            "erDiagram\n",
-            "direction LR\n",
-            "A ||--|| B : short\n",
-            "A ||--|| C : long",
-        ),
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("shared-source horizontal crossings should remain recoverable");
-
-    assert!(rendered.contains("relations:"), "{rendered}");
-    for expected in [
-        framed_er_summary_relation("A", "||--||", "B", "short"),
-        framed_er_summary_relation("A", "||--||", "C", "long"),
-    ] {
+fn er_parser_horizontal_shared_source_edges_have_private_labels() {
+    let input = "erDiagram\ndirection LR\nA ||--|| B : short\nA ||--|| C : long";
+    let options = AsciiRenderOptions::ascii();
+    let rendered = render_er(input, &options).expect("horizontal branch should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    for label in ["short", "long"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
+    let source = line_and_column_containing(&rendered, "| A |").1;
+    for child in ["| B |", "| C |"] {
         assert!(
-            rendered.contains(&expected),
-            "summary must preserve {expected:?} after shared-source crossing fallback:\n{rendered}"
+            source < line_and_column_containing(&rendered, child).1,
+            "{rendered}"
         );
     }
+    assert_eq!(
+        er_arrow_markers(input, &options, &rendered)
+            .matches("||")
+            .count(),
+        4,
+        "each relationship must retain both cardinalities:\n{rendered}"
+    );
+    assert!(
+        !rendered.contains("shortlong") && !rendered.contains("longshort"),
+        "{rendered}"
+    );
 }
 
 #[test]
@@ -1271,21 +1319,17 @@ fn er_parser_relationship_star_renders_each_label_and_leaf_cardinality() {
     )
     .expect("ER should render");
 
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    assert_eq!(rendered.matches("owns").count(), 2, "{rendered}");
     assert_eq!(
-        rendered,
-        concat!(
-            "     +---+\n",
-            "     | A |\n",
-            "     +---+\n",
-            "      ||\n",
-            "  owns owns\n",
-            "  +----+---+\n",
-            " ||       ||\n",
-            "+---+    +---+\n",
-            "| B |    | C |\n",
-            "+---+    +---+\n",
-        )
+        rendered.matches("||").count(),
+        4,
+        "each edge must retain both endpoint cardinalities:\n{rendered}"
     );
+    assert!(!rendered.contains("ownsowns"), "{rendered}");
 }
 
 #[test]
@@ -1371,7 +1415,7 @@ fn er_parser_four_layer_relationship_layout_uses_iterative_sweep_order() {
             "C1 ||--|| D2 : c1d2\n",
             "B2 ||--|| C1 : b2c1",
         ),
-        &AsciiRenderOptions::ascii(),
+        &AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true),
     )
     .expect("four-layer ER relationship topology should render");
 
@@ -1424,37 +1468,42 @@ fn er_parser_parallel_relationship_layout_uses_lossless_summary_when_ports_do_no
 }
 
 #[test]
-fn er_parser_bidirectional_relationship_layout_preserves_both_directions_in_summary() {
-    let rendered = render_er(
-        "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("bidirectional ER relationships should remain recoverable");
-
-    let ab = framed_er_summary_relation("A", "||--||", "B", "ab");
-    let ba = framed_er_summary_relation("B", "||--||", "A", "ba");
+fn er_parser_bidirectional_relationship_layout_preserves_both_directed_paths() {
+    let input = "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba";
+    let options = AsciiRenderOptions::ascii();
+    let rendered = render_er(input, &options).expect("bidirectional edges should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for text in ["| A |", "| B |", "ab", "ba"] {
+        assert_eq!(rendered.matches(text).count(), 1, "{rendered}");
+    }
     assert_eq!(
-        rendered,
-        format!("+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\nrelations:\n{ab}\n{ba}\n")
+        er_arrow_markers(input, &options, &rendered)
+            .matches("||")
+            .count(),
+        4,
+        "each directed relationship must retain two independent cardinalities:\n{rendered}"
     );
 }
 
 #[test]
-fn er_parser_mixed_parallel_relationship_layout_preserves_all_facts_in_summary() {
-    let rendered = render_er(
-        "erDiagram\nA ||--|| B : a\nA ||..o{ B : b\nA ||--|| C : c",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("mixed parallel ER relationships should preserve every relationship");
-
-    let a = framed_er_summary_relation("A", "||--||", "B", "a");
-    let b = framed_er_summary_relation("A", "||..o{", "B", "b");
-    let c = framed_er_summary_relation("A", "||--||", "C", "c");
+fn er_parser_mixed_parallel_relationship_layout_preserves_all_cardinalities() {
+    let input = "erDiagram\nA ||--|| B : first\nA ||..o{ B : second\nA ||--|| C : third";
+    let options = AsciiRenderOptions::ascii();
+    let rendered = render_er(input, &options).expect("mixed parallel relationships should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for text in ["| A |", "| B |", "| C |", "first", "second", "third"] {
+        assert_eq!(rendered.matches(text).count(), 1, "{rendered}");
+    }
+    let markers = er_arrow_markers(input, &options, &rendered);
+    assert_eq!(markers.matches("||").count(), 5, "{rendered}");
     assert_eq!(
-        rendered,
-        format!(
-            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{a}\n{b}\n{c}\n"
-        )
+        markers.matches("}o").count() + markers.matches("o{").count(),
+        1,
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains(':') || rendered.contains('.'),
+        "the parallel optional relationship must keep its dotted stroke:\n{rendered}"
     );
 }
 
@@ -1492,7 +1541,7 @@ fn er_aliases_preserve_authored_entity_identities_when_display_labels_collide() 
 }
 
 #[test]
-fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
+fn er_routed_boxes_frame_direct_authored_identities_that_share_one_display_label() {
     let control_identity = "\u{1b}".to_string();
     let authored_escape_identity = r"\u{1B}".to_string();
     let control_rendered_id = "entity-control-0".to_string();
@@ -1559,7 +1608,10 @@ fn er_summary_frames_direct_authored_identities_that_share_one_display_label() {
     let rendered = render_er_model(&model, &AsciiRenderOptions::ascii())
         .expect("direct ER identities should remain recoverable");
 
-    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for label in ["first", "second", "spanning"] {
+        assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+    }
     assert_eq!(
         rendered
             .lines()
@@ -1658,21 +1710,27 @@ fn er_single_line_display_projection_discloses_the_authored_owner() {
 }
 
 #[test]
-fn er_parser_spanning_level_relationship_layout_summarizes_invalid_outer_port() {
-    let rendered = render_er(
-        "erDiagram\nA ||--|| B : a\nB ||--|| C : b\nA ||--|| C : c",
-        &AsciiRenderOptions::ascii(),
-    )
-    .expect("spanning-level ER relationships should remain recoverable");
-
-    let a = framed_er_summary_relation("A", "||--||", "B", "a");
-    let b = framed_er_summary_relation("B", "||--||", "C", "b");
-    let c = framed_er_summary_relation("A", "||--||", "C", "c");
+fn er_parser_spanning_level_relationship_layout_preserves_all_cardinality_pairs() {
+    let input = "erDiagram\nA ||--|| B : first\nB ||--|| C : second\nA ||--|| C : spanning";
+    let options = AsciiRenderOptions::ascii();
+    let rendered = render_er(input, &options).expect("spanning relationships should render");
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for text in ["| A |", "| B |", "| C |", "first", "second", "spanning"] {
+        assert_eq!(rendered.matches(text).count(), 1, "{rendered}");
+    }
+    assert!(
+        first_line_index_containing(&rendered, "| A |")
+            < first_line_index_containing(&rendered, "| B |")
+            && first_line_index_containing(&rendered, "| B |")
+                < first_line_index_containing(&rendered, "| C |"),
+        "{rendered}"
+    );
     assert_eq!(
-        rendered,
-        format!(
-            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{a}\n{b}\n{c}\n"
-        )
+        er_arrow_markers(input, &options, &rendered)
+            .matches("||")
+            .count(),
+        6,
+        "every relationship must retain both terminal cardinalities:\n{rendered}"
     );
 }
 
@@ -1716,22 +1774,19 @@ PRODUCT {
 }
 
 #[test]
-fn er_parser_cyclic_relationship_layout_summarizes_disconnected_back_edge() {
+fn er_parser_cyclic_relationship_layout_routes_the_back_edge() {
     let rendered = render_er(
         "erDiagram\nA ||--|| B : owns\nB ||--|| C : owns\nC ||--|| A : owns",
         &AsciiRenderOptions::ascii(),
     )
     .expect("cyclic ER relationships should render");
 
-    let ab = framed_er_summary_relation("A", "||--||", "B", "owns");
-    let bc = framed_er_summary_relation("B", "||--||", "C", "owns");
-    let ca = framed_er_summary_relation("C", "||--||", "A", "owns");
-    assert_eq!(
-        rendered,
-        format!(
-            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{ab}\n{bc}\n{ca}\n"
-        )
-    );
+    assert!(!rendered.contains("relations:"), "{rendered}");
+    for title in ["| A |", "| B |", "| C |"] {
+        assert_eq!(rendered.matches(title).count(), 1, "{rendered}");
+    }
+    assert_eq!(rendered.matches("owns").count(), 3, "{rendered}");
+    assert_eq!(rendered.matches("||").count(), 6, "{rendered}");
 }
 
 #[test]
@@ -1823,17 +1878,17 @@ fn er_parser_relationship_layout_propagates_grid_resource_errors() {
 }
 
 #[test]
-fn er_parser_relation_summary_can_show_crossing_diagnostic() {
+fn er_parser_relation_summary_can_show_collision_diagnostic() {
     let options = AsciiRenderOptions::ascii().with_relation_summary_diagnostics(true);
 
     let rendered = render_er(
-        "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba\nA ||--|| C : ac\nC ||--|| A : ca\nB ||--|| C : bc\nC ||--|| B : cb",
+        "erDiagram\nA ||--|| B : ab\nB ||--|| A : ba\nA ||--|| C : ac\nC ||--|| A : ca\nB ||--|| C : bc\nC ||--|| B : cb\nA ||--|| A : self",
         &options,
     )
     .expect("ER crossing summary diagnostic should render");
 
     assert!(rendered.contains("relations:"), "{rendered}");
-    assert!(rendered.contains("reason: crossing"), "{rendered}");
+    assert!(rendered.contains("reason: route_collision"), "{rendered}");
 }
 
 #[test]
@@ -1884,15 +1939,10 @@ fn er_color_html_wraps_dense_relation_summary_roles_without_changing_plain_text(
     let bc = framed_er_summary_relation("B", "||--||", "C", "bc");
     let cb = framed_er_summary_relation("C", "||--||", "B", "cb");
     let html_ab = ab.replace('"', "&quot;");
-    let html_ba = ba.replace('"', "&quot;");
-    let html_ac = ac.replace('"', "&quot;");
-    let html_ca = ca.replace('"', "&quot;");
-    let html_bc = bc.replace('"', "&quot;");
-    let html_cb = cb.replace('"', "&quot;");
     assert_eq!(
         strip_html_spans(&rendered),
         format!(
-            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{html_ab}\n{html_ba}\n{html_ac}\n{html_ca}\n{html_bc}\n{html_cb}\n"
+            "+---+\n| A |\n+---+\n\n+---+\n| B |\n+---+\n\n+---+\n| C |\n+---+\n\nrelations:\n{ab}\n{ba}\n{ac}\n{ca}\n{bc}\n{cb}\n"
         )
     );
     for expected_fragment in [
@@ -1974,7 +2024,7 @@ fn er_local_semantic_fixture_covers_dense_multiline_relation_summary() {
 }
 
 #[test]
-fn er_parser_complex_styled_example_limits_summary_to_unroutable_component() {
+fn er_parser_complex_styled_example_routes_each_component() {
     let rendered = render_er(
         r#"erDiagram
     CAR ||--o{ DRIVER : "insured for"
@@ -2004,17 +2054,6 @@ fn er_parser_complex_styled_example_limits_summary_to_unroutable_component() {
         "DRIVER".to_string(),
         "PERSON".to_string(),
         "NODE".to_string(),
-        "relations:".to_string(),
-        format!(
-            "{} ||--o{{ {}",
-            framed_er_summary_endpoint("CAR"),
-            framed_er_summary_endpoint("DRIVER")
-        ),
-        format!(
-            "{} }}o--|| {}",
-            framed_er_summary_endpoint("CAR"),
-            framed_er_summary_endpoint("PERSON")
-        ),
         "insured for".to_string(),
         "owned by".to_string(),
         "leads to".to_string(),
@@ -2025,6 +2064,10 @@ fn er_parser_complex_styled_example_limits_summary_to_unroutable_component() {
             "complex styled ER example should keep {expected:?} visible:\n{rendered}"
         );
     }
+    assert!(
+        !rendered.contains("relations:"),
+        "all independent components should remain diagrammatic:\n{rendered}"
+    );
     assert_eq!(
         rendered.matches("| NODE |").count(),
         1,
@@ -2057,8 +2100,31 @@ fn er_local_semantic_fixture_covers_routed_schema_with_attributes() {
         );
     }
     assert!(
-        rendered.contains("relations:"),
-        "conflicting LINE_ITEM cardinalities should use the lossless summary:\n{rendered}"
+        !rendered.contains("relations:"),
+        "private ports must retain both LINE_ITEM cardinalities without summary:\n{rendered}"
+    );
+    for node in ["CUSTOMER", "ORDER", "LINE_ITEM", "PRODUCT"] {
+        assert_eq!(
+            rendered.matches(&format!("| {node} ")).count(),
+            1,
+            "{rendered}"
+        );
+    }
+    let markers = er_arrow_markers(&input, &AsciiRenderOptions::ascii(), &rendered);
+    assert_eq!(
+        markers.matches("||").count(),
+        3,
+        "each owner cardinality must survive:\n{rendered}"
+    );
+    assert_eq!(
+        markers.matches("o{").count() + markers.matches("}o").count(),
+        2,
+        "both optional-many contacts must survive:\n{rendered}"
+    );
+    assert_eq!(
+        markers.matches("|{").count() + markers.matches("}|").count(),
+        1,
+        "the required-many LINE_ITEM contact must survive:\n{rendered}"
     );
 }
 
@@ -2090,4 +2156,204 @@ fn er_local_semantic_fixture_covers_disconnected_components() {
         line_index("CUSTOMER") < line_index("AUDIT_LOG"),
         "isolated ER entity should remain visually separate from the connected component:\n{rendered}"
     );
+}
+
+#[test]
+fn er_directed_cycles_share_topology_across_directions_and_declaration_order() {
+    for size in [3, 4, 5] {
+        for direction in ["TB", "BT", "LR", "RL"] {
+            for (options, vertical) in [
+                (AsciiRenderOptions::ascii(), '|'),
+                (AsciiRenderOptions::unicode(), '│'),
+            ] {
+                let mut outputs = Vec::new();
+                for reversed in [false, true] {
+                    let mut input = format!("erDiagram\ndirection {direction}\n");
+                    let mut declarations = (0..size).collect::<Vec<_>>();
+                    if reversed {
+                        declarations.reverse();
+                    }
+                    for node in declarations {
+                        input.push_str(&format!("Node{node}\n"));
+                    }
+                    for node in 0..size {
+                        input.push_str(&format!(
+                            "Node{node} ||--o{{ Node{} : rel_{node}\n",
+                            (node + 1) % size
+                        ));
+                    }
+                    let rendered =
+                        render_er(&input, &options).expect("bounded directed cycle should render");
+                    assert!(
+                        !rendered.contains("relations:"),
+                        "{direction}, {size}:\n{rendered}"
+                    );
+                    for node in 0..size {
+                        assert_eq!(
+                            rendered
+                                .matches(&format!("{vertical} Node{node} {vertical}"))
+                                .count(),
+                            1,
+                            "{rendered}"
+                        );
+                        assert_eq!(
+                            rendered.matches(&format!("rel_{node}")).count(),
+                            1,
+                            "{rendered}"
+                        );
+                    }
+                    let markers = er_arrow_markers(&input, &options, &rendered);
+                    assert_eq!(
+                        markers.matches("||").count(),
+                        size,
+                        "each source cardinality must retain its marker role:\n{rendered}"
+                    );
+                    assert_eq!(
+                        markers.matches("o{").count() + markers.matches("}o").count(),
+                        size,
+                        "each target cardinality must retain its marker role:\n{rendered}"
+                    );
+                    outputs.push(rendered);
+                }
+                assert_eq!(
+                    outputs[0], outputs[1],
+                    "entity declarations must not select a different cycle cut"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn er_diamond_uses_directed_ranks_and_private_relationship_labels() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let input = format!(
+            "erDiagram\ndirection {direction}\nRoot ||--o{{ Worker : places\nRoot ||--o{{ Store : uses\nWorker ||..|| Queue : sends\nStore ||--|| Queue : persists\n"
+        );
+        let rendered =
+            render_er(&input, &AsciiRenderOptions::ascii()).expect("DAG diamond should render");
+        assert!(!rendered.contains("relations:"), "{rendered}");
+        let positions = ["Root", "Worker", "Store", "Queue"]
+            .map(|node| line_and_column_containing(&rendered, &format!("| {node} |")));
+        let axis = |position: (usize, usize)| {
+            if matches!(direction, "LR" | "RL") {
+                position.1
+            } else {
+                position.0
+            }
+        };
+        for middle in [positions[1], positions[2]] {
+            if matches!(direction, "TB" | "LR") {
+                assert!(
+                    axis(positions[0]) < axis(middle) && axis(middle) < axis(positions[3]),
+                    "{direction}:\n{rendered}"
+                );
+            } else {
+                assert!(
+                    axis(positions[0]) > axis(middle) && axis(middle) > axis(positions[3]),
+                    "{direction}:\n{rendered}"
+                );
+            }
+        }
+        for label in ["places", "uses", "sends", "persists"] {
+            assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+        }
+        assert!(
+            !rendered.contains("placesuses") && !rendered.contains("usesplaces"),
+            "branch labels must not concatenate:\n{rendered}"
+        );
+        assert!(
+            rendered.contains(':') || rendered.contains('.'),
+            "non-identifying stroke must remain visible:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+fn er_cycle_resource_and_cancellation_failures_do_not_become_summaries() {
+    let input = "erDiagram\nA ||--|| B : ab\nB ||--|| C : bc\nC ||--|| A : ca";
+    let error = render_er_with_grid_limit(input, &AsciiRenderOptions::ascii(), 1)
+        .expect_err("grid failure remains terminal");
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+    let model = parse_er_render_model(input);
+    let control = OperationControl::new();
+    control.cancel();
+    let context = MermaidEngine::new()
+        .begin_operation()
+        .expect("operation context");
+    let error = render_controlled_model(
+        &model,
+        &AsciiRenderOptions::ascii(),
+        &control,
+        &context,
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("cancelled cycles must stop");
+    assert!(matches!(error, AsciiError::Cancelled(_)));
+}
+
+#[test]
+fn er_branch_labels_have_private_reading_areas_in_every_direction() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let input = format!(
+            "erDiagram\ndirection {direction}\nCUSTOMER ||--o{{ ORDER : places\nCUSTOMER ||--o{{ ADDRESS : uses\nORDER ||--|{{ LINE_ITEM : contains\nLINE_ITEM }}o--|| PRODUCT : references\n"
+        );
+        let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+            .expect("a labeled schema tree should render");
+        assert!(!rendered.contains("relations:"), "{direction}:\n{rendered}");
+        for node in ["CUSTOMER", "ORDER", "ADDRESS", "LINE_ITEM", "PRODUCT"] {
+            assert_eq!(
+                rendered.matches(&format!("| {node} |")).count(),
+                1,
+                "{rendered}"
+            );
+        }
+        for label in ["places", "uses", "contains", "references"] {
+            assert_eq!(rendered.matches(label).count(), 1, "{rendered}");
+        }
+        assert!(
+            !rendered.contains("placesuses") && !rendered.contains("usesplaces"),
+            "branch labels must have separate reading areas:\n{rendered}"
+        );
+        if matches!(direction, "TB" | "BT") {
+            assert!(
+                rendered.lines().count() <= 42,
+                "an ordinary schema tree needs compact ranks:\n{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn er_imported_multiline_stars_fit_the_interactive_scratch_budget() {
+    for name in [
+        "upstream_cypress_erdiagram_spec_should_render_relationship_labels_with_line_breaks_011.mmd",
+        "upstream_html_demos_er_example_006.mmd",
+    ] {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../fixtures/er")
+            .join(name);
+        let input = std::fs::read_to_string(path).expect("imported ER fixture should exist");
+        let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+            .expect("an ordinary multiline star must fit the existing interactive policy");
+        for text in [
+            "Person",
+            "Customer Account",
+            "Secondary",
+            "Tertiary",
+            "Nth",
+            "firstName",
+            "lastName",
+            "email",
+            "has",
+            "one",
+            "two",
+            "three",
+        ] {
+            assert!(
+                rendered.contains(text),
+                "{name} must preserve {text:?}:\n{rendered}"
+            );
+        }
+    }
 }
