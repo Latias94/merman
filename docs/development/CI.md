@@ -474,6 +474,11 @@ whose ref is part of their public interface retain readable tool or toolchain re
 configuration accepts version refs without disabling its other workflow-security audits, and weekly
 Dependabot updates maintain the selected action versions. Release workflows also accept explicit Action release versions; moving branch names and floating major-only tags are not used for their Action dependencies. This policy concerns Action implementations, not release source commits, artifact checksums, or provenance receipts, which remain immutable.
 
+Weekly Dependabot version updates use one group for GitHub Actions and one for the npm package
+under `distribution/tree-sitter-mermaid/`. Each ecosystem permits one open version-update PR.
+The npm group keeps related tooling such as `tree-sitter-cli` and `web-tree-sitter` in the same
+review. Other npm workspaces are outside this configuration.
+
 ## Workspace Theme Acceptance
 
 Production crates expose no `internal-theme-acceptance` Cargo feature. The non-published
