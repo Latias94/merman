@@ -3,6 +3,7 @@ use super::super::model::GraphGroupKind;
 use super::cell::{
     DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions, stroke_route_char,
 };
+use super::conflict::{BlockerWitnesses, ReservationKind};
 use super::label::RoutedLabelPlacement;
 use super::path::StepDirection;
 use super::plan::{
@@ -15,6 +16,7 @@ use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use merman_model::{OperationControl, OperationPhase};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
 
@@ -107,6 +109,14 @@ fn terminal_claim_is_compatible(
             .is_some_and(|route| route.owner.endpoint_id(claim.endpoint) == endpoint_id)
 }
 
+fn terminal_claim_is_transverse(claim: &TerminalClaim, directions: u8) -> bool {
+    let claim_axis = match claim.point_direction {
+        StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+        StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+    };
+    !claim.primary && super::cell::is_transverse_crossing(directions, claim_axis)
+}
+
 fn terminal_claims_allow_route_cell(
     existing_routes: &[PreparedRoute],
     owner: &RouteOwner,
@@ -122,14 +132,10 @@ fn terminal_claims_allow_route_cell(
                 .checkpoint_at(OperationPhase::Layout)
                 .map_err(AsciiError::Cancelled)?;
             resources.charge_layout_work(1)?;
-            let claim_axis = match claim.point_direction {
-                StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
-                StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
-            };
             // Alternative marker positions are opportunities, not occupied terminals.
             // A transverse crossing preserves the committed heads; later marker
             // admission checks the crossing's owner before using this position.
-            if !claim.primary && super::cell::is_transverse_crossing(directions, claim_axis) {
+            if terminal_claim_is_transverse(claim, directions) {
                 continue;
             }
             if existing_routes
@@ -265,13 +271,6 @@ impl RouteCandidateScore {
 }
 
 impl RouteBounds {
-    pub(super) fn intersects(self, rect: OccupiedRect) -> bool {
-        self.min_x < rect.right
-            && rect.x <= self.max_x
-            && self.min_y < rect.bottom
-            && rect.y <= self.max_y
-    }
-
     fn include(&mut self, coord: CanvasCoord) {
         self.min_x = self.min_x.min(coord.x);
         self.max_x = self.max_x.max(coord.x);
@@ -310,6 +309,12 @@ struct MarkerOccupant {
     endpoint: MarkerEndpoint,
     point_direction: StepDirection,
     shared_group: Option<usize>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct LabelOccupant {
+    reservation: OccupiedRect,
+    canonical_edge_index: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -417,6 +422,8 @@ pub(super) struct SceneOccupancy<'layout> {
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     // Includes each label's text and the clear perpendicular gap to its host.
     labels: HashSet<CanvasCoord>,
+    label_owners: Vec<LabelOccupant>,
+    blockers: RefCell<Option<BlockerWitnesses>>,
     pub(super) protected: Rc<ProtectedScene<'layout>>,
     pub(super) label_lane_radius: usize,
     control: OperationControl,
@@ -518,6 +525,8 @@ impl<'layout> SceneOccupancy<'layout> {
             source_ports: HashMap::default(),
             markers: HashMap::default(),
             labels: HashSet::default(),
+            label_owners: Vec::new(),
+            blockers: RefCell::new(None),
             protected,
             label_lane_radius,
             control: execution.cloned_control(),
@@ -542,6 +551,233 @@ impl<'layout> SceneOccupancy<'layout> {
         self.control
             .checkpoint_at(OperationPhase::Layout)
             .map_err(AsciiError::Cancelled)
+    }
+
+    /// Enables evidence only for the probes whose rejected reservations will be repaired.
+    pub(super) fn begin_blocker_collection(&self, resources: &ResourceContext) -> Result<()> {
+        self.checkpoint_layout()?;
+        let witnesses = BlockerWitnesses::try_new(resources)?;
+        *self.blockers.borrow_mut() = Some(witnesses);
+        Ok(())
+    }
+
+    /// Disables collection and transfers bounded evidence to the repair planner.
+    pub(super) fn take_blocker_collection(
+        &self,
+        resources: &ResourceContext,
+    ) -> Result<Option<BlockerWitnesses>> {
+        self.checkpoint_layout()?;
+        resources.checkpoint()?;
+        Ok(self.blockers.borrow_mut().take())
+    }
+
+    fn collecting_blockers(&self) -> bool {
+        self.blockers.borrow().is_some()
+    }
+
+    fn record_semantic_blocker(
+        &self,
+        canonical_edge_index: usize,
+        kind: ReservationKind,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        self.checkpoint_layout()?;
+        if let Some(witnesses) = self.blockers.borrow_mut().as_mut() {
+            witnesses.record(canonical_edge_index, kind, resources)?;
+        }
+        Ok(())
+    }
+
+    fn record_route_blocker(
+        &self,
+        routes: &[PreparedRoute],
+        route_index: usize,
+        kind: ReservationKind,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        let route = routes
+            .get(route_index)
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: "graph",
+                feature: "reservation without semantic route ownership",
+            })?;
+        self.record_semantic_blocker(route.owner.canonical_edge_index, kind, resources)
+    }
+
+    fn record_static_restriction(&self, resources: &ResourceContext) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        self.checkpoint_layout()?;
+        resources.charge_layout_work(1)?;
+        if let Some(witnesses) = self.blockers.borrow_mut().as_mut() {
+            witnesses.static_restriction = true;
+        }
+        Ok(())
+    }
+
+    fn record_capacity_restriction(&self, resources: &ResourceContext) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        self.checkpoint_layout()?;
+        resources.charge_layout_work(1)?;
+        if let Some(witnesses) = self.blockers.borrow_mut().as_mut() {
+            witnesses.capacity_restriction = true;
+        }
+        Ok(())
+    }
+
+    fn record_label_blockers(&self, coord: CanvasCoord, resources: &ResourceContext) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        for label in &self.label_owners {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if label.reservation.contains(coord.x, coord.y) {
+                self.record_semantic_blocker(
+                    label.canonical_edge_index,
+                    ReservationKind::Label,
+                    resources,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn record_terminal_claim_blockers(
+        &self,
+        routes: &[PreparedRoute],
+        owner: &RouteOwner,
+        claims: &[TerminalClaim],
+        directions: u8,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        let mut unrelated = false;
+        for claim in claims {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if terminal_claim_is_transverse(claim, directions) {
+                continue;
+            }
+            let incident = routes.get(claim.route_index).is_some_and(|route| {
+                let endpoint = route.owner.endpoint_id(claim.endpoint);
+                endpoint == owner.from || endpoint == owner.to
+            });
+            if !incident {
+                unrelated = true;
+                self.record_route_blocker(
+                    routes,
+                    claim.route_index,
+                    ReservationKind::Port,
+                    resources,
+                )?;
+            }
+        }
+        if !unrelated {
+            // Every claim is individually incident, but their mixture has no single
+            // common endpoint. Both incident sets participate in this exact rejection.
+            for claim in claims {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                if !terminal_claim_is_transverse(claim, directions) {
+                    self.record_route_blocker(
+                        routes,
+                        claim.route_index,
+                        ReservationKind::Port,
+                        resources,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn record_marker_blockers(
+        &self,
+        routes: &[PreparedRoute],
+        coord: CanvasCoord,
+        marker: MarkerOccupant,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        self.record_route_blocker(
+            routes,
+            marker.route_index,
+            ReservationKind::Marker,
+            resources,
+        )?;
+        if marker.shared_group.is_some() {
+            // A shared marker stores one representative. Its other materialized
+            // contributors are equally responsible, even after replay changes that index.
+            for route in routes {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                if route.owner.shared_marker_group(marker.endpoint, coord) != marker.shared_group
+                    || !route.plan.requests_marker(marker.endpoint)
+                {
+                    continue;
+                }
+                let candidate = route.plan.terminal_candidate(marker.endpoint, "graph")?;
+                if candidate.coord == coord
+                    && !route.plan.is_cell_suppressed(candidate.cell)
+                    && route
+                        .plan
+                        .cells
+                        .get(candidate.cell.index())
+                        .is_some_and(|cell| cell.kind == PlannedRouteCellKind::EdgeArrow)
+                {
+                    self.record_semantic_blocker(
+                        route.owner.canonical_edge_index,
+                        ReservationKind::Marker,
+                        resources,
+                    )?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn record_reserved_cell_blockers(
+        &self,
+        routes: &[PreparedRoute],
+        coord: CanvasCoord,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        if !self.collecting_blockers() {
+            return Ok(());
+        }
+        if let Some(marker) = self.markers.get(&coord) {
+            self.record_marker_blockers(routes, coord, *marker, resources)?;
+        }
+        if self.labels.contains(&coord) {
+            self.record_label_blockers(coord, resources)?;
+        }
+        if let Some(cell) = self.route_cells.get(&coord) {
+            for owner in &cell.owners {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                self.record_route_blocker(
+                    routes,
+                    owner.route_index,
+                    ReservationKind::Route,
+                    resources,
+                )?;
+            }
+        }
+        Ok(())
     }
 
     fn checkpoint_layout_scan(&self, iteration: usize) -> Result<()> {
@@ -689,6 +925,7 @@ impl<'layout> SceneOccupancy<'layout> {
         {
             let Some(candidates) = plan.marker_candidates(endpoint, diagram_type, resources)?
             else {
+                self.record_capacity_restriction(resources)?;
                 return Ok(None);
             };
             if candidates.is_empty() {
@@ -731,9 +968,11 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         if marker_berths[0].is_some() && marker_berths[0] == marker_berths[1] {
+            self.record_capacity_restriction(resources)?;
             return Ok(None);
         }
-        let Some(placements) = self.plan_label_placements(plan, owner, marker_berths, resources)?
+        let Some(placements) =
+            self.plan_label_placements(existing_routes, plan, owner, marker_berths, resources)?
         else {
             return Ok(None);
         };
@@ -798,6 +1037,7 @@ impl<'layout> SceneOccupancy<'layout> {
     ) -> Result<bool> {
         self.checkpoint_layout()?;
         if self.labels.contains(&coord) {
+            self.record_label_blockers(coord, resources)?;
             return Ok(false);
         }
         if !self.protected.all_at(coord, resources, |protected| {
@@ -838,6 +1078,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 || is_own_terminal_escape
                 || is_owned_group_border
         })? {
+            self.record_static_restriction(resources)?;
             return Ok(false);
         }
         if let Some(marker) = self.markers.get(&coord) {
@@ -869,6 +1110,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 })
             });
             if !shares_terminal {
+                self.record_marker_blockers(existing_routes, coord, *marker, resources)?;
                 return Ok(false);
             }
         }
@@ -882,12 +1124,23 @@ impl<'layout> SceneOccupancy<'layout> {
                 &self.control,
             )?
         {
+            self.record_terminal_claim_blockers(
+                existing_routes,
+                owner,
+                claims,
+                directions,
+                resources,
+            )?;
             return Ok(false);
         }
+        let mut clear = true;
         if let Some(occupied) = self.route_cells.get(&coord) {
             self.checkpoint_layout()?;
             resources.charge_layout_work(occupied.owners.len().max(1))?;
-            for shared_owner in &occupied.owners {
+            for (owner_index, shared_owner) in occupied.owners.iter().enumerate() {
+                if self.collecting_blockers() {
+                    self.checkpoint_layout_scan(owner_index)?;
+                }
                 let existing = &existing_routes[shared_owner.route_index];
                 let reverse_pair = owner.from != owner.to
                     && existing.owner.from == owner.to
@@ -915,43 +1168,44 @@ impl<'layout> SceneOccupancy<'layout> {
                                 && current.end.allows_escape(coord))
                     },
                 );
-                if !shares_allocated_channel
+                let unrelated_sharing = !shares_allocated_channel
                     && !shares_terminal_ray
                     && !shared_contact
-                    && !transverse
-                {
-                    // Collinear sharing is a semantic decision. An unrelated route may
-                    // cross a channel, but cannot join it and invent another endpoint pair.
-                    return Ok(false);
-                }
-                if (owner.shared_channel_group().is_some()
+                    && !transverse;
+                let unrelated_channel = (owner.shared_channel_group().is_some()
                     || existing.owner.shared_channel_group().is_some())
                     && !shares_allocated_channel
                     && !shared_contact
-                    && !transverse
+                    && !transverse;
+                let conflicting_stroke =
+                    owner.stroke != existing.owner.stroke && !shared_contact && !transverse;
+                let conflicting_direction = reverse_pair && !shared_contact && !transverse;
+                // Collinear sharing, channel membership, stroke identity, and authored
+                // direction use the same guards with or without witness collection.
+                if unrelated_sharing
+                    || unrelated_channel
+                    || conflicting_stroke
+                    || conflicting_direction
                 {
-                    // A shared channel has one real common endpoint. Another contribution
-                    // cannot join it and imply new source/target combinations.
-                    return Ok(false);
-                }
-                if owner.stroke != existing.owner.stroke && !shared_contact && !transverse {
-                    // A painted cell cannot retain two stroke identities. Reject the route
-                    // here so another lane can be tried before emission starts.
-                    return Ok(false);
-                }
-                if reverse_pair && !shared_contact && !transverse {
-                    // Opposite authored edges need distinct transit paths. Sharing the
-                    // same stroke would erase which edge owns each direction and label;
-                    // a perpendicular crossing preserves both independent paths.
-                    return Ok(false);
+                    self.record_route_blocker(
+                        existing_routes,
+                        shared_owner.route_index,
+                        ReservationKind::Route,
+                        resources,
+                    )?;
+                    if !self.collecting_blockers() {
+                        return Ok(false);
+                    }
+                    clear = false;
                 }
             }
         }
-        Ok(true)
+        Ok(clear)
     }
 
     fn plan_label_placements(
         &self,
+        existing_routes: &[PreparedRoute],
         plan: &RoutePlan,
         owner: &RouteOwner,
         marker_berths: [Option<CanvasCoord>; 2],
@@ -1017,6 +1271,13 @@ impl<'layout> SceneOccupancy<'layout> {
                         && label_anchor_contains(anchor, cell.coord, cell.segment)
                         && self.route_cells.contains_key(&cell.coord)
                     {
+                        if self.collecting_blockers() {
+                            self.record_reserved_cell_blockers(
+                                existing_routes,
+                                cell.coord,
+                                resources,
+                            )?;
+                        }
                         return Ok(None);
                     }
                 }
@@ -1056,6 +1317,7 @@ impl<'layout> SceneOccupancy<'layout> {
                             })
                         })
                     && self.plan_label_candidate_is_clear(
+                        existing_routes,
                         plan,
                         anchor,
                         footprint,
@@ -1083,6 +1345,7 @@ impl<'layout> SceneOccupancy<'layout> {
 
     fn plan_label_candidate_is_clear(
         &self,
+        existing_routes: &[PreparedRoute],
         plan: &RoutePlan,
         anchor: LabelAnchor,
         candidate: OccupiedRect,
@@ -1100,13 +1363,15 @@ impl<'layout> SceneOccupancy<'layout> {
         if !self.protected.all_in(reservation, resources, |protected| {
             !protected.shape.intersects(reservation)
         })? {
+            self.record_static_restriction(resources)?;
             return Ok(false);
         }
 
-        if !self.label_reading_clearance_is_clear(candidate, resources)? {
+        if !self.label_reading_clearance_is_clear(existing_routes, candidate, resources)? {
             return Ok(false);
         }
 
+        let mut clear = true;
         for y in reservation.y..reservation.bottom {
             for x in reservation.x..reservation.right {
                 self.checkpoint_layout()?;
@@ -1116,9 +1381,16 @@ impl<'layout> SceneOccupancy<'layout> {
                     || self.labels.contains(&coord)
                     || self.route_cells.contains_key(&coord)
                 {
-                    return Ok(false);
+                    self.record_reserved_cell_blockers(existing_routes, coord, resources)?;
+                    if !self.collecting_blockers() {
+                        return Ok(false);
+                    }
+                    clear = false;
                 }
             }
+        }
+        if !clear {
+            return Ok(false);
         }
 
         self.checkpoint_layout()?;
@@ -1275,21 +1547,22 @@ impl<'layout> SceneOccupancy<'layout> {
                                         .allows_endpoint_port(&owner.to, candidate.coord)))))
             })?
         {
+            self.record_static_restriction(resources)?;
             return Ok(MarkerCandidateDisposition::Blocked);
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return Ok(occupied_marker_disposition(
-                existing_routes,
-                owner,
-                endpoint,
-                candidate,
-                *marker,
-            ));
+            let disposition =
+                occupied_marker_disposition(existing_routes, owner, endpoint, candidate, *marker);
+            if disposition == MarkerCandidateDisposition::Blocked {
+                self.record_marker_blockers(existing_routes, candidate.coord, *marker, resources)?;
+            }
+            return Ok(disposition);
         }
 
         let claims = self.terminal_claims.get(&candidate.coord);
         if let Some(claims) = claims {
+            let mut clear = true;
             for claim in claims {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
@@ -1299,15 +1572,40 @@ impl<'layout> SceneOccupancy<'layout> {
                     endpoint_id,
                     candidate.point_direction,
                 ) {
-                    return Ok(MarkerCandidateDisposition::Blocked);
+                    self.record_route_blocker(
+                        existing_routes,
+                        claim.route_index,
+                        ReservationKind::Port,
+                        resources,
+                    )?;
+                    if !self.collecting_blockers() {
+                        return Ok(MarkerCandidateDisposition::Blocked);
+                    }
+                    clear = false;
                 }
+            }
+            if !clear {
+                return Ok(MarkerCandidateDisposition::Blocked);
             }
         }
 
         if let Some(cell) = self.route_cells.get(&candidate.coord) {
             let Some(claims) = claims else {
+                if self.collecting_blockers() {
+                    for cell_owner in &cell.owners {
+                        self.checkpoint_layout()?;
+                        resources.charge_layout_work(1)?;
+                        self.record_route_blocker(
+                            existing_routes,
+                            cell_owner.route_index,
+                            ReservationKind::Route,
+                            resources,
+                        )?;
+                    }
+                }
                 return Ok(MarkerCandidateDisposition::Blocked);
             };
+            let mut clear = true;
             for cell_owner in &cell.owners {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
@@ -1328,8 +1626,20 @@ impl<'layout> SceneOccupancy<'layout> {
                     }
                 }
                 if !matched {
-                    return Ok(MarkerCandidateDisposition::Blocked);
+                    self.record_route_blocker(
+                        existing_routes,
+                        cell_owner.route_index,
+                        ReservationKind::Route,
+                        resources,
+                    )?;
+                    if !self.collecting_blockers() {
+                        return Ok(MarkerCandidateDisposition::Blocked);
+                    }
+                    clear = false;
                 }
+            }
+            if !clear {
+                return Ok(MarkerCandidateDisposition::Blocked);
             }
         }
 
@@ -1358,10 +1668,12 @@ impl<'layout> SceneOccupancy<'layout> {
             {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
-                if self.labels.contains(&CanvasCoord {
+                let coord = CanvasCoord {
                     x,
                     ..candidate.coord
-                }) {
+                };
+                if self.labels.contains(&coord) {
+                    self.record_label_blockers(coord, resources)?;
                     return Ok(false);
                 }
             }
@@ -1403,6 +1715,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     || !plan.labels.is_empty()
                     || !existing.plan.labels.is_empty())
                 {
+                    self.record_marker_blockers(routes, coord, *marker, resources)?;
                     return Ok(false);
                 }
             }
@@ -1664,17 +1977,22 @@ impl<'layout> SceneOccupancy<'layout> {
                                 )))))
             })?
         {
+            self.record_static_restriction(resources)?;
             return Ok(MarkerCandidateDisposition::Blocked);
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return Ok(occupied_marker_disposition(
+            let disposition = occupied_marker_disposition(
                 routes,
                 &routes[route_index].owner,
                 endpoint,
                 candidate,
                 *marker,
-            ));
+            );
+            if disposition == MarkerCandidateDisposition::Blocked {
+                self.record_marker_blockers(routes, candidate.coord, *marker, resources)?;
+            }
+            return Ok(disposition);
         }
 
         let Some(route_cell) = self.route_cells.get(&candidate.coord) else {
@@ -1694,12 +2012,27 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(MarkerCandidateDisposition::Blocked);
         }
         let Some(claims) = self.terminal_claims.get(&candidate.coord) else {
+            if route_cell.owners.len() != 1 && self.collecting_blockers() {
+                for owner in &route_cell.owners {
+                    self.checkpoint_layout()?;
+                    resources.charge_layout_work(1)?;
+                    if owner.route_index != route_index {
+                        self.record_route_blocker(
+                            routes,
+                            owner.route_index,
+                            ReservationKind::Route,
+                            resources,
+                        )?;
+                    }
+                }
+            }
             return Ok(if route_cell.owners.len() == 1 {
                 MarkerCandidateDisposition::Available
             } else {
                 MarkerCandidateDisposition::Blocked
             });
         };
+        let mut clear = true;
         for owner in &route_cell.owners {
             if owner.route_index == route_index {
                 if owner.cell != candidate.cell {
@@ -1725,10 +2058,23 @@ impl<'layout> SceneOccupancy<'layout> {
                 }
             }
             if !compatible {
-                return Ok(MarkerCandidateDisposition::Blocked);
+                self.record_route_blocker(
+                    routes,
+                    owner.route_index,
+                    ReservationKind::Route,
+                    resources,
+                )?;
+                if !self.collecting_blockers() {
+                    return Ok(MarkerCandidateDisposition::Blocked);
+                }
+                clear = false;
             }
         }
-        Ok(MarkerCandidateDisposition::Available)
+        Ok(if clear {
+            MarkerCandidateDisposition::Available
+        } else {
+            MarkerCandidateDisposition::Blocked
+        })
     }
 
     fn suppress_route_terminal_tail(
@@ -1828,6 +2174,7 @@ impl<'layout> SceneOccupancy<'layout> {
 
     pub(super) fn label_candidate_is_clear(
         &self,
+        existing_routes: &[PreparedRoute],
         route_index: usize,
         owner: &RouteOwner,
         anchor: LabelAnchor,
@@ -1845,20 +2192,31 @@ impl<'layout> SceneOccupancy<'layout> {
         if !self.protected.all_in(reservation, resources, |protected| {
             !protected.shape.intersects(reservation)
         })? {
+            self.record_static_restriction(resources)?;
             return Ok(false);
         }
 
-        if !self.label_reading_clearance_is_clear(candidate, resources)? {
+        if !self.label_reading_clearance_is_clear(existing_routes, candidate, resources)? {
             return Ok(false);
         }
 
+        let mut clear = true;
         for y in reservation.y..reservation.bottom {
             for x in reservation.x..reservation.right {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
                 if self.markers.contains_key(&coord) || self.labels.contains(&coord) {
-                    return Ok(false);
+                    if let Some(marker) = self.markers.get(&coord) {
+                        self.record_marker_blockers(existing_routes, coord, *marker, resources)?;
+                    }
+                    if self.labels.contains(&coord) {
+                        self.record_label_blockers(coord, resources)?;
+                    }
+                    if !self.collecting_blockers() {
+                        return Ok(false);
+                    }
+                    clear = false;
                 }
                 if let Some(route_cell) = self.route_cells.get(&coord) {
                     self.checkpoint_layout()?;
@@ -1868,13 +2226,22 @@ impl<'layout> SceneOccupancy<'layout> {
                         if owner.route_index != route_index
                             || !label_anchor_contains(anchor, coord, owner.segment)
                         {
-                            return Ok(false);
+                            self.record_route_blocker(
+                                existing_routes,
+                                owner.route_index,
+                                ReservationKind::Route,
+                                resources,
+                            )?;
+                            if !self.collecting_blockers() {
+                                return Ok(false);
+                            }
+                            clear = false;
                         }
                     }
                 }
             }
         }
-        Ok(true)
+        Ok(clear)
     }
 
     fn label_region_is_clear(
@@ -1920,6 +2287,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     || candidate.y <= group.y
                     || candidate.bottom > group.bottom()
                 {
+                    self.record_static_restriction(resources)?;
                     return Ok(false);
                 }
             } else if (group.id == owner.from
@@ -1930,6 +2298,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 && candidate.y <= group.bottom()
                 && group.y < candidate.bottom
             {
+                self.record_static_restriction(resources)?;
                 return Ok(false);
             }
         }
@@ -1938,12 +2307,14 @@ impl<'layout> SceneOccupancy<'layout> {
 
     fn label_reading_clearance_is_clear(
         &self,
+        existing_routes: &[PreparedRoute],
         candidate: OccupiedRect,
         resources: &ResourceContext,
     ) -> Result<bool> {
         // The ordinary footprint check owns the interior. Reserve only the two adjacent
         // columns here so independent labels require exactly one blank reading column.
         let right = resources.checked_grid_add(candidate.right, 1)?;
+        let mut clear = true;
         for y in candidate.y..candidate.bottom {
             for x in [candidate.x.checked_sub(1), Some(right - 1)]
                 .into_iter()
@@ -1960,19 +2331,43 @@ impl<'layout> SceneOccupancy<'layout> {
                         )
                     })
                 {
-                    return Ok(false);
+                    if self.labels.contains(&coord) {
+                        self.record_label_blockers(coord, resources)?;
+                    }
+                    if let Some(marker) = self.markers.get(&coord)
+                        && matches!(
+                            marker.point_direction,
+                            StepDirection::Up | StepDirection::Down
+                        )
+                    {
+                        self.record_marker_blockers(existing_routes, coord, *marker, resources)?;
+                    }
+                    if !self.collecting_blockers() {
+                        return Ok(false);
+                    }
+                    clear = false;
                 }
             }
         }
-        Ok(true)
+        Ok(clear)
     }
 
     fn occupy_label(
         &mut self,
         footprint: OccupiedRect,
+        canonical_edge_index: usize,
         resources: &mut ResourceContext,
     ) -> Result<()> {
         let footprint_cells = footprint.cell_count(resources)?;
+        self.checkpoint_layout()?;
+        resources.charge_layout_work(1)?;
+        self.label_owners
+            .try_reserve(1)
+            .map_err(|_| layout_allocation_failed())?;
+        self.label_owners.push(LabelOccupant {
+            reservation: footprint,
+            canonical_edge_index,
+        });
         self.occupied_extent.x = self
             .occupied_extent
             .x

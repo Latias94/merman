@@ -83,7 +83,7 @@ impl<'layout> SceneOccupancy<'layout> {
                             feature: "finalized edge label without a host reservation",
                         })?;
                 resources.charge_layout_work(reservation.cell_count(resources)?)?;
-                rebuilt.occupy_label(reservation, resources)?;
+                rebuilt.occupy_label(reservation, route.owner.canonical_edge_index, resources)?;
             }
         }
         // Marker relocation changes the plan's anchor. Preserve the original candidate
@@ -185,6 +185,7 @@ mod tests {
                 &scene.target_ports,
                 &scene.markers,
                 &scene.labels,
+                &scene.label_owners,
                 &scene.protected,
                 scene.occupied_extent,
             )
@@ -298,6 +299,12 @@ mod tests {
                                 assert!(rebuilt.labels.contains(&CanvasCoord { x, y }));
                             }
                         }
+                        assert!(rebuilt.label_owners.iter().any(|owner| {
+                            owner.canonical_edge_index == route.owner.canonical_edge_index
+                                && owner
+                                    .reservation
+                                    .contains(label.placement.x(), label.placement.y())
+                        }));
                     }
                     assert_eq!(geometry(&scene), original);
                 }
@@ -441,10 +448,12 @@ mod tests {
                 .any(|claim| !claim.primary)
         );
         let plan = routes[1].plan.clone();
+        scene.begin_blocker_collection(&resources).unwrap();
         scene = scene
             .rebuild_for_routes(&routes, &[0], &mut resources, "flowchart")
             .unwrap();
         let removed_ports = routes.remove(0).plan.attachments.unwrap();
+        assert!(scene.blockers.borrow().is_none());
         assert_eq!(routes[0].plan, plan);
         assert_eq!(scene.markers.len(), 2);
         assert!(scene.markers.contains_key(&CanvasCoord { x: 5, y: 0 }));
@@ -460,6 +469,35 @@ mod tests {
             1
         );
         assert_eq!(scene.occupied_extent(), CanvasCoord { x: 5, y: 3 });
+        assert_eq!(scene.label_owners.len(), 1);
+        assert_eq!(scene.label_owners[0].canonical_edge_index, 77);
+        let owner =
+            crate::graph::routing::RouteOwner::for_test(100, "other-source", "other-target");
+        scene.begin_blocker_collection(&resources).unwrap();
+        for coord in [CanvasCoord { x: 1, y: 1 }, CanvasCoord { x: 5, y: 0 }] {
+            assert!(
+                !scene
+                    .route_cell_is_clear(
+                        &routes,
+                        &owner,
+                        None,
+                        coord,
+                        crate::graph::routing::cell::DIR_LEFT
+                            | crate::graph::routing::cell::DIR_RIGHT,
+                        &mut resources,
+                    )
+                    .unwrap()
+            );
+        }
+        let evidence = scene.take_blocker_collection(&resources).unwrap().unwrap();
+        assert_eq!(evidence.blockers.len(), 1);
+        assert_eq!(evidence.blockers[0].canonical_edge_index, 77);
+        assert!(
+            evidence.blockers[0].contains(crate::graph::routing::conflict::ReservationKind::Label)
+        );
+        assert!(
+            evidence.blockers[0].contains(crate::graph::routing::conflict::ReservationKind::Marker)
+        );
     }
 
     #[test]

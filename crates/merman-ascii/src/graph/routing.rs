@@ -18,10 +18,12 @@ use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use rustc_hash::FxHashMap as HashMap;
 use std::cmp::Ordering;
+use std::rc::Rc;
 
 mod allocation;
 mod capacity;
 mod cell;
+mod conflict;
 mod geometry;
 mod label;
 mod occupancy;
@@ -71,7 +73,44 @@ pub(super) struct RouteScenePlan<'a> {
     routes: Vec<PreparedRoute>,
     extent: (usize, usize),
     planned_cell_count: usize,
-    labels: RoutedLabelCatalogPlan<'a>,
+    labels: Rc<RoutedLabelCatalogPlan<'a>>,
+    quality_requested: bool,
+}
+
+pub(super) struct SceneRoutingInput<'graph> {
+    canonical: CanonicalEdges,
+    labels: Rc<RoutedLabelCatalogPlan<'graph>>,
+    topology: Option<GraphGroupTopology<'graph>>,
+    independent_incidents: Vec<bool>,
+}
+
+impl<'graph> SceneRoutingInput<'graph> {
+    pub(super) fn try_new(
+        graph: &'graph AsciiGraph,
+        edges: &'graph [AsciiGraphEdge],
+        charset: &GraphCharset,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
+        let topology = if graph.groups.is_empty() {
+            None
+        } else {
+            Some(GraphGroupTopology::try_new(graph, resources)?)
+        };
+        let canonical = canonicalize_edges(edges, resources)?;
+        let labels = Rc::new(RoutedLabelCatalogPlan::try_new(
+            edges,
+            &canonical.source_indices,
+            charset.width_profile,
+            resources,
+        )?);
+        let independent_incidents = independent_incident_demand(&canonical.values, resources)?;
+        Ok(Self {
+            canonical,
+            labels,
+            topology,
+            independent_incidents,
+        })
+    }
 }
 
 pub(super) struct RouteScene {
@@ -125,6 +164,32 @@ struct RouteOwner {
 }
 
 impl RouteOwner {
+    fn try_clone(&self, resources: &ResourceContext) -> Result<Self> {
+        resources.charge_layout_work(resources.checked_work_add(
+            resources.checked_work_add(self.from.len(), self.to.len())?,
+            self.boundary_group_indices.len(),
+        )?)?;
+        let mut from = String::new();
+        from.try_reserve_exact(self.from.len())
+            .map_err(|_| layout_allocation_failed())?;
+        from.push_str(&self.from);
+        let mut to = String::new();
+        to.try_reserve_exact(self.to.len())
+            .map_err(|_| layout_allocation_failed())?;
+        to.push_str(&self.to);
+        let mut boundary_group_indices = Vec::new();
+        boundary_group_indices
+            .try_reserve_exact(self.boundary_group_indices.len())
+            .map_err(|_| layout_allocation_failed())?;
+        boundary_group_indices.extend_from_slice(&self.boundary_group_indices);
+        Ok(Self {
+            from,
+            to,
+            boundary_group_indices,
+            ..*self
+        })
+    }
+
     fn shared_channel_group(&self) -> Option<usize> {
         self.allocated_branch.map(|branch| branch.group)
     }
@@ -364,7 +429,7 @@ impl RouteLabelTransform {
 
 #[cfg(test)]
 pub(super) fn prepare_route_scene_with_resources<'a>(
-    graph: &AsciiGraph,
+    graph: &'a AsciiGraph,
     graph_layout: &GraphLayout,
     edges: &'a [AsciiGraphEdge],
     charset: &GraphCharset,
@@ -384,8 +449,9 @@ pub(super) fn prepare_route_scene_with_resources<'a>(
     )
 }
 
+#[cfg(test)]
 pub(super) fn prepare_route_scene_with_execution<'a>(
-    graph: &AsciiGraph,
+    graph: &'a AsciiGraph,
     graph_layout: &GraphLayout,
     edges: &'a [AsciiGraphEdge],
     charset: &GraphCharset,
@@ -393,28 +459,95 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RouteScenePlan<'a>> {
+    let input = SceneRoutingInput::try_new(graph, edges, charset, resources)?;
+    route_scene_with_input(
+        graph,
+        graph_layout,
+        &input,
+        charset,
+        policy,
+        resources,
+        execution,
+    )
+}
+
+pub(super) fn route_scene_with_input<'a>(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    input: &SceneRoutingInput<'a>,
+    charset: &GraphCharset,
+    policy: &crate::options::GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<RouteScenePlan<'a>> {
+    let local_budget = crate::operation::GraphPlanningBudget::default();
+    let execution = execution.with_graph_planning(&local_budget);
+    let incumbent = route_scene_kernel(
+        graph,
+        graph_layout,
+        input,
+        charset,
+        policy,
+        false,
+        resources,
+        execution,
+    )?;
+    let quality = &execution
+        .graph_planning()
+        .expect("scene planning budget")
+        .quality;
+    if !incumbent.quality_requested || quality.remaining().0 == 0 || quality.remaining().1 == 0 {
+        return Ok(incumbent);
+    }
+    match route_scene_kernel(
+        graph,
+        graph_layout,
+        input,
+        charset,
+        policy,
+        true,
+        resources,
+        execution,
+    ) {
+        Ok(improved) => Ok(improved),
+        Err(
+            AsciiError::RoutingSearchExhausted { .. } | AsciiError::PortCapacityExceeded { .. },
+        ) => Ok(incumbent),
+        Err(error) => Err(error),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn route_scene_kernel<'a>(
+    graph: &AsciiGraph,
+    graph_layout: &GraphLayout,
+    input: &SceneRoutingInput<'a>,
+    charset: &GraphCharset,
+    policy: &crate::options::GraphLayoutPolicy,
+    quality: bool,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<RouteScenePlan<'a>> {
+    let budget = execution.graph_planning().expect("scene planning budget");
+    let allowance = if quality {
+        &budget.quality
+    } else {
+        &budget.feasibility
+    };
+    let mut start_work = resources.layout_work_used();
+    let initial_allowance = allowance.remaining().1;
     execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    let topology = if graph.groups.is_empty() {
-        None
-    } else {
-        Some(GraphGroupTopology::try_new(graph, resources)?)
-    };
-    let canonical_edges = canonicalize_edges(edges, resources)?;
-    let label_plans = RoutedLabelCatalogPlan::try_new(
-        edges,
-        &canonical_edges.source_indices,
-        charset.width_profile,
-        resources,
-    )?;
+    let topology = &input.topology;
+    let label_plans = &input.labels;
     let CanonicalEdges {
         values: canonical_edges,
         source_indices,
-    } = canonical_edges;
+    } = &input.canonical;
     let branch_allocation = allocation::BranchAllocation::try_new(
         graph,
         graph_layout,
-        &canonical_edges,
+        canonical_edges,
         charset,
         resources,
         execution,
@@ -422,7 +555,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     capacity::preflight_fixed_port_capacity(
         graph,
         graph_layout,
-        &canonical_edges,
+        canonical_edges,
         &branch_allocation,
         charset,
         resources,
@@ -451,21 +584,29 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         execution,
     )?;
 
-    let route_order = plan_route_order(graph, graph_layout, &canonical_edges, resources)?;
-    let mut repair_budget = repair::SceneRepairBudget::default();
+    let route_order = plan_route_order(graph, graph_layout, canonical_edges, resources)?;
+    let mut repair_budget = repair::SceneRepairBudget::for_execution(execution);
+    let mut quality_requested = false;
 
     let mut pending_self_loop_start = None::<usize>;
     for edge_index in route_order {
         let edge = &canonical_edges[edge_index];
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        allowance.account_scene_work(start_work, initial_allowance, resources);
+        if allowance.remaining().1 == 0 {
+            return Err(AsciiError::RoutingSearchExhausted {
+                diagram_type: graph.diagram_type(),
+                edge_index: source_indices[edge_index],
+            });
+        }
         if let Some(start) = pending_self_loop_start
             && (edge.from != routes[start].owner.from || edge.from != edge.to)
         {
             // Parallel self-loops form one nested route batch. Place their labels after all
             // return lanes are known, then protect the whole batch from subsequent edges.
-            for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+            for route_index in start..routes.len() {
                 allocate_committed_route_labels(
-                    route,
+                    &mut routes,
                     route_index,
                     &mut occupancy,
                     resources,
@@ -493,7 +634,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         let request = EdgeRouteRequest {
             graph,
             graph_layout,
-            edges: &canonical_edges,
+            edges: canonical_edges,
             from: &from,
             to: &to,
             edge_index,
@@ -610,18 +751,20 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 .and_then(|topology| topology.endpoint_index(&edge.from)),
             Some(GraphEndpointIndex::Group(_))
         );
+        allowance.account_scene_work(start_work, initial_allowance, resources);
         let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-        let needs_terminal_search = !honors_allocation
-            && (selected.is_none() || repair_budget.expansions != 0)
-            && selected.as_ref().is_none_or(|(score, _, plan)| {
-                route_needs_search(forward, *score, plan, defer_loop_labels)
-            });
+        let needs_terminal_search = selected.is_none()
+            || (quality || input.independent_incidents[edge_index])
+                && !honors_allocation
+                && selected.as_ref().is_some_and(|(score, _, plan)| {
+                    route_needs_search(forward, *score, plan, defer_loop_labels)
+                });
         if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
             // A searched loop can choose a different side from the predetermined lanes.
             // Protect earlier batch labels first, then re-admit the incumbent against them.
-            for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+            for route_index in start..routes.len() {
                 allocate_committed_route_labels(
-                    route,
+                    &mut routes,
                     route_index,
                     &mut occupancy,
                     resources,
@@ -642,23 +785,50 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 .map(|(score, plan)| (score, index, plan));
             }
         }
-        // Reconsider the bounded conflict component before a first-path search can spend
-        // the remaining operation budget exploring geometry that earlier routes occupy.
-        if selected.is_none()
-            && edge.from != edge.to
-            && repair::reorder_failed_route(
+        if needs_terminal_search && !quality {
+            occupancy.begin_blocker_collection(resources)?;
+            terminal::plan_direct_route(
                 request,
-                topology.as_ref(),
-                &label_plans,
-                &owner,
-                &mut routes,
-                &mut occupancy,
-                &mut repair_budget,
+                path::RouteObstacles {
+                    scene: &occupancy,
+                    routes: &routes,
+                    owner: &owner,
+                },
+                label_plans.descriptor(edge_index),
                 resources,
                 execution,
-            )?
-        {
-            continue;
+            )?;
+            let witnesses = occupancy
+                .take_blocker_collection(resources)?
+                .unwrap_or_default();
+            if selected.is_none() && !witnesses.blockers.is_empty() && edge.from != edge.to {
+                let repair_start = resources.layout_work_used();
+                let feasibility_before = allowance.remaining().1;
+                let repaired = repair::repair_blocked_scene(
+                    request,
+                    topology.as_ref(),
+                    label_plans,
+                    &owner,
+                    &witnesses,
+                    &mut routes,
+                    &mut occupancy,
+                    &mut repair_budget,
+                    resources,
+                    execution,
+                )?;
+                let feasibility_spent = feasibility_before.saturating_sub(allowance.remaining().1);
+                start_work = start_work.saturating_add(
+                    resources
+                        .layout_work_used()
+                        .saturating_sub(repair_start)
+                        .saturating_sub(feasibility_spent),
+                );
+                if repaired {
+                    quality_requested = true;
+                    continue;
+                }
+            }
+            occupancy.begin_blocker_collection(resources)?;
         }
         if needs_terminal_search
             && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
@@ -672,11 +842,27 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected
                     .as_ref()
                     .map(|(score, _, plan)| (*score, plan.attachments)),
-                if selected.is_some() {
-                    terminal::SearchBudget::Optional(&mut repair_budget.expansions)
+                terminal::SearchBudget::Limited(if quality && selected.is_some() {
+                    &execution
+                        .graph_planning()
+                        .expect("scene search budget")
+                        .quality_improvement
+                } else if quality {
+                    &execution
+                        .graph_planning()
+                        .expect("scene search budget")
+                        .quality
+                } else if selected.is_some() {
+                    &execution
+                        .graph_planning()
+                        .expect("scene search budget")
+                        .allocation
                 } else {
-                    terminal::SearchBudget::Required
-                },
+                    &execution
+                        .graph_planning()
+                        .expect("scene search budget")
+                        .feasibility
+                }),
                 resources,
                 execution,
             )?
@@ -684,8 +870,47 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             selected = Some((score, usize::MAX, plan));
             defer_loop_labels = false;
         }
+        if needs_terminal_search && !quality {
+            let witnesses = occupancy
+                .take_blocker_collection(resources)?
+                .unwrap_or_default();
+            if selected.is_none() && edge.from != edge.to {
+                let repair_start = resources.layout_work_used();
+                let feasibility_before = allowance.remaining().1;
+                let repaired = repair::repair_blocked_scene(
+                    request,
+                    topology.as_ref(),
+                    label_plans,
+                    &owner,
+                    &witnesses,
+                    &mut routes,
+                    &mut occupancy,
+                    &mut repair_budget,
+                    resources,
+                    execution,
+                )?;
+                let feasibility_spent = feasibility_before.saturating_sub(allowance.remaining().1);
+                start_work = start_work.saturating_add(
+                    resources
+                        .layout_work_used()
+                        .saturating_sub(repair_start)
+                        .saturating_sub(feasibility_spent),
+                );
+                if repaired {
+                    quality_requested = true;
+                    continue;
+                }
+            }
+        }
         let plan = match selected {
-            Some((_, _, plan)) => plan,
+            Some((score, _, plan)) => {
+                if !honors_allocation
+                    && route_needs_search(forward, score, &plan, defer_loop_labels)
+                {
+                    quality_requested = true;
+                }
+                plan
+            }
             None => {
                 return Err(AsciiError::RoutingSearchExhausted {
                     diagram_type: graph.diagram_type(),
@@ -717,7 +942,7 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             pending_self_loop_start.get_or_insert(route_index);
         } else {
             allocate_committed_route_labels(
-                &mut routes[route_index],
+                &mut routes,
                 route_index,
                 &mut occupancy,
                 resources,
@@ -728,15 +953,30 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
 
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
     if let Some(start) = pending_self_loop_start {
-        for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+        for route_index in start..routes.len() {
             allocate_committed_route_labels(
-                route,
+                &mut routes,
                 route_index,
                 &mut occupancy,
                 resources,
                 graph.diagram_type(),
             )?;
         }
+    }
+    if let Some(index) = validate::first_invalid_routes(
+        graph,
+        graph_layout,
+        canonical_edges,
+        &routes,
+        label_plans,
+        charset,
+        resources,
+        execution,
+    )? {
+        return Err(AsciiError::RoutingSearchExhausted {
+            diagram_type: graph.diagram_type(),
+            edge_index: source_indices[index],
+        });
     }
     let mut width = 0;
     let mut height = 0;
@@ -760,22 +1000,10 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         routes,
         extent: (width, height),
         planned_cell_count,
-        labels: label_plans,
+        labels: Rc::clone(label_plans),
+        quality_requested,
     };
-    if let Some(index) = validate::first_invalid_edge(
-        graph,
-        graph_layout,
-        &canonical_edges,
-        &scene,
-        charset,
-        resources,
-        execution,
-    )? {
-        return Err(AsciiError::RoutingSearchExhausted {
-            diagram_type: graph.diagram_type(),
-            edge_index: source_indices[index],
-        });
-    }
+    allowance.account_scene_work(start_work, initial_allowance, resources);
     Ok(scene)
 }
 
@@ -822,6 +1050,52 @@ fn plan_allocated_channel(
         request.charset,
         resources,
     )
+}
+
+fn independent_incident_demand(
+    edges: &[AsciiGraphEdge],
+    resources: &ResourceContext,
+) -> Result<Vec<bool>> {
+    let mut pairs = HashMap::<(&str, &str), usize>::default();
+    let mut loops = rustc_hash::FxHashSet::default();
+    pairs
+        .try_reserve(edges.len())
+        .map_err(|_| layout_allocation_failed())?;
+    loops
+        .try_reserve(edges.len())
+        .map_err(|_| layout_allocation_failed())?;
+    fn key(edge: &AsciiGraphEdge) -> (&str, &str) {
+        if edge.from <= edge.to {
+            (&edge.from, &edge.to)
+        } else {
+            (&edge.to, &edge.from)
+        }
+    }
+    for edge in edges.iter().filter(|edge| edge.stroke.is_visible()) {
+        resources.checkpoint()?;
+        resources
+            .charge_layout_work(resources.checked_work_add(edge.from.len(), edge.to.len())?)?;
+        let count = pairs.entry(key(edge)).or_default();
+        *count = resources.checked_work_add(*count, 1)?;
+        if edge.from == edge.to {
+            loops.insert(edge.from.as_str());
+        }
+    }
+    let mut demand = Vec::new();
+    demand
+        .try_reserve_exact(edges.len())
+        .map_err(|_| layout_allocation_failed())?;
+    for edge in edges {
+        resources.checkpoint()?;
+        resources
+            .charge_layout_work(resources.checked_work_add(edge.from.len(), edge.to.len())?)?;
+        demand.push(
+            pairs.get(&key(edge)).is_some_and(|count| *count > 1)
+                || loops.contains(edge.from.as_str())
+                || loops.contains(edge.to.as_str()),
+        );
+    }
+    Ok(demand)
 }
 
 /// Read the common scope from the resolved frames, without rerunning group placement.

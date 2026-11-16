@@ -1,4 +1,5 @@
-use super::label::{GRAPH_LABEL_LINE_GAP, GraphLabel};
+use super::demand::SceneDemand;
+use super::label::{GRAPH_LABEL_LINE_GAP, GraphLabel, GraphNodeLabelPlanHandle};
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::surface::OutputTransform;
 use super::topology::GraphGroupTopology;
@@ -9,11 +10,60 @@ use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 
 mod clearance;
+mod feedback;
 mod grid;
 mod groups;
 
+pub(super) use feedback::{LayoutFeedback, MeasuredLayout};
+
 /// Additional terminal cells available to bounded graph routing.
 pub(super) const ROUTING_GRID_MARGIN: usize = 6;
+
+pub(super) struct LayoutInput<'graph> {
+    graph: &'graph AsciiGraph,
+    policy: crate::options::GraphLayoutPolicy,
+    labels: Vec<GraphNodeLabelPlanHandle<'graph>>,
+    topology: Option<GraphGroupTopology<'graph>>,
+    demand: SceneDemand<'graph>,
+}
+
+impl<'graph> LayoutInput<'graph> {
+    pub(super) fn try_new(
+        graph: &'graph AsciiGraph,
+        policy: &crate::options::GraphLayoutPolicy,
+        resources: &mut ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
+        checkpoint_layout(execution)?;
+        grid::preflight_minimum_grid_extent(graph, policy, resources)?;
+        charge_graph_layout_work(graph, resources)?;
+        let labels = grid::plan_node_labels(graph, policy.terminal_width_profile, resources)?;
+        let topology = if graph.groups.is_empty() {
+            None
+        } else {
+            Some(GraphGroupTopology::try_new(graph, resources)?)
+        };
+        check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
+        let demand = SceneDemand::try_new(graph, policy, resources)?;
+        Ok(Self {
+            graph,
+            policy: *policy,
+            labels,
+            topology,
+            demand,
+        })
+    }
+
+    pub(super) fn generate(
+        &self,
+        feedback: &LayoutFeedback,
+        resources: &mut ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<MeasuredLayout> {
+        layout_prepared_graph(self, feedback, resources, execution)
+    }
+}
 
 pub(super) fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
     let comparison_height = if len <= 1 {
@@ -152,34 +202,57 @@ pub(super) fn layout_graph_with_resources(
     )
 }
 
+#[cfg(test)]
 pub(super) fn layout_graph_with_resources_and_execution(
     graph: &AsciiGraph,
     layout_policy: &crate::options::GraphLayoutPolicy,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GraphLayout> {
-    execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
+    Ok(layout_graph_with_feedback(
+        graph,
+        layout_policy,
+        &LayoutFeedback::default(),
+        resources,
+        execution,
+    )?
+    .layout)
+}
+
+#[cfg(test)]
+pub(super) fn layout_graph_with_feedback(
+    graph: &AsciiGraph,
+    layout_policy: &crate::options::GraphLayoutPolicy,
+    feedback: &LayoutFeedback,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<MeasuredLayout> {
+    LayoutInput::try_new(graph, layout_policy, resources, execution)?
+        .generate(feedback, resources, execution)
+}
+
+fn layout_prepared_graph(
+    input: &LayoutInput<'_>,
+    feedback: &LayoutFeedback,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<MeasuredLayout> {
+    let graph = input.graph;
+    let layout_policy = &input.policy;
+    let topology = &input.topology;
+    let label_plans = &input.labels;
     checkpoint_layout(execution)?;
-    grid::preflight_minimum_grid_extent(graph, layout_policy, resources)?;
-    charge_graph_layout_work(graph, resources)?;
-    checkpoint_layout(execution)?;
-    let label_plans =
-        grid::plan_node_labels(graph, layout_policy.terminal_width_profile, resources)?;
-    let topology = if graph.groups.is_empty() {
-        None
-    } else {
-        Some(GraphGroupTopology::try_new(graph, resources)?)
-    };
-    check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
-    checkpoint_layout(execution)?;
-    let (mut nodes, _, _) = grid::layout_nodes(
+    let grid = grid::layout_nodes(
         graph,
         layout_policy,
         topology.as_ref(),
-        &label_plans,
+        label_plans,
+        &input.demand,
+        feedback,
         resources,
         execution,
     )?;
+    let (mut nodes, _, _) = grid.parts;
     checkpoint_layout(execution)?;
     let (mut laid_out_groups, _, _) = if graph.groups.is_empty() {
         (
@@ -198,6 +271,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
                 .as_ref()
                 .expect("non-empty graph groups must have topology"),
             layout_policy,
+            feedback,
             resources,
             execution,
         )?
@@ -206,12 +280,19 @@ pub(super) fn layout_graph_with_resources_and_execution(
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
-    grid::materialize_node_labels(&mut nodes, graph, &label_plans, resources)?;
+    grid::materialize_node_labels(&mut nodes, graph, label_plans, resources)?;
     checkpoint_layout(execution)?;
-    Ok(GraphLayout {
+    let mut layout = GraphLayout {
         nodes,
         groups,
         group_background_order: laid_out_groups.background_order,
+    };
+    feedback.reserve_root_margin(&mut layout, resources)?;
+    graph_canvas_extent(&layout.nodes, &layout.groups, 0, 0, resources)?;
+    Ok(MeasuredLayout {
+        layout,
+        reversed_edge_indices: grid.reversed_edge_indices,
+        group_directions: grid.group_directions,
     })
 }
 

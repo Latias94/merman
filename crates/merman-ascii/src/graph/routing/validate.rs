@@ -1,5 +1,7 @@
 //! Final semantic and geometry checks on retained plans, without planning another route.
 
+#[cfg(test)]
+use super::RouteScenePlan;
 use super::allocation::AllocatedBranch;
 use super::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions};
 use super::geometry::{CompoundRouteGeometry, FrameSegment};
@@ -14,8 +16,7 @@ use super::plan::{
     PlannedRouteLabel, PlannedRouteSegment,
 };
 use super::{
-    PreparedRoute, RouteScenePlan, group_endpoint_layout, layout_allocation_failed,
-    route_boundary_group_indices,
+    PreparedRoute, group_endpoint_layout, layout_allocation_failed, route_boundary_group_indices,
 };
 use crate::error::{AsciiError, Result};
 use crate::graph::charset::GraphCharset;
@@ -50,12 +51,69 @@ struct RouteIndex {
 /// The caller maps this through its canonical source indices to `RoutingSearchExhausted`.
 /// Resource, allocation, and cancellation failures remain errors. An orphan route with no
 /// canonical edges has no source index and uses the existing internal-contract error instead.
+#[cfg(test)]
 pub(super) fn first_invalid_edge(
     graph: &AsciiGraph,
     layout: &GraphLayout,
     edges: &[AsciiGraphEdge],
     scene: &RouteScenePlan<'_>,
     charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<usize>> {
+    first_invalid_routes(
+        graph,
+        layout,
+        edges,
+        &scene.routes,
+        &scene.labels,
+        charset,
+        resources,
+        execution,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn first_invalid_routes(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    routes: &[PreparedRoute],
+    labels: &super::label::RoutedLabelCatalogPlan<'_>,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<usize>> {
+    validate_routes(
+        graph, layout, edges, routes, labels, charset, true, resources, execution,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn first_invalid_retained_route(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    routes: &[PreparedRoute],
+    labels: &super::label::RoutedLabelCatalogPlan<'_>,
+    charset: &GraphCharset,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<usize>> {
+    validate_routes(
+        graph, layout, edges, routes, labels, charset, false, resources, execution,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn validate_routes(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    routes: &[PreparedRoute],
+    labels: &super::label::RoutedLabelCatalogPlan<'_>,
+    charset: &GraphCharset,
+    complete: bool,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<usize>> {
@@ -74,7 +132,7 @@ pub(super) fn first_invalid_edge(
         by_edge.push(RouteIndex::default());
     }
     let mut duplicate = None;
-    for (route_index, route) in scene.routes.iter().enumerate() {
+    for (route_index, route) in routes.iter().enumerate() {
         resources.charge_layout_work(1)?;
         let index = route.owner.canonical_edge_index;
         let Some(slot) = by_edge.get_mut(index) else {
@@ -97,7 +155,7 @@ pub(super) fn first_invalid_edge(
             resources.charge_layout_work(1)?;
             if slot
                 .retained_channel
-                .is_none_or(|previous| index < scene.routes[previous].owner.canonical_edge_index)
+                .is_none_or(|previous| index < routes[previous].owner.canonical_edge_index)
             {
                 slot.retained_channel = Some(route_index);
             }
@@ -107,7 +165,11 @@ pub(super) fn first_invalid_edge(
     // Check coverage before constructing geometry indices, including the empty scene.
     for (index, edge) in edges.iter().enumerate() {
         resources.charge_layout_work(1)?;
-        if duplicate == Some(index) || edge.stroke.is_visible() != by_edge[index].route.is_some() {
+        let present = by_edge[index].route.is_some();
+        if duplicate == Some(index)
+            || (complete && edge.stroke.is_visible() != present)
+            || (!edge.stroke.is_visible() && present)
+        {
             // Geometry errors at smaller indices must still win over this coverage error.
             duplicate = Some(index);
             break;
@@ -171,7 +233,7 @@ pub(super) fn first_invalid_edge(
     // already chosen label lane and performs no lane search.
     let obstacles =
         SceneOccupancy::try_new_for_routes(layout, 0, usize::MAX, resources, execution)?;
-    let presentation = presentation_index(scene, resources)?;
+    let presentation = presentation_index(routes, resources)?;
 
     for (index, edge) in edges.iter().enumerate() {
         resources.charge_layout_work(1)?;
@@ -182,9 +244,12 @@ pub(super) fn first_invalid_edge(
             continue;
         }
         let Some(route_index) = by_edge[index].route else {
-            return Ok(Some(index));
+            if complete {
+                return Ok(Some(index));
+            }
+            continue;
         };
-        let route = &scene.routes[route_index];
+        let route = &routes[route_index];
         resources.charge_layout_work(resources.checked_work_add(
             resources.checked_work_add(route.owner.from.len(), route.owner.to.len())?,
             resources.checked_work_add(edge.from.len(), edge.to.len())?,
@@ -196,7 +261,7 @@ pub(super) fn first_invalid_edge(
         {
             return Ok(Some(index));
         }
-        let expected_label = scene.labels.descriptor(index);
+        let expected_label = labels.descriptor(index);
         if route.plan.labels.len() != usize::from(expected_label.is_some())
             || route.plan.labels.first().is_some_and(|label| {
                 Some(label.descriptor) != expected_label
@@ -249,14 +314,8 @@ pub(super) fn first_invalid_edge(
             &presentation,
             resources,
             execution,
-        )? || !retained_channel_is_valid(
-            route,
-            &scene.routes,
-            &by_edge,
-            &cells,
-            charset,
-            resources,
-        )? {
+        )? || !retained_channel_is_valid(route, routes, &by_edge, &cells, charset, resources)?
+        {
             return Ok(Some(index));
         }
     }
@@ -277,11 +336,11 @@ fn valid_extent(
 }
 
 fn presentation_index(
-    scene: &RouteScenePlan<'_>,
+    routes: &[PreparedRoute],
     resources: &ResourceContext,
 ) -> Result<PresentationIndex> {
     let mut presentation = PresentationIndex::default();
-    for route in &scene.routes {
+    for route in routes {
         resources.charge_layout_work(1)?;
         let owner = route.owner.canonical_edge_index;
         for (_, cell) in route.plan.active_cells() {
@@ -532,6 +591,7 @@ fn route_geometry_is_valid(
         )?;
         if !obstacles.label_preserves_route_reading(&reading_guards, rect, resources)?
             || !obstacles.label_candidate_is_clear(
+                &[],
                 0,
                 &route.owner,
                 label.anchor,

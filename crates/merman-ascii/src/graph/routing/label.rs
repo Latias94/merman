@@ -175,13 +175,13 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
     }
 
     pub(in crate::graph) fn materialize(
-        self,
+        &self,
         resources: &ResourceContext,
     ) -> Result<RoutedLabelCatalog> {
         resources.transaction(|resources| self.materialize_transactional(resources))
     }
 
-    fn materialize_transactional(self, resources: &ResourceContext) -> Result<RoutedLabelCatalog> {
+    fn materialize_transactional(&self, resources: &ResourceContext) -> Result<RoutedLabelCatalog> {
         let mut work_units = self.labels.len();
         let mut document_cells = 0usize;
         let mut materialized_bytes = 0usize;
@@ -201,12 +201,12 @@ impl<'a> RoutedLabelCatalogPlan<'a> {
         self.materialize_after_admission()
     }
 
-    fn materialize_after_admission(self) -> Result<RoutedLabelCatalog> {
+    fn materialize_after_admission(&self) -> Result<RoutedLabelCatalog> {
         let mut labels = Vec::new();
         labels
             .try_reserve_exact(self.labels.len())
             .map_err(|_| label_allocation_failed())?;
-        for plan in self.labels {
+        for plan in self.labels.iter().copied() {
             labels.push(plan.map(RoutedLabelPlan::materialize).transpose()?);
         }
         Ok(RoutedLabelCatalog { labels })

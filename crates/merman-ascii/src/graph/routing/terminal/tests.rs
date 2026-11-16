@@ -1257,6 +1257,68 @@ fn compressed_search_and_materialization_share_exact_layout_work_limits() {
 }
 
 #[test]
+fn exhausted_optional_search_does_not_consume_required_route_allowance() {
+    let policy = AsciiResourcePolicy::unbounded();
+    let budget = crate::operation::GraphPlanningBudget::default();
+    let initial = budget.feasibility.remaining();
+    let execution = AsciiExecution::for_test(&policy).with_graph_planning(&budget);
+    let mut resources = ResourceContext::new(policy);
+    let (graph, layout, charset) = channel_fixture(64);
+    let scene = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let obstacles = RouteObstacles {
+        scene: &scene,
+        routes: &[],
+        owner: &owner,
+    };
+    budget.quality.debit(usize::MAX, usize::MAX);
+    assert!(
+        plan_terminal_route_with_budget(
+            channel_request(&graph, &layout, &charset),
+            obstacles,
+            None,
+            None,
+            SearchBudget::Limited(&budget.quality),
+            &mut resources,
+            execution,
+        )
+        .unwrap()
+        .is_none()
+    );
+    let before = resources.layout_work_used();
+    let required = plan_terminal_route_with_budget(
+        channel_request(&graph, &layout, &charset),
+        obstacles,
+        None,
+        None,
+        SearchBudget::Limited(&budget.feasibility),
+        &mut resources,
+        execution,
+    )
+    .unwrap()
+    .expect("required routing retains its independent allowance");
+    assert!(required.1.attachments.is_some());
+    assert!(resources.layout_work_used() > before);
+    assert_eq!(budget.quality.remaining(), (0, 0));
+    let remaining = budget.feasibility.remaining();
+    assert!(remaining.0 < initial.0 && remaining.1 < initial.1);
+    assert!(
+        plan_terminal_route_with_budget(
+            channel_request(&graph, &layout, &charset),
+            obstacles,
+            None,
+            None,
+            SearchBudget::Limited(&budget.replacement),
+            &mut resources,
+            execution,
+        )
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(budget.feasibility.remaining(), remaining);
+}
+
+#[test]
 fn compressed_axes_segment_scans_and_winner_expansion_observe_cancellation() {
     let policy = AsciiResourcePolicy::unbounded();
     let mut resources = ResourceContext::new(policy);

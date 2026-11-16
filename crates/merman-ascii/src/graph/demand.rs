@@ -157,18 +157,7 @@ impl<'a> SceneDemand<'a> {
             return Ok(size);
         };
         let demand = self.endpoints[index];
-        let pressure = |incident: IncidentDemand| {
-            // BranchAllocation only shares channels in flat scenes. Compound routes
-            // must retain enough contacts even when their endpoint styles agree.
-            if self.compound || incident.independent {
-                incident.count
-            } else {
-                usize::from(incident.count > 0)
-            }
-        };
-        let contacts = pressure(demand.incoming)
-            .max(pressure(demand.outgoing))
-            .max(resources.checked_grid_mul(demand.loops, 2)?);
+        let contacts = self.contacts_for_node(id, resources)?;
         // Fixed State pseudostates and bars retain their own contour contract. Text nodes
         // have no spare outline to enlarge. Other contours need non-corner contacts and
         // one reading cell between independent marked terminals.
@@ -209,6 +198,25 @@ impl<'a> SceneDemand<'a> {
         }
         resources.grid_extent(size.width, size.height)?;
         Ok(size)
+    }
+
+    pub(super) fn contacts_for_node(&self, id: &str, resources: &ResourceContext) -> Result<usize> {
+        let Some(&index) = self.indices.get(id) else {
+            return Ok(0);
+        };
+        let demand = self.endpoints[index];
+        let pressure = |incident: IncidentDemand| {
+            // Sharing is admitted only for compatible flat branches. Parallel, reciprocal,
+            // compound, and loop endpoints retain their independent semantic demand.
+            if self.compound || incident.independent {
+                incident.count
+            } else {
+                usize::from(incident.count > 0)
+            }
+        };
+        Ok(pressure(demand.incoming)
+            .max(pressure(demand.outgoing))
+            .max(resources.checked_grid_mul(demand.loops, 2)?))
     }
 
     pub(super) fn cross_extent(

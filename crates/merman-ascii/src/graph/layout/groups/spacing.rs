@@ -1,6 +1,6 @@
 use super::super::grid::{AxisSizes, separator_expansion_base, set_axis_size};
 use super::super::{GridCoord, NodeLayout};
-use super::bounds::{RawBounds, raw_group_bounds_batch};
+use super::bounds::{RawBounds, raw_group_bounds_batch_with_feedback};
 use super::layout_work_allocation_failed;
 use super::members::group_member_indices;
 use crate::error::Result;
@@ -58,6 +58,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
     demand: &crate::graph::demand::SceneDemand<'_>,
+    feedback: &super::super::LayoutFeedback,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &mut ResourceContext,
@@ -70,6 +71,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
             topology,
             policy,
             demand,
+            feedback,
             column_widths,
             row_heights,
             resources,
@@ -85,6 +87,7 @@ fn reserve_compound_axis_spacing_inner(
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
     demand: &crate::graph::demand::SceneDemand<'_>,
+    feedback: &super::super::LayoutFeedback,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -96,8 +99,9 @@ fn reserve_compound_axis_spacing_inner(
     envelopes
         .try_reserve(graph.groups.len())
         .map_err(|_| layout_work_allocation_failed())?;
-    let group_bounds =
-        raw_group_bounds_batch(graph, nodes, topology, policy, resources, execution)?;
+    let group_bounds = raw_group_bounds_batch_with_feedback(
+        graph, nodes, topology, policy, feedback, resources, execution,
+    )?;
     let mut membership_resources = resources.clone();
     for (group_index, group) in graph.groups.iter().enumerate() {
         execution.checkpoint_loop(OperationPhase::Layout, group_index)?;

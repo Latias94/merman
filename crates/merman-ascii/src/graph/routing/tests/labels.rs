@@ -34,7 +34,7 @@ fn exhausted_label_search_keeps_the_authored_edge_index_and_heuristic_diagnostic
         SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
     assert_eq!(
         allocate_committed_route_labels(
-            &mut routes[0],
+            &mut routes,
             0,
             &mut occupancy,
             &mut resources,
@@ -275,12 +275,26 @@ fn label_can_cover_only_its_own_host_segment() {
 
     assert!(
         occupancy
-            .label_candidate_is_clear(0, &routes[0].owner, anchor, host_cell, &mut resources)
+            .label_candidate_is_clear(
+                &routes,
+                0,
+                &routes[0].owner,
+                anchor,
+                host_cell,
+                &mut resources
+            )
             .unwrap()
     );
     assert!(
         !occupancy
-            .label_candidate_is_clear(0, &routes[0].owner, anchor, non_host_cell, &mut resources)
+            .label_candidate_is_clear(
+                &routes,
+                0,
+                &routes[0].owner,
+                anchor,
+                non_host_cell,
+                &mut resources
+            )
             .unwrap()
     );
 }
@@ -319,13 +333,27 @@ fn label_cannot_move_across_an_unrelated_parallel_route() {
 
     assert!(
         !occupancy
-            .label_candidate_is_clear(0, &routes[0].owner, anchor, detached, &mut resources)
+            .label_candidate_is_clear(
+                &routes,
+                0,
+                &routes[0].owner,
+                anchor,
+                detached,
+                &mut resources
+            )
             .unwrap(),
         "a label separated from its host by another route would identify the wrong edge"
     );
     assert!(
         occupancy
-            .label_candidate_is_clear(0, &routes[0].owner, anchor, adjacent, &mut resources)
+            .label_candidate_is_clear(
+                &routes,
+                0,
+                &routes[0].owner,
+                anchor,
+                adjacent,
+                &mut resources
+            )
             .unwrap()
     );
 }

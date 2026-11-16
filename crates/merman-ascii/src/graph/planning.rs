@@ -1,12 +1,17 @@
 use super::charset::GraphCharset;
-use super::layout::{GraphLayout, layout_graph_with_resources_and_execution};
+#[cfg(test)]
+use super::layout::layout_graph_with_feedback;
+use super::layout::{GraphLayout, LayoutFeedback, LayoutInput};
 use super::model::AsciiGraph;
 use super::routing::{self, RouteScenePlan};
-use crate::error::Result;
-use crate::operation::AsciiExecution;
+use crate::error::{AsciiError, Result};
+use crate::operation::{AsciiExecution, GraphPlanningBudget};
 use crate::options::GraphLayoutPolicy;
 use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
+
+#[cfg(test)]
+mod tests;
 
 pub(super) struct PlannedGraph<'graph> {
     pub(super) layout: GraphLayout,
@@ -20,16 +25,68 @@ pub(super) fn plan_graph<'graph>(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<PlannedGraph<'graph>> {
+    let local_budget = GraphPlanningBudget::default();
+    let execution = execution.with_graph_planning(&local_budget);
     execution.checkpoint(OperationPhase::Layout)?;
-    let layout = layout_graph_with_resources_and_execution(graph, policy, resources, execution)?;
-    let routes = routing::prepare_route_scene_with_execution(
-        graph,
-        &layout,
-        &graph.edges,
-        charset,
-        policy,
-        resources,
-        execution,
-    )?;
-    Ok(PlannedGraph { layout, routes })
+    let mut feedback = LayoutFeedback::default();
+    let layout_input = LayoutInput::try_new(graph, policy, resources, execution)?;
+    let mut measured = layout_input.generate(&feedback, resources, execution)?;
+    let input = routing::SceneRoutingInput::try_new(graph, &graph.edges, charset, resources)?;
+    let mut next_feedback = 0;
+    loop {
+        execution.checkpoint(OperationPhase::Layout)?;
+        let miss = match routing::route_scene_with_input(
+            graph,
+            &measured.layout,
+            &input,
+            charset,
+            policy,
+            resources,
+            execution,
+        ) {
+            Ok(routes) => {
+                return Ok(PlannedGraph {
+                    layout: measured.layout,
+                    routes,
+                });
+            }
+            Err(
+                miss @ (AsciiError::RoutingSearchExhausted { .. }
+                | AsciiError::PortCapacityExceeded { .. }),
+            ) => miss,
+            Err(error) => return Err(error),
+        };
+        let allowance = &execution
+            .graph_planning()
+            .expect("scene planning budget")
+            .reflow_work;
+        let mut changed = false;
+        while !changed && next_feedback < 2 && allowance.get() != 0 {
+            let before = resources.layout_work_used();
+            let request = if next_feedback == 0 {
+                feedback.record_failure(graph, policy, &measured, &miss, resources)
+            } else {
+                feedback.record_return_failure(graph, policy, &measured, &miss, resources)
+            };
+            next_feedback += 1;
+            allowance.set(
+                allowance
+                    .get()
+                    .saturating_sub(resources.layout_work_used().saturating_sub(before)),
+            );
+            changed = request?;
+        }
+        if !changed || allowance.get() == 0 {
+            return Err(miss);
+        }
+        let before = resources.layout_work_used();
+        drop(measured);
+        let next = layout_input.generate(&feedback, resources, execution);
+        allowance.set(
+            allowance
+                .get()
+                .saturating_sub(resources.layout_work_used().saturating_sub(before)),
+        );
+        measured = next?;
+    }
 }

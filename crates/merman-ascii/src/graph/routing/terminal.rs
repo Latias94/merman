@@ -8,7 +8,7 @@ use crate::graph::layout::{CanvasCoord, ROUTING_GRID_MARGIN};
 use crate::graph::model::{GraphEdgeMarker, GraphGroupKind, GraphNodeShape};
 use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
 use crate::graph::routing::label::RoutedLabelDescriptor;
-use crate::operation::AsciiExecution;
+use crate::operation::{AsciiExecution, SearchAllowance};
 use crate::resource::ResourceContext;
 use rustc_hash::FxHashMap as HashMap;
 use std::cmp::Ordering;
@@ -26,8 +26,11 @@ const DIRECTIONS: [StepDirection; 4] = [
 pub(super) const MAX_REPAIR_EXPANSIONS: usize = 4_096;
 
 pub(super) enum SearchBudget<'a> {
+    #[cfg(test)]
     Required,
     Optional(&'a mut usize),
+    Limited(&'a SearchAllowance),
+    Replacement(&'a SearchAllowance),
 }
 
 mod channels;
@@ -275,16 +278,64 @@ pub(super) fn plan_terminal_route_with_budget(
     obstacles: RouteObstacles<'_>,
     label: Option<RoutedLabelDescriptor>,
     incumbent: Option<(RouteCandidateScore, Option<NodeAttachments>)>,
-    mut budget: SearchBudget<'_>,
+    budget: SearchBudget<'_>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+    let initial_expansions = match &budget {
+        #[cfg(test)]
+        SearchBudget::Required => usize::MAX,
+        SearchBudget::Optional(remaining) => **remaining,
+        SearchBudget::Limited(allowance) | SearchBudget::Replacement(allowance) => {
+            allowance.remaining().0
+        }
+    };
+    let work_start = resources.layout_work_used();
+    let work_allowance = match &budget {
+        SearchBudget::Limited(allowance) | SearchBudget::Replacement(allowance) => {
+            allowance.remaining().1
+        }
+        _ => usize::MAX,
+    };
+    let share_pairs = matches!(&budget, SearchBudget::Replacement(_)) && incumbent.is_none();
+    let mut expansions_left = initial_expansions;
+    let result = plan_terminal_route_inner(
+        request,
+        obstacles,
+        label,
+        incumbent,
+        &mut expansions_left,
+        share_pairs,
+        work_start.saturating_add(work_allowance),
+        resources,
+        execution,
+    );
+    match budget {
+        SearchBudget::Limited(allowance) | SearchBudget::Replacement(allowance) => allowance.debit(
+            initial_expansions - expansions_left,
+            resources.layout_work_used().saturating_sub(work_start),
+        ),
+        SearchBudget::Optional(remaining) => *remaining = expansions_left,
+        #[cfg(test)]
+        SearchBudget::Required => {}
+    }
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn plan_terminal_route_inner(
+    request: EdgeRouteRequest<'_>,
+    obstacles: RouteObstacles<'_>,
+    label: Option<RoutedLabelDescriptor>,
+    incumbent: Option<(RouteCandidateScore, Option<NodeAttachments>)>,
+    expansions_left: &mut usize,
+    share_pairs: bool,
+    work_end: usize,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    let mut expansions_left = match &budget {
-        SearchBudget::Required => usize::MAX,
-        SearchBudget::Optional(remaining) => **remaining,
-    };
-    if expansions_left == 0 {
+    if *expansions_left == 0 || resources.layout_work_used() >= work_end {
         return Ok(None);
     }
     let forward = super::forward_route_direction(request, resources)?;
@@ -342,12 +393,19 @@ pub(super) fn plan_terminal_route_with_budget(
     };
     let channels =
         channels::ChannelAxes::new(obstacles, &starts, &ends, bounds, resources, execution)?;
+    let mut remaining_pairs = resources.checked_work_mul(starts.len(), ends.len())?;
     let mut pairs = PortPairs::new(starts, ends, resources)?;
     pairs.prefer_forward(forward, allow_fallback);
-    while expansions_left != 0 {
+    while *expansions_left != 0 && resources.layout_work_used() < work_end {
         let Some((start, end)) = pairs.next(resources, execution)? else {
             break;
         };
+        let pair_allowance = if share_pairs {
+            (*expansions_left).div_ceil(remaining_pairs.max(1))
+        } else {
+            *expansions_left
+        };
+        remaining_pairs = remaining_pairs.saturating_sub(1);
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
         if self_loop && start.attachment.contact == end.attachment.contact {
             continue;
@@ -367,18 +425,19 @@ pub(super) fn plan_terminal_route_with_budget(
                 }),
             },
         };
-        let path = find_path(
+        let mut pair_remaining = pair_allowance;
+        let path = find_path_with_allowance(
             geometry,
             &channels,
-            &mut expansions_left,
+            &mut pair_remaining,
+            work_end,
             resources,
             execution,
-        )?;
-        if let SearchBudget::Optional(remaining) = &mut budget {
-            **remaining = expansions_left;
-        }
+        );
+        *expansions_left -= pair_allowance - pair_remaining;
+        let path = path?;
         let Some(path) = path else {
-            if expansions_left == 0 {
+            if *expansions_left == 0 {
                 break;
             }
             continue;
@@ -556,10 +615,29 @@ impl PartialOrd for OpenEntry {
     }
 }
 
+#[cfg(test)]
 fn find_path(
     geometry: SearchGeometry<'_>,
     channels: &channels::ChannelAxes,
     expansions_left: &mut usize,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<Vec<CanvasCoord>>> {
+    find_path_with_allowance(
+        geometry,
+        channels,
+        expansions_left,
+        usize::MAX,
+        resources,
+        execution,
+    )
+}
+
+fn find_path_with_allowance(
+    geometry: SearchGeometry<'_>,
+    channels: &channels::ChannelAxes,
+    expansions_left: &mut usize,
+    work_end: usize,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<Vec<CanvasCoord>>> {
@@ -632,7 +710,7 @@ fn find_path(
         {
             continue;
         }
-        if *expansions_left == 0 {
+        if *expansions_left == 0 || resources.layout_work_used() >= work_end {
             return Ok(None);
         }
         *expansions_left -= 1;

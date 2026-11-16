@@ -252,7 +252,9 @@ impl AsciiRenderer {
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
-        let execution = operation::AsciiExecution::new(control, &resources);
+        let graph_planning = operation::GraphPlanningBudget::default();
+        let execution = operation::AsciiExecution::new(control, &resources)
+            .with_graph_planning(&graph_planning);
         execution.checkpoint(merman_model::OperationPhase::Admission)?;
         layout_selection::validate_viewport(
             self.options.layout_profile,
@@ -301,9 +303,11 @@ impl AsciiRenderer {
         } = request;
         viewport.validate()?;
         let render_ledger = resource::ResourceContext::new(resources);
+        let graph_planning = operation::GraphPlanningBudget::default();
         let execution = operation::AsciiExecution::new(control, &resources)
             .with_viewport(viewport)
-            .with_render_ledger(&render_ledger);
+            .with_render_ledger(&render_ledger)
+            .with_graph_planning(&graph_planning);
         let requested_policies = self.options.resolve_policies();
         let capability = capability::capability_for_diagram_type(metadata.diagram_type);
         execution.checkpoint(merman_model::OperationPhase::Admission)?;
@@ -451,8 +455,10 @@ impl AsciiRenderer {
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
         let render_ledger = resource::ResourceContext::new(resources);
-        let execution =
-            operation::AsciiExecution::new(control, &resources).with_render_ledger(&render_ledger);
+        let graph_planning = operation::GraphPlanningBudget::default();
+        let execution = operation::AsciiExecution::new(control, &resources)
+            .with_render_ledger(&render_ledger)
+            .with_graph_planning(&graph_planning);
         execution.checkpoint(merman_model::OperationPhase::Admission)?;
         layout_selection::validate_viewport(
             self.options.layout_profile,
