@@ -1,4 +1,4 @@
-use super::{ChartDocument, ChartLine, new_chart_line};
+use super::{ChartDocument, ChartDocumentPlan, ChartLine, new_chart_line};
 use crate::color::AsciiColorRole;
 use crate::options::TerminalWidthProfile;
 use crate::resource::ResourceContext;
@@ -44,12 +44,16 @@ pub(super) fn push_value_disclosure_lines(
         return Ok(());
     }
     for series in &plan.series {
-        resources.charge_layout_work(1)?;
-        let Some(line) = value_disclosure_line(model, series, plan, chars, options, resources)?
-        else {
-            continue;
-        };
-        out.push(line, resources)?;
+        let disclosure = ValueDisclosure::new(model, series, plan, chars)?;
+        for row in disclosure.rows() {
+            let mut line = new_chart_line(options, resources);
+            disclosure.write_row(
+                &mut StyledDisclosureLine { line: &mut line },
+                row,
+                resources,
+            )?;
+            out.push(line, resources)?;
+        }
     }
     Ok(())
 }
@@ -113,41 +117,25 @@ fn write_title_display_line(
     push_disclosure_field(line, owner.as_str(), value, resources)
 }
 
-pub(super) fn value_disclosure_line_width(
+pub(super) fn measure_value_disclosure(
+    document: &mut ChartDocumentPlan,
     model: &XyChartView<'_>,
     series: &SeriesPlan<'_>,
     plan: &TerminalChartPlan<'_>,
     chars: ChartChars,
     options: &AsciiRenderOptions,
     resources: &mut ResourceContext,
-) -> Result<Option<usize>> {
-    let mut line = MeasuredDisclosureLine {
-        width: 0,
-        width_profile: options.terminal_width_profile,
-    };
-    write_value_disclosure_line(&mut line, model, series, plan, chars, resources)?;
-    Ok(Some(line.width))
-}
-
-fn value_disclosure_line(
-    model: &XyChartView<'_>,
-    series: &SeriesPlan<'_>,
-    plan: &TerminalChartPlan<'_>,
-    chars: ChartChars,
-    options: &AsciiRenderOptions,
-    resources: &mut ResourceContext,
-) -> Result<Option<ChartLine>> {
-    let mut line = new_chart_line(options, resources);
-    write_value_disclosure_line(
-        &mut StyledDisclosureLine { line: &mut line },
-        model,
-        series,
-        plan,
-        chars,
-        resources,
-    )?;
-
-    Ok(Some(line))
+) -> Result<()> {
+    let disclosure = ValueDisclosure::new(model, series, plan, chars)?;
+    for row in disclosure.rows() {
+        let mut line = MeasuredDisclosureLine {
+            width: 0,
+            width_profile: options.terminal_width_profile,
+        };
+        disclosure.write_row(&mut line, row, resources)?;
+        document.include_line(line.width, resources)?;
+    }
+    Ok(())
 }
 
 pub(super) fn band_domain_disclosure_line_width(
@@ -399,47 +387,118 @@ impl DisclosureLine for MeasuredDisclosureLine {
     }
 }
 
-fn write_value_disclosure_line(
-    line: &mut impl DisclosureLine,
-    model: &XyChartView<'_>,
-    series: &SeriesPlan<'_>,
-    plan: &TerminalChartPlan<'_>,
-    chars: ChartChars,
-    resources: &mut ResourceContext,
-) -> Result<()> {
-    let plot = model
-        .plots
-        .get(series.series_index)
-        .ok_or_else(invalid_disclosure_plan)?;
-    line.push_text("values: ", AsciiColorRole::Text, resources)?;
-    line.push_char(
-        chars.legend_symbol(series.plot_type),
-        AsciiColorRole::ChartSeries(series.series_index),
-        resources,
-    )?;
-    line.push_text(" series=", AsciiColorRole::Text, resources)?;
-    push_disclosure_usize(line, series.series_index, resources)?;
-    line.push_text(" type=", AsciiColorRole::Text, resources)?;
-    line.push_text(
-        plot_type_name(series.plot_type),
-        AsciiColorRole::Text,
-        resources,
-    )?;
-    match series.title {
-        Some(title) => {
-            line.push_char(' ', AsciiColorRole::Text, resources)?;
-            push_disclosure_field(line, "title", title, resources)?;
-        }
-        None => line.push_text(" title=none", AsciiColorRole::Text, resources)?,
-    }
-    line.push_text(" samples=[", AsciiColorRole::Text, resources)?;
+/// A row is a complete renderer-owned record; authored text cannot introduce another row.
+/// Measuring and painting replay this same borrowed plan without retaining a wide intermediate.
+enum ValueDisclosureRow {
+    Header,
+    Sample(usize),
+    OrphanHeader,
+    Orphan(usize),
+    End,
+}
 
-    for (index, datum) in series.data.iter().enumerate() {
+struct ValueDisclosure<'plan, 'model> {
+    series: &'plan SeriesPlan<'model>,
+    plan: &'plan TerminalChartPlan<'model>,
+    plot: &'plan merman_model::families::xy_chart::XyChartPlotModel,
+    chars: ChartChars,
+}
+
+impl<'plan, 'model> ValueDisclosure<'plan, 'model> {
+    fn new(
+        model: &'plan XyChartView<'model>,
+        series: &'plan SeriesPlan<'model>,
+        plan: &'plan TerminalChartPlan<'model>,
+        chars: ChartChars,
+    ) -> Result<Self> {
+        let plot = model
+            .plots
+            .get(series.series_index)
+            .ok_or_else(invalid_disclosure_plan)?;
+        Ok(Self {
+            series,
+            plan,
+            plot,
+            chars,
+        })
+    }
+
+    fn rows(&self) -> impl Iterator<Item = ValueDisclosureRow> {
+        let orphan_start = self.series.data.len().min(self.plot.point_labels.len());
+        std::iter::once(ValueDisclosureRow::Header)
+            .chain((0..self.series.data.len()).map(ValueDisclosureRow::Sample))
+            .chain(std::iter::once(ValueDisclosureRow::OrphanHeader))
+            .chain((orphan_start..self.plot.point_labels.len()).map(ValueDisclosureRow::Orphan))
+            .chain((orphan_start < self.plot.point_labels.len()).then_some(ValueDisclosureRow::End))
+    }
+
+    fn write_row(
+        &self,
+        line: &mut impl DisclosureLine,
+        row: ValueDisclosureRow,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
         resources.charge_layout_work(1)?;
-        if index > 0 {
-            line.push_text(", ", AsciiColorRole::Text, resources)?;
+        line.push_text("values: ", AsciiColorRole::Text, resources)?;
+        match row {
+            ValueDisclosureRow::Header => self.write_header(line, resources),
+            ValueDisclosureRow::Sample(index) => self.write_sample(line, index, resources),
+            ValueDisclosureRow::OrphanHeader => {
+                line.push_text("] orphanPointLabels=[", AsciiColorRole::Text, resources)?;
+                if self.plot.point_labels.len() <= self.series.data.len() {
+                    line.push_char(']', AsciiColorRole::Text, resources)?;
+                }
+                Ok(())
+            }
+            ValueDisclosureRow::Orphan(index) => {
+                line.push_text("  ", AsciiColorRole::Text, resources)?;
+                push_disclosure_value(line, &self.plot.point_labels[index], resources)?;
+                if index + 1 < self.plot.point_labels.len() {
+                    line.push_char(',', AsciiColorRole::Text, resources)?;
+                }
+                Ok(())
+            }
+            ValueDisclosureRow::End => line.push_char(']', AsciiColorRole::Text, resources),
         }
-        line.push_text("{index=", AsciiColorRole::Text, resources)?;
+    }
+
+    fn write_header(
+        &self,
+        line: &mut impl DisclosureLine,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let series = self.series;
+        line.push_char(
+            self.chars.series_symbol(series),
+            AsciiColorRole::ChartSeries(series.series_index),
+            resources,
+        )?;
+        line.push_text(" series=", AsciiColorRole::Text, resources)?;
+        push_disclosure_usize(line, series.series_index, resources)?;
+        line.push_text(" type=", AsciiColorRole::Text, resources)?;
+        line.push_text(
+            plot_type_name(series.plot_type),
+            AsciiColorRole::Text,
+            resources,
+        )?;
+        match series.title {
+            Some(title) => {
+                line.push_char(' ', AsciiColorRole::Text, resources)?;
+                push_disclosure_field(line, "title", title, resources)?;
+            }
+            None => line.push_text(" title=none", AsciiColorRole::Text, resources)?,
+        }
+        line.push_text(" samples=[", AsciiColorRole::Text, resources)
+    }
+
+    fn write_sample(
+        &self,
+        line: &mut impl DisclosureLine,
+        index: usize,
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        let datum = &self.series.data[index];
+        line.push_text("  {index=", AsciiColorRole::Text, resources)?;
         push_disclosure_usize(line, index, resources)?;
         line.push_char(' ', AsciiColorRole::Text, resources)?;
         push_disclosure_field(line, "x", &datum.x, resources)?;
@@ -450,7 +509,7 @@ fn write_value_disclosure_line(
             }
             None => line.push_text("none", AsciiColorRole::Text, resources)?,
         }
-        match plot.point_labels.get(index) {
+        match self.plot.point_labels.get(index) {
             Some(point_label) => {
                 line.push_char(' ', AsciiColorRole::Text, resources)?;
                 push_disclosure_field(line, "pointLabel", point_label, resources)?;
@@ -462,7 +521,7 @@ fn write_value_disclosure_line(
             if datum.x_clipped
                 || datum
                     .value
-                    .is_some_and(|value| !plan.y_range.contains(value))
+                    .is_some_and(|value| !self.plan.y_range.contains(value))
             {
                 "true"
             } else {
@@ -472,19 +531,11 @@ fn write_value_disclosure_line(
             resources,
         )?;
         line.push_char('}', AsciiColorRole::Text, resources)?;
-    }
-    line.push_text("] orphanPointLabels=[", AsciiColorRole::Text, resources)?;
-
-    let point_labels = plot.point_labels.as_slice();
-    let orphan_start = series.data.len().min(point_labels.len());
-    for (index, point_label) in point_labels[orphan_start..].iter().enumerate() {
-        resources.charge_layout_work(1)?;
-        if index > 0 {
-            line.push_text(", ", AsciiColorRole::Text, resources)?;
+        if index + 1 < self.series.data.len() {
+            line.push_char(',', AsciiColorRole::Text, resources)?;
         }
-        push_disclosure_value(line, point_label, resources)?;
+        Ok(())
     }
-    line.push_char(']', AsciiColorRole::Text, resources)
 }
 
 fn invalid_disclosure_plan() -> AsciiError {

@@ -13,6 +13,164 @@ use merman_model::{OperationControl, presentation::RenderSemanticModel};
 use std::path::Path;
 use support::{render_controlled_model, render_model_with_resources};
 
+#[path = "xychart_model/series_ownership.rs"]
+mod series_ownership;
+
+#[test]
+fn xychart_multi_series_values_do_not_force_a_small_plot_into_viewport_fallback() {
+    use merman_ascii::{
+        AsciiOutputOutcome, AsciiProjection, AsciiViewportPolicy, OverflowPolicy,
+        TerminalWidthProfile,
+    };
+
+    for orientation in ["", " horizontal"] {
+        let source = format!(
+            "xychart{orientation}\nx-axis [Jan, Feb, Mar, Apr]\ny-axis 0 --> 10\nline [2, 5, 8, 5]\nline [8, 5, 2, 5]\n"
+        );
+        let model = support::parse_model(&source);
+        for base in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+                let options = base.with_terminal_width_profile(profile);
+                for width in [80, 100, 120] {
+                    let report = support::render_model_report(
+                        &model,
+                        &options,
+                        AsciiViewportPolicy::with_max_width(width)
+                            .overflow(OverflowPolicy::Fallback),
+                    )
+                    .unwrap();
+                    assert_eq!(
+                        report.outcome,
+                        AsciiOutputOutcome::Primary,
+                        "{}",
+                        report.text
+                    );
+                    assert_eq!(report.projection, AsciiProjection::Diagrammatic);
+                    assert!(report.emitted_extent.width <= width);
+                    assert_eq!(report.emitted_extent.height, report.text.lines().count());
+                    let (first_marker, second_marker) = if options.charset
+                        == merman_ascii::AsciiCharset::Unicode
+                        && profile == TerminalWidthProfile::Unicode
+                    {
+                        ('●', '○')
+                    } else {
+                        ('*', 'o')
+                    };
+                    let plot = report
+                        .text
+                        .lines()
+                        .skip(1)
+                        .take_while(|line| {
+                            !line.starts_with("values:")
+                                && !line.starts_with("xDomain:")
+                                && !line.starts_with("yDomain:")
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
+                    assert!(plot.contains(first_marker), "{plot}");
+                    assert!(plot.contains(second_marker), "{plot}");
+                    assert_eq!(
+                        plot.matches('X').count(),
+                        2,
+                        "shared sample ownership: {plot}"
+                    );
+                    for value in [
+                        "series=0", "series=1", "index=0", "index=3", "\"Jan\"", "\"Apr\"",
+                    ] {
+                        assert!(report.text.contains(value), "{value}: {}", report.text);
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn xychart_line_composition_is_independent_of_series_paint_order() {
+    for orientation in ["", " horizontal"] {
+        let render = |lines: &str| {
+            let source =
+                format!("xychart{orientation}\nx-axis [A, B, C, D]\ny-axis 0 --> 10\n{lines}");
+            let rendered = render_xychart(&source, &AsciiRenderOptions::ascii()).unwrap();
+            rendered
+                .lines()
+                .skip(1)
+                .take_while(|line| {
+                    !line.starts_with("values:")
+                        && !line.starts_with("xDomain:")
+                        && !line.starts_with("yDomain:")
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        };
+        let forward = render("line [2, 5, 8, 5]\nline [8, 5, 2, 5]\n");
+        let reversed = render("line [8, 5, 2, 5]\nline [2, 5, 8, 5]\n");
+        let relabeled = reversed
+            .chars()
+            .map(|ch| match ch {
+                '*' => 'o',
+                'o' => '*',
+                _ => ch,
+            })
+            .collect::<String>();
+        assert_eq!(
+            forward, relabeled,
+            "series order must not erase points or connections"
+        );
+    }
+}
+
+#[test]
+fn xychart_record_document_keeps_exact_cell_and_output_budgets() {
+    let source = "xychart\nx-axis [A, B]\ny-axis 0 --> 10\nline [2, 8]\nline [8, 2]\n";
+    let options = AsciiRenderOptions::ascii();
+    let rendered = render_xychart(source, &options).unwrap();
+    for (limit, usage) in [
+        (
+            AsciiResourceLimitId::MaxDocumentCells,
+            rendered.lines().map(str::len).sum(),
+        ),
+        (AsciiResourceLimitId::MaxOutputBytes, rendered.len()),
+    ] {
+        let exact = AsciiResourcePolicy::default()
+            .with_limit(limit, usage)
+            .unwrap();
+        assert_eq!(
+            render_xychart_with_resources(source, &options, exact).unwrap(),
+            rendered
+        );
+        let below = AsciiResourcePolicy::default()
+            .with_limit(limit, usage - 1)
+            .unwrap();
+        assert!(matches!(
+            render_xychart_with_resources(source, &options, below),
+            Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == limit
+        ));
+    }
+}
+
+#[test]
+fn xychart_shared_samples_keep_the_same_geometry_in_every_encoding() {
+    let source = "xychart\nx-axis [A, B, C]\ny-axis 0 --> 10\nline [2, 5, 8]\nline [8, 5, 2]\n";
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let plain = render_xychart(source, &options).unwrap();
+        for mode in [
+            AsciiColorMode::Ansi16,
+            AsciiColorMode::Ansi256,
+            AsciiColorMode::TrueColor,
+            AsciiColorMode::Html,
+        ] {
+            let styled = render_xychart(source, &options.with_color_mode(mode)).unwrap();
+            let decoded = if mode == AsciiColorMode::Html {
+                strip_html_spans(&styled)
+            } else {
+                strip_ansi(&styled)
+            };
+            assert_eq!(decoded, plain, "{mode:?}");
+        }
+    }
+}
+
 fn render_xychart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
     render_xychart_with_resources(input, options, AsciiResourcePolicy::default())
 }
@@ -200,32 +358,17 @@ fn xychart_color_truecolor_emits_axis_text_and_series_roles_without_changing_pla
         .with_color_mode(AsciiColorMode::TrueColor)
         .with_color_theme(theme);
 
-    let rendered = render_xychart(
-        r#"xychart
+    let source = r#"xychart
 title "Sales"
 x-axis "Month" [Jan, Feb, Mar]
 y-axis "Revenue" 0 --> 10
 bar [2, 5, 8]
-"#,
-        &options,
-    )
-    .expect("xychart should render");
+"#;
+    let rendered = render_xychart(source, &options).expect("xychart should render");
 
     assert_eq!(
         strip_ansi(&rendered),
-        concat!(
-            "titleDisplay: chart(bytes=5)=\"Sales\"\n",
-            "titleDisplay: yAxis(bytes=7)=\"Revenue\"\n",
-            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=3)=\"Jan\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=3)=\"Feb\" value=5 pointLabel=none clipped=false}, {index=2 x(bytes=3)=\"Mar\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
-            "10 +\n",
-            " 8 +        ###\n",
-            " 6 +    ### ###\n",
-            " 4 +    ### ###\n",
-            " 2 +### ### ###\n",
-            " 0 +-+---+---+-\n",
-            "    Jan Feb Mar\n",
-            "titleDisplay: xAxis(bytes=5)=\"Month\"\n",
-        )
+        render_xychart(source, &AsciiRenderOptions::ascii()).unwrap()
     );
     for expected_code in [
         "\u{1b}[38;2;1;1;1m",
@@ -256,32 +399,17 @@ fn xychart_color_html_wraps_bar_and_line_series_roles_without_changing_plain_tex
         .with_color_mode(AsciiColorMode::Html)
         .with_color_theme(theme);
 
-    let rendered = render_xychart(
-        r#"xychart
+    let source = r#"xychart
 x-axis [A, B]
 y-axis 0 --> 10
 bar [2, 8]
 line [8, 2]
-"#,
-        &options,
-    )
-    .expect("mixed xychart should render");
+"#;
+    let rendered = render_xychart(source, &options).expect("mixed xychart should render");
 
     assert_eq!(
         strip_html_spans(&rendered),
-        concat!(
-            "# Bar 1  * Line 1\n",
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
-            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
-            "values: * series=1 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
-            "10 +\n",
-            " 8 + *-+###\n",
-            " 6 +   |###\n",
-            " 4 +   |###\n",
-            " 2 +###+-*#\n",
-            " 0 +-+---+-\n",
-            "     A   B\n",
-        )
+        render_xychart(source, &AsciiRenderOptions::ascii()).unwrap()
     );
     for expected_fragment in [
         "<span style=\"color:#303030\">#</span>",
@@ -315,7 +443,6 @@ bar [2, 5, 8]
         concat!(
             "titleDisplay: chart(bytes=5)=\"Sales\"\n",
             "titleDisplay: yAxis(bytes=7)=\"Revenue\"\n",
-            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=3)=\"Jan\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=3)=\"Feb\" value=5 pointLabel=none clipped=false}, {index=2 x(bytes=3)=\"Mar\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 +        ###\n",
             " 6 +    ### ###\n",
@@ -324,6 +451,11 @@ bar [2, 5, 8]
             " 0 +-+---+---+-\n",
             "    Jan Feb Mar\n",
             "titleDisplay: xAxis(bytes=5)=\"Month\"\n",
+            "values: # series=0 type=bar title=none samples=[\n",
+            "values:   {index=0 x(bytes=3)=\"Jan\" value=2 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=3)=\"Feb\" value=5 pointLabel=none clipped=false},\n",
+            "values:   {index=2 x(bytes=3)=\"Mar\" value=8 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
         )
     );
 }
@@ -343,8 +475,6 @@ line [1, 5, 9]
     assert_eq!(
         rendered,
         concat!(
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\", bytes=1=\"C\"]\n",
-            "values: * series=0 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=1 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=5 pointLabel=none clipped=false}, {index=2 x(bytes=1)=\"C\" value=9 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +       +-*\n",
             " 8 +       |\n",
             " 6 +   +-*-+\n",
@@ -352,6 +482,12 @@ line [1, 5, 9]
             " 2 + *-+\n",
             " 0 +-+---+---+-\n",
             "     A   B   C\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\", bytes=1=\"C\"]\n",
+            "values: * series=0 type=line title=none samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"A\" value=1 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=1)=\"B\" value=5 pointLabel=none clipped=false},\n",
+            "values:   {index=2 x(bytes=1)=\"C\" value=9 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
         )
     );
 }
@@ -373,9 +509,6 @@ line [8, 2]
         rendered,
         concat!(
             "# Bar 1  * Line 1\n",
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
-            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
-            "values: * series=1 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 + *-+###\n",
             " 6 +   |###\n",
@@ -383,6 +516,15 @@ line [8, 2]
             " 2 +###+-*#\n",
             " 0 +-+---+-\n",
             "     A   B\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
+            "values: # series=0 type=bar title=none samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
+            "values: * series=1 type=line title=none samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
         )
     );
 }
@@ -407,7 +549,10 @@ line [4, 4]
         .next()
         .expect("multi-series chart should render a legend line");
 
-    assert_eq!(legend, "# Bar 1  # Bar 2  * Line 1  * Line 2");
+    assert_eq!(
+        legend,
+        "# Bar 1  # Bar 2  * Line 1  o Line 2  X shared samples"
+    );
 }
 
 #[test]
@@ -518,11 +663,14 @@ line [4, 8]
     assert_eq!(
         rendered,
         concat!(
-            "values: * series=0 type=line title=none samples=[{index=0 x(bytes=1)=\"A\" value=4 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "A +   *-+\n",
             "B +     +-*\n",
             "  ++--------+\n",
             "   0       10\n",
+            "values: * series=0 type=line title=none samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"A\" value=4 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
         )
     );
 }
@@ -545,9 +693,6 @@ line "Forecast" [8, 2]
         rendered,
         concat!(
             "# Revenue  * Forecast\n",
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
-            "values: # series=0 type=bar title(bytes=7)=\"Revenue\" samples=[{index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
-            "values: * series=1 type=line title(bytes=8)=\"Forecast\" samples=[{index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false}, {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 + *-+###\n",
             " 6 +   |###\n",
@@ -555,6 +700,15 @@ line "Forecast" [8, 2]
             " 2 +###+-*#\n",
             " 0 +-+---+-\n",
             "     A   B\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
+            "values: # series=0 type=bar title(bytes=7)=\"Revenue\" samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"A\" value=2 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=1)=\"B\" value=8 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
+            "values: * series=1 type=line title(bytes=8)=\"Forecast\" samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"A\" value=8 pointLabel=none clipped=false},\n",
+            "values:   {index=1 x(bytes=1)=\"B\" value=2 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
         )
     );
 }
@@ -578,13 +732,13 @@ bar [4, 8]
     assert_eq!(
         rendered,
         concat!(
-            "xDomain: band categories=[bytes=3=\"Jan\", bytes=3=\"Feb\"]\n",
             "8 +     ####\n",
             "6 +     ####\n",
             "4 +#### ####\n",
             "2 +#### ####\n",
             "0 +--+----+-\n",
             "   Jan  Feb\n",
+            "xDomain: band categories=[bytes=3=\"Jan\", bytes=3=\"Feb\"]\n",
         )
     );
 }
@@ -625,7 +779,6 @@ bar [4, 8]
     assert_eq!(
         rendered,
         concat!(
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "10 +\n",
             " 8 +     8\n",
             " 6 +    ###\n",
@@ -633,6 +786,7 @@ bar [4, 8]
             " 2 +### ###\n",
             " 0 +-+---+-\n",
             "     A   B\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
         )
     );
 }
@@ -651,15 +805,10 @@ bar [4, 8]
     .expect("vertical xychart with outside data labels should render");
 
     let mut lines = rendered.lines();
-    assert_eq!(
-        lines.next(),
-        Some("xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]")
-    );
     assert_eq!(lines.next(), Some("     4   8"));
     assert_eq!(
         rendered,
         concat!(
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "     4   8\n",
             "10 +\n",
             " 8 +    ###\n",
@@ -668,6 +817,7 @@ bar [4, 8]
             " 2 +### ###\n",
             " 0 +-+---+-\n",
             "     A   B\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
         )
     );
 }
@@ -737,7 +887,6 @@ bar [2, 5]
     assert_eq!(
         rendered,
         concat!(
-            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
             "5 ┤    ███\n",
             "4 ┤    ███\n",
             "3 ┤    ███\n",
@@ -745,6 +894,7 @@ bar [2, 5]
             "1 ┤███ ███\n",
             "0 ┼─┬───┬─\n",
             "    A   B\n",
+            "xDomain: band categories=[bytes=1=\"A\", bytes=1=\"B\"]\n",
         )
     );
 }
@@ -790,8 +940,6 @@ bar [4]
     assert_eq!(
         rendered,
         concat!(
-            "xDomain: linear authored=[1,1] resolved=[1,1]\n",
-            "values: # series=0 type=bar title=none samples=[{index=0 x(bytes=1)=\"1\" value=4 pointLabel=none clipped=false}] orphanPointLabels=[]\n",
             "10 +\n",
             " 8 +\n",
             " 6 +\n",
@@ -799,6 +947,10 @@ bar [4]
             " 2 +###\n",
             " 0 +-+-\n",
             "     1\n",
+            "xDomain: linear authored=[1,1] resolved=[1,1]\n",
+            "values: # series=0 type=bar title=none samples=[\n",
+            "values:   {index=0 x(bytes=1)=\"1\" value=4 pointLabel=none clipped=false}\n",
+            "values: ] orphanPointLabels=[]\n",
         )
     );
 }
@@ -1214,8 +1366,8 @@ fn xychart_linear_x_coordinates_control_terminal_point_spacing() {
         .expect("near linear samples should render");
     let far = render_typed_xychart(&make_model("10"), &options)
         .expect("far linear samples should render");
-    let near_width = near.lines().map(str::len).max().unwrap_or_default();
-    let far_width = far.lines().map(str::len).max().unwrap_or_default();
+    let near_width = near.lines().take(3).map(str::len).max().unwrap_or_default();
+    let far_width = far.lines().take(3).map(str::len).max().unwrap_or_default();
 
     assert!(
         far_width > near_width,
@@ -1823,8 +1975,8 @@ fn xychart_horizontal_unequal_linear_series_share_exact_sample_labels() {
         );
     }
     for expected in [
-        "title(bytes=6)=\"Sparse\" samples=[{index=0 x(bytes=1)=\"0\" value=1",
-        "title(bytes=5)=\"Dense\" samples=[{index=0 x(bytes=1)=\"0\" value=2",
+        "title(bytes=6)=\"Sparse\" samples=[\nvalues:   {index=0 x(bytes=1)=\"0\" value=1",
+        "title(bytes=5)=\"Dense\" samples=[\nvalues:   {index=0 x(bytes=1)=\"0\" value=2",
         "index=1 x(bytes=1)=\"3\" value=4",
         "index=2 x(bytes=1)=\"7\" value=6",
         "index=3 x(bytes=2)=\"10\" value=8",
@@ -2121,7 +2273,7 @@ fn xychart_orphan_point_labels_and_clipped_values_are_disclosed() {
         "clipped value and anchored point label should remain exact:\n{rendered}"
     );
     assert!(
-        rendered.contains("orphanPointLabels=[bytes=8=\"detached\"]"),
+        rendered.contains("orphanPointLabels=[\nvalues:   bytes=8=\"detached\"\nvalues: ]"),
         "orphan point labels must not disappear silently:\n{rendered}"
     );
 }
@@ -2169,7 +2321,7 @@ fn xychart_point_labels_preserve_authored_whitespace_and_presence() {
         "{whitespace}"
     );
     assert!(
-        orphan_whitespace.contains(r#"orphanPointLabels=[bytes=1=" "]"#),
+        orphan_whitespace.contains("orphanPointLabels=[\nvalues:   bytes=1=\" \"\nvalues: ]"),
         "{orphan_whitespace}"
     );
     assert_ne!(leading, trailing);
@@ -2206,13 +2358,13 @@ fn xychart_nonempty_domain_discloses_empty_series_title_and_type() {
 
     assert!(
         line.contains(
-            r#"values: * series=0 type=line title(bytes=8)="Forecast" samples=[] orphanPointLabels=[]"#
+            "values: * series=0 type=line title(bytes=8)=\"Forecast\" samples=[\nvalues: ] orphanPointLabels=[]"
         ),
         "{line}"
     );
     assert!(
         bar.contains(
-            r#"values: # series=0 type=bar title(bytes=8)="Forecast" samples=[] orphanPointLabels=[]"#
+            "values: # series=0 type=bar title(bytes=8)=\"Forecast\" samples=[\nvalues: ] orphanPointLabels=[]"
         ),
         "{bar}"
     );
