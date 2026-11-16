@@ -99,6 +99,12 @@ later bounded contract is documented below; the other dispositions remain unchan
 | Timeline | Inspect direction, sections, and ordered events. | Retain StructuredText; no spatial time spine was admitted. |
 | TreeView | Inspect file/directory hierarchy and disclosed node metadata. | Retain StructuredText; charset-aware tree prefixes are an outline, not a two-dimensional diagram. |
 
+GitGraph now adds bounded branch lanes to its newest-first history report, with explicit parent
+records whenever a lane would collide, exceed capacity, or misrepresent caller-authored history.
+Mindmap now puts labels and hierarchy before referenced metadata. Both remain StructuredText:
+these readability improvements do not admit Mermaid's two-dimensional Git or node-shape layouts.
+The [support matrix](ASCII_SUPPORT_MATRIX.md#structured-text-outputs) owns their current limits.
+
 ## Packet Bounded Spatial Admission
 
 Admission verified: 2026-11-16. Packet is Partial Diagrammatic within the spatial domain below;

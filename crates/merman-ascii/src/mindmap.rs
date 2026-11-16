@@ -4,8 +4,8 @@ use crate::operation::AsciiExecution;
 use crate::options::{AsciiCharset, AsciiRenderOptions};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    BudgetedTextDocument, charge_text_layout, push_wrapped_field, try_clone_layout_text,
-    try_concat_layout_text, try_repeat_layout_char,
+    BudgetedTextDocument, charge_text_layout, try_clone_layout_text, try_concat_layout_text,
+    try_repeat_layout_char,
 };
 use crate::text::display_width_with_profile;
 #[cfg(test)]
@@ -15,7 +15,9 @@ use merman_model::families::mindmap::{
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
+mod presentation;
 mod view;
+use presentation::{plan_node_presentations, push_details, push_node_text};
 pub(super) use view::MindmapView;
 use view::{NodeId, NodeView, charge_node_id};
 
@@ -89,6 +91,15 @@ fn render_mindmap_with_resources(
         document.resources_mut(),
         execution,
     )?;
+    let presentations = plan_node_presentations(
+        model,
+        &roots,
+        &nodes_by_id,
+        &children_by_id,
+        options,
+        document.resources_mut(),
+        execution,
+    )?;
 
     // Reuse traversal storage across roots. Each traversal removes its own entries on the
     // matching exit frames, so retaining the capacity avoids charging and allocating O(N) for
@@ -121,7 +132,6 @@ fn render_mindmap_with_resources(
                 is_last: true,
                 depth: 1,
                 is_root: true,
-                inherited_section: None,
             },
             document.resources_mut(),
         )?;
@@ -139,7 +149,6 @@ fn render_mindmap_with_resources(
                         is_last,
                         depth,
                         is_root,
-                        inherited_section,
                     } = frame;
                     let node = model.node(node_index)?;
                     let is_cycle = visiting.contains(&node.id);
@@ -148,11 +157,13 @@ fn render_mindmap_with_resources(
                     } else {
                         branch_prefix(&prefix, is_last, chars, document.resources_mut())?
                     };
-                    push_wrapped_label(&mut document, &branch, options, |line| {
+                    push_wrapped_label(&mut document, &branch, options, |line, available| {
                         push_node_text(
                             line,
                             node,
-                            model.section(node, inherited_section, depth - 1),
+                            presentations[node_index],
+                            available,
+                            node_index + 1,
                             is_cycle,
                         )
                     })?;
@@ -195,11 +206,6 @@ fn render_mindmap_with_resources(
                                 is_last: child_index + 1 == children.len(),
                                 depth: child_depth,
                                 is_root: false,
-                                inherited_section: model.child_section(
-                                    node,
-                                    child_index,
-                                    inherited_section,
-                                ),
                             },
                             document.resources_mut(),
                         )?;
@@ -209,6 +215,7 @@ fn render_mindmap_with_resources(
         }
     }
 
+    push_details(&mut document, model, &presentations, options, execution)?;
     document.finish_with_execution(execution)
 }
 
@@ -317,29 +324,6 @@ fn build_children_map<'a>(
         Ok(())
     })?;
     Ok(children)
-}
-
-fn push_node_text(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
-    node: NodeView<'_>,
-    section: Option<i32>,
-    is_cycle: bool,
-) -> Result<()> {
-    push_wrapped_field(line, "", "node", node.label)?;
-    push_wrapped_field(line, " ", "id", node.node_id)?;
-    if !node.shape.is_empty() && node.shape != "defaultMindmapNode" {
-        push_wrapped_field(line, " ", "shape", node.shape)?;
-    }
-    if let Some(icon) = node.icon {
-        push_wrapped_field(line, " ", "icon", icon)?;
-    }
-    if let Some(section) = section {
-        line.write_fmt(format_args!(" section={section}"))?;
-    }
-    if is_cycle {
-        line.push_str(" (cycle)")?;
-    }
-    Ok(())
 }
 
 fn root_ids<'a>(
@@ -482,7 +466,6 @@ struct MindmapEnterFrame {
     is_last: bool,
     depth: usize,
     is_root: bool,
-    inherited_section: Option<i32>,
 }
 
 fn push_enter_frame<'a>(
@@ -550,16 +533,17 @@ fn push_wrapped_label(
     document: &mut BudgetedTextDocument,
     prefix: &str,
     options: &AsciiRenderOptions,
-    render: impl Fn(&mut crate::safe_text::BudgetedWrappedText<'_>) -> Result<()>,
+    render: impl Fn(&mut crate::safe_text::BudgetedWrappedText<'_>, usize) -> Result<()>,
 ) -> Result<()> {
     let continuation_width = display_width_with_profile(prefix, options.terminal_width_profile);
     let continuation_prefix =
         try_repeat_layout_char(' ', continuation_width, document.resources_mut())?;
+    let available = SUMMARY_WRAP_WIDTH.saturating_sub(continuation_width).max(1);
     document.push_wrapped_prefixed_line_with(
         prefix,
         &continuation_prefix,
         SUMMARY_WRAP_WIDTH,
-        render,
+        |line| render(line, available),
     )
 }
 
@@ -786,14 +770,14 @@ mod tests {
             .map(|index| format!("    branch{index}\n      leaf{index}\n"))
             .collect::<String>();
         for (config, expected_section) in [
-            ("{}", "section=10"),
+            ("{}", None),
             (
                 r#"{"theme":"redux","mindmap":{"colorBy":"depth"}}"#,
-                "section=1",
+                Some("section=1"),
             ),
             (
                 r#"{"theme":"redux-dark","mindmap":{"colorBy":"branch"}}"#,
-                "section=10",
+                None,
             ),
         ] {
             let source = format!("%%{{init: {config}}}%%\nmindmap\n  root((Root λ))\n{branches}");
@@ -821,7 +805,16 @@ mod tests {
                 .unwrap();
                 let full = render_mindmap_diagram(full, &options, execution).unwrap();
                 assert_eq!(lean, full, "config={config}");
-                assert!(lean.contains(expected_section));
+                let (tree, details) = lean.split_once("\n\nDetails:").unwrap();
+                assert!(tree.starts_with("Root λ [1]\n"), "{lean}");
+                assert!(!tree.contains("shape("), "{lean}");
+                assert!(!tree.contains("section="), "{lean}");
+                assert!(details.contains("shape(bytes=13)=\"mindmapCircle\""));
+                if let Some(expected_section) = expected_section {
+                    assert!(details.contains(expected_section), "{lean}");
+                } else {
+                    assert!(!details.contains("section="), "{lean}");
+                }
             }
         }
     }
@@ -924,5 +917,62 @@ mod tests {
         control.cancel();
         let result = render_mindmap_diagram(view, &options, AsciiExecution::new(&control, &policy));
         assert!(matches!(result, Err(AsciiError::Cancelled(_))));
+    }
+
+    #[test]
+    fn mindmap_details_share_exact_output_and_document_limits_with_tree() {
+        use crate::color::AsciiColorMode;
+
+        let mut root = node("authored-root", "中心·Cafe\u{301} 👩‍💻", 0);
+        root.shape = "<custom & shape>".to_string();
+        root.icon = Some("icon\u{1b}[31m".to_string());
+        root.section = Some(19);
+        let model = MindmapDiagramRenderModel {
+            nodes: vec![root],
+            edges: Vec::new(),
+        };
+        let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+        for color_mode in [AsciiColorMode::Plain, AsciiColorMode::Html] {
+            let options = AsciiRenderOptions::unicode().with_color_mode(color_mode);
+            let resources = ResourceContext::new(policy);
+            let output = render_mindmap_with_resources(
+                (&model).into(),
+                &options,
+                resources.clone(),
+                AsciiExecution::for_test(&policy),
+            )
+            .unwrap();
+            assert!(output.contains("Details:"), "{output}");
+            assert!(output.contains("中心·Cafe\u{301} 👩‍💻"), "{output}");
+            assert!(!output.contains('\u{1b}'), "{output}");
+            if color_mode == AsciiColorMode::Html {
+                assert!(output.contains("&lt;custom &amp; shape&gt;"), "{output}");
+            }
+
+            for (limit, exact) in [
+                (AsciiResourceLimitId::MaxOutputBytes, output.len()),
+                (
+                    AsciiResourceLimitId::MaxDocumentCells,
+                    resources.document_cells_used(),
+                ),
+            ] {
+                for max in [exact, exact - 1] {
+                    let limited = policy.with_limit(limit, max).unwrap();
+                    let result = render_mindmap_diagram(
+                        &model,
+                        &options,
+                        AsciiExecution::for_test(&limited),
+                    );
+                    if max == exact {
+                        assert_eq!(result.unwrap(), output, "{color_mode:?}/{limit:?}");
+                    } else {
+                        assert!(
+                            matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == limit),
+                            "{color_mode:?}/{limit:?} must reject the full tree and its details together"
+                        );
+                    }
+                }
+            }
+        }
     }
 }

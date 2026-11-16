@@ -74,6 +74,25 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 | Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
 | Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
+Mindmap puts labels and hierarchy first. Distinct authored IDs, shapes, icons, and custom sections
+appear in a separate `Details:` block, referenced from the corresponding node. The standard
+branch palette is already expressed by the tree and is omitted when the complete graph follows
+that rule. Labels that could forge an annotation or lose whitespace are quoted and escaped.
+
+```text
+root
+|-- left
+|   \-- leaf
+\-- right
+```
+
+GitGraph presents newest-first history with a bounded set of branch lanes and explicit parent
+IDs. Cherry-picks identify the picked source separately from the first parent. Histories whose
+lanes would collide or exceed capacity use complete parent records in model order, as do
+repeated IDs, external/forward references, and nonchronological sequences. Messages, tags, and
+identities remain quoted; unusual sequence/type/ID metadata stays in a separate details block.
+These family presentations remain StructuredText and do not change capability admission.
+
 Every selected logical model family has one capability record, including unsupported terminal
 projections. These records describe this crate's local adapters even when another dependency selects
 additional model data. The source facade intersects these capabilities with its actual parsers. Flowchart and Swimlane have
