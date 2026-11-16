@@ -274,8 +274,10 @@ assignment of a default-valued public field cannot record that intent.
 
 Flowchart, Swimlane, and State use one private [scene planner](src/graph/planning.rs) to join measured
 demand, layout generations, compatible channel allocation, routing, and final validation. Required
-feasibility and replacement work have separate finite allowances from optional quality search;
-quality work starts only after a complete validated incumbent exists. Rejected route, port, marker,
+feasibility follows the finite channel states under the caller's public work/deadline policy.
+Adaptive adds an early search-work stop to leave room for complete document recovery; replacement
+and optional quality search have separate finite allowances. Quality work starts only after a
+complete validated incumbent exists. Rejected route, port, marker,
 and label reservations identify actual blockers for repair. A trial includes the affected routes'
 shared-channel membership and replaces their contacts, paths, markers, and labels atomically. A
 failed trial restores the incumbent without refunding spent work; a fatal error propagates.

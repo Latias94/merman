@@ -106,7 +106,7 @@ marker, stroke, membership, and individually keyed relationship. Width policy re
 and an unmeasured primary scene is reported as unavailable under ASCII schema 4. Resource and
 cancellation errors remain errors in every mode.
 
-Current-source optimized native controls use the source-backed UniFFI operation, Canonical,
+Current-source optimized native controls use the source-backed CLI operation, Canonical,
 Plain, both ASCII and Unicode charsets, the unchanged Trusted Native policy, and a 10-second
 operation control. At 80 cells, the reduced source returns a 24×115 strict diagram; the original
 source returns a strict routing-search diagnostic and a complete 53×198 adaptive document.

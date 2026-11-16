@@ -589,7 +589,7 @@ fn route_scene_kernel<'a>(
     } else {
         &budget.feasibility
     };
-    let mut start_work = resources.layout_work_used();
+    let start_work = resources.layout_work_used();
     let initial_allowance = allowance.remaining().1;
     let result = (|| {
         execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
@@ -622,8 +622,10 @@ fn route_scene_kernel<'a>(
         for &edge_index in &prepared.route_order {
             let edge = &canonical_edges[edge_index];
             execution.checkpoint(merman_model::OperationPhase::Layout)?;
-            allowance.account_scene_work(start_work, initial_allowance, resources);
-            if allowance.remaining().1 == 0 {
+            if quality {
+                allowance.account_scene_work(start_work, initial_allowance, resources);
+            }
+            if quality && allowance.remaining().1 == 0 {
                 return Err(AsciiError::RoutingSearchExhausted {
                     diagram_type: graph.diagram_type(),
                     edge_index: source_indices[edge_index],
@@ -777,7 +779,9 @@ fn route_scene_kernel<'a>(
                     .and_then(|topology| topology.endpoint_index(&edge.from)),
                 Some(GraphEndpointIndex::Group(_))
             );
-            allowance.account_scene_work(start_work, initial_allowance, resources);
+            if quality {
+                allowance.account_scene_work(start_work, initial_allowance, resources);
+            }
             let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
             let needs_terminal_search = selected.is_none()
                 || (quality || input.independent_incidents[edge_index])
@@ -826,7 +830,7 @@ fn route_scene_kernel<'a>(
                 if selected.is_none()
                     && !witnesses.blockers.is_empty()
                     && edge.from != edge.to
-                    && repair_blocked_scene_with_settlement(
+                    && repair_blocked_scene_for_input(
                         request,
                         input,
                         &owner,
@@ -834,7 +838,6 @@ fn route_scene_kernel<'a>(
                         &mut routes,
                         &mut occupancy,
                         &mut repair_budget,
-                        &mut start_work,
                         resources,
                         execution,
                     )?
@@ -890,7 +893,7 @@ fn route_scene_kernel<'a>(
                     .unwrap_or_default();
                 if selected.is_none()
                     && edge.from != edge.to
-                    && repair_blocked_scene_with_settlement(
+                    && repair_blocked_scene_for_input(
                         request,
                         input,
                         &owner,
@@ -898,7 +901,6 @@ fn route_scene_kernel<'a>(
                         &mut routes,
                         &mut occupancy,
                         &mut repair_budget,
-                        &mut start_work,
                         resources,
                         execution,
                     )?
@@ -1008,12 +1010,14 @@ fn route_scene_kernel<'a>(
         };
         Ok(scene)
     })();
-    allowance.account_scene_work(start_work, initial_allowance, resources);
+    if quality {
+        allowance.account_scene_work(start_work, initial_allowance, resources);
+    }
     result
 }
 
 #[allow(clippy::too_many_arguments)]
-fn repair_blocked_scene_with_settlement(
+fn repair_blocked_scene_for_input(
     request: EdgeRouteRequest<'_>,
     input: &SceneRoutingInput<'_>,
     owner: &RouteOwner,
@@ -1021,17 +1025,10 @@ fn repair_blocked_scene_with_settlement(
     routes: &mut Vec<PreparedRoute>,
     occupancy: &mut SceneOccupancy<'_>,
     budget: &mut repair::SceneRepairBudget<'_>,
-    start_work: &mut usize,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<bool> {
-    let feasibility = &execution
-        .graph_planning()
-        .expect("scene planning budget")
-        .feasibility;
-    let repair_start = resources.layout_work_used();
-    let feasibility_before = feasibility.remaining().1;
-    let result = repair::repair_blocked_scene(
+    repair::repair_blocked_scene(
         request,
         input.topology.as_ref(),
         &input.labels,
@@ -1042,17 +1039,7 @@ fn repair_blocked_scene_with_settlement(
         budget,
         resources,
         execution,
-    );
-    // Replacement work has its own allowance; retain only its missing-route search
-    // in this pass's feasibility charge, including when the repair returns an error.
-    let feasibility_spent = feasibility_before.saturating_sub(feasibility.remaining().1);
-    *start_work = start_work.saturating_add(
-        resources
-            .layout_work_used()
-            .saturating_sub(repair_start)
-            .saturating_sub(feasibility_spent),
-    );
-    result
+    )
 }
 
 fn flush_deferred_loop_labels(

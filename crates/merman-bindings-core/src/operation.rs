@@ -433,7 +433,7 @@ fn execute_controlled_output(
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum BindingOutputPlan {
-    Ascii(BindingAsciiOutputPlan),
+    Ascii(Box<BindingAsciiOutputPlan>),
     Raster(BindingRasterOutputPlan),
     PdfFilterImages(BindingPdfFilterImageOutputPlan),
     Unknown(BindingUnknownOutputPlan),
@@ -1069,7 +1069,7 @@ impl BindingOperationOutput {
         if !include_metadata {
             return Self::plain(output.into_bytes());
         }
-        let plan = BindingOutputPlan::Ascii(BindingAsciiOutputPlan::from_output(&output));
+        let plan = BindingOutputPlan::Ascii(Box::new(BindingAsciiOutputPlan::from_output(&output)));
         Self {
             data: output.into_bytes(),
             output_plan: Some(plan),
@@ -1150,7 +1150,9 @@ fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
     })?;
     let kind = required_string(object, "kind")?;
     match kind {
-        "ascii" => parse_ascii_output_plan(object).map(BindingOutputPlan::Ascii),
+        "ascii" => parse_ascii_output_plan(object)
+            .map(Box::new)
+            .map(BindingOutputPlan::Ascii),
         "raster" => Ok(BindingOutputPlan::Raster(BindingRasterOutputPlan {
             requested_width_px: required_f64(object, "requested_width_px")?,
             requested_height_px: required_f64(object, "requested_height_px")?,

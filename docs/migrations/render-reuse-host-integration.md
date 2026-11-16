@@ -242,6 +242,10 @@ See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adap
 
 ## ASCII terminal graph planning
 
+Rust binding consumers that directly construct `BindingOutputPlan::Ascii` now pass
+`Box::new(plan)`. Borrowed pattern matches and plan getters retain their use; this storage change
+does not change serialized operation metadata.
+
 Flowchart and Swimlane use denser vertical defaults: zero vertical padding inside ordinary nodes
 and a one-cell preferred vertical rank gap. Horizontal spacing and explicit layout profiles retain
 their meanings. To request the former spacing explicitly, use

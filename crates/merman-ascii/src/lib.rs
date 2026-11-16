@@ -301,7 +301,8 @@ impl AsciiRenderer {
         } = request;
         viewport.validate()?;
         let render_ledger = resource::ResourceContext::new(resources);
-        let graph_planning = operation::GraphPlanningBudget::default();
+        let graph_planning =
+            operation::GraphPlanningBudget::for_presentation(self.options.graph_presentation);
         let execution = operation::AsciiExecution::new(control, &resources)
             .with_viewport(viewport)
             .with_render_ledger(&render_ledger)

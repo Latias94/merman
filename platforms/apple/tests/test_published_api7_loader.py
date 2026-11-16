@@ -3,7 +3,7 @@
 
 Pass the native library built by the artifact owner. This check neither builds Rust nor changes
 checked-in generated bindings. The frozen alpha.7 projection has API 7 but incompatible nested
-records; its removed presentation-catalog symbol must fail at dynamic loading, before decoding.
+records; its removed API 7 version probe must fail at dynamic loading, before decoding.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ import tempfile
 ROOT = Path(__file__).resolve().parents[3]
 PUBLISHED_API7_SOURCE = "580e39b69cc1b0ca35c4f8272683e622b2e9b8db"  # v0.8.0-alpha.7
 GENERATED = "platforms/apple/Sources/Merman/Generated"
-REMOVED_SYMBOL = "uniffi_merman_uniffi_checksum_method_merman_presentation_catalog_json"
+REMOVED_SYMBOL = "uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7"
 
 
 def test_published_api7_loader(library: Path) -> dict:
@@ -72,7 +72,7 @@ sys.exit(0)
         if loaded.returncode != 1 or REMOVED_SYMBOL not in loaded.stderr:
             raise AssertionError(
                 "the complete published API 7 projection must be rejected by the removed "
-                f"catalog symbol; exit={loaded.returncode}, stderr={loaded.stderr}"
+                f"API 7 version probe; exit={loaded.returncode}, stderr={loaded.stderr}"
             )
         with library.open("rb") as stream:
             native_digest = hashlib.file_digest(stream, "sha256").hexdigest()

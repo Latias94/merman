@@ -2274,8 +2274,8 @@ fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
         panic!("the exact target-local grid policy must produce ASCII output");
     };
     assert_eq!(
-        (output.primary_extent.width, output.primary_extent.height),
-        (5, 8),
+        output.primary_extent,
+        Some(merman::ascii::AsciiExtent::new(5, 8)),
         "the pinned resource boundary must match the canonical grid"
     );
 

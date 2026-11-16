@@ -4,6 +4,53 @@ use crate::graph::model::{GraphDirection, GraphEdgeMarker, GraphNodeShape};
 use crate::resource::AsciiResourcePolicy;
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
+fn large_compound_chains_keep_the_existing_strict_benchmark_admission() {
+    use std::fmt::Write as _;
+    let mut source = String::from("flowchart LR\n");
+    for segment in 0..10 {
+        writeln!(source, "subgraph S{}[Segment {}]", segment + 1, segment + 1).unwrap();
+        for offset in 1..=20 {
+            let node = segment * 20 + offset;
+            writeln!(source, "L{node}[Node {node}]").unwrap();
+            if offset > 1 {
+                writeln!(source, "L{} --> L{node}", node - 1).unwrap();
+            }
+        }
+        source.push_str("end\n");
+    }
+    for segment in 0..9 {
+        writeln!(
+            source,
+            "L{} --> L{}",
+            segment * 20 + 1,
+            (segment + 1) * 20 + 1
+        )
+        .unwrap();
+    }
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(&source)
+        .unwrap();
+    let context = merman_model::runtime::RuntimePolicy::deterministic()
+        .begin_operation()
+        .unwrap();
+    let output = crate::AsciiRenderer::new(AsciiRenderOptions::ascii())
+        .unwrap()
+        .render_parsed_report(
+            &parsed,
+            crate::AsciiViewportPolicy::unrestricted(),
+            &merman_model::OperationControl::new(),
+            &context,
+            AsciiResourcePolicy::unbounded(),
+        )
+        .expect("finite search allowances must retain directly routable strict chains");
+    assert_eq!(output.projection, crate::AsciiProjection::Diagrammatic);
+    for node in 1..=200 {
+        assert!(output.text.contains(&format!("Node {node}")));
+    }
+}
+
+#[test]
 fn capacity_feedback_finishes_a_strict_diagram_with_every_independent_marker() {
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
     graph.add_node_with_shape_and_style(

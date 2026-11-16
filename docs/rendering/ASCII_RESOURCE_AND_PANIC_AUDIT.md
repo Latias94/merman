@@ -116,6 +116,13 @@ resource ceilings and do not make a difficult graph unlimited under the trusted-
 Optional quality begins with a validated complete incumbent; exhausting that allowance retains
 the incumbent. The planner never raises a public ceiling to make a candidate succeed.
 
+Strict feasibility retains the finite channel-state search and the caller's public work ceiling.
+Adaptive feasibility additionally stops speculative search early enough to leave room for complete
+document recovery. Deterministic candidate construction and route commits always charge the public
+ledger; they do not consume that adaptive search allowance. A long, directly routable chain is not
+rejected merely because constructing its earlier routes used more than a fixed search-work slice.
+The existing 200-node compound-chain benchmark remains a strict admission control.
+
 Rejected route, port, marker, and label reservations record at most 64 distinct canonical blockers.
 The witness records static/capacity conflicts and truncation separately; it does not certify global
 impossibility. Repair expands to all semantic members of affected shared channels and validates the

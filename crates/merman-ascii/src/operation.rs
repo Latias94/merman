@@ -62,7 +62,7 @@ pub(crate) struct GraphPlanningBudget {
 impl Default for GraphPlanningBudget {
     fn default() -> Self {
         Self {
-            feasibility: SearchAllowance::new(65_536, 3_000_000),
+            feasibility: SearchAllowance::new(usize::MAX, usize::MAX),
             allocation: SearchAllowance::new(4_096, 500_000),
             replacement: SearchAllowance::new(8_192, 1_000_000),
             quality: SearchAllowance::new(8_192, 1_000_000),
@@ -70,6 +70,16 @@ impl Default for GraphPlanningBudget {
             repair_attempts: Cell::new(4),
             reflow_work: Cell::new(1_000_000),
         }
+    }
+}
+
+impl GraphPlanningBudget {
+    pub(crate) fn for_presentation(presentation: AsciiGraphPresentation) -> Self {
+        let mut budget = Self::default();
+        if presentation == AsciiGraphPresentation::Adaptive {
+            budget.feasibility = SearchAllowance::new(65_536, 3_000_000);
+        }
+        budget
     }
 }
 
