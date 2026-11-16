@@ -31,7 +31,7 @@ mod record;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 mod relation;
 
-pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 3;
+pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 4;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
 
 /// 宽度超限时的输出策略。
@@ -276,12 +276,16 @@ impl Default for FallbackMetadata {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AsciiFallbackReason {
     PrimaryOverflow,
+    RoutingSearchExhausted,
+    PortCapacityExceeded,
 }
 
 impl AsciiFallbackReason {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::PrimaryOverflow => "primary_overflow",
+            Self::RoutingSearchExhausted => "routing_search_exhausted",
+            Self::PortCapacityExceeded => "port_capacity_exceeded",
         }
     }
 }
@@ -312,14 +316,17 @@ pub struct AsciiOutput {
     pub projection: AsciiProjection,
     pub encoding: AsciiOutputEncoding,
     pub text: String,
-    pub primary_extent: AsciiExtent,
+    /// Measured primary geometry, absent when graph planning did not produce a valid scene.
+    pub primary_extent: Option<AsciiExtent>,
     pub emitted_extent: AsciiExtent,
     pub width_profile: TerminalWidthProfile,
-    pub layout_profile: crate::options::AsciiLayoutProfile,
+    pub layout_profile: Option<crate::options::AsciiLayoutProfile>,
     pub requested_layout_profile: crate::options::AsciiLayoutProfile,
+    pub requested_graph_presentation: crate::options::AsciiGraphPresentation,
     pub compact_attempted: bool,
     pub requested_max_width: Option<usize>,
-    pub overflowed: bool,
+    pub primary_overflowed: Option<bool>,
+    pub emitted_overflowed: bool,
     pub outcome: AsciiOutputOutcome,
     pub fallback: FallbackMetadata,
     pub trimmed: bool,
@@ -432,16 +439,18 @@ pub struct AsciiOutputMetadata {
     pub family: String,
     pub projection: String,
     pub encoding: String,
-    pub primary_width: u64,
-    pub primary_height: u64,
+    pub primary_width: Option<u64>,
+    pub primary_height: Option<u64>,
     pub emitted_width: u64,
     pub emitted_height: u64,
     pub width_profile: String,
-    pub layout_profile: String,
+    pub layout_profile: Option<String>,
     pub requested_layout_profile: String,
+    pub requested_graph_presentation: String,
     pub compact_attempted: bool,
     pub requested_max_width: Option<u64>,
-    pub overflowed: bool,
+    pub primary_overflowed: Option<bool>,
+    pub emitted_overflowed: bool,
     pub outcome: String,
     pub fallback_capability: String,
     pub fallback_attempted: bool,
@@ -554,16 +563,20 @@ impl AsciiOutput {
             family: self.family.clone(),
             projection: self.projection.as_str().to_owned(),
             encoding: self.encoding.as_str().to_owned(),
-            primary_width: self.primary_extent.width as u64,
-            primary_height: self.primary_extent.height as u64,
+            primary_width: self.primary_extent.map(|extent| extent.width as u64),
+            primary_height: self.primary_extent.map(|extent| extent.height as u64),
             emitted_width: self.emitted_extent.width as u64,
             emitted_height: self.emitted_extent.height as u64,
             width_profile: self.width_profile.as_str().to_owned(),
-            layout_profile: self.layout_profile.as_str().to_owned(),
+            layout_profile: self
+                .layout_profile
+                .map(|profile| profile.as_str().to_owned()),
             requested_layout_profile: self.requested_layout_profile.as_str().to_owned(),
+            requested_graph_presentation: self.requested_graph_presentation.as_str().to_owned(),
             compact_attempted: self.compact_attempted,
             requested_max_width: self.requested_max_width.map(|value| value as u64),
-            overflowed: self.overflowed,
+            primary_overflowed: self.primary_overflowed,
+            emitted_overflowed: self.emitted_overflowed,
             outcome: self.outcome.as_str().to_owned(),
             fallback_capability: self.fallback.capability.as_str().to_owned(),
             fallback_attempted: self.fallback.attempted,
@@ -632,7 +645,7 @@ pub(crate) fn build_output(
         OutputAssembly {
             family,
             projection,
-            primary_extent,
+            primary_extent: Some(primary_extent),
             emitted,
             outcome: if overflowed {
                 AsciiOutputOutcome::WideAllowed
@@ -674,14 +687,22 @@ pub(crate) fn build_structured_fallback(
     let reflowed = reflow_text(primary.text(), max_width, profile, execution)?;
     drop(primary);
     let candidate = MeasuredOutput::measure(reflowed, color_mode, profile, execution)?;
-    finalize_fallback(family, primary_extent, candidate, Lossiness::None, context)
+    finalize_fallback(
+        family,
+        Some(primary_extent),
+        candidate,
+        Lossiness::None,
+        AsciiFallbackReason::PrimaryOverflow,
+        context,
+    )
 }
 
 fn finalize_fallback(
     family: &str,
-    primary_extent: AsciiExtent,
+    primary_extent: Option<AsciiExtent>,
     candidate: MeasuredOutput,
     lossiness: Lossiness,
+    reason: AsciiFallbackReason,
     context: OutputBuildContext<'_>,
 ) -> Result<AsciiOutput> {
     let OutputBuildContext {
@@ -692,15 +713,29 @@ fn finalize_fallback(
         execution,
     } = context;
     policy.validate()?;
-    let max_width = policy.max_width.expect("fallback requires a width bound");
     let (emitted, trimmed) = candidate.trim(policy.trim, color_mode, profile, execution)?;
     let emitted_extent = emitted.metrics().extent;
-    if emitted_extent.width > max_width {
-        return Err(AsciiError::FallbackUnavailable {
-            diagram_type: family.to_string(),
-            max_width,
-            actual_width: emitted_extent.width,
-        });
+    if let Some(max_width) = policy
+        .max_width
+        .filter(|limit| emitted_extent.width > *limit)
+    {
+        match policy.overflow {
+            OverflowPolicy::Error => {
+                return Err(AsciiError::WidthOverflow {
+                    max_width,
+                    actual_width: emitted_extent.width,
+                    profile,
+                });
+            }
+            OverflowPolicy::Fallback => {
+                return Err(AsciiError::FallbackUnavailable {
+                    diagram_type: family.to_string(),
+                    max_width,
+                    actual_width: emitted_extent.width,
+                });
+            }
+            OverflowPolicy::Allow => {}
+        }
     }
     emitted.admit_fallback(execution)?;
     execution.checkpoint(OperationPhase::Emit)?;
@@ -714,7 +749,7 @@ fn finalize_fallback(
             fallback: FallbackMetadata {
                 capability: AsciiFallbackCapability::Available,
                 attempted: true,
-                reason: Some(AsciiFallbackReason::PrimaryOverflow),
+                reason: Some(reason),
             },
             trimmed,
             lossiness,
@@ -726,7 +761,7 @@ fn finalize_fallback(
 struct OutputAssembly<'a> {
     family: &'a str,
     projection: AsciiProjection,
-    primary_extent: AsciiExtent,
+    primary_extent: Option<AsciiExtent>,
     emitted: MeasuredOutput,
     outcome: AsciiOutputOutcome,
     fallback: FallbackMetadata,
@@ -763,14 +798,16 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
         primary_extent,
         emitted_extent,
         width_profile: profile,
-        layout_profile,
+        layout_profile: primary_extent.map(|_| layout_profile),
         requested_layout_profile: layout_profile,
+        requested_graph_presentation: crate::AsciiGraphPresentation::Strict,
         compact_attempted: false,
         requested_max_width: policy.max_width,
-        overflowed: matches!(
-            outcome,
-            AsciiOutputOutcome::WideAllowed | AsciiOutputOutcome::Fallback
-        ),
+        primary_overflowed: primary_extent
+            .map(|extent| policy.max_width.is_some_and(|limit| extent.width > limit)),
+        emitted_overflowed: policy
+            .max_width
+            .is_some_and(|limit| emitted_extent.width > limit),
         outcome,
         fallback,
         trimmed,
@@ -800,6 +837,38 @@ pub(crate) fn build_semantic_fallback_for_family(
     primary_extent: AsciiExtent,
     context: OutputBuildContext<'_>,
 ) -> Result<AsciiOutput> {
+    build_semantic_document(
+        family,
+        model,
+        metadata,
+        Some(primary_extent),
+        AsciiFallbackReason::PrimaryOverflow,
+        context,
+    )
+}
+
+pub(crate) fn build_graph_recovery_for_family(
+    family: &str,
+    model: &AsciiDiagram<'_>,
+    metadata: AsciiSourceContext<'_>,
+    error: AsciiError,
+    context: OutputBuildContext<'_>,
+) -> Result<AsciiOutput> {
+    let reason = match error.graph_planning_fallback_reason() {
+        Some(reason) => reason,
+        None => return Err(error),
+    };
+    build_semantic_document(family, model, metadata, None, reason, context)
+}
+
+fn build_semantic_document(
+    family: &str,
+    model: &AsciiDiagram<'_>,
+    metadata: AsciiSourceContext<'_>,
+    primary_extent: Option<AsciiExtent>,
+    reason: AsciiFallbackReason,
+    context: OutputBuildContext<'_>,
+) -> Result<AsciiOutput> {
     let OutputBuildContext {
         color_mode,
         profile,
@@ -808,14 +877,24 @@ pub(crate) fn build_semantic_fallback_for_family(
         execution,
     } = context;
     policy.validate()?;
-    let max_width = policy
-        .max_width
-        .expect("semantic fallback requires a width bound");
+    // A topology recovery is a complete candidate in its own right. Allow and Error measure
+    // its natural records; Fallback reflows those records without retrying the failed graph.
+    let max_width = if policy.overflow == OverflowPolicy::Fallback {
+        policy.max_width.unwrap_or(usize::MAX)
+    } else {
+        usize::MAX
+    };
     if color_mode != AsciiColorMode::Plain {
-        return Err(AsciiError::FallbackUnavailable {
-            diagram_type: family.to_string(),
-            max_width,
-            actual_width: primary_extent.width,
+        return Err(match primary_extent {
+            Some(extent) => AsciiError::FallbackUnavailable {
+                diagram_type: family.to_string(),
+                max_width,
+                actual_width: extent.width,
+            },
+            None => AsciiError::InvalidOption {
+                field: "graph_presentation",
+                message: "adaptive graph presentation requires Plain output",
+            },
         });
     }
     preflight_semantic_model(model, metadata, execution)?;
@@ -823,10 +902,16 @@ pub(crate) fn build_semantic_fallback_for_family(
         semantic_fallback_projection(model, metadata, execution).map_err(|error| match error {
             SemanticFallbackError::Cancelled(cancelled) => AsciiError::Cancelled(cancelled),
             SemanticFallbackError::Resource(error) => error,
-            SemanticFallbackError::Unavailable => AsciiError::FallbackUnavailable {
-                diagram_type: family.to_string(),
-                max_width,
-                actual_width: primary_extent.width,
+            SemanticFallbackError::Unavailable => match primary_extent {
+                Some(extent) => AsciiError::FallbackUnavailable {
+                    diagram_type: family.to_string(),
+                    max_width,
+                    actual_width: extent.width,
+                },
+                None => AsciiError::UnsupportedFeature {
+                    diagram_type: "graph",
+                    feature: "invalid serialized semantic projection",
+                },
             },
         })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
@@ -866,6 +951,7 @@ pub(crate) fn build_semantic_fallback_for_family(
         primary_extent,
         candidate,
         Lossiness::PresentationOnly,
+        reason,
         context,
     )
 }
@@ -1021,7 +1107,8 @@ fn map_semantic_fallback_error(error: AsciiError) -> SemanticFallbackError {
     match error {
         AsciiError::Cancelled(cancelled) => SemanticFallbackError::Cancelled(cancelled),
         error @ (AsciiError::ResourceLimitExceeded(_)
-        | AsciiError::OperationResourceTerminal(_)) => SemanticFallbackError::Resource(error),
+        | AsciiError::OperationResourceTerminal(_)
+        | AsciiError::AllocationFailed { .. }) => SemanticFallbackError::Resource(error),
         _ => SemanticFallbackError::Unavailable,
     }
 }
@@ -1811,6 +1898,15 @@ mod tests {
             Err(SemanticFallbackError::Resource(
                 AsciiError::ResourceLimitExceeded(details)
             )) if details.limit == AsciiResourceLimitId::MaxOutputBytes
+        ));
+    }
+
+    #[test]
+    fn semantic_projection_preserves_allocation_failure() {
+        let error = AsciiError::allocation_failed("ascii_semantic_projection");
+        assert!(matches!(
+            map_semantic_fallback_error(error.clone()),
+            SemanticFallbackError::Resource(actual) if actual == error
         ));
     }
 

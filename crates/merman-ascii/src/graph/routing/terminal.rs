@@ -20,6 +20,7 @@ const DIRECTIONS: [StepDirection; 4] = [
     StepDirection::Left,
     StepDirection::Up,
 ];
+const REPLACEMENT_PAIR_BATCH: usize = 16;
 
 // One scene shares this quality-repair bound across all its edges and port pairs.
 // Resource and cancellation failures still propagate through the operation's shared ledger.
@@ -401,7 +402,7 @@ fn plan_terminal_route_inner(
             break;
         };
         let pair_allowance = if share_pairs {
-            (*expansions_left).div_ceil(remaining_pairs.max(1))
+            (*expansions_left).div_ceil(remaining_pairs.clamp(1, REPLACEMENT_PAIR_BATCH))
         } else {
             *expansions_left
         };

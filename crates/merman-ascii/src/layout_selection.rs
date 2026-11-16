@@ -3,20 +3,23 @@
 use crate::operation::AsciiExecution;
 use crate::output::MeasuredOutput;
 use crate::{
-    AsciiError, AsciiExtent, AsciiLayoutProfile, AsciiRenderOptions, AsciiViewportPolicy,
-    OverflowPolicy, Result,
+    AsciiError, AsciiExtent, AsciiGraphPresentation, AsciiLayoutProfile, AsciiRenderOptions,
+    AsciiViewportPolicy, OverflowPolicy, Result,
 };
 
 pub(crate) enum LayoutCandidate {
     Measured(MeasuredOutput),
     Overflow(AsciiExtent),
+    /// Only an admitted routing-search or port-capacity error, never measured geometry.
+    PlanningMiss(AsciiError),
 }
 
 impl LayoutCandidate {
-    fn extent(&self) -> AsciiExtent {
+    fn extent(&self) -> Option<AsciiExtent> {
         match self {
-            Self::Measured(output) => output.metrics().extent,
-            Self::Overflow(extent) => *extent,
+            Self::Measured(output) => Some(output.metrics().extent),
+            Self::Overflow(extent) => Some(*extent),
+            Self::PlanningMiss(_) => None,
         }
     }
 }
@@ -70,18 +73,22 @@ pub(crate) fn select(
         compact_attempted: false,
     };
     if !automatic
-        || viewport
-            .max_width
-            .is_none_or(|limit| selected.candidate.extent().width <= limit)
+        || selected
+            .candidate
+            .extent()
+            .is_some_and(|extent| viewport.max_width.is_none_or(|limit| extent.width <= limit))
     {
         return Ok(selected);
     }
     selected.compact_attempted = true;
     // Under Allow, keep the canonical text but skip painting Compact when it cannot improve
     // width. Both candidates still use one operation and its cumulative work budget.
-    let compact_viewport = if viewport.overflow == OverflowPolicy::Allow {
-        AsciiViewportPolicy::with_max_width(selected.candidate.extent().width - 1)
-            .overflow(OverflowPolicy::Fallback)
+    let compact_viewport = if let Some(extent) = selected
+        .candidate
+        .extent()
+        .filter(|_| viewport.overflow == OverflowPolicy::Allow)
+    {
+        AsciiViewportPolicy::with_max_width(extent.width - 1).overflow(OverflowPolicy::Fallback)
     } else {
         candidate_viewport
     };
@@ -90,7 +97,7 @@ pub(crate) fn select(
             candidate.metrics().encoded_bytes,
             candidate.metrics().document_cells,
         ),
-        LayoutCandidate::Overflow(_) => (0, 0),
+        LayoutCandidate::Overflow(_) | LayoutCandidate::PlanningMiss(_) => (0, 0),
     };
     let compact_ledger = execution
         .new_resource_context(merman_model::OperationPhase::Layout)
@@ -107,15 +114,23 @@ pub(crate) fn select(
     ) {
         Ok(candidate) => candidate,
         Err(
-            AsciiError::UnsupportedFeature { .. }
-            | AsciiError::RoutingSearchExhausted { .. }
-            | AsciiError::PortCapacityExceeded { .. },
+            AsciiError::RoutingSearchExhausted { .. } | AsciiError::PortCapacityExceeded { .. },
         ) => {
+            return Ok(selected);
+        }
+        Err(AsciiError::UnsupportedFeature { .. })
+            if options.graph_presentation == AsciiGraphPresentation::Strict =>
+        {
             return Ok(selected);
         }
         Err(error) => return Err(error),
     };
-    if compact.extent().width < selected.candidate.extent().width {
+    if compact.extent().is_some_and(|compact| {
+        selected
+            .candidate
+            .extent()
+            .is_none_or(|primary| compact.width < primary.width)
+    }) {
         selected.candidate = compact;
         selected.profile = AsciiLayoutProfile::Compact;
     }
@@ -143,6 +158,12 @@ fn render_candidate(
             actual_width,
             height,
         ))),
+        Err(error)
+            if options.graph_presentation == AsciiGraphPresentation::Adaptive
+                && error.graph_planning_fallback_reason().is_some() =>
+        {
+            Ok(LayoutCandidate::PlanningMiss(error))
+        }
         Err(error) => Err(error),
     }
 }
@@ -246,7 +267,7 @@ mod tests {
                 let selected = result.unwrap();
                 assert_eq!(calls, 2);
                 assert_eq!(selected.profile, AsciiLayoutProfile::Canonical);
-                assert_eq!(selected.candidate.extent().width, 10);
+                assert_eq!(selected.candidate.extent(), Some(AsciiExtent::new(10, 1)));
             }
         }
     }
@@ -274,6 +295,169 @@ mod tests {
                 assert!(matches!(result, Err(AsciiError::ResourceLimitExceeded(_))));
             } else {
                 assert_eq!(result.unwrap().profile, AsciiLayoutProfile::Compact);
+            }
+        }
+    }
+
+    fn planning_miss() -> AsciiError {
+        AsciiError::RoutingSearchExhausted {
+            diagram_type: "flowchart",
+            edge_index: 7,
+        }
+    }
+
+    #[test]
+    fn adaptive_auto_may_recover_with_compact_but_explicit_profiles_remain_fixed() {
+        let resources = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
+        for profile in [
+            AsciiLayoutProfile::Auto,
+            AsciiLayoutProfile::Canonical,
+            AsciiLayoutProfile::Compact,
+        ] {
+            let mut calls = 0;
+            let selected = select(
+                AsciiRenderOptions::ascii()
+                    .with_graph_presentation(AsciiGraphPresentation::Adaptive)
+                    .with_layout_profile(profile),
+                AsciiViewportPolicy::with_max_width(6),
+                AsciiExecution::new(&control, &resources),
+                |_, _| {
+                    calls += 1;
+                    if calls == 1 {
+                        Err(planning_miss())
+                    } else {
+                        Ok("fits".into())
+                    }
+                },
+            )
+            .unwrap();
+            assert_eq!(
+                selected.compact_attempted,
+                profile == AsciiLayoutProfile::Auto
+            );
+            if profile == AsciiLayoutProfile::Auto {
+                assert_eq!(calls, 2);
+                assert_eq!(selected.profile, AsciiLayoutProfile::Compact);
+                assert_eq!(selected.candidate.extent(), Some(AsciiExtent::new(4, 1)));
+            } else {
+                assert_eq!(calls, 1);
+                assert_eq!(selected.profile, profile);
+                assert!(matches!(
+                    selected.candidate,
+                    LayoutCandidate::PlanningMiss(error) if error == planning_miss()
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn adaptive_optional_planning_miss_preserves_valid_canonical() {
+        let resources = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
+        for miss in [
+            planning_miss(),
+            AsciiError::PortCapacityExceeded {
+                diagram_type: "flowchart",
+                endpoint: "A".into(),
+                required: 97,
+                available: 96,
+            },
+        ] {
+            let selected = select(
+                AsciiRenderOptions::ascii()
+                    .with_layout_profile(AsciiLayoutProfile::Auto)
+                    .with_graph_presentation(AsciiGraphPresentation::Adaptive),
+                AsciiViewportPolicy::with_max_width(6),
+                AsciiExecution::new(&control, &resources),
+                |options, _| {
+                    if options.layout_profile == AsciiLayoutProfile::Canonical {
+                        Ok("0123456789".into())
+                    } else {
+                        Err(miss.clone())
+                    }
+                },
+            )
+            .unwrap();
+            assert!(selected.compact_attempted);
+            assert_eq!(selected.profile, AsciiLayoutProfile::Canonical);
+            assert!(matches!(selected.candidate, LayoutCandidate::Measured(_)));
+        }
+    }
+
+    #[test]
+    fn adaptive_preserves_fatal_and_unsupported_errors_even_with_an_incumbent() {
+        let resources = AsciiResourcePolicy::default();
+        let control = OperationControl::new();
+        for error in [
+            AsciiError::allocation_failed("test_candidate"),
+            AsciiError::PlanningWorkAllowanceExhausted,
+            AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature: "unsupported test semantics",
+            },
+        ] {
+            for fail_first in [false, true] {
+                let result = select(
+                    AsciiRenderOptions::ascii()
+                        .with_layout_profile(AsciiLayoutProfile::Auto)
+                        .with_graph_presentation(AsciiGraphPresentation::Adaptive),
+                    AsciiViewportPolicy::with_max_width(6),
+                    AsciiExecution::new(&control, &resources),
+                    |options, _| {
+                        if fail_first || options.layout_profile == AsciiLayoutProfile::Compact {
+                            Err(error.clone())
+                        } else {
+                            Ok("0123456789".into())
+                        }
+                    },
+                );
+                assert!(matches!(result, Err(actual) if actual == error));
+            }
+        }
+    }
+
+    #[test]
+    fn adaptive_misses_share_the_work_ledger_and_operation_planning_allowances() {
+        for limit in [11, 12] {
+            let resources = AsciiResourcePolicy::default()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap();
+            let ledger = ResourceContext::new(resources);
+            let planning = crate::operation::GraphPlanningBudget::default();
+            let initial_expansions = planning.feasibility.remaining().0;
+            let control = OperationControl::new();
+            let execution = AsciiExecution::new(&control, &resources)
+                .with_render_ledger(&ledger)
+                .with_graph_planning(&planning);
+            let mut calls = 0;
+            let result = select(
+                AsciiRenderOptions::ascii()
+                    .with_layout_profile(AsciiLayoutProfile::Auto)
+                    .with_graph_presentation(AsciiGraphPresentation::Adaptive),
+                AsciiViewportPolicy::with_max_width(6),
+                execution,
+                |_, attempt| {
+                    calls += 1;
+                    attempt.graph_planning().unwrap().feasibility.debit(1, 0);
+                    attempt
+                        .new_resource_context(OperationPhase::Layout)
+                        .charge_layout_work(6)?;
+                    Err(planning_miss())
+                },
+            );
+            assert_eq!(calls, 2);
+            assert_eq!(planning.feasibility.remaining().0, initial_expansions - 2);
+            if limit == 11 {
+                assert!(matches!(result, Err(AsciiError::ResourceLimitExceeded(_))));
+            } else {
+                let selected = result.unwrap();
+                assert!(selected.compact_attempted);
+                assert!(matches!(
+                    selected.candidate,
+                    LayoutCandidate::PlanningMiss(_)
+                ));
+                assert_eq!(ledger.layout_work_used(), 12);
             }
         }
     }

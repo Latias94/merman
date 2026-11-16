@@ -52,8 +52,9 @@ fn assert_bounded(report: &AsciiOutput, width: usize) {
     assert_eq!(report.projection, AsciiProjection::StructuredText);
     assert_eq!(report.lossiness.as_str(), "presentation_only");
     assert!(report.fallback.attempted);
-    assert!(report.overflowed);
-    assert!(report.primary_extent.width > width);
+    assert_eq!(report.primary_overflowed, Some(true));
+    assert!(!report.emitted_overflowed);
+    assert!(report.primary_extent.unwrap().width > width);
     assert_eq!(report.emitted_extent.height, report.text.lines().count());
     for line in report.text.lines() {
         let measured = match report.width_profile {

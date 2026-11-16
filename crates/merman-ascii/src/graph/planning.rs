@@ -63,10 +63,13 @@ pub(super) fn plan_graph<'graph>(
         let mut changed = false;
         while !changed && next_feedback < 2 && allowance.get() != 0 {
             let before = resources.layout_work_used();
+            let bounded = resources
+                .clone()
+                .with_planning_work_allowance(allowance.get());
             let request = if next_feedback == 0 {
-                feedback.record_failure(graph, policy, &measured, &miss, resources)
+                feedback.record_failure_with_input(&layout_input, &measured, &miss, &bounded)
             } else {
-                feedback.record_return_failure(graph, policy, &measured, &miss, resources)
+                feedback.record_return_failure_with_input(&layout_input, &measured, &miss, &bounded)
             };
             next_feedback += 1;
             allowance.set(
@@ -74,19 +77,34 @@ pub(super) fn plan_graph<'graph>(
                     .get()
                     .saturating_sub(resources.layout_work_used().saturating_sub(before)),
             );
-            changed = request?;
+            changed = match request {
+                Err(AsciiError::PlanningWorkAllowanceExhausted) => {
+                    allowance.set(0);
+                    return Err(miss);
+                }
+                result => result?,
+            };
         }
         if !changed || allowance.get() == 0 {
             return Err(miss);
         }
         let before = resources.layout_work_used();
         drop(measured);
-        let next = layout_input.generate(&feedback, resources, execution);
+        let mut bounded = resources
+            .clone()
+            .with_planning_work_allowance(allowance.get());
+        let next = layout_input.generate(&feedback, &mut bounded, execution);
         allowance.set(
             allowance
                 .get()
                 .saturating_sub(resources.layout_work_used().saturating_sub(before)),
         );
-        measured = next?;
+        measured = match next {
+            Err(AsciiError::PlanningWorkAllowanceExhausted) => {
+                allowance.set(0);
+                return Err(miss);
+            }
+            result => result?,
+        };
     }
 }

@@ -36,6 +36,14 @@ impl<'graph> LayoutInput<'graph> {
     ) -> Result<Self> {
         execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
         checkpoint_layout(execution)?;
+        Self::prepare(graph, policy, resources)
+    }
+
+    fn prepare(
+        graph: &'graph AsciiGraph,
+        policy: &crate::options::GraphLayoutPolicy,
+        resources: &mut ResourceContext,
+    ) -> Result<Self> {
         grid::preflight_minimum_grid_extent(graph, policy, resources)?;
         charge_graph_layout_work(graph, resources)?;
         let labels = grid::plan_node_labels(graph, policy.terminal_width_profile, resources)?;
@@ -242,16 +250,7 @@ fn layout_prepared_graph(
     let topology = &input.topology;
     let label_plans = &input.labels;
     checkpoint_layout(execution)?;
-    let grid = grid::layout_nodes(
-        graph,
-        layout_policy,
-        topology.as_ref(),
-        label_plans,
-        &input.demand,
-        feedback,
-        resources,
-        execution,
-    )?;
+    let grid = grid::layout_nodes(input, feedback, resources, execution)?;
     let (mut nodes, _, _) = grid.parts;
     checkpoint_layout(execution)?;
     let (mut laid_out_groups, _, _) = if graph.groups.is_empty() {

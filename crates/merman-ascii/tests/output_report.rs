@@ -108,10 +108,11 @@ fn default_report_preserves_text_projection_and_records_extent() {
         .expect("default report should render");
     assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
     assert_eq!(report.projection, AsciiProjection::Diagrammatic);
-    assert_eq!(report.primary_extent, report.emitted_extent);
-    assert_eq!(report.primary_extent.width, 15);
-    assert_eq!(report.primary_extent.height, 3);
-    assert!(!report.overflowed);
+    assert_eq!(report.primary_extent, Some(report.emitted_extent));
+    assert_eq!(report.primary_extent.unwrap().width, 15);
+    assert_eq!(report.primary_extent.unwrap().height, 3);
+    assert_eq!(report.primary_overflowed, Some(false));
+    assert!(!report.emitted_overflowed);
     assert!(!report.fallback.attempted);
     assert_eq!(report.schema_version, ASCII_OUTPUT_SCHEMA_VERSION);
     assert_eq!(report.encoding, AsciiOutputEncoding::Plain);
@@ -169,8 +170,8 @@ fn allow_returns_complete_wide_report() {
     )
     .expect("Allow should return a complete wide result");
     assert_eq!(report.outcome, AsciiOutputOutcome::WideAllowed);
-    assert!(report.overflowed);
-    assert!(report.primary_extent.width > 5);
+    assert_eq!(report.primary_overflowed, Some(true));
+    assert!(report.primary_extent.unwrap().width > 5);
     assert!(report.text.contains("Alpha"));
     assert!(report.text.contains("Beta"));
 }
@@ -331,7 +332,7 @@ fn compact_profile_is_explicit_and_reported() {
             merman_ascii::AsciiResourcePolicy::default(),
         )
         .expect("compact profile should render");
-    assert_eq!(report.layout_profile, AsciiLayoutProfile::Compact);
+    assert_eq!(report.layout_profile, Some(AsciiLayoutProfile::Compact));
 }
 
 #[test]
@@ -354,7 +355,7 @@ fn compact_profile_preserves_explicit_canonical_values_from_builders() {
             merman_ascii::AsciiResourcePolicy::default(),
         )
         .expect("explicit canonical values should remain valid");
-    assert_eq!(report.layout_profile, AsciiLayoutProfile::Compact);
+    assert_eq!(report.layout_profile, Some(AsciiLayoutProfile::Compact));
     assert!(report.text.contains("Alpha"));
 }
 
@@ -480,7 +481,7 @@ fn canonical_report_payload_contains_the_binding_metadata_subset() {
     assert_eq!(json["family"], metadata.family);
     assert_eq!(json["projection"], metadata.projection);
     assert_eq!(json["encoding"], metadata.encoding);
-    assert_eq!(json["primary_width"], metadata.primary_width);
+    assert_eq!(json["primary_width"], metadata.primary_width.unwrap());
     assert_eq!(json["emitted_height"], metadata.emitted_height);
     assert_eq!(json["text"], report.as_text());
 }

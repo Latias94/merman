@@ -26,7 +26,7 @@ mod marker;
 mod protected;
 mod rebuild;
 
-use protected::ProtectedScene;
+pub(super) use protected::ProtectedScene;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
@@ -493,7 +493,7 @@ impl<'layout> SceneOccupancy<'layout> {
     ) -> Result<Self> {
         let resources = execution.resource_context(resources, OperationPhase::Layout);
         let resources = &resources;
-        let protected = Rc::new(ProtectedScene::try_new(graph_layout, resources)?);
+        let protected = Self::try_prepare_protection(graph_layout, resources)?;
         Self::try_new_with_protection(
             graph_layout,
             route_capacity,
@@ -504,7 +504,14 @@ impl<'layout> SceneOccupancy<'layout> {
         )
     }
 
-    fn try_new_with_protection(
+    pub(super) fn try_prepare_protection(
+        graph_layout: &'layout GraphLayout,
+        resources: &ResourceContext,
+    ) -> Result<Rc<ProtectedScene<'layout>>> {
+        Ok(Rc::new(ProtectedScene::try_new(graph_layout, resources)?))
+    }
+
+    pub(super) fn try_new_with_protection(
         graph_layout: &'layout GraphLayout,
         route_capacity: usize,
         label_lane_radius: usize,

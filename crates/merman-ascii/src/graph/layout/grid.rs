@@ -1,4 +1,3 @@
-use super::super::demand::SceneDemand;
 use super::super::horizontal_label::HorizontalLabelPadding;
 use super::super::label::{
     GraphLabel, GraphNodeLabelPlan, GraphNodeLabelPlanHandle, try_measure_edge_label,
@@ -8,7 +7,7 @@ use super::super::model::{
 };
 use super::super::shape::{GraphNodeShapeSemantics, GraphNodeShapeSize};
 use super::groups;
-use super::{GridCoord, LayoutFeedback, NodeLayout, charge_sort_work};
+use super::{GridCoord, LayoutFeedback, LayoutInput, NodeLayout, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::graph::topology::GraphGroupTopology;
 use crate::operation::AsciiExecution;
@@ -184,38 +183,19 @@ pub(super) fn preflight_minimum_grid_extent(
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 pub(super) fn layout_nodes(
-    graph: &AsciiGraph,
-    policy: &GraphLayoutPolicy,
-    topology: Option<&GraphGroupTopology<'_>>,
-    label_plans: &[GraphNodeLabelPlanHandle<'_>],
-    demand: &SceneDemand<'_>,
+    input: &LayoutInput<'_>,
     feedback: &LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<MeasuredGridLayout> {
-    match graph.direction.canonical() {
-        GraphDirection::LeftRight => layout_left_right_grid_nodes(
-            graph,
-            policy,
-            topology,
-            label_plans,
-            demand,
-            feedback,
-            resources,
-            execution,
-        ),
-        GraphDirection::TopDown => layout_top_down_grid_nodes(
-            graph,
-            policy,
-            topology,
-            label_plans,
-            demand,
-            feedback,
-            resources,
-            execution,
-        ),
+    match input.graph.direction.canonical() {
+        GraphDirection::LeftRight => {
+            layout_left_right_grid_nodes(input, feedback, resources, execution)
+        }
+        GraphDirection::TopDown => {
+            layout_top_down_grid_nodes(input, feedback, resources, execution)
+        }
         GraphDirection::RightLeft | GraphDirection::BottomTop => unreachable!(),
     }
 }
@@ -296,17 +276,17 @@ fn checkpoint_node_label_plan(resources: &ResourceContext, iteration: usize) -> 
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
 fn layout_left_right_grid_nodes(
-    graph: &AsciiGraph,
-    policy: &GraphLayoutPolicy,
-    topology: Option<&GraphGroupTopology<'_>>,
-    label_plans: &[GraphNodeLabelPlanHandle<'_>],
-    demand: &SceneDemand<'_>,
+    input: &LayoutInput<'_>,
     feedback: &LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<MeasuredGridLayout> {
+    let graph = input.graph;
+    let policy = &input.policy;
+    let topology = input.topology.as_ref();
+    let label_plans = &input.labels;
+    let demand = &input.demand;
     let ranked = place_left_right_grid_nodes(graph, topology, policy, resources, execution)?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
@@ -425,20 +405,16 @@ fn layout_left_right_grid_nodes(
     }
 
     feedback.reserve_axes(
-        graph,
+        input,
         &placements,
         &mut column_widths,
         &mut row_heights,
         resources,
     )?;
     let parts = finalize_compound_node_layouts(
-        graph,
+        input,
         placements,
-        label_plans,
-        demand,
         feedback,
-        topology,
-        policy,
         &mut column_widths,
         &mut row_heights,
         resources,
@@ -513,17 +489,17 @@ fn index_order(len: usize) -> Result<Vec<usize>> {
     Ok(order)
 }
 
-#[allow(clippy::too_many_arguments)]
 fn layout_top_down_grid_nodes(
-    graph: &AsciiGraph,
-    policy: &GraphLayoutPolicy,
-    topology: Option<&GraphGroupTopology<'_>>,
-    label_plans: &[GraphNodeLabelPlanHandle<'_>],
-    demand: &SceneDemand<'_>,
+    input: &LayoutInput<'_>,
     feedback: &LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<MeasuredGridLayout> {
+    let graph = input.graph;
+    let policy = &input.policy;
+    let topology = input.topology.as_ref();
+    let label_plans = &input.labels;
+    let demand = &input.demand;
     let ranked = place_top_down_grid_nodes(graph, topology, policy, resources, execution)?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
@@ -642,20 +618,16 @@ fn layout_top_down_grid_nodes(
     }
 
     feedback.reserve_axes(
-        graph,
+        input,
         &placements,
         &mut column_widths,
         &mut row_heights,
         resources,
     )?;
     let parts = finalize_compound_node_layouts(
-        graph,
+        input,
         placements,
-        label_plans,
-        demand,
         feedback,
-        topology,
-        policy,
         &mut column_widths,
         &mut row_heights,
         resources,
@@ -1130,20 +1102,20 @@ fn finalize_axis_projections(
     Ok((columns, rows))
 }
 
-#[allow(clippy::too_many_arguments)]
 fn finalize_compound_node_layouts(
-    graph: &AsciiGraph,
+    input: &LayoutInput<'_>,
     placements: Vec<GridCoord>,
-    label_plans: &[GraphNodeLabelPlanHandle<'_>],
-    demand: &SceneDemand<'_>,
     feedback: &LayoutFeedback,
-    topology: Option<&GraphGroupTopology<'_>>,
-    policy: &GraphLayoutPolicy,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<GridNodeLayoutParts> {
+    let graph = input.graph;
+    let policy = &input.policy;
+    let topology = input.topology.as_ref();
+    let label_plans = &input.labels;
+    let demand = &input.demand;
     let mut sizes = Vec::new();
     try_reserve_vec(&mut sizes, graph.nodes.len())?;
     for (index, (node, plan)) in graph.nodes.iter().zip(label_plans).enumerate() {

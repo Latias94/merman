@@ -3,7 +3,8 @@
 mod support;
 
 use merman_ascii::{
-    AsciiError, AsciiLayoutProfile, AsciiRenderOptions, AsciiResourceLimitId, AsciiResourcePolicy,
+    AsciiError, AsciiGraphPresentation, AsciiLayoutProfile, AsciiProjection, AsciiRenderOptions,
+    AsciiRenderer, AsciiResourceLimitId, AsciiResourcePolicy, AsciiViewportPolicy, OverflowPolicy,
 };
 use merman_model::families::flowchart::{FlowEdgeMarker, FlowEdgeStroke, FlowEdgeVisibility};
 use merman_model::presentation::RenderSemanticModel;
@@ -137,5 +138,73 @@ fn dense_work_exhaustion_stays_a_resource_error() {
             ),
             "resource exhaustion must not become a content miss: {error:?}"
         );
+    }
+}
+
+#[test]
+fn both_dense_graphs_have_complete_adaptive_documents_under_trusted_native_limits() {
+    use merman_model::{OperationControl, resources::ResourceProfile, runtime::RuntimePolicy};
+    for (bytes, node_count, edge_count) in [(REDUCED, 20, 33), (ORIGINAL, 100, 195)] {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync(source(bytes))
+            .unwrap();
+        let context = RuntimePolicy::deterministic().begin_operation().unwrap();
+        let output = AsciiRenderer::new(
+            AsciiRenderOptions::ascii().with_graph_presentation(AsciiGraphPresentation::Adaptive),
+        )
+        .unwrap()
+        .render_parsed_report(
+            &parsed,
+            AsciiViewportPolicy::with_max_width(80).overflow(OverflowPolicy::Fallback),
+            &OperationControl::new(),
+            &context,
+            AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative),
+        )
+        .expect("adaptive rendering must preserve the dense graph under unchanged native ceilings");
+        assert!(output.emitted_extent.width <= 80);
+        assert!(!output.emitted_overflowed);
+        if output.projection == AsciiProjection::StructuredText {
+            let text: String = output
+                .text
+                .lines()
+                .map(|line| line.strip_prefix("  ").unwrap_or(line))
+                .collect();
+            for node in 0..node_count {
+                assert!(
+                    text.contains(&format!("\"C{node}\"")),
+                    "missing full label C{node}"
+                );
+            }
+            for edge in 1..=edge_count {
+                assert!(
+                    text.contains(&format!("E{edge}:")),
+                    "missing relationship E{edge}"
+                );
+            }
+            assert_eq!(text.matches(" --> ").count(), edge_count);
+            let mut pairs = cycle_ladder_pairs(node_count);
+            if node_count == 20 {
+                pairs.retain(|pair| !matches!(*pair, (0, 5) | (1, 6)));
+            }
+            for (index, (from, to)) in pairs.into_iter().enumerate() {
+                let prefix = format!("E{}: ", index + 1);
+                let row = output
+                    .text
+                    .lines()
+                    .find_map(|row| row.strip_prefix(&prefix))
+                    .expect("each relationship starts a complete identifiable record");
+                let (source, target) = row
+                    .split_once(" --> ")
+                    .expect("the edge keeps its authored marker direction");
+                assert_eq!(
+                    source.split_whitespace().next(),
+                    Some(format!("N{}", from + 1).as_str())
+                );
+                assert_eq!(
+                    target.split_whitespace().next(),
+                    Some(format!("N{}", to + 1).as_str())
+                );
+            }
+        }
     }
 }

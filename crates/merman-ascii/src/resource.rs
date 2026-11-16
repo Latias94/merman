@@ -396,6 +396,7 @@ pub(crate) struct ResourceContext {
     operation: Option<ResourceOperation>,
     retained_output_bytes: usize,
     retained_document_cells: usize,
+    planning_work_end: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
@@ -413,6 +414,7 @@ impl ResourceContext {
             operation: None,
             retained_output_bytes: 0,
             retained_document_cells: 0,
+            planning_work_end: None,
         }
     }
 
@@ -421,6 +423,15 @@ impl ResourceContext {
     pub(crate) fn with_retained_output(mut self, bytes: usize, cells: usize) -> Self {
         self.retained_output_bytes = bytes;
         self.retained_document_cells = cells;
+        self
+    }
+
+    pub(crate) fn with_planning_work_allowance(mut self, remaining: usize) -> Self {
+        let end = self.layout_work_used().saturating_add(remaining);
+        self.planning_work_end = Some(
+            self.planning_work_end
+                .map_or(end, |current| current.min(end)),
+        );
         self
     }
 
@@ -433,6 +444,7 @@ impl ResourceContext {
             operation: Some(ResourceOperation { control, phase }),
             retained_output_bytes: self.retained_output_bytes,
             retained_document_cells: self.retained_document_cells,
+            planning_work_end: self.planning_work_end,
         }
     }
 
@@ -449,6 +461,7 @@ impl ResourceContext {
             operation: self.operation.clone(),
             retained_output_bytes: self.retained_output_bytes,
             retained_document_cells: self.retained_document_cells,
+            planning_work_end: None,
         }
     }
 
@@ -471,6 +484,7 @@ impl ResourceContext {
             operation: self.operation.clone(),
             retained_output_bytes: self.retained_output_bytes,
             retained_document_cells: self.retained_document_cells,
+            planning_work_end: self.planning_work_end,
         }
     }
 
@@ -607,16 +621,17 @@ impl ResourceContext {
         document_cells_delta: usize,
     ) -> Result<()> {
         self.resource_checkpoint()?;
-        self.checked_total(
+        let layout_work_used = self.checked_public_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
             layout_work_delta,
         )?;
-        self.checked_total(
+        self.checked_public_total(
             AsciiResourceLimitId::MaxDocumentCells,
             self.document_cells_used.get(),
             document_cells_delta,
         )?;
+        self.check_planning_work(layout_work_used)?;
         Ok(())
     }
 
@@ -630,16 +645,17 @@ impl ResourceContext {
         document_cells_delta: usize,
     ) -> Result<()> {
         self.resource_checkpoint()?;
-        let layout_work_used = self.checked_total(
+        let layout_work_used = self.checked_public_total(
             AsciiResourceLimitId::MaxLayoutWorkUnits,
             self.layout_work_used.get(),
             layout_work_delta,
         )?;
-        let document_cells_used = self.checked_total(
+        let document_cells_used = self.checked_public_total(
             AsciiResourceLimitId::MaxDocumentCells,
             self.document_cells_used.get(),
             document_cells_delta,
         )?;
+        self.check_planning_work(layout_work_used)?;
         self.layout_work_used.set(layout_work_used);
         self.document_cells_used.set(document_cells_used);
         Ok(())
@@ -651,6 +667,7 @@ impl ResourceContext {
     /// failure points remain precise. A later dimension (for example output bytes) can still
     /// reject the phase after work or document cells have been charged. This boundary restores
     /// both ledgers to their entry values on any error while preserving successful charges.
+    /// Private planning scopes retain spent work when their geometry is discarded.
     /// Nested transactions are safe because each call restores only its own checkpoint.
     pub(crate) fn transaction<T, E>(
         &self,
@@ -661,7 +678,9 @@ impl ResourceContext {
         match operation(self) {
             Ok(value) => Ok(value),
             Err(error) => {
-                self.layout_work_used.set(layout_work_checkpoint);
+                if self.planning_work_end.is_none() {
+                    self.layout_work_used.set(layout_work_checkpoint);
+                }
                 self.document_cells_used.set(document_cells_checkpoint);
                 Err(error)
             }
@@ -794,11 +813,31 @@ impl ResourceContext {
         current: usize,
         delta: usize,
     ) -> Result<usize> {
+        let actual = self.checked_public_total(id, current, delta)?;
+        if id == AsciiResourceLimitId::MaxLayoutWorkUnits {
+            self.check_planning_work(actual)?;
+        }
+        Ok(actual)
+    }
+
+    fn checked_public_total(
+        &self,
+        id: AsciiResourceLimitId,
+        current: usize,
+        delta: usize,
+    ) -> Result<usize> {
         let actual = current
             .checked_add(delta)
             .ok_or_else(|| self.overflow_after_checkpoint(id))?;
         self.check_after_checkpoint(id, actual)?;
         Ok(actual)
+    }
+
+    fn check_planning_work(&self, actual: usize) -> Result<()> {
+        if self.planning_work_end.is_some_and(|end| actual > end) {
+            return Err(AsciiError::PlanningWorkAllowanceExhausted);
+        }
+        Ok(())
     }
 }
 
@@ -1554,6 +1593,85 @@ mod tests {
         assert_eq!(error, PlanningFailure::RouteCollision);
         assert_eq!(resources.layout_work_used(), 6);
         assert_eq!(resources.document_cells_used(), 3);
+    }
+
+    #[test]
+    fn private_planning_work_boundary_keeps_the_public_policy_and_cumulative_ledger() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        resources.charge_layout_work(2).unwrap();
+        let bounded = resources.clone().with_planning_work_allowance(3);
+        let scoped = bounded.scoped();
+        scoped.charge_layout_work(3).unwrap();
+        assert_eq!(resources.layout_work_used(), 5);
+        assert!(matches!(
+            bounded.charge_layout_work(1),
+            Err(AsciiError::PlanningWorkAllowanceExhausted)
+        ));
+        assert_eq!(resources.layout_work_used(), 5);
+        assert_eq!(bounded.policy(), resources.policy());
+        resources.charge_layout_work(1).unwrap();
+        assert_eq!(resources.layout_work_used(), 6);
+        bounded.detached().charge_layout_work(7).unwrap();
+        assert_eq!(resources.layout_work_used(), 6);
+    }
+
+    #[test]
+    fn public_resource_failure_and_cancellation_precede_the_private_planning_boundary() {
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+            .unwrap();
+        let resources = ResourceContext::new(policy).with_planning_work_allowance(0);
+        assert!(matches!(
+            resources.charge_layout_work(2),
+            Err(AsciiError::ResourceLimitExceeded(_))
+        ));
+        let control = OperationControl::new();
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded())
+            .controlled(control.clone(), OperationPhase::Layout)
+            .with_planning_work_allowance(0);
+        control.cancel();
+        assert!(matches!(
+            resources.charge_layout_work(1),
+            Err(AsciiError::Cancelled(_))
+        ));
+    }
+
+    #[test]
+    fn compound_admission_checks_public_document_limit_before_private_work() {
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 1)
+            .unwrap();
+        for commit in [false, true] {
+            let resources = ResourceContext::new(policy).with_planning_work_allowance(1);
+            let result = if commit {
+                resources.charge_usage(2, 2)
+            } else {
+                resources.check_usage(2, 2)
+            };
+            assert!(matches!(
+                result,
+                Err(AsciiError::ResourceLimitExceeded(details))
+                    if details.limit == AsciiResourceLimitId::MaxDocumentCells
+            ));
+            assert_eq!(resources.layout_work_used(), 0);
+            assert_eq!(resources.document_cells_used(), 0);
+        }
+    }
+
+    #[test]
+    fn discarded_private_planning_transactions_keep_spent_work() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let bounded = resources.clone().with_planning_work_allowance(3);
+        let result = bounded.transaction(|scope| {
+            scope.charge_usage(2, 3)?;
+            scope.charge_usage(2, 3)
+        });
+        assert!(matches!(
+            result,
+            Err(AsciiError::PlanningWorkAllowanceExhausted)
+        ));
+        assert_eq!(resources.layout_work_used(), 2);
+        assert_eq!(resources.document_cells_used(), 0);
     }
 
     #[test]

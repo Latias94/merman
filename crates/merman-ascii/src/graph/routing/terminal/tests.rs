@@ -1319,6 +1319,53 @@ fn exhausted_optional_search_does_not_consume_required_route_allowance() {
 }
 
 #[test]
+fn replacement_search_keeps_useful_credit_for_wide_offset_contacts() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    for id in ["a", "b", "block"] {
+        graph.add_node(id, id);
+    }
+    graph.add_edge("a", "b");
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut layout = layout_graph(&graph, &options);
+    for (node, (left, top, width, height)) in
+        layout
+            .nodes
+            .iter_mut()
+            .zip([(10, 10, 100, 5), (10, 40, 100, 5), (58, 15, 5, 5)])
+    {
+        (node.x, node.y, node.width, node.height) = (left, top, width, height);
+    }
+    let policy = AsciiResourcePolicy::unbounded();
+    let budget = crate::operation::GraphPlanningBudget::default();
+    let execution = AsciiExecution::for_test(&policy).with_graph_planning(&budget);
+    let mut resources = ResourceContext::new(policy);
+    let scene = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let before = budget.replacement.remaining();
+    let (_, route) = plan_terminal_route_with_budget(
+        channel_request(&graph, &layout, &charset),
+        RouteObstacles {
+            scene: &scene,
+            routes: &[],
+            owner: &owner,
+        },
+        None,
+        None,
+        SearchBudget::Replacement(&budget.replacement),
+        &mut resources,
+        execution,
+    )
+    .unwrap()
+    .expect("a wide contour must not divide every actual search down to one expansion");
+    let ports = route.attachments.unwrap();
+    assert_eq!(ports.start.outward, StepDirection::Down);
+    assert_ne!(ports.start.contact.x, layout.nodes[0].center_x());
+    assert!(budget.replacement.remaining().0 < before.0);
+    assert!(budget.replacement.remaining().0 > 0);
+}
+
+#[test]
 fn compressed_axes_segment_scans_and_winner_expansion_observe_cancellation() {
     let policy = AsciiResourcePolicy::unbounded();
     let mut resources = ResourceContext::new(policy);

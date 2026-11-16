@@ -5,7 +5,7 @@
 //! complete ASCII layout and output resource policy.
 
 use crate::error::Result;
-use crate::options::TerminalWidthProfile;
+use crate::options::{AsciiGraphPresentation, TerminalWidthProfile};
 use crate::output::{AsciiViewportPolicy, OverflowPolicy};
 use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
 use merman_model::{OperationControl, OperationPhase};
@@ -134,6 +134,28 @@ impl<'a> AsciiExecution<'a> {
 
     pub(crate) const fn is_optional_layout_candidate(self) -> bool {
         self.optional_layout_candidate
+    }
+
+    /// Retains cumulative work across both graph and family transaction boundaries when
+    /// selection can continue with another candidate or a complete graph document.
+    pub(crate) fn preserves_graph_work_on_error(
+        self,
+        error: &crate::AsciiError,
+        presentation: AsciiGraphPresentation,
+    ) -> bool {
+        match error {
+            crate::AsciiError::PrimaryViewportOverflow { .. } => true,
+            crate::AsciiError::RoutingSearchExhausted { .. }
+            | crate::AsciiError::PortCapacityExceeded { .. } => {
+                presentation == AsciiGraphPresentation::Adaptive
+                    || self.is_optional_layout_candidate()
+            }
+            crate::AsciiError::UnsupportedFeature { .. } => {
+                presentation == AsciiGraphPresentation::Strict
+                    && self.is_optional_layout_candidate()
+            }
+            _ => false,
+        }
     }
 
     pub(crate) fn admit_primary_extent(

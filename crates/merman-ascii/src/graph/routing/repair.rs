@@ -125,10 +125,14 @@ pub(super) fn repair_blocked_scene(
         omitted.sort_unstable();
         let omitted = omitted.as_slice();
         let count = omitted.len();
-        resources.charge_layout_work(count)?;
+        resources.charge_layout_work(resources.checked_work_add(count, routes.capacity())?)?;
         let mut displaced = Vec::new();
         displaced
             .try_reserve_exact(count)
+            .map_err(|_| super::layout_allocation_failed())?;
+        let mut restored = Vec::new();
+        restored
+            .try_reserve_exact(routes.capacity())
             .map_err(|_| super::layout_allocation_failed())?;
         budget.attempts -= 1;
         let mut trial = occupancy.rebuild_for_routes(
@@ -138,10 +142,19 @@ pub(super) fn repair_blocked_scene(
             request.graph.diagram_type(),
         )?;
         trial.begin_blocker_collection(resources)?;
-        for &index in omitted.iter().rev() {
-            displaced.push((index, routes.remove(index)));
+        let mut original_route_index = 0;
+        let mut next_omitted = omitted.iter().copied().peekable();
+        let extracted = routes.extract_if(.., |_| {
+            let remove = next_omitted.peek().copied() == Some(original_route_index);
+            original_route_index += 1;
+            if remove {
+                next_omitted.next();
+            }
+            remove
+        });
+        for (&index, route) in omitted.iter().zip(extracted) {
+            displaced.push((index, route));
         }
-        displaced.reverse();
         let result = (|| {
             let feasibility_start = resources.layout_work_used();
             let feasibility_credit = budget.shared.map(|shared| shared.feasibility.remaining().1);
@@ -244,9 +257,14 @@ pub(super) fn repair_blocked_scene(
         // The original plans and occupancy were retained. No replay, allocation, or
         // cancellation checkpoint is needed to roll back an unsuccessful proposal.
         routes.truncate(original_len - count);
+        let mut retained = routes.drain(..);
         for (index, route) in displaced {
-            routes.insert(index, route);
+            let preceding = index - restored.len();
+            restored.extend(retained.by_ref().take(preceding));
+            restored.push(route);
         }
+        restored.extend(retained);
+        *routes = restored;
         match result {
             Ok(false) | Err(AsciiError::RoutingSearchExhausted { .. }) => {
                 if let Some(additional) = trial.take_blocker_collection(resources)? {

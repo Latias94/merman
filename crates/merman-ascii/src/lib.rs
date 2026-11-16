@@ -135,7 +135,8 @@ pub use color::{AsciiColorMode, AsciiColorRole, AsciiColorTheme, AsciiRgb, Ascii
 pub use error::{AsciiError, Result};
 pub use model::{AsciiDiagram, AsciiSourceContext};
 pub use options::{
-    AsciiCharset, AsciiDirection, AsciiLayoutProfile, AsciiRenderOptions, TerminalWidthProfile,
+    AsciiCharset, AsciiDirection, AsciiGraphPresentation, AsciiLayoutProfile, AsciiRenderOptions,
+    TerminalWidthProfile,
 };
 pub use output::{
     ASCII_OUTPUT_SCHEMA_VERSION, AsciiExtent, AsciiFallbackCapability, AsciiFallbackReason,
@@ -252,24 +253,21 @@ impl AsciiRenderer {
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
-        let graph_planning = operation::GraphPlanningBudget::default();
-        let execution = operation::AsciiExecution::new(control, &resources)
-            .with_graph_planning(&graph_planning);
-        execution.checkpoint(merman_model::OperationPhase::Admission)?;
-        layout_selection::validate_viewport(
-            self.options.layout_profile,
-            AsciiViewportPolicy::unrestricted(),
-        )?;
-        let policies = self.options.resolve_policies();
-        render_model_with_execution(
+        let config = merman_model::MermaidConfig::empty_object();
+        self.render_model_report(
             model,
-            model.kind(),
-            &policies.options,
-            &policies,
-            execution,
-            context.local_time_zone(),
-            None,
+            AsciiSourceContext {
+                diagram_type: model.kind(),
+                config: &config,
+                semantic_config: &config,
+                title: None,
+            },
+            AsciiViewportPolicy::unrestricted(),
+            control,
+            context,
+            resources,
         )
+        .map(AsciiOutput::into_text)
     }
 
     /// Renders a typed model and returns logical extent/projection/overflow metadata.
@@ -380,10 +378,21 @@ impl AsciiRenderer {
         let compact_attempted = selected.compact_attempted;
         let annotate = |mut output: AsciiOutput| {
             output.requested_layout_profile = requested_profile;
+            output.requested_graph_presentation = self.options.graph_presentation;
             output.compact_attempted = compact_attempted;
             output
         };
         let primary = match selected.candidate {
+            layout_selection::LayoutCandidate::PlanningMiss(error) => {
+                return output::build_graph_recovery_for_family(
+                    metadata.diagram_type,
+                    model,
+                    metadata,
+                    error,
+                    output_context,
+                )
+                .map(annotate);
+            }
             layout_selection::LayoutCandidate::Measured(primary) => primary,
             layout_selection::LayoutCandidate::Overflow(primary_extent) => {
                 if viewport.overflow == OverflowPolicy::Error {
@@ -454,29 +463,14 @@ impl AsciiRenderer {
         context: &OperationContext,
         resources: AsciiResourcePolicy,
     ) -> Result<String> {
-        let render_ledger = resource::ResourceContext::new(resources);
-        let graph_planning = operation::GraphPlanningBudget::default();
-        let execution = operation::AsciiExecution::new(control, &resources)
-            .with_render_ledger(&render_ledger)
-            .with_graph_planning(&graph_planning);
-        execution.checkpoint(merman_model::OperationPhase::Admission)?;
-        layout_selection::validate_viewport(
-            self.options.layout_profile,
+        self.render_parsed_report(
+            parsed,
             AsciiViewportPolicy::unrestricted(),
-        )?;
-        let policies = self.options.resolve_policies();
-        let source = AsciiSourceContext::from(&parsed.metadata);
-        validate_local_handler(source.diagram_type)?;
-        let model = AsciiDiagram::from_semantic(&parsed.model, source, execution)?;
-        render_model_with_execution(
-            &model,
-            source.diagram_type,
-            &policies.options,
-            &policies,
-            execution,
-            context.local_time_zone(),
-            Some(source.semantic_config),
+            control,
+            context,
+            resources,
         )
+        .map(AsciiOutput::into_text)
     }
 
     /// Renders canonical data with declared metadata and reports extent, projection, and overflow.
@@ -600,6 +594,20 @@ fn validate_primary_request(
     let Some(capability) = capability.filter(|capability| capability.is_supported()) else {
         return Ok(());
     };
+    if !capability.supports_graph_presentation(policies.options.graph_presentation) {
+        return Err(AsciiError::InvalidOption {
+            field: "graph_presentation",
+            message: "is not admitted for this diagram family",
+        });
+    }
+    if policies.options.graph_presentation == AsciiGraphPresentation::Adaptive
+        && policies.output.encoding != AsciiOutputEncoding::Plain
+    {
+        return Err(AsciiError::InvalidOption {
+            field: "graph_presentation",
+            message: "adaptive graph presentation requires Plain output",
+        });
+    }
     if !capability.supports_layout_profile(policies.layout.profile) {
         return Err(AsciiError::InvalidOption {
             field: "layout_profile",
@@ -673,14 +681,12 @@ fn render_flowchart_model(
             render_flowchart_model_inner(model, options, layout, *execution)
         });
         match result {
-            // A viewport fallback reuses the render-wide ledger. Preserve the work spent proving
-            // that the primary graph is too wide, but discard its speculative document cells.
-            Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
-            Err(
-                error @ (AsciiError::UnsupportedFeature { .. }
-                | AsciiError::RoutingSearchExhausted { .. }
-                | AsciiError::PortCapacityExceeded { .. }),
-            ) if execution.is_optional_layout_candidate() => Ok(Err(error)),
+            // The family boundary must retain the work already preserved by the graph boundary.
+            Err(error)
+                if execution.preserves_graph_work_on_error(&error, options.graph_presentation) =>
+            {
+                Ok(Err(error))
+            }
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }
@@ -820,13 +826,12 @@ fn render_state_model(
             render_state_model_inner(model, options, layout, *execution)
         });
         match result {
-            // State diagrams share the graph renderer and the same render-wide fallback ledger.
-            Err(error @ AsciiError::PrimaryViewportOverflow { .. }) => Ok(Err(error)),
-            Err(
-                error @ (AsciiError::UnsupportedFeature { .. }
-                | AsciiError::RoutingSearchExhausted { .. }
-                | AsciiError::PortCapacityExceeded { .. }),
-            ) if execution.is_optional_layout_candidate() => Ok(Err(error)),
+            // State shares the graph renderer and its cumulative recovery ledger.
+            Err(error)
+                if execution.preserves_graph_work_on_error(&error, options.graph_presentation) =>
+            {
+                Ok(Err(error))
+            }
             Ok(rendered) => Ok(Ok(rendered)),
             Err(error) => Err(error),
         }

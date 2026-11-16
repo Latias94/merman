@@ -113,6 +113,64 @@ impl<'graph> SceneRoutingInput<'graph> {
     }
 }
 
+// Immutable geometry is shared by both passes and rebuilt after every reflow.
+struct PreparedSceneRouting<'layout> {
+    graph_layout: &'layout GraphLayout,
+    branch_allocation: allocation::BranchAllocation,
+    protected: Rc<occupancy::ProtectedScene<'layout>>,
+    route_order: Vec<usize>,
+    route_scan_width: usize,
+}
+
+impl<'layout> PreparedSceneRouting<'layout> {
+    fn try_new(
+        graph: &AsciiGraph,
+        graph_layout: &'layout GraphLayout,
+        input: &SceneRoutingInput<'_>,
+        charset: &GraphCharset,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        let canonical_edges = &input.canonical.values;
+        let branch_allocation = allocation::BranchAllocation::try_new(
+            graph,
+            graph_layout,
+            canonical_edges,
+            charset,
+            resources,
+            execution,
+        )?;
+        capacity::preflight_fixed_port_capacity(
+            graph,
+            graph_layout,
+            canonical_edges,
+            &branch_allocation,
+            charset,
+            resources,
+            execution,
+        )?;
+        let route_scan_width = graph_layout
+            .nodes
+            .len()
+            .checked_add(graph_layout.groups.len())
+            .and_then(|count| count.checked_add(canonical_edges.len()))
+            .ok_or_else(|| {
+                resources
+                    .policy()
+                    .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+            })?;
+        let protected = SceneOccupancy::try_prepare_protection(graph_layout, resources)?;
+        let route_order = plan_route_order(graph, graph_layout, canonical_edges, resources)?;
+        Ok(Self {
+            graph_layout,
+            branch_allocation,
+            protected,
+            route_order,
+            route_scan_width,
+        })
+    }
+}
+
 pub(super) struct RouteScene {
     routes: Vec<PreparedRoute>,
     #[cfg(test)]
@@ -482,15 +540,21 @@ pub(super) fn route_scene_with_input<'a>(
 ) -> Result<RouteScenePlan<'a>> {
     let local_budget = crate::operation::GraphPlanningBudget::default();
     let execution = execution.with_graph_planning(&local_budget);
+    let feasibility = &execution
+        .graph_planning()
+        .expect("scene planning budget")
+        .feasibility;
+    let preparation_start = resources.layout_work_used();
+    let initial_allowance = feasibility.remaining().1;
+    let prepared = (|| {
+        execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        PreparedSceneRouting::try_new(graph, graph_layout, input, charset, resources, execution)
+    })();
+    feasibility.account_scene_work(preparation_start, initial_allowance, resources);
+    let prepared = prepared?;
     let incumbent = route_scene_kernel(
-        graph,
-        graph_layout,
-        input,
-        charset,
-        policy,
-        false,
-        resources,
-        execution,
+        graph, &prepared, input, charset, policy, false, resources, execution,
     )?;
     let quality = &execution
         .graph_planning()
@@ -500,19 +564,10 @@ pub(super) fn route_scene_with_input<'a>(
         return Ok(incumbent);
     }
     match route_scene_kernel(
-        graph,
-        graph_layout,
-        input,
-        charset,
-        policy,
-        true,
-        resources,
-        execution,
+        graph, &prepared, input, charset, policy, true, resources, execution,
     ) {
         Ok(improved) => Ok(improved),
-        Err(
-            AsciiError::RoutingSearchExhausted { .. } | AsciiError::PortCapacityExceeded { .. },
-        ) => Ok(incumbent),
+        Err(error) if error.graph_planning_fallback_reason().is_some() => Ok(incumbent),
         Err(error) => Err(error),
     }
 }
@@ -520,7 +575,7 @@ pub(super) fn route_scene_with_input<'a>(
 #[allow(clippy::too_many_arguments)]
 fn route_scene_kernel<'a>(
     graph: &AsciiGraph,
-    graph_layout: &GraphLayout,
+    prepared: &PreparedSceneRouting<'_>,
     input: &SceneRoutingInput<'a>,
     charset: &GraphCharset,
     policy: &crate::options::GraphLayoutPolicy,
@@ -536,243 +591,109 @@ fn route_scene_kernel<'a>(
     };
     let mut start_work = resources.layout_work_used();
     let initial_allowance = allowance.remaining().1;
-    execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
-    execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    let topology = &input.topology;
-    let label_plans = &input.labels;
-    let CanonicalEdges {
-        values: canonical_edges,
-        source_indices,
-    } = &input.canonical;
-    let branch_allocation = allocation::BranchAllocation::try_new(
-        graph,
-        graph_layout,
-        canonical_edges,
-        charset,
-        resources,
-        execution,
-    )?;
-    capacity::preflight_fixed_port_capacity(
-        graph,
-        graph_layout,
-        canonical_edges,
-        &branch_allocation,
-        charset,
-        resources,
-        execution,
-    )?;
-    let mut routes: Vec<PreparedRoute> = Vec::new();
-    routes
-        .try_reserve(canonical_edges.len())
-        .map_err(|_| layout_allocation_failed())?;
-    let route_scan_width = graph_layout
-        .nodes
-        .len()
-        .checked_add(graph_layout.groups.len())
-        .and_then(|count| count.checked_add(canonical_edges.len()))
-        .ok_or_else(|| {
-            resources
-                .policy()
-                .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-        })?;
-
-    let mut occupancy = SceneOccupancy::try_new_for_routes(
-        graph_layout,
-        canonical_edges.len(),
-        policy.edge_label_lane_radius,
-        resources,
-        execution,
-    )?;
-
-    let route_order = plan_route_order(graph, graph_layout, canonical_edges, resources)?;
-    let mut repair_budget = repair::SceneRepairBudget::for_execution(execution);
-    let mut quality_requested = false;
-
-    let mut pending_self_loop_start = None::<usize>;
-    for edge_index in route_order {
-        let edge = &canonical_edges[edge_index];
+    let result = (|| {
+        execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
-        allowance.account_scene_work(start_work, initial_allowance, resources);
-        if allowance.remaining().1 == 0 {
-            return Err(AsciiError::RoutingSearchExhausted {
-                diagram_type: graph.diagram_type(),
-                edge_index: source_indices[edge_index],
-            });
-        }
-        if let Some(start) = pending_self_loop_start
-            && (edge.from != routes[start].owner.from || edge.from != edge.to)
-        {
-            // Parallel self-loops form one nested route batch. Place their labels after all
-            // return lanes are known, then protect the whole batch from subsequent edges.
-            for route_index in start..routes.len() {
-                allocate_committed_route_labels(
-                    &mut routes,
-                    route_index,
-                    &mut occupancy,
-                    resources,
-                    graph.diagram_type(),
-                )?;
-            }
-            pending_self_loop_start = None;
-        }
-        if edge.stroke == super::model::GraphEdgeStroke::Invisible {
-            continue;
-        }
-        resources.charge_layout_work(route_scan_width)?;
-        let Some(from) = endpoint_layout(graph_layout, &edge.from, charset) else {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: graph.diagram_type(),
-                feature: "edges with missing endpoint layouts",
-            });
-        };
-        let Some(to) = endpoint_layout(graph_layout, &edge.to, charset) else {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: graph.diagram_type(),
-                feature: "edges with missing endpoint layouts",
-            });
-        };
-        let request = EdgeRouteRequest {
-            graph,
+        let topology = &input.topology;
+        let label_plans = &input.labels;
+        let CanonicalEdges {
+            values: canonical_edges,
+            source_indices,
+        } = &input.canonical;
+        let graph_layout = prepared.graph_layout;
+        let branch_allocation = &prepared.branch_allocation;
+        let mut routes: Vec<PreparedRoute> = Vec::new();
+        routes
+            .try_reserve(canonical_edges.len())
+            .map_err(|_| layout_allocation_failed())?;
+        let mut occupancy = SceneOccupancy::try_new_with_protection(
             graph_layout,
-            edges: canonical_edges,
-            from: &from,
-            to: &to,
-            edge_index,
-            edge,
-            charset,
-        };
-        let forward = forward_route_direction(request, resources)?;
-        let candidates = if edge.from == edge.to {
-            terminal::plan_self_loop_candidates(
-                request,
-                label_plans.descriptor(edge_index),
-                resources,
-                execution,
-            )?
-        } else {
-            Vec::new()
-        };
+            canonical_edges.len(),
+            policy.edge_label_lane_radius,
+            Rc::clone(&prepared.protected),
+            resources,
+            execution,
+        )?;
 
-        let boundary_group_indices =
-            route_boundary_group_indices(graph, topology.as_ref(), edge, resources)?;
-        let mut owner = RouteOwner {
-            canonical_edge_index: edge_index,
-            source_edge_index: source_indices[edge_index],
-            from: edge.from.clone(),
-            to: edge.to.clone(),
-            stroke: edge.stroke,
-            boundary_group_indices,
-            allocated_branch: None,
-        };
-        let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
-        for (candidate_index, plan) in candidates.into_iter().enumerate() {
+        let mut repair_budget = repair::SceneRepairBudget::for_execution(execution);
+        let mut quality_requested = false;
+
+        let mut pending_self_loop_start = None::<usize>;
+        for &edge_index in &prepared.route_order {
+            let edge = &canonical_edges[edge_index];
             execution.checkpoint(merman_model::OperationPhase::Layout)?;
-            let Some((score, plan)) = admit_route_candidate(
-                request,
-                path::RouteObstacles {
-                    scene: &occupancy,
-                    routes: &routes,
-                    owner: &owner,
-                },
-                plan,
-                resources,
-            )?
-            else {
-                continue;
-            };
-            if selected
-                .as_ref()
-                .is_none_or(|(current_score, current_index, _)| {
-                    (score, candidate_index) < (*current_score, *current_index)
-                })
-            {
-                selected = Some((score, candidate_index, plan));
-            }
-        }
-        let mut honors_allocation = false;
-        if let Some(branch) = branch_allocation.get(edge_index) {
-            owner.allocated_branch = Some(*branch);
-            let candidate = match plan_allocated_channel(
-                request,
-                branch,
-                label_plans.descriptor(edge_index),
-                resources,
-                execution,
-            )? {
-                Some(plan) => admit_route_candidate(
-                    request,
-                    path::RouteObstacles {
-                        scene: &occupancy,
-                        routes: &routes,
-                        owner: &owner,
-                    },
-                    plan,
-                    resources,
-                )?,
-                None => None,
-            };
-            if let Some((score, plan)) = candidate {
-                // A jointly allocated trunk is a scene decision. Choosing a shorter
-                // private detour per edge would dismantle that decision one branch at a time.
-                selected = Some((score, usize::MAX, plan));
-                honors_allocation = true;
-            } else {
-                owner.allocated_branch = None;
-            }
-        }
-        if !honors_allocation
-            && !(edge.from == edge.to && selected.is_some())
-            && let Some((score, plan)) = terminal::plan_direct_route(
-                request,
-                path::RouteObstacles {
-                    scene: &occupancy,
-                    routes: &routes,
-                    owner: &owner,
-                },
-                label_plans.descriptor(edge_index),
-                resources,
-                execution,
-            )?
-            && selected
-                .as_ref()
-                .is_none_or(|(incumbent, _, incumbent_plan)| {
-                    route_candidate_is_better(
-                        forward,
-                        (score, plan.attachments),
-                        (*incumbent, incumbent_plan.attachments),
-                    )
-                })
-        {
-            selected = Some((score, usize::MAX, plan));
-        }
-        let container_endpoint = matches!(
-            topology
-                .as_ref()
-                .and_then(|topology| topology.endpoint_index(&edge.from)),
-            Some(GraphEndpointIndex::Group(_))
-        );
-        allowance.account_scene_work(start_work, initial_allowance, resources);
-        let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-        let needs_terminal_search = selected.is_none()
-            || (quality || input.independent_incidents[edge_index])
-                && !honors_allocation
-                && selected.as_ref().is_some_and(|(score, _, plan)| {
-                    route_needs_search(forward, *score, plan, defer_loop_labels)
+            allowance.account_scene_work(start_work, initial_allowance, resources);
+            if allowance.remaining().1 == 0 {
+                return Err(AsciiError::RoutingSearchExhausted {
+                    diagram_type: graph.diagram_type(),
+                    edge_index: source_indices[edge_index],
                 });
-        if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
-            // A searched loop can choose a different side from the predetermined lanes.
-            // Protect earlier batch labels first, then re-admit the incumbent against them.
-            for route_index in start..routes.len() {
-                allocate_committed_route_labels(
+            }
+            if let Some(start) = pending_self_loop_start
+                && (edge.from != routes[start].owner.from || edge.from != edge.to)
+            {
+                flush_deferred_loop_labels(
                     &mut routes,
-                    route_index,
+                    start,
                     &mut occupancy,
                     resources,
                     graph.diagram_type(),
                 )?;
+                pending_self_loop_start = None;
             }
-            if let Some((_, index, plan)) = selected.take() {
-                selected = admit_route_candidate(
+            if edge.stroke == super::model::GraphEdgeStroke::Invisible {
+                continue;
+            }
+            resources.charge_layout_work(prepared.route_scan_width)?;
+            let Some(from) = endpoint_layout(graph_layout, &edge.from, charset) else {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: graph.diagram_type(),
+                    feature: "edges with missing endpoint layouts",
+                });
+            };
+            let Some(to) = endpoint_layout(graph_layout, &edge.to, charset) else {
+                return Err(AsciiError::UnsupportedFeature {
+                    diagram_type: graph.diagram_type(),
+                    feature: "edges with missing endpoint layouts",
+                });
+            };
+            let request = EdgeRouteRequest {
+                graph,
+                graph_layout,
+                edges: canonical_edges,
+                from: &from,
+                to: &to,
+                edge_index,
+                edge,
+                charset,
+            };
+            let forward = forward_route_direction(request, resources)?;
+            let candidates = if edge.from == edge.to {
+                terminal::plan_self_loop_candidates(
+                    request,
+                    label_plans.descriptor(edge_index),
+                    resources,
+                    execution,
+                )?
+            } else {
+                Vec::new()
+            };
+
+            let boundary_group_indices =
+                route_boundary_group_indices(graph, topology.as_ref(), edge, resources)?;
+            let mut owner = RouteOwner {
+                canonical_edge_index: edge_index,
+                source_edge_index: source_indices[edge_index],
+                from: edge.from.clone(),
+                to: edge.to.clone(),
+                stroke: edge.stroke,
+                boundary_group_indices,
+                allocated_branch: None,
+            };
+            let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
+            for (candidate_index, plan) in candidates.into_iter().enumerate() {
+                execution.checkpoint(merman_model::OperationPhase::Layout)?;
+                let Some((score, plan)) = admit_route_candidate(
                     request,
                     path::RouteObstacles {
                         scene: &occupancy,
@@ -782,229 +703,369 @@ fn route_scene_kernel<'a>(
                     plan,
                     resources,
                 )?
-                .map(|(score, plan)| (score, index, plan));
-            }
-        }
-        if needs_terminal_search && !quality {
-            occupancy.begin_blocker_collection(resources)?;
-            terminal::plan_direct_route(
-                request,
-                path::RouteObstacles {
-                    scene: &occupancy,
-                    routes: &routes,
-                    owner: &owner,
-                },
-                label_plans.descriptor(edge_index),
-                resources,
-                execution,
-            )?;
-            let witnesses = occupancy
-                .take_blocker_collection(resources)?
-                .unwrap_or_default();
-            if selected.is_none() && !witnesses.blockers.is_empty() && edge.from != edge.to {
-                let repair_start = resources.layout_work_used();
-                let feasibility_before = allowance.remaining().1;
-                let repaired = repair::repair_blocked_scene(
-                    request,
-                    topology.as_ref(),
-                    label_plans,
-                    &owner,
-                    &witnesses,
-                    &mut routes,
-                    &mut occupancy,
-                    &mut repair_budget,
-                    resources,
-                    execution,
-                )?;
-                let feasibility_spent = feasibility_before.saturating_sub(allowance.remaining().1);
-                start_work = start_work.saturating_add(
-                    resources
-                        .layout_work_used()
-                        .saturating_sub(repair_start)
-                        .saturating_sub(feasibility_spent),
-                );
-                if repaired {
-                    quality_requested = true;
+                else {
                     continue;
-                }
-            }
-            occupancy.begin_blocker_collection(resources)?;
-        }
-        if needs_terminal_search
-            && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
-                request,
-                path::RouteObstacles {
-                    scene: &occupancy,
-                    routes: &routes,
-                    owner: &owner,
-                },
-                label_plans.descriptor(edge_index),
-                selected
+                };
+                if selected
                     .as_ref()
-                    .map(|(score, _, plan)| (*score, plan.attachments)),
-                terminal::SearchBudget::Limited(if quality && selected.is_some() {
-                    &execution
-                        .graph_planning()
-                        .expect("scene search budget")
-                        .quality_improvement
-                } else if quality {
-                    &execution
-                        .graph_planning()
-                        .expect("scene search budget")
-                        .quality
-                } else if selected.is_some() {
-                    &execution
-                        .graph_planning()
-                        .expect("scene search budget")
-                        .allocation
-                } else {
-                    &execution
-                        .graph_planning()
-                        .expect("scene search budget")
-                        .feasibility
-                }),
-                resources,
-                execution,
-            )?
-        {
-            selected = Some((score, usize::MAX, plan));
-            defer_loop_labels = false;
-        }
-        if needs_terminal_search && !quality {
-            let witnesses = occupancy
-                .take_blocker_collection(resources)?
-                .unwrap_or_default();
-            if selected.is_none() && edge.from != edge.to {
-                let repair_start = resources.layout_work_used();
-                let feasibility_before = allowance.remaining().1;
-                let repaired = repair::repair_blocked_scene(
+                    .is_none_or(|(current_score, current_index, _)| {
+                        (score, candidate_index) < (*current_score, *current_index)
+                    })
+                {
+                    selected = Some((score, candidate_index, plan));
+                }
+            }
+            let mut honors_allocation = false;
+            if let Some(branch) = branch_allocation.get(edge_index) {
+                owner.allocated_branch = Some(*branch);
+                let candidate = match plan_allocated_channel(
                     request,
-                    topology.as_ref(),
-                    label_plans,
-                    &owner,
-                    &witnesses,
+                    branch,
+                    label_plans.descriptor(edge_index),
+                    resources,
+                    execution,
+                )? {
+                    Some(plan) => admit_route_candidate(
+                        request,
+                        path::RouteObstacles {
+                            scene: &occupancy,
+                            routes: &routes,
+                            owner: &owner,
+                        },
+                        plan,
+                        resources,
+                    )?,
+                    None => None,
+                };
+                if let Some((score, plan)) = candidate {
+                    // A jointly allocated trunk is a scene decision. Choosing a shorter
+                    // private detour per edge would dismantle that decision one branch at a time.
+                    selected = Some((score, usize::MAX, plan));
+                    honors_allocation = true;
+                } else {
+                    owner.allocated_branch = None;
+                }
+            }
+            if !honors_allocation
+                && !(edge.from == edge.to && selected.is_some())
+                && let Some((score, plan)) = terminal::plan_direct_route(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    label_plans.descriptor(edge_index),
+                    resources,
+                    execution,
+                )?
+                && selected
+                    .as_ref()
+                    .is_none_or(|(incumbent, _, incumbent_plan)| {
+                        route_candidate_is_better(
+                            forward,
+                            (score, plan.attachments),
+                            (*incumbent, incumbent_plan.attachments),
+                        )
+                    })
+            {
+                selected = Some((score, usize::MAX, plan));
+            }
+            let container_endpoint = matches!(
+                topology
+                    .as_ref()
+                    .and_then(|topology| topology.endpoint_index(&edge.from)),
+                Some(GraphEndpointIndex::Group(_))
+            );
+            allowance.account_scene_work(start_work, initial_allowance, resources);
+            let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
+            let needs_terminal_search = selected.is_none()
+                || (quality || input.independent_incidents[edge_index])
+                    && !honors_allocation
+                    && selected.as_ref().is_some_and(|(score, _, plan)| {
+                        route_needs_search(forward, *score, plan, defer_loop_labels)
+                    });
+            if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
+                flush_deferred_loop_labels(
                     &mut routes,
+                    start,
                     &mut occupancy,
-                    &mut repair_budget,
+                    resources,
+                    graph.diagram_type(),
+                )?;
+                if let Some((_, index, plan)) = selected.take() {
+                    selected = admit_route_candidate(
+                        request,
+                        path::RouteObstacles {
+                            scene: &occupancy,
+                            routes: &routes,
+                            owner: &owner,
+                        },
+                        plan,
+                        resources,
+                    )?
+                    .map(|(score, plan)| (score, index, plan));
+                }
+            }
+            if needs_terminal_search && !quality {
+                occupancy.begin_blocker_collection(resources)?;
+                terminal::plan_direct_route(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    label_plans.descriptor(edge_index),
                     resources,
                     execution,
                 )?;
-                let feasibility_spent = feasibility_before.saturating_sub(allowance.remaining().1);
-                start_work = start_work.saturating_add(
-                    resources
-                        .layout_work_used()
-                        .saturating_sub(repair_start)
-                        .saturating_sub(feasibility_spent),
-                );
-                if repaired {
-                    quality_requested = true;
-                    continue;
-                }
-            }
-        }
-        let plan = match selected {
-            Some((score, _, plan)) => {
-                if !honors_allocation
-                    && route_needs_search(forward, score, &plan, defer_loop_labels)
+                let witnesses = occupancy
+                    .take_blocker_collection(resources)?
+                    .unwrap_or_default();
+                if selected.is_none()
+                    && !witnesses.blockers.is_empty()
+                    && edge.from != edge.to
+                    && repair_blocked_scene_with_settlement(
+                        request,
+                        input,
+                        &owner,
+                        &witnesses,
+                        &mut routes,
+                        &mut occupancy,
+                        &mut repair_budget,
+                        &mut start_work,
+                        resources,
+                        execution,
+                    )?
                 {
                     quality_requested = true;
+                    continue;
                 }
-                plan
+                occupancy.begin_blocker_collection(resources)?;
             }
-            None => {
-                return Err(AsciiError::RoutingSearchExhausted {
-                    diagram_type: graph.diagram_type(),
-                    edge_index: source_indices[edge_index],
-                });
+            if needs_terminal_search
+                && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    label_plans.descriptor(edge_index),
+                    selected
+                        .as_ref()
+                        .map(|(score, _, plan)| (*score, plan.attachments)),
+                    terminal::SearchBudget::Limited(if quality && selected.is_some() {
+                        &execution
+                            .graph_planning()
+                            .expect("scene search budget")
+                            .quality_improvement
+                    } else if quality {
+                        &execution
+                            .graph_planning()
+                            .expect("scene search budget")
+                            .quality
+                    } else if selected.is_some() {
+                        &execution
+                            .graph_planning()
+                            .expect("scene search budget")
+                            .allocation
+                    } else {
+                        &execution
+                            .graph_planning()
+                            .expect("scene search budget")
+                            .feasibility
+                    }),
+                    resources,
+                    execution,
+                )?
+            {
+                selected = Some((score, usize::MAX, plan));
+                defer_loop_labels = false;
             }
-        };
-        let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
-        occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
-        let start = plan.terminal_candidate(MarkerEndpoint::Start, graph.diagram_type())?;
-        let end = plan.terminal_candidate(MarkerEndpoint::End, graph.diagram_type())?;
-        let prepared = PreparedRoute { plan, owner };
-        let route_index = routes.len();
-        occupancy.commit_route(route_index, &prepared, start, end, resources)?;
-        routes.push(prepared);
-        // Admission and materialization share the current occupancy. Subsequent route
-        // candidates must preserve the distinct marker berths already committed here.
-        allocate_committed_route_marker_berths(
-            &mut routes,
-            route_index,
-            &mut occupancy,
+            if needs_terminal_search && !quality {
+                let witnesses = occupancy
+                    .take_blocker_collection(resources)?
+                    .unwrap_or_default();
+                if selected.is_none()
+                    && edge.from != edge.to
+                    && repair_blocked_scene_with_settlement(
+                        request,
+                        input,
+                        &owner,
+                        &witnesses,
+                        &mut routes,
+                        &mut occupancy,
+                        &mut repair_budget,
+                        &mut start_work,
+                        resources,
+                        execution,
+                    )?
+                {
+                    quality_requested = true;
+                    continue;
+                }
+            }
+            let plan = match selected {
+                Some((score, _, plan)) => {
+                    if !honors_allocation
+                        && route_needs_search(forward, score, &plan, defer_loop_labels)
+                    {
+                        quality_requested = true;
+                    }
+                    plan
+                }
+                None => {
+                    return Err(AsciiError::RoutingSearchExhausted {
+                        diagram_type: graph.diagram_type(),
+                        edge_index: source_indices[edge_index],
+                    });
+                }
+            };
+            let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
+            occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
+            let start = plan.terminal_candidate(MarkerEndpoint::Start, graph.diagram_type())?;
+            let end = plan.terminal_candidate(MarkerEndpoint::End, graph.diagram_type())?;
+            let prepared = PreparedRoute { plan, owner };
+            let route_index = routes.len();
+            occupancy.commit_route(route_index, &prepared, start, end, resources)?;
+            routes.push(prepared);
+            // Admission and materialization share the current occupancy. Subsequent route
+            // candidates must preserve the distinct marker berths already committed here.
+            allocate_committed_route_marker_berths(
+                &mut routes,
+                route_index,
+                &mut occupancy,
+                charset,
+                resources,
+                graph.diagram_type(),
+            )?;
+            // Predetermined node loops can reserve labels after their nested lanes are known.
+            // Searched loops and container loops protect each label before the next search.
+            if defer_loop_labels {
+                pending_self_loop_start.get_or_insert(route_index);
+            } else {
+                allocate_committed_route_labels(
+                    &mut routes,
+                    route_index,
+                    &mut occupancy,
+                    resources,
+                    graph.diagram_type(),
+                )?;
+            }
+        }
+
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        if let Some(start) = pending_self_loop_start {
+            flush_deferred_loop_labels(
+                &mut routes,
+                start,
+                &mut occupancy,
+                resources,
+                graph.diagram_type(),
+            )?;
+        }
+        if let Some(index) = validate::first_invalid_routes(
+            graph,
+            graph_layout,
+            canonical_edges,
+            &routes,
+            label_plans,
             charset,
             resources,
-            graph.diagram_type(),
-        )?;
-        // Predetermined node loops can reserve labels after their nested lanes are known.
-        // Searched loops and container loops protect each label before the next search.
-        if defer_loop_labels {
-            pending_self_loop_start.get_or_insert(route_index);
-        } else {
-            allocate_committed_route_labels(
-                &mut routes,
-                route_index,
-                &mut occupancy,
-                resources,
-                graph.diagram_type(),
-            )?;
+            execution,
+        )? {
+            return Err(AsciiError::RoutingSearchExhausted {
+                diagram_type: graph.diagram_type(),
+                edge_index: source_indices[index],
+            });
         }
-    }
+        let mut width = 0;
+        let mut height = 0;
+        let mut planned_cell_count = 0usize;
+        for route in &routes {
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
+            planned_cell_count = planned_cell_count
+                .checked_add(route.plan.active_cells().count())
+                .ok_or_else(|| {
+                    resources
+                        .policy()
+                        .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
+                })?;
+            let (plan_width, plan_height) = route.plan.canvas_extent_with_resources(resources)?;
+            width = width.max(plan_width);
+            height = height.max(plan_height);
+        }
 
-    execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    if let Some(start) = pending_self_loop_start {
-        for route_index in start..routes.len() {
-            allocate_committed_route_labels(
-                &mut routes,
-                route_index,
-                &mut occupancy,
-                resources,
-                graph.diagram_type(),
-            )?;
-        }
-    }
-    if let Some(index) = validate::first_invalid_routes(
-        graph,
-        graph_layout,
-        canonical_edges,
-        &routes,
-        label_plans,
-        charset,
+        execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        let scene = RouteScenePlan {
+            routes,
+            extent: (width, height),
+            planned_cell_count,
+            labels: Rc::clone(label_plans),
+            quality_requested,
+        };
+        Ok(scene)
+    })();
+    allowance.account_scene_work(start_work, initial_allowance, resources);
+    result
+}
+
+#[allow(clippy::too_many_arguments)]
+fn repair_blocked_scene_with_settlement(
+    request: EdgeRouteRequest<'_>,
+    input: &SceneRoutingInput<'_>,
+    owner: &RouteOwner,
+    witnesses: &conflict::BlockerWitnesses,
+    routes: &mut Vec<PreparedRoute>,
+    occupancy: &mut SceneOccupancy<'_>,
+    budget: &mut repair::SceneRepairBudget<'_>,
+    start_work: &mut usize,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<bool> {
+    let feasibility = &execution
+        .graph_planning()
+        .expect("scene planning budget")
+        .feasibility;
+    let repair_start = resources.layout_work_used();
+    let feasibility_before = feasibility.remaining().1;
+    let result = repair::repair_blocked_scene(
+        request,
+        input.topology.as_ref(),
+        &input.labels,
+        owner,
+        witnesses,
+        routes,
+        occupancy,
+        budget,
         resources,
         execution,
-    )? {
-        return Err(AsciiError::RoutingSearchExhausted {
-            diagram_type: graph.diagram_type(),
-            edge_index: source_indices[index],
-        });
-    }
-    let mut width = 0;
-    let mut height = 0;
-    let mut planned_cell_count = 0usize;
-    for route in &routes {
-        execution.checkpoint(merman_model::OperationPhase::Layout)?;
-        planned_cell_count = planned_cell_count
-            .checked_add(route.plan.active_cells().count())
-            .ok_or_else(|| {
-                resources
-                    .policy()
-                    .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
-            })?;
-        let (plan_width, plan_height) = route.plan.canvas_extent_with_resources(resources)?;
-        width = width.max(plan_width);
-        height = height.max(plan_height);
-    }
+    );
+    // Replacement work has its own allowance; retain only its missing-route search
+    // in this pass's feasibility charge, including when the repair returns an error.
+    let feasibility_spent = feasibility_before.saturating_sub(feasibility.remaining().1);
+    *start_work = start_work.saturating_add(
+        resources
+            .layout_work_used()
+            .saturating_sub(repair_start)
+            .saturating_sub(feasibility_spent),
+    );
+    result
+}
 
-    execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    let scene = RouteScenePlan {
-        routes,
-        extent: (width, height),
-        planned_cell_count,
-        labels: Rc::clone(label_plans),
-        quality_requested,
-    };
-    allowance.account_scene_work(start_work, initial_allowance, resources);
-    Ok(scene)
+fn flush_deferred_loop_labels(
+    routes: &mut [PreparedRoute],
+    start: usize,
+    occupancy: &mut SceneOccupancy<'_>,
+    resources: &mut ResourceContext,
+    diagram_type: &'static str,
+) -> Result<()> {
+    for route_index in start..routes.len() {
+        allocate_committed_route_labels(routes, route_index, occupancy, resources, diagram_type)?;
+    }
+    Ok(())
 }
 
 fn plan_allocated_channel(

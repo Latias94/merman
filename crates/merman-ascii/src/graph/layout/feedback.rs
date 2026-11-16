@@ -1,11 +1,10 @@
 //! Measured, semantic capacity requests for a fresh layout generation.
 
-use super::super::demand::SceneDemand;
 use super::super::label::try_measure_edge_label;
 use super::super::model::{AsciiGraph, GraphDirection, GraphEdgeMarker, GraphNodeShape};
 use super::super::shape::GraphNodeShapeSize;
 use super::super::topology::{GraphEndpointIndex, GraphGroupTopology};
-use super::{GraphLayout, GridCoord, charge_sort_work};
+use super::{GraphLayout, GridCoord, LayoutInput, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::options::GraphLayoutPolicy;
 use crate::resource::ResourceContext;
@@ -43,14 +42,15 @@ struct ScopedReturnDemand {
 impl LayoutFeedback {
     /// Records the first unmet endpoint/corridor request. The caller owns the finite rebuild
     /// schedule; a repeated request does not justify another generation.
-    pub(in crate::graph) fn record_failure(
+    pub(in crate::graph) fn record_failure_with_input(
         &mut self,
-        graph: &AsciiGraph,
-        policy: &GraphLayoutPolicy,
+        input: &LayoutInput<'_>,
         measured: &MeasuredLayout,
         miss: &AsciiError,
         resources: &ResourceContext,
     ) -> Result<bool> {
+        let graph = input.graph;
+        let demand = &input.demand;
         resources.checkpoint()?;
         match miss {
             AsciiError::PortCapacityExceeded {
@@ -65,7 +65,6 @@ impl LayoutFeedback {
                 if fixed_terminal(graph.nodes[index].shape) {
                     return Ok(false);
                 }
-                let demand = SceneDemand::try_new(graph, policy, resources)?;
                 let horizontal = match graph.nodes[index].shape {
                     GraphNodeShape::ForkJoinHorizontal => false,
                     GraphNodeShape::ForkJoinVertical => true,
@@ -104,7 +103,7 @@ impl LayoutFeedback {
                 Ok(changed)
             }
             AsciiError::RoutingSearchExhausted { edge_index, .. } => {
-                self.reserve_corridor(graph, policy, measured, *edge_index, resources)
+                self.reserve_corridor(input, measured, *edge_index, resources)
             }
             _ => Ok(false),
         }
@@ -112,19 +111,19 @@ impl LayoutFeedback {
 
     /// Adds simultaneous return-lane demand in the failed edge's actual compound scope.
     /// SCC analysis is iterative, metered, and confined to scope-projected semantic edges.
-    pub(in crate::graph) fn record_return_failure(
+    pub(in crate::graph) fn record_return_failure_with_input(
         &mut self,
-        graph: &AsciiGraph,
-        policy: &GraphLayoutPolicy,
+        input: &LayoutInput<'_>,
         measured: &MeasuredLayout,
         miss: &AsciiError,
         resources: &ResourceContext,
     ) -> Result<bool> {
-        let changed = self.record_failure(graph, policy, measured, miss, resources)?;
+        let changed = self.record_failure_with_input(input, measured, miss, resources)?;
         let AsciiError::RoutingSearchExhausted { edge_index, .. } = miss else {
             return Ok(changed);
         };
-        let Some(request) = scoped_return_demand(graph, policy, measured, *edge_index, resources)?
+        let Some(request) =
+            scoped_return_demand_with_input(input, measured, *edge_index, resources)?
         else {
             return Ok(changed);
         };
@@ -199,12 +198,13 @@ impl LayoutFeedback {
 
     fn reserve_corridor(
         &mut self,
-        graph: &AsciiGraph,
-        policy: &GraphLayoutPolicy,
+        input: &LayoutInput<'_>,
         measured: &MeasuredLayout,
         source_edge_index: usize,
         resources: &ResourceContext,
     ) -> Result<bool> {
+        let graph = input.graph;
+        let policy = &input.policy;
         let Some(edge) = graph
             .edges
             .get(source_edge_index)
@@ -218,7 +218,7 @@ impl LayoutFeedback {
         let Some(to) = endpoint_bounds(&measured.layout, &edge.to, resources)? else {
             return Ok(false);
         };
-        let demand = SceneDemand::try_new(graph, policy, resources)?;
+        let demand = &input.demand;
         let contacts = demand
             .contacts_for_node(&edge.from, resources)?
             .max(demand.contacts_for_node(&edge.to, resources)?);
@@ -248,7 +248,7 @@ impl LayoutFeedback {
             2,
         )?;
         let direction = edge_direction(
-            graph,
+            input,
             measured,
             edge.from.as_str(),
             edge.to.as_str(),
@@ -343,7 +343,7 @@ impl LayoutFeedback {
 
     pub(in crate::graph::layout) fn reserve_axes(
         &self,
-        graph: &AsciiGraph,
+        input: &LayoutInput<'_>,
         placements: &[GridCoord],
         columns: &mut super::grid::AxisSizes,
         rows: &mut super::grid::AxisSizes,
@@ -352,19 +352,15 @@ impl LayoutFeedback {
         if self.corridors.is_empty() {
             return Ok(());
         }
-        let mut topology_resources = resources.clone();
-        let topology = if graph.groups.is_empty() {
-            None
-        } else {
-            Some(GraphGroupTopology::try_new(graph, &mut topology_resources)?)
-        };
+        let graph = input.graph;
+        let topology = input.topology.as_ref();
         for request in &self.corridors {
             resources.checkpoint()?;
             resources.charge_layout_work(1)?;
             let edge = &graph.edges[request.source_edge_index];
             let (Some(from), Some(to)) = (
-                endpoint_grid_bounds(graph, placements, topology.as_ref(), &edge.from, resources)?,
-                endpoint_grid_bounds(graph, placements, topology.as_ref(), &edge.to, resources)?,
+                endpoint_grid_bounds(graph, placements, topology, &edge.from, resources)?,
+                endpoint_grid_bounds(graph, placements, topology, &edge.to, resources)?,
             ) else {
                 continue;
             };
@@ -484,6 +480,33 @@ impl LayoutFeedback {
             }
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+impl LayoutFeedback {
+    fn record_failure(
+        &mut self,
+        graph: &AsciiGraph,
+        policy: &GraphLayoutPolicy,
+        measured: &MeasuredLayout,
+        miss: &AsciiError,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        let input = LayoutInput::prepare(graph, policy, &mut resources.clone())?;
+        self.record_failure_with_input(&input, measured, miss, resources)
+    }
+
+    fn record_return_failure(
+        &mut self,
+        graph: &AsciiGraph,
+        policy: &GraphLayoutPolicy,
+        measured: &MeasuredLayout,
+        miss: &AsciiError,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        let input = LayoutInput::prepare(graph, policy, &mut resources.clone())?;
+        self.record_return_failure_with_input(&input, measured, miss, resources)
     }
 }
 
@@ -627,17 +650,17 @@ fn endpoint_bounds(
 }
 
 fn edge_direction(
-    graph: &AsciiGraph,
+    input: &LayoutInput<'_>,
     measured: &MeasuredLayout,
     from: &str,
     to: &str,
     resources: &ResourceContext,
 ) -> Result<GraphDirection> {
-    if graph.groups.is_empty() {
+    let graph = input.graph;
+    let Some(topology) = input.topology.as_ref() else {
         return Ok(graph.direction.canonical());
-    }
+    };
     let mut topology_resources = resources.clone();
-    let topology = GraphGroupTopology::try_new(graph, &mut topology_resources)?;
     let from_groups = topology.groups_containing_endpoint(from, &mut topology_resources)?;
     let to_groups = topology.groups_containing_endpoint(to, &mut topology_resources)?;
     let mut nearest = None;
@@ -674,7 +697,21 @@ struct ScopeGraph<'a> {
 }
 
 impl<'a> ScopeGraph<'a> {
+    #[cfg(test)]
     fn try_new(graph: &'a AsciiGraph, resources: &ResourceContext) -> Result<Self> {
+        let topology = if graph.groups.is_empty() {
+            None
+        } else {
+            Some(GraphGroupTopology::try_new(graph, &mut resources.clone())?)
+        };
+        Self::try_with_topology(graph, topology.as_ref(), resources)
+    }
+
+    fn try_with_topology(
+        graph: &'a AsciiGraph,
+        topology: Option<&GraphGroupTopology<'_>>,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
         let count = resources.checked_work_add(graph.nodes.len(), graph.groups.len())?;
         resources.charge_layout_work_product(count, 5)?;
         let mut ids = Vec::new();
@@ -697,9 +734,7 @@ impl<'a> ScopeGraph<'a> {
         let mut parents = Vec::new();
         reserve(&mut parents, count)?;
         parents.resize(count, None);
-        if !graph.groups.is_empty() {
-            let mut topology_resources = resources.clone();
-            let topology = GraphGroupTopology::try_new(graph, &mut topology_resources)?;
+        if let Some(topology) = topology {
             for (index, parent) in parents.iter_mut().enumerate() {
                 resources.checkpoint()?;
                 let group = if index < graph.nodes.len() {
@@ -750,21 +785,13 @@ impl<'a> ScopeGraph<'a> {
             ) else {
                 continue;
             };
-            let (mut from, mut to) = (original_from, original_to);
-            // Lift endpoints to immediate children of their least common enclosing scope.
-            // A compound child participates in its parent's SCC; its members participate
-            // independently in the child's SCC, with no cross-scope adjacency.
-            while parents[from] != parents[to] {
-                resources.checkpoint()?;
-                resources.charge_layout_work(1)?;
-                if depths[from] >= depths[to] {
-                    if let Some(parent) = parents[from] {
-                        from = parent;
-                    }
-                } else if let Some(parent) = parents[to] {
-                    to = parent;
-                }
-            }
+            let (from, to) = lift_endpoints_to_common_scope(
+                original_from,
+                original_to,
+                &parents,
+                &depths,
+                resources,
+            )?;
             if from == to && original_from != original_to {
                 continue;
             }
@@ -787,6 +814,60 @@ impl<'a> ScopeGraph<'a> {
             outgoing,
             incoming,
         })
+    }
+
+    fn endpoint_bounds(
+        &self,
+        layout: &GraphLayout,
+        resources: &ResourceContext,
+    ) -> Result<Vec<Option<EndpointBounds>>> {
+        let count = resources.checked_work_add(layout.nodes.len(), layout.groups.len())?;
+        resources.charge_layout_work(count)?;
+        let mut by_id = HashMap::default();
+        by_id
+            .try_reserve(count)
+            .map_err(|_| AsciiError::allocation_failed("ascii_layout_feedback"))?;
+        // Resolve against this generation, retaining the first group before any node with
+        // the same ID, just as the scalar endpoint lookup does.
+        for (id, bounds) in layout
+            .groups
+            .iter()
+            .map(|group| {
+                (
+                    group.id.as_str(),
+                    EndpointBounds {
+                        x: group.x,
+                        y: group.y,
+                        right: group.right(),
+                        bottom: group.bottom(),
+                    },
+                )
+            })
+            .chain(layout.nodes.iter().map(|node| {
+                (
+                    node.id.as_str(),
+                    EndpointBounds {
+                        x: node.x,
+                        y: node.y,
+                        right: node.right(),
+                        bottom: node.bottom(),
+                    },
+                )
+            }))
+        {
+            resources.checkpoint()?;
+            resources.charge_layout_work(id.len())?;
+            by_id.entry(id).or_insert(bounds);
+        }
+        resources.charge_layout_work(self.ids.len())?;
+        let mut bounds = Vec::new();
+        reserve(&mut bounds, self.ids.len())?;
+        for &id in &self.ids {
+            resources.checkpoint()?;
+            resources.charge_layout_work(id.len())?;
+            bounds.push(by_id.get(id).copied());
+        }
+        Ok(bounds)
     }
 
     fn components(&self, resources: &ResourceContext) -> Result<(Vec<usize>, Vec<usize>)> {
@@ -857,14 +938,45 @@ impl<'a> ScopeGraph<'a> {
     }
 }
 
-fn scoped_return_demand(
-    graph: &AsciiGraph,
-    policy: &GraphLayoutPolicy,
+fn lift_endpoints_to_common_scope(
+    mut from: usize,
+    mut to: usize,
+    parents: &[Option<usize>],
+    depths: &[usize],
+    resources: &ResourceContext,
+) -> Result<(usize, usize)> {
+    // Lift endpoints to immediate children of their least common enclosing scope.
+    // A compound child participates in its parent's SCC; its members participate
+    // independently in the child's SCC, with no cross-scope adjacency.
+    while parents[from] != parents[to] {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if depths[from] >= depths[to] {
+            if let Some(parent) = parents[from] {
+                from = parent;
+            }
+        } else if let Some(parent) = parents[to] {
+            to = parent;
+        }
+    }
+    Ok((from, to))
+}
+
+#[derive(PartialEq, Eq, PartialOrd, Ord)]
+enum LaneEventKind {
+    Start,
+    End,
+}
+
+fn scoped_return_demand_with_input(
+    input: &LayoutInput<'_>,
     measured: &MeasuredLayout,
     failed_edge_index: usize,
     resources: &ResourceContext,
 ) -> Result<Option<ScopedReturnDemand>> {
-    let scoped = ScopeGraph::try_new(graph, resources)?;
+    let graph = input.graph;
+    let policy = &input.policy;
+    let scoped = ScopeGraph::try_with_topology(graph, input.topology.as_ref(), resources)?;
     let (components, sizes) = scoped.components(resources)?;
     resources.charge_layout_work(scoped.edges.len())?;
     let mut failed = None;
@@ -899,6 +1011,7 @@ fn scoped_return_demand(
         resources.checked_work_mul(scoped.edges.len(), 2)?,
     )?;
     let mut pitch = PRIVATE_CONTACT_PITCH;
+    let bounds = scoped.endpoint_bounds(&measured.layout, resources)?;
     for edge in &scoped.edges {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
@@ -908,11 +1021,8 @@ fn scoped_return_demand(
         {
             continue;
         }
-        let Some(from) = endpoint_bounds(&measured.layout, scoped.ids[edge.from], resources)?
-        else {
-            continue;
-        };
-        let Some(to) = endpoint_bounds(&measured.layout, scoped.ids[edge.to], resources)? else {
+        resources.charge_layout_work(2)?;
+        let (Some(from), Some(to)) = (bounds[edge.from], bounds[edge.to]) else {
             continue;
         };
         let start = from.center(horizontal);
@@ -930,8 +1040,8 @@ fn scoped_return_demand(
         if !physical_return && !rank_return {
             continue;
         }
-        events.push((start.min(end), false));
-        events.push((start.max(end), true));
+        events.push((start.min(end), LaneEventKind::Start));
+        events.push((start.max(end), LaneEventKind::End));
         let original = &graph.edges[edge.source_edge_index];
         if let Some(raw) = &original.label
             && let Some(label) = try_measure_edge_label(
@@ -954,14 +1064,15 @@ fn scoped_return_demand(
     events.sort_unstable();
     let mut active = 0;
     let mut lanes = 0;
-    for (_, end) in events {
+    for (_, kind) in events {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
-        if end {
-            active -= 1;
-        } else {
-            active = resources.checked_work_add(active, 1)?;
-            lanes = lanes.max(active);
+        match kind {
+            LaneEventKind::Start => {
+                active = resources.checked_work_add(active, 1)?;
+                lanes = lanes.max(active);
+            }
+            LaneEventKind::End => active -= 1,
         }
     }
     if lanes == 0 {
@@ -971,9 +1082,7 @@ fn scoped_return_demand(
     resources.grid_extent(cells, 1)?;
     let scope_bounds = failed
         .scope
-        .map(|index| endpoint_bounds(&measured.layout, &graph.groups[index].id, resources))
-        .transpose()?
-        .flatten();
+        .and_then(|index| bounds[graph.nodes.len() + index]);
     let mut available = usize::MAX;
     let scope_parent = failed.scope.map(|index| graph.nodes.len() + index);
     for (index, &parent) in scoped.parents.iter().enumerate() {
@@ -982,7 +1091,7 @@ fn scoped_return_demand(
         if parent != scope_parent {
             continue;
         }
-        if let Some(bounds) = endpoint_bounds(&measured.layout, scoped.ids[index], resources)? {
+        if let Some(bounds) = bounds[index] {
             let margin = match (scope_bounds, horizontal) {
                 (Some(scope), true) => bounds
                     .y
@@ -1003,6 +1112,18 @@ fn scoped_return_demand(
         cross_x: !horizontal,
         cells,
     }))
+}
+
+#[cfg(test)]
+fn scoped_return_demand(
+    graph: &AsciiGraph,
+    policy: &GraphLayoutPolicy,
+    measured: &MeasuredLayout,
+    failed_edge_index: usize,
+    resources: &ResourceContext,
+) -> Result<Option<ScopedReturnDemand>> {
+    let input = LayoutInput::prepare(graph, policy, &mut resources.clone())?;
+    scoped_return_demand_with_input(&input, measured, failed_edge_index, resources)
 }
 
 fn reserve<T>(values: &mut Vec<T>, additional: usize) -> Result<()> {
