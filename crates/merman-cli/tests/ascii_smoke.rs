@@ -539,6 +539,42 @@ fn auto_color_honors_process_environment_before_rendering() {
 }
 
 #[test]
+fn ascii_resource_failure_explains_budget_recovery() {
+    let output =
+        run_ascii_with_resource_limit("max_ascii_layout_work_units", 1, "flowchart LR\nA --> B");
+
+    assert_eq!(output.status.code(), Some(1));
+    assert!(output.stdout.is_empty());
+    let stderr = String::from_utf8(output.stderr).expect("UTF-8 diagnostic");
+    for hint in [
+        "--resource-limit max_ascii_layout_work_units=",
+        "first rejected charge",
+        "--resource-profile unbounded-for-trusted-input",
+        "--operation-timeout-ms 30000",
+    ] {
+        assert!(stderr.contains(hint), "missing {hint:?}:\n{stderr}");
+    }
+}
+
+#[test]
+fn ascii_long_help_explains_resource_choices() {
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["render", "--help"])
+        .output()
+        .expect("render long help");
+    assert!(output.status.success(), "{:?}", output.stderr);
+    let help = String::from_utf8(output.stdout).expect("UTF-8 help");
+    for example in [
+        "--resource-limit max_ascii_layout_work_units=",
+        "--resource-profile unbounded-for-trusted-input",
+        "--operation-timeout-ms 30000",
+    ] {
+        assert!(help.contains(example), "missing {example:?}:\n{help}");
+    }
+    assert!(help.contains("all policy budgets"), "{help}");
+}
+
+#[test]
 fn ascii_report_resource_failure_preserves_stable_limit_details() {
     let output = run_with_stdin(
         &[
@@ -564,6 +600,12 @@ fn ascii_report_resource_failure_preserves_stable_limit_details() {
     assert_eq!(resource["cause"], "ceiling");
     assert_eq!(resource["profile"], "trusted-native");
     assert!(resource["actual"].as_u64().is_some_and(|actual| actual > 1));
+    assert!(
+        report["error"]["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("--resource-limit max_ascii_output_bytes=")),
+        "{report}"
+    );
 }
 
 #[test]

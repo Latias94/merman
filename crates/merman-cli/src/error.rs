@@ -150,7 +150,20 @@ impl std::fmt::Display for AsciiResourceError {
             self.profile.id(),
         )?;
         if self.details.cause == merman::render::ResourceLimitCause::ArithmeticOverflow {
-            write!(formatter, " (cause `{}`)", self.details.cause)?;
+            write!(
+                formatter,
+                " (cause `{}`)\nhelp: simplify the diagram; increasing a policy budget cannot remove an arithmetic overflow guard",
+                self.details.cause,
+            )?;
+        } else {
+            write!(
+                formatter,
+                "\nhelp: simplify the diagram or increase this budget with --resource-limit {}=COUNT above {}; actual is the first rejected charge, not the total required",
+                self.details.id, self.details.maximum,
+            )?;
+            formatter.write_str(
+                "\nhelp: for trusted input, --resource-profile unbounded-for-trusted-input removes all policy budgets while retaining hard guards; pair it with --operation-timeout-ms 30000 for a cooperative 30-second deadline",
+            )?;
         }
         Ok(())
     }
@@ -649,6 +662,36 @@ mod tests {
         assert!(!rendered.contains('\u{1b}'));
         assert!(rendered.contains("\\n"));
         assert!(rendered.contains("\\u{1b}"));
+    }
+
+    #[cfg(all(feature = "ascii", feature = "diagram-flowchart"))]
+    #[test]
+    fn ascii_arithmetic_overflow_does_not_suggest_disabling_policy_budgets() {
+        let error = merman::Renderer::new()
+            .render(merman::RenderRequest::ascii(
+                "flowchart LR\nA --> B",
+                merman::OperationControl::new(),
+                merman::AsciiRequest {
+                    resources: merman::ascii::AsciiResourcePolicy::default()
+                        .with_limit(merman::ascii::AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+                        .expect("valid work budget"),
+                    ..Default::default()
+                },
+            ))
+            .expect_err("one work unit cannot render this graph");
+        let merman::RenderError::ResourceLimitExceeded(mut details) = error else {
+            panic!("expected a resource descriptor");
+        };
+        details.cause = merman::render::ResourceLimitCause::ArithmeticOverflow;
+        let error = CliError::ascii_resource(
+            details,
+            merman::model::resources::ResourceProfile::TrustedNative,
+        );
+        let message = error.to_string();
+        assert!(message.contains("arithmetic_overflow"), "{message}");
+        assert!(message.contains("simplify the diagram"), "{message}");
+        assert!(!message.contains("--resource-limit"), "{message}");
+        assert!(!message.contains("--resource-profile"), "{message}");
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]

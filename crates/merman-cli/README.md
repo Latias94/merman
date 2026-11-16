@@ -740,7 +740,9 @@ merman-cli layout diagram.mmd --operation-timeout-ms 5000
 merman-cli rustdoc check --operation-timeout-ms 30000
 ```
 
-The deadline is operation-wide, including stdin and bounded file acquisition. It can expire while a
+Omitting this option sets no operation deadline. Zero cancels at the first cooperative checkpoint.
+The deadline is independent of resource budgets, including an unbounded resource profile.
+It is operation-wide, including stdin and bounded file acquisition. It can expire while a
 stdin producer keeps its pipe open without sending data. A Markdown batch does not reset it for
 each chart, and parallel chart workers observe the same cancellation state. Cancellation is
 cooperative: a blocking host or backend call returns to a checkpoint before the request is
@@ -760,6 +762,21 @@ recoverable transaction guarantees.
 | `unbounded-for-trusted-input` | Explicitly trusted work that owns its cost |
 
 Use repeatable `--resource-limit STABLE_ID=POSITIVE_U64` only for a scoped override. The unbounded profile retains hard protocol guards, finite network timeouts, redirect limits, overflow checks, renderer-owned icon-registry ceilings, and backend capabilities.
+
+For ASCII/Unicode, the CLI's default `trusted-native` profile allows 8,000,000 layout work units.
+If a trusted diagram exceeds it, increase that budget alone, or explicitly remove all policy
+budgets and set an operation deadline:
+
+```sh
+merman-cli render diagram.mmd --format unicode --resource-limit max_ascii_layout_work_units=64000000
+merman-cli render diagram.mmd --format unicode --resource-profile unbounded-for-trusted-input --operation-timeout-ms 30000
+```
+
+The second command removes all policy budgets, including output and model ceilings; it is not a
+work-only override. A resource error's `actual` value is the first rejected charge, not the total
+required to finish, so neither a larger budget nor an unbounded profile guarantees completion.
+Timeout cancellation remains cooperative. Resource exhaustion and cancellation return an error
+without publishing a partial text diagram, including when viewport fallback is enabled.
 
 Local icon packs stay offline:
 
