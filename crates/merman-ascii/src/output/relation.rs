@@ -68,13 +68,10 @@ fn write_class(
     let interfaces = list_entities(&mut root, "interfaces", "I", lines)?;
     let notes = list_entities(&mut root, "notes", "T", lines)?;
     let aliases = &model.model().namespace_facade_aliases;
-    let mut node_ids = identities(classes.iter());
-    for (alias, target) in aliases {
-        lines.emit_resources.checkpoint()?;
-        if let Some(&key) = node_ids.get(target.as_str()) {
-            node_ids.insert(alias, key);
-        }
-    }
+    // Namespace members name declaration map keys; primary endpoints name ClassNode.id.
+    // Keep aliases out of the routing table: primary resolution follows exactly one alias.
+    let class_keys = identities(classes.iter());
+    let node_ids = model_identities(classes.iter());
     let group_ids = identities(namespaces.iter());
     // Reuse the admitted topology's actual routing identities. Reconstructing its remap policy
     // from authored IDs would disagree for duplicates or collisions with generated IDs.
@@ -85,6 +82,9 @@ fn write_class(
         .collect();
     let note_ids = identities(notes.iter());
     let mut endpoints = node_ids.clone();
+    for (&id, &key) in &interface_ids {
+        endpoints.entry(id).or_insert(key);
+    }
     for namespace in &namespaces {
         endpoints
             .entry(namespace.id.as_str())
@@ -121,7 +121,7 @@ fn write_class(
             "classes",
             &mut fields,
             "classIds",
-            &node_ids,
+            &class_keys,
             lines,
         )?;
         reference_list(
@@ -137,12 +137,12 @@ fn write_class(
         details(&namespace.key, &fields, lines)?;
     }
     for class in &classes {
-        let alias = aliases.contains_key(&class.id);
+        let alias = aliases.contains_key(&class.model_id);
         let mut fields = declaration(class, if alias { "class alias" } else { "class" }, lines)?;
         if alias {
             let mut record = RecordWriter::new(lines)?;
             record.text(&format!("{} alias-of: ", class.key), false)?;
-            reference(&class.id, &node_ids, &mut record)?;
+            class_reference(&class.model_id, &node_ids, aliases, &mut record)?;
             record.finish()?;
         }
         let display = text(&fields, "text", lines)?;
@@ -228,7 +228,7 @@ fn write_class(
     for note in &notes {
         let mut fields = declaration(note, "note", lines)?;
         quoted_field(&note.key, "text", &mut fields, "text", lines)?;
-        class_target(&note.key, &mut fields, "class", &node_ids, aliases, lines)?;
+        class_target(&note.key, &mut fields, "class", &endpoints, aliases, lines)?;
         reference_field(
             &note.key,
             "namespace",
@@ -261,23 +261,13 @@ fn write_class(
             value if value == constants.line_type.dotted_line => "dotted".into(),
             value => format!("lineType={value}"),
         };
-        // Interface IDs can collide with class IDs in detached models. The endpoint marker
-        // selects its identity domain just as ClassTopology::relation_endpoints does.
-        let source_ids = if type1 == constants.relation_type.lollipop {
-            &interface_ids
-        } else {
-            &endpoints
-        };
-        let target_ids = if type2 == constants.relation_type.lollipop {
-            &interface_ids
-        } else {
-            &endpoints
-        };
+        // ClassTopologyView has already remapped lollipop endpoints into the interface routing
+        // domain. Resolve the projected ID, including direct interface references, as primary does.
         let mut record = RecordWriter::new(lines)?;
         record.text(&format!("{key}: "), false)?;
-        reference(projected.id1, source_ids, &mut record)?;
+        class_reference(projected.id1, &endpoints, aliases, &mut record)?;
         record.text(&format!(" [{marker1}] --{stroke}-- "), false)?;
-        reference(projected.id2, target_ids, &mut record)?;
+        class_reference(projected.id2, &endpoints, aliases, &mut record)?;
         record.text(&format!(" [{marker2}]"), false)?;
         record.finish()?;
         for (side, id, marker) in [("source", &source, type1), ("target", &target, type2)] {
@@ -355,12 +345,27 @@ fn class_target(
     aliases: &BTreeMap<String, String>,
     lines: &mut SemanticFallbackWriter<'_>,
 ) -> Result<()> {
-    let authored = text(fields, field, lines)?;
-    reference_field(scope, "class", fields, field, identities, lines)?;
-    if let Some(id) = authored.filter(|id| aliases.contains_key(id)) {
-        quoted(&format!("{scope} class-ref"), &id, lines)?;
+    if let Some(id) = take_text(fields, field, lines)? {
+        let mut record = RecordWriter::new(lines)?;
+        record.text(&format!("{scope} class: "), false)?;
+        class_reference(&id, identities, aliases, &mut record)?;
+        record.finish()?;
+        if aliases.contains_key(&id) {
+            quoted(&format!("{scope} class-ref"), &id, lines)?;
+        }
     }
     Ok(())
+}
+
+#[cfg(feature = "diagram-class")]
+fn class_reference(
+    id: &str,
+    identities: &Identities<'_>,
+    aliases: &BTreeMap<String, String>,
+    record: &mut RecordWriter<'_, '_>,
+) -> Result<()> {
+    let resolved = aliases.get(id).map(String::as_str).unwrap_or(id);
+    reference(resolved, identities, record)
 }
 
 #[cfg(feature = "diagram-er")]
@@ -518,7 +523,6 @@ fn identities<'a>(entities: impl Iterator<Item = &'a Entity<'a>>) -> Identities<
     identities
 }
 
-#[cfg(feature = "diagram-er")]
 fn model_identities<'a>(entities: impl Iterator<Item = &'a Entity<'a>>) -> Identities<'a> {
     let mut identities = Identities::new();
     for entity in entities {
@@ -778,5 +782,124 @@ fn invalid_projection() -> AsciiError {
     AsciiError::UnsupportedFeature {
         diagram_type: "ascii",
         feature: "invalid serialized relation projection",
+    }
+}
+
+#[cfg(all(test, feature = "diagram-class"))]
+mod tests {
+    use super::*;
+    use crate::operation::AsciiExecution;
+    use crate::{AsciiResourcePolicy, TerminalWidthProfile};
+    use merman_model::families::class::{ClassDiagramModel, ClassInterface, ClassNote};
+    use merman_model::{MermaidConfig, OperationControl, SemanticDiagramModel};
+
+    fn class_model(source: &str) -> ClassDiagramModel {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync(source)
+            .expect("the class identity fixture should parse");
+        let SemanticDiagramModel::Class(model) = parsed.model else {
+            panic!("expected a Class model");
+        };
+        model
+    }
+
+    fn reading_records(model: &ClassDiagramModel) -> Vec<String> {
+        let topology = model
+            .topology(&MermaidConfig::default(), &OperationControl::new())
+            .expect("the class identity topology should build");
+        let bytes = serde_json::to_vec(&topology).expect("the admitted topology should serialize");
+        let policy = AsciiResourcePolicy::unbounded();
+        let mut writer = SemanticFallbackWriter::new(
+            AsciiExecution::for_test(&policy),
+            256,
+            TerminalWidthProfile::Unicode,
+        );
+        // Exercise the reading writer directly: primary namespace validation currently requires
+        // map keys to equal ClassNode.id, independently of the reading document's routing policy.
+        write_class(&topology, &bytes, &mut writer)
+            .expect("the reading document should retain ids");
+        writer.finish().text().lines().map(str::to_owned).collect()
+    }
+
+    #[test]
+    fn class_reading_routes_swapped_model_ids_to_their_declaration_owners() {
+        let mut model = class_model("classDiagram\ndirection LR\nA --> B\n");
+        model.classes.get_mut("A").unwrap().id = "B".into();
+        model.classes.get_mut("B").unwrap().id = "A".into();
+        model.interfaces.push(ClassInterface {
+            id: "Api".into(),
+            label: "A API".into(),
+            class_id: "A".into(),
+        });
+        model.notes.push(ClassNote {
+            id: "fact".into(),
+            text: "A fact".into(),
+            class_id: Some("A".into()),
+            parent: None,
+        });
+
+        let rows = reading_records(&model);
+        // The boxes keep their authored A/B text. The unchanged relation A --> B must connect
+        // the declaration under map B (model id A) to the declaration under map A (model id B).
+        for expected in [
+            "N1 [class]: \"A\"",
+            "N1 details: {id:\"B\"}",
+            "N2 [class]: \"B\"",
+            "N2 details: {id:\"A\"}",
+            "I1 class: N2",
+            "T1 class: N2",
+            "E1: N2 [none] --solid-- N1 [arrow]",
+        ] {
+            assert!(
+                rows.iter().any(|row| row == expected),
+                "{expected}: {rows:#?}"
+            );
+        }
+    }
+
+    #[test]
+    fn class_reading_keeps_namespace_map_keys_separate_from_alias_route_owners() {
+        let mut model = class_model(concat!(
+            "classDiagram\ndirection LR\n",
+            "namespace Domain {\n class A\n note for A \"owned note\"\n}\n",
+            "class B\nB --> Domain.A\n",
+        ));
+        assert_eq!(model.namespace_facade_aliases["Domain.A"], "A");
+        // Route B belongs to map A, the facade route Domain.A belongs to map B, and route A
+        // belongs to map Domain.A. Namespace membership still refers to the map key A.
+        model.classes.get_mut("A").unwrap().id = "B".into();
+        model.classes.get_mut("B").unwrap().id = "Domain.A".into();
+        model.classes.get_mut("Domain.A").unwrap().id = "A".into();
+        model.notes[0].class_id = Some("Domain.A".into());
+        model.interfaces.push(ClassInterface {
+            id: "Api".into(),
+            label: "Owned API".into(),
+            class_id: "Domain.A".into(),
+        });
+
+        let rows = reading_records(&model);
+        for expected in [
+            "G1 classes: [N1]",
+            "G1 notes: [T1]",
+            "N1 [class]: \"A\"",
+            "N1 namespace: G1",
+            "N1 details: {id:\"B\"}",
+            "N2 [class alias]: \"B\"",
+            "N2 alias-of: N3",
+            "N2 details: {id:\"Domain.A\"}",
+            "N3 [class]: \"Domain.A\"",
+            "N3 details: {id:\"A\"}",
+            "I1 class: N3",
+            "I1 class-ref: \"Domain.A\"",
+            "T1 class: N3",
+            "T1 class-ref: \"Domain.A\"",
+            "E1: N1 [none] --solid-- N3 [arrow]",
+            "E1 target-ref: \"Domain.A\"",
+        ] {
+            assert!(
+                rows.iter().any(|row| row == expected),
+                "{expected}: {rows:#?}"
+            );
+        }
     }
 }

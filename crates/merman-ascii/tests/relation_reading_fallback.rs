@@ -471,6 +471,66 @@ fn interface_references_retain_authored_and_direct_generated_id_spellings() {
     }
 }
 
+#[cfg(feature = "diagram-class")]
+#[test]
+fn class_note_and_direct_relation_targets_keep_the_projected_interface_owner() {
+    use merman_model::families::class::ClassInterface;
+
+    let mut parsed = parsed(concat!(
+        "classDiagram\ndirection LR\n",
+        "namespace Domain {\n class A\n note for A \"interface fact\"\n}\n",
+        "class B\nclass interface0\nclass note0\n",
+        "A --> B : interface call\nA --> B : class call\n",
+    ));
+    let SemanticDiagramModel::Class(model) = &mut parsed.model else {
+        unreachable!()
+    };
+    model.interfaces.push(ClassInterface {
+        id: "A".into(),
+        label: "Shared API".into(),
+        class_id: "A".into(),
+    });
+    // Class declarations occupy interface0 and note0. These direct routing references must
+    // select the generated interface, while authored namespace note membership retains note0.
+    model.notes[0].class_id = Some("interface0$1".into());
+    model.relations[0].id1 = "interface0$1".into();
+
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let primary = render(
+            &parsed,
+            4096,
+            options,
+            AsciiResourcePolicy::unbounded(),
+            &OperationControl::new(),
+        )
+        .expect("primary should accept a note and unmarked relation targeting an interface");
+        assert_eq!(primary.outcome, AsciiOutputOutcome::Primary);
+
+        let report = fallback(&parsed, 20, options);
+        let rows = records(&report.text);
+        let class = key_for(&rows, "class", "A");
+        let target = key_for(&rows, "class", "B");
+        let interface = key_for(&rows, "interface", "A");
+        let note = key_for(&rows, "note", "note0");
+        let namespace = key_for(&rows, "namespace", "Domain");
+        assert_ne!(class, interface);
+        assert_eq!(
+            quoted_record(&rows, &format!("{interface} label: ")),
+            "Shared API"
+        );
+        for expected in [
+            format!("{namespace} classes: [{class}]"),
+            format!("{namespace} notes: [{note}]"),
+            format!("{interface} class: {class}"),
+            format!("{note} class: {interface}"),
+            format!("E1: {interface} [none] --solid-- {target} [arrow]"),
+            format!("E2: {class} [none] --solid-- {target} [arrow]"),
+        ] {
+            assert!(rows.contains(&expected), "{expected}: {rows:#?}");
+        }
+    }
+}
+
 #[cfg(feature = "diagram-er")]
 #[test]
 fn er_reading_resolves_generated_ids_and_attaches_each_cardinality_to_its_actual_endpoint() {
