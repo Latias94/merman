@@ -1453,6 +1453,42 @@ mod tests {
     }
 
     #[test]
+    fn sequence_html_breaks_preserve_other_policies_empty_paragraph_contracts() {
+        let raw = "<br/>alpha\n\nbeta<br><br />gamma<br/>";
+        for (break_policy, expected) in [
+            (
+                LabelBreakPolicy::MermaidLabelBreaks,
+                vec!["", "alpha", "", "beta", "", "gamma", ""],
+            ),
+            (
+                LabelBreakPolicy::VisibleLine,
+                vec!["<br/>alpha\\u{A}\\u{A}beta<br><br />gamma<br/>"],
+            ),
+            (
+                LabelBreakPolicy::SequenceMessage { wrap: true },
+                vec!["", "alpha", "beta", "", "gamma", ""],
+            ),
+        ] {
+            let resources = ResourceContext::new(unbounded_policy());
+            let rendered = try_plan_normalized_label_lines_with_policy(
+                raw,
+                TerminalWidthProfile::Unicode,
+                false,
+                Some(80),
+                break_policy,
+                &resources,
+            )
+            .expect("each policy should measure its own empty-paragraph contract")
+            .expect("non-empty label text should retain rows")
+            .materialize(raw, &resources)
+            .expect("materialization should follow the same policy as measurement")
+            .into_parts()
+            .0;
+            assert_eq!(rendered, expected, "{break_policy:?}");
+        }
+    }
+
+    #[test]
     fn label_break_policies_preserve_sequence_message_semantics() {
         let raw = "alpha\n\nbeta<br>gamma\\ndelta";
 
@@ -1462,7 +1498,7 @@ mod tests {
             TerminalWidthProfile::Unicode,
             false,
             Some(80),
-            LabelBreakPolicy::StructuralParagraphs,
+            LabelBreakPolicy::SequenceMessage { wrap: true },
             &resources,
         )
         .expect("structural message rows should be measurable")
@@ -1471,7 +1507,7 @@ mod tests {
         .expect("structural message rows should materialize")
         .into_parts()
         .0;
-        assert_eq!(wrapped, ["alpha", "beta<br>gamma\\ndelta"]);
+        assert_eq!(wrapped, ["alpha", "beta", "gamma\\ndelta"]);
 
         let resources = ResourceContext::new(unbounded_policy());
         let visible = try_plan_normalized_label_lines_with_policy(
@@ -1479,7 +1515,7 @@ mod tests {
             TerminalWidthProfile::Unicode,
             false,
             None,
-            LabelBreakPolicy::VisibleLine,
+            LabelBreakPolicy::SequenceMessage { wrap: false },
             &resources,
         )
         .expect("unwrapped message text should be measurable")
@@ -1488,7 +1524,7 @@ mod tests {
         .expect("unwrapped message text should materialize")
         .into_parts()
         .0;
-        assert_eq!(visible, ["alpha\\u{A}\\u{A}beta<br>gamma\\ndelta"]);
+        assert_eq!(visible, ["alpha\\u{A}\\u{A}beta", "gamma\\ndelta"]);
     }
 
     #[test]

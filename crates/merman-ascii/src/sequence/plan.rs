@@ -911,7 +911,8 @@ mod tests {
 
         let (rows_before, exact_rows) = prepares_with_limit(exact)
             .expect("the exact aggregate message batch should be admitted");
-        assert_eq!(exact_rows - rows_before, 2);
+        // The HTML hard break yields two label rows followed by one arrow row.
+        assert_eq!(exact_rows - rows_before, 3);
 
         let exact_policy = AsciiResourcePolicy::default()
             .with_limit(AsciiResourceLimitId::MaxGridCells, exact)
