@@ -57,6 +57,25 @@ product boundary.
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
 
+## Static Routing Protection
+
+The local `mermaid-ascii` source at
+[`5a9df1560871e1ef8037c052b3b5d87de503bc9e`](https://github.com/AlexanderGrooff/mermaid-ascii/tree/5a9df1560871e1ef8037c052b3b5d87de503bc9e)
+is an MIT-licensed research reference, separate from the copied-fixture pin above. Its
+[`graph.go`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/graph/graph.go#L32-L62)
+stores a sparse node-occupancy grid, while
+[`arrow.go`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/graph/arrow.go#L64-L105)
+searches that node-only grid. Ordinary route search does not commit existing edges as obstacles;
+later character composition resolves their overlap. This is useful evidence for cheap static
+obstacle queries, but does not establish independent relation ownership or label/marker clearance.
+
+Merman independently compiles static protection into a bounded spatial hierarchy and shares it
+across congestion trials. Dynamic route ownership, marker berths, labels, group-boundary rules,
+and final validation remain separate and authoritative. This borrows the static/dynamic separation
+without adopting the reference's node-only collision policy. The
+[resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
+owns the complexity and admission limits. No cross-renderer speed claim is made.
+
 ## Terminal Visual Direction
 
 Grok's pinned terminal implementation provides useful examples of compact text and restrained

@@ -244,6 +244,13 @@ refactor is complete for this admitted subset; future density or style improveme
 iterations. The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/README.md),
 generated small-graph oracle, compound tests, and family tests define the finite acceptance boundary.
 They do not establish globally optimal or complete routing for arbitrary graphs.
+Static node, frame, and title protection is compiled into one spatial hierarchy and shared by
+congestion trials. Cell, marker, and label queries prune unrelated bounds before applying the
+same exact protection rules. The hierarchy retains linear storage; a query can still visit every
+protected region when bounds overlap. The routing algorithm, terminal semantics, and resource
+and cancellation policies remain unchanged. Work accounting includes index preparation and
+visited hierarchy nodes; the [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
+records the changed fixed-fixture boundary.
 The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
 also checks State/Swimlane selection, logical identity, complete fields and measured extents across
 60/80/100/120 columns in both character sets and width profiles.

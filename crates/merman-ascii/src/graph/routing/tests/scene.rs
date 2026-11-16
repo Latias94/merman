@@ -44,7 +44,7 @@ fn group_title_protection_matches_painted_rows_after_root_projection() {
             }
         }
         let mut protected_cells = BTreeSet::new();
-        for protected in &occupancy.protected {
+        for protected in occupancy.protected.iter() {
             if protected.kind != ProtectedKind::GroupTitle {
                 continue;
             }

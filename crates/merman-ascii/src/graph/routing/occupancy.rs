@@ -1,4 +1,4 @@
-use super::super::layout::{CanvasCoord, GraphLayout, GroupLayout};
+use super::super::layout::{CanvasCoord, GraphLayout};
 use super::super::model::GraphGroupKind;
 use super::cell::{
     DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions, stroke_route_char,
@@ -16,11 +16,15 @@ use crate::resource::ResourceContext;
 use merman_model::{OperationControl, OperationPhase};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::hash_map::Entry;
+use std::rc::Rc;
 
 mod channels;
 mod labels;
 mod marker;
+mod protected;
 mod rebuild;
+
+use protected::ProtectedScene;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
@@ -413,7 +417,7 @@ pub(super) struct SceneOccupancy<'layout> {
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     // Includes each label's text and the clear perpendicular gap to its host.
     labels: HashSet<CanvasCoord>,
-    pub(super) protected: Vec<ProtectedGeometry<'layout>>,
+    pub(super) protected: Rc<ProtectedScene<'layout>>,
     pub(super) label_lane_radius: usize,
     control: OperationControl,
     occupied_extent: CanvasCoord,
@@ -480,18 +484,30 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<Self> {
-        let marker_capacity = resources.checked_work_mul(route_capacity, 2)?;
-        let mut protected_capacity = graph_layout.nodes.len();
-        for group in &graph_layout.groups {
-            let border_count = match group.kind {
-                GraphGroupKind::Divider => usize::from(group.divider_span.is_some()),
-                GraphGroupKind::Container => 4,
-            };
-            protected_capacity = resources.checked_work_add(protected_capacity, border_count)?;
-            protected_capacity =
-                resources.checked_work_add(protected_capacity, group.title.lines().len())?;
-        }
+        let resources = execution.resource_context(resources, OperationPhase::Layout);
+        let resources = &resources;
+        let protected = Rc::new(ProtectedScene::try_new(graph_layout, resources)?);
+        Self::try_new_with_protection(
+            graph_layout,
+            route_capacity,
+            label_lane_radius,
+            protected,
+            resources,
+            execution,
+        )
+    }
 
+    fn try_new_with_protection(
+        graph_layout: &'layout GraphLayout,
+        route_capacity: usize,
+        label_lane_radius: usize,
+        protected: Rc<ProtectedScene<'layout>>,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<Self> {
+        resources.checkpoint()?;
+        let marker_capacity = resources.checked_work_mul(route_capacity, 2)?;
+        let occupied_extent = protected.extent;
         let mut scene = Self {
             graph_layout,
             route_capacity,
@@ -502,10 +518,10 @@ impl<'layout> SceneOccupancy<'layout> {
             source_ports: HashMap::default(),
             markers: HashMap::default(),
             labels: HashSet::default(),
-            protected: Vec::new(),
+            protected,
             label_lane_radius,
             control: execution.cloned_control(),
-            occupied_extent: CanvasCoord { x: 0, y: 0 },
+            occupied_extent,
         };
         scene
             .route_bounds
@@ -519,35 +535,6 @@ impl<'layout> SceneOccupancy<'layout> {
             .labels
             .try_reserve(route_capacity)
             .map_err(|_| layout_allocation_failed())?;
-        scene
-            .protected
-            .try_reserve(protected_capacity)
-            .map_err(|_| layout_allocation_failed())?;
-
-        for node in &graph_layout.nodes {
-            scene.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            scene.occupied_extent.x = scene.occupied_extent.x.max(node.right());
-            scene.occupied_extent.y = scene.occupied_extent.y.max(node.bottom());
-            scene.protected.push(ProtectedGeometry {
-                owner_id: &node.id,
-                group_index: None,
-                kind: ProtectedKind::Node,
-                shape: ProtectedShape::Rect(OccupiedRect::try_new(
-                    node.x,
-                    node.y,
-                    node.width,
-                    node.height,
-                    resources,
-                )?),
-            });
-        }
-        for (group_index, group) in graph_layout.groups.iter().enumerate() {
-            scene.occupied_extent.x = scene.occupied_extent.x.max(group.right());
-            scene.occupied_extent.y = scene.occupied_extent.y.max(group.bottom());
-            scene.register_group_geometry(group_index, group, resources)?;
-        }
-
         Ok(scene)
     }
 
@@ -813,9 +800,7 @@ impl<'layout> SceneOccupancy<'layout> {
         if self.labels.contains(&coord) {
             return Ok(false);
         }
-        resources.charge_layout_work(self.protected.len().max(1))?;
-        for (protected_index, protected) in self.protected.iter().enumerate() {
-            self.checkpoint_layout_scan(protected_index)?;
+        if !self.protected.all_at(coord, resources, |protected| {
             let is_endpoint_port = protected.allows_endpoint_port(&owner.from, coord)
                 || protected.allows_endpoint_port(&owner.to, coord);
             let is_owned_group_border = protected.kind == ProtectedKind::GroupBorder
@@ -840,7 +825,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     && !(protected.owner_id == owner.from && attachments.start.allows_escape(coord)
                         || protected.owner_id == owner.to && attachments.end.allows_escape(coord))
                 {
-                    return Ok(false);
+                    return false;
                 }
             }
             let is_own_terminal_escape = protected.kind == ProtectedKind::Node
@@ -848,13 +833,12 @@ impl<'layout> SceneOccupancy<'layout> {
                     protected.owner_id == owner.from && attachments.start.allows_escape(coord)
                         || protected.owner_id == owner.to && attachments.end.allows_escape(coord)
                 });
-            if protected.shape.contains(coord)
-                && !is_endpoint_port
-                && !is_own_terminal_escape
-                && !is_owned_group_border
-            {
-                return Ok(false);
-            }
+            !protected.shape.contains(coord)
+                || is_endpoint_port
+                || is_own_terminal_escape
+                || is_owned_group_border
+        })? {
+            return Ok(false);
         }
         if let Some(marker) = self.markers.get(&coord) {
             self.checkpoint_layout()?;
@@ -1113,12 +1097,10 @@ impl<'layout> SceneOccupancy<'layout> {
         else {
             return Ok(false);
         };
-        for protected in &self.protected {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            if protected.shape.intersects(reservation) {
-                return Ok(false);
-            }
+        if !self.protected.all_in(reservation, resources, |protected| {
+            !protected.shape.intersects(reservation)
+        })? {
+            return Ok(false);
         }
 
         if !self.label_reading_clearance_is_clear(candidate, resources)? {
@@ -1158,7 +1140,7 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &ResourceContext,
     ) -> Result<Vec<CanvasCoord>> {
         let mut borders = Vec::new();
-        for protected in &self.protected {
+        for protected in self.protected.iter() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
             if protected.kind == ProtectedKind::GroupBorder {
@@ -1271,27 +1253,29 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(MarkerCandidateDisposition::Blocked);
         }
         let endpoint_id = owner.endpoint_id(endpoint);
-        for protected in &self.protected {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            let allowed = !protected.shape.contains(candidate.coord)
-                || (candidate.is_primary()
-                    && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
-                        || own_terminal_marker_escape(
-                            protected,
-                            endpoint_id,
-                            plan,
-                            endpoint,
-                            candidate,
-                        )
-                        || self
-                            .divider_allows_terminal_marker(protected, plan, endpoint, candidate)
-                        || (protected.kind == ProtectedKind::GroupBorder
-                            && (protected.allows_endpoint_port(&owner.from, candidate.coord)
-                                || protected.allows_endpoint_port(&owner.to, candidate.coord)))));
-            if !allowed {
-                return Ok(MarkerCandidateDisposition::Blocked);
-            }
+        if !self
+            .protected
+            .all_at(candidate.coord, resources, |protected| {
+                !protected.shape.contains(candidate.coord)
+                    || (candidate.is_primary()
+                        && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
+                            || own_terminal_marker_escape(
+                                protected,
+                                endpoint_id,
+                                plan,
+                                endpoint,
+                                candidate,
+                            )
+                            || self.divider_allows_terminal_marker(
+                                protected, plan, endpoint, candidate,
+                            )
+                            || (protected.kind == ProtectedKind::GroupBorder
+                                && (protected.allows_endpoint_port(&owner.from, candidate.coord)
+                                    || protected
+                                        .allows_endpoint_port(&owner.to, candidate.coord)))))
+            })?
+        {
+            return Ok(MarkerCandidateDisposition::Blocked);
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
@@ -1632,110 +1616,6 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(())
     }
 
-    fn register_group_geometry(
-        &mut self,
-        group_index: usize,
-        group: &'layout GroupLayout,
-        resources: &mut ResourceContext,
-    ) -> Result<()> {
-        match group.kind {
-            GraphGroupKind::Divider => {
-                if let Some(span) = group.divider_span {
-                    self.checkpoint_layout()?;
-                    resources.charge_layout_work(1)?;
-                    self.protected.push(ProtectedGeometry {
-                        owner_id: &group.id,
-                        group_index: Some(group_index),
-                        kind: ProtectedKind::GroupBorder,
-                        shape: ProtectedShape::HorizontalSpan {
-                            x_start: span.x_start,
-                            x_end: span.x_end,
-                            y: group.y,
-                        },
-                    });
-                }
-            }
-            GraphGroupKind::Container => {
-                let right = group.right();
-                let bottom = group.bottom();
-                self.checkpoint_layout()?;
-                resources.charge_layout_work(4)?;
-                self.protected.extend([
-                    ProtectedGeometry {
-                        owner_id: &group.id,
-                        group_index: Some(group_index),
-                        kind: ProtectedKind::GroupBorder,
-                        shape: ProtectedShape::HorizontalSpan {
-                            x_start: group.x,
-                            x_end: right,
-                            y: group.y,
-                        },
-                    },
-                    ProtectedGeometry {
-                        owner_id: &group.id,
-                        group_index: Some(group_index),
-                        kind: ProtectedKind::GroupBorder,
-                        shape: ProtectedShape::HorizontalSpan {
-                            x_start: group.x,
-                            x_end: right,
-                            y: bottom,
-                        },
-                    },
-                    ProtectedGeometry {
-                        owner_id: &group.id,
-                        group_index: Some(group_index),
-                        kind: ProtectedKind::GroupBorder,
-                        shape: ProtectedShape::VerticalSpan {
-                            x: group.x,
-                            y_start: group.y,
-                            y_end: bottom,
-                        },
-                    },
-                    ProtectedGeometry {
-                        owner_id: &group.id,
-                        group_index: Some(group_index),
-                        kind: ProtectedKind::GroupBorder,
-                        shape: ProtectedShape::VerticalSpan {
-                            x: right,
-                            y_start: group.y,
-                            y_end: bottom,
-                        },
-                    },
-                ]);
-            }
-        }
-
-        let inner_left = resources.checked_grid_add(group.x, 1)?;
-        for (line_index, line) in group.title.lines().iter().enumerate() {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            let title_width = group.title.line_width(line);
-            if title_width == 0 {
-                continue;
-            }
-            let Some(position) = group.title_line_position(line_index) else {
-                continue;
-            };
-            let protected_left = position.x.saturating_sub(1).max(inner_left);
-            let protected_right = resources
-                .checked_grid_add(resources.checked_grid_add(position.x, title_width)?, 1)?
-                .min(group.right());
-            self.protected.push(ProtectedGeometry {
-                owner_id: &group.id,
-                group_index: Some(group_index),
-                kind: ProtectedKind::GroupTitle,
-                shape: ProtectedShape::Rect(OccupiedRect::try_new(
-                    protected_left,
-                    position.y,
-                    protected_right - protected_left,
-                    1,
-                    resources,
-                )?),
-            });
-        }
-        Ok(())
-    }
-
     fn marker_candidate_disposition(
         &self,
         routes: &[PreparedRoute],
@@ -1755,36 +1635,36 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(MarkerCandidateDisposition::Blocked);
         }
         let endpoint_id = routes[route_index].owner.endpoint_id(endpoint);
-        for protected in &self.protected {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            if protected.shape.contains(candidate.coord)
-                && !(candidate.is_primary()
-                    && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
-                        || own_terminal_marker_escape(
-                            protected,
-                            endpoint_id,
-                            &routes[route_index].plan,
-                            endpoint,
-                            candidate,
-                        )
-                        || self.divider_allows_terminal_marker(
-                            protected,
-                            &routes[route_index].plan,
-                            endpoint,
-                            candidate,
-                        )
-                        || (protected.kind == ProtectedKind::GroupBorder
-                            && (protected.allows_endpoint_port(
-                                &routes[route_index].owner.from,
-                                candidate.coord,
-                            ) || protected.allows_endpoint_port(
-                                &routes[route_index].owner.to,
-                                candidate.coord,
-                            )))))
-            {
-                return Ok(MarkerCandidateDisposition::Blocked);
-            }
+        if !self
+            .protected
+            .all_at(candidate.coord, resources, |protected| {
+                !protected.shape.contains(candidate.coord)
+                    || (candidate.is_primary()
+                        && (protected.allows_endpoint_port(endpoint_id, candidate.coord)
+                            || own_terminal_marker_escape(
+                                protected,
+                                endpoint_id,
+                                &routes[route_index].plan,
+                                endpoint,
+                                candidate,
+                            )
+                            || self.divider_allows_terminal_marker(
+                                protected,
+                                &routes[route_index].plan,
+                                endpoint,
+                                candidate,
+                            )
+                            || (protected.kind == ProtectedKind::GroupBorder
+                                && (protected.allows_endpoint_port(
+                                    &routes[route_index].owner.from,
+                                    candidate.coord,
+                                ) || protected.allows_endpoint_port(
+                                    &routes[route_index].owner.to,
+                                    candidate.coord,
+                                )))))
+            })?
+        {
+            return Ok(MarkerCandidateDisposition::Blocked);
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
@@ -1962,12 +1842,10 @@ impl<'layout> SceneOccupancy<'layout> {
         if !self.label_region_is_clear(owner, candidate, resources)? {
             return Ok(false);
         }
-        for protected in &self.protected {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            if protected.shape.intersects(reservation) {
-                return Ok(false);
-            }
+        if !self.protected.all_in(reservation, resources, |protected| {
+            !protected.shape.intersects(reservation)
+        })? {
+            return Ok(false);
         }
 
         if !self.label_reading_clearance_is_clear(candidate, resources)? {

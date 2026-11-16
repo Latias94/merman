@@ -7,6 +7,9 @@ Last updated: 2026-08-22
 Packet spatial admission extension: 2026-11-16. Its row below and current family tests supplement
 the historical closeout; they do not change the source identity of that receipt.
 
+Static graph protection extension: 2026-11-16. The spatial query bounds and current tests below
+supplement the same historical receipt.
+
 This audit records the input-amplification and panic-path boundary reviewed for the ASCII
 semantic-depth closeout. It is not a claim that every Rust allocation is fallible or that the crate
 contains no invariant assertions. It identifies where authored-size work is admitted, where large
@@ -30,6 +33,37 @@ The audit explicitly permits bounded or input-independent ordinary allocations. 
 unchecked allocations whose size is directly amplified by authored nodes, edges, labels, rows, or
 grid extents. Parser-owned allocations before the typed ASCII model are governed by the shared
 source/model resource policy rather than reimplemented in this crate.
+
+## Static Graph Protection
+
+The routing scene compiles node rectangles (including their reading margin), group border spans,
+and title regions into a centroid-split bounding hierarchy. Congestion trials share this immutable
+protection while rebuilding their dynamic route, marker, port, and label occupancy independently.
+Point and reservation queries retain the original exact semantic predicates after conservative
+spatial filtering. No terminal-cell raster of the protected area is allocated.
+
+For `P` protected regions, median construction takes `O(P log P)` work and retains `2P - 1`
+hierarchy nodes for nonempty input, plus the original geometry. Temporary partition entries and
+retained storage are `O(P)` and use checked counts and fallible reserves. Construction and query
+visits charge the shared layout-work ledger and observe cancellation. Reordering shares protection
+without rebuilding or charging its already completed construction again.
+The preparation has a fixed cost even for tiny scenes: the unchanged two-node Binding Core work
+fixture intentionally moves from 901 to 950 units; 950 succeeds and 949 rejects with actual 950.
+This is accounting for changed work, without increasing any profile ceiling.
+
+Queries visit intersecting hierarchy branches with no per-query allocation. This removes the
+previous unconditional scan of all `P` regions for every route-cell query; a query's worst case
+remains `O(P)`. Overlapping or poorly separable bounds can still require a complete traversal.
+In the registered separated-row regression, 8/64/512/4096 protected regions require 7/13/19/25
+tree-node visits for one point query. Fully overlapping inputs visit all `2P - 1` nodes and retain
+every original contributor. These are deterministic work observations, not latency measurements.
+
+`graph::routing::occupancy::protected::tests` compares indexed queries with full scans across
+rectangles, borders, title rows, reading margins, overlaps, and large coordinates. It also checks
+long-region partitioning, exact/N-1 query work, construction admission, and cancellation.
+Congestion rebuild tests verify that trials share the same immutable protection object while
+preserving independent dynamic occupancy. Remaining channel-coordinate and group-crossing scans
+are outside this optimization.
 
 ## Panic and Invariant Review
 
