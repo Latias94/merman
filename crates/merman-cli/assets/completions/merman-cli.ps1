@@ -209,6 +209,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--ascii-max-width', '--ascii-max-width', [CompletionResultType]::ParameterName, 'Maximum terminal display-cell width for ASCII/Unicode output')
             [CompletionResult]::new('--ascii-overflow', '--ascii-overflow', [CompletionResultType]::ParameterName, 'Width overflow behavior for ASCII/Unicode output')
             [CompletionResult]::new('--ascii-layout-profile', '--ascii-layout-profile', [CompletionResultType]::ParameterName, 'Select canonical, compact, or automatic ASCII layout (auto requires --ascii-max-width)')
+            [CompletionResult]::new('--ascii-graph-presentation', '--ascii-graph-presentation', [CompletionResultType]::ParameterName, 'Permit a complete Plain graph document when bounded routing cannot draw the graph')
             [CompletionResult]::new('--resource-profile', '--resource-profile', [CompletionResultType]::ParameterName, 'Resource policy for input, semantic models, output, and CLI acquisition')
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
             [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')

@@ -12,7 +12,14 @@ fn human_capabilities_explains_theme_scope_and_explicit_application() {
         .expect("run capabilities without reading stdin");
     assert!(output.status.success(), "{:?}", output.stderr);
     let text = String::from_utf8(output.stdout).unwrap();
-    assert!(text.contains("ghibli\tlight\tpie\t"));
+    let ghibli = text
+        .lines()
+        .find(|line| line.starts_with("ghibli\t"))
+        .expect("the human catalog includes Ghibli's design scope");
+    let fields: Vec<_> = ghibli.split('\t').collect();
+    assert_eq!(fields.len(), 4);
+    assert_eq!(fields[1], "light");
+    assert!(fields[2].split(", ").any(|family| family == "pie"));
     assert!(text.contains("Hard node shadows work with supported basic shapes"));
     assert!(text.contains("Classic and Neo"));
     assert!(text.contains("Unlisted families have unreviewed design scope"));

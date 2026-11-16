@@ -5,7 +5,7 @@ import Merman
 struct InstalledConsumer {
     static func main() throws {
         let client = Merman()
-        precondition(client.bindingApiVersionV7() == 7)
+        precondition(client.bindingApiVersionV8() == 8)
         let engine = try MermanEngine(
             optionsJson: resourceOptionsJson(profile: .interactive, overrides: []), services: nil
         )

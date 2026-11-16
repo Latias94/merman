@@ -1,5 +1,23 @@
 # ASCII Phase 0-3 Gate and New-Family Admission Report
 
+## Current graph planning boundary
+
+The current Flowchart/Swimlane/State planner adds actual-blocker repair and at most two measured
+capacity rebuilds. Constructive four-contributor repair and 97-marker capacity tests require strict
+diagrammatic success. The two fixed dense inputs (20 nodes/33 edges and 100 nodes/195 edges) have
+complete adaptive Plain output at 80 cells under the existing Trusted Native work ceiling, with
+complete graph-document recovery available after an admitted planning miss; they
+do not establish arbitrary dense strict routing. The thirteen-input reading floor and 486-attempt
+generated denominator remain controls.
+
+This extension changes neither the historical family-admission decisions below nor Class/ER,
+Sequence, quantitative, or StructuredText family ownership. Policy and schema 4 migration belong
+to the [support matrix](ASCII_SUPPORT_MATRIX.md), scheduling admission to the
+[resource audit](ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning), and qualified reference
+comparisons to the [comparison note](../../crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#scene-planning-and-explicit-recovery).
+These current owners supersede older strict-only planning descriptions without changing the
+source identity of historical receipts.
+
 ## Current U25 receipt
 
 The source-bound U25 closeout evidence is maintained in

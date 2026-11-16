@@ -28,12 +28,12 @@ use std::time::Duration;
 /// This version belongs to the generated UniFFI surface only. It is intentionally independent
 /// from both the C ABI and the text-measurement protocol, whose versions are owned by their
 /// respective descriptors.
-pub const UNIFFI_BINDING_API_VERSION: u32 = 7;
+pub const UNIFFI_BINDING_API_VERSION: u32 = 8;
 
-// UniFFI method checksums do not protect every nested record layout. API 7 replaces the API 6
-// probe to combine ASCII selection metadata with the expanded theme-authoring error envelope.
+// UniFFI method checksums do not protect every nested record layout. API 8 replaces the API 7
+// probe before decoding the nullable ASCII presentation and overflow fields.
 #[cfg(test)]
-const UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS: [u16; 1] = [60_120];
+const UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS: [u16; 2] = [60_120, 21_723];
 
 static SUPPORTED_DIAGRAMS: OnceLock<Vec<String>> = OnceLock::new();
 static ASCII_CAPABILITIES: OnceLock<Vec<MermanAsciiCapability>> = OnceLock::new();
@@ -340,16 +340,18 @@ pub struct MermanAsciiOutputPlan {
     pub family: String,
     pub projection: String,
     pub encoding: String,
-    pub primary_width: u64,
-    pub primary_height: u64,
+    pub primary_width: Option<u64>,
+    pub primary_height: Option<u64>,
     pub emitted_width: u64,
     pub emitted_height: u64,
     pub width_profile: String,
-    pub layout_profile: String,
+    pub layout_profile: Option<String>,
     pub requested_layout_profile: String,
+    pub requested_graph_presentation: String,
     pub compact_attempted: bool,
     pub requested_max_width: Option<u64>,
-    pub overflowed: bool,
+    pub primary_overflowed: Option<bool>,
+    pub emitted_overflowed: bool,
     pub outcome: String,
     pub fallback_capability: String,
     pub fallback_attempted: bool,
@@ -435,6 +437,7 @@ pub struct MermanAsciiCapability {
     pub primary_projection: String,
     pub structured_text_fallback: bool,
     pub layout_profiles: Vec<String>,
+    pub graph_presentations: Vec<String>,
     pub width_profiles: Vec<String>,
     pub encodings: Vec<String>,
     pub fallback_encodings: Vec<String>,
@@ -717,7 +720,7 @@ impl Merman {
         Arc::new(Self)
     }
 
-    pub fn binding_api_version_v7(&self) -> u32 {
+    pub fn binding_api_version_v8(&self) -> u32 {
         UNIFFI_BINDING_API_VERSION
     }
 
@@ -972,6 +975,11 @@ impl Merman {
                             .layout_profiles
                             .iter()
                             .map(|profile| (*profile).to_string())
+                            .collect(),
+                        graph_presentations: capability
+                            .graph_presentations
+                            .iter()
+                            .map(|policy| (*policy).to_string())
                             .collect(),
                         width_profiles: capability
                             .width_profiles
@@ -1595,11 +1603,13 @@ fn uniffi_ascii_output_plan(plan: &BindingAsciiOutputPlan) -> MermanAsciiOutputP
         emitted_width: plan.emitted_width(),
         emitted_height: plan.emitted_height(),
         width_profile: plan.width_profile().to_string(),
-        layout_profile: plan.layout_profile().to_string(),
+        layout_profile: plan.layout_profile().map(str::to_owned),
         requested_layout_profile: plan.requested_layout_profile().to_string(),
+        requested_graph_presentation: plan.requested_graph_presentation().to_string(),
         compact_attempted: plan.compact_attempted(),
         requested_max_width: plan.requested_max_width(),
-        overflowed: plan.overflowed(),
+        primary_overflowed: plan.primary_overflowed(),
+        emitted_overflowed: plan.emitted_overflowed(),
         outcome: plan.outcome().to_string(),
         fallback_capability: plan.fallback_capability().to_string(),
         fallback_attempted: plan.fallback_attempted(),
@@ -2978,16 +2988,16 @@ mod tests {
     fn engine_exposes_transport_owned_versions() {
         let engine = engine();
 
-        assert_eq!(UNIFFI_BINDING_API_VERSION, 7);
-        assert_eq!(engine.binding_api_version_v7(), UNIFFI_BINDING_API_VERSION);
+        assert_eq!(UNIFFI_BINDING_API_VERSION, 8);
+        assert_eq!(engine.binding_api_version_v8(), UNIFFI_BINDING_API_VERSION);
         assert_eq!(engine.package_version(), env!("CARGO_PKG_VERSION"));
     }
 
     #[test]
-    fn api_v6_bindings_are_rejected_before_record_decoding() {
+    fn api_v7_bindings_are_rejected_before_record_decoding() {
         for checksum in UNIFFI_BINDING_API_OLD_VERSION_METHOD_CHECKSUMS {
             assert_ne!(
-                uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7(),
+                uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8(),
                 checksum
             );
         }
@@ -2997,20 +3007,20 @@ mod tests {
         ));
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7")
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v8")
         );
         assert!(
             generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7")
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8")
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v6"),
+                .contains("uniffi_merman_uniffi_fn_method_merman_binding_api_version_v7"),
             "old probe must be absent before record decoding"
         );
         assert!(
             !generated_header
-                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v6"),
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7"),
             "old checksum must be absent before record decoding"
         );
     }
@@ -3330,17 +3340,131 @@ mod tests {
             .output_plan
             .expect("ASCII metadata output plan");
         let ascii = plan.ascii.expect("typed ASCII output plan");
-        assert_eq!(ascii.schema_version, 3);
+        assert_eq!(ascii.schema_version, 4);
         assert_eq!(ascii.encoding, "ansi16");
         let raw: Value = serde_json::from_str(&plan.raw_json).expect("raw output plan JSON");
         assert_eq!(raw["encoding"], "ansi16");
         assert_eq!(ascii.requested_layout_profile, "auto");
+        assert_eq!(ascii.requested_graph_presentation, "strict");
+        assert!(ascii.primary_width.is_some());
+        assert!(ascii.primary_height.is_some());
+        assert!(ascii.layout_profile.is_some());
+        assert_eq!(ascii.primary_overflowed, Some(false));
+        assert!(!ascii.emitted_overflowed);
         assert_eq!(
             raw["requested_layout_profile"],
             ascii.requested_layout_profile
         );
+        assert_eq!(
+            raw["requested_graph_presentation"],
+            ascii.requested_graph_presentation
+        );
         assert_eq!(raw["compact_attempted"], ascii.compact_attempted);
-        assert_eq!(raw["layout_profile"], ascii.layout_profile);
+        assert_eq!(
+            raw["layout_profile"],
+            serde_json::to_value(ascii.layout_profile).unwrap()
+        );
+        assert_eq!(
+            raw["primary_width"],
+            serde_json::to_value(ascii.primary_width).unwrap()
+        );
+        assert_eq!(
+            raw["primary_height"],
+            serde_json::to_value(ascii.primary_height).unwrap()
+        );
+        assert_eq!(raw["primary_overflowed"], false);
+        assert_eq!(raw["emitted_overflowed"], false);
+        assert!(raw.get("overflowed").is_none());
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn engine_ascii_result_preserves_unavailable_primary_geometry() {
+        let source = format!(
+            "flowchart LR\nA@{{ shape: f-circ }}\nB[Target]\n{}",
+            "A o--o B\n".repeat(97)
+        );
+        let result = engine()
+            .render_ascii_result(
+                source,
+                Some(
+                    r#"{"ascii":{"graph_presentation":"adaptive","layout_profile":"auto","max_width":80,"overflow":"fallback"}}"#
+                        .to_string(),
+                ),
+            )
+            .expect("adaptive presentation should recover graph capacity failure");
+        assert_eq!(result.metadata.version, 1);
+        let plan = result
+            .metadata
+            .output_plan
+            .expect("ASCII metadata output plan");
+        let ascii = plan.ascii.expect("typed ASCII output plan");
+        assert_eq!(ascii.schema_version, 4);
+        assert_eq!(ascii.projection, "structured_text");
+        assert_eq!(ascii.primary_width, None);
+        assert_eq!(ascii.primary_height, None);
+        assert_eq!(ascii.layout_profile, None);
+        assert_eq!(ascii.primary_overflowed, None);
+        assert_eq!(ascii.requested_layout_profile, "auto");
+        assert_eq!(ascii.requested_graph_presentation, "adaptive");
+        assert!(ascii.compact_attempted);
+        assert!(!ascii.emitted_overflowed);
+        assert_eq!(ascii.outcome, "fallback");
+        assert!(ascii.fallback_attempted);
+        assert_eq!(
+            ascii.fallback_reason.as_deref(),
+            Some("port_capacity_exceeded")
+        );
+        assert_eq!(ascii.lossiness, "presentation_only");
+        let raw: Value = serde_json::from_str(&plan.raw_json).expect("raw output plan JSON");
+        for field in [
+            "primary_width",
+            "primary_height",
+            "layout_profile",
+            "primary_overflowed",
+        ] {
+            assert_eq!(
+                raw.get(field),
+                Some(&Value::Null),
+                "missing primary field {field}"
+            );
+        }
+        assert_eq!(raw["emitted_width"], ascii.emitted_width);
+        assert_eq!(raw["emitted_height"], ascii.emitted_height);
+        assert_eq!(raw["requested_graph_presentation"], "adaptive");
+        assert_eq!(raw["emitted_overflowed"], false);
+        assert!(raw.get("overflowed").is_none());
+        let text = String::from_utf8(result.data).expect("structured-text UTF-8 output");
+        assert!(
+            text.contains("E97:"),
+            "all original relations must survive fallback"
+        );
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn engine_ascii_result_preserves_measured_empty_primary_geometry() {
+        let result = engine()
+            .render_ascii_result("flowchart LR".to_string(), None)
+            .expect("empty graph should have measured zero geometry");
+        let plan = result
+            .metadata
+            .output_plan
+            .expect("ASCII metadata output plan");
+        let ascii = plan.ascii.expect("typed ASCII output plan");
+        assert_eq!(ascii.schema_version, 4);
+        assert_eq!(ascii.primary_width, Some(0));
+        assert_eq!(ascii.primary_height, Some(0));
+        assert_eq!(ascii.layout_profile.as_deref(), Some("canonical"));
+        assert_eq!(ascii.primary_overflowed, Some(false));
+        assert!(!ascii.emitted_overflowed);
+        assert_eq!(ascii.requested_graph_presentation, "strict");
+        assert_eq!(ascii.outcome, "empty");
+        let raw: Value = serde_json::from_str(&plan.raw_json).expect("raw output plan JSON");
+        assert_eq!(raw["primary_width"], 0);
+        assert_eq!(raw["primary_height"], 0);
+        assert_eq!(raw["layout_profile"], "canonical");
+        assert_eq!(raw["primary_overflowed"], false);
     }
 
     #[cfg(feature = "ascii")]
@@ -3659,6 +3783,7 @@ mod tests {
             assert_eq!(sequence.primary_projection, "diagrammatic");
             assert_eq!(sequence.support_level, "partial");
             assert_eq!(sequence.layout_profiles, ["canonical", "compact", "auto"]);
+            assert_eq!(sequence.graph_presentations, ["strict"]);
             assert_eq!(sequence.width_profiles, ["unicode", "cjk"]);
             assert_eq!(
                 sequence.encodings,
@@ -3681,6 +3806,18 @@ mod tests {
                 .expect("expected UniFFI ASCII capabilities to include class");
             assert_eq!(class.support_level, "partial");
             assert!(class.structured_text_fallback);
+            assert_eq!(class.graph_presentations, ["strict"]);
+
+            for canonical in merman_bindings_core::ascii_capabilities() {
+                let projected = ascii_capabilities
+                    .iter()
+                    .find(|capability| capability.diagram_type == canonical.diagram_type)
+                    .expect("canonical ASCII family must have a UniFFI projection");
+                assert_eq!(
+                    projected.graph_presentations, canonical.graph_presentations,
+                    "graph presentation admission must follow the canonical family contract"
+                );
+            }
 
             let mut ascii_diagrams = ascii_capabilities
                 .iter()
@@ -3701,6 +3838,7 @@ mod tests {
             assert_eq!(zenuml.primary_projection, "none");
             assert_eq!(zenuml.support_level, "unsupported");
             assert!(zenuml.layout_profiles.is_empty());
+            assert!(zenuml.graph_presentations.is_empty());
             assert!(zenuml.width_profiles.is_empty());
             assert!(zenuml.encodings.is_empty());
             assert!(zenuml.fallback_encodings.is_empty());

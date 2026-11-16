@@ -172,6 +172,7 @@ struct AsciiFamilyCapabilityView {
     structured_text_fallback: bool,
     support_level: &'static str,
     layout_profiles: Vec<&'static str>,
+    graph_presentations: Vec<&'static str>,
     width_profiles: Vec<&'static str>,
     encodings: Vec<&'static str>,
     fallback_encodings: Vec<&'static str>,
@@ -368,6 +369,12 @@ fn ascii_capability_document() -> AsciiCapabilityDocument {
                 .iter()
                 .copied()
                 .map(merman::ascii::AsciiLayoutProfile::as_str)
+                .collect(),
+            graph_presentations: capability
+                .graph_presentations
+                .iter()
+                .copied()
+                .map(merman::ascii::AsciiGraphPresentation::as_str)
                 .collect(),
             width_profiles: capability
                 .width_profiles

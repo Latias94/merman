@@ -13,6 +13,7 @@ omitted.
 | `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
 | `structured_text_fallback` | Boolean | Whether the typed family has an admitted complete structured projection that can be selected when its primary result exceeds a bounded viewport. This applies to both diagrammatic and already-structured families. |
 | `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. The Flowchart projection, including Swimlane, and Sequence expose `canonical`, `compact`, and `auto`; every other supported family currently exposes `canonical` only. |
+| `graph_presentations` / `graphPresentations` | Array | Graph presentation policies admitted for this family. Flowchart, Swimlane, and State expose `strict` and `adaptive`; other supported families expose `strict` only. Adaptive additionally requires Plain encoding. Unsupported families expose an empty array. |
 | `width_profiles` / `widthProfiles` | Array | Terminal display-width conventions admitted for this family: `unicode` and `cjk` for every supported output. |
 | `encodings` | Array | Primary result encodings admitted for this family: `plain`, `ansi16`, `ansi256`, `truecolor`, and `html` for every supported output. |
 | `fallback_encodings` / `fallbackEncodings` | Array | Encodings admitted with viewport `fallback`. This is currently `plain` only; styled fallback requests are rejected before rendering. |
@@ -32,7 +33,7 @@ and diagram-only filters use the separate diagrammatic projection.
 
 Binding migration: consumers must replace `summary_fallback` with `structured_text_fallback`, read
 `semantic_coverage` and `primary_projection` as the source fields, treat `support_level` only as a
-compatibility view, and preflight layout/width/encoding combinations from the four admission arrays
+compatibility view, and preflight layout/graph-presentation/width/encoding combinations from the admission arrays
 instead of assuming that a renderer-wide option is valid for every family. Package availability is
 also independent: first check the compiled artifact's operations, then the family's admitted
 combinations. The [host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes)
@@ -40,36 +41,73 @@ show how hosts supply policy and consume results without terminal detection insi
 
 ## Viewport and report contract
 
-`AsciiOutput` is the canonical schema-3 result for a render request. `AsciiOutput::metadata()` is
+`AsciiOutput` is the canonical schema-4 result for a render request. `AsciiOutput::metadata()` is
 used by operation metadata and platform bindings; `AsciiOutput::report()` is the CLI JSON projection
-with the same metadata plus `text`. Schema 3 carries `encoding`, `requested_layout_profile`, and `compact_attempted`;
-`layout_profile` identifies the selected primary geometry. Both surfaces use the
-same field names, enum strings, nullable fallback fields, display-cell extents, and width/layout
-profiles. Logical height counts content rows; a final line terminator does not create an extra row.
+with the same metadata plus `text`. Both use the same field names, enum strings, display-cell
+extents, and width/layout profiles. Schema 4 deliberately replaces schema 3's `overflowed` field
+and permits unavailable primary geometry; the [migration guide](../migrations/render-reuse-host-integration.md#ascii-terminal-graph-planning)
+owns the upgrade procedure. Options JSON remains version 3, outer binding operation metadata
+remains version 1, and SVG and semantic JSON retain their existing schemas.
+
+| Result fields | Schema-4 meaning |
+| --- | --- |
+| `primary_width`, `primary_height`, `layout_profile`, `primary_overflowed` | Required nullable group: all are non-null for a valid measured primary, including width fallback, or all are null when planning produced no valid primary scene. Rust represents the extent as `Option<AsciiExtent>`. |
+| Real empty primary | Numeric `primary_width: 0`, `primary_height: 0`, its selected `layout_profile`, and `primary_overflowed: false`, with `outcome: empty`. Zero is not a substitute for unavailable geometry. |
+| `emitted_width`, `emitted_height`, `emitted_overflowed` | Always measured from the complete emitted candidate. Overflow compares its width with the requested bound and is false without a bound. |
+| `requested_layout_profile`, `compact_attempted` | Preserve the request and the actual Compact-attempt state even when `layout_profile` is null. |
+| `requested_graph_presentation`, `projection` | Record requested `strict`/`adaptive` and effective `diagrammatic`/`structured_text` independently. |
+
+`encoding` identifies the emitted text representation. Logical height counts content rows; a final
+line terminator does not create an extra row. `primary_overflowed` describes the selected untrimmed
+primary when one exists; `emitted_overflowed` describes the actual emitted width after permitted
+trimming. Neither `outcome: fallback` nor `fallback_attempted: true` alone implies width overflow.
 CLI report mode is Plain-only: host `auto` resolves to Plain and an explicit ANSI/HTML report request
-is rejected. Rust and binding result APIs can return styled text because their schema-3 metadata
-identifies it. Viewport Fallback is also Plain-only; styled fallback combinations are rejected by
-capability preflight, even when that particular input would fit.
+is rejected. Rust and binding result APIs retain styled Strict output and its exact encoding.
+Viewport Fallback and Adaptive graph presentation are both Plain-only; styled combinations are
+rejected by capability preflight before routing, even when that particular input would fit.
 
-Auto requires an explicit width and is available only for Flowchart, Swimlane, and Sequence. It tries Compact
-once after Canonical exceeds that width, chooses the narrower valid candidate, and keeps Canonical
-on ties. The host's overflow policy still governs a result that remains wide. Narrower output can
-be taller; Auto does not choose a graph direction or truncate long labels.
+`AsciiGraphPresentation::Strict` is the default. Adaptive permits complete graph-document recovery
+only for Flowchart, Swimlane, and State after successful semantic construction and an admitted
+planning miss. It is independent of the width overflow policy:
 
-State remains Canonical-only. Graph planning occurs before viewport admission: a required
-`RoutingSearchExhausted` or `PortCapacityExceeded` result is returned without selecting width
-fallback. The former is a bounded search miss; the latter certifies only the current fixed-terminal
-presentation's marker capacity. Neither proves that the graph has no other readable layout.
-An optional Compact attempt can retain Canonical on these failures; resource and cancellation
-errors remain terminal. The [graph presentation boundary](../../crates/merman-ascii/README.md#graph-presentation-boundary)
-defines the completed shared-planner scope and the remaining density/height limitations.
+| Planning result | Graph presentation | Width policy | Result |
+| --- | --- | --- | --- |
+| Valid primary fits, or no width bound | Strict or Adaptive | Any | Retain the complete primary. |
+| Valid primary exceeds the bound | Strict or Adaptive | Allow / Error / Fallback | Emit the wide primary / return `WidthOverflow` / select a complete Plain width fallback with reason `primary_overflow`, or return `FallbackUnavailable`. |
+| `RoutingSearchExhausted` or `PortCapacityExceeded` | Strict | Any | Return the typed planning error; width fallback cannot bypass it. |
+| Same admitted planning miss | Adaptive | Allow | Emit complete natural graph records, even when wide. Report `outcome: fallback`, the planning reason, and truthful `emitted_overflowed`. |
+| Same admitted planning miss | Adaptive | Error | Measure the natural graph document; reject it with `WidthOverflow` only if it exceeds an explicit bound. |
+| Same admitted planning miss | Adaptive | Fallback | Reflow complete graph records to the explicit bound, or return `FallbackUnavailable` if they cannot fit. Without a bound, emit the natural records. |
+| Parse/model error, unsupported semantics, resource/allocation failure, cancellation, or deadline | Any | Any | Preserve the error with no partial output; no recovery attempt swallows it. |
+
+Successful graph recovery reports `structured_text`, `fallback`, and `presentation_only`, with
+reason `routing_search_exhausted` or `port_capacity_exceeded`. Width reflow of that document retains
+the planning reason. A routing-search miss is a bounded heuristic result; port capacity certifies
+only the current fixed-terminal presentation's marker bound. Neither proves that no other layout
+exists, and Adaptive does not catch arbitrary `UnsupportedFeature` errors.
+
+Auto requires an explicit width and is available only for Flowchart, Swimlane, and Sequence. It
+keeps a fitting Canonical primary; for a wide Canonical primary it tries Compact once, chooses the
+narrower valid candidate, and keeps Canonical on ties. Strict preserves an initial planning error.
+Adaptive Auto for Flowchart and Swimlane can additionally try Compact once after a Canonical
+planning miss before graph-document recovery. Explicit Canonical/Compact never switches profiles;
+State remains Canonical-only. An optional Compact search/capacity miss retains a valid Canonical
+candidate. Strict also retains Canonical on an optional Compact `UnsupportedFeature`; Adaptive
+propagates that error. Resource, allocation, cancellation, and deadline errors still propagate with
+an incumbent. Narrower output can be taller; Auto does not choose a graph direction or truncate long labels.
+
+The shared graph planner uses actual reservation blockers and atomic shared-channel repair, with
+at most two rebuilds driven by new measured capacity demand after the initial geometry in each
+attempted profile. It remains best effort. The [graph presentation boundary](../../crates/merman-ascii/README.md#graph-presentation-boundary)
+describes this private planner and the remaining density/height limits. Class/ER relation planning,
+Sequence ordering, quantitative diagrams, and StructuredText families retain their family owners.
 
 A measured candidate owns its metrics once; fallback construction checks width and output ceilings
 incrementally, then commits one render-wide resource admission. Overflow remains a presentation
 result (`allow`, `fallback`, or `error`), never a resource success or resource failure. Cancellation
 and resource errors retain precedence over fallback selection. Semantic fallback applies typed-model
 complexity preflight; Flowchart's typed projection uses a bounded cancellation-aware JSON writer
-under bounded profiles. Flowchart, State, and Swimlane width fallback presents keyed nodes/groups
+under bounded profiles. Flowchart, State, and Swimlane width fallback and adaptive recovery present keyed nodes/groups
 and individual relationships with complete labels, markers, strokes, membership, and authored
 details. Flowchart first-use declarations avoid a separate repeated node table. Class and ER
 width fallback uses family-owned keyed declarations, members/attributes, and individual
@@ -80,11 +118,17 @@ existing fallback projections.
 
 ### Admitted profile combinations
 
-| Family set | Layout profiles | Width profiles | Primary encodings | Fallback encodings |
-| --- | --- | --- | --- | --- |
-| Flowchart, Swimlane, Sequence | `canonical`, `compact`, `auto` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
-| State, Class, ER, Packet, XYChart, structured-text families | `canonical` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
-| Unsupported families | none | none | none | none |
+| Family set | Layout profiles | Graph presentations | Width profiles | Primary encodings | Fallback encodings |
+| --- | --- | --- | --- | --- | --- |
+| Flowchart, Swimlane | `canonical`, `compact`, `auto` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Sequence | `canonical`, `compact`, `auto` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| State | `canonical` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Class, ER, Packet, XYChart, structured-text families | `canonical` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Unsupported families | none | none | none | none | none |
+
+The primary encoding list applies to Strict requests. Adaptive is Plain-only even with Allow or
+Error; admitting both `adaptive` and a styled primary encoding separately does not admit their
+combination.
 
 ## Diagrammatic Families
 

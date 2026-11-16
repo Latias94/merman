@@ -1,5 +1,6 @@
 import type { ThemeEffectGraph, ThemePresetApplicationNote, ThemePresetCatalogEntry } from "../src/index.js";
 import { withResourceOptions } from "../src/runtime-core.js";
+import { renderAscii, renderAsciiResult } from "../src/runtime-ascii.js";
 import {
   describeThemeSupport,
   exportThemePreset,
@@ -9,9 +10,12 @@ import {
   renderSvgResult,
   svgPlanJson,
 } from "../src/runtime-render.js";
-import type { BindingDiagnosticErrorDetails } from "../src/public-catalog.js";
+import type { AsciiCapability, AsciiGraphPresentation, BindingDiagnosticErrorDetails } from "../src/public-catalog.js";
 import type {
   AsciiBindingOptions,
+  AsciiOutputPlan,
+  AsciiRenderResult,
+  BindingOperationMetadata,
   CommonBindingOptions,
   EditorBindingOptions,
   EditorResourceOptions,
@@ -132,11 +136,52 @@ const asciiOptions: AsciiBindingOptions = {
     charset: "unicode",
     maxWidth: 80,
     overflow: "fallback",
+    graph_presentation: "adaptive",
     trim_trailing_spaces: true,
   },
   merman: { resources },
   parse: { suppress_errors: true },
+  timeout_ms: 250,
 };
+const asciiResult: AsciiRenderResult = renderAsciiResult("flowchart LR\nA --> B", asciiOptions);
+const asciiMetadata: BindingOperationMetadata = asciiResult.metadata;
+const asciiPlan: AsciiOutputPlan = asciiResult.metadata.output_plan;
+const asciiReportVersion: 4 = asciiPlan.schema_version;
+const primaryWidth: number | null = asciiPlan.primary_width;
+const primaryOverflowed: boolean | null = asciiPlan.primary_overflowed;
+const emittedOverflowed: boolean = asciiPlan.emitted_overflowed;
+const requestedPresentation: AsciiGraphPresentation = asciiPlan.requested_graph_presentation;
+renderAscii("flowchart LR\nA --> B", { ascii: { graphPresentation: "strict" } });
+renderAsciiResult("flowchart LR", '{"ascii":{"graph_presentation":"adaptive"}}');
+const unmeasuredAsciiPlan: AsciiOutputPlan = {
+  ...asciiPlan,
+  primary_width: null,
+  primary_height: null,
+  layout_profile: null,
+  primary_overflowed: null,
+};
+declare const asciiCapability: AsciiCapability;
+const graphPresentations: AsciiGraphPresentation[] = asciiCapability.graph_presentations;
+const invalidGraphPresentation: AsciiBindingOptions = {
+  // @ts-expect-error unknown policies must not silently opt into adaptive recovery.
+  ascii: { graph_presentation: "best_effort" },
+};
+const nullGraphPresentation: AsciiBindingOptions = {
+  // @ts-expect-error only omission selects the default presentation policy.
+  ascii: { graphPresentation: null },
+};
+const obsoleteAsciiPlan = {
+  ...asciiPlan,
+  // @ts-expect-error the current report writer emits schema 4.
+  schema_version: 3,
+} satisfies AsciiOutputPlan;
+// @ts-expect-error schema 4 separates primary and emitted overflow.
+asciiPlan.overflowed;
+// @ts-expect-error the result exposes text instead of an SVG payload.
+asciiResult.svg;
+void [asciiMetadata, asciiReportVersion, primaryWidth, primaryOverflowed, emittedOverflowed,
+  requestedPresentation, unmeasuredAsciiPlan, graphPresentations, invalidGraphPresentation,
+  nullGraphPresentation, obsoleteAsciiPlan];
 const svgOptions: SvgBindingOptions = {
   fixed_today: "2026-08-12",
   parse: { suppress_errors: true },

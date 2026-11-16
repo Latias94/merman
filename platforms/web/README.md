@@ -19,7 +19,7 @@ static-site builds, use [`@mermanjs/node`](../node/packages/node/README.md).
 | Editor intelligence in a Worker | [`@mermanjs/web-editor`](packages/editor/README.md) | Analysis and parser-backed editor sessions |
 | ASCII or Unicode output | [`@mermanjs/web-ascii`](packages/ascii/README.md) | Supported terminal-oriented diagram output |
 
-All browser packages in `0.10.0` use one lockstep version, Web transport API `10`, and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`; analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence schema `2`, and ASCII-capable packages use schema-3 ASCII output. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision.
+Current-source browser packages use Web transport API `11` and [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md). They target Mermaid `12.3.0`; analysis-capable packages use facts schema `3`, SVG-capable packages use theme execution evidence schema `2`, and ASCII-capable packages use schema-4 ASCII output. Published `0.10.0` uses Web API `10` and ASCII schema `3`. Keep the package facade, generated glue, and WASM binary at the same exact version and source revision; see the [current-source migration](../../docs/migrations/render-reuse-host-integration.md).
 
 The [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) describes Step animations,
 their closed browser admission, and the static SVG projection used for native export.
@@ -374,15 +374,35 @@ for the consumer matrix. Pipeline selection does not replace the mounting policy
 ## ASCII host policy
 
 Use an ASCII-capable package (`@mermanjs/web` or `@mermanjs/web-ascii`) and inspect
-`asciiCapabilities()` for the detected family. In builds containing Auto, only Flowchart and
+`asciiCapabilities()` for the detected family. In builds containing Auto, Flowchart, Swimlane, and
 Sequence admit `auto` or `compact`; other supported families use `canonical`. Auto requires an
 explicit `ascii.max_width`. Viewport `fallback` requires `ascii.color_mode: "plain"`; a styled
 fallback request is invalid even when the input would fit. Bindings reject environment-dependent
 color `auto`, so the host must resolve its color policy before the call.
 
-`renderAscii()` returns a text string, not an `AsciiOutput` report object. Do not read metadata
-fields from that string or infer overflow/fallback state by parsing the drawing. Rust typed results
-and CLI `--ascii-report` provide the report-oriented recipes. See the
+`renderAscii()` returns a text string. Use `renderAsciiResult()` when the host needs the same
+execution's canonical `{ text, metadata }`; `metadata.output_plan` is the schema-4 ASCII plan.
+It distinguishes unavailable primary geometry (`null`) from a real empty primary (`0`) and records
+requested graph policy, effective projection, separate primary/emitted overflow, and fallback reason.
+Do not infer those facts by parsing the drawing. For Flowchart, Swimlane, and State, explicit
+`ascii.graph_presentation: "adaptive"` permits complete Plain graph documents after an admitted
+planning miss. Strict remains the default; resource, cancellation, and unsupported-semantic errors
+remain errors. Width policy is independent. For example:
+
+```ts
+const result = renderAsciiResult(source, {
+  ascii: {
+    graph_presentation: "adaptive",
+    color_mode: "plain",
+    layout_profile: "auto",
+    max_width: 80,
+    overflow: "fallback",
+  },
+});
+console.log(result.text, result.metadata.output_plan);
+```
+
+State accepts only `canonical`, so omit `layout_profile: "auto"` for State requests. See the
 [ASCII option contract](../../docs/bindings/OPTIONS_JSON.md#ascii-options) for versioned fields and
 the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) for admitted family combinations.
 
@@ -432,7 +452,7 @@ contract.
 ## Deadlines and cancellation
 
 Use `transportApiVersion()` and `runtimeCatalog()` to inspect the loaded runtime. Initialization
-validates Web transport API `10` and all required exports before making the module available.
+validates Web transport API `11` and all required exports before making the module available.
 
 SVG calls, preparation and each prepared output expose a typed top-level `timeout_ms` option.
 Other transport-dispatched one-shot operations accept this field through their JSON-string options.

@@ -14,7 +14,7 @@ CONSTRUCTOR_SERVICE_SPEC_BY_ID = {
 def valid_catalog():
     return {
         "schema_version": 1,
-        "transport_api_version": 7,
+        "transport_api_version": 8,
         "package_version": "test",
         "options_schema_versions": [BINDING_OPTIONS_SCHEMA_VERSION],
         "payload_schemas": [
@@ -141,8 +141,8 @@ class FakeEngine:
         self.catalog_calls += 1
         return json.dumps(self.catalog)
 
-    def binding_api_version_v7(self):
-        return 7
+    def binding_api_version_v8(self):
+        return 8
 
     def package_version(self):
         return "test"
@@ -156,6 +156,7 @@ class RuntimeCatalogTest(unittest.TestCase):
         parsed = merman.get_runtime_catalog(engine)
 
         self.assertEqual(parsed, catalog)
+        self.assertEqual(parsed["transport_api_version"], 8)
         self.assertEqual(engine.catalog_calls, 1)
         self.assertFalse(hasattr(merman, "get_runtime_contract"))
         self.assertFalse(hasattr(merman, "get_runtime_capability_vocabulary"))
@@ -178,6 +179,25 @@ class RuntimeCatalogTest(unittest.TestCase):
             next(iter(parsed["resources"]["profiles"][0]["limits"])),
             merman.ResourceLimitId.MAX_SOURCE_BYTES,
         )
+
+    def test_loaded_library_advertises_api_eight(self):
+        engine = merman.Merman()
+
+        catalog = merman.get_runtime_catalog(engine)
+
+        self.assertEqual(engine.binding_api_version_v8(), 8)
+        self.assertEqual(catalog["transport_api_version"], 8)
+        self.assertFalse(hasattr(engine, "binding_api_version_v7"))
+
+    def test_rejects_api_seven_catalog_for_api_eight_library(self):
+        catalog = valid_catalog()
+        catalog["transport_api_version"] = 7
+
+        with self.assertRaisesRegex(
+            merman.MermanRuntimeCatalogError,
+            "transport_api_version does not match the loaded library",
+        ):
+            merman.get_runtime_catalog(FakeEngine(catalog))
 
     def test_accepts_catalog_without_svg_or_text_measurement(self):
         catalog = valid_catalog()

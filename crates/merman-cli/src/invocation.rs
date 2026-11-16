@@ -37,8 +37,8 @@ use crate::cli::{NativeRenderOptions, RenderArgs, RenderFormat};
 use crate::cli::{RustdocArgs, RustdocCommand};
 #[cfg(feature = "ascii")]
 use crate::cli::{
-    TextCharset, TextColorMode, TextDirection, TextLayoutProfile, TextOutputCliArgs,
-    TextWidthProfile,
+    TextCharset, TextColorMode, TextDirection, TextGraphPresentation, TextLayoutProfile,
+    TextOutputCliArgs, TextWidthProfile,
 };
 use crate::error::CliError;
 use crate::resources::ResolvedResourcePolicy;
@@ -1316,6 +1316,10 @@ fn resolve_text_output_options(
         _ => unreachable!("text options are resolved only for text output"),
     };
     options.layout_profile = resolve_text_layout_profile(args);
+    options.graph_presentation = match args.ascii_graph_presentation {
+        TextGraphPresentation::Strict => merman::ascii::AsciiGraphPresentation::Strict,
+        TextGraphPresentation::Adaptive => merman::ascii::AsciiGraphPresentation::Adaptive,
+    };
     if let Some(charset) = args.ascii_charset {
         options.charset = match charset {
             TextCharset::Ascii => merman::ascii::AsciiCharset::Ascii,

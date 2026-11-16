@@ -1,5 +1,9 @@
 # Unreleased contract version audit
 
+The [2026-11-16 ASCII follow-up](#ascii-scene-planning-follow-up) records the current schema-4,
+UniFFI-8, and Web-11 development decisions against published `v0.10.0`. Earlier entries below
+retain their original release baselines.
+
 Checked on 2026-09-15 at candidate source `646ac9228`. This is a development decision, not a
 release or a C7a freeze record. The release baseline is the latest artifact for each surface,
 not the largest number found on the development branch.
@@ -11,6 +15,24 @@ unpublished theme hash-domain counters. It compares the new domains with frozen 
 The maintainer selected `v0.8.0-alpha.7` as the next workspace release on 2026-09-15.
 New theme schemas, recipes, catalogs and qualification formats remain version 1.
 The package release number does not change those independent protocol identities.
+
+## ASCII scene planning follow-up
+
+On 2026-11-16, current-source ASCII requests gained explicit strict/adaptive graph presentation
+and report schema 4. The comparison baseline is the published `v0.10.0` tag: ASCII output schema 3,
+UniFFI API 7, and Web transport API 10. Regenerate wrappers with matching native/WASM artifacts.
+
+| Owner | Current development contract | Reason |
+| --- | --- | --- |
+| ASCII output | Schema 4 | Nullable unavailable primary geometry, requested graph presentation, and separate primary/emitted overflow replace the old schema-3 plan. |
+| UniFFI | API 8, probe `binding_api_version_v8` | Exported ASCII records and capability records changed; generated Swift/Python must match. |
+| Web/WASM | Transport 11 | Required `renderAsciiResult` export, schema-4 result, and graph-policy capabilities must agree with the wrapper before module publication. |
+| Options JSON / outer operation metadata | 3 / 1 | The options owner admits one new policy and metadata still carries the independently versioned output plan. |
+| C ABI / Node transport / Android JNI | 3 / 1 / 2 | No transport slot or binary record changes; consumers update their nested ASCII-plan decoder. |
+
+These are unreleased compatibility decisions, not package version bumps or release authorization.
+The [current-source migration](../migrations/render-reuse-host-integration.md) describes caller
+changes. Historical schema-3 reports and release guides retain their original meanings.
 
 ## Published baseline
 

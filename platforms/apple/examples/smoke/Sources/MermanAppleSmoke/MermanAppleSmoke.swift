@@ -6,7 +6,7 @@ struct MermanAppleSmoke {
     static func main() throws {
         if try importThemeRecipeInFreshProcess() { return }
         let client = Merman()
-        guard client.bindingApiVersionV7() == 7 else {
+        guard client.bindingApiVersionV8() == 8 else {
             throw SmokeError.failed("unexpected UniFFI binding API version")
         }
         let catalogData = Data(try client.runtimeCatalogJson().utf8)
@@ -94,18 +94,23 @@ struct MermanAppleSmoke {
             source: basicSource, optionsJson: #"{"ascii":{"layout_profile":"auto","max_width":80,"overflow":"error"}}"#
         )
         guard let ascii = asciiResult.metadata.outputPlan?.ascii,
-              ascii.schemaVersion == 3, ascii.requestedLayoutProfile == "auto",
-              ["canonical", "compact"].contains(ascii.layoutProfile) else {
+              ascii.schemaVersion == 4, ascii.requestedLayoutProfile == "auto",
+              let asciiLayout = ascii.layoutProfile,
+              ["canonical", "compact"].contains(asciiLayout),
+              ascii.primaryWidth != nil, ascii.primaryHeight != nil,
+              ascii.primaryOverflowed == false, !ascii.emittedOverflowed,
+              ascii.requestedGraphPresentation == "strict" else {
             throw SmokeError.failed("ASCII selection metadata was lost in the generated binding")
         }
         let compactSource = "flowchart LR\nA --> B --> C --> D"
         let compactResult = try client.renderAsciiResult(
             source: compactSource, optionsJson: #"{"ascii":{"layout_profile":"compact"}}"#
         )
-        guard let compact = compactResult.metadata.outputPlan?.ascii else {
+        guard let compact = compactResult.metadata.outputPlan?.ascii,
+              let compactWidth = compact.primaryWidth else {
             throw SmokeError.failed("Compact plan missing")
         }
-        let autoOptions = #"{"ascii":{"layout_profile":"auto","max_width":\#(compact.primaryWidth),"overflow":"error"}}"#
+        let autoOptions = #"{"ascii":{"layout_profile":"auto","max_width":\#(compactWidth),"overflow":"error"}}"#
         let selected = try client.renderAsciiResult(source: compactSource, optionsJson: autoOptions)
         guard let selectedPlan = selected.metadata.outputPlan?.ascii,
               selectedPlan.compactAttempted, selectedPlan.layoutProfile == "compact",

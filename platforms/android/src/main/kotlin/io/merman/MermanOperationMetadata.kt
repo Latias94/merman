@@ -22,22 +22,24 @@ abstract class MermanOutputPlan internal constructor() {
     abstract val kind: String
 }
 
-/** Terminal projection and viewport outcome for the ASCII operation. */
+/** Schema-4 terminal projection and viewport outcome for the ASCII operation. */
 data class MermanAsciiOutputPlan(
     val schemaVersion: Int,
     val family: String,
     val projection: String,
     val encoding: String,
-    val primaryWidth: Long,
-    val primaryHeight: Long,
+    val primaryWidth: Long?,
+    val primaryHeight: Long?,
     val emittedWidth: Long,
     val emittedHeight: Long,
     val widthProfile: String,
-    val layoutProfile: String,
+    val layoutProfile: String?,
     val requestedLayoutProfile: String,
+    val requestedGraphPresentation: String,
     val compactAttempted: Boolean,
     val requestedMaxWidth: Long?,
-    val overflowed: Boolean,
+    val primaryOverflowed: Boolean?,
+    val emittedOverflowed: Boolean,
     val outcome: String,
     val fallbackCapability: String,
     val fallbackAttempted: Boolean,

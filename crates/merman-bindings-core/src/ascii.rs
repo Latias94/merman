@@ -167,6 +167,18 @@ fn ascii_options_from_json(
             }
         };
     }
+    if let Some(presentation) = ascii.graph_presentation.as_deref() {
+        render_options.graph_presentation = match option_key(presentation).as_str() {
+            "strict" => merman::ascii::AsciiGraphPresentation::Strict,
+            "adaptive" => merman::ascii::AsciiGraphPresentation::Adaptive,
+            _ => {
+                return Err(invalid_ascii_option(
+                    "ascii.graph_presentation",
+                    "expected `strict` or `adaptive`",
+                ));
+            }
+        };
+    }
     if let Some(charset) = ascii.charset.as_deref() {
         render_options.charset = ascii_charset(charset)?;
     }
@@ -616,10 +628,13 @@ mod tests {
         );
         assert_eq!(plan.family(), "timeline");
         assert_eq!(plan.projection(), "structured_text");
-        assert_eq!(plan.schema_version(), 3);
+        assert_eq!(plan.schema_version(), 4);
         assert_eq!(plan.encoding(), "plain");
         assert_eq!(plan.outcome(), "fallback");
         assert_eq!(plan.requested_max_width(), Some(10));
+        assert_eq!(plan.requested_graph_presentation(), "strict");
+        assert_eq!(plan.primary_overflowed(), Some(true));
+        assert!(!plan.emitted_overflowed());
         assert!(plan.fallback_attempted());
 
         let metadata: serde_json::Value =
@@ -675,6 +690,35 @@ mod tests {
             error.message().contains("ascii_viewport.overflow"),
             "{error:?}"
         );
+    }
+
+    #[test]
+    fn binding_adaptive_admission_uses_canonical_encoding_and_family_boundaries() {
+        let error = render_ascii(
+            b"flowchart LR\nA --> B",
+            br#"{"ascii":{"graphPresentation":"adaptive","colorMode":"ansi16"}}"#,
+        )
+        .expect_err("adaptive graph requests require Plain encoding");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+
+        let error = render_ascii(
+            b"sequenceDiagram\nA->>B: Hello",
+            br#"{"ascii":{"graph_presentation":"adaptive"}}"#,
+        )
+        .expect_err("a family outside the shared graph planner cannot opt into adaptive mode");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("graph_presentation"));
+
+        let result = crate::render_ascii_result(
+            b"flowchart LR\nA --> B",
+            br#"{"ascii":{"colorMode":"ansi16"}}"#,
+        )
+        .expect("default strict graph presentation retains styled primary output");
+        let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan() else {
+            panic!("expected an ASCII output plan");
+        };
+        assert_eq!(plan.requested_graph_presentation(), "strict");
+        assert_eq!(plan.encoding(), "ansi16");
     }
 
     #[test]
@@ -903,6 +947,76 @@ mod tests {
     }
 
     #[test]
+    fn ascii_graph_presentation_compiles_aliases_and_keeps_strict_default() {
+        use merman::ascii::AsciiGraphPresentation;
+
+        let defaults = crate::common::parse_options(b"").unwrap();
+        assert_eq!(
+            ascii_options_from_json(&defaults)
+                .unwrap()
+                .graph_presentation,
+            AsciiGraphPresentation::Strict
+        );
+        for key in ["graph_presentation", "graphPresentation"] {
+            for (value, expected) in [
+                ("strict", AsciiGraphPresentation::Strict),
+                ("adaptive", AsciiGraphPresentation::Adaptive),
+                (" ADAPTIVE ", AsciiGraphPresentation::Adaptive),
+            ] {
+                let json = serde_json::json!({"ascii": {key: value}});
+                let options =
+                    crate::common::parse_options(&serde_json::to_vec(&json).unwrap()).unwrap();
+                assert_eq!(
+                    ascii_options_from_json(&options)
+                        .unwrap()
+                        .graph_presentation,
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn ascii_graph_presentation_rejects_unknown_values_and_invalid_types() {
+        for key in ["graph_presentation", "graphPresentation"] {
+            let json = serde_json::json!({"ascii": {key: "best_effort"}});
+            let options =
+                crate::common::parse_options(&serde_json::to_vec(&json).unwrap()).unwrap();
+            let error = ascii_options_from_json(&options).unwrap_err();
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains("ascii.graph_presentation"));
+
+            let json = serde_json::json!({"ascii": {key: true}});
+            let error = crate::common::parse_options(&serde_json::to_vec(&json).unwrap())
+                .expect_err("presentation must be a string");
+            assert_eq!(error.status(), BindingStatus::OptionsJsonError);
+        }
+    }
+
+    #[test]
+    fn adaptive_graph_presentation_preserves_fatal_resource_errors() {
+        let source = b"flowchart LR\nA[Alpha] --> B[Beta]";
+        let options = br#"{
+            "ascii": {"graphPresentation": "adaptive", "overflow": "fallback", "maxWidth": 10},
+            "resources": {"limits": {"max_ascii_grid_cells": 1}}
+        }"#;
+        let error = crate::render_ascii_result(source, options)
+            .expect_err("resource exhaustion must not publish a recovery result");
+        assert_eq!(error.status(), BindingStatus::ResourceLimitExceeded);
+        assert_eq!(
+            error.resource_details().unwrap().limit_id,
+            "max_ascii_grid_cells"
+        );
+        assert_eq!(crate::render_ascii(source, options).unwrap_err(), error);
+        let payload: serde_json::Value =
+            serde_json::from_slice(&crate::binding_error_payload_json_bytes(&error)).unwrap();
+        assert_eq!(
+            payload["details"]["resource"]["limit_id"],
+            "max_ascii_grid_cells"
+        );
+    }
+
+    #[test]
     fn auto_layout_aliases_select_and_round_trip_the_effective_profile() {
         let source = b"flowchart LR\nA --> B --> C --> D";
         let compact =
@@ -919,15 +1033,16 @@ mod tests {
             let result = crate::render_ascii_result(source, &serde_json::to_vec(&options).unwrap())
                 .expect("automatic selection should fit using compact");
             let parsed = crate::BindingOperationMetadata::from_json_bytes(result.metadata_json())
-                .expect("schema 3 metadata must round-trip");
+                .expect("schema 4 metadata must round-trip");
             let Some(crate::BindingOutputPlan::Ascii(plan)) = parsed.output_plan() else {
                 panic!("ASCII output plan");
             };
-            assert_eq!(plan.schema_version(), 3);
+            assert_eq!(plan.schema_version(), 4);
             assert_eq!(plan.requested_layout_profile(), "auto");
-            assert_eq!(plan.layout_profile(), "compact");
+            assert_eq!(plan.layout_profile(), Some("compact"));
             assert!(plan.compact_attempted());
-            assert!(!plan.overflowed());
+            assert_eq!(plan.primary_overflowed(), Some(false));
+            assert!(!plan.emitted_overflowed());
             assert_eq!(plan.primary_width(), compact_plan.primary_width());
             assert_eq!(result.data(), compact.data());
         }

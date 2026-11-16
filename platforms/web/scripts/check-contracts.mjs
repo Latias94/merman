@@ -178,11 +178,21 @@ const requiredTypeProperties = new Map([
   [
     "AsciiRenderOptions",
     [
+      "graph_presentation",
+      "graphPresentation",
       "flowchart_node_label_wrap_width",
       "flowchartNodeLabelWrapWidth",
       "relation_summary_diagnostics",
       "relationSummaryDiagnostics",
     ],
+  ],
+  ["AsciiCapability", ["graph_presentations"]],
+  ["AsciiRenderResult", ["text", "metadata"]],
+  ["AsciiRenderMetadata", ["output_plan"]],
+  [
+    "AsciiOutputPlan",
+    ["primary_width", "primary_height", "layout_profile", "primary_overflowed",
+      "emitted_overflowed", "requested_graph_presentation"],
   ],
   ["CommonBindingOptions", ["analysis", "merman", "parse"]],
   ["AnalysisBindingOptions", ["resources"]],
@@ -226,6 +236,7 @@ const exactTypeStringLiterals = new Map([
 const requiredTypePropertyTypes = [
   ["AnalysisResult", "version", "1"],
   ["AnalysisFactsResult", "version", "3"],
+  ["AsciiOutputPlan", "schema_version", "4"],
 ];
 const requiredTypePropertyAnnotations = [
   ["MermaidThemeCompatibility", "theme", "ThemeName"],

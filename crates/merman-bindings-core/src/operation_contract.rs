@@ -20,6 +20,7 @@ pub struct BindingJsonFieldContract {
     name: &'static str,
     json_type: &'static str,
     required: bool,
+    nullable: bool,
     integer_width_bits: Option<u8>,
     open_value: bool,
 }
@@ -38,6 +39,11 @@ impl BindingJsonFieldContract {
     #[must_use]
     pub const fn required(&self) -> bool {
         self.required
+    }
+
+    #[must_use]
+    pub const fn nullable(&self) -> bool {
+        self.nullable
     }
 
     #[must_use]
@@ -258,13 +264,14 @@ const ASCII_FIELDS: &[BindingJsonFieldContract] = &[
     field("family", "string", true, None, true),
     field("projection", "string", true, None, false),
     field("encoding", "string", true, None, false),
-    field("primary_width", "unsigned-integer", true, Some(64), false),
-    field("primary_height", "unsigned-integer", true, Some(64), false),
+    nullable_field("primary_width", "unsigned-integer", true, Some(64), false),
+    nullable_field("primary_height", "unsigned-integer", true, Some(64), false),
     field("emitted_width", "unsigned-integer", true, Some(64), false),
     field("emitted_height", "unsigned-integer", true, Some(64), false),
     field("width_profile", "string", true, None, false),
-    field("layout_profile", "string", true, None, false),
+    nullable_field("layout_profile", "string", true, None, false),
     field("requested_layout_profile", "string", true, None, false),
+    field("requested_graph_presentation", "string", true, None, false),
     field("compact_attempted", "boolean", true, None, false),
     field(
         "requested_max_width",
@@ -273,7 +280,8 @@ const ASCII_FIELDS: &[BindingJsonFieldContract] = &[
         Some(64),
         false,
     ),
-    field("overflowed", "boolean", true, None, false),
+    nullable_field("primary_overflowed", "boolean", true, None, false),
+    field("emitted_overflowed", "boolean", true, None, false),
     field("outcome", "string", true, None, false),
     field("fallback_capability", "string", true, None, false),
     field("fallback_attempted", "boolean", true, None, false),
@@ -322,8 +330,22 @@ const fn field(
         name,
         json_type,
         required,
+        nullable: false,
         integer_width_bits,
         open_value,
+    }
+}
+
+const fn nullable_field(
+    name: &'static str,
+    json_type: &'static str,
+    required: bool,
+    integer_width_bits: Option<u8>,
+    open_value: bool,
+) -> BindingJsonFieldContract {
+    BindingJsonFieldContract {
+        nullable: true,
+        ..field(name, json_type, required, integer_width_bits, open_value)
     }
 }
 
@@ -543,6 +565,40 @@ mod tests {
             .expect("ASCII encoding field");
         assert_eq!(encoding.json_type(), "string");
         assert!(encoding.required());
+        for name in [
+            "primary_width",
+            "primary_height",
+            "layout_profile",
+            "primary_overflowed",
+        ] {
+            let field = ascii
+                .fields()
+                .iter()
+                .find(|field| field.name() == name)
+                .unwrap();
+            assert!(field.required(), "{name}");
+            assert!(field.nullable(), "{name}");
+        }
+        for (name, json_type) in [
+            ("requested_graph_presentation", "string"),
+            ("emitted_overflowed", "boolean"),
+        ] {
+            let field = ascii
+                .fields()
+                .iter()
+                .find(|field| field.name() == name)
+                .unwrap();
+            assert!(field.required());
+            assert!(!field.nullable());
+            assert_eq!(field.json_type(), json_type);
+        }
+        assert!(
+            !ascii
+                .fields()
+                .iter()
+                .any(|field| field.name() == "overflowed")
+        );
+        assert!(!byte_length.nullable());
     }
 
     #[test]
@@ -599,6 +655,26 @@ mod tests {
         assert_eq!(contract["metadata_schema_version"], 1);
         assert_eq!(contract["unknown_output_plan_policy"], "preserve");
         assert_eq!(contract["contract_schema_version"], 1);
+        let ascii = contract["output_plans"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|plan| plan["kind"] == "ascii")
+            .unwrap();
+        let fields = ascii["fields"].as_array().unwrap();
+        let primary_width = fields
+            .iter()
+            .find(|field| field["name"] == "primary_width")
+            .unwrap();
+        assert_eq!(primary_width["required"], true);
+        assert_eq!(primary_width["nullable"], true);
+        assert_eq!(primary_width["integer_width_bits"], 64);
+        let emitted_overflowed = fields
+            .iter()
+            .find(|field| field["name"] == "emitted_overflowed")
+            .unwrap();
+        assert_eq!(emitted_overflowed["required"], true);
+        assert_eq!(emitted_overflowed["nullable"], false);
         assert_eq!(
             contract["theme_execution_evidence_versions"][0]["version"],
             2

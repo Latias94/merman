@@ -1353,6 +1353,26 @@ if (hasCapability("ascii")) {
   const ascii = api.renderAscii(source, deterministicTime);
   assert.match(ascii, /Hello/);
   assert.match(ascii, /World/);
+  const asciiResult = api.renderAsciiResult(source, deterministicTime);
+  assert.equal(asciiResult.text, ascii);
+  assert.equal(asciiResult.metadata.version, 1);
+  assert.equal(asciiResult.metadata.operation_id, "ascii");
+  assert.equal(asciiResult.metadata.byte_length, Buffer.byteLength(ascii));
+  const asciiPlan = asciiResult.metadata.output_plan;
+  assert.equal(asciiPlan.schema_version, 4);
+  assert.equal(asciiPlan.requested_graph_presentation, "strict");
+  assert.equal(asciiPlan.primary_width, asciiPlan.emitted_width);
+  assert.equal(asciiPlan.primary_height, asciiPlan.emitted_height);
+  assert.equal(asciiPlan.primary_overflowed, false);
+  assert.equal(asciiPlan.emitted_overflowed, false);
+  assert.equal("overflowed" in asciiPlan, false);
+  const emptyAscii = api.renderAsciiResult("flowchart LR", {
+    ascii: { graphPresentation: "adaptive" },
+  });
+  assert.equal(emptyAscii.text, "");
+  assert.equal(emptyAscii.metadata.output_plan.primary_width, 0);
+  assert.equal(emptyAscii.metadata.output_plan.primary_height, 0);
+  assert.equal(emptyAscii.metadata.output_plan.requested_graph_presentation, "adaptive");
   const wrappedAscii = api.renderAscii(
     'flowchart TD\nA["Alpha Beta Gamma Delta"]',
     {
@@ -1381,8 +1401,19 @@ if (hasCapability("ascii")) {
   }), (error) => /maximum width/i.test(error?.message ?? ""));
   assert.ok(api.asciiCapabilities().find((entry) => entry.diagram_type === "flowchart")
     .layout_profiles.includes("auto"));
+  const asciiCapabilities = api.asciiCapabilities();
+  const flowchartCapability = asciiCapabilities.find((entry) => entry.diagram_type === "flowchart");
+  assert.deepEqual(flowchartCapability.graph_presentations, ["strict", "adaptive"]);
+  flowchartCapability.graph_presentations.length = 0;
+  assert.deepEqual(api.asciiCapabilities().find((entry) => entry.diagram_type === "flowchart")
+    .graph_presentations, ["strict", "adaptive"]);
+  assert.deepEqual(asciiCapabilities.find((entry) => entry.diagram_type === "state")
+    .layout_profiles, ["canonical"]);
+  assert.deepEqual(asciiCapabilities.find((entry) => entry.diagram_type === "zenuml")
+    .graph_presentations, []);
 } else {
   assert.equal(typeof api.renderAscii, "undefined");
+  assert.equal(typeof api.renderAsciiResult, "undefined");
   assert.equal(typeof api.asciiSupportedDiagrams, "undefined");
   assert.equal(typeof api.asciiCapabilities, "undefined");
 }

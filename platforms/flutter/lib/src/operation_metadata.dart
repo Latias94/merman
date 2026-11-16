@@ -40,7 +40,7 @@ abstract base class MermanOutputPlan {
   String get kind;
 }
 
-/// Terminal projection and viewport outcome for the ASCII operation.
+/// Schema-4 terminal projection and viewport outcome for the ASCII operation.
 final class MermanAsciiOutputPlan extends MermanOutputPlan {
   const MermanAsciiOutputPlan({
     required this.schemaVersion,
@@ -54,9 +54,11 @@ final class MermanAsciiOutputPlan extends MermanOutputPlan {
     required this.widthProfile,
     required this.layoutProfile,
     required this.requestedLayoutProfile,
+    required this.requestedGraphPresentation,
     required this.compactAttempted,
     required this.requestedMaxWidth,
-    required this.overflowed,
+    required this.primaryOverflowed,
+    required this.emittedOverflowed,
     required this.outcome,
     required this.fallbackCapability,
     required this.fallbackAttempted,
@@ -72,16 +74,18 @@ final class MermanAsciiOutputPlan extends MermanOutputPlan {
   final String family;
   final String projection;
   final String encoding;
-  final int primaryWidth;
-  final int primaryHeight;
+  final int? primaryWidth;
+  final int? primaryHeight;
   final int emittedWidth;
   final int emittedHeight;
   final String widthProfile;
-  final String layoutProfile;
+  final String? layoutProfile;
   final String requestedLayoutProfile;
+  final String requestedGraphPresentation;
   final bool compactAttempted;
   final int? requestedMaxWidth;
-  final bool overflowed;
+  final bool? primaryOverflowed;
+  final bool emittedOverflowed;
   final String outcome;
   final String fallbackCapability;
   final bool fallbackAttempted;

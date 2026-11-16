@@ -669,6 +669,9 @@ merman-cli render diagram.mmd --format pdf --pdf-filter-scale 4
 merman-cli render diagram.mmd --format unicode --ascii-color auto
 merman-cli render diagram.mmd --format unicode --ascii-layout-profile compact \
   --ascii-max-width 80 --ascii-overflow fallback --ascii-report
+merman-cli render diagram.mmd --format unicode --ascii-color plain \
+  --ascii-graph-presentation adaptive --ascii-layout-profile auto \
+  --ascii-max-width 80 --ascii-overflow fallback --ascii-report
 ```
 
 PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bounds localized filter and embedded-image raster work. They are not Chromium screenshots. ASCII/Unicode support is family-specific; see the [support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md).
@@ -686,15 +689,27 @@ merman-cli render diagram.mmd --format unicode --ascii-node-padding-y 0
 
 `--ascii-report` is a machine-safe JSON channel. It always emits Plain text: `--ascii-color auto`
 resolves to Plain in report mode, while an explicit ANSI16/ANSI256/TrueColor/HTML request is
-rejected. The report uses ASCII output schema 3 and includes `encoding`, logical primary/emitted
+rejected. The report uses ASCII output schema 4 and includes `encoding`, logical primary/emitted
 extents, width profile, and typed overflow/fallback state. `requested_layout_profile` records the
-request, `layout_profile` records the selected primary geometry, and `compact_attempted` records
-whether Auto tried Compact. A final line terminator is not counted as another logical row.
+request and `compact_attempted` records whether Auto tried Compact. `primary_width`,
+`primary_height`, `layout_profile`, and `primary_overflowed` are null together when no primary
+geometry was accepted; a real empty primary retains zero dimensions. `emitted_overflowed` always
+describes the complete emitted text. A final line terminator is not counted as another logical row.
 Viewport fallback is Plain-only; styled/fallback combinations are invalid even if the input fits.
-`compact` and `auto` are admitted only for Flowchart and Sequence, and Auto requires an explicit
+`compact` and `auto` are admitted only for Flowchart, Swimlane, and Sequence, and Auto requires an explicit
 `--ascii-max-width`. Other supported families use `canonical`. Once report mode is selected,
 failures use ASCII error-report schema 1 on stderr with a stable code, category, terminal-safe message, and typed details; stdout and
 the requested output target remain unpublished.
+
+Graph presentation defaults to `strict`. Flowchart, Swimlane, and State may opt into `adaptive`
+with Plain output to recover an admitted routing/capacity miss as a complete keyed graph document.
+The report records `requested_graph_presentation` and a reason of `routing_search_exhausted` or
+`port_capacity_exceeded`; `primary_overflow` remains the separate width-fallback reason. Adaptive
+Auto may try Compact after a Canonical planning miss, while State remains Canonical-only.
+Width `allow`, `error`, and `fallback` still govern valid candidates independently. Unsupported
+semantics, allocation/resource failure, and cancellation return errors. Unbounded work policy
+does not remove finite algorithmic search allowances; see the
+[graph planning boundary](../merman-ascii/README.md#graph-presentation-boundary).
 
 ## Runtime Policy
 

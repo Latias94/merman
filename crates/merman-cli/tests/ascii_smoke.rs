@@ -54,7 +54,7 @@ fn assert_plain_ascii_report(bytes: &[u8]) -> serde_json::Value {
         serde_json::from_slice(bytes).expect("ASCII report should be one JSON artifact");
     assert_eq!(report["kind"], "ascii");
     assert_eq!(report["encoding"], "plain");
-    assert_eq!(report["schema_version"], 3);
+    assert_eq!(report["schema_version"], 4);
     let text = report["text"].as_str().expect("report text");
     assert!(!text.contains('\u{1b}'), "report text must be escape-free");
     report
@@ -893,7 +893,9 @@ fn auto_layout_report_selects_compact_without_changing_overflow_policy() {
     assert_eq!(report["requested_layout_profile"], "auto");
     assert_eq!(report["layout_profile"], "compact");
     assert_eq!(report["compact_attempted"], true);
-    assert_eq!(report["overflowed"], false);
+    assert_eq!(report["primary_overflowed"], false);
+    assert_eq!(report["emitted_overflowed"], false);
+    assert_eq!(report["requested_graph_presentation"], "strict");
     assert_eq!(report["text"], compact["text"]);
 
     let wide = render("auto", "1000", "error");
@@ -923,6 +925,80 @@ fn auto_layout_requires_an_explicit_width() {
     assert!(!output.status.success());
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("width"));
+}
+
+#[test]
+fn adaptive_graph_report_distinguishes_missing_geometry_from_width_overflow() {
+    let source = include_str!(
+        "../../merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/dense-minimized.mmd"
+    );
+    let output = run_with_stdin(
+        &[
+            "render",
+            "-",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-graph-presentation",
+            "adaptive",
+            "--ascii-max-width",
+            "80",
+            "--ascii-overflow",
+            "fallback",
+            "--output",
+            "-",
+        ],
+        source,
+    );
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = assert_plain_ascii_report(&output.stdout);
+    assert_eq!(report["requested_graph_presentation"], "adaptive");
+    assert_eq!(report["emitted_overflowed"], false);
+    assert!(report["emitted_width"].as_u64().unwrap() <= 80);
+    if report["primary_width"].is_null() {
+        assert!(report["primary_height"].is_null());
+        assert!(report["layout_profile"].is_null());
+        assert!(report["primary_overflowed"].is_null());
+        assert_eq!(report["projection"], "structured_text");
+        assert!(matches!(
+            report["fallback_reason"].as_str(),
+            Some("routing_search_exhausted" | "port_capacity_exceeded")
+        ));
+    }
+}
+
+#[test]
+fn adaptive_graph_style_admission_is_reported_before_route_work() {
+    let output = run_with_stdin(
+        &[
+            "render",
+            "-",
+            "--format",
+            "unicode",
+            "--ascii-graph-presentation",
+            "adaptive",
+            "--ascii-color",
+            "ansi16",
+            "--resource-limit",
+            "max_ascii_layout_work_units=1",
+        ],
+        "flowchart LR\nA --> B",
+    );
+    assert!(!output.status.success());
+    assert!(output.stdout.is_empty());
+    let diagnostic = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        diagnostic.contains("graph_presentation") || diagnostic.contains("adaptive"),
+        "{diagnostic}"
+    );
+    assert!(
+        !diagnostic.contains("exceeded"),
+        "style admission precedes route admission: {diagnostic}"
+    );
 }
 
 #[test]

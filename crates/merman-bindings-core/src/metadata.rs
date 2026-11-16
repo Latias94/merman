@@ -219,6 +219,7 @@ pub struct BindingAsciiCapability {
     pub primary_projection: &'static str,
     pub structured_text_fallback: bool,
     pub layout_profiles: Vec<&'static str>,
+    pub graph_presentations: Vec<&'static str>,
     pub width_profiles: Vec<&'static str>,
     pub encodings: Vec<&'static str>,
     pub fallback_encodings: Vec<&'static str>,
@@ -884,6 +885,11 @@ pub fn ascii_capabilities() -> Vec<BindingAsciiCapability> {
                     .layout_profiles
                     .iter()
                     .map(|profile| profile.as_str())
+                    .collect(),
+                graph_presentations: capability
+                    .graph_presentations
+                    .iter()
+                    .map(|presentation| presentation.as_str())
                     .collect(),
                 width_profiles: capability
                     .width_profiles
@@ -2122,6 +2128,7 @@ mod tests {
         assert_eq!(flowchart.support_level, "partial");
         assert!(flowchart.structured_text_fallback);
         assert_eq!(flowchart.layout_profiles, ["canonical", "compact", "auto"]);
+        assert_eq!(flowchart.graph_presentations, ["strict", "adaptive"]);
         assert_eq!(flowchart.width_profiles, ["unicode", "cjk"]);
         assert_eq!(
             flowchart.encodings,
@@ -2134,6 +2141,7 @@ mod tests {
         }));
 
         let class = ascii_capability(&capabilities, "class");
+        assert_eq!(class.graph_presentations, ["strict"]);
         assert_eq!(class.support_level, "partial");
         assert_eq!(class.primary_projection, "diagrammatic");
         assert!(class.structured_text_fallback);
@@ -2159,6 +2167,10 @@ mod tests {
 
         let state = ascii_capability(&capabilities, "state");
         assert_eq!(state.layout_profiles, ["canonical"]);
+        assert_eq!(state.graph_presentations, ["strict", "adaptive"]);
+        let swimlane = ascii_capability(&capabilities, "swimlane");
+        assert_eq!(swimlane.graph_presentations, ["strict", "adaptive"]);
+        assert_eq!(sequence.graph_presentations, ["strict"]);
 
         let zenuml = ascii_capability(&capabilities, "zenuml");
         assert!(zenuml.layout_profiles.is_empty());
@@ -2185,7 +2197,27 @@ mod tests {
         assert!(first.get("semantic_coverage").is_some());
         assert!(first.get("primary_projection").is_some());
         assert!(first.get("structured_text_fallback").is_some());
+        assert!(first.get("graph_presentations").is_some());
         assert!(first.get("summary_fallback").is_none());
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_graph_presentations_are_copied_from_canonical_capabilities() {
+        let bindings = ascii_capabilities();
+        let canonical = merman::ascii::ascii_capabilities();
+        assert_eq!(bindings.len(), canonical.len());
+        for (binding, capability) in bindings.iter().zip(canonical) {
+            assert_eq!(binding.diagram_type, capability.diagram_type);
+            assert_eq!(
+                binding.graph_presentations,
+                capability
+                    .graph_presentations
+                    .iter()
+                    .map(|presentation| presentation.as_str())
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]

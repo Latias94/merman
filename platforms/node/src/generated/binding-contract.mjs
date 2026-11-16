@@ -119,6 +119,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "version",
       "json_type": "unsigned-integer",
       "required": true,
+      "nullable": false,
       "integer_width_bits": 32,
       "open_value": false
     },
@@ -126,6 +127,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "operation_id",
       "json_type": "string",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     },
@@ -133,6 +135,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "media_type",
       "json_type": "string",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     },
@@ -140,6 +143,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "runtime_policy",
       "json_type": "string",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     },
@@ -147,6 +151,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "byte_length",
       "json_type": "unsigned-integer",
       "required": true,
+      "nullable": false,
       "integer_width_bits": 64,
       "open_value": false
     },
@@ -154,6 +159,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "output_plan",
       "json_type": "object",
       "required": false,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     },
@@ -161,6 +167,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "layout_adaptation",
       "json_type": "object",
       "required": false,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     },
@@ -168,6 +175,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "theme_execution_evidence",
       "json_type": "object",
       "required": false,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     }
@@ -180,6 +188,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "kind",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -187,6 +196,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "schema_version",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 16,
           "open_value": false
         },
@@ -194,6 +204,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "family",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -201,6 +212,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "projection",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -208,6 +220,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "encoding",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -215,6 +228,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "primary_width",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": true,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -222,6 +236,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "primary_height",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": true,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -229,6 +244,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "emitted_width",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -236,6 +252,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "emitted_height",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -243,6 +260,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "width_profile",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -250,6 +268,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "layout_profile",
           "json_type": "string",
           "required": true,
+          "nullable": true,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -257,6 +276,15 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_layout_profile",
           "json_type": "string",
           "required": true,
+          "nullable": false,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "requested_graph_presentation",
+          "json_type": "string",
+          "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -264,6 +292,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "compact_attempted",
           "json_type": "boolean",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -271,13 +300,23 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_max_width",
           "json_type": "unsigned-integer",
           "required": false,
+          "nullable": false,
           "integer_width_bits": 64,
           "open_value": false
         },
         {
-          "name": "overflowed",
+          "name": "primary_overflowed",
           "json_type": "boolean",
           "required": true,
+          "nullable": true,
+          "integer_width_bits": null,
+          "open_value": false
+        },
+        {
+          "name": "emitted_overflowed",
+          "json_type": "boolean",
+          "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -285,6 +324,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "outcome",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -292,6 +332,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "fallback_capability",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -299,6 +340,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "fallback_attempted",
           "json_type": "boolean",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -306,6 +348,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "fallback_reason",
           "json_type": "string",
           "required": false,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -313,6 +356,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "trimmed",
           "json_type": "boolean",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -320,6 +364,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "lossiness",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         }
@@ -332,6 +377,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "kind",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -339,6 +385,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_width_px",
           "json_type": "number",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -346,6 +393,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_height_px",
           "json_type": "number",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -353,6 +401,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "width_px",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 32,
           "open_value": false
         },
@@ -360,6 +409,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "height_px",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 32,
           "open_value": false
         },
@@ -367,6 +417,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_scale",
           "json_type": "number",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -374,6 +425,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "effective_scale",
           "json_type": "number",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -381,6 +433,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "limited",
           "json_type": "boolean",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         }
@@ -393,6 +446,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "kind",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -400,6 +454,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "filtered_groups",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -407,6 +462,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_scale",
           "json_type": "number",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -414,6 +470,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "effective_scale",
           "json_type": "number",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -421,6 +478,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "requested_image_pixels",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -428,6 +486,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "effective_image_pixels",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 64,
           "open_value": false
         },
@@ -435,6 +494,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "limited",
           "json_type": "boolean",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         }
@@ -449,6 +509,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "version",
           "json_type": "unsigned-integer",
           "required": true,
+          "nullable": false,
           "integer_width_bits": 32,
           "open_value": false
         },
@@ -456,6 +517,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "family_id",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -463,6 +525,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "theme_status",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -470,6 +533,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "output_mutated",
           "json_type": "boolean",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -477,6 +541,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "target_kind",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -484,6 +549,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "target_status",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -491,6 +557,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "target_reason_ids",
           "json_type": "array",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -498,6 +565,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "font_source",
           "json_type": "string",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         },
@@ -505,6 +573,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "materialized_theme",
           "json_type": "string-or-null",
           "required": true,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": false
         },
@@ -512,6 +581,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
           "name": "diagnostics",
           "json_type": "array",
           "required": false,
+          "nullable": false,
           "integer_width_bits": null,
           "open_value": true
         }
@@ -526,6 +596,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "mode",
       "json_type": "string",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": true
     },
@@ -533,6 +604,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "requested_width",
       "json_type": "number",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": false
     },
@@ -540,6 +612,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "actual_width",
       "json_type": "number",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": false
     },
@@ -547,6 +620,7 @@ export const BINDING_OPERATION_METADATA_CONTRACT = {
       "name": "overflowed",
       "json_type": "boolean",
       "required": true,
+      "nullable": false,
       "integer_width_bits": null,
       "open_value": false
     }

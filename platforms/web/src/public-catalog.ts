@@ -262,6 +262,7 @@ export type AsciiPrimaryProjection =
   | "structured_text"
   | "none";
 export type AsciiLayoutProfile = "canonical" | "compact" | "auto";
+export type AsciiGraphPresentation = "strict" | "adaptive";
 export type AsciiWidthProfile = "unicode" | "cjk";
 export type AsciiOutputEncoding =
   | "plain"
@@ -290,6 +291,8 @@ export interface AsciiCapability {
   semantic_coverage: AsciiSemanticCoverage;
   primary_projection: AsciiPrimaryProjection;
   structured_text_fallback: boolean;
+  /** Adaptive is admitted only for Flowchart, Swimlane, and State in Plain output. */
+  graph_presentations: AsciiGraphPresentation[];
   layout_profiles: AsciiLayoutProfile[];
   width_profiles: AsciiWidthProfile[];
   encodings: AsciiOutputEncoding[];

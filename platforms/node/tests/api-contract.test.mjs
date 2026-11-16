@@ -2007,6 +2007,12 @@ test("public TypeScript declarations cover the generic operation API", () => {
   assert.match(declarations, /readonly fallback_reason\?:\s*string \| null/);
   assert.match(declarations, /\breadonly runtimeCatalog:/);
   assert.match(declarations, /\boptionsJson\?: string;/);
+  assert.match(declarations, /export type MermanAsciiGraphPresentation = "strict" \| "adaptive";/);
+  assert.match(declarations, /\bascii\?: MermanAsciiRenderOptions;/);
+  assert.match(declarations, /\bgraph_presentation\?: MermanAsciiGraphPresentation;/);
+  assert.match(declarations, /\bgraphPresentation\?: MermanAsciiGraphPresentation;/);
+  assert.equal("renderAscii" in MermanEngine.prototype, false);
+  assert.equal("renderAsciiResult" in MermanEngine.prototype, false);
   assert.match(declarations, /\biconPacks\?: readonly MermanIconPack\[\];/);
   assert.match(declarations, /interface MermanIconPack\s*{\s*json: string;\s*registrationName\?: string;/);
   assert.match(declarations, /provider_ids:\s*string\[\]/);

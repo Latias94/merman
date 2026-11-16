@@ -219,21 +219,34 @@ after"#;
     }
 
     #[test]
-    fn checked_in_api7_swift_rejects_published_api6_probe() {
+    fn checked_in_api8_swift_rejects_api7_probe_and_projects_nullable_ascii_fields() {
         let generated = std::fs::read_to_string(
             workspace_root().join("platforms/apple/Sources/Merman/Generated/Merman.swift"),
         )
         .expect("read checked-in Swift binding");
 
         assert!(generated.contains("MermanOperationRequestV4"));
-        assert!(generated.contains("bindingApiVersionV7"));
+        assert!(generated.contains("bindingApiVersionV8"));
+        assert!(!generated.contains("bindingApiVersionV7"));
         assert!(!generated.contains("bindingApiVersionV6"));
         assert!(generated.contains("requestedLayoutProfile"));
+        assert!(generated.contains("public var requestedGraphPresentation: String"));
+        assert!(generated.contains("public var graphPresentations: [String]"));
+        assert!(generated.contains("public var primaryWidth: UInt64?"));
+        assert!(generated.contains("public var primaryHeight: UInt64?"));
+        assert!(generated.contains("public var layoutProfile: String?"));
+        assert!(generated.contains("public var primaryOverflowed: Bool?"));
+        assert!(generated.contains("public var emittedOverflowed: Bool"));
+        assert!(!generated.contains("public var overflowed: Bool"));
         assert!(generated.contains("compactAttempted"));
         assert!(generated.contains("detailsJson"));
         assert!(generated.contains("themeCatalogJson"));
         assert!(
             generated
+                .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v8()")
+        );
+        assert!(
+            !generated
                 .contains("uniffi_merman_uniffi_checksum_method_merman_binding_api_version_v7()")
         );
         assert!(
