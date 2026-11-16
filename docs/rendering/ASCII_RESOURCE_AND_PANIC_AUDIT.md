@@ -10,6 +10,9 @@ the historical closeout; they do not change the source identity of that receipt.
 Static graph protection extension: 2026-11-16. The spatial query bounds and current tests below
 supplement the same historical receipt.
 
+Indexed channel adjacency extension: 2026-11-16. Its search-state and work bounds below also
+supplement the historical receipt.
+
 This audit records the input-amplification and panic-path boundary reviewed for the ASCII
 semantic-depth closeout. It is not a claim that every Rust allocation is fallible or that the crate
 contains no invariant assertions. It identifies where authored-size work is admitted, where large
@@ -64,6 +67,35 @@ long-region partitioning, exact/N-1 query work, construction admission, and canc
 Congestion rebuild tests verify that trials share the same immutable protection object while
 preserving independent dynamic occupancy. Remaining channel-coordinate and group-crossing scans
 are outside this optimization.
+
+## Indexed Channel Adjacency
+
+Terminal search retains an implicit orthogonal graph of sorted critical-coordinate axes.
+An admitted port-pair search resolves its initial berth into axis indices once, after terminal
+preflight. Frontier entries, costs, and parent links retain those indices and the arrival direction.
+Adjacent channels use checked index increments/decrements and bounds-checked coordinate lookup.
+Physical coordinates still determine distances, collision predicates, frame crossings, and costs;
+heap priority and insertion-sequence ties are unchanged. Winning parent links are expanded into
+the same terminal-cell path before route admission.
+
+For maximum axis length `C`, `A` port-pair searches reaching the frontier, and `S` expanded states,
+adjacency lookup changes from `O(S log C)` to `O(A log C + S)`. This bound covers coordinate
+resolution and neighbor selection only. Segment inspection still visits traversed terminal cells,
+and frontier ordering, port-pair enumeration, labels, and congestion repair have their own costs.
+It does not establish a complete-render latency improvement or routing completeness.
+
+The index position uses two `usize` components and a direction, matching the physical-coordinate
+position's retained size. No Cartesian grid, coordinate-to-index map, or per-query allocation is
+added. The initial binary searches charge each comparison; each neighbor request charges one work
+unit, including a boundary miss. Both observe cancellation. Existing cumulative work ceilings,
+search-expansion allowances, and error policy remain unchanged.
+
+`graph::routing::terminal::channels::tests` compares indexed neighbors with geometric neighbors
+on sparse and near-maximum axes, rejects missing coordinates, and covers empty/singleton axes,
+constant adjacency work, exact/N-1 limits, cancellation, and state storage size. For axis lengths
+8/64/512/4096, 512 neighbor queries each charge 512 units; initial coordinate resolution is measured
+separately. Existing compressed/unit-grid oracle tests retain path quality and segment semantics,
+including markers, labels, compound frames, long gaps, and winner materialization.
 
 ## Panic and Invariant Review
 

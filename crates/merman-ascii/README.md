@@ -208,6 +208,12 @@ All attempts charge the same work ledger and observe cancellation.
 Recovery rejects sealed straight approaches before opening the path frontier. Label candidates
 retain first-insertion order with operation-local hash-set deduplication, avoiding a repeated
 linear scan for each generated position as the contour search grows.
+The search frontier stores indices into the scene's critical-coordinate axes. Each admitted
+port-pair search resolves its starting coordinate once; adjacent-channel lookup then takes
+constant work without a dense grid or an additional coordinate map. Collision checks and path
+costs still inspect every traversed terminal cell, and only the winning path expands to cell
+coordinates. The [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#indexed-channel-adjacency)
+defines this adjacency-work bound separately from complete routing cost.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
 transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping

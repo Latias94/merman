@@ -1268,7 +1268,7 @@ fn compressed_axes_segment_scans_and_winner_expansion_observe_cancellation() {
         routes: &[],
         owner: &owner,
     };
-    let (geometry, _) = channel_search(
+    let (geometry, axes) = channel_search(
         channel_request(&graph, &layout, &charset),
         obstacles,
         &resources,
@@ -1314,12 +1314,26 @@ fn compressed_axes_segment_scans_and_winner_expansion_observe_cancellation() {
             .err()
             .expect("a long channel must poll between inspected cells"),
     );
-    let initial = Position {
-        coord: geometry.start.berth,
+    let initial = ChannelPosition {
+        point: axes
+            .locate(
+                geometry.start.berth,
+                &resources,
+                AsciiExecution::for_test(&policy),
+            )
+            .unwrap()
+            .unwrap(),
         heading: StepDirection::Right,
     };
-    let goal = Position {
-        coord: geometry.end.berth,
+    let goal = ChannelPosition {
+        point: axes
+            .locate(
+                geometry.end.berth,
+                &resources,
+                AsciiExecution::for_test(&policy),
+            )
+            .unwrap()
+            .unwrap(),
         heading: StepDirection::Right,
     };
     let parents = HashMap::from_iter([(goal, initial)]);
@@ -1340,6 +1354,7 @@ fn compressed_axes_segment_scans_and_winner_expansion_observe_cancellation() {
                 sequence: 0,
             },
             &parents,
+            &axes,
             &resources,
             AsciiExecution::new(&control, &policy),
         )

@@ -519,6 +519,12 @@ struct Position {
     heading: StepDirection,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+struct ChannelPosition {
+    point: channels::ChannelPoint,
+    heading: StepDirection,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Cost {
     total: usize,
@@ -529,7 +535,7 @@ struct Cost {
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct OpenEntry {
-    position: Position,
+    position: ChannelPosition,
     cost: Cost,
     priority: Cost,
     sequence: usize,
@@ -583,8 +589,11 @@ fn find_path(
             return Ok(None);
         }
     }
-    let initial = Position {
-        coord: geometry.start.berth,
+    let Some(point) = channels.locate(geometry.start.berth, resources, execution)? else {
+        return Ok(None);
+    };
+    let initial = ChannelPosition {
+        point,
         heading: geometry.start.attachment.outward,
     };
     let zero = Cost {
@@ -595,7 +604,7 @@ fn find_path(
     };
     let mut open = BinaryHeap::new();
     let mut costs = HashMap::default();
-    let mut parents = HashMap::<Position, Position>::default();
+    let mut parents = HashMap::<ChannelPosition, ChannelPosition>::default();
     costs
         .try_reserve(1)
         .map_err(|_| layout_allocation_failed())?;
@@ -606,9 +615,9 @@ fn find_path(
         position: initial,
         cost: zero,
         priority: Cost {
-            total: distance(initial.coord, geometry.end.berth, resources)?,
+            total: distance(geometry.start.berth, geometry.end.berth, resources)?,
             shared: 0,
-            length: distance(initial.coord, geometry.end.berth, resources)?,
+            length: distance(geometry.start.berth, geometry.end.berth, resources)?,
             bends: 0,
         },
         sequence: 0,
@@ -627,10 +636,13 @@ fn find_path(
             return Ok(None);
         }
         *expansions_left -= 1;
-        if entry.position.coord == geometry.end.berth
+        let Some(coord) = channels.coord(entry.position.point) else {
+            return Ok(None);
+        };
+        if coord == geometry.end.berth
             && entry.position.heading == geometry.end.attachment.outward.opposite()
         {
-            return reconstruct_path(entry, &parents, resources, execution).map(Some);
+            return reconstruct_path(entry, &parents, channels, resources, execution);
         }
         for heading in DIRECTIONS {
             resources.checkpoint()?;
@@ -640,17 +652,23 @@ fn find_path(
             {
                 continue;
             }
-            let Some(next) =
-                channels.neighbor(entry.position.coord, heading, resources, execution)?
+            let Some(next_point) =
+                channels.neighbor(entry.position.point, heading, resources, execution)?
             else {
                 continue;
+            };
+            let Some(next) = channels.coord(next_point) else {
+                return Ok(None);
             };
             if next == geometry.end.berth && heading != geometry.end.attachment.outward.opposite() {
                 continue;
             }
             let Some(segment) = channels::segment_cost(
                 geometry,
-                entry.position,
+                Position {
+                    coord,
+                    heading: entry.position.heading,
+                },
                 next,
                 heading,
                 resources,
@@ -659,8 +677,8 @@ fn find_path(
             else {
                 continue;
             };
-            let position = Position {
-                coord: next,
+            let position = ChannelPosition {
+                point: next_point,
                 heading,
             };
             let shared = resources.checked_work_add(entry.cost.shared, segment.shared)?;
@@ -714,28 +732,34 @@ fn find_path(
 
 fn reconstruct_path(
     winner: OpenEntry,
-    parents: &HashMap<Position, Position>,
+    parents: &HashMap<ChannelPosition, ChannelPosition>,
+    channels: &channels::ChannelAxes,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<Vec<CanvasCoord>> {
+) -> Result<Option<Vec<CanvasCoord>>> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let mut path = Vec::new();
     path.try_reserve(resources.checked_work_add(winner.cost.length, 1)?)
         .map_err(|_| layout_allocation_failed())?;
     let mut cursor = winner.position;
-    path.push(cursor.coord);
+    let Some(mut coord) = channels.coord(cursor.point) else {
+        return Ok(None);
+    };
+    path.push(coord);
     while let Some(previous) = parents.get(&cursor).copied() {
-        let mut coord = cursor.coord;
-        while coord != previous.coord {
+        let Some(previous_coord) = channels.coord(previous.point) else {
+            return Ok(None);
+        };
+        while coord != previous_coord {
             execution.checkpoint(merman_model::OperationPhase::Layout)?;
             resources.charge_layout_work(1)?;
             // Parent links join adjacent critical coordinates on one axis. Expand only
             // this winning chain; the frontier never stores intervening terminal cells.
-            if coord.x < previous.coord.x {
+            if coord.x < previous_coord.x {
                 coord.x += 1;
-            } else if coord.x > previous.coord.x {
+            } else if coord.x > previous_coord.x {
                 coord.x -= 1;
-            } else if coord.y < previous.coord.y {
+            } else if coord.y < previous_coord.y {
                 coord.y += 1;
             } else {
                 coord.y -= 1;
@@ -752,7 +776,7 @@ fn reconstruct_path(
         let opposite = path.len() - 1 - index;
         path.swap(index, opposite);
     }
-    Ok(path)
+    Ok(Some(path))
 }
 
 // Unit traversal is used only for semantic inspection and forced-port preflight,
