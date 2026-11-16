@@ -1,0 +1,2 @@
+# Preserve the original diagnostic input's CRLF bytes and missing final newline.
+dense-work-budget.mmd -text
