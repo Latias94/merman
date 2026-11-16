@@ -289,3 +289,39 @@ fn sequence_message_html_breaks_preserve_leading_consecutive_and_trailing_empty_
         );
     }
 }
+
+#[test]
+fn sequence_wrapping_keeps_whitespace_only_html_paragraphs() {
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for signal in ["A->>B", "B->>A", "A->>A"] {
+            for separator in [" ", "   "] {
+                for wrap in ["", "wrap:"] {
+                    let source = format!(
+                        "sequenceDiagram\nparticipant A\nparticipant B\n{signal}: {wrap}One<br/>{separator}<br/>Two"
+                    );
+                    let rendered = render_sequence(&source, &options).unwrap();
+                    let first = first_line_index_containing(&rendered, "One");
+                    let second = first_line_index_containing(&rendered, "Two");
+                    assert_eq!(second, first + 2, "{rendered}");
+                    let empty = rendered.lines().nth(first + 1).unwrap();
+                    assert!(
+                        empty.chars().all(|ch| matches!(ch, ' ' | '|' | '│')),
+                        "{rendered}"
+                    );
+                    for center in actor_columns(&rendered, &['A', 'B']) {
+                        let lifeline = if options.charset == merman_ascii::AsciiCharset::Ascii {
+                            '|'
+                        } else {
+                            '│'
+                        };
+                        assert_eq!(
+                            glyph_at_column(empty, center, options.terminal_width_profile),
+                            Some(lifeline),
+                            "{rendered}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

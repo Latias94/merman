@@ -1080,6 +1080,7 @@ struct WrappedLabelProcessor<S> {
     chunk_width: usize,
     line_width: usize,
     emitted_lines: usize,
+    paragraph_start_line: usize,
 }
 
 impl<S> WrappedLabelProcessor<S>
@@ -1107,6 +1108,7 @@ where
             chunk_width: 0,
             line_width: 0,
             emitted_lines: 0,
+            paragraph_start_line: 0,
         }
     }
 
@@ -1205,10 +1207,13 @@ where
     fn finish_paragraph(&mut self, authored_break: bool) -> Result<()> {
         self.finish_word()?;
         self.flush_line()?;
-        if !self.paragraph_has_text && (self.preserve_empty_paragraphs || authored_break) {
+        if self.emitted_lines == self.paragraph_start_line
+            && (authored_break || self.preserve_empty_paragraphs && !self.paragraph_has_text)
+        {
             self.emit_empty_line()?;
         }
         self.paragraph_has_text = false;
+        self.paragraph_start_line = self.emitted_lines;
         Ok(())
     }
 
