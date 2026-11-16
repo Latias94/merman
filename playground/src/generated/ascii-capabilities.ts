@@ -669,7 +669,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "diagram_type": "packet",
     "display_name": "Packet",
     "semantic_coverage": "partial",
-    "primary_projection": "structured_text",
+    "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
@@ -688,27 +688,38 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "fallback_encodings": [
       "plain"
     ],
-    "support_level": "summary",
+    "support_level": "partial",
     "supported_semantics": [
-      "bit ranges",
-      "labels",
-      "row splitting",
-      "multi-row packets"
+      "fixed two-terminal-cell bit grid",
+      "exact bit positions, gaps, and cross-row field splitting",
+      "ascending and descending bit order",
+      "optional bit-number display",
+      "source packet.bitsPerRow, packet.bitOrder, and packet.showBits configuration",
+      "length-framed authored labels and raw start/end/bits records after the plot"
     ],
     "limits": [
-      "output is an ordered row report rather than a spatial bit-width grid",
+      "spatial admission requires integer packet.bitsPerRow in 1..=64; this is a terminal bound, not a Mermaid syntax limit",
+      "borrowed render_model defaults to 32 bits per row, ascending order, and visible bit numbers",
+      "row widths outside the spatial domain, coordinates outside exact nonnegative integers, fractional/non-finite/negative DB bits, overlaps, or out-of-order blocks retain complete structured records and report StructuredText",
+      "narrow field labels may use '*' with an explicit legend and complete detail records; labels never widen fields",
+      "stored DB bits can differ from inclusive range width after upstream row splitting and are preserved without correction",
       "visual styling beyond terminal borders is not represented"
     ],
     "evidence": [
       {
         "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/packet_grid.rs",
+        "note": "owns bounded spatial admission, bit positions, configuration, exact records, viewport, encoding, and resource checks"
+      },
+      {
+        "kind": "local_semantic_probe",
         "source": "crates/merman-ascii/tests/new_family_models.rs",
-        "note": "typed-model tests render packet ranges as terminal-native rows"
+        "note": "typed-model compatibility tests retain packet ranges, DB bit counts, and injective labels"
       },
       {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-        "note": "support matrix classifies Packet as partial structured text"
+        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#packet-bit-grid",
+        "note": "support matrix bounds Packet's partial spatial projection and complete record-only cases"
       }
     ]
   },

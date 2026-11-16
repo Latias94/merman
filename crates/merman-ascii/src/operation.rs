@@ -38,6 +38,10 @@ impl<'a> AsciiExecution<'a> {
         self
     }
 
+    pub(crate) const fn max_width(self) -> Option<usize> {
+        self.viewport.max_width
+    }
+
     /// Binds the execution to the render-wide ledger owned by the top-level request.
     ///
     /// Standalone family tests keep the historical disposable ledger behavior, while a complete

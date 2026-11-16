@@ -756,6 +756,47 @@ fn cli_rejects_duplicate_generic_and_legacy_ascii_grid_overrides() {
     assert!(stderr.contains("specified by both"), "{stderr}");
 }
 
+#[cfg(feature = "diagram-packet")]
+#[test]
+fn packet_reports_distinguish_spatial_text_and_viewport_fallback_output() {
+    for (bits_per_row, max_width, projection, outcome) in [
+        ("16", "80", "diagrammatic", "primary"),
+        ("65", "80", "structured_text", "primary"),
+        ("32", "32", "structured_text", "fallback"),
+    ] {
+        let source = format!(
+            "---\nconfig:\n  packet:\n    bitsPerRow: {bits_per_row}\n    bitOrder: descending\n---\npacket\n0-7: \"Header\"\n8-15: \"Body\""
+        );
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "ascii",
+                "--ascii-report",
+                "--ascii-max-width",
+                max_width,
+                "--ascii-overflow",
+                "fallback",
+                "-",
+            ],
+            &source,
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = assert_plain_ascii_report(&output.stdout);
+        assert_eq!(report["family"], "packet");
+        assert_eq!(report["projection"], projection);
+        assert_eq!(report["outcome"], outcome);
+        assert!(report["text"].as_str().unwrap().contains("Header"));
+        if projection == "diagrammatic" {
+            assert!(report["text"].as_str().unwrap().contains("7..0"));
+        }
+    }
+}
+
 #[cfg(feature = "svg")]
 #[test]
 fn text_admission_ignores_svg_layout_limits_in_combined_builds() {

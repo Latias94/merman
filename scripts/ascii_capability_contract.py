@@ -38,6 +38,7 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "class",
     "er",
     "flowchart",
+    "packet",
     "sequence",
     "state",
     "swimlane",
@@ -49,7 +50,6 @@ ASCII_SUMMARY_FAMILIES = {
     "journey",
     "kanban",
     "mindmap",
-    "packet",
     "timeline",
     "treeView",
 }

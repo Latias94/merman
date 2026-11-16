@@ -74,23 +74,24 @@ and individual relationships with complete labels, markers, strokes, membership,
 details. Flowchart first-use declarations avoid a separate repeated node table. Class and ER
 width fallback uses family-owned keyed declarations, members/attributes, and individual
 relationships with independent markers or cardinalities. Known defaults and derived layout
-caches are omitted; nondefault metadata and source configuration stay with their owner. Other
-families retain their existing fallback projections.
+caches are omitted; nondefault metadata and source configuration stay with their owner. Packet
+uses the existing bounded record reflow for Plain width fallback. Other families retain their
+existing fallback projections.
 
 ### Admitted profile combinations
 
 | Family set | Layout profiles | Width profiles | Primary encodings | Fallback encodings |
 | --- | --- | --- | --- | --- |
 | Flowchart, Swimlane, Sequence | `canonical`, `compact`, `auto` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
-| State, Class, ER, XYChart, structured-text families | `canonical` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| State, Class, ER, Packet, XYChart, structured-text families | `canonical` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Unsupported families | none | none | none | none |
 
 ## Diagrammatic Families
 
 These families are counted as ASCII diagrams because the primary projection preserves a spatial
-relationship: nodes/edges, participants/messages, states/transitions, entities/relations, or plot
-coordinates. A family remains `Partial` until its common semantic fields are both retained and
-readable at ordinary terminal widths.
+relationship: nodes/edges, participants/messages, states/transitions, entities/relations, plot
+coordinates, or bit positions. A family remains `Partial` until its common semantic fields are
+both retained and readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
@@ -100,7 +101,37 @@ readable at ordinary terminal widths.
 | State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, terminal colors, structural empty concurrency regions, and transverse routes through intermediate region separators. | State is canonical-only and does not inherit Flowchart compact policy. Direct typed-model Divider endpoints retain dedicated routing; some presentation metadata and future shape variants are approximated. Bounded fallback is a typed Plain compatibility projection. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, directed component ranks, private channels for bounded cycles and DAG diamonds, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | Bounded channel search does not guarantee arbitrary dense routing. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, directed component ranks, private channels for bounded cycles and DAG diamonds, and explicit relation summaries. | Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; bounded search is best effort. Accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
+| Packet | Partial | Diagrammatic | Yes | Fixed two-cell bit positions and widths, gaps, physical row splitting, ascending/descending bit order, optional bit numbers, and complete authored labels plus raw numeric DB records after the plot. | Spatial admission requires integer `bitsPerRow` in `1..=64`. Labels never widen fields; narrow labels may use `*` with a legend and exact details. Non-spatial numeric values, overlaps, or out-of-order fields retain complete StructuredText records. Canonical-only; Plain width fallback uses bounded record reflow. |
 | XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, jointly composed line topology, distinct line-series point markers, explicit shared sample cells, mixed series, titles, legends, display policy, injective record-oriented disclosure after the plot, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; coordinates are quantized, line markers repeat after six series, and dense bar/line overlap still needs exact records. Long individual fields and large geometry can exceed the viewport. Unknown direct-model orientations and band y-axes are rejected; accessibility title/description metadata is intentionally omitted. |
+
+### Packet bit grid
+
+Packet's bounded spatial projection uses exactly two terminal cells per bit. Field geometry follows
+the inclusive `start..end` range, preserves gaps, and splits fields across physical rows. Label
+length never changes the scale. Descending bit order mirrors the fields and gaps within each row
+and swaps each field fragment's endpoint annotations, including when bit numbers are hidden.
+A label that cannot fit may use `*`; an explicit legend and complete
+byte-framed authored label records disambiguate it. Raw `start`, `end`, and DB `bits` values remain
+in the records after the plot: upstream row splitting can produce `bits` values different from
+`end - start + 1`, and the terminal renderer does not rewrite them.
+
+Source rendering and source-backed reports honor `packet.bitsPerRow`, `packet.bitOrder`, and
+`packet.showBits`. Bare borrowed `render_model` has no source configuration and uses 32 bits per
+row, ascending order, and visible bit numbers. Spatial admission accepts only integer row widths
+from 1 through 64; the maximum is an explicit terminal presentation bound, not a restriction on
+Mermaid syntax. Coordinates must be nonnegative exact integers no greater than `2^53 - 1`, and
+DB `bits` must be finite nonnegative integers (zero and inconsistent split counts are preserved).
+Other numeric values, overlapping or out-of-order fields, and row widths outside the spatial domain
+retain complete structured records. Their actual output report says
+`structured_text`, even though the family's primary capability is `diagrammatic`. Existing source
+validation, resource, and cancellation errors remain errors and are never converted into success.
+An admitted coordinate range can still exceed grid or work budgets; that returns the corresponding
+resource error rather than changing projections.
+
+Packet admits only Canonical, both Unicode/CJK width profiles, and the five primary encodings in
+the table above. Width fallback is Plain through the existing bounded record reflow; there is no
+new layout profile, output schema, or dependency. The [Packet admission note](ASCII_PHASE_GATE_REPORT.md#packet-bounded-spatial-admission)
+records the small/typical/dense 80/100/120-column comparison and the executable verification owner.
 
 ## Structured-Text Outputs
 
@@ -120,7 +151,6 @@ as its own product policy, but neither is the renderer's complete structured fal
 | Journey | Partial | Structured text | Sections, tasks, actors, and scores, with quoted byte-length framing for authored strings and list items. | Does not draw Mermaid journey geometry. |
 | Kanban | Partial | Structured text | Columns, stable group/card ids, group parent ownership, assignments, metadata, and deterministic `Unassigned` grouping. Authored labels and metadata use quoted byte-length framing. | Drag/drop and nested board geometry are not represented; group parent ownership is disclosed as text; duplicate or empty ids are rejected. |
 | Mindmap | Partial | Structured text | Hierarchical nodes, stable authored ids, labels, cycles/disconnected components, charset-aware connectors, and shape/icon/section disclosure as an outline. Authored fields use quoted byte-length framing. | Rich browser node geometry is not reproduced; duplicate internal/authored ids, missing authored ids, duplicate edges, and missing endpoints are rejected. |
-| Packet | Partial | Structured text | Bit ranges and labels in ordered terminal rows. | Output does not preserve spatial bit widths; browser-oriented styling is not represented. |
 | Timeline | Partial | Structured text | Direction, sections, and events in ordered grouped text; authored task, event, section, title, and accessibility fields use quoted byte-length framing. | Does not draw Mermaid timeline geometry; parser bookkeeping score is omitted. |
 | TreeView | Partial | Structured text | Root and node identities, authored levels, hierarchy, file/directory types, charset-aware connectors, and icon/class/description disclosure. Authored fields use quoted byte-length framing. | It is an outline rather than two-dimensional diagram geometry; duplicate node ids and unknown node types are rejected, and browser icons/CSS classes are disclosed rather than styled. |
 
@@ -163,7 +193,6 @@ in their typed models, but require a complete terminal slice before their capabi
 | --- | --- | --- |
 | Pie | Categories on one shared percentage-bar scale. | Exact value disclosure, proportional lengths, zero totals, tiny categories, and complete long labels. Name the bar projection explicitly. |
 | GitGraph | Commit lanes with a branch and merge. | Each commit appears once; every parent edge remains traceable, including merges with custom display types and cherry-picks. |
-| Packet | A fixed 16- or 32-bit row grid. | Preserve field widths, gaps, cross-row ranges, and bit order; narrow labels must not expand the field's width. |
 | Gantt | Task bars on a common resolved time scale. | Preserve task identity, dependency facts, milestones, excluded dates, and distinctions lost through cell quantization. |
 | Agentflow / Block | A family-owned adapter over shared graph or grid mechanisms. | Preserve role/connector semantics or column/span constraints before admitting dense containers and routes. |
 

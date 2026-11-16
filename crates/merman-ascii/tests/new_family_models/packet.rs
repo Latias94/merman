@@ -32,19 +32,29 @@ fn packet_render_model_renders_rows_and_ranges() {
 
     let rendered = render(RenderSemanticModel::Packet(model));
 
-    assert_eq!(
-        rendered,
-        concat!(
-            "title(bytes=6)=\"Packet\"\n",
-            "accTitle(bytes=12)=\"Packet title\"\n",
-            "accDescr(bytes=18)=\"Packet description\"\n",
+    assert!(
+        rendered.contains("Packet: 32 bits/row, 2 cells/bit."),
+        "{rendered}"
+    );
+    assert!(
+        rendered.contains("|    header     |    payload    |            footer             |"),
+        "{rendered}"
+    );
+    assert!(
+        rendered.ends_with(concat!(
             "row 1:\n",
             "  - range=[0..7] bits=8 label(bytes=6)=\"header\"\n",
             "  - range=[8..15] bits=8 label(bytes=7)=\"payload\"\n",
             "row 2:\n",
             "  - range=[16..31] bits=16 label(bytes=6)=\"footer\"",
-        )
+        )),
+        "{rendered}"
     );
+    assert!(rendered.starts_with(concat!(
+        "title(bytes=6)=\"Packet\"\n",
+        "accTitle(bytes=12)=\"Packet title\"\n",
+        "accDescr(bytes=18)=\"Packet description\"\n",
+    )));
 }
 #[test]
 fn packet_parser_split_blocks_render_the_database_bit_counts() {
@@ -55,9 +65,9 @@ fn packet_parser_split_blocks_render_the_database_bit_counts() {
 "#,
     );
 
-    assert_eq!(
-        rendered,
-        concat!(
+    assert_eq!(rendered.matches("word ").count(), 3, "{rendered}");
+    assert!(
+        rendered.ends_with(concat!(
             "row 1:\n",
             "  - range=[0..10] bits=11 label(bytes=4)=\"test\"\n",
             "  - range=[11..31] bits=20 label(bytes=8)=\"multiple\"\n",
@@ -65,7 +75,8 @@ fn packet_parser_split_blocks_render_the_database_bit_counts() {
             "  - range=[32..63] bits=31 label(bytes=8)=\"multiple\"\n",
             "row 3:\n",
             "  - range=[64..90] bits=26 label(bytes=8)=\"multiple\"",
-        )
+        )),
+        "{rendered}"
     );
 }
 

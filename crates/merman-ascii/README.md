@@ -71,8 +71,8 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
-| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Every selected logical model family has one capability record, including unsupported terminal
 projections. These records describe this crate's local adapters even when another dependency selects
@@ -85,6 +85,12 @@ layout selection are currently admitted only for Flowchart, Swimlane, and Sequen
 canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
 primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+
+Packet uses two cells per bit for integer `packet.bitsPerRow` in `1..=64`, with full field records
+after the grid. Source rendering honors `bitsPerRow`, `bitOrder`, and `showBits`; detached models
+use 32 bits per row with ascending annotations and visible bit numbers. Labels never widen a field:
+`*` points to the exact record when a label or bit annotation cannot fit. Non-spatial numeric or
+overlapping models retain complete records and report `StructuredText` for that result.
 
 Swimlane reuses the Flowchart model kind. Use `render_parsed` or `render_parsed_report` to retain
 the parser-owned logical language identity, or provide the matching `AsciiSourceContext` when

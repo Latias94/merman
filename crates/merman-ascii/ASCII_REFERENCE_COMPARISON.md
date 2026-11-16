@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-11-15
+Last updated: 2026-11-16
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
 notes what may be visible in the optional local reference checkouts:
@@ -25,9 +25,14 @@ product boundary.
   is not by itself evidence that a reader can recover the same graph.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
-- Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph now render as compact
+- Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, and GitGraph render as compact
   structured-text projections; keep those projections readable and headless rather than
   browser-shaped.
+- Packet's Partial Diagrammatic contract uses a fixed two-cell bit scale for integer row widths
+  in `1..=64`, preserving exact positions, gaps, row splits, and configured bit order/number
+  display. Complete byte-framed labels and raw DB counts follow the plot; non-spatial models
+  retain complete records and report StructuredText. The Packet admission note in the phase
+  report records the complete-text comparison and verified 80/100/120-column results.
 - The Phase 0-3 evidence and R34 admission decisions are tracked in
   `docs/rendering/ASCII_PHASE_GATE_REPORT.md`. Railroad, Requirement, Ishikawa, and Quadrant remain
   Unsupported because each current prototype fails at least one required dense or typed-topology
@@ -516,7 +521,8 @@ expected output.
 | Mindmap / TreeView | Not part of the reference scope. | Broader mindmap/tree examples can suggest readable outline shapes. | Compact structured-text hierarchy outlines with preserved order and wrapped labels. | Keep the output readable and compact; do not imitate browser geometry. |
 | Timeline / Gantt | Not part of the reference scope. | Broader schedule renderers can suggest readable summary patterns. | Readable rows that preserve sections, tasks, spans, and flags. | Favor honest text summaries over pseudo-graphs. |
 | Journey / Kanban | Not part of the reference scope. | Broader board renderers can suggest grouping and actor/card metadata patterns. | Readable structured-text reports that preserve section order, actor order, and card metadata. | Keep the projection stable and compact. |
-| Packet / GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports that preserve ranges, parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
+| Packet | Not part of the reference scope. | No Packet byte-parity oracle is adopted. | Bounded Partial Diagrammatic contract: integer rows of 1..=64 bits at two terminal cells per bit, exact gaps and cross-row splitting, source-configured order/number display, and complete authored-label/raw-DB records after the plot. Non-spatial cases report StructuredText; borrowed models default to 32/ascending/showBits. | Narrow labels may use `*` with a legend and exact details; geometry never expands for text. This is a terminal admission bound, not a Mermaid syntax limit. Small/typical/dense cases pass all 80/100/120-column gates against the complete record baseline; the phase report records dimensions and vertical cost. |
+| GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports preserve parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
 | Railroad / Requirement / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report executes source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
 
 ## Intentional Differences
@@ -544,6 +550,11 @@ expected output.
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.
 - XYChart dense-layout policy beyond the shipped compact plot and `values:` disclosure rows.
+- Packet spatial admission remains bounded to integer rows of 1..=64 bits. Coordinates outside
+  the exact nonnegative integer domain, non-spatial row widths/DB bit counts, overlaps, and out-of-order fields retain complete text;
+  this does not justify label-driven width distortion or converting resource errors into success.
+  The [Packet admission note](../../docs/rendering/ASCII_PHASE_GATE_REPORT.md#packet-bounded-spatial-admission)
+  owns the verified small/typical/dense width comparison, rather than a reference parity claim.
 - Railroad, Requirement, Ishikawa, and Quadrant remain breadth candidates only after a new proposal
   supplies the complete spatial and width evidence required by
   `docs/rendering/ASCII_PHASE_GATE_REPORT.md`; summary-only output does not clear that gate.

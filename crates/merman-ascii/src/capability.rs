@@ -593,23 +593,39 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         diagram_type: "packet",
         display_name: "Packet",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
-        primary_projection: AsciiPrimaryProjection::StructuredText,
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
         structured_text_fallback: true,
-        supported_semantics: &["bit ranges", "labels", "row splitting", "multi-row packets"],
+        supported_semantics: &[
+            "fixed two-terminal-cell bit grid",
+            "exact bit positions, gaps, and cross-row field splitting",
+            "ascending and descending bit order",
+            "optional bit-number display",
+            "source packet.bitsPerRow, packet.bitOrder, and packet.showBits configuration",
+            "length-framed authored labels and raw start/end/bits records after the plot",
+        ],
         limits: &[
-            "output is an ordered row report rather than a spatial bit-width grid",
+            "spatial admission requires integer packet.bitsPerRow in 1..=64; this is a terminal bound, not a Mermaid syntax limit",
+            "borrowed render_model defaults to 32 bits per row, ascending order, and visible bit numbers",
+            "row widths outside the spatial domain, coordinates outside exact nonnegative integers, fractional/non-finite/negative DB bits, overlaps, or out-of-order blocks retain complete structured records and report StructuredText",
+            "narrow field labels may use '*' with an explicit legend and complete detail records; labels never widen fields",
+            "stored DB bits can differ from inclusive range width after upstream row splitting and are preserved without correction",
             "visual styling beyond terminal borders is not represented",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/packet_grid.rs",
+                note: "owns bounded spatial admission, bit positions, configuration, exact records, viewport, encoding, and resource checks",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests render packet ranges as terminal-native rows",
+                note: "typed-model compatibility tests retain packet ranges, DB bit counts, and injective labels",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-                note: "support matrix classifies Packet as partial structured text",
+                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#packet-bit-grid",
+                note: "support matrix bounds Packet's partial spatial projection and complete record-only cases",
             },
         ],
     },
@@ -965,6 +981,11 @@ mod tests {
         ),
         (
             "docs/rendering/ASCII_SUPPORT_MATRIX.md",
+            "packet-bit-grid",
+            "### Packet bit grid",
+        ),
+        (
+            "docs/rendering/ASCII_SUPPORT_MATRIX.md",
             "structured-text-outputs",
             "## Structured-Text Outputs",
         ),
@@ -1026,6 +1047,7 @@ mod tests {
                 "class",
                 "er",
                 "flowchart",
+                "packet",
                 "sequence",
                 "state",
                 "swimlane",
@@ -1057,9 +1079,15 @@ mod tests {
             assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
         }
 
-        let state = find("state");
-        assert_eq!(state.layout_profiles, &[AsciiLayoutProfile::Canonical]);
-        assert!(!state.supports_layout_profile(AsciiLayoutProfile::Compact));
+        for diagram_type in ["state", "packet"] {
+            let capability = find(diagram_type);
+            assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
+            assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Compact));
+            assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Auto));
+            assert_eq!(capability.width_profiles, TERMINAL_WIDTH_PROFILES);
+            assert_eq!(capability.encodings, OUTPUT_ENCODINGS);
+            assert_eq!(capability.fallback_encodings, &[AsciiOutputEncoding::Plain]);
+        }
 
         let unsupported = find("zenuml");
         assert!(unsupported.layout_profiles.is_empty());
@@ -1090,13 +1118,17 @@ mod tests {
 
         assert_eq!(find("flowchart").support_level, AsciiSupportLevel::Partial);
         assert_eq!(find("sequence").support_level, AsciiSupportLevel::Partial);
-        assert_eq!(find("packet").support_level, AsciiSupportLevel::Summary);
+        assert_eq!(find("packet").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(
+            find("packet").primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
         assert_eq!(find("treeView").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
 
         for diagram_type in [
-            "gantt", "gitgraph", "journey", "kanban", "mindmap", "packet", "timeline", "treeView",
+            "gantt", "gitgraph", "journey", "kanban", "mindmap", "timeline", "treeView",
         ] {
             let capability = find(diagram_type);
             assert_eq!(
