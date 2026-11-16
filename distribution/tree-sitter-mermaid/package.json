@@ -84,8 +84,8 @@
     "node-gyp": "13.1.0",
     "prebuildify": "6.0.1",
     "tree-sitter": "0.25.1",
-    "tree-sitter-cli": "0.27.1",
-    "web-tree-sitter": "0.27.1"
+    "tree-sitter-cli": "0.27.2",
+    "web-tree-sitter": "0.27.2"
   },
   "allowScripts": {
     "tree-sitter@0.25.1": true,
