@@ -23,6 +23,7 @@ mod markup;
     )
 )]
 mod model;
+mod planning;
 mod routing;
 mod shape;
 pub(crate) mod style;

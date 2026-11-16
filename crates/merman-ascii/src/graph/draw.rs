@@ -2,10 +2,7 @@ use super::charset::GraphCharset;
 use super::label::GRAPH_LABEL_LINE_GAP;
 #[cfg(test)]
 use super::layout::layout_graph_with_resources;
-use super::layout::{
-    GraphLayout, GroupLayout, NodeLayout, graph_canvas_extent,
-    layout_graph_with_resources_and_execution,
-};
+use super::layout::{GraphLayout, GroupLayout, NodeLayout, graph_canvas_extent};
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
 use super::routing;
 use super::shape::GraphNodeShapeSemantics;
@@ -231,19 +228,11 @@ fn prepare_graph_render_controlled(
 ) -> Result<PreparedGraphRender> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let charset = GraphCharset::for_policy(layout_policy);
-    let graph_layout =
-        layout_graph_with_resources_and_execution(graph, layout_policy, resources, execution)?;
+    let super::planning::PlannedGraph {
+        layout: graph_layout,
+        routes: route_scene_plan,
+    } = super::planning::plan_graph(graph, layout_policy, &charset, resources, execution)?;
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    graph_canvas_extent(&graph_layout.nodes, &graph_layout.groups, 0, 0, resources)?;
-    let route_scene_plan = routing::prepare_route_scene_with_execution(
-        graph,
-        &graph_layout,
-        &graph.edges,
-        &charset,
-        layout_policy,
-        resources,
-        execution,
-    )?;
     let (edge_width, edge_height) = route_scene_plan.canvas_extent();
     let extent = graph_canvas_extent(
         &graph_layout.nodes,
