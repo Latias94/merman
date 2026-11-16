@@ -13,6 +13,8 @@ use rustc_hash::FxHashMap as HashMap;
 use std::collections::VecDeque;
 
 const EMPTY_GROUP_RANK_GAP: usize = 2;
+// Inclusive envelopes need two coordinate steps to leave one visibly empty row.
+const DIVIDER_SECTION_STEP: usize = 2;
 
 fn signed(value: usize, resources: &ResourceContext) -> Result<isize> {
     isize::try_from(value).map_err(|_| grid_overflow(resources))
@@ -179,6 +181,9 @@ pub(super) fn layout_groups_from_bounds(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
+    let routing_policies = super::transit::group_routing_policies(
+        graph, layouts, topology, policy, resources, execution,
+    )?;
     // Charge indexed lookups plus the linear topology, layout, and output passes up front.
     let mut member_count = 0usize;
     for (group_index, group) in graph.groups.iter().enumerate() {
@@ -211,7 +216,8 @@ pub(super) fn layout_groups_from_bounds(
             GraphGroupKind::Container if !group.nodes.is_empty() => {
                 // The perimeter includes the padding on both sides; recover the same title host
                 // used by raw_group_bounds_for_members before painting its prepared label.
-                let padding = resources.checked_grid_mul(policy.group_padding_x.max(1), 2)?;
+                let padding = resources
+                    .checked_grid_mul(routing_policies[group_index].group_padding_x.max(1), 2)?;
                 let title_width = resources
                     .checked_grid_add(width.saturating_sub(padding).saturating_sub(1), 3)?
                     .max(1);
@@ -228,6 +234,7 @@ pub(super) fn layout_groups_from_bounds(
             id: group.id.clone(),
             kind: group.kind,
             title,
+            title_transform: crate::graph::surface::OutputTransform::for_direction(graph.direction),
             style: group.style,
             divider_span: None,
             x: usize::try_from(bounds.x.max(0)).map_err(|_| grid_overflow(resources))?,
@@ -618,6 +625,9 @@ pub(super) fn raw_group_bounds_batch(
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<Option<RawBounds>>> {
     resources.transaction(|resources| {
+        let routing_policies = super::transit::group_routing_policies(
+            graph, layouts, topology, policy, resources, execution,
+        )?;
         checkpoint_layout(execution, 0)?;
         resources.charge_layout_work(graph.groups.len())?;
         let mut member_count = 0usize;
@@ -775,7 +785,7 @@ pub(super) fn raw_group_bounds_batch(
                     &layout_bounds_by_id,
                     topology,
                     &completed,
-                    policy,
+                    &routing_policies[group_index],
                     resources,
                     execution,
                 )?
@@ -803,6 +813,107 @@ pub(super) fn raw_group_bounds_batch(
     })
 }
 
+/// Empty sections have no node bands of their own. Reserve their measured height in the row
+/// separating their preceding and following populated sections, using the shared projection.
+#[allow(clippy::too_many_arguments)]
+pub(super) fn empty_divider_row_requirements(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    policy: &GraphLayoutPolicy,
+    row_heights: &grid::AxisSizes,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<grid::AxisSizes> {
+    resources.transaction(|resources| {
+        checkpoint_layout(execution, 0)?;
+        resources.charge_layout_work(graph.groups.len())?;
+        let mut has_empty = false;
+        let mut has_divider = false;
+        for (index, group) in graph.groups.iter().enumerate() {
+            checkpoint_layout(execution, index)?;
+            has_empty |= group.nodes.is_empty();
+            has_divider |= group.kind == GraphGroupKind::Divider;
+        }
+        let mut requirements = grid::AxisSizes::default();
+        if !has_empty || !has_divider {
+            return Ok(requirements);
+        }
+        let completed =
+            raw_group_bounds_batch(graph, layouts, topology, policy, resources, execution)?;
+        let scopes = CompoundScopes::try_new(graph, layouts, topology, resources, execution)?;
+        resources.charge_layout_work(scopes.children.len())?;
+        let mut membership_resources = resources.clone();
+        for (scope, children) in scopes.children.iter().enumerate() {
+            checkpoint_layout(execution, scope)?;
+            resources.charge_layout_work(children.len())?;
+            if !scopes.is_concurrency_scope(graph, scope, resources, execution)? {
+                continue;
+            }
+            let mut previous_bottom = None;
+            let mut occupied_bottom = None;
+            let mut empty_since_previous = false;
+            for (index, child) in children.iter().copied().enumerate() {
+                checkpoint_layout(execution, index)?;
+                if graph.groups[child].kind != GraphGroupKind::Divider {
+                    continue;
+                }
+                let bounds = completed[child].ok_or_else(|| invalid_group_membership(graph))?;
+                let members =
+                    topology.group_member_node_indices(child, &mut membership_resources)?;
+                if members.is_empty() {
+                    occupied_bottom = Some(bounds.bottom);
+                    empty_since_previous = previous_bottom.is_some();
+                    continue;
+                }
+                resources.charge_layout_work(members.len())?;
+                let mut top = usize::MAX;
+                let mut bottom = 0usize;
+                for (member_index, member) in members.into_iter().enumerate() {
+                    checkpoint_layout(execution, member_index)?;
+                    // build_node_layouts preserves graph.nodes order, matching topology's node
+                    // indices; later projection updates these layouts in place without reordering.
+                    let node = layouts
+                        .get(member)
+                        .ok_or_else(|| invalid_group_membership(graph))?;
+                    top = top.min(node.grid.y);
+                    bottom = bottom.max(resources.checked_grid_add(node.grid.y, 2)?);
+                }
+                if empty_since_previous
+                    && let (Some(before), Some(occupied)) = (previous_bottom, occupied_bottom)
+                {
+                    let desired_top = signed_add(occupied, DIVIDER_SECTION_STEP, resources)?;
+                    let extra = desired_top
+                        .checked_sub(bounds.y)
+                        .ok_or_else(|| grid_overflow(resources))?;
+                    if extra > 0 {
+                        let separator = resources.checked_grid_add(before, 1)?;
+                        if separator >= top {
+                            return Err(AsciiError::UnsupportedFeature {
+                                diagram_type: graph.diagram_type(),
+                                feature: "concurrency sections without a separating grid row",
+                            });
+                        }
+                        let extra = usize::try_from(extra).map_err(|_| grid_overflow(resources))?;
+                        let height = resources.checked_grid_add(
+                            grid::separator_expansion_base(row_heights, separator),
+                            extra,
+                        )?;
+                        requirements
+                            .try_reserve(1)
+                            .map_err(|_| layout_work_allocation_failed())?;
+                        grid::set_axis_size(&mut requirements, separator, height);
+                    }
+                }
+                previous_bottom = Some(bottom);
+                occupied_bottom = Some(bounds.bottom);
+                empty_since_previous = false;
+            }
+        }
+        Ok(requirements)
+    })
+}
+
 /// The final slot is the root scope. Each node and child subtree belongs to one scope, matching
 /// topology's first-parent ownership. This lets empty frames use exactly the same sibling objects
 /// as their containing frame without consulting foreign nodes or partially completed ancestors.
@@ -812,6 +923,28 @@ struct CompoundScopes {
 }
 
 impl CompoundScopes {
+    fn is_concurrency_scope(
+        &self,
+        graph: &AsciiGraph,
+        scope: usize,
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<bool> {
+        checkpoint_layout(execution, 0)?;
+        resources.charge_layout_work(1)?;
+        if !self.nodes[scope].is_empty() || self.children[scope].is_empty() {
+            return Ok(false);
+        }
+        resources.charge_layout_work(self.children[scope].len())?;
+        for (index, child) in self.children[scope].iter().copied().enumerate() {
+            checkpoint_layout(execution, index)?;
+            if graph.groups[child].kind != GraphGroupKind::Divider {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     fn try_new(
         graph: &AsciiGraph,
         layouts: &[NodeLayout],
@@ -871,6 +1004,19 @@ impl CompoundScopes {
         resources: &ResourceContext,
         execution: AsciiExecution<'_>,
     ) -> Result<()> {
+        // Normal concurrency scopes contain only region groups. Mixed typed-model scopes
+        // also have ordinary peers, so their empty regions need generic collision avoidance.
+        let ordered_dividers = self.is_concurrency_scope(graph, scope, resources, execution)?;
+        if ordered_dividers {
+            self.place_empty_divider_children(
+                graph,
+                scope,
+                contains_nodes,
+                completed,
+                resources,
+                execution,
+            )?;
+        }
         let count =
             resources.checked_work_add(self.children[scope].len(), self.nodes[scope].len())?;
         resources.charge_layout_work(count)?;
@@ -897,7 +1043,9 @@ impl CompoundScopes {
         }
         for (index, child) in self.children[scope].iter().copied().enumerate() {
             checkpoint_layout(execution, index)?;
-            if contains_nodes[child] {
+            if contains_nodes[child]
+                || (ordered_dividers && graph.groups[child].kind == GraphGroupKind::Divider)
+            {
                 peers.push(ScopedPeer {
                     level: levels[child].unwrap_or(0),
                     bounds: completed[child].ok_or_else(|| invalid_group_membership(graph))?,
@@ -906,7 +1054,9 @@ impl CompoundScopes {
         }
         for (index, child) in self.children[scope].iter().copied().enumerate() {
             checkpoint_layout(execution, index)?;
-            if contains_nodes[child] {
+            if contains_nodes[child]
+                || (ordered_dividers && graph.groups[child].kind == GraphGroupKind::Divider)
+            {
                 continue;
             }
             let bounds = completed[child].ok_or_else(|| invalid_group_membership(graph))?;
@@ -931,6 +1081,65 @@ impl CompoundScopes {
                 level,
                 bounds: completed[child].ok_or_else(|| invalid_group_membership(graph))?,
             });
+        }
+        Ok(())
+    }
+
+    fn place_empty_divider_children(
+        &self,
+        graph: &AsciiGraph,
+        scope: usize,
+        contains_nodes: &[bool],
+        completed: &mut [Option<RawBounds>],
+        resources: &ResourceContext,
+        execution: AsciiExecution<'_>,
+    ) -> Result<()> {
+        checkpoint_layout(execution, 0)?;
+        resources.charge_layout_work(resources.checked_work_mul(self.children[scope].len(), 2)?)?;
+        let mut leading_span = 0usize;
+        let mut first_top = None;
+        let mut anchor_left = None::<isize>;
+        for (index, child) in self.children[scope].iter().copied().enumerate() {
+            checkpoint_layout(execution, index)?;
+            if graph.groups[child].kind != GraphGroupKind::Divider {
+                continue;
+            }
+            let bounds = completed[child].ok_or_else(|| invalid_group_membership(graph))?;
+            if contains_nodes[child] {
+                first_top.get_or_insert(bounds.y);
+                anchor_left = Some(anchor_left.map_or(bounds.x, |left| left.min(bounds.x)));
+            } else if first_top.is_none() {
+                let height = raw_span(bounds.y, bounds.bottom, resources)?;
+                leading_span = resources.checked_grid_add(
+                    leading_span,
+                    resources.checked_grid_add(height, DIVIDER_SECTION_STEP - 1)?,
+                )?;
+            }
+        }
+        let mut next_top = match first_top {
+            Some(top) => top
+                .checked_sub(signed(leading_span, resources)?)
+                .ok_or_else(|| grid_overflow(resources))?,
+            None => 0,
+        };
+        let left = anchor_left.unwrap_or(0);
+        for (index, child) in self.children[scope].iter().copied().enumerate() {
+            checkpoint_layout(execution, index)?;
+            if graph.groups[child].kind != GraphGroupKind::Divider {
+                continue;
+            }
+            let bounds = completed[child].ok_or_else(|| invalid_group_membership(graph))?;
+            if !contains_nodes[child] {
+                let dx = left
+                    .checked_sub(bounds.x)
+                    .ok_or_else(|| grid_overflow(resources))?;
+                let dy = next_top
+                    .checked_sub(bounds.y)
+                    .ok_or_else(|| grid_overflow(resources))?;
+                self.translate_empty_subtree(child, dx, dy, completed, resources, execution)?;
+            }
+            let placed = completed[child].ok_or_else(|| invalid_group_membership(graph))?;
+            next_top = signed_add(placed.bottom, DIVIDER_SECTION_STEP, resources)?;
         }
         Ok(())
     }
@@ -1062,6 +1271,103 @@ mod tests {
             width: 3,
             height: 3,
         }
+    }
+
+    #[test]
+    fn empty_divider_spacing_admits_exact_work_and_cancels_before_measurement() {
+        let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+        graph.add_node("a", "A");
+        graph.add_node("b", "B");
+        graph.add_group_with_style(
+            "shell",
+            "Tall\nempty\ncontainer",
+            None,
+            vec![],
+            GraphGroupStyle::default(),
+        );
+        for (id, members) in [
+            ("before", vec!["a".into()]),
+            ("empty", vec!["shell".into()]),
+            ("after", vec!["b".into()]),
+        ] {
+            graph.add_group_with_kind_and_style(
+                id,
+                "",
+                None,
+                members,
+                GraphGroupKind::Divider,
+                GraphGroupStyle::default(),
+            );
+        }
+        graph.add_group_with_style(
+            "RUN",
+            "RUN",
+            None,
+            vec!["before".into(), "empty".into(), "after".into()],
+            GraphGroupStyle::default(),
+        );
+        let layouts = [node_layout("a", 0, 0), node_layout("b", 0, 6)];
+        let unbounded = AsciiResourcePolicy::unbounded();
+        let mut topology_resources = ResourceContext::new(unbounded);
+        let topology = GraphGroupTopology::try_new(&graph, &mut topology_resources).unwrap();
+        let layout_policy = AsciiRenderOptions::default()
+            .flowchart_layout()
+            .graph_policy();
+        let rows = grid::AxisSizes::default();
+        let measured = ResourceContext::new(unbounded);
+        let requirements = empty_divider_row_requirements(
+            &graph,
+            &layouts,
+            &topology,
+            &layout_policy,
+            &rows,
+            &measured,
+            AsciiExecution::for_test(&unbounded),
+        )
+        .expect("the measured empty section should fit in one expanded separator row");
+        assert_eq!(requirements.len(), 1);
+        assert!(requirements[&3] > grid::separator_expansion_base(&rows, 3));
+        let exact_work = measured.layout_work_used();
+        for limit in [exact_work, exact_work - 1] {
+            let policy = unbounded
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap();
+            let resources = ResourceContext::new(policy);
+            let result = empty_divider_row_requirements(
+                &graph,
+                &layouts,
+                &topology,
+                &layout_policy,
+                &rows,
+                &resources,
+                AsciiExecution::for_test(&policy),
+            );
+            if limit == exact_work {
+                assert_eq!(result.unwrap(), requirements);
+                assert_eq!(resources.layout_work_used(), exact_work);
+            } else {
+                assert!(
+                    matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                    if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits)
+                );
+                assert_eq!(resources.layout_work_used(), 0);
+            }
+        }
+        let control = merman_model::OperationControl::new();
+        control.cancel();
+        let resources = ResourceContext::new(unbounded);
+        let result = empty_divider_row_requirements(
+            &graph,
+            &layouts,
+            &topology,
+            &layout_policy,
+            &rows,
+            &resources,
+            AsciiExecution::new(&control, &unbounded),
+        );
+        assert!(matches!(result, Err(AsciiError::Cancelled(_))));
+        assert_eq!(resources.layout_work_used(), 0);
+        assert!(rows.is_empty());
     }
 
     #[test]

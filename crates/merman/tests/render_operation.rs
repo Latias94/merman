@@ -2253,7 +2253,8 @@ fn ascii_backend_errors_use_canonical_render_error_classification() {
 #[cfg(feature = "ascii")]
 #[test]
 fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
-    const EXACT_GRID_CELLS: usize = 75;
+    // The canonical layout is five columns by eight rows.
+    const EXACT_GRID_CELLS: usize = 40;
     let source = "flowchart TD\nA --> B";
     let exact_resources = AsciiResourcePolicy::default()
         .with_limit(AsciiResourceLimitId::MaxGridCells, EXACT_GRID_CELLS)
@@ -2269,7 +2270,14 @@ fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
             },
         ))
         .expect("the exact target-local grid policy must admit the request");
-    assert!(matches!(output, RenderOutput::Ascii(Some(_))));
+    let RenderOutput::Ascii(Some(output)) = output else {
+        panic!("the exact target-local grid policy must produce ASCII output");
+    };
+    assert_eq!(
+        (output.primary_extent.width, output.primary_extent.height),
+        (5, 8),
+        "the pinned resource boundary must match the canonical grid"
+    );
 
     let below_resources = AsciiResourcePolicy::default()
         .with_limit(AsciiResourceLimitId::MaxGridCells, EXACT_GRID_CELLS - 1)
@@ -2291,6 +2299,7 @@ fn ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one() {
                 && limit.phase == "ascii_layout"
                 && limit.actual == EXACT_GRID_CELLS as u64
                 && limit.maximum == (EXACT_GRID_CELLS - 1) as u64
+                && limit.cause == merman::ResourceLimitCause::Ceiling
                 && limit.provenance.as_ref().is_some_and(|provenance| {
                     provenance.domain == OperationResourceDomain::Ascii
                         && provenance.profile

@@ -1,7 +1,67 @@
 use super::super::super::charset::GraphCharset;
-use super::super::super::layout::{CanvasCoord, NodeLayout};
+use super::super::super::layout::{CanvasCoord, GraphLayout, NodeLayout};
+use super::super::super::model::GraphGroupKind;
 use super::super::super::shape::{GraphNodeShapeSemantics, GraphNodeSide};
 use super::super::path::StepDirection;
+use crate::error::Result;
+use crate::resource::ResourceContext;
+
+#[derive(Clone, Copy)]
+pub(in crate::graph::routing) struct EndpointGeometry<'a> {
+    pub(in crate::graph::routing) layout: &'a NodeLayout,
+    pub(in crate::graph::routing) interior: bool,
+    pub(in crate::graph::routing) group: bool,
+}
+
+impl<'a> EndpointGeometry<'a> {
+    #[cfg(test)]
+    pub(super) fn node(layout: &'a NodeLayout) -> Self {
+        Self {
+            layout,
+            interior: false,
+            group: false,
+        }
+    }
+
+    pub(in crate::graph::routing) fn for_route(
+        layout: &'a NodeLayout,
+        other: &NodeLayout,
+        graph_layout: &GraphLayout,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        resources.checkpoint()?;
+        resources.charge_layout_work(graph_layout.groups.len())?;
+        let group = graph_layout
+            .groups
+            .iter()
+            .find(|group| group.kind == GraphGroupKind::Container && group.id == layout.id);
+        let interior =
+            group.is_some_and(|group| super::super::geometry::group_contains_node(group, other));
+        Ok(Self {
+            layout,
+            interior,
+            group: group.is_some(),
+        })
+    }
+
+    pub(in crate::graph::routing) fn resolve(
+        self,
+        berth: CanvasCoord,
+        inward: StepDirection,
+        charset: &GraphCharset,
+    ) -> Option<NodeAttachment> {
+        let attachment =
+            NodeAttachment::resolve_in_region(self.layout, berth, inward, self.interior, charset)?;
+        let contact = attachment.contact;
+        if self.group
+            && (contact.x == self.layout.x || contact.x == self.layout.right())
+            && (contact.y == self.layout.y || contact.y == self.layout.bottom())
+        {
+            return None;
+        }
+        Some(attachment)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(in crate::graph::routing) struct NodeAttachment {
@@ -17,11 +77,28 @@ impl NodeAttachment {
         inward: StepDirection,
         charset: &GraphCharset,
     ) -> Option<Self> {
-        let (side, intercept, connector) = match inward {
-            StepDirection::Left => (GraphNodeSide::Right, berth.y, charset.right_connector),
-            StepDirection::Right => (GraphNodeSide::Left, berth.y, charset.left_connector),
-            StepDirection::Up => (GraphNodeSide::Bottom, berth.x, charset.down_connector),
-            StepDirection::Down => (GraphNodeSide::Top, berth.x, charset.up_connector),
+        Self::resolve_in_region(node, berth, inward, false, charset)
+    }
+
+    fn resolve_in_region(
+        node: &NodeLayout,
+        berth: CanvasCoord,
+        inward: StepDirection,
+        interior: bool,
+        charset: &GraphCharset,
+    ) -> Option<Self> {
+        let boundary_direction = if interior { inward.opposite() } else { inward };
+        let (side, intercept) = match boundary_direction {
+            StepDirection::Left => (GraphNodeSide::Right, berth.y),
+            StepDirection::Right => (GraphNodeSide::Left, berth.y),
+            StepDirection::Up => (GraphNodeSide::Bottom, berth.x),
+            StepDirection::Down => (GraphNodeSide::Top, berth.x),
+        };
+        let connector = match inward {
+            StepDirection::Left => charset.right_connector,
+            StepDirection::Right => charset.left_connector,
+            StepDirection::Up => charset.down_connector,
+            StepDirection::Down => charset.up_connector,
         };
         let semantics = GraphNodeShapeSemantics::new(node.shape);
         let contact = semantics.route_contact(node, side, intercept)?;

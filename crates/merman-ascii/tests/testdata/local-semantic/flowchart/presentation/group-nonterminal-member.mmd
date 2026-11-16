@@ -1,0 +1,8 @@
+graph LR
+subgraph East[East]
+E1[Ingress] --> E2[Worker]
+end
+subgraph West[West]
+W1[Broker] --> W2[Store]
+end
+E1 -->|jobs| W2

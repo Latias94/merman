@@ -65,13 +65,9 @@ fn flowchart_parser_stadium_shape_renders_as_pill_terminal_shape() {
             &AsciiRenderOptions::unicode(),
         )
         .unwrap();
-        let unicode_first_line = unicode_rendered
-            .lines()
-            .next()
-            .expect("stadium shape should render at least one line");
-        assert!(
-            unicode_first_line.starts_with('╭') && unicode_first_line.ends_with('╮'),
-            "stadium shape should use rounded corners in unicode mode:\n{unicode_rendered}"
+        assert_eq!(
+            unicode_rendered, "╭─────╮\n│     │\n│  S  │\n│     │\n╰─────╯\n",
+            "compact stadium shape should keep its pill caps and label"
         );
     }
 }
@@ -237,14 +233,18 @@ fn flowchart_parser_diamond_shape_renders_as_decision_terminal_shape() {
 
     assert_eq!(
         rendered,
-        "/---\\     +---+\n/   \\     |   |\n< A >---->| B |\n\\   /     |   |\n\\---/     +---+\n"
+        "/---\\          \n/   \\     +---+\n< A >---->| B |\n\\   /     +---+\n\\---/          \n"
     );
 }
 
 #[test]
 fn flowchart_parser_unicode_diamond_uses_sloped_shoulders() {
-    let rendered =
-        render_flowchart("flowchart LR\nA{A} --> B", &AsciiRenderOptions::unicode()).unwrap();
+    // Sloped shoulders need an interior row above and below the decision vertices.
+    let rendered = render_flowchart(
+        "flowchart LR\nA{A} --> B",
+        &AsciiRenderOptions::unicode().with_node_padding(1),
+    )
+    .unwrap();
 
     assert_eq!(
         rendered,
@@ -264,7 +264,7 @@ fn flowchart_parser_subroutine_and_cylinder_shapes_render_terminal_approximation
         rendered,
         concat!(
             "+-------+     /------\\\n",
-            "| |   | |     |------|\n",
+            "| |   | |     |      |\n",
             "| |Sub| |---->|  DB  |\n",
             "| |   | |     |      |\n",
             "+-------+     \\------/\n",
@@ -279,7 +279,7 @@ fn flowchart_parser_dotted_edges_render_with_dotted_line() {
 
     assert_eq!(
         rendered,
-        "+---+     +---+\n|   |     |   |\n| A |....>| B |\n|   |     |   |\n+---+     +---+\n"
+        "+---+     +---+\n| A |....>| B |\n+---+     +---+\n"
     );
 }
 
@@ -289,7 +289,7 @@ fn flowchart_parser_thick_edges_render_with_heavy_ascii_line() {
 
     assert_eq!(
         rendered,
-        "+---+     +---+\n|   |     |   |\n| A |====>| B |\n|   |     |   |\n+---+     +---+\n"
+        "+---+     +---+\n| A |====>| B |\n+---+     +---+\n"
     );
 }
 
@@ -300,7 +300,7 @@ fn flowchart_parser_thick_edges_render_with_heavy_unicode_line() {
 
     assert_eq!(
         rendered,
-        "┌───┐     ┌───┐\n│   │     │   │\n│ A ┝━━━━►│ B │\n│   │     │   │\n└───┘     └───┘\n"
+        "┌───┐     ┌───┐\n│ A ┝━━━━►│ B │\n└───┘     └───┘\n"
     );
 }
 
@@ -308,12 +308,18 @@ fn flowchart_parser_thick_edges_render_with_heavy_unicode_line() {
 fn flowchart_parser_thick_top_down_edges_render_with_heavy_ascii_line() {
     let rendered = render_flowchart("flowchart TB\nA ==> B", &AsciiRenderOptions::ascii()).unwrap();
 
-    assert_eq!(
-        rendered,
-        concat!(
-            "+---+\n", "|   |\n", "| A |\n", "|   |\n", "+---+\n", "  #  \n", "  #  \n", "  #  \n",
-            "  #  \n", "  v  \n", "+---+\n", "|   |\n", "| B |\n", "|   |\n", "+---+\n",
-        )
+    let route = rendered
+        .strip_prefix("+---+\n| A |\n+---+\n")
+        .and_then(|rest| rest.strip_suffix("+---+\n| B |\n+---+\n"))
+        .unwrap_or_else(|| {
+            panic!("heavy edge must connect the closed source and target:\n{rendered}")
+        });
+    let stroke = route.strip_suffix("  v  \n").unwrap_or_else(|| {
+        panic!("heavy edge must enter the target at its top center:\n{rendered}")
+    });
+    assert!(
+        !stroke.is_empty() && stroke.lines().all(|row| row == "  #  "),
+        "heavy edge must keep a continuous, distinguishable stroke before its arrowhead:\n{rendered}"
     );
 }
 

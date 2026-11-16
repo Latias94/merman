@@ -179,6 +179,28 @@ fn safe_ascii_error(error: &merman_ascii::AsciiError) -> String {
                 "ASCII rendering does not support `{feature}` for `{diagram_type}` yet"
             ))
         }
+        merman_ascii::AsciiError::RoutingSearchExhausted {
+            diagram_type,
+            edge_index,
+        } => bounded_message(
+            &format!(
+                "ASCII bounded routing search did not find a valid scene for edge[{edge_index}] in `"
+            ),
+            diagram_type,
+            "`",
+        ),
+        merman_ascii::AsciiError::PortCapacityExceeded {
+            diagram_type,
+            endpoint,
+            required,
+            available,
+        } => {
+            let endpoint = normalize_terminal_diagnostic(endpoint);
+            let diagram_type = normalize_terminal_diagnostic(diagram_type);
+            normalize_terminal_diagnostic(&format!(
+                "ASCII fixed-terminal capacity exceeded in the current presentation: {required} independent markers > upper bound {available} for endpoint `{endpoint}` in `{diagram_type}`"
+            ))
+        }
         merman_ascii::AsciiError::WidthOverflow {
             max_width,
             actual_width,
@@ -229,6 +251,23 @@ fn safe_ascii_details(
         } => {
             details.code = "merman.ascii.unsupported_feature".to_string();
             details.field = Some(normalize_terminal_diagnostic(feature));
+            details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
+        }
+        merman_ascii::AsciiError::RoutingSearchExhausted {
+            diagram_type,
+            edge_index,
+        } => {
+            details.code = "merman.ascii.routing_search_exhausted".to_string();
+            details.field = Some(format!("edge[{edge_index}]"));
+            details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
+        }
+        merman_ascii::AsciiError::PortCapacityExceeded {
+            diagram_type,
+            endpoint,
+            ..
+        } => {
+            details.code = "merman.ascii.port_capacity_exceeded".to_string();
+            details.field = Some(normalize_terminal_diagnostic(endpoint));
             details.diagram_type = Some(normalize_terminal_diagnostic(diagram_type));
         }
         merman_ascii::AsciiError::WidthOverflow {
@@ -351,6 +390,117 @@ mod tests {
 
         assert_eq!(details.code, "merman.ascii.fallback_unavailable");
         assert_eq!(details.fallback_reason.as_deref(), Some("primary_overflow"));
+    }
+
+    #[test]
+    fn routing_search_exhaustion_preserves_typed_error_and_authored_edge_index() {
+        for edge_index in [0, 7, usize::MAX] {
+            let expected = AsciiError::RoutingSearchExhausted {
+                diagram_type: "flowchart",
+                edge_index,
+            };
+            let crate::RenderError::Ascii(target_error) =
+                crate::RenderError::from(expected.clone())
+            else {
+                panic!("routing search exhaustion must retain its typed target error");
+            };
+            assert_eq!(target_error, expected);
+
+            let diagnostic = AsciiDiagnostic::from(target_error);
+            assert!(matches!(&diagnostic, AsciiDiagnostic::Target(error) if error == &expected));
+            let message = diagnostic.terminal_safe_message();
+            assert_eq!(message, expected.to_string());
+            assert!(
+                message.contains(&format!("edge[{edge_index}]")),
+                "{message}"
+            );
+            assert!(message.contains("bounded routing search"), "{message}");
+            assert!(message.contains("did not find a valid scene"), "{message}");
+            for misleading in [
+                "unsupported",
+                "does not support",
+                "impossible",
+                "resource limit",
+            ] {
+                assert!(!message.contains(misleading), "{message}");
+            }
+
+            let details = diagnostic
+                .terminal_diagnostic_details()
+                .expect("routing search exhaustion should expose diagnostic details");
+            assert_eq!(details.code, "merman.ascii.routing_search_exhausted");
+            assert_eq!(details.field, Some(format!("edge[{edge_index}]")));
+            assert_eq!(details.diagram_type.as_deref(), Some("flowchart"));
+            assert_eq!(details.fallback_reason, None);
+        }
+    }
+
+    #[test]
+    fn routing_search_exhaustion_diagnostic_escapes_static_diagram_controls() {
+        let diagnostic = AsciiDiagnostic::from(AsciiError::RoutingSearchExhausted {
+            diagram_type: "flowchart\u{1b}\u{7}\u{9b}\u{202e}",
+            edge_index: 7,
+        });
+        let safe_diagram_type = "flowchart\\u{1B}\\u{7}\\u{9B}\\u{202E}";
+        let message = diagnostic.terminal_safe_message();
+
+        assert!(message.contains(safe_diagram_type), "{message}");
+        for display in [
+            message.clone(),
+            diagnostic.to_string(),
+            format!("{diagnostic:?}"),
+        ] {
+            assert!(!display.chars().any(char::is_control), "{display:?}");
+            assert!(!display.contains('\u{202e}'), "{display:?}");
+        }
+        let details = diagnostic
+            .terminal_diagnostic_details()
+            .expect("routing search exhaustion should expose safe diagram context");
+        assert_eq!(details.diagram_type.as_deref(), Some(safe_diagram_type));
+        assert_eq!(details.field.as_deref(), Some("edge[7]"));
+    }
+
+    #[test]
+    fn port_capacity_preserves_typed_bounds_and_normalizes_endpoint_context() {
+        let expected = AsciiError::PortCapacityExceeded {
+            diagram_type: "flowchart\u{1b}\u{9b}",
+            endpoint: "source\u{7}\u{202e}".to_string(),
+            required: 33,
+            available: 32,
+        };
+        let crate::RenderError::Ascii(target_error) = crate::RenderError::from(expected.clone())
+        else {
+            panic!("fixed-terminal capacity must retain its typed target error");
+        };
+        assert_eq!(target_error, expected);
+        let diagnostic = AsciiDiagnostic::from(target_error);
+        let message = diagnostic.terminal_safe_message();
+        assert!(message.contains("current presentation"), "{message}");
+        assert!(
+            message.contains("33 independent markers > upper bound 32"),
+            "{message}"
+        );
+        assert!(message.contains("source\\u{7}\\u{202E}"), "{message}");
+        for misleading in [
+            "impossible",
+            "unsupported",
+            "routing search",
+            "resource limit",
+        ] {
+            assert!(!message.contains(misleading), "{message}");
+        }
+        for display in [message, diagnostic.to_string(), format!("{diagnostic:?}")] {
+            assert!(!display.chars().any(char::is_control), "{display:?}");
+            assert!(!display.contains('\u{202e}'), "{display:?}");
+        }
+        let details = diagnostic.terminal_diagnostic_details().unwrap();
+        assert_eq!(details.code, "merman.ascii.port_capacity_exceeded");
+        assert_eq!(details.field.as_deref(), Some("source\\u{7}\\u{202E}"));
+        assert_eq!(
+            details.diagram_type.as_deref(),
+            Some("flowchart\\u{1B}\\u{9B}")
+        );
+        assert_eq!(details.fallback_reason, None);
     }
 
     #[test]

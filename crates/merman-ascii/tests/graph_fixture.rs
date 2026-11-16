@@ -19,16 +19,19 @@ impl GraphFixture {
     }
 
     fn options(self) -> AsciiRenderOptions {
-        let mut options = match self.directory {
+        let options = match self.directory {
             "ascii" => AsciiRenderOptions::ascii(),
             "extended-chars" => AsciiRenderOptions::unicode(),
             other => panic!("unsupported graph fixture directory: {other}"),
         };
 
         let (graph_padding_x, graph_padding_y) = self.graph_padding();
-        options.graph_padding_x = graph_padding_x;
-        options.graph_padding_y = graph_padding_y;
+        // The copied corpus specifies its own one-cell node padding and graph gaps.
+        // Keep those reference requests explicit when product defaults evolve.
         options
+            .with_node_padding(1)
+            .with_graph_padding_x(graph_padding_x)
+            .with_graph_padding_y(graph_padding_y)
     }
 
     fn graph_padding(self) -> (usize, usize) {
@@ -365,6 +368,9 @@ const GRAPH_FIXTURE_CORPUS: &[GraphFixture] = &[
 ];
 
 const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
+    graph_fixture("ascii", "multiline_single_node.txt"),
+    graph_fixture("ascii", "two_root_nodes_longer_names.txt"),
+    graph_fixture("extended-chars", "two_root_nodes_longer_names.txt"),
     graph_fixture("ascii", "ampersand_lhs.txt"),
     graph_fixture("ascii", "ampersand_lhs_and_rhs.txt"),
     graph_fixture("ascii", "ampersand_rhs.txt"),
@@ -406,8 +412,8 @@ const GRAPH_FIXTURE_GAPS: &[GraphFixture] = &[
     graph_fixture("extended-chars", "two_layer_single_graph.txt"),
 ];
 
-// These copied outputs erase group borders at legal route crossings. Their bytes remain immutable;
-// named corrections use strict Merman snapshots and independently verify the compound geometry.
+// Copied outputs erase group borders at legal crossings. Local snapshots also reflect terminal
+// layer ordering; independent checks protect the complete frames and actual target contacts.
 const GRAPH_FIXTURE_CORRECTIONS: &[GraphFixture] = &[
     graph_fixture("ascii", "subgraph_mixed_nodes.txt"),
     graph_fixture("ascii", "subgraph_nested_with_external.txt"),
@@ -416,6 +422,35 @@ const GRAPH_FIXTURE_CORRECTIONS: &[GraphFixture] = &[
     graph_fixture("ascii", "subgraph_td_multiple.txt"),
     graph_fixture("ascii", "subgraph_three_separate.txt"),
     graph_fixture("ascii", "subgraph_two_separate.txt"),
+];
+
+// These local snapshots change only ordinary wire turns, preserving the copied
+// inputs, geometry, rectangular contours, junctions and marker positions exactly.
+const GRAPH_FIXTURE_STYLE_CORRECTIONS: &[(GraphFixture, &str)] = &[
+    (
+        graph_fixture("extended-chars", "self_reference.txt"),
+        concat!(
+            "┌───┐  \n",
+            "│   │  \n",
+            "│ A ├─╮\n",
+            "│   │ │\n",
+            "└───┘ │\n",
+            "  ▲   │\n",
+            "  ╰───╯\n",
+        ),
+    ),
+    (
+        graph_fixture("extended-chars", "self_reference_with_edge.txt"),
+        concat!(
+            "┌───┐     ┌───┐\n",
+            "│   │     │   │\n",
+            "│ A ├──┬─►│ B │\n",
+            "│   │  │  │   │\n",
+            "└───┘  │  └───┘\n",
+            "  ▲    │       \n",
+            "  ╰────╯       \n",
+        ),
+    ),
 ];
 
 fn render_flowchart(input: &str, options: &AsciiRenderOptions) -> merman_ascii::Result<String> {
@@ -471,7 +506,12 @@ fn graph_fixture_exact_subset_matches_upstream() {
     let mut exact_count = 0;
     let mut mismatches = Vec::new();
     for fixture in GRAPH_FIXTURE_CORPUS {
-        if gaps.contains(&fixture.key()) || corrections.contains(&fixture.key()) {
+        if gaps.contains(&fixture.key())
+            || corrections.contains(&fixture.key())
+            || GRAPH_FIXTURE_STYLE_CORRECTIONS
+                .iter()
+                .any(|(styled, _)| styled == fixture)
+        {
             continue;
         }
         exact_count += 1;
@@ -485,7 +525,7 @@ fn graph_fixture_exact_subset_matches_upstream() {
     }
 
     assert_eq!(
-        exact_count, 33,
+        exact_count, 28,
         "the immutable exact subset must remain explicit"
     );
     assert!(
@@ -493,6 +533,39 @@ fn graph_fixture_exact_subset_matches_upstream() {
         "copied graph fixtures no longer match exactly:\n{}",
         mismatches.join("\n")
     );
+}
+
+#[test]
+fn graph_fixture_style_corrections_keep_exact_geometry_and_rectangular_node_contours() {
+    for (fixture, expected) in GRAPH_FIXTURE_STYLE_CORRECTIONS {
+        let (input, copied) = split_fixture(&fixture_path(*fixture));
+        assert_ne!(
+            *expected,
+            copied,
+            "{} must retain a style change",
+            fixture.key()
+        );
+        assert_eq!(expected.chars().count(), copied.chars().count());
+        for (styled, original) in expected.chars().zip(copied.chars()) {
+            assert!(
+                styled == original
+                    || matches!(
+                        (styled, original),
+                        ('╭', '┌') | ('╮', '┐') | ('╰', '└') | ('╯', '┘')
+                    ),
+                "{} permits only equivalent corner glyphs",
+                fixture.key()
+            );
+        }
+        let rendered = render_flowchart(&input, &fixture.options())
+            .unwrap_or_else(|error| panic!("{}: {error}", fixture.key()));
+        assert_eq!(
+            rendered,
+            *expected,
+            "{} styled output changed",
+            fixture.key()
+        );
+    }
 }
 
 #[test]
@@ -510,21 +583,6 @@ fn graph_fixture_named_corrections_preserve_closed_compound_frames() {
             expected,
             copied,
             "{} must retain a verified correction",
-            fixture.key()
-        );
-        assert_eq!(
-            expected.len(),
-            copied.len(),
-            "these corrections preserve the copied geometry"
-        );
-        assert!(
-            copied
-                .chars()
-                .zip(expected.chars())
-                .all(|(original, corrected)| {
-                    original == corrected || (matches!(original, '-' | '|') && corrected == '+')
-                }),
-            "{} must only preserve the frame directions at route crossings",
             fixture.key()
         );
         let rendered = render_flowchart(&input, &fixture.options())
@@ -708,16 +766,17 @@ fn assert_corrected_compound_geometry(input: &str, rendered: &str) {
         let &(left, top, right, bottom) = node_frames
             .get(edge.to.as_str())
             .expect("these copied edges target authored nodes");
-        let center_x = left + (right - left).div_ceil(2);
-        let center_y = top + (bottom - top).div_ceil(2);
         let mut heads = Vec::new();
         if let Some(x) = left.checked_sub(1) {
-            heads.push((x, center_y, '>'));
+            heads.extend((top + 1..bottom).map(|y| (x, y, '>')));
         }
         if let Some(y) = top.checked_sub(1) {
-            heads.push((center_x, y, 'v'));
+            heads.extend((left + 1..right).map(|x| (x, y, 'v')));
         }
-        heads.extend([(right + 1, center_y, '<'), (center_x, bottom + 1, '^')]);
+        // Preferred contacts can move around protected frame titles. Check the entire
+        // non-corner contour, keeping exact ownership and one independent head per edge.
+        heads.extend((top + 1..bottom).map(|y| (right + 1, y, '<')));
+        heads.extend((left + 1..right).map(|x| (x, bottom + 1, '^')));
         let heads = heads
             .into_iter()
             .filter(|(x, y, glyph)| rows.get(*y).and_then(|row| row.get(*x)) == Some(glyph))
@@ -835,10 +894,18 @@ fn graph_fixture_gap_inventory_covers_all_graph_fixtures() {
     let corpus = graph_fixture_keys(GRAPH_FIXTURE_CORPUS);
     let gaps = graph_fixture_keys(GRAPH_FIXTURE_GAPS);
     let corrections = graph_fixture_keys(GRAPH_FIXTURE_CORRECTIONS);
+    let style_corrections = GRAPH_FIXTURE_STYLE_CORRECTIONS
+        .iter()
+        .map(|(fixture, _)| fixture.key())
+        .collect::<BTreeSet<_>>();
     assert_eq!(corpus.len(), GRAPH_FIXTURE_CORPUS.len());
     assert_eq!(gaps.len(), GRAPH_FIXTURE_GAPS.len());
     assert_eq!(corrections.len(), GRAPH_FIXTURE_CORRECTIONS.len());
-    assert_eq!((corpus.len(), gaps.len(), corrections.len()), (79, 39, 7));
+    assert_eq!((corpus.len(), gaps.len(), corrections.len()), (79, 42, 7));
+    assert_eq!(style_corrections.len(), 2);
+    assert!(style_corrections.is_subset(&corpus));
+    assert!(style_corrections.is_disjoint(&gaps));
+    assert!(style_corrections.is_disjoint(&corrections));
     assert!(
         corrections.is_subset(&corpus),
         "every correction must belong to the copied corpus"

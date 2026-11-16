@@ -106,7 +106,13 @@ pub(crate) fn select(
         &mut render,
     ) {
         Ok(candidate) => candidate,
-        Err(AsciiError::UnsupportedFeature { .. }) => return Ok(selected),
+        Err(
+            AsciiError::UnsupportedFeature { .. }
+            | AsciiError::RoutingSearchExhausted { .. }
+            | AsciiError::PortCapacityExceeded { .. },
+        ) => {
+            return Ok(selected);
+        }
         Err(error) => return Err(error),
     };
     if compact.extent().width < selected.candidate.extent().width {

@@ -6,7 +6,7 @@ fn flowchart_parser_open_edges_render_without_arrowhead() {
 
     assert_eq!(
         rendered,
-        "+---+     +---+\n|   |     |   |\n| A |-----| B |\n|   |     |   |\n+---+     +---+\n"
+        "+---+     +---+\n| A |-----| B |\n+---+     +---+\n"
     );
 }
 
@@ -17,7 +17,7 @@ fn flowchart_parser_edge_length_modifiers_add_spacing() {
 
     assert_eq!(
         rendered,
-        "+---+         +---+\n|   |         |   |\n| A |-------->| B |\n|   |         |   |\n+---+         +---+\n"
+        "+---+         +---+\n| A |-------->| B |\n+---+         +---+\n"
     );
 }
 

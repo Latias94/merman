@@ -218,13 +218,15 @@ mod direction_and_labels;
 mod edges;
 #[path = "flowchart_model/graph_routing.rs"]
 mod graph_routing;
+#[path = "flowchart_model/readability.rs"]
+mod readability;
 #[path = "flowchart_model/shapes.rs"]
 mod shapes;
 #[path = "flowchart_model/subgraphs.rs"]
 mod subgraphs;
 
 #[test]
-fn feedback_edge_preserves_diamond_vertex_and_enters_target_side() {
+fn feedback_edge_preserves_diamond_vertices_and_enters_actual_target() {
     let input = "flowchart TD\n A[Write code] --> B{Tests pass?}\n B -- Yes --> C[Open PR]\n B -- No --> A\n";
     for mut options in [AsciiRenderOptions::unicode(), AsciiRenderOptions::ascii()] {
         for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
@@ -238,21 +240,49 @@ fn feedback_edge_preserves_diamond_vertex_and_enters_target_side() {
                 .lines()
                 .position(|line| line.contains("Tests pass?"))
                 .unwrap();
-            let vertex_x = rows[diamond_row].iter().rposition(|ch| *ch == '>').unwrap();
             assert!(
-                rows[diamond_row][vertex_x + 1..]
-                    .iter()
-                    .any(|ch| matches!(ch, '-' | '─')),
-                "the side escape must connect to the preserved diamond vertex: {rendered}"
+                rows[diamond_row].contains(&'<') && rows[diamond_row].contains(&'>'),
+                "feedback routing must preserve both decision vertices: {rendered}"
             );
             let target_row = rendered
                 .lines()
                 .position(|line| line.contains("Write code"))
                 .unwrap();
-            assert!(
-                rows[target_row].iter().any(|ch| matches!(ch, '◄' | '<')),
-                "the feedback head must point into the right side of its target: {rendered}"
+            let left = rows[target_row]
+                .iter()
+                .position(|ch| matches!(ch, '|' | '│'))
+                .unwrap();
+            let right = rows[target_row]
+                .iter()
+                .rposition(|ch| matches!(ch, '|' | '│'))
+                .unwrap();
+            let top = target_row - 2;
+            let bottom = target_row + 2;
+            let mut heads = 0;
+            for row in &rows[top + 1..bottom] {
+                heads += usize::from(
+                    left.checked_sub(1)
+                        .is_some_and(|x| matches!(row.get(x), Some('>' | '►'))),
+                );
+                heads += usize::from(matches!(row.get(right + 1), Some('<' | '◄')));
+            }
+            for x in left + 1..right {
+                heads += usize::from(
+                    top.checked_sub(1)
+                        .is_some_and(|y| matches!(rows[y].get(x), Some('v' | '▼'))),
+                );
+                heads += usize::from(matches!(
+                    rows.get(bottom + 1).and_then(|row| row.get(x)),
+                    Some('^' | '▲')
+                ));
+            }
+            assert_eq!(
+                heads, 1,
+                "feedback must enter the actual Write code node: {rendered}"
             );
+            for condition in ["Yes", "No"] {
+                assert_eq!(rendered.matches(condition).count(), 1, "{rendered}");
+            }
         }
     }
 }
@@ -273,9 +303,11 @@ fn reverse_edge_labels_keep_reading_clearance() {
 #[test]
 fn zero_vertical_padding_reduces_only_node_height() {
     let input = "flowchart TD\n A[Write code] --> B[Open PR] --> C[Merge]\n";
-    let default = render_flowchart(input, &AsciiRenderOptions::unicode()).unwrap();
-    let compact_nodes =
-        render_flowchart(input, &AsciiRenderOptions::unicode().with_node_padding_y(0)).unwrap();
+    let options = AsciiRenderOptions::unicode()
+        .with_node_padding(1)
+        .with_graph_padding_y(5);
+    let default = render_flowchart(input, &options).unwrap();
+    let compact_nodes = render_flowchart(input, &options.with_node_padding_y(0)).unwrap();
     assert_eq!(default.lines().count(), 25);
     assert_eq!(compact_nodes.lines().count(), 19);
     assert_eq!(
@@ -336,15 +368,16 @@ fn diamond_self_loop_source_head_keeps_its_straight_berth_and_bend() {
                     &chars[head + 1..]
                 };
                 assert!(
-                    after_head
-                        .iter()
-                        .any(|ch| matches!(ch, '+' | '┌' | '┐' | '└' | '┘')),
+                    after_head.iter().any(|ch| matches!(
+                        ch,
+                        '+' | '┌' | '┐' | '└' | '┘' | '╭' | '╮' | '╰' | '╯'
+                    )),
                     "the source marker must leave the exterior bend intact: {rendered}"
                 );
                 assert!(
                     after_head.iter().all(|ch| *ch == ' '
                         || *ch == horizontal
-                        || matches!(ch, '+' | '┌' | '┐' | '└' | '┘')),
+                        || matches!(ch, '+' | '┌' | '┐' | '└' | '┘' | '╭' | '╮' | '╰' | '╯')),
                     "source head must remain on the straight terminal run: {rendered}"
                 );
             }

@@ -1,0 +1,4 @@
+graph LR
+A[Input] --> B[Parse] --> C[Validate] --> D[Write] --> E[Done]
+C -->|retry| B
+D -->|failed| A

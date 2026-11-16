@@ -1,13 +1,14 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-08-11
+Last updated: 2026-11-15
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
-notes what may be visible in the two optional local reference checkouts:
+notes what may be visible in the optional local reference checkouts:
 
 - `AlexanderGrooff/mermaid-ascii` at copied-source commit `6fffb8e2714acab2c4cb41c78894fabbc62cee56`; `repo-ref/mermaid-ascii` may move beyond it.
 - `lukilabs/beautiful-mermaid` at reference commit `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488`; `repo-ref/beautiful-mermaid` is research-only.
+- `xai-org/grok-build` at reference commit `2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8`; its first-party terminal module is Apache-2.0 and remains a behavior/presentation reference. Its separate MIT SVG component does not license that terminal module.
 
 It is not a support gate. The shipped support matrices and gap registry remain the authoritative
 product boundary.
@@ -19,6 +20,9 @@ product boundary.
   also contains a newer ER renderer, but that post-snapshot code is discovery evidence only.
 - `beautiful-mermaid` is the broad reference. It covers more families and more terminal styling
   ideas, but it is not always semantically faithful to Mermaid.
+- Grok provides compact terminal graph examples with shared trunks and endpoint markers. Its
+  truncation and group-endpoint abstraction require separate information checks; smaller output
+  is not by itself evidence that a reader can recover the same graph.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
 - Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, Packet, and GitGraph now render as compact
@@ -45,15 +49,398 @@ product boundary.
   SVG loading, DOM checks, local SVG writing, and result sections belong to the shared `xtask`
   compare harness. Adapter code should supply render-specific policy, not reimplement the harness.
 
+## Terminal Visual Direction
+
+Grok's pinned terminal implementation provides useful examples of compact text and restrained
+host styling. Its ordinary mask-based wires use square turns; rounded turns appear explicitly in
+Flowchart self-loops and Sequence self-messages. Node rectangles use square corners, while both
+Round and Diamond map to rounded boxes. Group frames are solid rectangles with a title inserted
+into the top border. See the pinned
+[wire masks](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-markdown/src/mermaid.rs#L1730),
+[frames](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-markdown/src/mermaid.rs#L2273),
+and [node/self-loop drawing](https://github.com/xai-org/grok-build/blob/2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8/crates/codegen/xai-grok-markdown/src/mermaid.rs#L3052).
+Its text wrapping defaults to 24 columns and four lines. These density limits are presentation
+evidence, not permission to truncate Merman's complete labels. Grok maps visual classes to host
+Markdown styles rather than prescribing a fixed terminal RGB palette.
+
+Merman uses a distinct, independently implemented graph grammar: label-sized authored node
+contours, rounded turns for every ordinary Unicode wire, square branch junctions and frame
+contacts, solid arrowheads, and complete labels. This separates a path from a rectangular object
+without spending extra cells or requiring color. Shape-specific node outlines, dotted and thick
+edge meanings, ASCII/CJK structural fallback, container ownership, and width/resource policy
+remain authoritative. The crate's [visual-style guide](README.md#terminal-visual-style) owns these
+defaults. Two copied Unicode self-loops now have strict local style expectations; their original
+fixture bytes and the full 79-case denominator remain intact.
+
+Group titles use a centered block with left-aligned lines. Unlike centering each row separately,
+this preserves a common reading start for multiline headings. A flush-left title was also tested:
+it obstructed the direct `Start → Entry` boundary route in the nested-direction input and forced
+side contacts. Keeping the single-line envelope preserves that useful transit space. Title drawing
+and routing protection now share coordinates, including RL alignment and the upright BT row order;
+the full copied-fixture denominator and single-line expectations remain unchanged.
+
+Dashed containers were considered as a second hierarchy cue. Solid frames remain the default:
+ordinary dotted relationships and State concurrency separators already use the dotted strokes.
+Embedding the title in the top border would also consume real boundary contacts and requires its
+own multiline/port-capacity design. Neither rule is adopted merely for visual variety. The terminal
+Grok source remains Apache-2.0 research material; these refinements do not copy or translate its
+implementation.
+
+## Terminal Presentation Floor
+
+Terminal graph presentation is best effort. A finite, non-zoomable terminal cannot display every
+graph as continuous artwork. For the common supported comparison corpus, the planner is evaluated for
+comprehension at least as good as the best qualified Grok or mermaid-ascii result. This is a
+per-case acceptance target, not a claim that one
+algorithm dominates every possible graph.
+
+The original inputs and reading questions live in
+[`tests/testdata/local-semantic/flowchart/presentation/`](tests/testdata/local-semantic/flowchart/presentation/README.md).
+They are independent of copied upstream fixtures. They cover shared branches/merges, feedback,
+member endpoints, distinguishing label suffixes, CJK text, and narrow/tall output. The first
+capture compares 13 inputs with native unbounded output and an explicit 80-column request across
+Merman, Grok's original terminal module, and the moving mermaid-ascii reference named below.
+
+Selected measured output dimensions are **columns × rows**:
+
+| Input / request | Merman | Grok | mermaid-ascii |
+| --- | --- | --- | --- |
+| `five-edge`, unbounded | 35 × 8, diagram | 32 × 6, diagram | 25 × 15, diagram |
+| `fork-merge`, unbounded | 26 × 25, diagram | 21 × 13, diagram | 24 × 25, diagram |
+| `fan-out-12-lr`, unbounded | 31 × 115, diagram | 28 × 48, diagram | 29 × 115, diagram |
+| `fan-in-12-lr`, unbounded | 28 × 117, diagram | 25 × 48, diagram | 26 × 115, diagram |
+| `fan-out-16-td`, 80 columns | 41 × 640, model-field fallback | 77 × 20, source frame | 171 × 11, over-width diagram |
+| `long-labels`, 80 columns | 69 × 205, model-field fallback | 80 × 12, source frame | 225 × 11, over-width diagram |
+
+The Merman code baseline is `f09aa799d6f42a2b84fc392508b7a9b3aaf94935`, built with defaults off
+and `ascii,diagram-flowchart,diagram-state,diagram-swimlane`. Captures use plain Unicode output
+and the Interactive resource profile. Bounded requests use Auto with Fallback. Grok compiles its
+unmodified `xai-grok-markdown/src/mermaid.rs` in a local adapter with the upstream lock's direct
+`ratatui 0.29.0` and `unicode-width 0.2.0` versions; backend features are unnecessary for its plain
+lines. mermaid-ascii is built unmodified at `5a9df1560871e1ef8037c052b3b5d87de503bc9e` with its
+native default Unicode settings and numeric width request. This moving reference does not replace
+the existing copied-fixture pin. Common measurements use `unicode-width 0.2.0`; raw text, input
+hashes, binary hashes, and local adapters remain under ignored `target/`.
+
+The output kinds in the table matter. A source frame is not a diagram; an over-width result does
+not satisfy the request; a full model-field listing is not automatically useful terminal
+presentation. Dimensions and successful exit codes do not qualify information correctness.
+For example, Grok truncates both targets in `distinct-suffixes` before the distinguishing
+PRODUCTION/STAGING text. That smaller result cannot set a complete-information floor for this
+input.
+
+Reading the captured outputs before consulting their sources also identifies two limits of
+geometric comparison. Grok emits identical output for the two group-member inputs even though
+one connects Worker to Broker and the other Ingress to Store. In `feedback`, Merman's separate
+return lanes preserve the two condition/endpoint triples; Grok's label placement and
+mermaid-ascii's multiple-source/multiple-target bus make their pairing uncertain. These examples
+qualify individual reference results rather than establishing a renderer-wide ranking.
+
+The refactor may share compatible common-source or common-target trunks and arrows, simplify
+expensive outlines with retained type cues, place full labels behind unique visible keys, and
+replace difficult long connectors with named continuations. A separate arrowhead per semantic
+edge is not an information requirement. Mixed marker kinds, branch conditions, multiplicity,
+and actual member endpoints must remain understandable. Shared geometry must not imply unrelated
+source/target pairs. Partial overviews must identify their scope and provide an available detail
+route; they cannot pass as complete diagrams.
+
+These are comparison and refactoring criteria. Existing production behavior and support gates
+remain as documented by the support matrix until their implementation and tests change. The
+comparison subset is not full State/Swimlane, all-direction, marker, generated, or resource
+acceptance. It also does not require reference source or binaries in release CI.
+The historical notes below describe the existing implementation and its regressions; independent
+arrowhead counts are not a permanent requirement for a future unambiguous shared presentation.
+
+## Terminal planner comparison
+
+The frozen table above retains the pre-refactor baseline. Current terminal planning uses whole-scene
+endpoint/label demand, independent contours, jointly allocated compatible channels, and reversible
+local conflict repair. Actual-contact channels and compressed orthogonal search replace the old
+coarse route selectors and emergency detours. Source and target heads may share their precise allocated
+berth; incompatible markers, conditions, and unrelated endpoint pairs remain distinct.
+
+Current measured output dimensions, including all detail rows, are **columns × rows**:
+
+| Input / request | Current Merman | Frozen Merman | Qualified comparison |
+| --- | --- | --- | --- |
+| `five-edge`, unbounded | 35 × 6, diagram | 35 × 8, diagram | Grok: 32 × 6; all five direct relationships remain traceable |
+| `fork-merge`, unbounded | 22 × 15, diagram | 26 × 25, diagram | Grok: 21 × 13; short explicit branches and merge |
+| `fan-out-12-lr`, unbounded | 29 × 47, diagram | 31 × 115, diagram | Grok: 28 × 48; twelve private target branches |
+| `fan-in-12-lr`, unbounded | 26 × 47, diagram | 28 × 117, diagram | Grok: 25 × 48; twelve sources and one explicit sink |
+| `fan-out-16-td`, 80 columns | 62 × 19, graph document | 41 × 640, model-field fallback | Grok: 77 × 20 source frame; first-use target declarations avoid a second lookup table |
+| `long-labels`, 80 columns | 79 × 11, graph document | 69 × 205, model-field fallback | Grok: 80 × 12 source frame; both complete conditions and all endpoints remain recoverable |
+
+The width matrix is executable in `tests/presentation_floor.rs`, using the same original 13 inputs
+at unbounded/60/80/100/120 cells, ASCII/Unicode structure, and Unicode/CJK width profiles. At those
+four bounded widths, sixteen-way TD uses 20/19/19/19 rows, and long-label output uses 13/11/11/9.
+The fallback declares each Flowchart node with its first relationship, then refers to its key;
+complete labels may continue on the following physical row. Group membership, real member
+endpoints, types, marker/stroke distinctions, and per-edge conditions remain explicit. The document
+does not reproduce a diagram's spatial direction, and reports `structured_text` and
+`presentation_only` through the existing output contract.
+
+Geometry alone remains insufficient. The `feedback` comparison keeps `retry` on Validate→Parse
+and `failed` on Write→Input. Conditions cannot float away from their host to claim a smaller area,
+and a transverse crossing paints a horizontal overpass rather than a joined bus. The two
+group-member examples retain different actual endpoints, where Grok's identical frame-level output
+does not supply a qualified reference. Distinguishing PRODUCTION/STAGING suffixes remain complete.
+
+Route admission reserves the forward backbone before feedback lanes. The `feedback` presentation
+keeps Input→Parse→Validate→Write→Done straight, retains `retry` on Validate→Parse and `failed` on
+Write→Input, and remains 78×7. The regression exercises all four directions, both character sets,
+and reversed edge declarations. The existing generated oracle and complete-document presentation
+floor remain required: a clearer backbone does not justify rejecting a previously supported cycle
+or moving a condition off its connection.
+
+Compound exit regressions coalesce consecutive unallocated rank bands after a local direction
+override. Explicit spacing and edge-length requests remain allocated; expanding a separator
+counts its retained default corridor once. Canonical Unicode output for `nested_direction_boundary`
+changes from 32×33 to 32×28, `cjk_boundary_routes` from 40×41 to 40×28, and `boundary_label_lane`
+from 31×26 to 31×20. `disconnected_subgraphs` retains 22×39 and its one-cell reading gutter.
+Both Canonical and Compact are checked, including complete labels and the original group owners.
+
+Legal transverse crossings contribute to path cost rather than outranking every possible detour.
+The acyclic `multi_boundary_routes` case changes from 48×34 to 48×26 in Canonical and from 44×32
+to 44×26 in Compact, without routing a forward edge beneath its target and returning upward.
+Reciprocal routes may also cross transversely; shared collinear transit remains invalid.
+
+Compound forward routing additionally resolves the edge's common explicit scope before selecting
+its endpoint sides. In `multi_boundary_routes`, Validate→Publish stays on the internal LR chain,
+while Publish→Success/Retry leave downward and enter their targets from above. In
+`nested_direction_boundary` and its CJK counterpart, the terminal group exit now follows the root
+TD direction instead of entering Done from the side. The local 46-output comparison against
+`bae4152236b62e5a682a64fbf8dbf414cf2c1620` retains every width, height, and width-fallback outcome:
+six outputs change route geometry, thirty change only ordinary wire-corner glyphs, and ten remain
+identical. This is a finite presentation check, not a claim that forward contacts improve every
+possible scene. Scope-direction tests also cover the mirrored BT root, a sealed Compact ingress,
+and preferred contacts that must yield to independent alternate ports. Frame titles and node
+reading margins remain hard constraints. Two independent ASCII compound snapshots now use
+bottom exits and may contact a target away from its side center; their geometry checks cover the
+complete non-corner target contour without changing the copied upstream files.
+
+The independent generated oracle fixes 486 Interactive scene attempts and 3,042 visible edge
+contributions, with up to eight nodes/twelve edges, nine topology categories, three edge orders,
+and LR/TD plus normal/zero preferred gaps. Failures remain in the denominator. The historical
+baseline-success set includes 54 ordered-chain attempts independently checked for continuity and
+direction. Existing State/Swimlane, four-direction, marker, container, CJK, and cancellation tests
+cover the additional family boundaries; this finite corpus is not an arbitrary-graph guarantee.
+
+Issue #53 changes from the historical 74×57/56×67 characterization to 76×40 Canonical and 63×50
+Compact. Compact narrows the scene while retaining visible turns, spending more area and blank
+cells than current Canonical. That tradeoff is recorded explicitly rather than counted as a
+universal density improvement. All original frozen reference captures remain unchanged.
+
+### Accepted planner boundary
+
+The shared-planner refactor is complete for the admitted Flowchart, State, and Swimlane subset.
+The completion reading review used implementation `78b94dfe8ca2dc3a8cc8adf56101e90a90e83644` with
+explicit Interactive resources. Twenty-four inputs cover the thirteen frozen Flowchart cases,
+three additional nested/cross-boundary graphs, four State lifecycles/composites/notes, and four
+Swimlane member/group-endpoint and long-label cases. All 480 native/60/80/100/120 requests across
+ASCII/Unicode and Unicode/CJK width profiles succeeded within their requested widths. Failures
+were retained in the attempted denominator. This finite review supplements the generated and
+semantic oracles; success and dimensions alone do not prove arbitrary-graph readability.
+
+State requests used Canonical; bounded Flowchart/Swimlane requests used Auto with Plain Fallback.
+Of the 480 results, 416 remained diagrams and 64 used structured graph records. The reading review
+retained separate branch conditions, forward/feedback identity, group versus member contacts,
+concurrent State region separation, complete distinguishing suffixes, and CJK text. No reference
+source or binary is required in CI. Raw reports, inputs, hashes, and the comparison gallery remain
+under ignored `target/`.
+
+The review explicitly accepts these remaining tradeoffs:
+
+- State has no Compact or height policy. At that checkpoint its CJK connection lifecycle was a
+  27×63 Canonical diagram. Its note/composite example used 60×48, 80×43 and 100×42 full structured
+  records at bounded widths, versus a 119×43 diagram at 120 columns. The authored detail rows
+  preserve more than the primary diagram displays and can require additional reading. A dotted
+  separator can start the first concurrent region below the title band; readers must not infer
+  the region count from separator count alone.
+- The Swimlane handoff fits at 62×9. At 60 columns, Auto attempts a valid Compact candidate of the
+  same width, retains Canonical on the tie, and produces 53×12 complete structured records. A
+  compact request does not guarantee a narrower result.
+- Dense compounds and marked endpoint demand can still exhaust bounded routing or fixed
+  presentation capacity. Required search/capacity errors do not select width fallback and do not
+  prove that another layout is impossible. Resource and cancellation errors remain terminal.
+
+Future density, label-placement, or style improvements are separate iterations. New semantic loss,
+unexplained regressions in the accepted corpus, or inaccurate diagnostics remain defects under the
+[graph presentation boundary](README.md#graph-presentation-boundary).
+
+### Canonical density and detail wrapping
+
+The 2026-11-15 follow-up against `8ed4469fbbb5a5ea65becd02c4a2ec18f92a9dc6` keeps State
+Canonical-only while removing its legacy preferred blank node rows and five-row rank gaps.
+The planner still enlarges contours and gaps for endpoints, complete labels and containers.
+Explicit padding/gap builders retain their values, including the legacy numeric defaults.
+Ungrouped independent contours share their rank center, avoiding offset side-note links when
+the note is taller than its state. The same 480-request reading matrix succeeds with no width
+violations, retaining 416 diagrams and 64 complete structured fallbacks.
+
+The native Unicode/non-CJK State comparisons are:
+
+| Case | Previous extent | Current extent |
+| --- | ---: | ---: |
+| Nested composites | 61×29 | 61×25 |
+| Concurrent regions | 37×24 | 37×16 |
+| Long condition and note | 119×43 | 119×30 |
+| CJK connection lifecycle | 27×63 | 27×48 |
+
+The CJK lifecycle retains all nine heads and its internal state order across both character
+sets and width conventions. A separate five-contour forward/reverse lifecycle fits in 23 rows;
+explicit legacy padding and gaps reproduce its 41-row layout. These are bounded presentation
+checks rather than a maximum-height guarantee. Complete labels and endpoint demand can still
+require large diagrams.
+
+Rank centering also changes the independently checked Issue #53 Compact layout from 63×50 to
+59×50, retaining seven heads, the dotted relation and every condition. It now fits the 60-column
+viewport, while Canonical remains 76×40. The current whitespace figures and encoding checks live
+in the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md#testing-policy).
+
+Graph detail records now use word-aware indented continuation, including full State authored
+documents, links and relations. Words can use the entire viewport when indentation would prevent
+them fitting; longer atoms retain grapheme-safe hard wrapping. Independent record recovery checks
+preserve original whitespace, control escapes, CJK/combined graphemes, repeated labels and each
+authored owner. All complete semantic fallbacks retain data spaces under a trim request and report
+`trimmed: false`; a non-graph Sequence property regression covers the same shared emission rule.
+Repeated authored details remain visible because identical text can belong to distinct records.
+No reference source or binary is required for these checks.
+
+### Source-bound validation
+
+The initial whole-scene routing measurements were bound to implementation commit
+`65eb8bb48dc7d020b8e8341c29f7d2d031758e3b` (tree
+`23fba7ba4dfd0dcb1a0d159f82242a62bb8a6d7a`). Rebuilding the defaults-off CLI with
+`ascii,diagram-flowchart,diagram-state,diagram-swimlane` reproduced all 26 reviewed
+unbounded/80-column outputs byte-for-byte. All 13 input hashes match the frozen reference gallery;
+52 further captures reproduce the 60/80/100/120-column reports. The rebuilt CLI SHA-256 is
+`79f6b6927174a19fc79365a66db6fcf0881d1d090fe247ce0f5fa91f36e9bc57`.
+
+Settled-source checks passed 1,568 ASCII tests, 33 facade/CLI tests, 199 facade and binding-core
+library tests, and the two representative UniFFI/WASM exact resource boundaries. These include
+all 486 generated scenes and their 3,042 visible relationships. Strict ASCII all-target Clippy,
+scoped formatting, the three isolated graph-family builds, the WASM target build, repository path
+limits, and third-party license verification also passed. Copied upstream fixtures are unchanged.
+
+The public `ascii_pipeline` benchmark was rebuilt from the same implementation with defaults off
+and `all-diagrams,ascii`. On Windows 11, `x86_64-pc-windows-msvc`, Rust 1.100.0, and an Intel
+i9-13900KF, short diagnostic runs used a one-second warmup, a two-second requested measurement,
+and ten samples. Criterion extended the large case to approximately 6.4 seconds for ten iterations.
+These are current-artifact measurements, not an adjacent-revision speedup or U25 performance
+closeout claim. The output has intentionally changed from the frozen product baseline.
+
+| Public operation / fixture | Estimate | Reported 95% interval | Output bytes |
+| --- | --- | --- | --- |
+| `ascii_end_to_end/flowchart_medium` | 4.8112 ms | 4.6847–4.9692 ms | 13,202 |
+| `ascii_end_to_end/flowchart_large` | 809.78 ms | 751.73–867.84 ms | 75,429 |
+
+Both exact invocations retained identical preflight/postflight output. Their plain ASCII output
+SHA-256 values are respectively
+`53019517e81ce2ba2a63eb93e041681c8dcf2c7425f462af2643184827c2402e` and
+`2e28484b52fb3db21856c0836343dcde072b9b537dd26d119e02ba9df4c74bf7`.
+The benchmark executable SHA-256 is
+`738edeb19d241b52f56283febd7587a6629741f61573a4754c9b3ee6d04035c9`.
+The maintained compiled-list verifier also passed all ten benchmark registrations and preflight
+receipts. Reproduce these checks through the
+[ASCII benchmark contract](../../docs/performance/BENCHMARKING.md#ascii-semantic-depth-benchmark),
+using `--exact ascii_end_to_end/flowchart_medium` or `--exact ascii_end_to_end/flowchart_large`
+and `--warm-up-time 1 --measurement-time 2 --sample-size 10 --noplot` for the diagnostic timing.
+Raw captures, samples, commands, and environment evidence remain under ignored `target/`.
+
+### Graph document wrapping
+
+The follow-up keeps node/relationship words and short type cues together when they fit the
+continuation width, with two-space continuation indentation. For example, the 80-column long-label
+case now retains `required` and `[diamond]` on complete physical rows. Very long tokens still use
+grapheme-safe splitting, atomic visible escapes can use the full viewport, and original field
+whitespace remains recoverable. This changes graph-document text bytes; the source-bound hashes
+above remain the historical receipt for implementation commit `65eb8bb48`.
+
+The existing presentation gate retains its complete-document row ceilings at all four widths.
+Reader-level tests still recover every node, real endpoint, condition, type, and group, including
+quoted record-like text, combining marks, emoji, and CJK labels. Exact byte/cell tests count the
+added layout indentation, and cumulative work/cancellation checks cover the streaming lookahead.
+
 ## Reference Corpus Snapshot
+
+The 2026-11-14 routing follow-up inspected the optional `mermaid-ascii` checkout at
+`5a9df1560871e1ef8037c052b3b5d87de503bc9e`. Its
+`backlink_with_short_y_padding.txt` contains the five-edge graph `A -> B`, `A -> C`, `B -> C`,
+`B -> D`, `D -> C`, but the copied output shows four arrowheads after sharing the merge terminal.
+The pre-refactor Merman baseline kept the DAG ranks and all five independent heads. The current
+planner permits a shared head when its compatible merge retains all five direct relationships. Local
+regressions additionally cover four-to-six-way merges, six-way branch/merge graphs, mixed strokes,
+edge-order permutations, wide labels, and long labeled feedback in Canonical and Compact output.
+The improvements remain implementation policy rather than a new byte-level reference oracle.
+The contour follow-up replaces fixed center-neighbor sampling with all shape-valid non-corner
+contacts, and keeps port pairs lazy rather than materializing their Cartesian product. Local tests
+compare the generated priority order with exhaustive sorting and protect cancellation, work limits,
+diamond restrictions, and recovery after the three central contacts are occupied. Covered merges
+now include eight and twelve incoming edges at zero preferred padding; two-ended fan-out through
+fourteen edges checks source-marker symmetry. Unused alternate marker positions admit transverse
+crossings without weakening protection of actual markers or primary terminals. Later marker
+allocation cannot cover those crossings. Branch clearance follows the actually applied local
+direction and reserves a real separator outside endpoint content. Neither reference supplies an
+independent-marker oracle for arbitrary degree, and dense marked fan-out remains bounded.
+Boundary endpoints reserve exterior transit space when marked demand exceeds their reachable
+shape-valid contacts. Complete scene translation preserves ranks, node sizes, compound frames,
+and open region spans. Different branches at the same endpoint cannot form an adjacent
+pointing-axis marker chain; same-pair parallel edges retain their independent contiguous markers.
+The expanded search also exposed repeated futile searches through sealed frame approaches and
+quadratic duplicate scans while generating label positions. Recovery now traces required straight
+corridors before opening its path frontier, and label-position deduplication preserves the ordered
+vector with an operation-local coordinate set. Existing mixed-feedback and nested endpoint tests
+retain the unchanged Interactive work ceiling; these are resource-bound repairs, not timing claims.
+
+Compound follow-up regressions wrap the same five-edge graph in single and nested subgraphs,
+exercise perpendicular local directions, and cover cross-sibling merges and labeled feedback in
+all four root directions. Actual-contact candidates and compressed channel search share frame
+containment and transverse crossing rules. Obstructed aligned edges reserve an interior bypass lane in the nearest
+common container, and routes preserve the title's horizontal reading gap. Assertions check actual
+target contacts and complete frame geometry rather than accepting arrow counts alone. Arbitrary
+dense compound scenes remain a bounded support limitation.
+
+Nested sibling-chain coverage also protects parent placement: child subgraphs reserve their
+complete member spans rather than a fixed node-sized placeholder. Moving unrelated nodes during
+an incomplete local-direction pass could split a previously placed child and make its frame
+enclose a sibling; local placement now moves complete children before shared frame spacing.
+
+Container endpoint regressions extend that evidence to fan-in, fan-out, labeled parallel edges,
+feedback, nested endpoints, and ancestor/member connections. Exterior routes stop at the group
+frame without entering its member space; ancestor/member routes and labels use the frame's
+interior. Independent target contacts, label ownership, and dual endpoint marker berths remain
+explicit assertions. Coarse member-envelope separation and terminal frame padding have distinct
+owners, avoiding repeated group displacement and large blank offsets. Container self-loop
+regressions additionally cover labeled parallel loops beside an exit, nested ownership, two-ended
+markers, and mixed strokes across root directions and layout profiles. Terminal recovery selects
+distinct exterior contacts and excludes frame corners. The graph/sequence reference does not own
+State concurrency behavior; [State support](STATE_SUPPORT.md) defines that separate boundary.
+
+Nested container loops reserve turning clearance in their immediate parent. Each loop protects
+its label before subsequent searches; unlike predetermined node-loop lanes, searched container
+loops need not share a side or defer label allocation until the batch is complete.
+
+The route-label audit also adopts the reference mapper's useful ownership principle: preserve the
+selected straight host through planning and painting. Grid and feedback labels retain that segment
+instead of reducing it to a single placement hint. Local admission protects both the text and its
+perpendicular gap to the host, preventing another route from separating a relocated label from its
+edge. This applies before and after route commitment. Multiline side-lane candidates account for
+the complete text height, and node-loop envelopes account for the widest parallel label. Local
+regressions cover long parallel loops and multiline feedback at zero preferred graph padding;
+the reference's string-based edge labels do not serve as a multiline oracle.
 
 The tracked corpus based on `mermaid-ascii` commit
 `6fffb8e2714acab2c4cb41c78894fabbc62cee56`, plus the two supplemental graph fixtures from
 `876b5b4` named in its inventory, contains 54 `ascii` graph fixtures, 25 `extended-chars` graph
 fixtures, 12 `sequence` fixtures, and 5 `sequence-ascii` fixtures. The graph gate currently keeps
-40 fixtures as an exact-output subset and names 39 deterministic Dagre/route/compound differences
-that must still render and retain their semantics. Copied bytes are never rewritten to match local
-output. Its 3 `multibyte` examples for accented Latin, Greek, and Cyrillic labels are useful semantic
+28 fixtures as an exact upstream-output subset, 2 strict local Unicode wire-style snapshots,
+7 local compound-frame correction snapshots, and 42 named
+Dagre/route/terminal-placement differences that must still render and retain their semantics.
+Terminal node dimensions follow their own labels instead of stretching to an unrelated node's
+shared axis band. This intentionally changes the multiline-node and differently sized disconnected
+chain cases. The correction snapshots also reflect terminal layer ordering; independent geometry
+checks still require closed frames, containment, and actual target contacts. Copied bytes are never
+rewritten to match local output. Its 3 `multibyte` examples for accented Latin, Greek, and Cyrillic labels are useful semantic
 evidence, but they are not admitted as byte-level fixtures: `merman-ascii` preserves the labels
 readably while intentionally not copying the upstream LR label spacing byte-for-byte.
 
@@ -118,7 +505,7 @@ expected output.
 
 | Family | `mermaid-ascii` | `beautiful-mermaid` | `merman-ascii` | Readout |
 | --- | --- | --- | --- | --- |
-| Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, ampersand fan-in/fan-out examples, richer shape handling, disconnected subgraph non-overlap checks, and more styling hooks, but `RL` is approximated as `LR`. | Merman preserves a broader typed surface: true `BT`/`RL`, Dagre-compatible ranking, first-parent compound ownership, boundary-aware subgraphs, scene-level occupancy, independent point/circle/cross/open endpoint markers, invisible constraints, explicit dispositions for every pinned Mermaid 11.17.2 shape name, distinct common decorated shapes, multiline labels, color roles, and terminal resource/text safety. It remains Partial for browser-only metadata, unimplemented uncommon geometry, arbitrary dense-route candidates, and mixed-stroke crossings. | Keep `mermaid-ascii` for compact routing evidence and `beautiful-mermaid` for UI ideas, but use pinned Mermaid semantics and executable terminal recovery gates as the product oracle. |
+| Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, ampersand fan-in/fan-out examples, richer shape handling, disconnected subgraph non-overlap checks, and more styling hooks, but `RL` is approximated as `LR`. | Merman preserves a broader typed surface: true `BT`/`RL`, Dagre-compatible ranking, first-parent compound ownership, boundary-aware subgraphs, scene-level occupancy, independent point/circle/cross/open endpoint markers, invisible constraints, explicit dispositions for every pinned Mermaid 11.17.2 shape name, distinct common decorated shapes, multiline labels, color roles, and terminal resource/text safety. It remains Partial for browser-only metadata, unimplemented uncommon geometry, arbitrary dense-route candidates, and non-transverse mixed-stroke junctions. | Keep `mermaid-ascii` for compact routing evidence and `beautiful-mermaid` for UI ideas, but use pinned Mermaid semantics and executable terminal recovery gates as the product oracle. |
 | Sequence | Exact copied-fixture parity for a compact sequence corpus. | Much broader parser/layout coverage, including notes, blocks, theming, and ASCII/Unicode variants. | Typed sequence support is already beyond the narrow reference: activations, create/destroy, boxes with inner padding, control blocks, mirror actors, and color roles all exist. | Remaining work is mostly layout polish and boundary tightening, not parser rescue. |
 | Class | Not part of the pinned reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | Supported subset through the shared `relation_graph` seam, with four terminal directions, independent source/target markers, endpoint cardinalities, annotation and method semantic probes, multiline relationship labels, self-relation loops, same-endpoint and bidirectional same-pair lanes, bounded iterative relation-layer sweeps, independent relation components, spanning routes, cyclic reverse-span lanes, a strict planar K2×2 bounded cycle with four disjoint routes, structured crossing/port-fit/route/overlay-collision relation-summary fallback for other complex scenes, dense multiline local semantic fixtures, and typed role colors. | Extend from typed relation facts, not from parser shape. The K2×2 path is topology-specific, not arbitrary bounded-graph support. |
 | ER | The pinned copied-source revision has no ER renderer. The moving ignored checkout at `b1b35f67` now has entity tables, crow's-foot cardinalities, aliases, self-relations, and routed labels, but no ER fixture from it is an admitted oracle. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | Supported subset through the same `relation_graph` seam, with four terminal directions, entity boxes, attributes plus key markers, cardinality markers including Mermaid's parent diamond, multiline relationship labels, self-relationship loops, same-endpoint and bidirectional same-pair lanes, bounded iterative relation-layer sweeps, independent relation components, cyclic reverse-span lanes, a strict planar K2×2 bounded cycle with four disjoint routes, structured crossing/port-fit/route/overlay-collision relation-summary fallback for other complex scenes, and dense multiline local semantic fixtures. | Relation layout is the shared seam; cardinality and relationship identity stay family-specific. The K2×2 path is topology-specific, not arbitrary bounded-graph support. Moving reference code remains discovery evidence until explicitly pinned and inventoried. |
@@ -148,9 +535,9 @@ expected output.
 
 - CJK and emoji placement is covered for the current renderer families; keep the same semantic
   gate for new families and more complex grapheme clusters.
-- Flowchart route-label placement beyond the shipped boundary transit-lane policy: general
-  grid-path and dense multi-edge labels still need explicit route-plan policy before complex local
-  fixtures should be admitted.
+- Flowchart dense compound scenes beyond the bounded channel-search and congestion-repair budgets.
+  The shared planner validates complete label ownership and route connectivity, but a search miss
+  remains an explicit diagnostic rather than a claim that no presentation is possible.
 - Class and ER dense relation topologies beyond the admitted strict planar K2×2 cycle; new policy
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.

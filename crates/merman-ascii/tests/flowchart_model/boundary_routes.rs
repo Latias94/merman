@@ -173,8 +173,8 @@ fn flowchart_local_semantic_fixture_covers_boundary_label_lane() {
     let label_y = rows.iter().position(|line| *line == label_line).unwrap();
     let label_x = label_line.find("boundaryLabelWithEnoughWidth").unwrap();
     let host_continues = (label_x..label_x + "boundaryLabelWithEnoughWidth".len()).any(|x| {
-        rows[label_y - 1].as_bytes().get(x) == Some(&b'|')
-            && rows[label_y + 1].as_bytes().get(x) == Some(&b'|')
+        matches!(rows[label_y - 1].as_bytes().get(x), Some(b'|' | b'+'))
+            && matches!(rows[label_y + 1].as_bytes().get(x), Some(b'|' | b'+'))
     });
     assert!(
         label_line.contains("|boundaryLabelWithEnoughWidth") || host_continues,

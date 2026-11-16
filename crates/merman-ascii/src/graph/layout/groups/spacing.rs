@@ -1,4 +1,4 @@
-use super::super::grid::{AxisSizes, effective_axis_size, set_axis_size};
+use super::super::grid::{AxisSizes, separator_expansion_base, set_axis_size};
 use super::super::{GridCoord, NodeLayout};
 use super::bounds::{RawBounds, raw_group_bounds_batch};
 use super::layout_work_allocation_failed;
@@ -12,6 +12,7 @@ use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
 
 /// One visibly empty cell separates unrelated frames and their contents.
+#[cfg(test)]
 const COMPOUND_READING_GUTTER: isize = 1;
 
 #[derive(Clone, Copy)]
@@ -44,6 +45,7 @@ struct GroupEnvelope {
     members: Vec<usize>,
     grid: GridBounds,
     canvas: RawBounds,
+    gutter: isize,
 }
 
 /// Convert measured frame overhang into shared axis dimensions before final projection. A
@@ -55,6 +57,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
     nodes: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    demand: &crate::graph::demand::SceneDemand<'_>,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &mut ResourceContext,
@@ -66,6 +69,7 @@ pub(in crate::graph::layout) fn reserve_compound_axis_spacing(
             nodes,
             topology,
             policy,
+            demand,
             column_widths,
             row_heights,
             resources,
@@ -80,6 +84,7 @@ fn reserve_compound_axis_spacing_inner(
     nodes: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    demand: &crate::graph::demand::SceneDemand<'_>,
     column_widths: &mut AxisSizes,
     row_heights: &mut AxisSizes,
     resources: &ResourceContext,
@@ -94,7 +99,7 @@ fn reserve_compound_axis_spacing_inner(
     let group_bounds =
         raw_group_bounds_batch(graph, nodes, topology, policy, resources, execution)?;
     let mut membership_resources = resources.clone();
-    for group_index in 0..graph.groups.len() {
+    for (group_index, group) in graph.groups.iter().enumerate() {
         execution.checkpoint_loop(OperationPhase::Layout, group_index)?;
         let members = group_member_indices(topology, group_index, &mut membership_resources)?;
         let Some(first) = members.first().and_then(|index| nodes.get(*index)) else {
@@ -118,6 +123,7 @@ fn reserve_compound_axis_spacing_inner(
             members,
             grid,
             canvas,
+            gutter: demand.group_clearance(&group.id, resources)?,
         });
     }
 
@@ -163,6 +169,7 @@ fn reserve_envelope_spacing(
                 GridBounds::for_node(node.grid, resources)?,
                 node_canvas_bounds(node, resources)?,
                 direction,
+                envelope.gutter,
                 column_widths,
                 row_heights,
                 &mut column_requirements,
@@ -180,6 +187,7 @@ fn reserve_envelope_spacing(
                 other.grid,
                 other.canvas,
                 direction,
+                envelope.gutter.max(other.gutter),
                 column_widths,
                 row_heights,
                 &mut column_requirements,
@@ -215,14 +223,31 @@ fn reserve_pair_spacing(
     right_grid: GridBounds,
     right_canvas: RawBounds,
     direction: GraphDirection,
+    gutter: isize,
     columns: &AxisSizes,
     rows: &AxisSizes,
     column_requirements: &mut AxisSizes,
     row_requirements: &mut AxisSizes,
     resources: &ResourceContext,
 ) -> Result<()> {
-    let separated_x = left_grid.right < right_grid.x || right_grid.right < left_grid.x;
-    let separated_y = left_grid.bottom < right_grid.y || right_grid.bottom < left_grid.y;
+    // A disjoint pair can still abut on an axis. Prefer the root axis only when it has
+    // a complete separator band; otherwise use the other axis's available band.
+    let separated_x = right_grid
+        .x
+        .checked_sub(left_grid.right)
+        .is_some_and(|gap| gap > 1)
+        || left_grid
+            .x
+            .checked_sub(right_grid.right)
+            .is_some_and(|gap| gap > 1);
+    let separated_y = right_grid
+        .y
+        .checked_sub(left_grid.bottom)
+        .is_some_and(|gap| gap > 1)
+        || left_grid
+            .y
+            .checked_sub(right_grid.bottom)
+            .is_some_and(|gap| gap > 1);
     if !separated_x && !separated_y {
         return Ok(());
     }
@@ -278,14 +303,15 @@ fn reserve_pair_spacing(
         .checked_sub(before_border)
         .and_then(|gap| gap.checked_sub(1))
         .ok_or_else(|| resources.grid_overflow())?;
-    let extra = COMPOUND_READING_GUTTER
+    let extra = gutter
         .checked_sub(current_gutter)
         .ok_or_else(|| resources.grid_overflow())?;
     if extra <= 0 {
         return Ok(());
     }
     let extra = usize::try_from(extra).map_err(|_| resources.grid_overflow())?;
-    let required_size = resources.checked_grid_add(effective_axis_size(sizes, separator), extra)?;
+    let required_size =
+        resources.checked_grid_add(separator_expansion_base(sizes, separator), extra)?;
     if !requirements.contains_key(&separator) {
         requirements
             .try_reserve(1)
@@ -344,6 +370,7 @@ mod tests {
         ];
         let envelopes = vec![
             GroupEnvelope {
+                gutter: COMPOUND_READING_GUTTER,
                 members: vec![0],
                 grid: GridBounds {
                     x: 0,
@@ -359,6 +386,7 @@ mod tests {
                 },
             },
             GroupEnvelope {
+                gutter: COMPOUND_READING_GUTTER,
                 members: vec![1],
                 grid: GridBounds {
                     x: 4,
@@ -375,6 +403,55 @@ mod tests {
             },
         ];
         (nodes, envelopes)
+    }
+
+    #[test]
+    fn compound_pair_spacing_uses_the_available_cross_axis_separator() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let columns = AxisSizes::default();
+        let rows = AxisSizes::default();
+        let mut column_requirements = AxisSizes::default();
+        let mut row_requirements = AxisSizes::default();
+        reserve_pair_spacing(
+            GridBounds {
+                x: 0,
+                y: 0,
+                right: 2,
+                bottom: 2,
+            },
+            RawBounds {
+                x: 0,
+                y: 0,
+                right: 6,
+                bottom: 7,
+            },
+            GridBounds {
+                x: 3,
+                y: 4,
+                right: 5,
+                bottom: 6,
+            },
+            RawBounds {
+                x: 4,
+                y: 5,
+                right: 6,
+                bottom: 8,
+            },
+            GraphDirection::LeftRight,
+            COMPOUND_READING_GUTTER,
+            &columns,
+            &rows,
+            &mut column_requirements,
+            &mut row_requirements,
+            &resources,
+        )
+        .unwrap();
+        assert!(column_requirements.is_empty());
+        assert!(
+            row_requirements
+                .get(&3)
+                .is_some_and(|height| *height > separator_expansion_base(&rows, 3))
+        );
     }
 
     #[test]

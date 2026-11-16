@@ -1,5 +1,6 @@
-use super::label::GraphLabel;
+use super::label::{GRAPH_LABEL_LINE_GAP, GraphLabel};
 use super::model::{AsciiGraph, GraphGroupKind, GraphGroupStyle, GraphNodeShape, GraphNodeStyle};
+use super::surface::OutputTransform;
 use super::topology::GraphGroupTopology;
 use crate::error::Result;
 use crate::operation::AsciiExecution;
@@ -7,10 +8,11 @@ use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::{LogicalExtent, ResourceContext};
 
+mod clearance;
 mod grid;
 mod groups;
 
-/// Additional coarse-grid coordinates available to bounded graph routing.
+/// Additional terminal cells available to bounded graph routing.
 pub(super) const ROUTING_GRID_MARGIN: usize = 6;
 
 pub(super) fn charge_sort_work(len: usize, resources: &ResourceContext) -> Result<()> {
@@ -28,19 +30,6 @@ pub(super) struct GraphLayout {
     pub(super) groups: Vec<GroupLayout>,
     /// Group indices ordered from containing backgrounds to nested backgrounds.
     pub(super) group_background_order: Vec<usize>,
-    column_widths: grid::AxisProjection,
-    row_heights: grid::AxisProjection,
-    offset_x: usize,
-    offset_y: usize,
-}
-
-impl GraphLayout {
-    pub(super) fn grid_to_canvas(&self, coord: GridCoord) -> CanvasCoord {
-        CanvasCoord {
-            x: self.offset_x + self.column_widths.position(coord.x),
-            y: self.offset_y + self.row_heights.position(coord.y),
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -91,6 +80,7 @@ pub(super) struct GroupLayout {
     pub(super) id: String,
     pub(super) kind: GraphGroupKind,
     pub(super) title: GraphLabel,
+    pub(super) title_transform: OutputTransform,
     pub(super) style: GraphGroupStyle,
     pub(super) divider_span: Option<DividerSpan>,
     pub(super) x: usize,
@@ -106,6 +96,37 @@ impl GroupLayout {
 
     pub(super) fn bottom(&self) -> usize {
         self.y + self.height - 1
+    }
+
+    /// Shared drawing and protection coordinates within the admitted frame, before root projection.
+    pub(super) fn title_line_position(&self, line_index: usize) -> Option<CanvasCoord> {
+        if self.kind != GraphGroupKind::Container {
+            return None;
+        }
+        let line = self.title.lines().get(line_index)?;
+        let line_width = self.title.line_width(line);
+        let available_width = self.width.saturating_sub(2);
+        if line_width > available_width {
+            return None;
+        }
+        // Retain the widest line's established envelope and the transit space beside it.
+        let block_x = (self.x + self.width.saturating_sub(1) / 2)
+            .saturating_sub(self.title.width() / 2)
+            .max(self.x + 1);
+        let x = if self.title_transform == OutputTransform::HorizontalMirror {
+            block_x + self.title.width() - line_width
+        } else {
+            block_x
+        };
+        let row = if self.title_transform == OutputTransform::VerticalMirror {
+            self.title.lines().len() - 1 - line_index
+        } else {
+            line_index
+        };
+        Some(CanvasCoord {
+            x,
+            y: self.y + 1 + row * (GRAPH_LABEL_LINE_GAP + 1),
+        })
     }
 }
 
@@ -151,7 +172,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
     };
     check_graph_nesting_depth(graph, topology.as_ref(), resources)?;
     checkpoint_layout(execution)?;
-    let (mut nodes, column_widths, row_heights) = grid::layout_nodes(
+    let (mut nodes, _, _) = grid::layout_nodes(
         graph,
         layout_policy,
         topology.as_ref(),
@@ -160,7 +181,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
         execution,
     )?;
     checkpoint_layout(execution)?;
-    let (laid_out_groups, group_offset_x, group_offset_y) = if graph.groups.is_empty() {
+    let (mut laid_out_groups, _, _) = if graph.groups.is_empty() {
         (
             groups::LaidOutGroups {
                 items: Vec::new(),
@@ -181,14 +202,7 @@ pub(super) fn layout_graph_with_resources_and_execution(
             execution,
         )?
     };
-    let offset_x = nodes
-        .first()
-        .map(|node| node.x.saturating_sub(column_widths.position(node.grid.x)))
-        .unwrap_or(group_offset_x);
-    let offset_y = nodes
-        .first()
-        .map(|node| node.y.saturating_sub(row_heights.position(node.grid.y)))
-        .unwrap_or(group_offset_y);
+    clearance::reserve_exterior_routing(graph, &mut nodes, &mut laid_out_groups.items, resources)?;
     checkpoint_layout(execution)?;
     let groups = laid_out_groups.items;
     graph_canvas_extent(&nodes, &groups, 0, 0, resources)?;
@@ -198,10 +212,6 @@ pub(super) fn layout_graph_with_resources_and_execution(
         nodes,
         groups,
         group_background_order: laid_out_groups.background_order,
-        column_widths,
-        row_heights,
-        offset_x,
-        offset_y,
     })
 }
 
@@ -279,6 +289,50 @@ mod tests {
     use merman_model::resources::ResourceProfile;
     use merman_model::{CancelReason, OperationControl, OperationPhase};
 
+    #[test]
+    fn dense_marked_fanout_keeps_dimensions_and_translates_the_complete_scene() {
+        use crate::graph::model::GraphEdgeMarker;
+        for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("S", "SOURCE");
+            for index in 1..=12 {
+                let id = format!("N{index:02}");
+                graph.add_node(&id, &id);
+                graph.add_edge_with_attrs(
+                    "S",
+                    &id,
+                    GraphEdgeAttrs {
+                        start_marker: GraphEdgeMarker::Point,
+                        ..Default::default()
+                    },
+                );
+            }
+            let options = AsciiRenderOptions::ascii()
+                .with_graph_padding_x(0)
+                .with_graph_padding_y(0);
+            let marked = layout_graph(&graph, &options);
+            for edge in &mut graph.edges {
+                edge.start_marker = GraphEdgeMarker::Open;
+            }
+            let baseline = layout_graph(&graph, &options);
+            let translation = (
+                marked.nodes[0].x - baseline.nodes[0].x,
+                marked.nodes[0].y - baseline.nodes[0].y,
+            );
+            assert!(translation.0 <= 2 && translation.1 <= 2);
+            for (marked_node, base_node) in marked.nodes.iter().zip(&baseline.nodes) {
+                assert_eq!(
+                    (marked_node.width, marked_node.height, marked_node.grid),
+                    (base_node.width, base_node.height, base_node.grid)
+                );
+                assert_eq!(
+                    (marked_node.x, marked_node.y),
+                    (base_node.x + translation.0, base_node.y + translation.1)
+                );
+            }
+        }
+    }
+
     fn compact_two_groups(direction: GraphDirection, nested: bool) -> GraphLayout {
         let mut graph = AsciiGraph::new(direction);
         for (id, label) in [
@@ -336,6 +390,57 @@ mod tests {
             group.y < y && bottom < group.bottom(),
             "vertical frame containment: {group:?}"
         );
+    }
+
+    #[test]
+    fn nested_sibling_chains_keep_disjoint_frames_after_local_direction_overrides() {
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            let mut graph = AsciiGraph::new(direction);
+            for id in ["A", "B", "D", "C"] {
+                graph.add_node(id, id);
+            }
+            for (from, to) in [("A", "B"), ("D", "C"), ("B", "D")] {
+                graph.add_edge(from, to);
+            }
+            for (id, title, local, members) in [
+                (
+                    "left",
+                    "Source",
+                    Some(GraphDirection::LeftRight),
+                    vec!["A", "B"],
+                ),
+                (
+                    "right",
+                    "Sink",
+                    Some(GraphDirection::LeftRight),
+                    vec!["D", "C"],
+                ),
+                ("p", "Pipeline", None, vec!["left", "right"]),
+            ] {
+                graph.add_group_with_style(
+                    id,
+                    title,
+                    local,
+                    members.into_iter().map(str::to_owned).collect(),
+                    GraphGroupStyle::default(),
+                );
+            }
+            let layout = layout_graph(&graph, &AsciiRenderOptions::unicode());
+            let left = &layout.groups[0];
+            let right = &layout.groups[1];
+            assert!(
+                left.right() + 1 < right.x
+                    || right.right() + 1 < left.x
+                    || left.bottom() + 1 < right.y
+                    || right.bottom() + 1 < left.y,
+                "sibling frames need a reading gutter ({direction:?}): {left:?}, {right:?}; nodes={:?}",
+                layout
+                    .nodes
+                    .iter()
+                    .map(|node| (&node.id, node.grid, node.x, node.y))
+                    .collect::<Vec<_>>()
+            );
+        }
     }
 
     #[test]
@@ -469,7 +574,7 @@ mod tests {
     }
 
     #[test]
-    fn scoped_empty_subtrees_keep_node_projection_and_unrelated_frame_gutters() {
+    fn scoped_empty_subtrees_preserve_containment_and_unrelated_frame_gutters() {
         for direction in [
             GraphDirection::LeftRight,
             GraphDirection::RightLeft,
@@ -504,14 +609,6 @@ mod tests {
                             .with_graph_padding_y(0);
                     }
                     let layout = layout_graph(&graph, &options);
-                    for node in &layout.nodes {
-                        let projected = layout.grid_to_canvas(node.grid);
-                        assert_eq!(
-                            (projected.x, projected.y),
-                            (node.x, node.y),
-                            "scope placement must preserve the routing projection contract"
-                        );
-                    }
                     let left = layout.groups.iter().find(|group| group.id == "L").unwrap();
                     let right = layout.groups.iter().find(|group| group.id == "R").unwrap();
                     let empty = layout.groups.iter().find(|group| group.id == "E").unwrap();

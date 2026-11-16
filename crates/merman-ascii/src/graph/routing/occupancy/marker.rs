@@ -89,6 +89,7 @@ fn collect_marker_requests(
                             route_index,
                             endpoint,
                             point_direction: candidate.point_direction,
+                            primary: false,
                         },
                     )?;
                 }
@@ -155,9 +156,9 @@ fn allocate_pending_markers(
             }
         }
         let Some(candidate) = selected else {
-            return Err(AsciiError::UnsupportedFeature {
+            return Err(AsciiError::RoutingSearchExhausted {
                 diagram_type,
-                feature: "independent endpoint marker berth exhausted",
+                edge_index: routes[marker.route_index].owner.source_edge_index,
             });
         };
         routes[marker.route_index].plan.materialize_marker_at(
@@ -185,6 +186,10 @@ fn allocate_pending_markers(
             MarkerOccupant {
                 route_index: marker.route_index,
                 endpoint: marker.endpoint,
+                point_direction: candidate.point_direction,
+                shared_group: routes[marker.route_index]
+                    .owner
+                    .shared_marker_group(marker.endpoint, cell.coord),
             },
             resources,
             diagram_type,

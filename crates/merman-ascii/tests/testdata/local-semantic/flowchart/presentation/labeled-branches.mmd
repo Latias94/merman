@@ -1,0 +1,7 @@
+graph TD
+A{Request status} -->|valid| B[Execute]
+A -->|invalid| C[Reject]
+A -->|retry| D[Queue]
+B --> E[Report]
+C --> E
+D --> E

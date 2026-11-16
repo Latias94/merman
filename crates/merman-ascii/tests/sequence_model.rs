@@ -50,6 +50,49 @@ fn render_sequence_model(
     render_model(&RenderSemanticModel::Sequence(model.clone()), options)
 }
 
+#[test]
+fn sequence_semantic_fallback_preserves_property_spaces_under_a_trim_request() {
+    use merman_ascii::{AsciiOutputOutcome, AsciiTrimPolicy, AsciiViewportPolicy, OverflowPolicy};
+
+    let payload = "  original  spaces 审批 remain complete  ";
+    let source = format!(
+        "sequenceDiagram\nparticipant A\nproperties A: {{\"payload\":\"{payload}\"}}\nparticipant B\nA->>B: Preserve the complete authored acknowledgment message\n"
+    );
+    let model = support::parse_model(&source);
+    for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+        for width in [12, 19] {
+            let options = AsciiRenderOptions::ascii().with_terminal_width_profile(profile);
+            for trim in [
+                AsciiTrimPolicy::Preserve,
+                AsciiTrimPolicy::TrimTrailingSpaces,
+            ] {
+                let report = support::render_model_report(
+                    &model,
+                    &options,
+                    AsciiViewportPolicy::with_max_width(width)
+                        .overflow(OverflowPolicy::Fallback)
+                        .trim(trim),
+                )
+                .unwrap();
+                assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+                assert!(!report.trimmed);
+                let complete = report.text.replace('\n', "");
+                assert!(
+                    complete.contains(&format!("model.actors.A.properties.payload: \"{payload}\"")),
+                    "{}",
+                    report.text
+                );
+                let measured = support::terminal_extent_with_profile(&report.text, profile);
+                assert_eq!(
+                    (report.emitted_extent.width, report.emitted_extent.height),
+                    measured
+                );
+                assert!(measured.0 <= width);
+            }
+        }
+    }
+}
+
 fn read_local_semantic_fixture(path: &str) -> String {
     let fixture_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/testdata/local-semantic")

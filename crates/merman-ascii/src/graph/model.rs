@@ -376,9 +376,6 @@ pub(crate) enum GraphEdgeMarker {
     Cross,
 }
 
-#[cfg(test)]
-pub(crate) type GraphEdgeArrow = GraphEdgeMarker;
-
 impl AsciiGraph {
     pub(crate) fn new(direction: GraphDirection) -> Self {
         Self::new_for_diagram("flowchart", direction)

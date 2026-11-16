@@ -22,6 +22,32 @@ pub enum AsciiError {
         diagram_type: &'static str,
         feature: &'static str,
     },
+    /// The bounded routing heuristic ended without finding a valid scene.
+    ///
+    /// This is not an unsupported feature, proof that no valid scene exists, or a
+    /// resource-policy failure.
+    #[error(
+        "ASCII bounded routing search did not find a valid scene for edge[{edge_index}] in `{diagram_type}`"
+    )]
+    RoutingSearchExhausted {
+        diagram_type: &'static str,
+        /// Zero-based edge index in the authored model, before canonical reordering.
+        edge_index: usize,
+    },
+    /// Independent marker demand exceeds a conservative upper bound for the current
+    /// fixed-terminal presentation, after explicitly allocated shared markers are counted once.
+    ///
+    /// This certificate applies only to that presentation and its bounded marker candidates;
+    /// it does not establish that the graph is impossible under other presentations or layouts.
+    #[error(
+        "ASCII fixed-terminal capacity exceeded in the current presentation: {required} independent markers > upper bound {available} for endpoint `{endpoint}` in `{diagram_type}`"
+    )]
+    PortCapacityExceeded {
+        diagram_type: &'static str,
+        endpoint: String,
+        required: usize,
+        available: usize,
+    },
     #[error("ASCII rendering could not allocate bounded storage during `{phase}`")]
     AllocationFailed { phase: &'static str },
     #[error(transparent)]

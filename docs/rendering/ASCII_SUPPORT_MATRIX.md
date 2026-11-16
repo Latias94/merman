@@ -51,17 +51,28 @@ is rejected. Rust and binding result APIs can return styled text because their s
 identifies it. Viewport Fallback is also Plain-only; styled fallback combinations are rejected by
 capability preflight, even when that particular input would fit.
 
-Auto requires an explicit width and is available only for Flowchart and Sequence. It tries Compact
+Auto requires an explicit width and is available only for Flowchart, Swimlane, and Sequence. It tries Compact
 once after Canonical exceeds that width, chooses the narrower valid candidate, and keeps Canonical
 on ties. The host's overflow policy still governs a result that remains wide. Narrower output can
 be taller; Auto does not choose a graph direction or truncate long labels.
+
+State remains Canonical-only. Graph planning occurs before viewport admission: a required
+`RoutingSearchExhausted` or `PortCapacityExceeded` result is returned without selecting width
+fallback. The former is a bounded search miss; the latter certifies only the current fixed-terminal
+presentation's marker capacity. Neither proves that the graph has no other readable layout.
+An optional Compact attempt can retain Canonical on these failures; resource and cancellation
+errors remain terminal. The [graph presentation boundary](../../crates/merman-ascii/README.md#graph-presentation-boundary)
+defines the completed shared-planner scope and the remaining density/height limitations.
 
 A measured candidate owns its metrics once; fallback construction checks width and output ceilings
 incrementally, then commits one render-wide resource admission. Overflow remains a presentation
 result (`allow`, `fallback`, or `error`), never a resource success or resource failure. Cancellation
 and resource errors retain precedence over fallback selection. Semantic fallback applies typed-model
 complexity preflight; Flowchart's typed projection uses a bounded cancellation-aware JSON writer
-before flattening under bounded profiles.
+under bounded profiles. Flowchart, State, and Swimlane width fallback presents keyed nodes/groups
+and individual relationships with complete labels, markers, strokes, membership, and authored
+details. Flowchart first-use declarations avoid a separate repeated node table. Other families
+retain their existing fallback projections.
 
 ### Admitted profile combinations
 
@@ -80,10 +91,10 @@ readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
-| Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, independent endpoint markers, normal/dotted/thick/invisible edge semantics, labels, subgraphs, nested groups, first-parent compound ownership, scene-level route occupancy, and a family-owned compact wrap policy. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense-route candidate policy, and mixed-stroke crossing ownership remain unsupported or incomplete; bounded fallback is a typed Plain compatibility projection, not clipped geometry. |
+| Flowchart / graph | Partial | Diagrammatic | Yes | Root directions, Dagre-compatible ranking, explicit pinned-shape dispositions, common diagrammatic node shapes, terminal-cell wrapped node labels, compatible branch/merge channels with shared heads and private conditions, independent mixed-marker terminals, complete shape-valid non-corner terminal ports, marked-source congestion repair, local-direction branch clearance, normal/dotted/thick/invisible edge semantics, transverse mixed-stroke crossings, committed label reservations, subgraphs, nested groups, first-parent compound ownership, boundary-aware terminal-cell routes between nodes and container endpoints, exterior container self-loops with distinct non-corner contacts, interior ancestor/member contacts, container-scoped labels, measured compound bypass clearance, scene-level route occupancy, and family-owned Compact geometry. | Icons, images, callbacks, links, some uncommon shapes, arbitrary dense routing (including marked fan-out), and non-transverse mixed-stroke junctions remain unsupported or incomplete; bounded fallback is a typed Plain compatibility projection, not clipped geometry. |
 | Swimlane | Partial | Diagrammatic | Yes | Uses the same terminal projection and admitted profiles as Flowchart while retaining its separate language and feature identity. | Shares Flowchart's geometry and presentation limits; terminal layout is independent of the SVG lane renderer. |
 | Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
-| State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, and terminal colors. | State is canonical-only and does not inherit Flowchart compact policy. Some presentation metadata and future shape variants are approximated; bounded fallback is a typed Plain compatibility projection. |
+| State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, terminal colors, structural empty concurrency regions, and transverse routes through intermediate region separators. | State is canonical-only and does not inherit Flowchart compact policy. Direct typed-model Divider endpoints retain dedicated routing; some presentation metadata and future shape variants are approximated. Bounded fallback is a typed Plain compatibility projection. |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
 | XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, injective length-framed disclosure, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; terminal coordinates are quantized, cross-series same-cell ownership remains approximate, unknown direct-model orientations and band y-axes are rejected, and accessibility title/description metadata is intentionally omitted. |
@@ -184,14 +195,29 @@ parity, and 60/80/100/120-cell Allow/Fallback/Error outcomes. The representative
 
 | Fixture | Layout | Extent | Blank cells | Longest blank run |
 | --- | --- | ---: | ---: | ---: |
-| Issue #53 Flowchart | canonical | `74×57` | 3220 | 51 |
-| Issue #53 Flowchart | compact | `56×67` | 2910 | 41 |
-| Sequence self-messages/notes | canonical | `82×58` | 3227 | 20 |
-| Sequence self-messages/notes | compact | `78×58` | 2982 | 21 |
+| Issue #53 Flowchart | canonical | `76×40` | 2099 | 52 |
+| Issue #53 Flowchart | compact | `59×50` | 2103 | 42 |
+| Sequence self-messages/notes | canonical | `107×58` | 4681 | 41 |
+| Sequence self-messages/notes | compact | `105×58` | 4567 | 41 |
 
 These values are characterization evidence, not universal quality scores. Admission still requires
 complete authored-field retention and typed overflow behavior; a narrower result that drops a field
-is rejected.
+is rejected. Issue #53 Compact spends more rows while reducing width and area. Its
+independent contours share rank centers, retaining all seven heads and complete conditions beside
+visible route turns. This remains a fixture-specific tradeoff rather than a universal density claim.
+
+`presentation_floor.rs` fixes the complete-document outcomes for the original 13-case terminal
+gallery at 60/80/100/120 cells, in ASCII/Unicode and Unicode/CJK width profiles. Twelve-way LR
+branches and merges occupy 47 rows. Sixteen-way TD fallback occupies 20 rows at 60 cells and
+19 at 80/100/120; long-label fallback occupies 13/11/11/9 rows. Legends and detail rows count toward
+these limits. `graph_layout_quality.rs` and the independent generated scene oracle protect the
+endpoint, type, condition, multiplicity, and containment questions behind these measurements.
+
+The generated supported-small-graph set fixes 486 Interactive scene attempts and 3,042 visible
+edge contributions, with 2/5/8 nodes and at most 12 edges. All attempts remain in its denominator,
+including failures. The generator covers nine topology categories, LR/TD, three structural/gap
+requests, and three edge orders. Four-direction, CJK, State concurrency, and Swimlane containment
+have their own public semantic tests; the generator does not claim to exhaust arbitrary graphs.
 
 - Use exact snapshots when the ASCII shape itself is the contract.
 - Use semantic assertions for structured-text output and relation-summary fallback, ensuring every retained entity/endpoint/label remains visible.

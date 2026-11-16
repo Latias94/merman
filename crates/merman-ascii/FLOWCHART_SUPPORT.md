@@ -3,7 +3,7 @@
 Status: Active supported subset
 
 This document describes the current `merman-ascii` flowchart support boundary. The renderer consumes
-`merman-core` `FlowchartModel` values; it does not parse Mermaid text itself.
+`merman-model` Flowchart terminal views; it does not parse Mermaid text itself.
 
 ## Supported
 
@@ -15,10 +15,10 @@ This document describes the current `merman-ascii` flowchart support boundary. T
 | Node labels | Supported subset | Text labels, Mermaid-ascii-compatible escaped newlines, and `<br>` line breaks. Ordinary Flowchart node labels wrap before node sizing at the configurable `flowchart_node_label_wrap_width` terminal-cell limit (canonical default `40`; Compact default `24` unless explicitly overridden), using one grapheme-safe plan for measurement and materialization. Missing labels fall back to node ids. This terminal policy is independent of Mermaid's CSS-pixel `wrappingWidth`. |
 | Edges | Supported subset | Independent source/target point, circle, cross, or open markers; mixed and double-ended forms; visible normal/dotted/thick strokes; invisible layout constraints; explicit/generated edge identity; multiline labels; deterministic length spacing; and TD merge/skip edges. Endpoint markers remain unresolved until scene allocation assigns each owner an independent terminal berth. Labels keep their planned footprint when clear and otherwise use bounded route-local lanes that avoid endpoint markers, nodes, group borders/titles, and accepted labels. Clear spans use direct ports; obstructed spans use family-owned alternate lanes. |
 | Subgraphs | Supported subset | Titled group boxes, multiline title rows from explicit line breaks, automatic wrapping for long titles, nested groups, disconnected sibling groups, external nodes, authored local directions across boundary edges, and the pinned Mermaid baseline's perpendicular default for isolated implicit subgraphs. Boundary grid-path labels use planner-owned vertical transit-lane placement and reserve their planned canvas extent instead of being clipped at the original graph width. |
-| Layout profiles | Supported subset | `canonical` remains the default. The explicit `compact` profile keeps the same topology and routing semantics while resolving the family-owned node-label wrap default from 40 to 24 cells. Caller overrides remain authoritative. Flowchart policy is resolved separately from State and other graph-backed families. |
+| Layout profiles | Supported subset | `canonical` remains the default. The explicit `compact` profile keeps the same topology and routing semantics while resolving the family-owned node-label wrap default from 40 to 24 cells and horizontal rank gap from 5 to 3. Caller overrides remain authoritative. Flowchart and Swimlane share these profiles; State remains Canonical-only. |
 | Character sets | Supported | ASCII and Unicode box-drawing output via `AsciiRenderOptions::ascii()` and `unicode()`. |
 | Color roles and styles | Supported subset | Plain, ANSI16, ANSI256, TrueColor, and HTML encoders share one layout. ANSI16 keeps primary text at terminal Reset and uses sparse named accents for renderer-owned structure. Mermaid flowchart `classDef`, `class`, inline `style`, and `linkStyle` declarations can supply supported foreground/background roles. Supported style properties are `color` for text/labels, `stroke` for borders/edges, and `fill`/`background` for node and subgraph backgrounds. |
-| Viewport/report behavior | Supported | Allow preserves complete wide output, Error returns a typed width diagnostic, and Plain Fallback selects one complete typed structured projection. Styled fallback is rejected by capability preflight. Schema-2 output metadata identifies the encoding and does not count the final line terminator as a logical row. |
+| Viewport/report behavior | Supported | Allow preserves complete wide output, Error returns a typed width diagnostic, and Plain Fallback selects one complete typed structured projection. Styled fallback is rejected by capability preflight. Schema-3 output metadata identifies encoding, requested/effective layout profiles and Compact attempts; the final line terminator does not count as a logical row. |
 | Resource policy | Supported | Typed limits bound checked grid extent, layout work, logical document cells, encoded bytes, grapheme size, and nesting depth before amplification. |
 
 ## V1.1 Compatibility Plan
@@ -29,7 +29,7 @@ approximations. These mappings are product behavior once shipped and should be s
 | Capability | Planned behavior | Notes |
 | --- | --- | --- |
 | Direction transforms | Supported subset. | `BT` vertically flips the TD layout; `RL` horizontally mirrors the LR layout. Node labels, edge labels, group titles, arrowheads, and Unicode connectors stay readable/oriented for the covered root-direction subset. |
-| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Placement may differ from SVG. The scene allocator keeps the original placement when clear, probes bounded route-local side lanes on collision, and returns an explicit error only when every non-destructive candidate is exhausted. |
+| Edge labels | Supported subset. | Labels render on routed edge paths, including multiline labels, for simple LR/TD edges, duplicate LR lanes, LR bidirectional lanes, and TD back-edge lanes. Grid and feedback planners retain the complete straight host so an inline label can cover its own segment. Relocated labels keep a clear perpendicular gap to that host; the gap is reserved against later routes and labels. Multiline side lanes align the complete text block, and labeled self-loops reserve a measured envelope with visible connections around the text. Placement may differ from SVG. The scene allocator keeps the original placement when clear, probes bounded route-local side lanes on collision, and returns an explicit error only when every non-destructive candidate is exhausted. |
 | Open edges | Supported subset. | Rendered as directionless connectors without arrowheads. |
 | Dotted edges | Supported subset. | ASCII uses `.`/`:`; Unicode uses box-drawing dotted line approximations. |
 | Thick edges | Supported subset. | ASCII uses `=`/`#` for horizontal/vertical thick lines; Unicode uses heavy box-drawing line characters. |
@@ -49,6 +49,14 @@ approximations. These mappings are product behavior once shipped and should be s
 | Document shapes | Supported approximation. | Rendered as a box with a folded bottom edge. |
 | Subgraphs | Supported subset. | Titled, multiline-title, wrapped-title, nested, disconnected, external-edge, and boundary-aware cross-boundary group layouts are covered by parser/model tests and local semantic fixtures. Copied `mermaid-ascii` fixtures remain immutable; implicit isolated groups intentionally differ where the narrow renderer inherits the root axis instead of the pinned Mermaid baseline's perpendicular default. |
 
+Preferred graph gaps can grow to fit a retained edge label's complete height, endpoint markers,
+and visible connections, including when the preferred padding is zero. Edge spacing and loop
+envelopes use the same whitespace trimming as routed text; omitted blank labels reserve no label
+space.
+
+Labeled reciprocal parallel edges retain independent target heads. Opposite-directed edges may
+cross perpendicularly while keeping their collinear transit strokes separate.
+
 ## Explicitly Unsupported
 
 These features return `AsciiError::UnsupportedFeature` instead of silently dropping semantics:
@@ -58,9 +66,13 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 | Hand-built subgraph member ids with line breaks | `subgraph member ids with line breaks` |
 | Hand-built models with directions outside Mermaid's supported root-direction set | `unsupported graph directions` |
 | Icon, image, browser-only metadata, and any future unsupported uncommon shapes | `non-rectangular node shapes` |
-| Invisible or otherwise non-normal/non-dotted/non-thick strokes | `non-normal edge strokes` |
-| Cross, circle, or otherwise non-point edge arrows | `non-point edge arrows` |
 | Hand-built models with edges whose endpoints are missing from `nodes` | `edges with missing endpoint nodes` |
+
+Required route or label search exhaustion returns `AsciiError::RoutingSearchExhausted` with the
+authored edge index. Independent marker demand above the current fixed presentation's capacity
+upper bound returns `AsciiError::PortCapacityExceeded`. These diagnostics do not establish that
+other layouts are impossible and do not trigger structured width fallback. See the
+[graph presentation boundary](README.md#graph-presentation-boundary).
 
 ## `beautiful-mermaid` Delta Triage
 
@@ -84,25 +96,71 @@ reference implementation is only an implementation aid.
 
 ## Known Limitations
 
-- When the ordinary route candidates collide, a bounded scene-aware grid search can route around
-  reserved nodes, reading margins, accepted labels, and endpoint markers. It reuses the ordinary
-  routing grid, work ledger, and final collision/marker checks. This admits review/retry feedback
-  branches, including wide Japanese labels, without changing an already valid canonical route.
-  Candidate exhaustion still produces `UnsupportedFeature`; resource or cancellation failures
-  remain terminal errors rather than a partial drawing.
+- Route candidates retain all cardinal port combinations. Collision or congestion can trigger
+  terminal-cell search over every shape-valid non-corner contact on each node side, preserving
+  independent heads for covered merges through twelve incoming edges, branch/merge graphs, skip
+  edges, and mixed-stroke feedback. Node-to-node routes across nested subgraphs use the same containment and transverse
+  crossing constraints as coarse-grid recovery. Aligned edges blocked by intermediate nodes reserve
+  a bypass lane in their nearest common container; group-title footprints include a horizontal
+  reading gap where space permits. Explicit local directions remain authoritative. Container
+  endpoints participate in terminal-cell recovery with distinct exterior and ancestor/member
+  interior contacts; only selected endpoint contacts may touch that frame, excluding corners.
+  Container self-loops can use two distinct exterior contacts, including labeled parallel loops
+  beside an exit. Nested loops and their labels stay inside their common parent, which reserves
+  enough exterior space to leave a berth before turning. Parent layouts account for complete
+  child-content spans;
+  sibling subgraphs remain separate units during local-direction placement. Clear direct routes
+  remain direct, and Dagre ranks do not change. Where a globally empty separator exists, branch
+  spacing reserves a complete transit band beyond endpoint reading margins on the actual local
+  rank axis without expanding any node's content bands. Source markers participate in port-reuse
+  scoring; open starts may share their stems. Actual markers and primary terminals remain
+  protected, while unused alternate marker positions allow transverse crossings. Marker allocation
+  rejects those positions after a crossing takes them. Covered two-ended-marker fans through fourteen
+  edges retain independent, unstacked heads in every root direction, including at zero graph padding.
+  If the top or left canvas boundary hides contacts needed by marked endpoint demand, layout
+  reserves an exterior reading margin and turn cell by translating the entire scene, including
+  compound frames, divider spans, and the coarse-grid origin. Node sizes and relative ranks stay
+  unchanged. Endpoints with multiple markers also include the escape corridors of their unmarked
+  ends when reserving that space. Marker admission rejects adjacent pointing-axis heads belonging
+  to different branches at one endpoint; same-pair parallel marker chains keep distinct owners.
+  Optional quality repair has a fixed expansion cap across lazily generated port pairs; required
+  recovery is bounded by scene extent and the shared work ledger. Full contour enumeration does
+  not guarantee independent routes for arbitrary degree. Dense two-ended-marker fan-out can still
+  exhaust recovery or the work budget; sixteen-edge TD/BT cases can exhaust the Interactive work
+  budget at default and zero preferred graph padding.
+  Alternate candidates and recovery still run
+  when the primary route family is unavailable. Candidate exhaustion produces `RoutingSearchExhausted`;
+  resource and cancellation failures remain terminal errors rather than a partial drawing.
 - LR routing now follows the high-value shape of `mermaid-ascii`'s grid path routing, including
   duplicate and bidirectional label lanes for the supported graph subset.
 - TD routing supports vertical chains, branch layouts, same-rank merge/skip edges in either
   horizontal direction, bent cross-column downward edges, and right-side back-edge label lanes for
   the copied fixture set. Same-rank spans use direct horizontal ports when clear and when any
   label fits without covering an arrowhead; otherwise they use the shared bottom lane.
-- Endpoint markers are independently allocated even for same-glyph/same-color owners, and edge
-  labels use scene-level protected footprints with bounded local relocation. Route-body candidates,
-  legal shared segments, and mixed-stroke crossing ownership still need the remaining
-  `A-GRAPH-030` scene-allocation work; this does not yet claim arbitrary collision-free routing.
+- Endpoint markers are independently allocated even for same-glyph/same-color owners. Edge labels
+  are assigned and protected when their route is committed, so later routes cannot consume an
+  earlier label's berth. Parallel node self-loops reserve nested lane space before node projection
+  and allocate their labels together after the batch's return lanes are known and before unrelated
+  edges or a searched loop are planned. Blocked node loops can use alternate terminal ports;
+  earlier labels are reserved before that search and its incumbent is re-admitted against them.
+  Searched-loop and container-loop labels are committed before the next loop's search, so later
+  contacts and transit cells respect their footprints. Terminal-cell paths try their straight
+  segments as label hosts in stable length order. A boundary route without a vertical transit
+  segment keeps its label on an inline
+  host instead of dropping it. Transverse normal/dotted/thick crossings preserve each axis's
+  stroke; Unicode uses
+  `┿` or `╂` when one axis is heavy. Incompatible mixed-stroke overlaps must use another lane.
+  Labels respect endpoint-container ownership, shared ancestor interiors, and planned marker
+  berths. Vertical markers retain a column of reading clearance from neighboring labels.
+  External group labels cannot leak into member space. Single-cell terminal paths require
+  at most one visible endpoint marker; dual-marker edges try another port pair. Arbitrary dense
+  routing and non-transverse mixed-stroke junctions remain outside the admitted boundary.
 - Node ranks use the shared Dagre-compatible acyclic/nesting/ranker phases and retain `minlen`,
   cycle ownership, compound constraints, and root direction. Local subgraph direction transforms
   reapply forward cross-boundary rank constraints after moving the group block.
+- Coarse external-node separation uses member envelopes, while axis projection resolves terminal
+  frame padding. These coordinate systems are not interchangeable; repeated terminal-padding
+  expansion on the coarse grid previously produced large blank offsets for group endpoint edges.
 - `BT` and `RL` remain root-direction transforms only.
 - `FlowSubgraph.dir` ships nested local-direction overrides across boundary edges. Isolated
   subgraphs without an explicit direction use the pinned Mermaid baseline's perpendicular effective-parent
@@ -118,9 +176,9 @@ reference implementation is only an implementation aid.
   shape geometry and ports are computed. This is an ASCII terminal policy, not a conversion of
   Mermaid's SVG `wrappingWidth` pixels. State labels and Flowchart edge labels retain their own
   family policies.
-- Compact is a Flowchart-owned admission, not a global graph-density mutation. The current evidence
-  candidate changes only the unresolved ordinary-node wrap default from 40 to 24 display cells;
-  explicit wrap widths win, and State remains canonical-only.
+- Compact is a Flowchart/Swimlane-owned admission, not a global graph-density mutation. It changes
+  the unresolved ordinary-node wrap default from 40 to 24 display cells and the horizontal rank gap
+  from 5 to 3; explicit spacing/wrap builders win, and State remains Canonical-only.
 - Mermaid classes/styles are rendered only for terminal-safe color properties in opt-in ANSI/HTML
   modes: `color`, `stroke`, `fill`, and `background` support hex colors and a small named-color
   set. Stroke width, links, callbacks, icons, images, Markdown labels, and HTML labels are not
@@ -133,15 +191,14 @@ reference implementation is only an implementation aid.
 
 The support boundary is covered by:
 
-- `cargo nextest run -p merman-ascii graph::`
-- `cargo nextest run -p merman-ascii graph_golden`
-- `cargo nextest run -p merman-ascii graph_fixture`
-- `cargo nextest run -p merman-ascii flowchart`
-- `cargo nextest run -p merman-ascii --test viewport_characterization -j1`
+- `cargo nextest run -p merman-ascii --all-features -j 2`
+- `cargo nextest run -p merman-ascii --features diagram-flowchart --test presentation_floor -j 2`
 
 Golden tests compare against immutable copied `mermaid-ascii` fixtures for the supported subset. The
-current corpus has 79 graph fixtures: 40 remain exact byte matches and 39 are named deterministic
-layout/route differences that must still render and are covered by parser-backed semantic tests.
+current corpus has 79 graph fixtures: 28 exact upstream matches, seven strict corrected compound
+snapshots, two strict local wire-style snapshots, and 42 named deterministic layout/route differences.
+The [fixture inventory](tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md) owns these dispositions;
+all cases must render and preserve their admitted text and parser-backed semantic contracts.
 The viewport characterization matrix additionally exercises canonical/compact, ASCII/Unicode,
 Unicode/CJK width profiles, Plain/ANSI16/ANSI256/TrueColor/HTML geometry parity, and
 60/80/100/120-cell Allow/Fallback/Error outcomes over the Issue #53 fixture.

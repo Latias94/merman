@@ -1,4 +1,78 @@
 use super::*;
+use crate::graph::routing::plan::{NodeAttachment, NodeAttachments};
+
+#[test]
+fn source_port_reuse_is_congestion_only_for_marked_starts() {
+    let options = AsciiRenderOptions::ascii();
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    let plan_with_source = |marker, length| {
+        let mut plan = marker_request_plan(GraphEdgeMarker::Open, length)
+            .with_marker_requests(marker, GraphEdgeMarker::Open, "flowchart")
+            .unwrap();
+        plan.attachments = Some(NodeAttachments {
+            start: NodeAttachment {
+                contact: CanvasCoord { x: 0, y: 0 },
+                outward: StepDirection::Right,
+                connector: None,
+            },
+            end: NodeAttachment {
+                contact: CanvasCoord {
+                    x: length - 1,
+                    y: 0,
+                },
+                outward: StepDirection::Left,
+                connector: None,
+            },
+        });
+        plan
+    };
+
+    for existing_marker in [GraphEdgeMarker::Open, GraphEdgeMarker::Point] {
+        let existing_routes = vec![PreparedRoute::for_test_with_endpoints(
+            plan_with_source(existing_marker, 6),
+            0,
+            "source",
+            "first-target",
+        )];
+        let mut resources = unbounded_resources();
+        let occupancy =
+            SceneOccupancy::try_new(&existing_routes, &graph_layout, &mut resources, "flowchart")
+                .unwrap();
+
+        for candidate_marker in [GraphEdgeMarker::Open, GraphEdgeMarker::Point] {
+            let candidate = PreparedRoute::for_test_with_endpoints(
+                plan_with_source(candidate_marker, 3),
+                1,
+                "source",
+                "second-target",
+            );
+            let attachments = candidate.plan.attachments.unwrap();
+            assert_eq!(
+                occupancy.source_port_usage(attachments.start),
+                usize::from(existing_marker != GraphEdgeMarker::Open),
+                "only committed start-marker requests should reserve the source contact"
+            );
+            assert_eq!(occupancy.target_port_usage(attachments.end), 0);
+            let score = occupancy
+                .score_route(
+                    &existing_routes,
+                    &candidate.plan,
+                    &candidate.owner,
+                    &mut resources,
+                    "flowchart",
+                )
+                .unwrap()
+                .expect("same-source routes may share their outgoing terminal ray");
+
+            assert_eq!(
+                score.has_congestion(),
+                existing_marker != GraphEdgeMarker::Open
+                    && candidate_marker != GraphEdgeMarker::Open,
+                "source reuse must trigger repair for marked fanout while preserving open stems"
+            );
+        }
+    }
+}
 
 #[test]
 fn conflicting_marker_owners_receive_independent_terminal_berths() {
@@ -184,6 +258,197 @@ fn parallel_markers_occupy_a_contiguous_terminal_chain() {
     }
 }
 
+fn incident_marker_route_at(
+    endpoint: MarkerEndpoint,
+    direction: StepDirection,
+    marker: GraphEdgeMarker,
+    coord: CanvasCoord,
+    route_index: usize,
+) -> PreparedRoute {
+    let anchor = MarkerAnchor::new(PlannedCellId::new(0), direction);
+    let opposite = MarkerAnchor::new(PlannedCellId::new(0), direction.opposite());
+    let other = format!("other-{route_index}");
+    let (anchors, start, end, from, to) = match endpoint {
+        MarkerEndpoint::Start => (
+            MarkerAnchors::new(anchor, opposite),
+            marker,
+            GraphEdgeMarker::Open,
+            "shared",
+            other.as_str(),
+        ),
+        MarkerEndpoint::End => (
+            MarkerAnchors::new(opposite, anchor),
+            GraphEdgeMarker::Open,
+            marker,
+            other.as_str(),
+            "shared",
+        ),
+    };
+    let ch = match direction {
+        StepDirection::Left | StepDirection::Right => '-',
+        StepDirection::Up | StepDirection::Down => '|',
+    };
+    let plan = RoutePlan::new(
+        vec![planned_cell(
+            coord.x,
+            coord.y,
+            ch,
+            PlannedRouteCellKind::EdgeLine,
+        )],
+        Vec::new(),
+        anchors,
+    )
+    .with_marker_requests(start, end, "flowchart")
+    .unwrap();
+    PreparedRoute::for_test_with_endpoints(plan, route_index, from, to)
+}
+
+#[test]
+fn branch_and_merge_marker_spacing_agrees_before_and_after_commit() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
+        for direction in [
+            StepDirection::Left,
+            StepDirection::Right,
+            StepDirection::Up,
+            StepDirection::Down,
+        ] {
+            for marker in [
+                GraphEdgeMarker::Point,
+                GraphEdgeMarker::Circle,
+                GraphEdgeMarker::Cross,
+            ] {
+                // The committed marker is at (4, 4). Check both neighbors on each axis,
+                // plus clear alternatives with exactly one intervening cell.
+                for (along, across, available) in [
+                    (3, 4, false),
+                    (5, 4, false),
+                    (4, 3, true),
+                    (4, 5, true),
+                    (2, 4, true),
+                    (6, 4, true),
+                ] {
+                    let coord = match direction {
+                        StepDirection::Left | StepDirection::Right => CanvasCoord {
+                            x: along,
+                            y: across,
+                        },
+                        StepDirection::Up | StepDirection::Down => CanvasCoord {
+                            x: across,
+                            y: along,
+                        },
+                    };
+                    let case = (endpoint, direction, marker, coord);
+                    let mut routes = vec![incident_marker_route_at(
+                        endpoint,
+                        direction,
+                        marker,
+                        CanvasCoord { x: 4, y: 4 },
+                        0,
+                    )];
+                    let mut resources = unbounded_resources();
+                    let mut occupancy = SceneOccupancy::try_new(
+                        &routes,
+                        &graph_layout,
+                        &mut resources,
+                        "flowchart",
+                    )
+                    .unwrap();
+                    allocate_committed_route_marker_berths(
+                        &mut routes,
+                        0,
+                        &mut occupancy,
+                        &charset,
+                        &mut resources,
+                        "flowchart",
+                    )
+                    .unwrap();
+                    let previous_plan = routes[0].plan.clone();
+                    let candidate = incident_marker_route_at(endpoint, direction, marker, coord, 1);
+                    let terminal = candidate
+                        .plan
+                        .terminal_candidate(endpoint, "flowchart")
+                        .unwrap();
+                    let disposition = occupancy
+                        .marker_candidate_disposition_before_commit(
+                            &routes,
+                            &candidate.owner,
+                            &candidate.plan,
+                            endpoint,
+                            terminal,
+                            &mut resources,
+                        )
+                        .unwrap();
+                    assert_eq!(
+                        disposition,
+                        if available {
+                            MarkerCandidateDisposition::Available
+                        } else {
+                            MarkerCandidateDisposition::Blocked
+                        },
+                        "{case:?}"
+                    );
+                    let score = occupancy
+                        .score_route(
+                            &routes,
+                            &candidate.plan,
+                            &candidate.owner,
+                            &mut resources,
+                            "flowchart",
+                        )
+                        .unwrap();
+                    assert_eq!(score.is_some(), available, "{case:?}");
+
+                    // Bypass admission deliberately so allocation must enforce the same rule.
+                    let candidate_plan = candidate.plan.clone();
+                    routes.push(candidate);
+                    let start = routes[1]
+                        .plan
+                        .terminal_candidate(MarkerEndpoint::Start, "flowchart")
+                        .unwrap();
+                    let end = routes[1]
+                        .plan
+                        .terminal_candidate(MarkerEndpoint::End, "flowchart")
+                        .unwrap();
+                    occupancy
+                        .commit_route(1, &routes[1], start, end, &mut resources)
+                        .unwrap();
+                    let allocation = allocate_committed_route_marker_berths(
+                        &mut routes,
+                        1,
+                        &mut occupancy,
+                        &charset,
+                        &mut resources,
+                        "flowchart",
+                    );
+                    let expected = if available {
+                        Ok(())
+                    } else {
+                        Err(AsciiError::RoutingSearchExhausted {
+                            diagram_type: "flowchart",
+                            edge_index: 1,
+                        })
+                    };
+                    assert_eq!(allocation, expected, "{case:?}");
+                    assert_eq!(routes[0].plan, previous_plan, "{case:?}");
+                    if available {
+                        let materialized = routes[1]
+                            .plan
+                            .materialized_marker_cell(endpoint, "flowchart")
+                            .unwrap()
+                            .unwrap();
+                        assert_eq!(materialized.coord, coord, "{case:?}");
+                    } else {
+                        assert_eq!(routes[1].plan, candidate_plan, "{case:?}");
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[test]
 fn identical_marker_glyphs_from_different_edges_do_not_coalesce() {
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
@@ -217,15 +482,16 @@ fn marker_berth_exhaustion_is_explicit() {
         PreparedRoute::for_test(marker_request_plan(GraphEdgeMarker::Cross, 1), 1),
     ];
     let mut resources = unbounded_resources();
+    routes[1].owner.source_edge_index = 71;
 
     let error = allocate_test_marker_berths(&mut routes, &charset, &mut resources)
         .expect_err("one terminal cell cannot host two marker owners");
 
     assert_eq!(
         error,
-        AsciiError::UnsupportedFeature {
+        AsciiError::RoutingSearchExhausted {
             diagram_type: "flowchart",
-            feature: "independent endpoint marker berth exhausted",
+            edge_index: 71,
         }
     );
 }
@@ -321,6 +587,160 @@ fn route_score_rejects_a_later_crossing_of_a_reserved_primary_terminal() {
 }
 
 #[test]
+fn unused_marker_candidates_allow_only_transverse_routes_and_cannot_cover_them() {
+    use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
+
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    for vertical in [false, true] {
+        let coord = |offset| {
+            if vertical {
+                CanvasCoord { x: 1, y: offset }
+            } else {
+                CanvasCoord { x: offset, y: 1 }
+            }
+        };
+        let (start_direction, end_direction, axis, transverse) = if vertical {
+            (
+                StepDirection::Up,
+                StepDirection::Down,
+                DIR_UP | DIR_DOWN,
+                DIR_LEFT | DIR_RIGHT,
+            )
+        } else {
+            (
+                StepDirection::Left,
+                StepDirection::Right,
+                DIR_LEFT | DIR_RIGHT,
+                DIR_UP | DIR_DOWN,
+            )
+        };
+        let plan = RoutePlan::new(
+            (0..5)
+                .map(|offset| {
+                    let coord = coord(offset);
+                    planned_cell(
+                        coord.x,
+                        coord.y,
+                        if vertical { '|' } else { '-' },
+                        PlannedRouteCellKind::EdgeLine,
+                    )
+                })
+                .collect(),
+            Vec::new(),
+            MarkerAnchors::new(
+                MarkerAnchor::new(PlannedCellId::new(0), start_direction),
+                MarkerAnchor::new(PlannedCellId::new(4), end_direction),
+            ),
+        )
+        .with_marker_requests(GraphEdgeMarker::Open, GraphEdgeMarker::Point, "flowchart")
+        .unwrap();
+        let later_plan = plan.clone();
+        let mut routes = vec![PreparedRoute::for_test_with_endpoints(
+            plan, 0, "source", "target",
+        )];
+        let mut resources = unbounded_resources();
+        let mut occupancy =
+            SceneOccupancy::try_new(&routes, &graph_layout, &mut resources, "flowchart").unwrap();
+        allocate_committed_route_marker_berths(
+            &mut routes,
+            0,
+            &mut occupancy,
+            &charset,
+            &mut resources,
+            "flowchart",
+        )
+        .unwrap();
+        let crossing_owner = RouteOwner::for_test(1, "other-a", "other-b");
+
+        for (directions, allowed) in [
+            (transverse, true),
+            (axis, false),
+            (DIR_DOWN | DIR_RIGHT, false),
+        ] {
+            assert_eq!(
+                occupancy
+                    .route_cell_is_clear(
+                        &routes,
+                        &crossing_owner,
+                        None,
+                        coord(2),
+                        directions,
+                        &mut resources
+                    )
+                    .unwrap(),
+                allowed
+            );
+        }
+        assert!(
+            !occupancy
+                .route_cell_is_clear(
+                    &routes,
+                    &crossing_owner,
+                    None,
+                    coord(4),
+                    transverse,
+                    &mut resources
+                )
+                .unwrap(),
+            "the actual marker remains protected"
+        );
+
+        let mut crossing = vertical_route_plan_at_x(2);
+        if vertical {
+            crossing = marker_request_plan_at_y(GraphEdgeMarker::Open, 3, 2);
+        }
+        routes.push(PreparedRoute {
+            plan: crossing,
+            owner: crossing_owner,
+        });
+        assert!(
+            occupancy
+                .score_route(
+                    &routes[..1],
+                    &routes[1].plan,
+                    &routes[1].owner,
+                    &mut resources,
+                    "flowchart"
+                )
+                .unwrap()
+                .is_some()
+        );
+        let start = routes[1]
+            .plan
+            .terminal_candidate(MarkerEndpoint::Start, "flowchart")
+            .unwrap();
+        let end = routes[1]
+            .plan
+            .terminal_candidate(MarkerEndpoint::End, "flowchart")
+            .unwrap();
+        occupancy
+            .commit_route(1, &routes[1], start, end, &mut resources)
+            .unwrap();
+        let candidate = later_plan
+            .marker_candidates(MarkerEndpoint::End, "flowchart", &mut resources)
+            .unwrap()
+            .unwrap()[2];
+        assert_eq!(candidate.coord, coord(2));
+        assert_eq!(
+            occupancy
+                .marker_candidate_disposition_before_commit(
+                    &routes,
+                    &RouteOwner::for_test(2, "source", "target"),
+                    &later_plan,
+                    MarkerEndpoint::End,
+                    candidate,
+                    &mut resources,
+                )
+                .unwrap(),
+            MarkerCandidateDisposition::Blocked,
+            "a later marker must not cover the admitted crossing"
+        );
+    }
+}
+
+#[test]
 fn route_score_allows_an_incident_route_to_share_a_terminal_corridor() {
     let options = AsciiRenderOptions::ascii();
     let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
@@ -356,14 +776,15 @@ fn route_score_allows_an_incident_route_to_share_a_terminal_corridor() {
 #[test]
 fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
     const ROUTE_COUNT: usize = 4;
-    const EXPECTED_WORK: usize = ROUTE_COUNT * 2 + ROUTE_COUNT * (ROUTE_COUNT + 1) / 2;
+    // At (3, 0), the horizontal terminal queries both pointing-axis neighbors.
+    const EXPECTED_WORK: usize = 2 + ROUTE_COUNT * 2 + ROUTE_COUNT * (ROUTE_COUNT + 1) / 2;
 
     let options = AsciiRenderOptions::ascii();
     let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
     let existing_routes = (0..ROUTE_COUNT)
         .map(|route_index| {
             PreparedRoute::for_test_with_endpoints(
-                marker_request_plan(GraphEdgeMarker::Point, 3),
+                marker_request_plan(GraphEdgeMarker::Point, 4),
                 route_index,
                 "source",
                 "target",
@@ -371,7 +792,7 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
         })
         .collect::<Vec<_>>();
     let candidate_route = PreparedRoute::for_test_with_endpoints(
-        marker_request_plan(GraphEdgeMarker::Point, 3),
+        marker_request_plan(GraphEdgeMarker::Point, 4),
         ROUTE_COUNT,
         "source",
         "target",
@@ -447,6 +868,72 @@ fn marker_candidate_preflight_charges_every_shared_owner_claim_scan() {
 }
 
 #[test]
+fn marker_candidate_neighbor_queries_observe_cancellation_before_charging_work() {
+    let options = AsciiRenderOptions::ascii();
+    let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
+    let policy = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
+    for direction in [
+        StepDirection::Left,
+        StepDirection::Right,
+        StepDirection::Up,
+        StepDirection::Down,
+    ] {
+        let label_queries = match direction {
+            StepDirection::Left | StepDirection::Right => 0,
+            StepDirection::Up | StepDirection::Down => 2,
+        };
+        for neighbor_index in 0..2 {
+            let control = OperationControl::new();
+            let mut setup_resources = ResourceContext::new(policy);
+            let occupancy = SceneOccupancy::try_new_for_routes(
+                &graph_layout,
+                0,
+                options
+                    .flowchart_layout()
+                    .graph_policy()
+                    .edge_label_lane_radius,
+                &mut setup_resources,
+                AsciiExecution::new(&control, &policy),
+            )
+            .unwrap();
+            let route = incident_marker_route_at(
+                MarkerEndpoint::End,
+                direction,
+                GraphEdgeMarker::Point,
+                CanvasCoord { x: 4, y: 4 },
+                0,
+            );
+            let candidate = route
+                .plan
+                .terminal_candidate(MarkerEndpoint::End, "flowchart")
+                .unwrap();
+            let completed_queries = label_queries + neighbor_index;
+            control.cancel_after_checkpoints(completed_queries);
+            let mut resources = ResourceContext::new(policy);
+
+            let error = occupancy
+                .marker_candidate_disposition_before_commit(
+                    &[],
+                    &route.owner,
+                    &route.plan,
+                    MarkerEndpoint::End,
+                    candidate,
+                    &mut resources,
+                )
+                .expect_err("each pointing-axis neighbor query must remain cancellable");
+
+            assert!(matches!(
+                error,
+                AsciiError::Cancelled(cancelled)
+                    if cancelled.phase == OperationPhase::Layout
+                        && cancelled.reason == CancelReason::Requested
+            ));
+            assert_eq!(resources.layout_work_used(), completed_queries);
+        }
+    }
+}
+
+#[test]
 fn route_score_does_not_reserve_an_unused_secondary_marker_corridor() {
     let options = AsciiRenderOptions::ascii();
     let graph_layout = layout_graph(&AsciiGraph::new(GraphDirection::TopDown), &options);
@@ -509,9 +996,9 @@ fn marker_allocation_rejects_an_interior_berth_past_an_unrelated_crossing() {
 
     assert_eq!(
         error,
-        AsciiError::UnsupportedFeature {
+        AsciiError::RoutingSearchExhausted {
             diagram_type: "flowchart",
-            feature: "independent endpoint marker berth exhausted",
+            edge_index: 0,
         }
     );
 }
@@ -547,9 +1034,9 @@ fn marker_allocation_does_not_jump_over_an_unrelated_interior_crossing() {
 
     assert_eq!(
         error,
-        AsciiError::UnsupportedFeature {
+        AsciiError::RoutingSearchExhausted {
             diagram_type: "flowchart",
-            feature: "independent endpoint marker berth exhausted",
+            edge_index: 1,
         }
     );
 }

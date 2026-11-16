@@ -24,6 +24,14 @@ single-cell ASCII structure even when `AsciiCharset::Unicode` was requested. Aut
 is preserved. This deterministic fallback prevents borders and routes from occupying two grid
 cells per structural token.
 
+Browser previews must also preserve terminal cell geometry. A CSS `monospace` family can use a
+fallback font whose CJK glyphs are narrower than two Latin cells, shifting every border after a
+Chinese label even when the text grid is correct. Use a compatible terminal font or normalize
+font advances (for example, `font-size-adjust: ch-width 0.5` in supporting browsers), disable
+ligatures, and verify mixed-script positions in the rendered preview. Line height must also match
+the structural font when continuous vertical strokes matter. Selecting the CJK width profile
+does not correct a browser font's pixel advances.
+
 `merman-ascii` has an empty default feature set. Select the positive `diagram-*` features for
 required families, or `all-diagrams` for the complete data and terminal-adapter surface.
 Each selector enables model data and this crate's local handler when one exists. It does not enable
@@ -78,11 +86,12 @@ canonical layout only. All supported families admit Plain, ANSI16, ANSI256, True
 primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
-Detached model entrypoints identify a family by the model kind. Because Swimlane reuses the
-Flowchart model, a Swimlane-only consumer must pass the parser-owned value through `render_parsed`
-or `render_parsed_report`; this retains its logical language identity during admission. Enabling
-one graph language does not enable the other. Report `family` retains the existing model-kind
-identity; query `ascii_capabilities()` for logical language availability.
+Swimlane reuses the Flowchart model kind. Use `render_parsed` or `render_parsed_report` to retain
+the parser-owned logical language identity, or provide the matching `AsciiSourceContext` when
+rendering a borrowed model. Report `family` preserves that source identity, such as `swimlane`,
+including through viewport fallback. Shared internal graph diagnostics can still name `flowchart`.
+Enabling one graph language does not enable the other; query `ascii_capabilities()` for logical
+language availability.
 
 The canonical report API is `AsciiRenderer::render_model_report` or
 `AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
@@ -118,17 +127,71 @@ unless the caller explicitly overrides the corresponding family option. These ad
 resolved into family-local policies and do not affect State, Class, ER, XYChart, or structured-text
 families.
 
-Graph routing first keeps the existing deterministic route candidates. When every candidate for a
-node-to-node edge collides, it tries the cardinal port pairs on the same bounded coarse grid,
-checking each projected terminal cell against the scene's collision rules. This lets branching
-feedback edges avoid sibling nodes and previously committed arrows without changing already valid
-routes. Opposite authored edges retain separate transit paths; labels and target markers still
-require clear placements. Search work, frontier storage, and parent storage remain bounded by the
-existing routing margin and operation work budget, with cancellation checks during search and cell
-inspection. A graph with no safe route or marker berth still returns a structured diagnostic.
+Graph routing compares deterministic candidates using target-port congestion, marked-source port
+congestion, and combined route length, shared-cell cost and scene growth. Compound Flowchart routes
+with a known common-scope direction prefer forward departure/arrival contacts after endpoint
+congestion, while retaining alternate sides for obstructed routes. Open starts can retain shared outgoing stems;
+visible source markers prefer independent contacts. Clear direct routes stay direct. Ordinary
+candidates retain all cardinal port combinations instead of discarding mixed horizontal/vertical
+choices before scene admission.
+Actual endpoint markers and primary terminal positions remain protected. Unused alternate marker
+positions admit transverse route crossings; later marker allocation rejects any position occupied
+by such a crossing. This keeps alternate choices from sealing an entire branch corridor, including
+covered two-ended-marker fans through fourteen edges at zero preferred graph padding.
+When marked endpoint demand exceeds the shape-valid contacts reachable at the top or left canvas
+boundary, layout reserves an exterior reading margin and a turn cell. It translates the complete
+scene and coarse-grid origin together, preserving node dimensions, ranks, and group containment.
+Endpoints with multiple markers also account for the escape corridors of their unmarked ends.
+Different branches at one endpoint cannot stack marker heads along their pointing axis; parallel
+edges with the same directed node pair retain their independently owned contiguous marker chain.
+Colliding or congested node-to-node edges can additionally use terminal-cell search over every
+non-corner contact accepted by the endpoint shape, including across nested compound frames. This
+separates branch/merge heads and skip-edge lanes without changing Dagre ranks. Coarse-grid and
+terminal-cell searches share frame constraints: routes stay inside common containers, avoid
+unrelated containers, and cross owned frame sides transversely without turning on a border.
+Aligned edges obstructed by another node reserve a bypass lane in their nearest common container;
+group titles retain a horizontal reading gap where space permits. A missing primary route family
+does not prevent alternate candidates or bounded recovery from running. Parent local-direction
+layouts reserve the full span of child contents and move each child as a unit before frame spacing
+is resolved. Optional improvement of an already valid route has a shared expansion cap across
+port pairs. Pairs are generated in usage/distance order with a frontier linear in the source
+perimeter rather than retaining their Cartesian product. Where a globally empty separator exists,
+visible branches reserve a transit cell beyond both endpoint reading margins on the applied local
+rank axis, including at zero preferred padding. Node content bands in other scopes stay intact.
+Required collision recovery remains bounded by the scene extent and operation work
+budget. Container endpoints also use terminal-cell recovery: external edges contact the outside
+of the frame, while ancestor/member edges contact its inside. Only selected frame contacts permit
+terminal crossings; corner contacts are excluded. Container self-loops can recover through two
+distinct exterior contacts, keeping their transit and labels inside a shared parent when nested.
+The immediate parent reserves room to leave a berth before turning and returning to the frame.
+Center-out contour enumeration provides alternatives around titles and member nodes.
+State concurrency separators remain open to transverse routes through intermediate regions;
+their generated Divider identities retain their dedicated endpoint-routing boundary. Empty regions
+remain ordered structural sections rather than visible nodes. Node self-loops can also recover
+through alternate terminal ports when fixed lanes are blocked. Before such a search, earlier
+loop labels are protected and the incumbent route is checked against those reservations again.
+All attempts charge the same work ledger and observe cancellation.
+Recovery rejects sealed straight approaches before opening the path frontier. Label candidates
+retain first-insertion order with operation-local hash-set deduplication, avoiding a repeated
+linear scan for each generated position as the contour search grows.
 
-Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart
-and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
+Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
+transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
+segments try another lane. Committed routes reserve their label footprints before subsequent
+edges are planned. Parallel node self-loops reserve nested lane space before node projection and
+assign their labels as one route batch before unrelated edges or a searched loop are planned.
+Searched-loop labels are committed immediately. Vertical markers keep one column of reading
+clearance from neighboring labels, preventing an ASCII `v` from merging with label text.
+A graph with no safe route, label placement, or independent marker berth still returns a structured
+diagnostic rather than a partial drawing. Boundary routes with no vertical transit segment
+retain their labels on an available inline segment. Label candidates respect container ownership
+and the route's planned marker berths: external group labels stay outside the endpoint frame, and internal labels stay
+inside their common container. Coarse placement reserves a separator band and moves complete
+sibling branches together. Axis projection uses a valid separating axis for measured frame
+clearance, keeping external nodes outside their endpoint containers even at zero preferred padding.
+
+Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart,
+Swimlane, and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
 valid diagram (Canonical on ties). The existing `Allow`, `Error`, or `Fallback` policy applies to
 the selected candidate. A narrower diagram may be taller; Auto does not change direction or
 truncate labels. String-only renderer methods without a viewport reject Auto.
@@ -138,6 +201,43 @@ truncate labels. String-only renderer methods without a viewport reject Auto.
 one work budget and cancellation control. Retained candidate text counts toward storage admission.
 Use the spacing builders for explicit overrides, including a value equal to the default; direct
 assignment of a default-valued public field cannot record that intent.
+
+## Graph Presentation Boundary
+
+Flowchart, Swimlane, and State share whole-scene endpoint and label demand, compatible channel
+allocation, bounded reversible congestion repair, and final route validation. The terminal planner
+refactor is complete for this admitted subset; future density or style improvements are separate
+iterations. The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/README.md),
+generated small-graph oracle, compound tests, and family tests define the finite acceptance boundary.
+They do not establish globally optimal or complete routing for arbitrary graphs.
+The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
+also checks State/Swimlane selection, logical identity, complete fields and measured extents across
+60/80/100/120 columns in both character sets and width profiles.
+
+| Request or result | Behavior |
+| --- | --- |
+| Valid diagram fits the viewport | Return complete diagrammatic output, preserving markers, conditions and actual node/group endpoints. |
+| Flowchart or Swimlane Auto exceeds the viewport | Try Compact once and retain the narrower valid diagram; preserve Canonical on ties or an unsupported/search/capacity failure in the optional Compact attempt. |
+| Selected valid diagram remains too wide | Apply the host's Allow, Error, or Plain Fallback policy. Fallback emits complete keyed graph records and reports `structured_text`, `fallback`, and `presentation_only`. |
+| State width request | Use Canonical and the same overflow policies; Compact and Auto are not admitted. |
+| Required routing search finds no valid scene | Return `RoutingSearchExhausted`; this is a bounded search miss, not a proof that no layout exists. |
+| Independent markers exceed the fixed presentation's certified capacity | Return `PortCapacityExceeded`; the certificate does not apply to other layouts or presentations. |
+| Resource, cancellation, or unsupported semantic input | Return the corresponding error. Width fallback does not conceal these failures. |
+
+Graph planning precedes viewport admission, so a narrower width cannot bypass a required routing
+failure. All attempts share the operation's work budget. Structured graph records preserve full
+labels, typed connectors, membership and per-edge conditions, but do not reproduce spatial
+direction. They can be taller than a valid diagram: State keeps its canonical geometry and full
+authored-detail disclosure, and the renderer has no maximum-height selection policy. Hosts that
+need a pager or alternate view own that presentation choice.
+
+Graph detail records use word-aware wrapping with indented continuation rows. A word that fits
+the viewport can use its full width when the usual two-cell indent would split it; longer atoms
+still wrap at grapheme boundaries. Authored spaces, escapes and independently owned records
+remain complete, including repeated State descriptions and relation records.
+Complete semantic fallback records, including non-graph serialized fields, preserve data spaces
+even under `TrimTrailingSpaces` and report `trimmed: false`; the requested trim policy still
+applies to diagram canvas padding.
 
 ## Resource Policy
 
@@ -154,6 +254,48 @@ so copying options cannot implicitly copy or replace an operation's resource bud
 Resource limits are hard errors. They never select a relation summary or another lower-fidelity
 projection. Plain, ANSI16, ANSI256, TrueColor, and HTML use the same logical document accounting,
 while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
+
+## Terminal Visual Style
+
+Merman's terminal diagrams use compact, readable structure before decoration. The graph renderer
+keeps the author's node shapes, uses rounded `╭╮╰╯` turns for ordinary Unicode wires, and retains
+square branch junctions and frame contacts. A rectangular node therefore remains `┌─┐`, while a
+wire turning around it reads as a continuous path. Rounded nodes still mean the rounded shape
+selected in the source; thick and dotted relationships retain their own strokes. ASCII and the
+CJK structural fallback use their existing single-cell glyphs.
+
+| Element | Visual rule | Reading purpose |
+| --- | --- | --- |
+| Node | Label-sized contour with the authored shape and explicit markers | Identify the operation or state without stretching unrelated nodes |
+| Ordinary wire | Light stroke, rounded turns, square junctions, solid arrowheads | Follow a path and distinguish a bend from a branch |
+| Group | Solid closed frame, separate complete title block, internal reading clearance | Show membership and the exact node or frame touched by an external edge |
+| Label | Complete text associated with its own route and protected reading space | Recover the condition and endpoint pair without using color |
+| Optional color | Host text, quieter structure, sparse heading/arrow emphasis | Reinforce the same hierarchy in ANSI or HTML without changing geometry |
+
+Group titles center their complete block inside the frame and align its lines to one left edge.
+This gives wrapped headings a stable reading start while retaining the transit space beside
+single-line headings. RL output keeps that alignment; BT output keeps the existing lower title
+band and upright line order. Routing protects the actual projected text and one reading cell on
+each side, using the same title geometry as drawing. Minimum-width empty groups retain their
+complete titles within the existing frame. Group borders remain solid so they are distinct from
+dotted relationships and State concurrency separators.
+
+For `A → B`, `A → C`, `B → C`, `B → D`, and `D → C`, the Unicode output keeps each direct
+relationship visible in a 35-column, six-row drawing:
+
+```text
+┌───┐     ┌───┐     ┌───┐     ┌───┐
+│ A ├────►│ B ├────►│ D ├────►│ C │
+└──┬┘     └──┬┘     └───┘     └───┘
+   │         │                 ▲▲
+   │         ╰─────────────────╯│
+   ╰────────────────────────────╯
+```
+
+The visual style is a renderer default, independent of Canonical/Compact layout and host color
+encoding. It does not introduce a second layout backend or a separate theme preset registry.
+Plain output must remain understandable on its own. Width-constrained structured output preserves
+the same complete names and relationships instead of adding decoration that consumes the viewport.
 
 ## Terminal Theme API
 
@@ -204,17 +346,24 @@ Header-only charts and typed plots with no terminal slots use an injective `xych
 
 ## Node padding and graph spacing
 
-Flowchart, Swimlane, and State resolve node padding independently on each axis. The default is
-one cell on each side. Use `with_node_padding_y(0)` to remove the blank rows inside ordinary
-node frames while preserving the space for edges between ranks. Use `with_node_padding(0)` to
-remove padding on both axes, or combine `with_node_padding_x` and `with_node_padding_y`.
-Fixed State symbols retain their own dimensions.
+Flowchart, Swimlane, and State resolve node padding independently on each axis. Their defaults
+prefer one cell of horizontal padding, no blank padding rows inside ordinary node frames, and
+one row between graph ranks. Required endpoint and label demand can enlarge a node or gap.
+Fixed State symbols retain their own dimensions. Independent contours in an ungrouped rank
+share its center line, so a short state and taller side notes stay aligned without stretching
+the state frame.
 
 The existing `box_border_padding` field remains the scalar compatibility default. Explicit
 `node_padding_x` and `node_padding_y` overrides take precedence, including zero. Bindings accept
-both snake_case and camelCase spellings. Graph rank gaps are separate preferences:
+both snake_case and camelCase spellings. Use `with_node_padding(1)` and
+`with_graph_padding_y(5)` to select the previous State spacing explicitly; the builders preserve
+these choices even when they equal the legacy public scalar defaults. Use
+`with_node_padding(0)` to remove preferred padding on both axes, or combine
+`with_node_padding_x` and `with_node_padding_y`. Graph rank gaps are separate preferences:
 `with_graph_padding_x` and `with_graph_padding_y` preserve explicit values under Compact.
 Required frame gutters, label clearance, and valid arrow berths can increase these gaps.
+Assigning a legacy default directly to a public numeric field carries no explicit-override
+provenance; use the corresponding builder when that value must override the family default.
 
 Sequence spacing is measured from participant names and messages before rows are painted.
 A message label occupies one interval between adjacent lifelines, including when its arrow

@@ -207,6 +207,43 @@ Read `layout_adaptation` on result metadata, or `meta.layout_adaptation` in layo
 width for fit-width requests. This is family placement, independent of SVG viewport scaling.
 See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adaptation).
 
+## ASCII terminal graph planning
+
+Flowchart and Swimlane use denser vertical defaults: zero vertical padding inside ordinary nodes
+and a one-cell preferred vertical rank gap. Horizontal spacing and explicit layout profiles retain
+their meanings. To request the former spacing explicitly, use
+`AsciiRenderOptions::ascii().with_node_padding(1).with_graph_padding_y(5)`, or select each node axis
+with `with_node_padding_x` / `with_node_padding_y`. State keeps its independently resolved family
+defaults. Node dimensions now follow their own labels, contours, and contact demand; a wide node
+does not force an unrelated short node to share its width.
+
+Width Fallback for Flowchart, State, and Swimlane is a readable graph document with stable node,
+group, and relationship keys. Full labels may wrap across physical rows. Consumers must use the
+report's projection and outcome metadata instead of parsing old flattened-field prefixes or
+assuming that a quoted label occupies one row. Report schema 3 and Plain-only fallback admission
+remain unchanged; Allow and Error keep their existing contracts.
+
+Wrapped node and relationship records now prefer complete words and indent physical continuations
+by two layout spaces when width permits. These spaces are presentation framing; authored spaces
+inside fields remain intact. Very long words still wrap at grapheme boundaries, and visible control
+escapes remain atomic. Consumers requiring graph facts should use typed models instead of treating
+physical text rows as records.
+
+`AsciiError::RoutingSearchExhausted` distinguishes a bounded routing search from unsupported
+semantics. Its `edge_index` is the original zero-based semantic edge index, before canonical
+ordering. The facade and bindings retain diagnostic code `merman.ascii.routing_search_exhausted`
+and `field: edge[index]`. This result does not certify that a drawing is impossible, and does not
+convert a resource or cancellation failure into fallback output.
+
+`AsciiError::PortCapacityExceeded` reports a necessary marker-capacity bound for the current
+fixed-terminal presentation, with diagnostic code `merman.ascii.port_capacity_exceeded` and the
+endpoint in `field`. Both new routing diagnostics map to `RenderError` in bindings. Unsupported
+semantics retain their existing classification; a capacity certificate does not rule out another
+layout or presentation.
+
+See the [ASCII architecture decision](../adr/0065-ascii-output-boundary.md) and
+[support matrix](../rendering/ASCII_SUPPORT_MATRIX.md) for routing and presentation boundaries.
+
 ## Validation boundaries
 
 Internal strict and paired lenient parse paths compare complete managed compatibility projections

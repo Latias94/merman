@@ -7,35 +7,6 @@ use crate::graph::topology::{GraphEndpointIndex, GraphGroupTopology};
 use crate::options::GraphLayoutPolicy;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
 use crate::safe_text::try_clone_layout_text;
-use rustc_hash::FxHashSet as HashSet;
-
-pub(super) fn graph_endpoint_group_ids<'a>(
-    graph: &'a AsciiGraph,
-    resources: &ResourceContext,
-) -> Result<HashSet<&'a str>> {
-    let endpoint_count = resources.checked_work_mul(graph.edges.len(), 2)?;
-    resources
-        .charge_layout_work(resources.checked_work_add(graph.groups.len(), endpoint_count)?)?;
-
-    let mut group_ids = HashSet::default();
-    group_ids
-        .try_reserve(graph.groups.len())
-        .map_err(|_| layout_work_allocation_failed())?;
-    group_ids.extend(graph.groups.iter().map(|group| group.id.as_str()));
-
-    let mut endpoint_group_ids = HashSet::default();
-    endpoint_group_ids
-        .try_reserve(graph.groups.len().min(endpoint_count))
-        .map_err(|_| layout_work_allocation_failed())?;
-    for edge in &graph.edges {
-        for endpoint in [edge.from.as_str(), edge.to.as_str()] {
-            if group_ids.contains(endpoint) {
-                endpoint_group_ids.insert(endpoint);
-            }
-        }
-    }
-    Ok(endpoint_group_ids)
-}
 
 pub(super) fn group_member_indices(
     topology: &GraphGroupTopology<'_>,

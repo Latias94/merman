@@ -40,7 +40,7 @@ fn issue_53_compact_plain_and_ansi16_share_one_flowchart_geometry() {
                 .unwrap_or_default(),
             plain.lines().count(),
         ),
-        (56, 67)
+        (59, 50)
     );
 }
 
@@ -62,9 +62,7 @@ fn flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text() 
         strip_ansi(&rendered),
         concat!(
             "+---+        +---+\n",
-            "|   |        |   |\n",
             "| A |--yes-->| B |\n",
-            "|   |        |   |\n",
             "+---+        +---+\n",
         )
     );
@@ -91,7 +89,10 @@ fn flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text() {
         .with_role(AsciiColorRole::EdgeLine, AsciiRgb::from_hex24(0x404040))
         .with_role(AsciiColorRole::EdgeArrow, AsciiRgb::from_hex24(0x505050))
         .with_role(AsciiColorRole::Text, AsciiRgb::from_hex24(0x606060));
+    // The copied upstream fixture records the historical spacing request.
     let options = AsciiRenderOptions::ascii()
+        .with_node_padding(1)
+        .with_graph_padding_y(5)
         .with_color_mode(AsciiColorMode::Html)
         .with_color_theme(theme);
 
@@ -138,9 +139,7 @@ fn flowchart_color_truecolor_preserves_roles_after_horizontal_mirror() {
         strip_ansi(&rendered),
         concat!(
             "+---+     +---+\n",
-            "|   |     |   |\n",
             "| B |<----| A |\n",
-            "|   |     |   |\n",
             "+---+     +---+\n",
         )
     );
@@ -211,9 +210,14 @@ fn flowchart_style_color_html_maps_linkstyle_edge_and_label_foreground_without_p
     let plain = render_flowchart(input, &AsciiRenderOptions::ascii()).unwrap();
 
     assert_eq!(strip_html_spans(&rendered), plain);
+    let edge_spans: Vec<_> = rendered
+        .split("<span style=\"color:#123456\">")
+        .skip(1)
+        .filter_map(|span| span.split_once("</span>").map(|(text, _)| text))
+        .collect();
     assert!(
-        rendered.contains("<span style=\"color:#123456\">--</span>")
-            && rendered.contains("<span style=\"color:#123456\">--&gt;</span>"),
+        edge_spans.iter().any(|span| span.contains("--"))
+            && edge_spans.iter().any(|span| span.contains("&gt;")),
         "missing styled edge line or arrow in {rendered:?}"
     );
     assert!(

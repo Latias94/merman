@@ -651,18 +651,6 @@ impl GraphNodeShapeSemantics {
                 | GraphNodeShape::LeanLeft
         )
     }
-
-    pub(super) fn uses_drop_then_turn_bent_route(self) -> bool {
-        matches!(
-            self.shape,
-            GraphNodeShape::StateStart
-                | GraphNodeShape::StateEnd
-                | GraphNodeShape::ForkJoinHorizontal
-                | GraphNodeShape::ForkJoinVertical
-                | GraphNodeShape::Choice
-                | GraphNodeShape::Text
-        )
-    }
 }
 
 #[cfg(test)]
@@ -784,7 +772,7 @@ mod tests {
 
     #[test]
     fn shape_size_accounts_for_side_frame_shapes() {
-        let options = AsciiRenderOptions::unicode();
+        let options = AsciiRenderOptions::unicode().with_node_padding(1);
         let label = GraphLabel::new("中A");
 
         let rect =
@@ -889,15 +877,9 @@ mod tests {
         let rect = GraphNodeShapeSemantics::new(GraphNodeShape::Rect);
         let diamond = GraphNodeShapeSemantics::new(GraphNodeShape::Diamond);
         let choice = GraphNodeShapeSemantics::new(GraphNodeShape::Choice);
-        let state_start = GraphNodeShapeSemantics::new(GraphNodeShape::StateStart);
 
         assert!(rect.uses_route_connector());
         assert!(!diamond.uses_route_connector());
         assert!(!choice.uses_route_connector());
-
-        assert!(!rect.uses_drop_then_turn_bent_route());
-        assert!(!diamond.uses_drop_then_turn_bent_route());
-        assert!(choice.uses_drop_then_turn_bent_route());
-        assert!(state_start.uses_drop_then_turn_bent_route());
     }
 }

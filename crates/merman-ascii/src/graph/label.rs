@@ -15,6 +15,18 @@ const GENERIC_GRAPH_DIAGRAM_TYPE: &str = "graph";
 const GRAPH_LABEL_CHECKPOINT_INTERVAL: usize = 64;
 const GRAPH_LABEL_COPY_CHUNK_BYTES: usize = 8 * 1024;
 
+/// Match routed label normalization before reserving any edge geometry.
+pub(super) fn try_measure_edge_label(
+    raw: &str,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> crate::Result<Option<NormalizedLabelMetrics>> {
+    Ok(
+        try_measure_normalized_label_lines(raw, width_profile, true, resources)?
+            .filter(|metrics| metrics.max_width > 0),
+    )
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct GraphLabelMetrics {
     pub(super) width: usize,
@@ -208,7 +220,6 @@ impl GraphLabel {
         &self.lines
     }
 
-    #[cfg(test)]
     pub(super) fn width(&self) -> usize {
         self.width
     }
@@ -239,18 +250,6 @@ impl GraphLabel {
                 feature: "empty graph label metrics",
             })?;
         graph_label_metrics(metrics.max_width, metrics.line_count, resources)
-    }
-
-    pub(super) fn try_measure_width_with_profile(
-        raw: &str,
-        width_profile: TerminalWidthProfile,
-        resources: &ResourceContext,
-    ) -> crate::Result<usize> {
-        Ok(
-            try_measure_normalized_label_lines(raw, width_profile, false, resources)?
-                .map(|metrics| metrics.max_width)
-                .unwrap_or_default(),
-        )
     }
 
     pub(super) fn try_measure_wrapped_with_profile(

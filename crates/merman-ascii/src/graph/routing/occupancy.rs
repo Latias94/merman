@@ -1,9 +1,9 @@
-use super::super::label::GRAPH_LABEL_LINE_GAP;
 use super::super::layout::{CanvasCoord, GraphLayout, GroupLayout};
 use super::super::model::GraphGroupKind;
 use super::cell::{
     DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP, route_char_directions, stroke_route_char,
 };
+use super::label::RoutedLabelPlacement;
 use super::path::StepDirection;
 use super::plan::{
     LabelAnchor, MAX_MARKER_CANDIDATES, MarkerCandidate, MarkerEndpoint, NodeAttachments,
@@ -12,18 +12,24 @@ use super::plan::{
 use super::{PreparedRoute, RouteOwner, layout_allocation_failed};
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
-use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::resource::ResourceContext;
 use merman_model::{OperationControl, OperationPhase};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::collections::hash_map::Entry;
 
+mod channels;
 mod labels;
 mod marker;
+mod rebuild;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
+type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
 
+pub(super) use labels::allocate_committed_route_labels;
+#[cfg(test)]
 pub(super) use labels::allocate_route_label_placements;
-use labels::{label_anchor_contains, resolve_label_anchor, route_label_candidates};
+pub(in crate::graph::routing) use labels::{label_anchor_contains, label_reservation};
+use labels::{resolve_label_anchor, route_label_candidates};
 #[cfg(test)]
 pub(super) use marker::allocate_marker_berths;
 use marker::marker_candidate_continues_chain;
@@ -60,6 +66,31 @@ fn marker_occupant_is_compatible(
     })
 }
 
+fn occupied_marker_disposition(
+    routes: &[PreparedRoute],
+    owner: &RouteOwner,
+    endpoint: MarkerEndpoint,
+    candidate: MarkerCandidate,
+    marker: MarkerOccupant,
+) -> MarkerCandidateDisposition {
+    if !marker_occupant_is_compatible(
+        routes,
+        marker,
+        owner.endpoint_id(endpoint),
+        candidate.point_direction,
+    ) {
+        return MarkerCandidateDisposition::Blocked;
+    }
+    if marker.endpoint == endpoint
+        && marker.shared_group.is_some()
+        && marker.shared_group == owner.shared_marker_group(endpoint, candidate.coord)
+    {
+        MarkerCandidateDisposition::Available
+    } else {
+        MarkerCandidateDisposition::CompatiblePassThrough
+    }
+}
+
 fn terminal_claim_is_compatible(
     routes: &[PreparedRoute],
     claim: &TerminalClaim,
@@ -76,6 +107,7 @@ fn terminal_claims_allow_route_cell(
     existing_routes: &[PreparedRoute],
     owner: &RouteOwner,
     claims: &[TerminalClaim],
+    directions: u8,
     resources: &mut ResourceContext,
     control: &OperationControl,
 ) -> Result<bool> {
@@ -86,6 +118,16 @@ fn terminal_claims_allow_route_cell(
                 .checkpoint_at(OperationPhase::Layout)
                 .map_err(AsciiError::Cancelled)?;
             resources.charge_layout_work(1)?;
+            let claim_axis = match claim.point_direction {
+                StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+                StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+            };
+            // Alternative marker positions are opportunities, not occupied terminals.
+            // A transverse crossing preserves the committed heads; later marker
+            // admission checks the crossing's owner before using this position.
+            if !claim.primary && super::cell::is_transverse_crossing(directions, claim_axis) {
+                continue;
+            }
             if existing_routes
                 .get(claim.route_index)
                 .is_none_or(|route| route.owner.endpoint_id(claim.endpoint) != endpoint_id)
@@ -134,6 +176,13 @@ impl OccupiedRect {
 
     pub(super) fn contains(self, x: usize, y: usize) -> bool {
         x >= self.x && x < self.right && y >= self.y && y < self.bottom
+    }
+
+    fn conflicts_with_marker(self, coord: CanvasCoord, direction: StepDirection) -> bool {
+        self.contains(coord.x, coord.y)
+            || (matches!(direction, StepDirection::Up | StepDirection::Down)
+                && (self.y..self.bottom).contains(&coord.y)
+                && (coord.x.checked_add(1) == Some(self.x) || coord.x == self.right))
     }
 
     fn intersects_horizontal_span(self, x_start: usize, x_end: usize, y: usize) -> bool {
@@ -185,13 +234,40 @@ pub(super) struct RouteBounds {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub(super) struct RouteCandidateScore {
+    target_port_reuse: usize,
+    source_port_reuse: usize,
     total_cost: usize,
+    ambiguous_shared_cells: usize,
     shared_cells: usize,
     cell_count: usize,
+    scene_growth: usize,
     marker_pressure: usize,
 }
 
+impl RouteCandidateScore {
+    pub(super) fn port_reuse(self) -> (usize, usize) {
+        (self.target_port_reuse, self.source_port_reuse)
+    }
+
+    pub(super) fn has_congestion(self) -> bool {
+        self.target_port_reuse != 0
+            || self.source_port_reuse != 0
+            || self.ambiguous_shared_cells != 0
+    }
+
+    pub(super) fn grows_scene(self) -> bool {
+        self.scene_growth != 0
+    }
+}
+
 impl RouteBounds {
+    pub(super) fn intersects(self, rect: OccupiedRect) -> bool {
+        self.min_x < rect.right
+            && rect.x <= self.max_x
+            && self.min_y < rect.bottom
+            && rect.y <= self.max_y
+    }
+
     fn include(&mut self, coord: CanvasCoord) {
         self.min_x = self.min_x.min(coord.x);
         self.max_x = self.max_x.max(coord.x);
@@ -221,12 +297,15 @@ struct TerminalClaim {
     route_index: usize,
     endpoint: MarkerEndpoint,
     point_direction: StepDirection,
+    primary: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct MarkerOccupant {
     route_index: usize,
     endpoint: MarkerEndpoint,
+    point_direction: StepDirection,
+    shared_group: Option<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -324,17 +403,76 @@ impl ProtectedGeometry<'_> {
 
 #[derive(Debug)]
 pub(super) struct SceneOccupancy<'layout> {
+    graph_layout: &'layout GraphLayout,
+    route_capacity: usize,
     pub(super) route_cells: HashMap<CanvasCoord, RouteCellOccupancy>,
     pub(super) route_bounds: Vec<Option<RouteBounds>>,
     terminal_claims: HashMap<CanvasCoord, Vec<TerminalClaim>>,
+    target_ports: HashMap<(CanvasCoord, StepDirection), usize>,
+    source_ports: HashMap<(CanvasCoord, StepDirection), usize>,
     markers: HashMap<CanvasCoord, MarkerOccupant>,
+    // Includes each label's text and the clear perpendicular gap to its host.
     labels: HashSet<CanvasCoord>,
     pub(super) protected: Vec<ProtectedGeometry<'layout>>,
     pub(super) label_lane_radius: usize,
     control: OperationControl,
+    occupied_extent: CanvasCoord,
 }
 
 impl<'layout> SceneOccupancy<'layout> {
+    pub(super) fn occupied_extent(&self) -> CanvasCoord {
+        self.occupied_extent
+    }
+    pub(super) fn target_port_usage(&self, attachment: super::plan::NodeAttachment) -> usize {
+        self.target_ports
+            .get(&(attachment.contact, attachment.outward))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    /// Counts committed start-marker requests before marker berth allocation.
+    pub(super) fn source_port_usage(&self, attachment: super::plan::NodeAttachment) -> usize {
+        self.source_ports
+            .get(&(attachment.contact, attachment.outward))
+            .copied()
+            .unwrap_or_default()
+    }
+
+    pub(super) fn route_cell_congestion(
+        &self,
+        existing_routes: &[PreparedRoute],
+        owner: &RouteOwner,
+        attachments: Option<NodeAttachments>,
+        coord: CanvasCoord,
+        resources: &mut ResourceContext,
+    ) -> Result<usize> {
+        let Some(occupied) = self.route_cells.get(&coord) else {
+            return Ok(0);
+        };
+        let mut penalty = 0;
+        for shared_owner in &occupied.owners {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            let existing = &existing_routes[shared_owner.route_index];
+            let shares_terminal_ray =
+                attachments
+                    .zip(existing.plan.attachments)
+                    .is_some_and(|(current, previous)| {
+                        (owner.from == existing.owner.from
+                            && current.start == previous.start
+                            && current.start.allows_escape(coord))
+                            || (owner.to == existing.owner.to
+                                && current.end == previous.end
+                                && current.end.allows_escape(coord))
+                    });
+            let shares_allocated_channel = owner.shared_channel_group().is_some()
+                && owner.shared_channel_group() == existing.owner.shared_channel_group();
+            if !shares_terminal_ray && !shares_allocated_channel {
+                penalty = resources.checked_work_add(penalty, 1)?;
+            }
+        }
+        Ok(penalty)
+    }
     pub(super) fn try_new_for_routes(
         graph_layout: &'layout GraphLayout,
         route_capacity: usize,
@@ -355,20 +493,27 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         let mut scene = Self {
+            graph_layout,
+            route_capacity,
             route_cells: HashMap::default(),
             route_bounds: Vec::new(),
             terminal_claims: HashMap::default(),
+            target_ports: HashMap::default(),
+            source_ports: HashMap::default(),
             markers: HashMap::default(),
             labels: HashSet::default(),
             protected: Vec::new(),
             label_lane_radius,
             control: execution.cloned_control(),
+            occupied_extent: CanvasCoord { x: 0, y: 0 },
         };
         scene
             .route_bounds
             .try_reserve(route_capacity)
             .map_err(|_| layout_allocation_failed())?;
         try_reserve_hash_map(&mut scene.terminal_claims, marker_capacity)?;
+        try_reserve_hash_map(&mut scene.target_ports, route_capacity)?;
+        try_reserve_hash_map(&mut scene.source_ports, route_capacity)?;
         try_reserve_hash_map(&mut scene.markers, marker_capacity)?;
         scene
             .labels
@@ -382,6 +527,8 @@ impl<'layout> SceneOccupancy<'layout> {
         for node in &graph_layout.nodes {
             scene.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
+            scene.occupied_extent.x = scene.occupied_extent.x.max(node.right());
+            scene.occupied_extent.y = scene.occupied_extent.y.max(node.bottom());
             scene.protected.push(ProtectedGeometry {
                 owner_id: &node.id,
                 group_index: None,
@@ -396,6 +543,8 @@ impl<'layout> SceneOccupancy<'layout> {
             });
         }
         for (group_index, group) in graph_layout.groups.iter().enumerate() {
+            scene.occupied_extent.x = scene.occupied_extent.x.max(group.right());
+            scene.occupied_extent.y = scene.occupied_extent.y.max(group.bottom());
             scene.register_group_geometry(group_index, group, resources)?;
         }
 
@@ -468,6 +617,7 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
+    #[cfg(test)]
     pub(super) fn score_route(
         &self,
         existing_routes: &[PreparedRoute],
@@ -476,7 +626,41 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
         diagram_type: &'static str,
     ) -> Result<Option<RouteCandidateScore>> {
+        Ok(self
+            .evaluate_route(existing_routes, plan, owner, resources, diagram_type)?
+            .map(|(score, _)| score))
+    }
+
+    pub(super) fn admit_route(
+        &self,
+        existing_routes: &[PreparedRoute],
+        mut plan: RoutePlan,
+        owner: &RouteOwner,
+        resources: &mut ResourceContext,
+        diagram_type: &'static str,
+    ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+        let Some((score, placements)) =
+            self.evaluate_route(existing_routes, &plan, owner, resources, diagram_type)?
+        else {
+            return Ok(None);
+        };
+        for (label, (placement, anchor)) in plan.labels.iter_mut().zip(placements) {
+            label.placement = placement;
+            label.anchor = anchor;
+        }
+        Ok(Some((score, plan)))
+    }
+
+    fn evaluate_route(
+        &self,
+        existing_routes: &[PreparedRoute],
+        plan: &RoutePlan,
+        owner: &RouteOwner,
+        resources: &mut ResourceContext,
+        diagram_type: &'static str,
+    ) -> Result<Option<(RouteCandidateScore, RouteLabelPlacements)>> {
         let mut shared_cells = 0usize;
+        let mut ambiguous_shared_cells = 0usize;
 
         for (_, cell) in plan.active_cells() {
             if !self.route_cell_is_clear(
@@ -484,23 +668,38 @@ impl<'layout> SceneOccupancy<'layout> {
                 owner,
                 plan.attachments,
                 cell.coord,
-                route_char_directions(cell.ch),
+                if cell.directions == 0 {
+                    route_char_directions(cell.ch)
+                } else {
+                    cell.directions
+                },
                 resources,
             )? {
                 return Ok(None);
             }
             if self.route_cells.contains_key(&cell.coord) {
-                shared_cells = resources.checked_work_add(shared_cells, 1)?;
+                let penalty = self.route_cell_congestion(
+                    existing_routes,
+                    owner,
+                    plan.attachments,
+                    cell.coord,
+                    resources,
+                )?;
+                if owner.shared_channel_group().is_none() || penalty != 0 {
+                    shared_cells = resources.checked_work_add(shared_cells, 1)?;
+                }
+                ambiguous_shared_cells =
+                    resources.checked_work_add(ambiguous_shared_cells, penalty)?;
             }
         }
 
         self.checkpoint_layout()?;
-        if !self.plan_labels_have_clear_candidate(plan, resources)? {
-            return Ok(None);
-        }
-
         let mut marker_pressure = 0usize;
-        for endpoint in [MarkerEndpoint::Start, MarkerEndpoint::End] {
+        let mut marker_berths = [None; 2];
+        for (index, endpoint) in [MarkerEndpoint::Start, MarkerEndpoint::End]
+            .into_iter()
+            .enumerate()
+        {
             let Some(candidates) = plan.marker_candidates(endpoint, diagram_type, resources)?
             else {
                 return Ok(None);
@@ -525,6 +724,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     resources,
                 )? {
                     MarkerCandidateDisposition::Available => {
+                        marker_berths[index].get_or_insert(candidate.coord);
                         available = resources.checked_work_add(available, 1)?;
                         predecessor = Some(candidate);
                     }
@@ -543,19 +743,58 @@ impl<'layout> SceneOccupancy<'layout> {
             )?;
         }
 
+        if marker_berths[0].is_some() && marker_berths[0] == marker_berths[1] {
+            return Ok(None);
+        }
+        let Some(placements) = self.plan_label_placements(plan, owner, marker_berths, resources)?
+        else {
+            return Ok(None);
+        };
+
         self.checkpoint_layout()?;
         let mut cell_count = 0usize;
         for (cell_index, _) in plan.active_cells().enumerate() {
             self.checkpoint_layout_scan(cell_index)?;
             cell_count = resources.checked_work_add(cell_count, 1)?;
         }
-        let total_cost = resources.checked_work_add(cell_count, shared_cells)?;
-        Ok(Some(RouteCandidateScore {
-            total_cost,
-            shared_cells,
-            cell_count,
-            marker_pressure,
-        }))
+        let mut total_cost = resources.checked_work_add(cell_count, shared_cells)?;
+        let scene_growth = {
+            let (mut width, mut height) = plan.body_extent_with_resources(resources)?;
+            for (label, (placement, _)) in plan.labels.iter().zip(&placements) {
+                width = width.max(resources.checked_grid_add(placement.x(), placement.width())?);
+                height = height.max(resources.checked_grid_add(placement.y(), label.line_count())?);
+            }
+            let current_width = resources.checked_grid_add(self.occupied_extent.x, 1)?;
+            let current_height = resources.checked_grid_add(self.occupied_extent.y, 1)?;
+            let current_area = resources.checked_work_mul(current_width, current_height)?;
+            let candidate_area =
+                resources.checked_work_mul(width.max(current_width), height.max(current_height))?;
+            let scene_growth = candidate_area - current_area;
+            total_cost = resources.checked_work_add(total_cost, scene_growth)?;
+            scene_growth
+        };
+        let target_port_reuse = plan
+            .attachments
+            .map_or(0, |ports| self.target_port_usage(ports.end));
+        let source_port_reuse = if plan.requests_marker(MarkerEndpoint::Start) {
+            plan.attachments
+                .map_or(0, |ports| self.source_port_usage(ports.start))
+        } else {
+            0
+        };
+        Ok(Some((
+            RouteCandidateScore {
+                target_port_reuse,
+                source_port_reuse,
+                ambiguous_shared_cells,
+                total_cost,
+                shared_cells,
+                cell_count,
+                scene_growth,
+                marker_pressure,
+            },
+            placements,
+        )))
     }
 
     // Candidate admission and obstacle-aware search use the same cell-level semantic guards.
@@ -571,6 +810,9 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
     ) -> Result<bool> {
         self.checkpoint_layout()?;
+        if self.labels.contains(&coord) {
+            return Ok(false);
+        }
         resources.charge_layout_work(self.protected.len().max(1))?;
         for (protected_index, protected) in self.protected.iter().enumerate() {
             self.checkpoint_layout_scan(protected_index)?;
@@ -651,6 +893,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 existing_routes,
                 owner,
                 claims,
+                directions,
                 resources,
                 &self.control,
             )?
@@ -668,9 +911,54 @@ impl<'layout> SceneOccupancy<'layout> {
                 let shared_contact = attachments.is_some_and(|ports| {
                     coord == ports.start.contact || coord == ports.end.contact
                 });
-                if reverse_pair && !shared_contact {
+                let existing_cell = &existing.plan.cells[shared_owner.cell.index()];
+                let existing_directions = if existing_cell.directions == 0 {
+                    route_char_directions(existing_cell.ch)
+                } else {
+                    existing_cell.directions
+                };
+                let transverse =
+                    super::cell::is_transverse_crossing(directions, existing_directions);
+                let shares_allocated_channel = owner.shared_channel_group().is_some()
+                    && owner.shared_channel_group() == existing.owner.shared_channel_group();
+                let shares_terminal_ray = attachments.zip(existing.plan.attachments).is_some_and(
+                    |(current, previous)| {
+                        (owner.from == existing.owner.from
+                            && current.start == previous.start
+                            && current.start.allows_escape(coord))
+                            || (owner.to == existing.owner.to
+                                && current.end == previous.end
+                                && current.end.allows_escape(coord))
+                    },
+                );
+                if !shares_allocated_channel
+                    && !shares_terminal_ray
+                    && !shared_contact
+                    && !transverse
+                {
+                    // Collinear sharing is a semantic decision. An unrelated route may
+                    // cross a channel, but cannot join it and invent another endpoint pair.
+                    return Ok(false);
+                }
+                if (owner.shared_channel_group().is_some()
+                    || existing.owner.shared_channel_group().is_some())
+                    && !shares_allocated_channel
+                    && !shared_contact
+                    && !transverse
+                {
+                    // A shared channel has one real common endpoint. Another contribution
+                    // cannot join it and imply new source/target combinations.
+                    return Ok(false);
+                }
+                if owner.stroke != existing.owner.stroke && !shared_contact && !transverse {
+                    // A painted cell cannot retain two stroke identities. Reject the route
+                    // here so another lane can be tried before emission starts.
+                    return Ok(false);
+                }
+                if reverse_pair && !shared_contact && !transverse {
                     // Opposite authored edges need distinct transit paths. Sharing the
-                    // same stroke would erase which edge owns each direction and label.
+                    // same stroke would erase which edge owns each direction and label;
+                    // a perpendicular crossing preserves both independent paths.
                     return Ok(false);
                 }
             }
@@ -678,14 +966,22 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
-    fn plan_labels_have_clear_candidate(
+    fn plan_label_placements(
         &self,
         plan: &RoutePlan,
+        owner: &RouteOwner,
+        marker_berths: [Option<CanvasCoord>; 2],
         resources: &mut ResourceContext,
-    ) -> Result<bool> {
+    ) -> Result<Option<RouteLabelPlacements>> {
+        resources.charge_layout_work(plan.labels.len())?;
+        let mut placements = Vec::new();
+        placements
+            .try_reserve(plan.labels.len())
+            .map_err(|_| layout_allocation_failed())?;
         if plan.labels.is_empty() {
-            return Ok(true);
+            return Ok(Some(placements));
         }
+        let reading_guards = self.label_reading_guards(plan, resources)?;
 
         self.checkpoint_layout()?;
         let mut route_bounds = None;
@@ -700,6 +996,18 @@ impl<'layout> SceneOccupancy<'layout> {
             bounds.include(cell.coord);
             route_bounds = Some(bounds);
         }
+        let body_width = resources.checked_grid_add(
+            route_bounds.map_or(self.occupied_extent.x, |bounds| {
+                bounds.max_x.max(self.occupied_extent.x)
+            }),
+            1,
+        )?;
+        let body_height = resources.checked_grid_add(
+            route_bounds.map_or(self.occupied_extent.y, |bounds| {
+                bounds.max_y.max(self.occupied_extent.y)
+            }),
+            1,
+        )?;
 
         for label in &plan.labels {
             self.checkpoint_layout()?;
@@ -712,6 +1020,23 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources,
             )?;
             let anchor = resolve_label_anchor(plan, label.anchor, original, resources)?;
+            if owner.shared_channel_group().is_some()
+                && let LabelAnchor::Segment { start, end, .. } = anchor
+            {
+                // A condition on a common trunk would appear to annotate other
+                // branches. Its host must be private apart from its end junctions.
+                for (_, cell) in plan.active_cells() {
+                    self.checkpoint_layout()?;
+                    resources.charge_layout_work(1)?;
+                    if cell.coord != start
+                        && cell.coord != end
+                        && label_anchor_contains(anchor, cell.coord, cell.segment)
+                        && self.route_cells.contains_key(&cell.coord)
+                    {
+                        return Ok(None);
+                    }
+                }
+            }
             let candidates = route_label_candidates(
                 label.placement,
                 label.line_count(),
@@ -720,7 +1045,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources,
                 self.label_lane_radius,
             )?;
-            let mut clear = false;
+            let mut selected = None;
             for candidate in candidates {
                 let footprint = OccupiedRect::try_new(
                     candidate.x(),
@@ -729,16 +1054,47 @@ impl<'layout> SceneOccupancy<'layout> {
                     label.line_count(),
                     resources,
                 )?;
-                if self.plan_label_candidate_is_clear(plan, anchor, footprint, resources)? {
-                    clear = true;
-                    break;
+                let Some(reservation) =
+                    label_reservation(anchor, footprint, self.label_lane_radius, resources)?
+                else {
+                    continue;
+                };
+                if self.label_region_is_clear(owner, footprint, resources)?
+                    && !marker_berths
+                        .into_iter()
+                        .zip([MarkerEndpoint::Start, MarkerEndpoint::End])
+                        .any(|(coord, endpoint)| {
+                            coord.is_some_and(|coord| {
+                                reservation.conflicts_with_marker(
+                                    coord,
+                                    plan.marker_point_direction(endpoint),
+                                )
+                            })
+                        })
+                    && self.plan_label_candidate_is_clear(
+                        plan,
+                        anchor,
+                        footprint,
+                        &reading_guards,
+                        resources,
+                    )?
+                {
+                    // The route already needs its full envelope. Ignoring it here can
+                    // float a condition away from its host without saving a single cell.
+                    let width = footprint.right.max(body_width);
+                    let height = footprint.bottom.max(body_height);
+                    let area = resources.checked_work_mul(width, height)?;
+                    if selected.as_ref().is_none_or(|(best, _)| area < *best) {
+                        selected = Some((area, candidate));
+                    }
                 }
             }
-            if !clear {
-                return Ok(false);
-            }
+            let Some((_, placement)) = selected else {
+                return Ok(None);
+            };
+            placements.push((placement, anchor));
         }
-        Ok(true)
+        Ok(Some(placements))
     }
 
     fn plan_label_candidate_is_clear(
@@ -746,12 +1102,21 @@ impl<'layout> SceneOccupancy<'layout> {
         plan: &RoutePlan,
         anchor: LabelAnchor,
         candidate: OccupiedRect,
+        reading_guards: &[CanvasCoord],
         resources: &mut ResourceContext,
     ) -> Result<bool> {
+        if !self.label_preserves_route_reading(reading_guards, candidate, resources)? {
+            return Ok(false);
+        }
+        let Some(reservation) =
+            label_reservation(anchor, candidate, self.label_lane_radius, resources)?
+        else {
+            return Ok(false);
+        };
         for protected in &self.protected {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
-            if protected.shape.intersects(candidate) {
+            if protected.shape.intersects(reservation) {
                 return Ok(false);
             }
         }
@@ -760,8 +1125,8 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(false);
         }
 
-        for y in candidate.y..candidate.bottom {
-            for x in candidate.x..candidate.right {
+        for y in reservation.y..reservation.bottom {
+            for x in reservation.x..reservation.right {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
@@ -778,9 +1143,108 @@ impl<'layout> SceneOccupancy<'layout> {
         resources.charge_layout_work(plan.cells.len())?;
         for (cell_index, (_, cell)) in plan.active_cells().enumerate() {
             self.checkpoint_layout_scan(cell_index)?;
-            if candidate.contains(cell.coord.x, cell.coord.y)
+            if reservation.contains(cell.coord.x, cell.coord.y)
                 && !label_anchor_contains(anchor, cell.coord, cell.segment)
             {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
+    pub(super) fn label_reading_guards(
+        &self,
+        plan: &RoutePlan,
+        resources: &ResourceContext,
+    ) -> Result<Vec<CanvasCoord>> {
+        let mut borders = Vec::new();
+        for protected in &self.protected {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if protected.kind == ProtectedKind::GroupBorder {
+                borders
+                    .try_reserve(1)
+                    .map_err(|_| layout_allocation_failed())?;
+                borders.push(protected);
+            }
+        }
+        let mut guards = Vec::new();
+        // A label can replace its own host stroke, but not the immediate continuation
+        // of a frame crossing: otherwise the frame looks connected to the label itself.
+        for (_, cell) in plan.active_cells() {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            let directions = if cell.directions == 0 {
+                route_char_directions(cell.ch)
+            } else {
+                cell.directions
+            };
+            if directions.count_ones() > 1
+                && directions != (DIR_LEFT | DIR_RIGHT)
+                && directions != (DIR_UP | DIR_DOWN)
+            {
+                // Hiding a turn makes a condition appear to connect two unrelated
+                // continuation columns. Inline text may replace only a straight host.
+                guards
+                    .try_reserve(1)
+                    .map_err(|_| layout_allocation_failed())?;
+                guards.push(cell.coord);
+            }
+            for protected in &borders {
+                resources.charge_layout_work(1)?;
+                let Some(border) = protected
+                    .shape
+                    .transverse_border_directions(cell.coord, directions)
+                else {
+                    continue;
+                };
+                let neighbors = if border == (DIR_LEFT | DIR_RIGHT) {
+                    [
+                        cell.coord
+                            .y
+                            .checked_sub(1)
+                            .map(|y| CanvasCoord { y, ..cell.coord }),
+                        cell.coord
+                            .y
+                            .checked_add(1)
+                            .map(|y| CanvasCoord { y, ..cell.coord }),
+                    ]
+                } else {
+                    [
+                        cell.coord
+                            .x
+                            .checked_sub(1)
+                            .map(|x| CanvasCoord { x, ..cell.coord }),
+                        cell.coord
+                            .x
+                            .checked_add(1)
+                            .map(|x| CanvasCoord { x, ..cell.coord }),
+                    ]
+                };
+                for coord in neighbors.into_iter().flatten() {
+                    guards
+                        .try_reserve(1)
+                        .map_err(|_| layout_allocation_failed())?;
+                    guards.push(coord);
+                }
+            }
+        }
+        crate::graph::layout::charge_sort_work(guards.len(), resources)?;
+        guards.sort_unstable_by_key(|coord| (coord.y, coord.x));
+        guards.dedup();
+        Ok(guards)
+    }
+
+    pub(super) fn label_preserves_route_reading(
+        &self,
+        guards: &[CanvasCoord],
+        candidate: OccupiedRect,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        for coord in guards {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if candidate.contains(coord.x, coord.y) {
                 return Ok(false);
             }
         }
@@ -796,6 +1260,16 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<MarkerCandidateDisposition> {
+        if !self.marker_reading_clearance_is_clear(
+            existing_routes,
+            owner,
+            plan,
+            endpoint,
+            candidate,
+            resources,
+        )? {
+            return Ok(MarkerCandidateDisposition::Blocked);
+        }
         let endpoint_id = owner.endpoint_id(endpoint);
         for protected in &self.protected {
             self.checkpoint_layout()?;
@@ -810,6 +1284,8 @@ impl<'layout> SceneOccupancy<'layout> {
                             endpoint,
                             candidate,
                         )
+                        || self
+                            .divider_allows_terminal_marker(protected, plan, endpoint, candidate)
                         || (protected.kind == ProtectedKind::GroupBorder
                             && (protected.allows_endpoint_port(&owner.from, candidate.coord)
                                 || protected.allows_endpoint_port(&owner.to, candidate.coord)))));
@@ -819,18 +1295,13 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return Ok(
-                if marker_occupant_is_compatible(
-                    existing_routes,
-                    *marker,
-                    endpoint_id,
-                    candidate.point_direction,
-                ) {
-                    MarkerCandidateDisposition::CompatiblePassThrough
-                } else {
-                    MarkerCandidateDisposition::Blocked
-                },
-            );
+            return Ok(occupied_marker_disposition(
+                existing_routes,
+                owner,
+                endpoint,
+                candidate,
+                *marker,
+            ));
         }
 
         let claims = self.terminal_claims.get(&candidate.coord);
@@ -881,6 +1352,120 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(MarkerCandidateDisposition::Available)
     }
 
+    fn marker_reading_clearance_is_clear(
+        &self,
+        routes: &[PreparedRoute],
+        owner: &RouteOwner,
+        plan: &RoutePlan,
+        endpoint: MarkerEndpoint,
+        candidate: MarkerCandidate,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        if matches!(
+            candidate.point_direction,
+            StepDirection::Up | StepDirection::Down
+        ) {
+            for x in [
+                candidate.coord.x.checked_sub(1),
+                candidate.coord.x.checked_add(1),
+            ]
+            .into_iter()
+            .flatten()
+            {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                if self.labels.contains(&CanvasCoord {
+                    x,
+                    ..candidate.coord
+                }) {
+                    return Ok(false);
+                }
+            }
+        }
+        let neighbors = match candidate.point_direction {
+            StepDirection::Left | StepDirection::Right => [
+                candidate.coord.x.checked_sub(1).map(|x| CanvasCoord {
+                    x,
+                    ..candidate.coord
+                }),
+                candidate.coord.x.checked_add(1).map(|x| CanvasCoord {
+                    x,
+                    ..candidate.coord
+                }),
+            ],
+            StepDirection::Up | StepDirection::Down => [
+                candidate.coord.y.checked_sub(1).map(|y| CanvasCoord {
+                    y,
+                    ..candidate.coord
+                }),
+                candidate.coord.y.checked_add(1).map(|y| CanvasCoord {
+                    y,
+                    ..candidate.coord
+                }),
+            ],
+        };
+        for coord in neighbors.into_iter().flatten() {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if let Some(marker) = self.markers.get(&coord) {
+                let existing = &routes[marker.route_index];
+                if marker_occupant_is_compatible(
+                    routes,
+                    *marker,
+                    owner.endpoint_id(endpoint),
+                    candidate.point_direction,
+                ) && (owner.from != existing.owner.from
+                    || owner.to != existing.owner.to
+                    || !plan.labels.is_empty()
+                    || !existing.plan.labels.is_empty())
+                {
+                    return Ok(false);
+                }
+            }
+        }
+        Ok(true)
+    }
+
+    fn divider_allows_terminal_marker(
+        &self,
+        protected: &ProtectedGeometry<'_>,
+        plan: &RoutePlan,
+        endpoint: MarkerEndpoint,
+        candidate: MarkerCandidate,
+    ) -> bool {
+        if protected.kind != ProtectedKind::GroupBorder
+            || !protected
+                .group_index
+                .and_then(|index| self.graph_layout.groups.get(index))
+                .is_some_and(|group| group.kind == GraphGroupKind::Divider)
+        {
+            return false;
+        }
+        let Some(attachments) = plan.attachments else {
+            return false;
+        };
+        let attachment = match endpoint {
+            MarkerEndpoint::Start => attachments.start,
+            MarkerEndpoint::End => attachments.end,
+        };
+        let contact = attachment.contact;
+        let coord = candidate.coord;
+        let adjacent = (contact.x == coord.x && contact.y.abs_diff(coord.y) == 1)
+            || (contact.y == coord.y && contact.x.abs_diff(coord.x) == 1);
+        let directions = match candidate.point_direction {
+            StepDirection::Up | StepDirection::Down => DIR_UP | DIR_DOWN,
+            StepDirection::Left | StepDirection::Right => DIR_LEFT | DIR_RIGHT,
+        };
+        // An open separator can coincide with a primary berth immediately beside the
+        // actual endpoint. The marker must retain a transverse, continuous attachment.
+        adjacent
+            && attachment.allows_escape(coord)
+            && protected
+                .shape
+                .transverse_border_directions(coord, directions)
+                .is_some()
+    }
+
     pub(super) fn preserve_group_crossings(
         &self,
         plan: &mut RoutePlan,
@@ -916,6 +1501,7 @@ impl<'layout> SceneOccupancy<'layout> {
                         directions | border_directions,
                         cell.unicode,
                     );
+                    cell.directions = directions;
                     cell.kind = PlannedRouteCellKind::EdgeLine;
                 }
             }
@@ -931,7 +1517,48 @@ impl<'layout> SceneOccupancy<'layout> {
         end: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<()> {
+        self.commit_route_geometry(route_index, route, resources)?;
+        for (endpoint, candidate) in [(MarkerEndpoint::Start, start), (MarkerEndpoint::End, end)] {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            self.register_terminal_claim(
+                candidate.coord,
+                TerminalClaim {
+                    route_index,
+                    endpoint,
+                    point_direction: candidate.point_direction,
+                    primary: true,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    fn commit_route_geometry(
+        &mut self,
+        route_index: usize,
+        route: &PreparedRoute,
+        resources: &mut ResourceContext,
+    ) -> Result<()> {
         debug_assert_eq!(self.route_bounds.len(), route_index);
+        if let Some(ports) = route.plan.attachments {
+            resources.charge_layout_work(1)?;
+            let count = self
+                .target_ports
+                .entry((ports.end.contact, ports.end.outward))
+                .or_default();
+            *count = resources.checked_work_add(*count, 1)?;
+            if route.plan.requests_marker(MarkerEndpoint::Start) {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                try_reserve_hash_map(&mut self.source_ports, 1)?;
+                let count = self
+                    .source_ports
+                    .entry((ports.start.contact, ports.start.outward))
+                    .or_default();
+                *count = resources.checked_work_add(*count, 1)?;
+            }
+        }
         let mut bounds: Option<RouteBounds> = None;
         for (cell_index, cell) in route.plan.cells.iter().enumerate() {
             self.checkpoint_layout()?;
@@ -942,6 +1569,8 @@ impl<'layout> SceneOccupancy<'layout> {
             {
                 continue;
             }
+            self.occupied_extent.x = self.occupied_extent.x.max(cell.coord.x);
+            self.occupied_extent.y = self.occupied_extent.y.max(cell.coord.y);
             match &mut bounds {
                 Some(bounds) => bounds.include(cell.coord),
                 None => {
@@ -979,18 +1608,6 @@ impl<'layout> SceneOccupancy<'layout> {
         }
         self.route_bounds.push(bounds);
 
-        for (endpoint, candidate) in [(MarkerEndpoint::Start, start), (MarkerEndpoint::End, end)] {
-            self.checkpoint_layout()?;
-            resources.charge_layout_work(1)?;
-            self.register_terminal_claim(
-                candidate.coord,
-                TerminalClaim {
-                    route_index,
-                    endpoint,
-                    point_direction: candidate.point_direction,
-                },
-            )?;
-        }
         Ok(())
     }
 
@@ -1088,37 +1705,29 @@ impl<'layout> SceneOccupancy<'layout> {
             }
         }
 
-        let available_title_width = group.width.saturating_sub(2);
         let inner_left = resources.checked_grid_add(group.x, 1)?;
-        let center = resources.checked_grid_add(group.x, group.width.saturating_sub(1) / 2)?;
-        let line_step = resources.checked_grid_add(GRAPH_LABEL_LINE_GAP, 1)?;
         for (line_index, line) in group.title.lines().iter().enumerate() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
             let title_width = group.title.line_width(line);
-            if title_width == 0 || title_width > available_title_width {
+            if title_width == 0 {
                 continue;
             }
-            let title_x = center
-                .checked_sub(title_width / 2)
-                .ok_or_else(|| {
-                    resources
-                        .policy()
-                        .overflow(AsciiResourceLimitId::MaxGridCells)
-                })?
-                .max(inner_left);
-            let title_y = resources.checked_grid_add(
-                resources.checked_grid_add(group.y, 1)?,
-                resources.checked_grid_mul(line_index, line_step)?,
-            )?;
+            let Some(position) = group.title_line_position(line_index) else {
+                continue;
+            };
+            let protected_left = position.x.saturating_sub(1).max(inner_left);
+            let protected_right = resources
+                .checked_grid_add(resources.checked_grid_add(position.x, title_width)?, 1)?
+                .min(group.right());
             self.protected.push(ProtectedGeometry {
                 owner_id: &group.id,
                 group_index: Some(group_index),
                 kind: ProtectedKind::GroupTitle,
                 shape: ProtectedShape::Rect(OccupiedRect::try_new(
-                    title_x,
-                    title_y,
-                    title_width,
+                    protected_left,
+                    position.y,
+                    protected_right - protected_left,
                     1,
                     resources,
                 )?),
@@ -1135,6 +1744,16 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: MarkerCandidate,
         resources: &mut ResourceContext,
     ) -> Result<MarkerCandidateDisposition> {
+        if !self.marker_reading_clearance_is_clear(
+            routes,
+            &routes[route_index].owner,
+            &routes[route_index].plan,
+            endpoint,
+            candidate,
+            resources,
+        )? {
+            return Ok(MarkerCandidateDisposition::Blocked);
+        }
         let endpoint_id = routes[route_index].owner.endpoint_id(endpoint);
         for protected in &self.protected {
             self.checkpoint_layout()?;
@@ -1145,6 +1764,12 @@ impl<'layout> SceneOccupancy<'layout> {
                         || own_terminal_marker_escape(
                             protected,
                             endpoint_id,
+                            &routes[route_index].plan,
+                            endpoint,
+                            candidate,
+                        )
+                        || self.divider_allows_terminal_marker(
+                            protected,
                             &routes[route_index].plan,
                             endpoint,
                             candidate,
@@ -1163,18 +1788,13 @@ impl<'layout> SceneOccupancy<'layout> {
         }
 
         if let Some(marker) = self.markers.get(&candidate.coord) {
-            return Ok(
-                if marker_occupant_is_compatible(
-                    routes,
-                    *marker,
-                    endpoint_id,
-                    candidate.point_direction,
-                ) {
-                    MarkerCandidateDisposition::CompatiblePassThrough
-                } else {
-                    MarkerCandidateDisposition::Blocked
-                },
-            );
+            return Ok(occupied_marker_disposition(
+                routes,
+                &routes[route_index].owner,
+                endpoint,
+                candidate,
+                *marker,
+            ));
         }
 
         let Some(route_cell) = self.route_cells.get(&candidate.coord) else {
@@ -1301,6 +1921,15 @@ impl<'layout> SceneOccupancy<'layout> {
         resources.charge_layout_work(1)?;
         match self.markers.entry(coord) {
             Entry::Occupied(existing) => {
+                if marker.shared_group.is_some()
+                    && marker.shared_group == existing.get().shared_group
+                    && marker.endpoint == existing.get().endpoint
+                    && marker.point_direction == existing.get().point_direction
+                {
+                    // Each route retains its materialized marker. The map only needs a
+                    // representative; replay chooses one again if that route is removed.
+                    return Ok(());
+                }
                 debug_assert!(
                     existing.get().route_index != marker.route_index
                         || existing.get().endpoint != marker.endpoint
@@ -1320,14 +1949,23 @@ impl<'layout> SceneOccupancy<'layout> {
     pub(super) fn label_candidate_is_clear(
         &self,
         route_index: usize,
+        owner: &RouteOwner,
         anchor: LabelAnchor,
         candidate: OccupiedRect,
         resources: &mut ResourceContext,
     ) -> Result<bool> {
+        let Some(reservation) =
+            label_reservation(anchor, candidate, self.label_lane_radius, resources)?
+        else {
+            return Ok(false);
+        };
+        if !self.label_region_is_clear(owner, candidate, resources)? {
+            return Ok(false);
+        }
         for protected in &self.protected {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
-            if protected.shape.intersects(candidate) {
+            if protected.shape.intersects(reservation) {
                 return Ok(false);
             }
         }
@@ -1336,8 +1974,8 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(false);
         }
 
-        for y in candidate.y..candidate.bottom {
-            for x in candidate.x..candidate.right {
+        for y in reservation.y..reservation.bottom {
+            for x in reservation.x..reservation.right {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
@@ -1361,6 +1999,65 @@ impl<'layout> SceneOccupancy<'layout> {
         Ok(true)
     }
 
+    fn label_region_is_clear(
+        &self,
+        owner: &RouteOwner,
+        candidate: OccupiedRect,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        for group in &self.graph_layout.groups {
+            self.checkpoint_layout()?;
+            resources.charge_layout_work(1)?;
+            if group.kind != GraphGroupKind::Container {
+                continue;
+            }
+            let endpoint_inside =
+                |id: &str| -> Result<bool> {
+                    resources.charge_layout_work(resources.checked_work_add(
+                        self.graph_layout.nodes.len(),
+                        self.graph_layout.groups.len(),
+                    )?)?;
+                    Ok(self.graph_layout.nodes.iter().any(|node| {
+                        node.id == id && super::geometry::group_contains_node(group, node)
+                    }) || self.graph_layout.groups.iter().any(|child| {
+                        child.id == id
+                            && group.x < child.x
+                            && child.right() < group.right()
+                            && group.y < child.y
+                            && child.bottom() < group.bottom()
+                    }))
+                };
+            let from_inside = endpoint_inside(&owner.from)?;
+            let to_inside = endpoint_inside(&owner.to)?;
+            let interior = if group.id == owner.from {
+                to_inside
+            } else if group.id == owner.to {
+                from_inside
+            } else {
+                from_inside && to_inside
+            };
+            if interior {
+                if candidate.x <= group.x
+                    || candidate.right > group.right()
+                    || candidate.y <= group.y
+                    || candidate.bottom > group.bottom()
+                {
+                    return Ok(false);
+                }
+            } else if (group.id == owner.from
+                || group.id == owner.to
+                || (!from_inside && !to_inside))
+                && candidate.x <= group.right()
+                && group.x < candidate.right
+                && candidate.y <= group.bottom()
+                && group.y < candidate.bottom
+            {
+                return Ok(false);
+            }
+        }
+        Ok(true)
+    }
+
     fn label_reading_clearance_is_clear(
         &self,
         candidate: OccupiedRect,
@@ -1376,7 +2073,15 @@ impl<'layout> SceneOccupancy<'layout> {
             {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
-                if self.labels.contains(&CanvasCoord { x, y }) {
+                let coord = CanvasCoord { x, y };
+                if self.labels.contains(&coord)
+                    || self.markers.get(&coord).is_some_and(|marker| {
+                        matches!(
+                            marker.point_direction,
+                            StepDirection::Up | StepDirection::Down
+                        )
+                    })
+                {
                     return Ok(false);
                 }
             }
@@ -1390,6 +2095,14 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
     ) -> Result<()> {
         let footprint_cells = footprint.cell_count(resources)?;
+        self.occupied_extent.x = self
+            .occupied_extent
+            .x
+            .max(footprint.right.saturating_sub(1));
+        self.occupied_extent.y = self
+            .occupied_extent
+            .y
+            .max(footprint.bottom.saturating_sub(1));
         self.labels
             .try_reserve(footprint_cells)
             .map_err(|_| layout_allocation_failed())?;

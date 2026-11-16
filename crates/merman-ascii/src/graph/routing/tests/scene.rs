@@ -1,7 +1,1044 @@
 use super::*;
 
 #[test]
-fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
+fn group_title_protection_matches_painted_rows_after_root_projection() {
+    use crate::graph::surface::OutputTransform;
+    use std::collections::BTreeSet;
+
+    for direction in [
+        GraphDirection::LeftRight,
+        GraphDirection::RightLeft,
+        GraphDirection::TopDown,
+        GraphDirection::BottomTop,
+    ] {
+        let mut graph = AsciiGraph::new(direction);
+        graph.add_node("task", "A sufficiently wide task");
+        graph.add_group_with_style(
+            "group",
+            "Longest heading\nX",
+            None,
+            vec!["task".into()],
+            Default::default(),
+        );
+        let options = AsciiRenderOptions::unicode();
+        let layout = layout_graph(&graph, &options);
+        let mut resources = unbounded_resources();
+        let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+        let rendered = crate::graph::draw::render_graph(&graph, &options, resources.policy())
+            .expect("the complete heading should render");
+        let rows = rendered.lines().collect::<Vec<_>>();
+        let width = rows[0].chars().count();
+        let height = rows.len();
+        let transform = OutputTransform::for_direction(direction);
+
+        let mut painted_reading_cells = BTreeSet::new();
+        for title in ["Longest heading", "X"] {
+            let (y, row) = rows
+                .iter()
+                .enumerate()
+                .find(|(_, row)| row.contains(title))
+                .expect("each authored title row must survive");
+            let start = row[..row.find(title).unwrap()].chars().count();
+            for x in start - 1..=start + title.len() {
+                painted_reading_cells.insert((x, y));
+            }
+        }
+        let mut protected_cells = BTreeSet::new();
+        for protected in &occupancy.protected {
+            if protected.kind != ProtectedKind::GroupTitle {
+                continue;
+            }
+            for y in 0..height {
+                for x in 0..width {
+                    if matches!(protected.shape, occupancy::ProtectedShape::Rect(rect) if rect.contains(x, y))
+                    {
+                        protected_cells
+                            .insert((transform.text_x(x, 1, width), transform.text_y(y, height)));
+                    }
+                }
+            }
+        }
+        assert_eq!(
+            protected_cells, painted_reading_cells,
+            "{direction:?}: only the actual title rows and their reading cells need protection:\n{rendered}"
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn compound_forward_contacts_follow_the_edge_common_scope() {
+    use crate::AsciiLayoutProfile;
+    use merman_core::{ParseOptions, presentation::MermaidEngine};
+    use merman_model::presentation::RenderSemanticModel;
+
+    for (source, expected) in [
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/testdata/local-semantic/flowchart/nested_direction_boundary.mmd"
+            )),
+            &[
+                ("Start", "Entry", StepDirection::Down),
+                ("Entry", "Validate", StepDirection::Right),
+                ("Validate", "Persist", StepDirection::Down),
+                ("Persist", "Done", StepDirection::Down),
+            ][..],
+        ),
+        (
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/testdata/local-semantic/flowchart/multi_boundary_routes.mmd"
+            )),
+            &[
+                ("Source", "Ingest", StepDirection::Down),
+                ("Audit", "Validate", StepDirection::Down),
+                ("Ingest", "Validate", StepDirection::Right),
+                ("Validate", "Publish", StepDirection::Right),
+                ("Publish", "Success", StepDirection::Down),
+                ("Publish", "Retry", StepDirection::Down),
+            ][..],
+        ),
+    ] {
+        for root in ["TD", "BT"] {
+            let source = source.replacen("flowchart TD", &format!("flowchart {root}"), 1);
+            let parsed = MermaidEngine::new()
+                .parse_diagram_for_render_model_sync(&source, ParseOptions::strict())
+                .unwrap()
+                .unwrap();
+            let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+                panic!("expected flowchart");
+            };
+            for profile in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+                for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                    let options = options.with_layout_profile(profile);
+                    let graph = crate::graph::adapter::from_flowchart_model(
+                        model,
+                        &options,
+                        &mut unbounded_resources(),
+                    )
+                    .unwrap();
+                    let layout = layout_graph(&graph, &options);
+                    let scene = prepare_route_scene(
+                        &graph,
+                        &layout,
+                        &graph.edges,
+                        &GraphCharset::for_options(&options),
+                    )
+                    .unwrap();
+                    assert_eq!(scene.routes.len(), graph.edges.len());
+                    assert_eq!(expected.len(), graph.edges.len());
+                    for &(from, to, forward) in expected {
+                        let route = scene
+                            .routes
+                            .iter()
+                            .find(|route| route.owner.from == from && route.owner.to == to)
+                            .unwrap();
+                        let attachments = route.plan.attachments.unwrap();
+                        if from == "Audit" {
+                            // This boundary entry is constrained: a down departure must
+                            // cross the frame straight into the protected Pipeline title.
+                            // Keep it in the six-edge denominator as an explicit fallback.
+                            let audit = layout.nodes.iter().find(|node| node.id == from).unwrap();
+                            let pipeline = layout
+                                .groups
+                                .iter()
+                                .find(|group| group.id == "pipe")
+                                .unwrap();
+                            assert_eq!(pipeline.y, audit.bottom() + 2);
+                            let mut resources = unbounded_resources();
+                            let occupancy =
+                                SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart")
+                                    .unwrap();
+                            for x in audit.x + 1..audit.right() {
+                                assert!(occupancy.protected.iter().any(|protected| {
+                                    protected.kind == ProtectedKind::GroupTitle
+                                        && matches!(protected.shape, occupancy::ProtectedShape::Rect(rect) if rect.contains(x, pipeline.y + 1))
+                                }), "every down contact must meet the reserved title");
+                            }
+                            assert_ne!(attachments.start.outward, StepDirection::Down);
+                            assert_eq!(attachments.end.outward, StepDirection::Up);
+                            continue;
+                        }
+                        if from == "Entry" && root == "BT" && profile == AsciiLayoutProfile::Compact
+                        {
+                            // The only right berth meets the Inner frame before it can
+                            // turn, then Persist's reading margin seals the straight exit.
+                            // terminal::tests verifies that exact corridor, including the
+                            // open Canonical counterpart, using the production guard.
+                            assert_ne!(attachments.start.outward, StepDirection::Right);
+                            assert_eq!(attachments.end.outward, StepDirection::Left);
+                            continue;
+                        }
+                        // Root BT is applied after routing. Authored local TD therefore
+                        // points up here, whereas root-scope forward edges still point down.
+                        let forward = if root == "BT" && from == "Validate" && to == "Persist" {
+                            forward.opposite()
+                        } else {
+                            forward
+                        };
+                        assert_eq!(
+                            (attachments.start.outward, attachments.end.outward),
+                            (forward, forward.opposite()),
+                            "{from} -> {to}, root={root}, profile={profile:?}; layout={layout:#?}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn compound_forward_contacts_fall_back_when_the_departure_side_is_blocked() {
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for id in ["a", "b", "blocker"] {
+            graph.add_node(id, id);
+        }
+        graph.add_group_with_style(
+            "g",
+            "Group",
+            Some(GraphDirection::LeftRight),
+            vec!["a".into(), "blocker".into()],
+            Default::default(),
+        );
+        graph.add_edge("a", "b");
+        let mut layout = layout_graph(&graph, &options);
+        for node in &mut layout.nodes {
+            (node.x, node.y, node.width, node.height) = match node.id.as_str() {
+                "a" => (10, 8, 9, 3),
+                "b" => (10, 24, 9, 3),
+                _ => (9, 12, 11, 3),
+            };
+        }
+        let group = &mut layout.groups[0];
+        (group.x, group.y, group.width, group.height) = (6, 4, 17, 14);
+        let scene = prepare_route_scene(
+            &graph,
+            &layout,
+            &graph.edges,
+            &GraphCharset::for_options(&options),
+        )
+        .expect("an obstructed preferred side must retain a complete alternate route");
+        assert_eq!(scene.routes.len(), 1);
+        let plan = &scene.routes[0].plan;
+        let attachments = plan.attachments.unwrap();
+        assert_ne!(attachments.start.outward, StepDirection::Down);
+        assert_eq!(
+            plan.marker_point_direction(MarkerEndpoint::End),
+            attachments.end.outward.opposite()
+        );
+    }
+}
+
+#[test]
+fn preferred_contacts_replace_a_shorter_side_route() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "g",
+        "Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".into()],
+        Default::default(),
+    );
+    graph.add_edge("a", "b");
+    let mut layout = layout_graph(&graph, &options);
+    for node in &mut layout.nodes {
+        (node.x, node.y, node.width, node.height) = if node.id == "a" {
+            (16, 17, 11, 3)
+        } else {
+            (2, 25, 8, 3)
+        };
+    }
+    let group = &mut layout.groups[0];
+    (group.x, group.y, group.width, group.height) = (14, 12, 15, 11);
+    let mut resources = unbounded_resources();
+    let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let mut owner = RouteOwner::for_test(0, "a", "b");
+    owner.boundary_group_indices = vec![0];
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &layout.nodes[0],
+        to: &layout.nodes[1],
+        edge_index: 0,
+        edge: &graph.edges[0],
+        charset: &charset,
+    };
+    let obstacles = path::RouteObstacles {
+        scene: &occupancy,
+        routes: &[],
+        owner: &owner,
+    };
+    let mut admitted = Vec::new();
+    for (departure, arrival, points) in [
+        (
+            StepDirection::Left,
+            StepDirection::Left,
+            [(15, 18), (12, 18), (12, 26), (10, 26)],
+        ),
+        (
+            StepDirection::Down,
+            StepDirection::Down,
+            [(21, 20), (21, 23), (6, 23), (6, 24)],
+        ),
+    ] {
+        let points = points.map(|(x, y)| CanvasCoord { x, y });
+        let attachments = plan::NodeAttachments {
+            start: plan::NodeAttachment::resolve(
+                request.from,
+                points[0],
+                departure.opposite(),
+                &charset,
+            )
+            .unwrap(),
+            end: plan::NodeAttachment::resolve(request.to, points[3], arrival, &charset).unwrap(),
+        };
+        let path = terminal::direct_path(
+            points,
+            departure,
+            arrival,
+            &resources,
+            AsciiExecution::for_test(&resources.policy()),
+        )
+        .unwrap()
+        .unwrap();
+        let plan = plan::orthogonal::plan_terminal_path(
+            &path,
+            attachments,
+            request.edge,
+            None,
+            &charset,
+            &mut resources,
+        )
+        .unwrap()
+        .unwrap();
+        admitted.push(
+            admit_route_candidate(request, obstacles, plan, &mut resources)
+                .unwrap()
+                .unwrap(),
+        );
+    }
+    let side = &admitted[0];
+    let preferred = &admitted[1];
+    let forward = forward_route_direction(request, &resources).unwrap();
+    assert_eq!(forward, Some(StepDirection::Down));
+    assert!(
+        preferred.0 > side.0,
+        "this regression needs a cheaper side route"
+    );
+    assert!(route_candidate_is_better(
+        forward,
+        (preferred.0, preferred.1.attachments),
+        (side.0, side.1.attachments),
+    ));
+    assert!(route_needs_search(forward, side.0, &side.1, false));
+    assert!(!route_needs_search(None, side.0, &side.1, false));
+}
+
+#[test]
+fn preferred_contacts_yield_to_an_independent_side_contact() {
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "g",
+        "Group",
+        Some(GraphDirection::TopDown),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    graph.add_edge("a", "b");
+    graph.add_edge("a", "b");
+    let mut layout = layout_graph(&graph, &options);
+    for node in &mut layout.nodes {
+        // One non-corner contact per side makes the first target's top contact exhaustive.
+        (node.x, node.y, node.width, node.height) = (10, if node.id == "a" { 8 } else { 20 }, 3, 3);
+    }
+    let group = &mut layout.groups[0];
+    (group.x, group.y, group.width, group.height) = (6, 4, 15, 23);
+    let mut scene = prepare_route_scene(&graph, &layout, &graph.edges[..1], &charset).unwrap();
+    let mut resources = unbounded_resources();
+    let mut occupancy =
+        SceneOccupancy::try_new(&scene.routes, &layout, &mut resources, "flowchart").unwrap();
+    // try_new replays geometry and primary claims. Recreate the marker reservations too,
+    // so the incumbent is evaluated against the same occupancy as production selection.
+    allocate_marker_berths(
+        &mut scene.routes,
+        &mut occupancy,
+        &charset,
+        &mut resources,
+        "flowchart",
+    )
+    .unwrap();
+    let owner = RouteOwner::for_test(1, "a", "b");
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &layout.nodes[0],
+        to: &layout.nodes[1],
+        edge_index: 1,
+        edge: &graph.edges[1],
+        charset: &charset,
+    };
+    let obstacles = path::RouteObstacles {
+        scene: &occupancy,
+        routes: &scene.routes,
+        owner: &owner,
+    };
+    let points = (11..20)
+        .map(|y| CanvasCoord { x: 11, y })
+        .collect::<Vec<_>>();
+    let candidate = plan::orthogonal::plan_terminal_path(
+        &points,
+        scene.routes[0].plan.attachments.unwrap(),
+        request.edge,
+        None,
+        &charset,
+        &mut resources,
+    )
+    .unwrap()
+    .unwrap();
+    let (score, plan) = admit_route_candidate(request, obstacles, candidate, &mut resources)
+        .unwrap()
+        .expect("a fresh parallel candidate must have a distinct marker berth on the reused port");
+    assert!(contacts_follow_direction(
+        Some(StepDirection::Down),
+        plan.attachments
+    ));
+    assert_eq!(score.port_reuse(), (1, 0));
+    let policy = resources.policy();
+    for incumbent in [Some((score, plan.attachments)), None] {
+        let mut expansions = terminal::MAX_REPAIR_EXPANSIONS;
+        let (replacement_score, replacement) = terminal::plan_terminal_route_with_budget(
+            request,
+            obstacles,
+            None,
+            incumbent,
+            terminal::SearchBudget::Optional(&mut expansions),
+            &mut resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .unwrap()
+        .expect("a reused preferred target must allow an independent side contact");
+        let end = replacement.attachments.unwrap().end;
+        assert_ne!(end.outward, StepDirection::Up);
+        assert_eq!(occupancy.target_port_usage(end), 0);
+        assert_eq!(replacement_score.port_reuse(), (0, 0));
+        assert!(expansions < terminal::MAX_REPAIR_EXPANSIONS);
+    }
+}
+
+#[test]
+fn feedback_cycles_leave_aligned_forward_links_straight() {
+    for direction in [
+        GraphDirection::LeftRight,
+        GraphDirection::RightLeft,
+        GraphDirection::TopDown,
+        GraphDirection::BottomTop,
+    ] {
+        for reverse in [false, true] {
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let mut graph = AsciiGraph::new(direction);
+                for (id, label) in [
+                    ("a", "Input"),
+                    ("b", "Parse"),
+                    ("c", "Validate"),
+                    ("d", "Write"),
+                    ("e", "Done"),
+                ] {
+                    graph.add_node(id, label);
+                }
+                for (from, to, label) in [
+                    ("a", "b", None),
+                    ("b", "c", None),
+                    ("c", "d", None),
+                    ("d", "e", None),
+                    ("c", "b", Some("retry")),
+                    ("d", "a", Some("failed")),
+                ] {
+                    graph.add_edge_with_attrs(
+                        from,
+                        to,
+                        GraphEdgeAttrs {
+                            label: label.map(str::to_owned),
+                            ..Default::default()
+                        },
+                    );
+                }
+                if reverse {
+                    graph.edges.reverse();
+                }
+                let layout = layout_graph(&graph, &options);
+                let charset = GraphCharset::for_options(&options);
+                let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset).unwrap();
+                let mut straight_links = 0;
+                for route in &scene.routes {
+                    if !matches!(
+                        (route.owner.from.as_str(), route.owner.to.as_str()),
+                        ("a", "b") | ("b", "c") | ("c", "d") | ("d", "e")
+                    ) {
+                        continue;
+                    }
+                    let from = layout
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == route.owner.from)
+                        .unwrap();
+                    let to = layout
+                        .nodes
+                        .iter()
+                        .find(|n| n.id == route.owner.to)
+                        .unwrap();
+                    let horizontal = matches!(
+                        direction,
+                        GraphDirection::LeftRight | GraphDirection::RightLeft
+                    );
+                    let aligned = if horizontal {
+                        from.center_y() == to.center_y()
+                    } else {
+                        from.center_x() == to.center_x()
+                    };
+                    if aligned {
+                        straight_links += 1;
+                        assert!(
+                            route.plan.active_cells().all(|(_, cell)| {
+                                if horizontal {
+                                    cell.coord.y == from.center_y()
+                                } else {
+                                    cell.coord.x == from.center_x()
+                                }
+                            }),
+                            "aligned forward link {} -> {} should stay straight: {direction:?}; {:?}",
+                            route.owner.from,
+                            route.owner.to,
+                            route.plan.cells,
+                        );
+                    }
+                }
+                assert_eq!(
+                    straight_links, 4,
+                    "the full backbone must be exercised: {direction:?}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn multiline_internal_conditions_reserve_both_halves_of_the_container() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_group_with_style(
+        "g",
+        "Group",
+        Some(GraphDirection::LeftRight),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    graph.add_edge_with_attrs(
+        "a",
+        "b",
+        GraphEdgeAttrs {
+            label: Some(vec!["x"; 21].join("\n")),
+            ..Default::default()
+        },
+    );
+    let options = AsciiRenderOptions::ascii();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut unbounded_resources(),
+    )
+    .expect("the enclosing frame must reserve the full condition block");
+    assert_eq!(scene.routes[0].plan.labels[0].line_count(), 21);
+    let label = &scene.routes[0].plan.labels[0];
+    let frame = &layout.groups[0];
+    assert!(label.placement.y() > frame.y);
+    assert!(label.placement.y() + label.line_count() <= frame.bottom());
+}
+
+#[test]
+#[cfg(feature = "diagram-state")]
+fn state_composite_routes_keep_long_conditions_and_notes_separate() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+    use merman_model::families::state::StateTerminalView;
+    let parsed = SemanticParser::new()
+        .parse_diagram_sync(concat!(
+            "stateDiagram-v2\ndirection LR\nstate Session {\ndirection TB\n",
+            "[*] --> Ready\n",
+            "Ready --> Running: permission granted for the complete production operation\n",
+            "Running --> [*]: finished\n",
+            "note right of Ready: Only authorized operators may start the operation\n",
+            "}\nSession --> Closed: close the complete session\n",
+        ))
+        .unwrap();
+    let SemanticDiagramModel::State(model) = &parsed.model else {
+        panic!("expected state");
+    };
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let execution = AsciiExecution::for_test(&policy);
+    let options = AsciiRenderOptions::ascii();
+    let graph = crate::state::from_state_view_with_context_and_execution(
+        StateTerminalView::from_semantic(model),
+        options.terminal_width_profile,
+        &mut resources,
+        execution,
+    )
+    .unwrap();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut resources,
+    );
+    assert!(scene.is_ok(), "{:?}; layout={layout:?}", scene.err());
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn nested_container_endpoints_reserve_complete_labeled_channels() {
+    use merman_core::{ParseOptions, presentation::MermaidEngine};
+    use merman_model::presentation::RenderSemanticModel;
+    let source = include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../fixtures/flowchart/",
+        "upstream_cypress_flowchart_v2_spec_should_render_subgraphs_with_title_margins_and_edge_labels_063.mmd"
+    ));
+    let parsed = MermaidEngine::new()
+        .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
+        .unwrap()
+        .unwrap();
+    let RenderSemanticModel::Flowchart(model) = parsed.model() else {
+        panic!("expected flowchart");
+    };
+    let options = AsciiRenderOptions::ascii();
+    let graph =
+        crate::graph::adapter::from_flowchart_model(model, &options, &mut unbounded_resources())
+            .unwrap();
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut unbounded_resources(),
+    );
+    assert!(scene.is_ok(), "{:?}; layout={layout:?}", scene.err());
+}
+
+#[test]
+fn compact_disconnected_containers_keep_their_internal_chains_routable() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for (id, label) in [
+        ("t1", "Today AI"),
+        ("t2", "Today Markdown"),
+        ("t3", "Today Reads"),
+        ("n1", "Next AI"),
+        ("n2", "Next Widget"),
+        ("n3", "Next Acts"),
+    ] {
+        graph.add_node(id, label);
+    }
+    graph.add_group_with_style(
+        "today",
+        "Today",
+        None,
+        vec!["t1".into(), "t2".into(), "t3".into()],
+        Default::default(),
+    );
+    graph.add_group_with_style(
+        "next",
+        "Next Wave",
+        None,
+        vec!["n1".into(), "n2".into(), "n3".into()],
+        Default::default(),
+    );
+    for (from, to) in [("t1", "t2"), ("t2", "t3"), ("n1", "n2"), ("n2", "n3")] {
+        graph.add_edge(from, to);
+    }
+    let options =
+        AsciiRenderOptions::unicode().with_layout_profile(crate::AsciiLayoutProfile::Compact);
+    let layout = layout_graph(&graph, &options);
+    let mut resources = unbounded_resources();
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut resources,
+    );
+    assert!(
+        scene.is_ok(),
+        "{:?}; nodes={:?}; groups={:?}",
+        scene.err(),
+        layout.nodes,
+        layout.groups
+    );
+}
+
+fn assert_allocated_geometry(route: &PreparedRoute) {
+    let branch = route
+        .owner
+        .allocated_branch
+        .expect("a shared route owns its allocation");
+    assert_eq!(route.plan.attachments, Some(branch.attachments));
+    for (_, cell) in route.plan.active_cells() {
+        let coord = cell.coord;
+        assert!(
+            coord == branch.attachments.start.contact
+                || branch.points.windows(2).any(|pair| {
+                    let (from, to) = (pair[0], pair[1]);
+                    (from.x == to.x
+                        && coord.x == from.x
+                        && (from.y.min(to.y)..=from.y.max(to.y)).contains(&coord.y))
+                        || (from.y == to.y
+                            && coord.y == from.y
+                            && (from.x.min(to.x)..=from.x.max(to.x)).contains(&coord.x))
+                }),
+            "route {} -> {} left its allocated channel at {coord:?}",
+            route.owner.from,
+            route.owner.to
+        );
+    }
+}
+
+#[test]
+fn allocated_branch_trunks_share_only_their_declared_source_group() {
+    let graph = AsciiGraph::new(GraphDirection::LeftRight);
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    let mut resources = unbounded_resources();
+    let plan = RoutePlan::new_without_markers_for_test(
+        (0..11)
+            .map(|x| planned_cell(x, 0, '-', PlannedRouteCellKind::EdgeLine))
+            .collect(),
+        Vec::new(),
+    );
+    let mut route = PreparedRoute::for_test_with_endpoints(plan, 2, "source", "first");
+    route.owner.set_source_group_for_test(Some(2));
+    let routes = [route];
+    let scene = SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
+    let coord = CanvasCoord { x: 5, y: 0 };
+    let horizontal = cell::DIR_LEFT | cell::DIR_RIGHT;
+    let vertical = cell::DIR_UP | cell::DIR_DOWN;
+    let mut compatible = RouteOwner::for_test(3, "source", "second");
+    compatible.set_source_group_for_test(Some(2));
+    assert!(
+        scene
+            .route_cell_is_clear(
+                &routes,
+                &compatible,
+                None,
+                coord,
+                horizontal,
+                &mut resources
+            )
+            .unwrap()
+    );
+    assert_eq!(
+        scene
+            .route_cell_congestion(&routes, &compatible, None, coord, &mut resources)
+            .unwrap(),
+        0
+    );
+    for group in [None, Some(7)] {
+        let mut unrelated = RouteOwner::for_test(7, "different", "third");
+        unrelated.set_source_group_for_test(group);
+        assert!(
+            !scene
+                .route_cell_is_clear(&routes, &unrelated, None, coord, horizontal, &mut resources)
+                .unwrap()
+        );
+        assert!(
+            scene
+                .route_cell_is_clear(&routes, &unrelated, None, coord, vertical, &mut resources)
+                .unwrap()
+        );
+    }
+    compatible.set_source_group_for_test(None);
+    assert!(
+        !scene
+            .route_cell_is_clear(
+                &routes,
+                &compatible,
+                None,
+                coord,
+                horizontal,
+                &mut resources
+            )
+            .unwrap(),
+        "endpoint text alone cannot assign a branch group"
+    );
+}
+
+#[test]
+fn complete_fanouts_honor_joint_channels_in_both_orientations() {
+    for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+        for count in [2, 8, 12, 16] {
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let mut graph = AsciiGraph::new(direction);
+                graph.add_node("source", "Dispatcher");
+                for index in 0..count {
+                    let id = format!("target-{index:02}");
+                    graph.add_node(&id, format!("Job {index}"));
+                    graph.add_edge("source", &id);
+                }
+                let layout = layout_graph(&graph, &options);
+                let charset = GraphCharset::for_options(&options);
+                let mut resources = unbounded_resources();
+                let scene = prepare_route_scene_with_resources(
+                    &graph,
+                    &layout,
+                    &graph.edges,
+                    &charset,
+                    &mut resources,
+                )
+                .unwrap();
+                assert_eq!(scene.routes.len(), count);
+                let start = scene.routes[0].plan.attachments.unwrap().start;
+                for route in &scene.routes {
+                    assert_eq!(
+                        route.owner.shared_channel_group(),
+                        Some(0),
+                        "a local path must not dismantle the joint channel: {direction:?}, {count}, {}",
+                        route.owner.to
+                    );
+                    let ports = route.plan.attachments.unwrap();
+                    assert_eq!(ports.start, start);
+                    assert_eq!(
+                        ports.start.outward,
+                        if direction == GraphDirection::LeftRight {
+                            StepDirection::Right
+                        } else {
+                            StepDirection::Down
+                        }
+                    );
+                    assert_eq!(ports.end.outward, ports.start.outward.opposite());
+                    assert_allocated_geometry(route);
+                    assert!(
+                        route
+                            .plan
+                            .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                            .unwrap()
+                            .is_some()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn complete_fanins_keep_private_sources_and_share_one_target_marker() {
+    for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+        for count in [2, 8, 12, 16] {
+            for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+                let mut graph = AsciiGraph::new(direction);
+                graph.add_node("target", "Collector");
+                for index in 0..count {
+                    let id = format!("source-{index:02}");
+                    graph.add_node(&id, format!("Job {index}"));
+                    graph.add_edge_with_attrs(
+                        &id,
+                        "target",
+                        GraphEdgeAttrs {
+                            start_marker: if index % 2 == 0 {
+                                GraphEdgeMarker::Circle
+                            } else {
+                                GraphEdgeMarker::Cross
+                            },
+                            end_marker: GraphEdgeMarker::Point,
+                            ..GraphEdgeAttrs::default()
+                        },
+                    );
+                }
+                let layout = layout_graph(&graph, &options);
+                let mut resources = unbounded_resources();
+                let scene = prepare_route_scene_with_resources(
+                    &graph,
+                    &layout,
+                    &graph.edges,
+                    &GraphCharset::for_options(&options),
+                    &mut resources,
+                )
+                .unwrap();
+                assert_eq!(scene.routes.len(), count);
+                let end = scene.routes[0].plan.attachments.unwrap().end;
+                let marker = scene.routes[0]
+                    .plan
+                    .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                    .unwrap()
+                    .unwrap()
+                    .coord;
+                let mut sources = std::collections::HashSet::new();
+                for route in &scene.routes {
+                    assert!(
+                        route.owner.allocated_branch.is_some(),
+                        "a merge needs a joint channel: {direction:?}, {count}, {}",
+                        route.owner.from
+                    );
+                    let ports = route.plan.attachments.unwrap();
+                    assert_eq!(ports.end, end);
+                    assert!(sources.insert(ports.start.contact));
+                    assert_eq!(ports.end.outward, ports.start.outward.opposite());
+                    assert_allocated_geometry(route);
+                    let cell = route
+                        .plan
+                        .materialized_marker_cell(MarkerEndpoint::End, "flowchart")
+                        .unwrap()
+                        .unwrap();
+                    assert_eq!(cell.coord, marker);
+                    assert!(
+                        route
+                            .plan
+                            .materialized_marker_cell(MarkerEndpoint::Start, "flowchart")
+                            .unwrap()
+                            .is_some()
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn an_unrelated_transverse_crossing_does_not_dismantle_a_joint_channel() {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for (id, text) in [
+        ("a", "A"),
+        ("b", "B"),
+        ("source", "S"),
+        ("t0", "T0"),
+        ("t1", "T1"),
+    ] {
+        graph.add_node(id, text);
+    }
+    for (from, to) in [("a", "b"), ("source", "t0"), ("source", "t1")] {
+        graph.add_edge(from, to);
+    }
+    let options = AsciiRenderOptions::ascii();
+    let mut layout = layout_graph(&graph, &options);
+    for (node, (x, y, width)) in
+        layout
+            .nodes
+            .iter_mut()
+            .zip([(2, 6, 5), (31, 6, 5), (6, 12, 7), (22, 0, 7), (22, 24, 7)])
+    {
+        node.x = x;
+        node.y = y;
+        node.width = width;
+        node.height = 5;
+    }
+    let mut resources = unbounded_resources();
+    let scene = prepare_route_scene_with_resources(
+        &graph,
+        &layout,
+        &graph.edges,
+        &GraphCharset::for_options(&options),
+        &mut resources,
+    )
+    .unwrap();
+    let crossing = CanvasCoord { x: 14, y: 8 };
+    let unrelated = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.from == "a")
+        .unwrap();
+    assert!(
+        unrelated
+            .plan
+            .active_cells()
+            .any(|(_, cell)| cell.coord == crossing)
+    );
+    let upper = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.to == "t0")
+        .unwrap();
+    assert!(
+        upper
+            .plan
+            .active_cells()
+            .any(|(_, cell)| cell.coord == crossing)
+    );
+    for route in scene
+        .routes
+        .iter()
+        .filter(|route| route.owner.from == "source")
+    {
+        assert_eq!(route.owner.shared_channel_group(), Some(1));
+        assert_allocated_geometry(route);
+    }
+}
+
+#[test]
+fn scene_route_order_uses_an_exact_shared_work_budget() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    let measured = unbounded_resources();
+    let order = plan_route_order(&graph, &layout, &graph.edges, &measured).unwrap();
+    assert_eq!(order, vec![0]);
+    let exact = measured.layout_work_used();
+    assert!(exact > 0);
+    for (limit, passes) in [(exact, true), (exact - 1, false)] {
+        let resources = ResourceContext::new(
+            AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap(),
+        );
+        let result = plan_route_order(&graph, &layout, &graph.edges, &resources);
+        if passes {
+            assert_eq!(result.unwrap(), order);
+            assert_eq!(resources.layout_work_used(), exact);
+        } else {
+            assert!(matches!(result, Err(AsciiError::ResourceLimitExceeded(_))));
+        }
+    }
+}
+
+#[test]
+fn invisible_parallel_constraints_do_not_inflate_feedback_planning_work() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &AsciiRenderOptions::ascii());
+    graph.edges[0].stroke = GraphEdgeStroke::Invisible;
+    graph.edges.resize(10_000, graph.edges[0].clone());
+    let resources = ResourceContext::new(
+        AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 20_000)
+            .unwrap(),
+    );
+    assert!(
+        plan_route_order(&graph, &layout, &graph.edges, &resources)
+            .unwrap()
+            .is_empty()
+    );
+}
+
+#[test]
+fn edge_canvas_extent_accounts_for_boundary_label_width() {
     let options = AsciiRenderOptions::ascii();
     let charset = GraphCharset::for_options(&options);
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
@@ -25,41 +1062,26 @@ fn edge_canvas_extent_accounts_for_boundary_grid_path_label_width() {
         },
     );
     let graph_layout = layout_graph(&graph, &options);
-    let edge = &graph.edges[1];
-    let from =
-        endpoint_layout(&graph_layout, &edge.from, &charset).expect("source layout should exist");
-    let to =
-        endpoint_layout(&graph_layout, &edge.to, &charset).expect("target layout should exist");
-    let plan = plan_edge_route(EdgeRouteRequest {
-        graph: &graph,
-        graph_layout: &graph_layout,
-        edges: &graph.edges,
-        from: &from,
-        to: &to,
-        edge_index: 1,
-        edge,
-        charset: &charset,
-    })
-    .expect("boundary route should plan");
+    let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
+        .expect("boundary scene should render");
+    let plan = &scene
+        .routes
+        .iter()
+        .find(|route| route.owner.from == "b" && route.owner.to == "y")
+        .expect("boundary route should plan")
+        .plan;
     let label = plan.labels.first().expect("boundary route should label");
     assert_eq!(
         label.placement.width(),
         "boundary label with enough width".len()
     );
 
-    let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
-        .expect("boundary scene should render");
     let (edge_width, _) = scene.canvas_extent();
     let required_width = scene
         .routes
         .iter()
         .flat_map(|route| &route.plan.labels)
-        .map(|label| {
-            label
-                .placement
-                .canvas_extent_for_lines(label.line_count())
-                .0
-        })
+        .map(|label| label.placement.x() + label.placement.width())
         .max()
         .expect("prepared boundary label should exist");
 
@@ -211,6 +1233,438 @@ fn prepared_route_scene_prefers_a_clear_direct_route_over_extra_marker_berths() 
 }
 
 #[test]
+fn branching_chain_keeps_converging_edges_on_distinct_target_ports() {
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for direction in [GraphDirection::LeftRight, GraphDirection::TopDown] {
+            for compound in [false, true] {
+                let charset = GraphCharset::for_options(&options);
+                let graph = branching_chain_graph(compound, direction);
+                let layout = layout_graph(&graph, &options);
+                let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset)
+                    .unwrap_or_else(|error| {
+                        panic!("all five routes must survive: {error}\n{layout:#?}")
+                    });
+                assert_eq!(scene.routes.len(), 5);
+                let contacts = scene
+                    .routes
+                    .iter()
+                    .filter(|route| route.owner.to == "C")
+                    .map(|route| route.plan.attachments.unwrap().end.contact)
+                    .collect::<rustc_hash::FxHashSet<_>>();
+                assert_eq!(
+                    contacts.len(),
+                    3,
+                    "independent incoming edges should use distinct ports before stacking markers"
+                );
+                for group in &layout.groups {
+                    for route in &scene.routes {
+                        for (_, cell) in route.plan.active_cells() {
+                            let inside = group.x < cell.coord.x
+                                && cell.coord.x < group.right()
+                                && group.y < cell.coord.y
+                                && cell.coord.y < group.bottom();
+                            if group.id == "foreign" {
+                                assert!(!inside, "routes must not enter an unrelated frame");
+                            } else {
+                                assert!(
+                                    inside,
+                                    "internal routes must stay inside every common frame"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn branching_chain_graph(compound: bool, direction: GraphDirection) -> AsciiGraph {
+    let mut graph = AsciiGraph::new(direction);
+    for id in ["A", "B", "C", "D"] {
+        graph.add_node(id, id);
+    }
+    for (from, to) in [("A", "B"), ("A", "C"), ("B", "C"), ("B", "D"), ("D", "C")] {
+        graph.add_edge(from, to);
+    }
+    if compound {
+        for (id, members) in [
+            ("inner", vec!["A", "B", "C", "D"]),
+            ("outer", vec!["inner", "foreign"]),
+            ("foreign", vec![]),
+        ] {
+            graph.add_group_with_style(
+                id,
+                id,
+                Some(direction),
+                members.into_iter().map(str::to_owned).collect(),
+                crate::graph::model::GraphGroupStyle::default(),
+            );
+        }
+    }
+    graph
+}
+
+#[test]
+fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
+    for graph in [
+        branching_chain_graph(false, GraphDirection::LeftRight),
+        branching_chain_graph(true, GraphDirection::LeftRight),
+        group_endpoint_merge_graph(),
+        group_self_loop_graph(),
+        concurrent_region_skip_graph(),
+    ] {
+        let options = AsciiRenderOptions::unicode();
+        let charset = GraphCharset::for_options(&options);
+        let layout = layout_graph(&graph, &options);
+        let policy = AsciiResourcePolicy::unbounded();
+        let mut measured = ResourceContext::new(policy);
+        let expected = prepare_route_scene_with_resources(
+            &graph,
+            &layout,
+            &graph.edges,
+            &charset,
+            &mut measured,
+        )
+        .unwrap()
+        .materialize(&measured)
+        .unwrap();
+        let exact = measured.layout_work_used();
+        let mut admitted = ResourceContext::new(
+            policy
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact)
+                .unwrap(),
+        );
+        let actual = prepare_route_scene_with_resources(
+            &graph,
+            &layout,
+            &graph.edges,
+            &charset,
+            &mut admitted,
+        )
+        .unwrap()
+        .materialize(&admitted)
+        .unwrap();
+        assert_eq!(
+            route_scene_signature(&actual),
+            route_scene_signature(&expected)
+        );
+        assert_eq!(admitted.layout_work_used(), exact);
+        let mut rejected = ResourceContext::new(
+            policy
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, exact - 1)
+                .unwrap(),
+        );
+        let error = match prepare_route_scene_with_resources(
+            &graph,
+            &layout,
+            &graph.edges,
+            &charset,
+            &mut rejected,
+        )
+        .and_then(|plan| plan.materialize(&rejected))
+        {
+            Ok(_) => panic!("terminal port repair must charge all attempted work"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+        if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
+    }
+}
+
+fn group_endpoint_merge_graph() -> AsciiGraph {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for id in ["A", "B", "C", "member", "Z"] {
+        graph.add_node(id, id);
+    }
+    graph.add_group_with_style(
+        "group",
+        "Group",
+        None,
+        vec!["member".into()],
+        crate::graph::model::GraphGroupStyle::default(),
+    );
+    for from in ["A", "B", "C"] {
+        graph.add_edge_with_attrs(
+            from,
+            "group",
+            GraphEdgeAttrs {
+                label: Some(format!("via {from}")),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
+    graph.add_edge("group", "Z");
+    graph
+}
+
+fn group_self_loop_graph() -> AsciiGraph {
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("A", "A");
+    graph.add_node("Z", "Z");
+    graph.add_group_with_style(
+        "group",
+        "Buffer",
+        None,
+        vec!["A".into()],
+        crate::graph::model::GraphGroupStyle::default(),
+    );
+    for label in ["first", "second", "third"] {
+        graph.add_edge_with_attrs(
+            "group",
+            "group",
+            GraphEdgeAttrs {
+                label: Some(label.into()),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
+    graph.add_edge("group", "Z");
+    graph
+}
+
+fn concurrent_region_skip_graph() -> AsciiGraph {
+    use crate::graph::model::{GraphGroupKind, GraphGroupStyle};
+    let mut graph = AsciiGraph::new_for_diagram("state", GraphDirection::TopDown);
+    let mut regions = Vec::new();
+    for id in ["A", "B", "C", "D"] {
+        graph.add_node(id, id);
+        let region = format!("region-{id}");
+        graph.add_group_with_kind_and_style(
+            &region,
+            "",
+            None,
+            vec![id.into()],
+            GraphGroupKind::Divider,
+            GraphGroupStyle::default(),
+        );
+        regions.push(region);
+    }
+    graph.add_group_with_style(
+        "outer",
+        "RUNNING",
+        None,
+        regions,
+        GraphGroupStyle::default(),
+    );
+    for (from, to, label) in [("A", "D", "send"), ("D", "A", "retry")] {
+        graph.add_edge_with_attrs(
+            from,
+            to,
+            GraphEdgeAttrs {
+                label: Some(label.into()),
+                ..GraphEdgeAttrs::default()
+            },
+        );
+    }
+    graph
+}
+
+#[test]
+fn group_self_loops_use_distinct_return_contacts_and_keep_transit_outside() {
+    let graph = group_self_loop_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset).unwrap();
+    let group = layout
+        .groups
+        .iter()
+        .find(|group| group.id == "group")
+        .unwrap();
+    let loops: Vec<_> = scene
+        .routes
+        .iter()
+        .filter(|route| route.owner.to == "group")
+        .collect();
+    let contacts: rustc_hash::FxHashSet<_> = loops
+        .iter()
+        .map(|route| route.plan.attachments.unwrap().end.contact)
+        .collect();
+    assert_eq!(contacts.len(), 3);
+    for route in loops {
+        let attachments = route.plan.attachments.unwrap();
+        assert_ne!(attachments.start.contact, attachments.end.contact);
+        for (_, cell) in route.plan.active_cells() {
+            assert!(
+                !(group.x < cell.coord.x
+                    && cell.coord.x < group.right()
+                    && group.y < cell.coord.y
+                    && cell.coord.y < group.bottom())
+            );
+        }
+    }
+}
+
+#[test]
+fn group_merge_uses_distinct_border_contacts_without_entering_its_member() {
+    let graph = group_endpoint_merge_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset).unwrap();
+    let group = layout
+        .groups
+        .iter()
+        .find(|group| group.id == "group")
+        .unwrap();
+    let contacts = scene
+        .routes
+        .iter()
+        .filter(|route| route.owner.to == "group")
+        .map(|route| route.plan.attachments.unwrap().end.contact)
+        .collect::<rustc_hash::FxHashSet<_>>();
+    assert_eq!(contacts.len(), 3);
+    for route in &scene.routes {
+        for (_, cell) in route.plan.active_cells() {
+            assert!(
+                !(group.x < cell.coord.x
+                    && cell.coord.x < group.right()
+                    && group.y < cell.coord.y
+                    && cell.coord.y < group.bottom()),
+                "a container endpoint must keep external transit out of its interior"
+            );
+        }
+    }
+}
+
+#[test]
+fn terminal_cell_search_observes_cancellation_inside_the_frontier() {
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    let layout = layout_graph(&graph, &options);
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let from = endpoint_layout(&layout, "a", &charset).unwrap();
+    let to = endpoint_layout(&layout, "b", &charset).unwrap();
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &from,
+        to: &to,
+        edge_index: 0,
+        edge: &graph.edges[0],
+        charset: &charset,
+    };
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let control = OperationControl::new();
+    control.cancel_after_checkpoints(3);
+    let error = match terminal::plan_terminal_route(
+        request,
+        path::RouteObstacles {
+            scene: &occupancy,
+            routes: &[],
+            owner: &owner,
+        },
+        None,
+        None,
+        &mut resources,
+        AsciiExecution::new(&control, &policy),
+    ) {
+        Ok(_) => panic!("the terminal search must cancel before returning a route"),
+        Err(error) => error,
+    };
+    assert!(matches!(error, AsciiError::Cancelled(cancelled)
+        if cancelled.phase == OperationPhase::Layout && cancelled.reason == CancelReason::Requested));
+}
+
+#[test]
+fn terminal_cell_search_crosses_owned_frames_inside_the_common_parent() {
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
+    for id in ["A", "B", "X"] {
+        graph.add_node(id, id);
+    }
+    graph.add_edge("A", "B");
+    for (id, members) in [
+        ("left", vec!["A"]),
+        ("right", vec!["B"]),
+        ("foreign", vec!["X"]),
+        ("outer", vec!["left", "right", "foreign"]),
+    ] {
+        graph.add_group_with_style(
+            id,
+            id,
+            Some(GraphDirection::LeftRight),
+            members.into_iter().map(str::to_owned).collect(),
+            crate::graph::model::GraphGroupStyle::default(),
+        );
+    }
+    let layout = layout_graph(&graph, &options);
+    let policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(policy);
+    let topology = GraphGroupTopology::try_new(&graph, &mut resources).unwrap();
+    let occupancy = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let from = endpoint_layout(&layout, "A", &charset).unwrap();
+    let to = endpoint_layout(&layout, "B", &charset).unwrap();
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &from,
+        to: &to,
+        edge_index: 0,
+        edge: &graph.edges[0],
+        charset: &charset,
+    };
+    let mut owner = RouteOwner::for_test(0, "A", "B");
+    owner.boundary_group_indices =
+        route_boundary_group_indices(&graph, Some(&topology), &graph.edges[0], &mut resources)
+            .unwrap();
+    let (_, plan) = terminal::plan_terminal_route(
+        request,
+        path::RouteObstacles {
+            scene: &occupancy,
+            routes: &[],
+            owner: &owner,
+        },
+        None,
+        None,
+        &mut resources,
+        AsciiExecution::for_test(&policy),
+    )
+    .unwrap()
+    .expect("terminal ports must connect nodes across their owned sibling frames");
+    for group in &layout.groups {
+        let mut crossings = 0;
+        for (_, cell) in plan.active_cells() {
+            let coord = cell.coord;
+            let within_x = (group.x..=group.right()).contains(&coord.x);
+            let within_y = (group.y..=group.bottom()).contains(&coord.y);
+            let inside = group.x < coord.x
+                && coord.x < group.right()
+                && group.y < coord.y
+                && coord.y < group.bottom();
+            match group.id.as_str() {
+                "outer" => assert!(inside, "the route must stay inside its common parent"),
+                "foreign" => assert!(!(within_x && within_y), "an unrelated frame is reserved"),
+                _ => {
+                    if within_y && (coord.x == group.x || coord.x == group.right()) {
+                        assert!(group.y < coord.y && coord.y < group.bottom());
+                        assert_eq!(cell.directions, cell::DIR_LEFT | cell::DIR_RIGHT);
+                        crossings += 1;
+                    } else if within_x && (coord.y == group.y || coord.y == group.bottom()) {
+                        assert!(group.x < coord.x && coord.x < group.right());
+                        assert_eq!(cell.directions, cell::DIR_UP | cell::DIR_DOWN);
+                        crossings += 1;
+                    }
+                }
+            }
+        }
+        if matches!(group.id.as_str(), "left" | "right") {
+            assert_eq!(crossings, 1, "each owned frame must be crossed once");
+        }
+    }
+}
+
+#[test]
 fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
     let options = AsciiRenderOptions::unicode();
     let charset = GraphCharset::for_options(&options);
@@ -247,16 +1701,19 @@ fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
     let feedback_transit = feedback
         .plan
         .active_cells()
-        .map(|(_, cell)| cell.coord)
-        .filter(|coord| *coord != attachments.start.contact && *coord != attachments.end.contact)
-        .collect::<rustc_hash::FxHashSet<_>>();
-    assert!(
-        outgoing
-            .plan
-            .active_cells()
-            .all(|(_, cell)| !feedback_transit.contains(&cell.coord)),
-        "opposite authored edges must not share a transit path"
-    );
+        .map(|(_, cell)| (cell.coord, cell.directions))
+        .filter(|(coord, _)| {
+            *coord != attachments.start.contact && *coord != attachments.end.contact
+        })
+        .collect::<rustc_hash::FxHashMap<_, _>>();
+    for (_, cell) in outgoing.plan.active_cells() {
+        if let Some(&directions) = feedback_transit.get(&cell.coord) {
+            assert!(
+                cell::is_transverse_crossing(directions, cell.directions),
+                "opposite authored edges may cross transversely but must not share a transit path"
+            );
+        }
+    }
 
     let exact = measured.layout_work_used();
     let exact_policy = unbounded
@@ -283,93 +1740,6 @@ fn obstacle_aware_feedback_preserves_contacts_and_exact_work_limit() {
     };
     assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
         if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
-}
-
-#[test]
-fn scene_aware_grid_cancellation_precedes_projected_cell_work_debit() {
-    use path::{Port, PortPair, RouteObstacles, route_grid_path_avoiding_obstacles};
-
-    let options = AsciiRenderOptions::unicode();
-    let charset = GraphCharset::for_options(&options);
-    let mut graph = AsciiGraph::new(GraphDirection::LeftRight);
-    graph.add_node("a", "A");
-    graph.add_node("b", "B");
-    graph.add_edge("a", "b");
-    let layout = layout_graph(&graph, &options);
-    let from = layout.nodes.iter().find(|node| node.id == "a").unwrap();
-    let to = layout.nodes.iter().find(|node| node.id == "b").unwrap();
-    assert!(layout.groups.is_empty());
-    assert_eq!(from.grid.y, to.grid.y);
-    assert!(from.grid.x + 3 < to.grid.x);
-
-    let unbounded = AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput);
-    let owner = RouteOwner::for_test(0, "a", "b");
-    let mut work_at_projection = None;
-    // Measure cancellation at the first projected cell, repeat with exactly that budget,
-    // then keep the scene active to verify that the pending protected-geometry debit fails.
-    for cancel_scene in [true, true, false] {
-        let policy = work_at_projection.map_or(unbounded, |work| {
-            unbounded
-                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, work)
-                .unwrap()
-        });
-        let scene_control = OperationControl::new();
-        let search_control = OperationControl::new();
-        let mut setup = ResourceContext::new(unbounded);
-        let occupancy = SceneOccupancy::try_new_for_routes(
-            &layout,
-            1,
-            options
-                .flowchart_layout()
-                .graph_policy()
-                .edge_label_lane_radius,
-            &mut setup,
-            AsciiExecution::new(&scene_control, &unbounded),
-        )
-        .unwrap();
-        assert_eq!(occupancy.protected.len(), layout.nodes.len());
-        let mut resources = ResourceContext::new(policy);
-        // Coarse search and resource accounting stay active independently of the scene.
-        // With no groups, the scene control is first checked inside projected cell inspection.
-        if cancel_scene {
-            scene_control.cancel_after_checkpoints(0);
-        }
-        let error = route_grid_path_avoiding_obstacles(
-            &layout,
-            from,
-            to,
-            PortPair::new(Port::Right, Port::Left),
-            &charset,
-            RouteObstacles {
-                scene: &occupancy,
-                routes: &[],
-                owner: &owner,
-            },
-            &mut resources,
-            AsciiExecution::new(&search_control, &policy),
-        )
-        .expect_err("projected-cell failures must propagate instead of returning a grid path");
-
-        assert_eq!(scene_control.is_cancelled(), cancel_scene);
-        assert!(!search_control.is_cancelled());
-        let work = resources.layout_work_used();
-        if cancel_scene {
-            assert!(matches!(error, AsciiError::Cancelled(cancelled)
-                if cancelled.phase == OperationPhase::Layout
-                    && cancelled.reason == CancelReason::Requested));
-        } else {
-            assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
-                if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
-                    && details.max == work
-                    && details.actual == work + occupancy.protected.len()));
-        }
-        if let Some(expected) = work_at_projection {
-            assert_eq!(work, expected);
-        } else {
-            assert!(work > 0, "coarse search must run before scene cancellation");
-            work_at_projection = Some(work);
-        }
-    }
 }
 
 fn obstacle_aware_feedback_graph() -> AsciiGraph {
@@ -403,9 +1773,10 @@ fn prepare_route_scene_reports_missing_endpoint_layouts_before_painting() {
     let mut graph = AsciiGraph::new(GraphDirection::TopDown);
     graph.add_node("a", "A");
     graph.add_node("b", "B");
-    graph.add_edge("a", "missing");
+    graph.add_edge("a", "b");
     let options = AsciiRenderOptions::ascii();
     let graph_layout = layout_graph(&graph, &options);
+    graph.edges[0].to = "missing".into();
     let charset = GraphCharset::for_options(&options);
 
     let error = match prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset) {

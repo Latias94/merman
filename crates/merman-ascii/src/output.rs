@@ -12,6 +12,13 @@ use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-state",
+    feature = "diagram-swimlane"
+))]
+mod graph;
+
 pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 3;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
 
@@ -80,12 +87,13 @@ impl AsciiOutputEncoding {
     }
 }
 
-/// 输出尾部空格处理策略。
+/// Trailing canvas-space policy. Complete semantic fallback records preserve authored whitespace.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiTrimPolicy {
     #[default]
     Preserve,
+    /// Removes trailing diagram padding; semantic fallback retains data spaces and reports untrimmed.
     TrimTrailingSpaces,
 }
 
@@ -761,8 +769,8 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
 /// Streams a complete authored projection through the operation's output budgets.
 ///
 /// This path is intentionally model-only: it never reparses Mermaid source and never truncates
-/// authored values. The flattened representation keeps field paths visible to agents while still
-/// allowing the shared grapheme-safe reflow to satisfy a narrow terminal viewport.
+/// authored values. Graph families use keyed entities and relationships; other families retain
+/// their field projection. Both use the same grapheme-safe writer and operation ledger.
 #[cfg(test)]
 pub(crate) fn build_semantic_fallback(
     model: &AsciiDiagram<'_>,
@@ -811,8 +819,28 @@ pub(crate) fn build_semantic_fallback_for_family(
         })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
     fallback.push(format!("family: {family}"))?;
-    flatten_serialized_json("model", &projection, &mut fallback)?;
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    ))]
+    let graph_document = graph::write_if_graph(model, &projection, &mut fallback)?;
+    #[cfg(not(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-state",
+        feature = "diagram-swimlane"
+    )))]
+    let graph_document = false;
+    if !graph_document {
+        flatten_serialized_json("model", &projection, &mut fallback)?;
+    }
     let candidate = fallback.finish();
+    // Semantic records have no trailing canvas padding. Row suffixes can contain authored
+    // whitespace in a wrapped field, so trimming them would make the projection lossy.
+    let context = OutputBuildContext {
+        policy: policy.trim(AsciiTrimPolicy::Preserve),
+        ..context
+    };
     finalize_fallback(
         family,
         primary_extent,

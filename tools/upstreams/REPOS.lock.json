@@ -49,6 +49,12 @@
       "ref": "main",
       "commit": "2ac8bbbb060ca0a65a6a21f3200bd99b1587b488"
     },
+    "grok-build": {
+      "path": "repo-ref/grok-build",
+      "url": "https://github.com/xai-org/grok-build",
+      "ref": "2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8",
+      "commit": "2bdd1d6a6369de0e8c68132ea4539e9abd9e14a8"
+    },
     "mermaid-rs-renderer": {
       "path": "repo-ref/mermaid-rs-renderer",
       "url": "https://github.com/1jehuang/mermaid-rs-renderer",

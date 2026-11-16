@@ -1,6 +1,7 @@
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod adapter;
 mod charset;
+mod demand;
 mod draw;
 mod horizontal_label;
 #[cfg_attr(
@@ -50,6 +51,10 @@ mod graph_golden {
     use crate::operation::AsciiExecution;
     use crate::{AsciiRenderOptions, AsciiResourcePolicy};
     use merman_model::OperationControl;
+
+    fn reference_options(options: AsciiRenderOptions) -> AsciiRenderOptions {
+        options.with_node_padding(1).with_graph_padding_y(5)
+    }
     use std::path::Path;
 
     fn fixture_expected(directory: &str, name: &str) -> String {
@@ -73,7 +78,7 @@ mod graph_golden {
 
         let actual = render_graph_with_execution(
             &graph,
-            &AsciiRenderOptions::ascii(),
+            &reference_options(AsciiRenderOptions::ascii()),
             AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
@@ -88,7 +93,7 @@ mod graph_golden {
 
         let actual = render_graph_with_execution(
             &graph,
-            &AsciiRenderOptions::unicode(),
+            &reference_options(AsciiRenderOptions::unicode()),
             AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
@@ -108,7 +113,7 @@ mod graph_golden {
 
         let actual = render_graph_with_execution(
             &graph,
-            &AsciiRenderOptions::ascii(),
+            &reference_options(AsciiRenderOptions::ascii()),
             AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
@@ -125,7 +130,7 @@ mod graph_golden {
 
         let actual = render_graph_with_execution(
             &graph,
-            &AsciiRenderOptions::unicode(),
+            &reference_options(AsciiRenderOptions::unicode()),
             AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
@@ -145,7 +150,7 @@ mod graph_golden {
 
         let actual = render_graph_with_execution(
             &graph,
-            &AsciiRenderOptions::ascii(),
+            &reference_options(AsciiRenderOptions::ascii()),
             AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();
@@ -167,7 +172,7 @@ mod graph_golden {
 
         let actual = render_graph_with_execution(
             &graph,
-            &AsciiRenderOptions::ascii(),
+            &reference_options(AsciiRenderOptions::ascii()),
             AsciiExecution::new(&OperationControl::new(), &AsciiResourcePolicy::default()),
         )
         .unwrap();

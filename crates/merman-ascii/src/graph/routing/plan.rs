@@ -1,6 +1,8 @@
 use super::super::charset::GraphCharset;
-use super::super::layout::{CanvasCoord, NodeLayout};
-use super::super::model::{GraphEdgeMarker, GraphEdgeStroke, GraphEdgeStyle};
+use super::super::layout::{CanvasCoord, GraphLayout, NodeLayout};
+use super::super::model::{
+    AsciiGraph, AsciiGraphEdge, GraphEdgeMarker, GraphEdgeStroke, GraphEdgeStyle,
+};
 use super::label::{
     RoutedLabelDescriptor, RoutedLabelPlacement, routed_label_placement_for_descriptor,
 };
@@ -12,24 +14,20 @@ use crate::resource::{AsciiResourceLimitPhase, ResourceContext};
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
 mod attachment;
-mod boundary;
-pub(super) use attachment::{NodeAttachment, NodeAttachments};
-mod candidates;
-mod compound;
-mod edges;
-mod grid;
-mod left_right;
-mod same_rank;
-mod select;
-mod top_down;
+pub(super) use attachment::{EndpointGeometry, NodeAttachment, NodeAttachments};
+pub(super) mod orthogonal;
 
-pub(super) use candidates::plan_obstacle_aware_edge_route;
-pub(super) use candidates::{EdgeRouteCandidates, plan_edge_route_candidates_with_topology};
-#[cfg(test)]
-pub(super) use select::EdgeRoutePlan;
-pub(super) use select::EdgeRouteRequest;
-#[cfg(test)]
-pub(super) use select::plan_edge_route;
+#[derive(Debug, Clone, Copy)]
+pub(super) struct EdgeRouteRequest<'a> {
+    pub(super) graph: &'a AsciiGraph,
+    pub(super) graph_layout: &'a GraphLayout,
+    pub(super) edges: &'a [AsciiGraphEdge],
+    pub(super) from: &'a NodeLayout,
+    pub(super) to: &'a NodeLayout,
+    pub(super) edge_index: usize,
+    pub(super) edge: &'a AsciiGraphEdge,
+    pub(super) charset: &'a GraphCharset,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct RoutePlan {
@@ -42,13 +40,6 @@ pub(super) struct RoutePlan {
     start_marker: GraphEdgeMarker,
     end_marker: GraphEdgeMarker,
     suppressed_cells: HashSet<PlannedCellId>,
-    min_canvas_extent: CanvasExtent,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-struct CanvasExtent {
-    width: usize,
-    height: usize,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -160,29 +151,42 @@ impl RoutePlan {
             start_marker: GraphEdgeMarker::Open,
             end_marker: GraphEdgeMarker::Open,
             suppressed_cells: HashSet::default(),
-            min_canvas_extent: CanvasExtent::default(),
         }
     }
 
+    #[cfg(test)]
     pub(super) fn resolve_node_attachments(
-        mut self,
+        self,
         from: &NodeLayout,
         to: &NodeLayout,
         charset: &GraphCharset,
         resources: &ResourceContext,
     ) -> Result<Option<Self>> {
+        self.resolve_endpoint_attachments(
+            EndpointGeometry::node(from),
+            EndpointGeometry::node(to),
+            charset,
+            resources,
+        )
+    }
+
+    pub(super) fn resolve_endpoint_attachments(
+        mut self,
+        from_geometry: EndpointGeometry<'_>,
+        to_geometry: EndpointGeometry<'_>,
+        charset: &GraphCharset,
+        resources: &ResourceContext,
+    ) -> Result<Option<Self>> {
+        let from = from_geometry.layout;
+        let to = to_geometry.layout;
         let start_coord = self.marker_coord(self.anchors.start, self.diagram_type)?;
         let end_coord = self.marker_coord(self.anchors.end, self.diagram_type)?;
-        let Some(start) = NodeAttachment::resolve(
-            from,
-            start_coord,
-            self.anchors.start.point_direction,
-            charset,
-        ) else {
+        let Some(start) =
+            from_geometry.resolve(start_coord, self.anchors.start.point_direction, charset)
+        else {
             return Ok(None);
         };
-        let Some(end) =
-            NodeAttachment::resolve(to, end_coord, self.anchors.end.point_direction, charset)
+        let Some(end) = to_geometry.resolve(end_coord, self.anchors.end.point_direction, charset)
         else {
             return Ok(None);
         };
@@ -511,6 +515,7 @@ impl RoutePlan {
     ) -> Result<Self> {
         for cell in &mut self.cells {
             let directions = match cell.kind {
+                PlannedRouteCellKind::RouteCell if cell.directions != 0 => cell.directions,
                 PlannedRouteCellKind::EdgeLine | PlannedRouteCellKind::RouteCell => {
                     super::cell::route_char_directions(cell.ch)
                 }
@@ -533,13 +538,6 @@ impl RoutePlan {
         }
         self.diagram_type = diagram_type;
         Ok(self)
-    }
-
-    pub(super) fn with_segment(mut self, segment: PlannedRouteSegment) -> Self {
-        for cell in &mut self.cells {
-            cell.segment = segment;
-        }
-        self
     }
 
     #[cfg(test)]
@@ -603,6 +601,33 @@ impl RoutePlan {
         self.start_marker = start_marker;
         self.end_marker = end_marker;
         Ok(self)
+    }
+
+    pub(super) fn requests_marker(&self, endpoint: MarkerEndpoint) -> bool {
+        match endpoint {
+            MarkerEndpoint::Start => self.start_marker != GraphEdgeMarker::Open,
+            MarkerEndpoint::End => self.end_marker != GraphEdgeMarker::Open,
+        }
+    }
+
+    /// The requested marker and its glyph at the retained terminal direction.
+    pub(super) fn marker_spec(
+        &self,
+        endpoint: MarkerEndpoint,
+        charset: &GraphCharset,
+    ) -> (GraphEdgeMarker, char) {
+        let marker = match endpoint {
+            MarkerEndpoint::Start => self.start_marker,
+            MarkerEndpoint::End => self.end_marker,
+        };
+        (
+            marker,
+            marker_char(
+                marker,
+                point_char(self.marker_point_direction(endpoint), charset),
+                charset,
+            ),
+        )
     }
 
     pub(super) fn materialized_marker_cell(
@@ -858,27 +883,6 @@ impl RoutePlan {
         Ok(())
     }
 
-    pub(super) fn with_min_canvas_extent(
-        cells: Vec<PlannedRouteCell>,
-        labels: Vec<PlannedRouteLabel>,
-        anchors: MarkerAnchors,
-        width: usize,
-        height: usize,
-    ) -> Self {
-        Self {
-            cells,
-            labels,
-            style: GraphEdgeStyle::default(),
-            diagram_type: "flowchart",
-            anchors,
-            attachments: None,
-            start_marker: GraphEdgeMarker::Open,
-            end_marker: GraphEdgeMarker::Open,
-            suppressed_cells: HashSet::default(),
-            min_canvas_extent: CanvasExtent { width, height },
-        }
-    }
-
     pub(super) fn active_cells(&self) -> impl Iterator<Item = (PlannedCellId, &PlannedRouteCell)> {
         self.cells.iter().enumerate().filter_map(|(index, cell)| {
             let cell_id = PlannedCellId(index);
@@ -903,13 +907,7 @@ impl RoutePlan {
         &self,
         resources: &ResourceContext,
     ) -> Result<(usize, usize)> {
-        let mut width = self.min_canvas_extent.width;
-        let mut height = self.min_canvas_extent.height;
-
-        for (_, cell) in self.active_cells() {
-            width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
-            height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
-        }
+        let (mut width, mut height) = self.body_extent_with_resources(resources)?;
         for label in &self.labels {
             let label_width =
                 resources.checked_grid_add(label.placement.x(), label.placement.width())?;
@@ -918,7 +916,20 @@ impl RoutePlan {
             width = width.max(label_width);
             height = height.max(label_height);
         }
+        Ok((width, height))
+    }
 
+    pub(super) fn body_extent_with_resources(
+        &self,
+        resources: &ResourceContext,
+    ) -> Result<(usize, usize)> {
+        let mut width = 0;
+        let mut height = 0;
+
+        for (_, cell) in self.active_cells() {
+            width = width.max(resources.checked_grid_add(cell.coord.x, 1)?);
+            height = height.max(resources.checked_grid_add(cell.coord.y, 1)?);
+        }
         Ok((width, height))
     }
 }
@@ -1003,20 +1014,6 @@ fn marker_candidate_has_perpendicular_neighbor(
         .any(|neighbor| coordinate_index.contains_key(&neighbor))
 }
 
-#[cfg(test)]
-fn materialize_test_markers(
-    planned: Result<Option<RoutePlan>>,
-    edge: &super::super::model::AsciiGraphEdge,
-    charset: &GraphCharset,
-) -> Option<RoutePlan> {
-    planned
-        .expect("test route planning work must remain representable")
-        .map(|plan| {
-            plan.with_markers(edge.start_marker, edge.end_marker, charset, "flowchart")
-                .expect("test endpoint markers must fit the planned route")
-        })
-}
-
 fn point_char(direction: StepDirection, charset: &GraphCharset) -> char {
     match direction {
         StepDirection::Up => charset.arrow_up,
@@ -1038,7 +1035,6 @@ fn marker_char(marker: GraphEdgeMarker, point: char, charset: &GraphCharset) -> 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PlannedRouteSegment {
     Direct,
-    Boundary,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1090,16 +1086,6 @@ impl PlannedRouteCells {
         let id = PlannedCellId(self.inner.len());
         self.inner.push(build());
         Ok(id)
-    }
-
-    fn try_push_anchor(
-        &mut self,
-        resources: &mut ResourceContext,
-        build: impl FnOnce() -> PlannedRouteCell,
-        point_direction: StepDirection,
-    ) -> Result<MarkerAnchor> {
-        let cell = self.try_push(resources, build)?;
-        Ok(MarkerAnchor::new(cell, point_direction))
     }
 
     fn into_vec(self) -> Vec<PlannedRouteCell> {
@@ -1219,20 +1205,11 @@ impl PlannedRoutePaint {
 }
 
 fn route_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
-    route_cell_in_segment(x, y, ch, PlannedRouteSegment::Direct)
-}
-
-fn route_cell_in_segment(
-    x: usize,
-    y: usize,
-    ch: char,
-    segment: PlannedRouteSegment,
-) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind: PlannedRouteCellKind::RouteCell,
-        segment,
+        segment: PlannedRouteSegment::Direct,
         stroke: GraphEdgeStroke::Normal,
         directions: 0,
         unicode: false,
@@ -1241,20 +1218,11 @@ fn route_cell_in_segment(
 }
 
 fn edge_line_cell(x: usize, y: usize, ch: char) -> PlannedRouteCell {
-    edge_line_cell_in_segment(x, y, ch, PlannedRouteSegment::Direct)
-}
-
-fn edge_line_cell_in_segment(
-    x: usize,
-    y: usize,
-    ch: char,
-    segment: PlannedRouteSegment,
-) -> PlannedRouteCell {
     PlannedRouteCell {
         coord: CanvasCoord { x, y },
         ch,
         kind: PlannedRouteCellKind::EdgeLine,
-        segment,
+        segment: PlannedRouteSegment::Direct,
         stroke: GraphEdgeStroke::Normal,
         directions: 0,
         unicode: false,
@@ -1272,28 +1240,6 @@ fn planned_label(
     Some(PlannedRouteLabel::with_host_segment(
         descriptor, placement, start, end,
     ))
-}
-
-fn route_turn_char(previous: StepDirection, next: StepDirection, charset: &GraphCharset) -> char {
-    if !charset.unicode {
-        return '+';
-    }
-
-    match (previous, next) {
-        (StepDirection::Right, StepDirection::Down) | (StepDirection::Up, StepDirection::Left) => {
-            charset.top_right
-        }
-        (StepDirection::Right, StepDirection::Up) | (StepDirection::Down, StepDirection::Left) => {
-            charset.corner_right_up
-        }
-        (StepDirection::Left, StepDirection::Down) | (StepDirection::Up, StepDirection::Right) => {
-            charset.top_left
-        }
-        (StepDirection::Left, StepDirection::Up) | (StepDirection::Down, StepDirection::Right) => {
-            charset.corner_down_right
-        }
-        _ => '+',
-    }
 }
 
 #[cfg(test)]

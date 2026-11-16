@@ -1,12 +1,9 @@
-use super::super::members::{
-    GroupPlacementMember, group_bounds_for_placements, group_member_indices,
-    group_placement_members, member_grid_bounds,
-};
+use super::super::layout_work_allocation_failed;
+use super::super::members::{GroupPlacementMember, group_placement_members, member_grid_bounds};
 use super::super::side_constraints::override_member_semantics;
-use super::super::{layout_work_allocation_failed, shift_external_nodes_away_from_group};
 use super::GroupPlacementContext;
 use crate::error::Result;
-use crate::graph::layout::GridCoord;
+use crate::graph::layout::{GridCoord, charge_sort_work};
 use crate::graph::model::{
     AsciiGraph, AsciiGraphEdge, AsciiGraphNode, GraphDirection, GraphEdgeMarker, GraphEdgeStroke,
     GraphEdgeStyle, GraphNodeShape, GraphNodeStyle,
@@ -70,7 +67,8 @@ pub(super) fn apply_subgraph_direction_overrides(
 
         let mut local = place_group_nodes(&override_graph, layout_direction, resources, execution)?;
         mirror_local_placements(&mut local, layout_direction, resources)?;
-        for (member_index, coord) in local {
+        reserve_member_spans(&mut local, &members, placements, resources, execution)?;
+        for (member_index, coord) in local.into_iter().enumerate() {
             let Some(member) = members.get(member_index) else {
                 continue;
             };
@@ -89,28 +87,6 @@ pub(super) fn apply_subgraph_direction_overrides(
                 &member.node_indices,
                 delta_x,
                 delta_y,
-                resources,
-            )?;
-        }
-
-        resources.charge_layout_work(graph.nodes.len())?;
-        let group_member_indices = group_member_indices(topology, group_index, resources)?;
-        if group_member_indices.len() < 2 {
-            continue;
-        }
-        if let Some(bounds) = group_bounds_for_placements(
-            graph,
-            group_index,
-            &group_member_indices,
-            placements,
-            context.policy,
-            resources,
-        )? {
-            shift_external_nodes_away_from_group(
-                graph,
-                &group_member_indices,
-                bounds,
-                placements,
                 resources,
             )?;
         }
@@ -315,23 +291,85 @@ fn place_group_nodes(
     direction: GraphDirection,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
-) -> Result<HashMap<usize, GridCoord>> {
-    let ranked = super::super::super::grid::place_ranked_grid_nodes_without_group_adjustments(
+) -> Result<Vec<GridCoord>> {
+    super::super::super::grid::place_ranked_grid_nodes_without_group_adjustments(
         graph, direction, resources, execution,
-    )?;
-    let mut placements = HashMap::default();
-    placements.try_reserve(ranked.len()).map_err(|_| {
-        crate::error::AsciiError::AllocationFailed {
-            phase: crate::resource::AsciiResourceLimitPhase::LayoutWork.as_str(),
-        }
-    })?;
-    placements.extend(ranked.into_iter().enumerate());
+    )
+}
 
-    Ok(placements)
+fn reserve_member_spans(
+    local: &mut [GridCoord],
+    members: &[GroupPlacementMember],
+    placements: &[GridCoord],
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<()> {
+    const NODE_GRID_SPAN: usize = 3;
+    execution.checkpoint(OperationPhase::Layout)?;
+    let mut spans = Vec::new();
+    let mut bands = Vec::new();
+    spans
+        .try_reserve_exact(members.len())
+        .map_err(|_| layout_work_allocation_failed())?;
+    bands
+        .try_reserve_exact(local.len())
+        .map_err(|_| layout_work_allocation_failed())?;
+    for (index, member) in members.iter().enumerate() {
+        execution.checkpoint_loop(OperationPhase::Layout, index)?;
+        resources.charge_layout_work(member.node_indices.len())?;
+        let extent = |start: isize, end: isize| {
+            end.checked_sub(start)
+                .and_then(|span| span.checked_add(1))
+                .and_then(|span| usize::try_from(span).ok())
+                .ok_or_else(|| resources.grid_overflow())
+        };
+        let span = match member_grid_bounds(&member.node_indices, placements, resources)? {
+            Some(bounds) => (
+                extent(bounds.x, bounds.right)?,
+                extent(bounds.y, bounds.bottom)?,
+            ),
+            None => (NODE_GRID_SPAN, NODE_GRID_SPAN),
+        };
+        spans.push(span);
+    }
+    for horizontal in [true, false] {
+        bands.clear();
+        for (index, (coord, span)) in local.iter().zip(&spans).enumerate() {
+            execution.checkpoint_loop(OperationPhase::Layout, index)?;
+            resources.charge_layout_work(1)?;
+            bands.push(if horizontal {
+                (coord.x, span.0, index)
+            } else {
+                (coord.y, span.1, index)
+            });
+        }
+        charge_sort_work(bands.len(), resources)?;
+        bands.sort_unstable_by_key(|(coord, _, index)| (*coord, *index));
+        let mut previous = None;
+        let mut previous_extra = 0;
+        let mut extra = 0;
+        for &(coord, span, index) in &bands {
+            execution.checkpoint_loop(OperationPhase::Layout, index)?;
+            resources.charge_layout_work(1)?;
+            if previous != Some(coord) {
+                extra = resources.checked_grid_add(extra, previous_extra)?;
+                previous_extra = 0;
+                previous = Some(coord);
+            }
+            previous_extra = previous_extra.max(span.saturating_sub(NODE_GRID_SPAN));
+            let projected = resources.checked_grid_add(coord, extra)?;
+            if horizontal {
+                local[index].x = projected;
+            } else {
+                local[index].y = projected;
+            }
+        }
+    }
+    Ok(())
 }
 
 fn mirror_local_placements(
-    placements: &mut HashMap<usize, GridCoord>,
+    placements: &mut [GridCoord],
     direction: GraphDirection,
     resources: &mut ResourceContext,
 ) -> Result<()> {
@@ -341,7 +379,7 @@ fn mirror_local_placements(
         return Ok(());
     }
 
-    let Some((min_x, max_x, min_y, max_y)) = placements.values().try_fold(
+    let Some((min_x, max_x, min_y, max_y)) = placements.iter().try_fold(
         None,
         |bounds: Option<(usize, usize, usize, usize)>, coord| {
             resources.charge_layout_work(1)?;
@@ -360,7 +398,7 @@ fn mirror_local_placements(
         return Ok(());
     };
 
-    for coord in placements.values_mut() {
+    for coord in placements.iter_mut() {
         resources.charge_layout_work(1)?;
         if reverse_x {
             coord.x = min_x
@@ -410,6 +448,35 @@ mod tests {
         AsciiResourcePolicy::for_profile(ResourceProfile::UnboundedForTrustedInput)
             .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
             .expect("positive layout-work limit should be valid")
+    }
+
+    #[test]
+    fn child_span_projection_admits_descendant_scans_before_mutation() {
+        let placements = (0..64)
+            .map(|x| GridCoord { x: x * 4, y: 0 })
+            .collect::<Vec<_>>();
+        let members = [GroupPlacementMember {
+            id: "child".into(),
+            endpoint: GraphEndpointIndex::Group(0),
+            node_indices: (0..placements.len()).collect(),
+        }];
+        let original = [GridCoord { x: 4, y: 4 }];
+        let mut local = original;
+        let policy = policy_with_work_limit(1);
+        let resources = ResourceContext::new(policy);
+        let error = reserve_member_spans(
+            &mut local,
+            &members,
+            &placements,
+            &resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .expect_err("all descendants must be admitted before projecting their child");
+        assert!(
+            matches!(error, crate::AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == placements.len())
+        );
+        assert_eq!(local, original);
     }
 
     #[test]

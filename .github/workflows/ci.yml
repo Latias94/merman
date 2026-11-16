@@ -470,6 +470,18 @@ jobs:
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
         run: cargo check --workspace --all-targets --locked
 
+      - name: Reclaim completed macOS workspace build artifacts
+        if: runner.os == 'macOS' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+        shell: bash
+        run: |
+          df -h .
+          du -sh target
+          # The full workspace suite is complete. Retain third-party dependencies
+          # while reclaiming workspace test binaries before the feature recipes.
+          cargo clean --workspace --profile dev
+          du -sh target
+          df -h .
+
       - name: Test theme authoring and font resource boundaries
         shell: bash
         run: |
@@ -528,6 +540,15 @@ jobs:
       - name: Verify published theme acceptance boundary
         if: matrix.parity
         run: python3 scripts/verify_theme_acceptance_boundary.py
+
+      - name: Report macOS build disk usage
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          df -h .
+          if [[ -d target ]]; then
+            du -sh target
+          fi
 
   feature-contracts:
     name: feature-contracts

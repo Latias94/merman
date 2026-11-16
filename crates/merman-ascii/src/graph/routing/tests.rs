@@ -10,6 +10,7 @@ use crate::{AsciiRenderOptions, TerminalWidthProfile};
 use merman_model::resources::ResourceProfile;
 use merman_model::{CancelReason, OperationControl, OperationPhase};
 
+mod generated;
 mod labels;
 mod markers;
 mod scene;
@@ -220,32 +221,23 @@ fn route_scene_selects_an_alternate_route_when_the_primary_lane_is_reserved() {
     let mut graph_layout = layout_graph(&graph, &options);
     let from = graph_layout.nodes[0].clone();
     let to = graph_layout.nodes[1].clone();
-    let primary = plan_edge_route(EdgeRouteRequest {
-        graph: &graph,
-        graph_layout: &graph_layout,
-        edges: &graph.edges,
-        from: &from,
-        to: &to,
-        edge_index: 1,
-        edge: &graph.edges[1],
-        charset: &charset,
-    })
-    .unwrap();
-    let primary_lane_y = primary
-        .cells
+    let baseline = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset).unwrap();
+    let primary = baseline
+        .routes
         .iter()
-        .map(|cell| cell.coord.y)
-        .max()
-        .expect("parallel route should have a bottom lane");
+        .find(|route| route.owner.canonical_edge_index == 1)
+        .unwrap()
+        .plan
+        .clone();
     let blocked_coord = primary
-        .cells
-        .iter()
+        .active_cells()
+        .map(|(_, cell)| cell)
         .find(|cell| {
-            cell.coord.y == primary_lane_y
+            cell.kind == PlannedRouteCellKind::RouteCell
                 && cell.coord.x > from.center_x()
                 && cell.coord.x < to.center_x()
         })
-        .expect("parallel route should have a horizontal lane cell")
+        .expect("parallel route must have a transit cell outside its endpoints")
         .coord;
     graph_layout.nodes.push(NodeLayout {
         id: "route-blocker".to_string(),
@@ -260,17 +252,21 @@ fn route_scene_selects_an_alternate_route_when_the_primary_lane_is_reserved() {
     });
 
     let scene = prepare_route_scene(&graph, &graph_layout, &graph.edges, &charset)
-        .expect("a bounded outer-lane candidate should avoid the reserved cell");
+        .expect("actual-contact routing should avoid the newly reserved cell");
 
     assert_eq!(scene.routes.len(), 3);
-    assert!(
-        scene.routes[1]
+    assert!(scene.routes.iter().all(|route| {
+        route
             .plan
-            .cells
-            .iter()
-            .all(|cell| cell.coord != blocked_coord)
-    );
-    assert_ne!(scene.routes[1].plan.cells, primary.cells);
+            .active_cells()
+            .all(|(_, cell)| cell.coord != blocked_coord)
+    }));
+    let replacement = scene
+        .routes
+        .iter()
+        .find(|route| route.owner.canonical_edge_index == 1)
+        .unwrap();
+    assert_ne!(replacement.plan.cells, primary.cells);
 }
 
 fn marker_request_plan(marker: GraphEdgeMarker, length: usize) -> RoutePlan {

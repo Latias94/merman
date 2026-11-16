@@ -4,7 +4,8 @@ use super::label::GraphLabel;
 use super::layout::CanvasCoord;
 use super::layout::{GraphLayout, GridCoord, GroupLayout, NodeLayout};
 use super::model::{
-    AsciiGraph, AsciiGraphEdge, GraphEdgeMarker, GraphEdgeStroke, GraphNodeShape, GraphNodeStyle,
+    AsciiGraph, AsciiGraphEdge, GraphDirection, GraphEdgeMarker, GraphEdgeStroke, GraphNodeShape,
+    GraphNodeStyle,
 };
 use super::surface::GraphSurface;
 use super::topology::{GraphEndpointIndex, GraphGroupTopology};
@@ -15,15 +16,22 @@ use crate::color::AsciiRgb;
 use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use rustc_hash::FxHashMap as HashMap;
 use std::cmp::Ordering;
 
+mod allocation;
+mod capacity;
 mod cell;
+mod geometry;
 mod label;
 mod occupancy;
 mod path;
 mod plan;
+mod repair;
+mod terminal;
 #[cfg(test)]
 mod tests;
+mod validate;
 
 pub(super) use cell::RouteCells;
 use cell::{RouteCellPaint, set_edge_cell_with_paint, set_route_cell_with_paint};
@@ -31,19 +39,15 @@ use label::{EdgeLabel, RoutedLabelCatalog, RoutedLabelCatalogPlan, draw_routed_l
 #[cfg(test)]
 use occupancy::allocate_marker_berths;
 #[cfg(test)]
+use occupancy::allocate_route_label_placements;
+#[cfg(test)]
 use occupancy::{MarkerCandidateDisposition, OccupiedRect, ProtectedKind};
 use occupancy::{
-    RouteCandidateScore, SceneOccupancy, allocate_committed_route_marker_berths,
-    allocate_route_label_placements,
+    RouteCandidateScore, SceneOccupancy, allocate_committed_route_labels,
+    allocate_committed_route_marker_berths,
 };
-#[cfg(test)]
 use path::StepDirection;
-#[cfg(test)]
-use plan::plan_edge_route;
-use plan::{
-    EdgeRouteCandidates, EdgeRouteRequest, MarkerEndpoint, PlannedRouteCellKind, RoutePlan,
-    plan_edge_route_candidates_with_topology, plan_obstacle_aware_edge_route,
-};
+use plan::{EdgeRouteRequest, MarkerEndpoint, PlannedRouteCellKind, RoutePlan};
 #[cfg(test)]
 use plan::{LabelAnchor, PlannedRouteSegment};
 
@@ -112,12 +116,32 @@ impl<'execution> RoutePaintCursor<'execution> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct RouteOwner {
     canonical_edge_index: usize,
+    source_edge_index: usize,
     from: String,
     to: String,
+    stroke: GraphEdgeStroke,
     boundary_group_indices: Vec<usize>,
+    allocated_branch: Option<allocation::AllocatedBranch>,
 }
 
 impl RouteOwner {
+    fn shared_channel_group(&self) -> Option<usize> {
+        self.allocated_branch.map(|branch| branch.group)
+    }
+
+    fn shared_marker_group(
+        &self,
+        endpoint: MarkerEndpoint,
+        coord: super::layout::CanvasCoord,
+    ) -> Option<usize> {
+        let branch = self.allocated_branch?;
+        let berth = match endpoint {
+            MarkerEndpoint::Start => branch.points[0],
+            MarkerEndpoint::End => branch.points[3],
+        };
+        (branch.shared_endpoint == endpoint && berth == coord).then_some(branch.group)
+    }
+
     fn endpoint_id(&self, endpoint: MarkerEndpoint) -> &str {
         match endpoint {
             MarkerEndpoint::Start => &self.from,
@@ -129,10 +153,37 @@ impl RouteOwner {
     fn for_test(canonical_edge_index: usize, from: &str, to: &str) -> Self {
         Self {
             canonical_edge_index,
+            source_edge_index: canonical_edge_index,
             from: from.to_string(),
             to: to.to_string(),
+            stroke: GraphEdgeStroke::Normal,
             boundary_group_indices: Vec::new(),
+            allocated_branch: None,
         }
+    }
+
+    #[cfg(test)]
+    fn set_source_group_for_test(&mut self, group: Option<usize>) {
+        let start = CanvasCoord { x: 0, y: 0 };
+        let end = CanvasCoord { x: 10, y: 0 };
+        self.allocated_branch = group.map(|group| allocation::AllocatedBranch {
+            group,
+            shared_endpoint: MarkerEndpoint::Start,
+            attachments: plan::NodeAttachments {
+                start: plan::NodeAttachment {
+                    contact: start,
+                    outward: StepDirection::Right,
+                    connector: None,
+                },
+                end: plan::NodeAttachment {
+                    contact: end,
+                    outward: StepDirection::Left,
+                    connector: None,
+                },
+            },
+            points: [start, end, end, end],
+            label_host: None,
+        });
     }
 }
 
@@ -356,8 +407,28 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         charset.width_profile,
         resources,
     )?;
-    let canonical_edges = canonical_edges.values;
-    let mut routes = Vec::new();
+    let CanonicalEdges {
+        values: canonical_edges,
+        source_indices,
+    } = canonical_edges;
+    let branch_allocation = allocation::BranchAllocation::try_new(
+        graph,
+        graph_layout,
+        &canonical_edges,
+        charset,
+        resources,
+        execution,
+    )?;
+    capacity::preflight_fixed_port_capacity(
+        graph,
+        graph_layout,
+        &canonical_edges,
+        &branch_allocation,
+        charset,
+        resources,
+        execution,
+    )?;
+    let mut routes: Vec<PreparedRoute> = Vec::new();
     routes
         .try_reserve(canonical_edges.len())
         .map_err(|_| layout_allocation_failed())?;
@@ -380,8 +451,29 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
         execution,
     )?;
 
-    for (edge_index, edge) in canonical_edges.iter().enumerate() {
+    let route_order = plan_route_order(graph, graph_layout, &canonical_edges, resources)?;
+    let mut repair_budget = repair::SceneRepairBudget::default();
+
+    let mut pending_self_loop_start = None::<usize>;
+    for edge_index in route_order {
+        let edge = &canonical_edges[edge_index];
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
+        if let Some(start) = pending_self_loop_start
+            && (edge.from != routes[start].owner.from || edge.from != edge.to)
+        {
+            // Parallel self-loops form one nested route batch. Place their labels after all
+            // return lanes are known, then protect the whole batch from subsequent edges.
+            for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+                allocate_committed_route_labels(
+                    route,
+                    route_index,
+                    &mut occupancy,
+                    resources,
+                    graph.diagram_type(),
+                )?;
+            }
+            pending_self_loop_start = None;
+        }
         if edge.stroke == super::model::GraphEdgeStroke::Invisible {
             continue;
         }
@@ -408,29 +500,28 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             edge,
             charset,
         };
-        let candidates = match plan_edge_route_candidates_with_topology(
-            request,
-            topology.as_ref(),
-            label_plans.descriptor(edge_index),
-            resources,
-            execution,
-        )? {
-            EdgeRouteCandidates::Routed(candidates) => candidates,
-            EdgeRouteCandidates::Unsupported(route) => {
-                return Err(AsciiError::UnsupportedFeature {
-                    diagram_type: graph.diagram_type(),
-                    feature: route.feature(),
-                });
-            }
+        let forward = forward_route_direction(request, resources)?;
+        let candidates = if edge.from == edge.to {
+            terminal::plan_self_loop_candidates(
+                request,
+                label_plans.descriptor(edge_index),
+                resources,
+                execution,
+            )?
+        } else {
+            Vec::new()
         };
 
         let boundary_group_indices =
             route_boundary_group_indices(graph, topology.as_ref(), edge, resources)?;
-        let owner = RouteOwner {
+        let mut owner = RouteOwner {
             canonical_edge_index: edge_index,
+            source_edge_index: source_indices[edge_index],
             from: edge.from.clone(),
             to: edge.to.clone(),
+            stroke: edge.stroke,
             boundary_group_indices,
+            allocated_branch: None,
         };
         let mut selected = None::<(RouteCandidateScore, usize, RoutePlan)>;
         for (candidate_index, plan) in candidates.into_iter().enumerate() {
@@ -457,11 +548,41 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 selected = Some((score, candidate_index, plan));
             }
         }
-        let plan = match selected {
-            Some((_, _, plan)) => plan,
-            None => plan_obstacle_aware_edge_route(
+        let mut honors_allocation = false;
+        if let Some(branch) = branch_allocation.get(edge_index) {
+            owner.allocated_branch = Some(*branch);
+            let candidate = match plan_allocated_channel(
                 request,
-                topology.as_ref(),
+                branch,
+                label_plans.descriptor(edge_index),
+                resources,
+                execution,
+            )? {
+                Some(plan) => admit_route_candidate(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    plan,
+                    resources,
+                )?,
+                None => None,
+            };
+            if let Some((score, plan)) = candidate {
+                // A jointly allocated trunk is a scene decision. Choosing a shorter
+                // private detour per edge would dismantle that decision one branch at a time.
+                selected = Some((score, usize::MAX, plan));
+                honors_allocation = true;
+            } else {
+                owner.allocated_branch = None;
+            }
+        }
+        if !honors_allocation
+            && !(edge.from == edge.to && selected.is_some())
+            && let Some((score, plan)) = terminal::plan_direct_route(
+                request,
                 path::RouteObstacles {
                     scene: &occupancy,
                     routes: &routes,
@@ -471,10 +592,106 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
                 resources,
                 execution,
             )?
-            .ok_or(AsciiError::UnsupportedFeature {
-                diagram_type: graph.diagram_type(),
-                feature: "routes crossing reserved graph geometry",
-            })?,
+            && selected
+                .as_ref()
+                .is_none_or(|(incumbent, _, incumbent_plan)| {
+                    route_candidate_is_better(
+                        forward,
+                        (score, plan.attachments),
+                        (*incumbent, incumbent_plan.attachments),
+                    )
+                })
+        {
+            selected = Some((score, usize::MAX, plan));
+        }
+        let container_endpoint = matches!(
+            topology
+                .as_ref()
+                .and_then(|topology| topology.endpoint_index(&edge.from)),
+            Some(GraphEndpointIndex::Group(_))
+        );
+        let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
+        let needs_terminal_search = !honors_allocation
+            && (selected.is_none() || repair_budget.expansions != 0)
+            && selected.as_ref().is_none_or(|(score, _, plan)| {
+                route_needs_search(forward, *score, plan, defer_loop_labels)
+            });
+        if needs_terminal_search && let Some(start) = pending_self_loop_start.take() {
+            // A searched loop can choose a different side from the predetermined lanes.
+            // Protect earlier batch labels first, then re-admit the incumbent against them.
+            for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+                allocate_committed_route_labels(
+                    route,
+                    route_index,
+                    &mut occupancy,
+                    resources,
+                    graph.diagram_type(),
+                )?;
+            }
+            if let Some((_, index, plan)) = selected.take() {
+                selected = admit_route_candidate(
+                    request,
+                    path::RouteObstacles {
+                        scene: &occupancy,
+                        routes: &routes,
+                        owner: &owner,
+                    },
+                    plan,
+                    resources,
+                )?
+                .map(|(score, plan)| (score, index, plan));
+            }
+        }
+        // Reconsider the bounded conflict component before a first-path search can spend
+        // the remaining operation budget exploring geometry that earlier routes occupy.
+        if selected.is_none()
+            && edge.from != edge.to
+            && repair::reorder_failed_route(
+                request,
+                topology.as_ref(),
+                &label_plans,
+                &owner,
+                &mut routes,
+                &mut occupancy,
+                &mut repair_budget,
+                resources,
+                execution,
+            )?
+        {
+            continue;
+        }
+        if needs_terminal_search
+            && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
+                request,
+                path::RouteObstacles {
+                    scene: &occupancy,
+                    routes: &routes,
+                    owner: &owner,
+                },
+                label_plans.descriptor(edge_index),
+                selected
+                    .as_ref()
+                    .map(|(score, _, plan)| (*score, plan.attachments)),
+                if selected.is_some() {
+                    terminal::SearchBudget::Optional(&mut repair_budget.expansions)
+                } else {
+                    terminal::SearchBudget::Required
+                },
+                resources,
+                execution,
+            )?
+        {
+            selected = Some((score, usize::MAX, plan));
+            defer_loop_labels = false;
+        }
+        let plan = match selected {
+            Some((_, _, plan)) => plan,
+            None => {
+                return Err(AsciiError::RoutingSearchExhausted {
+                    diagram_type: graph.diagram_type(),
+                    edge_index: source_indices[edge_index],
+                });
+            }
         };
         let mut plan = plan.try_with_stroke(edge.stroke, charset, graph.diagram_type())?;
         occupancy.preserve_group_crossings(&mut plan, &owner, resources)?;
@@ -494,11 +711,33 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
             resources,
             graph.diagram_type(),
         )?;
+        // Predetermined node loops can reserve labels after their nested lanes are known.
+        // Searched loops and container loops protect each label before the next search.
+        if defer_loop_labels {
+            pending_self_loop_start.get_or_insert(route_index);
+        } else {
+            allocate_committed_route_labels(
+                &mut routes[route_index],
+                route_index,
+                &mut occupancy,
+                resources,
+                graph.diagram_type(),
+            )?;
+        }
     }
 
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    allocate_route_label_placements(&mut routes, &mut occupancy, resources, graph.diagram_type())?;
-
+    if let Some(start) = pending_self_loop_start {
+        for (route_index, route) in routes.iter_mut().enumerate().skip(start) {
+            allocate_committed_route_labels(
+                route,
+                route_index,
+                &mut occupancy,
+                resources,
+                graph.diagram_type(),
+            )?;
+        }
+    }
     let mut width = 0;
     let mut height = 0;
     let mut planned_cell_count = 0usize;
@@ -517,12 +756,275 @@ pub(super) fn prepare_route_scene_with_execution<'a>(
     }
 
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    Ok(RouteScenePlan {
+    let scene = RouteScenePlan {
         routes,
         extent: (width, height),
         planned_cell_count,
         labels: label_plans,
+    };
+    if let Some(index) = validate::first_invalid_edge(
+        graph,
+        graph_layout,
+        &canonical_edges,
+        &scene,
+        charset,
+        resources,
+        execution,
+    )? {
+        return Err(AsciiError::RoutingSearchExhausted {
+            diagram_type: graph.diagram_type(),
+            edge_index: source_indices[index],
+        });
+    }
+    Ok(scene)
+}
+
+fn plan_allocated_channel(
+    request: EdgeRouteRequest<'_>,
+    branch: &allocation::AllocatedBranch,
+    descriptor: Option<label::RoutedLabelDescriptor>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<RoutePlan>> {
+    let Some(path) = terminal::direct_path(
+        branch.points,
+        branch.attachments.start.outward,
+        branch.attachments.end.outward.opposite(),
+        resources,
+        execution,
+    )?
+    else {
+        return Ok(None);
+    };
+    let label = if let Some(descriptor) = descriptor {
+        let Some([start, end]) = branch.label_host else {
+            return Ok(None);
+        };
+        let Some(placement) = label::routed_label_placement_for_descriptor(start, end, descriptor)
+        else {
+            return Ok(None);
+        };
+        let mut label = plan::PlannedRouteLabel::new(descriptor, placement);
+        label.anchor = plan::LabelAnchor::Segment {
+            start,
+            end,
+            route_segment: None,
+        };
+        Some(label)
+    } else {
+        None
+    };
+    plan::orthogonal::plan_terminal_path(
+        &path,
+        branch.attachments,
+        request.edge,
+        label,
+        request.charset,
+        resources,
+    )
+}
+
+/// Read the common scope from the resolved frames, without rerunning group placement.
+/// Unresolved implicit directions retain the existing router rather than guessing an axis.
+fn compound_route_direction(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    from: &NodeLayout,
+    to: &NodeLayout,
+    resources: &ResourceContext,
+) -> Result<Option<GraphDirection>> {
+    // Keep flat routing, including its exact small-grid work boundary, unchanged.
+    if graph.diagram_type() != "flowchart" || layout.groups.is_empty() || from.id == to.id {
+        return Ok(None);
+    }
+    let mut common: Option<&GroupLayout> = None;
+    for group in &layout.groups {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if group.kind == super::model::GraphGroupKind::Container
+            && geometry::group_contains_node(group, from)
+            && geometry::group_contains_node(group, to)
+            && common.is_none_or(|outer| {
+                outer.x <= group.x
+                    && group.right() <= outer.right()
+                    && outer.y <= group.y
+                    && group.bottom() <= outer.bottom()
+            })
+        {
+            common = Some(group);
+        }
+    }
+    let Some(common) = common else {
+        return Ok(Some(graph.direction.canonical()));
+    };
+    for group in &graph.groups {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        if group.id == common.id {
+            return Ok(group
+                .direction
+                .map(|direction| direction.before_root_output_transform(graph.direction)));
+        }
+    }
+    Ok(None)
+}
+
+fn forward_route_direction(
+    request: EdgeRouteRequest<'_>,
+    resources: &ResourceContext,
+) -> Result<Option<StepDirection>> {
+    let Some(direction) = compound_route_direction(
+        request.graph,
+        request.graph_layout,
+        request.from,
+        request.to,
+        resources,
+    )?
+    else {
+        return Ok(None);
+    };
+    // A preference is only meaningful when the resolved contours leave a forward gap.
+    // Feedback, overlapping ranks and ancestor/member endpoints keep all their contacts.
+    Ok(match direction {
+        GraphDirection::LeftRight if request.from.right() < request.to.x => {
+            Some(StepDirection::Right)
+        }
+        GraphDirection::RightLeft if request.to.right() < request.from.x => {
+            Some(StepDirection::Left)
+        }
+        GraphDirection::TopDown if request.from.bottom() < request.to.y => {
+            Some(StepDirection::Down)
+        }
+        GraphDirection::BottomTop if request.to.bottom() < request.from.y => {
+            Some(StepDirection::Up)
+        }
+        _ => None,
     })
+}
+
+fn contacts_follow_direction(
+    forward: Option<StepDirection>,
+    attachments: Option<plan::NodeAttachments>,
+) -> bool {
+    forward.is_none_or(|forward| {
+        attachments.is_some_and(|attachments| {
+            attachments.start.outward == forward && attachments.end.outward == forward.opposite()
+        })
+    })
+}
+
+/// Endpoint reuse precedes contact preference; legal crossings keep their geometry cost.
+/// With no known scope direction, retain the original score ordering exactly.
+fn route_candidate_is_better(
+    forward: Option<StepDirection>,
+    candidate: (RouteCandidateScore, Option<plan::NodeAttachments>),
+    incumbent: (RouteCandidateScore, Option<plan::NodeAttachments>),
+) -> bool {
+    if forward.is_none() {
+        return candidate.0 < incumbent.0;
+    }
+    let key = |(score, attachments): (RouteCandidateScore, Option<plan::NodeAttachments>)| {
+        (
+            score.port_reuse(),
+            !contacts_follow_direction(forward, attachments),
+            score,
+        )
+    };
+    key(candidate) < key(incumbent)
+}
+
+fn route_needs_search(
+    forward: Option<StepDirection>,
+    score: RouteCandidateScore,
+    plan: &RoutePlan,
+    defer_loop_labels: bool,
+) -> bool {
+    score.has_congestion()
+        || (!defer_loop_labels && score.grows_scene())
+        || !contacts_follow_direction(forward, plan.attachments)
+}
+
+fn plan_route_order(
+    graph: &AsciiGraph,
+    layout: &GraphLayout,
+    edges: &[AsciiGraphEdge],
+    resources: &ResourceContext,
+) -> Result<Vec<usize>> {
+    resources.charge_layout_work(resources.checked_work_add(layout.nodes.len(), edges.len())?)?;
+    let mut visible_count = 0;
+    for (index, edge) in edges.iter().enumerate() {
+        if index.is_multiple_of(64) {
+            resources.checkpoint()?;
+        }
+        visible_count += usize::from(edge.stroke.is_visible());
+    }
+    let mut order = Vec::new();
+    order
+        .try_reserve(visible_count)
+        .map_err(|_| layout_allocation_failed())?;
+    if visible_count == 0 {
+        return Ok(order);
+    }
+    let mut levels = HashMap::default();
+    levels
+        .try_reserve(layout.nodes.len())
+        .map_err(|_| layout_allocation_failed())?;
+    let horizontal = graph.direction.canonical() == super::model::GraphDirection::LeftRight;
+    for node in &layout.nodes {
+        resources.checkpoint()?;
+        levels.insert(
+            node.id.as_str(),
+            (if horizontal { node.grid.x } else { node.grid.y }, node),
+        );
+    }
+    resources.charge_layout_work(edges.len())?;
+    for (index, edge) in edges.iter().enumerate() {
+        resources.checkpoint()?;
+        if edge.stroke.is_visible() {
+            order.push(index);
+        }
+    }
+    let mut scoped_ranks = HashMap::default();
+    if graph.diagram_type() == "flowchart" && !layout.groups.is_empty() {
+        resources.charge_layout_work(order.len())?;
+        scoped_ranks
+            .try_reserve(order.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for &index in &order {
+            let edge = &edges[index];
+            let Some(((_, from), (_, to))) = levels
+                .get(edge.from.as_str())
+                .zip(levels.get(edge.to.as_str()))
+            else {
+                continue;
+            };
+            let Some(direction) = compound_route_direction(graph, layout, from, to, resources)?
+            else {
+                continue;
+            };
+            let ranks = match direction {
+                GraphDirection::LeftRight => (from.center_x(), to.center_x()),
+                GraphDirection::RightLeft => (to.center_x(), from.center_x()),
+                GraphDirection::TopDown => (from.center_y(), to.center_y()),
+                GraphDirection::BottomTop => (to.center_y(), from.center_y()),
+            };
+            scoped_ranks.insert(index, ranks);
+        }
+    }
+    super::layout::charge_sort_work(order.len(), resources)?;
+    order.sort_unstable_by_key(|&index| {
+        let edge = &edges[index];
+        let ranks = scoped_ranks.get(&index).copied().or_else(|| {
+            levels
+                .get(edge.from.as_str())
+                .zip(levels.get(edge.to.as_str()))
+                .map(|((from, _), (to, _))| (*from, *to))
+        });
+        let feedback = edge.from != edge.to && ranks.is_some_and(|(from, to)| from >= to);
+        let span = ranks.map_or(usize::MAX, |(from, to)| from.abs_diff(to));
+        (feedback, span, index)
+    });
+    Ok(order)
 }
 
 fn admit_route_candidate(
@@ -531,11 +1033,42 @@ fn admit_route_candidate(
     plan: RoutePlan,
     resources: &mut ResourceContext,
 ) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
-    let Some(plan) =
-        plan.resolve_node_attachments(request.from, request.to, request.charset, resources)?
+    if plan.labels.is_empty()
+        && let Some(raw) = request.edge.label.as_deref()
+        && super::label::try_measure_edge_label(raw, request.charset.width_profile, resources)?
+            .is_some()
+    {
+        return Ok(None);
+    }
+    let Some(plan) = plan.resolve_endpoint_attachments(
+        plan::EndpointGeometry::for_route(
+            request.from,
+            request.to,
+            request.graph_layout,
+            resources,
+        )?,
+        plan::EndpointGeometry::for_route(
+            request.to,
+            request.from,
+            request.graph_layout,
+            resources,
+        )?,
+        request.charset,
+        resources,
+    )?
     else {
         return Ok(None);
     };
+    if !(geometry::CompoundRouteGeometry {
+        layout: request.graph_layout,
+        from: request.from,
+        to: request.to,
+        attachments: plan.attachments,
+    })
+    .endpoints_allow_plan(&plan, resources)?
+    {
+        return Ok(None);
+    }
     let plan = plan
         .with_marker_requests(
             request.edge.start_marker,
@@ -543,14 +1076,13 @@ fn admit_route_candidate(
             request.graph.diagram_type(),
         )?
         .with_style(request.edge.style);
-    let score = obstacles.scene.score_route(
+    obstacles.scene.admit_route(
         obstacles.routes,
-        &plan,
+        plan,
         obstacles.owner,
         resources,
         request.graph.diagram_type(),
-    )?;
-    Ok(score.map(|score| (score, plan)))
+    )
 }
 
 fn route_boundary_group_indices(
@@ -577,11 +1109,15 @@ fn route_boundary_group_indices(
     indices
         .try_reserve(graph.groups.len())
         .map_err(|_| layout_allocation_failed())?;
-    for group_index in 0..graph.groups.len() {
+    for (group_index, group) in graph.groups.iter().enumerate() {
         resources.charge_layout_work(1)?;
         let crosses_boundary =
             from_groups.contains(&group_index) != to_groups.contains(&group_index);
-        if crosses_boundary
+        // Region separators are open lines, not closed containers. A transition can
+        // cross intermediate separators even when neither endpoint belongs to that region.
+        // CompoundRouteGeometry still reserves unrelated container interiors.
+        if group.kind == super::model::GraphGroupKind::Divider
+            || crosses_boundary
             || from_group_endpoint == Some(group_index)
             || to_group_endpoint == Some(group_index)
         {
