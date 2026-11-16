@@ -95,7 +95,7 @@ Override a configurable lint rule severity as RULE_ID=error|warning|info|hint. C
 \fB\-\-resource\-profile\fR \fI<PROFILE>\fR [default: trusted\-native]
 Resource policy for input, semantic models, output, and CLI acquisition.
 
-Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
+Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. Unbounded\-for\-trusted\-input removes all policy budgets, retaining hard implementation and protocol guards. Use \-\-resource\-limit for a scoped increase.
 .sp
 \fIPossible values:\fR
 .RS 14

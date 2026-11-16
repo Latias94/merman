@@ -113,7 +113,7 @@ Available container height for size\-sensitive layouts
 \fB\-\-resource\-profile\fR \fI<PROFILE>\fR [default: trusted\-native]
 Resource policy for input, semantic models, output, and CLI acquisition.
 
-Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
+Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. Unbounded\-for\-trusted\-input removes all policy budgets, retaining hard implementation and protocol guards. Use \-\-resource\-limit for a scoped increase.
 .sp
 \fIPossible values:\fR
 .RS 14
@@ -134,7 +134,7 @@ Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
 \fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
 Cancel the complete command operation after this many milliseconds.
 
-The deadline starts before input acquisition and covers generation, rendering, and publication. Zero cancels at the first cooperative checkpoint.
+The deadline starts before input acquisition and covers generation, rendering, and publication. Omit this option for no deadline. Zero cancels at the first cooperative checkpoint. Resource budgets are independent; an unbounded resource profile does not disable this deadline. Blocking backend calls return to a checkpoint before cancellation.
 .SH EXTRA
 More options: `merman\-cli layout \-\-help` shows layout, configuration, runtime, operation, and resource controls.
 .SH VERSION

@@ -467,7 +467,7 @@ Emit the canonical ASCII report JSON instead of text bytes
 \fB\-\-resource\-profile\fR \fI<PROFILE>\fR [default: trusted\-native]
 Resource policy for input, semantic models, output, and CLI acquisition.
 
-Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. The unbounded profile retains hard implementation and protocol guards.
+Use interactive for cooperative editor\-like workloads, constrained for untrusted or multi\-tenant input, and trusted\-native for controlled local workloads. Unbounded\-for\-trusted\-input removes all policy budgets, retaining hard implementation and protocol guards. Use \-\-resource\-limit for a scoped increase.
 .sp
 \fIPossible values:\fR
 .RS 14
@@ -488,11 +488,17 @@ Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated
 \fB\-\-operation\-timeout\-ms\fR \fI<MILLISECONDS>\fR
 Cancel the complete command operation after this many milliseconds.
 
-The deadline starts before input acquisition and covers generation, rendering, and publication. Zero cancels at the first cooperative checkpoint.
+The deadline starts before input acquisition and covers generation, rendering, and publication. Omit this option for no deadline. Zero cancels at the first cooperative checkpoint. Resource budgets are independent; an unbounded resource profile does not disable this deadline. Blocking backend calls return to a checkpoint before cancellation.
 .SH EXTRA
 Examples:
   merman\-cli render diagram.mmd
+  merman\-cli render diagram.mmd \-\-format unicode \-\-resource\-limit max_ascii_layout_work_units=64000000
+  merman\-cli render diagram.mmd \-\-format unicode \-\-resource\-profile unbounded\-for\-trusted\-input \-\-operation\-timeout\-ms 30000
 
-More options: `merman\-cli render \-\-help` shows advanced renderer, resource, and security controls.
+ASCII resource controls:
+  Increase a single limit with \-\-resource\-limit; it does not guarantee completion.
+  The unbounded profile removes all policy budgets, retaining hard guards.
+  The optional timeout is cooperative and independent of resource budgets.
+  No operation deadline is set unless \-\-operation\-timeout\-ms is supplied.
 .SH VERSION
 v0.10.0
