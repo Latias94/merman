@@ -95,9 +95,9 @@ readable at ordinary terminal widths.
 | Swimlane | Partial | Diagrammatic | Yes | Uses the same terminal projection and admitted profiles as Flowchart while retaining its separate language and feature identity. | Shares Flowchart's geometry and presentation limits; terminal layout is independent of the SVG lane renderer. |
 | Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
 | State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, terminal colors, structural empty concurrency regions, and transverse routes through intermediate region separators. | State is canonical-only and does not inherit Flowchart compact policy. Direct typed-model Divider endpoints retain dedicated routing; some presentation metadata and future shape variants are approximated. Bounded fallback is a typed Plain compatibility projection. |
-| Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
-| ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, shared relation components, a strict planar K2×2 four-node/four-edge cycle with four disjoint routes, and explicit relation summaries. | The strict K2×2 layout is a bounded topology-specific path, not support for arbitrary bounded or dense graphs. Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
-| XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, connected topology-resolved lines, mixed series, titles, legends, display policy, injective length-framed disclosure, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; terminal coordinates are quantized, cross-series same-cell ownership remains approximate, unknown direct-model orientations and band y-axes are rejected, and accessibility title/description metadata is intentionally omitted. |
+| Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, directed component ranks, private channels for bounded cycles and DAG diamonds, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | Bounded channel search does not guarantee arbitrary dense routing. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
+| ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, directed component ranks, private channels for bounded cycles and DAG diamonds, and explicit relation summaries. | Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; bounded search is best effort. Accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
+| XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, jointly composed line topology, distinct line-series point markers, explicit shared sample cells, mixed series, titles, legends, display policy, injective record-oriented disclosure after the plot, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; coordinates are quantized, line markers repeat after six series, and dense bar/line overlap still needs exact records. Long individual fields and large geometry can exceed the viewport. Unknown direct-model orientations and band y-axes are rejected; accessibility title/description metadata is intentionally omitted. |
 
 ## Structured-Text Outputs
 
@@ -182,9 +182,9 @@ output is supported, including nested namespace containers. The preview and expo
 diagrammatic coverage or the Structured Text projection plus a concise limit for the active diagram
 type. Simple sibling-namespace, namespace-to-root, and nested-sibling relationships route through
 the nearest namespace facades with length-framed leaf identity; dense or colliding namespace scenes
-remain partial and use the lossless `relations:` fallback. Class and ER strict planar K2×2
-four-node/four-edge components use their bounded four-route diagrammatic layout; this does not
-promote arbitrary bounded or dense topology out of the same lossless fallback boundary.
+remain partial and use the lossless `relations:` fallback. Class and ER share directed component
+ranks and bounded private channels for rings, DAG diamonds, and other admitted scenes. This does
+not guarantee routing for arbitrary dense topology.
 
 ## Testing Policy
 
@@ -225,6 +225,6 @@ have their own public semantic tests; the generator does not claim to exhaust ar
   Mermaid input.
 - Keep Class/ER dense topology cases on the shared `relation_graph` summary path when routed output
   would overlap boxes; a resource-limit error remains an error and never becomes a summary.
-- Keep the strict planar K2×2 exception covered by the Class/ER parser tests plus the shared
-  `relation_graph` tests for declaration-order stability, four disjoint routes, exact/N−1 work
+- Keep directed cycles and DAG diamonds covered by Class/ER parser tests plus the shared
+  `relation_graph` tests for declaration-order stability, disjoint routes, exact/N−1 work
   admission, and speculative-work/document-cell ownership on collision fallback.

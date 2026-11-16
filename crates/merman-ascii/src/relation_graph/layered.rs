@@ -1,9 +1,11 @@
 mod batch;
 mod boxes;
+mod channels;
 mod draw;
 mod lanes;
 mod route;
 mod scene;
+mod topology;
 
 use crate::Result;
 use crate::resource::ResourceContext;
@@ -47,5 +49,3 @@ pub(crate) use self::route::{
     spanning_lane_offset_around_intermediate_boxes,
 };
 pub(crate) use self::scene::{LayeredRelationScene, LayeredRelationSummaryReason};
-#[cfg(test)]
-pub(crate) use self::scene::{LayeredRelationScenePlan, plan_layered_relation_scene};

@@ -336,9 +336,11 @@ By default, vertical charts use a five-row value area and three-character catego
 
 Horizontal charts use a ten-character value axis by default; `AsciiRenderOptions::with_xychart_horizontal_plot_width` adjusts it. Multiple bar series receive independent rows per category, and horizontal line samples are connected rather than emitted as isolated points. Category labels come from the typed band axis when present; linear axes retain their typed numeric domain. The complete expanded plot extent is checked before row allocation.
 
-Charts with more than one series render a compact legend row before the plot. When a Mermaid plot statement includes a user-authored series title, the legend uses that typed model title; otherwise it falls back to stable terminal labels such as `Bar 1` and `Line 1`.
+Charts with more than one series render a compact legend row before the plot. When a Mermaid plot statement includes a user-authored series title, the legend uses that typed model title; otherwise it falls back to stable terminal labels such as `Bar 1` and `Line 1`. Line series cycle through six distinct point markers, matched by the legend in Plain and styled output. Their connections and sample ownership are combined before painting, so series order cannot erase an earlier point or connection. A terminal cell containing samples from multiple line series uses `X`; its exact owners and values remain in the disclosure. Shared line segments use the axis role rather than claiming one series owns them. Quantization and marker reuse beyond six line series still require the exact records for disambiguation.
 
 The renderer consumes the typed XYChart display policy from `merman-core`. `xyChart.showTitle`, `xyChart.showDataLabel`, `xyChart.showDataLabelOutsideBar`, and `xyChart.xAxis/yAxis.showLabel/showTitle/showTick/showAxisLine` affect terminal output. Tick marks can render independently from axis lines. For a single bar series, data labels stay close to the bars and respect `showDataLabelOutsideBar`. For line and multi-series charts, `showDataLabel` emits injective `values:` rows with explicit series/sample indices, plot kind, title ownership, typed x coordinates, point labels, clipping state, and orphan labels. Every authored string is UTF-8 byte-length framed and quoted with terminal-safe escaping, so authored delimiters cannot forge renderer-owned fields. Multi-series identity, clipped samples, missing values, duplicate, normalized, alignment-changing, or over-wide categories, quantized point collisions, overlapping dense bars, same-row coordinate collisions, and insufficient grouped-bar lanes also trigger deterministic disclosure so semantic facts are not silently lost when terminal geometry is approximate.
+
+Exact disclosure follows the plot. A borrowed record plan emits separate rows for series headers, samples, and orphan point labels; measurement and painting replay those same records. Adding samples therefore increases the record count instead of producing one ever-wider series row. Long individual authored fields and large chart geometry can still exceed a viewport and use the host's existing overflow policy. Record rows retain the `values:` prefix, byte framing, and complete authored values; no truncation or resource-error fallback is introduced.
 
 The public typed-model path accepts an empty orientation as the legacy vertical default and accepts `vertical` or `horizontal` case-insensitively. Other orientation strings and a Band y-axis return a precise `UnsupportedFeature` error instead of silently changing meaning. `accTitle` and `accDescr` remain browser/accessibility metadata and are intentionally omitted from terminal output.
 
@@ -375,7 +377,19 @@ interactive callers can author explicit wrapping or select their own resource li
 
 ## Relation Summary Diagnostics
 
-Class and ER diagrams fall back to readable `relations:` summary sections when a topology cannot be drawn as a deterministic terminal grid, when parallel lane ports cannot land on both endpoint box faces, or when route or overlay collision checks would damage a box. Simple Class relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; the authored member identity is disclosed independently with byte-length framing. Dense or colliding cross-namespace scenes still use the lossless summary. Default output hides the internal fallback reason to keep terminal text stable and user-facing. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add a muted diagnostic row such as `reason: crossing` directly under `relations:`. Possible reason keys are `crossing`, `route_collision`, and `overlay_collision`; port-fit failures are reported as `route_collision`. Resource limits always return `AsciiError::ResourceLimitExceeded` instead of selecting this summary path.
+Class and ER share a directed topology plan: iterative strongly connected components produce a
+condensation DAG, whose ranks preserve the direction of acyclic relationships. Cyclic components
+unfold in a stable order without changing semantic endpoints. Bounded private channels separate
+box contacts from exterior return paths and reserve label reading areas. This replaces the former
+four-node topology exception; three-, four-, and five-node rings and DAG diamonds use the same
+planning rules in all four directions. It remains a best-effort terminal layout rather than a
+complete graph-routing algorithm.
+
+Private Unicode route bends use rounded corners and the edge-line color role. A bend does not
+claim a branch or crossing; ASCII and CJK structure keep single-cell `+` turns. Endpoint markers,
+cardinalities, and labels retain their family-owned meanings.
+
+Class and ER diagrams fall back to readable `relations:` summary sections when bounded planning cannot produce a complete terminal grid, contacts do not fit, or route/overlay checks would damage another object. Simple relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; byte-length-framed fields disclose the authored member identity. Dense or colliding namespace scenes retain the complete summary. Default output hides the planning reason. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add `reason: route_collision` or `reason: overlay_collision` under `relations:`; contact and exhausted-channel failures use `route_collision`. Resource limits return `AsciiError::ResourceLimitExceeded` instead of selecting a summary.
 
 ## Direct Model API
 

@@ -281,7 +281,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "length-framed namespace facade member identity",
             "self-relation loops",
             "bounded iterative relation-layer sweeps",
-            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
+            "directed component ranks and private channels for bounded cycles and DAG diamonds",
             "routed relation lanes",
             "independent relation components",
             "lossless crossing, port-fit, route, and overlay collision summaries",
@@ -290,7 +290,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "dense or colliding cross-namespace relationships render as lossless relation summaries",
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "dense or collision-prone relation scenes can summarize",
-            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
+            "bounded private-channel search does not guarantee a route for every topology",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
@@ -306,12 +306,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/class_model.rs",
-                note: "class_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 Class component remains diagrammatic",
+                note: "class_directed_cycles_share_topology_across_directions_and_declaration_order and class_diamond_uses_directed_ranks_in_every_direction cover directed rings and DAG ranks",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/src/relation_graph/tests/",
-                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
+                note: "shared topology and private-channel tests retain declaration-order stability, disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -336,7 +336,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "top-down, bottom-up, left-right, and right-left directions",
             "self-relationship loops",
             "bounded iterative relation-layer sweeps",
-            "strict planar K2×2 four-node, four-edge components with four disjoint routes",
+            "directed component ranks and private channels for bounded cycles and DAG diamonds",
             "routed relation lanes",
             "independent relation components",
             "lossless crossing, port-fit, route, and overlay collision summaries",
@@ -344,7 +344,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         limits: &[
             "parallel relationship lanes whose ports do not fit render as lossless relation summaries",
             "complex cyclic or collision-prone topology can summarize",
-            "strict K2×2 routing does not imply support for arbitrary bounded or dense topologies",
+            "bounded private-channel search does not guarantee a route for every topology",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
             "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
@@ -363,12 +363,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/tests/er_model.rs",
-                note: "er_parser_k2_2_relationships_use_a_bounded_planar_layout proves the strict planar K2×2 ER component remains diagrammatic",
+                note: "er_directed_cycles_share_topology_across_directions_and_declaration_order and er_diamond_uses_directed_ranks_and_private_relationship_labels cover directed rings and DAG ranks",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
                 source: "crates/merman-ascii/src/relation_graph/tests/",
-                note: "strict K2×2 relation_graph tests prove declaration-order stability, four disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
+                note: "shared topology and private-channel tests retain declaration-order stability, disjoint routes, exact/N-1 work admission, and fallback ledger ownership",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
@@ -768,13 +768,16 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "titles and axes",
             "legends",
             "length-framed exact data labels and semantic disclosure",
+            "record-oriented disclosure after the plot",
+            "joint line topology with distinct series markers and shared sample cells",
             "length-framed empty-chart metadata disclosure",
             "configurable plot dimensions",
         ],
         limits: &[
             "browser hover tooltips are replaced by deterministic terminal disclosure",
             "typed chart coordinates are independently quantized by the terminal plan",
-            "cross-series same-cell collisions use deterministic paint order plus exact disclosure",
+            "quantized shared line samples use X plus exact disclosure; line markers repeat after six series",
+            "line paths overlay bars; quantized bar and line overlap still requires exact disclosure",
             "unknown direct-model orientations and band y-axes are rejected",
             "accessibility title and description metadata are intentionally omitted from terminal output",
         ],
@@ -792,7 +795,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
                 source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
-                note: "cross-series same-cell ownership remains an explicit compact-layout residual",
+                note: "shared line topology retains sample ownership; terminal quantization, dense bars, and marker reuse remain explicit compact-layout limits",
             },
         ],
     },
@@ -1142,35 +1145,35 @@ mod tests {
     }
 
     #[test]
-    fn class_and_er_capabilities_disclose_the_strict_planar_k2_2_boundary() {
+    fn class_and_er_capabilities_disclose_bounded_directed_channel_planning() {
         for (diagram_type, parser_test) in [
             (
                 "class",
-                "class_parser_k2_2_relationships_use_a_bounded_planar_layout",
+                "class_directed_cycles_share_topology_across_directions_and_declaration_order",
             ),
             (
                 "er",
-                "er_parser_k2_2_relationships_use_a_bounded_planar_layout",
+                "er_directed_cycles_share_topology_across_directions_and_declaration_order",
             ),
         ] {
             let capability = find(diagram_type);
 
             assert!(capability.supported_semantics.contains(
-                &"strict planar K2×2 four-node, four-edge components with four disjoint routes"
+                &"directed component ranks and private channels for bounded cycles and DAG diamonds"
             ));
             assert!(capability.limits.contains(
-                &"strict K2×2 routing does not imply support for arbitrary bounded or dense topologies"
+                &"bounded private-channel search does not guarantee a route for every topology"
             ));
             assert!(
                 capability
                     .evidence
                     .iter()
                     .any(|evidence| evidence.note.contains(parser_test)),
-                "{diagram_type} should cite its parser-backed strict K2×2 test",
+                "{diagram_type} should cite its parser-backed cycle and direction tests",
             );
             assert!(capability.evidence.iter().any(|evidence| {
                 evidence.source.ends_with("relation_graph/tests/")
-                    && evidence.note.contains("four disjoint routes")
+                    && evidence.note.contains("disjoint routes")
                     && evidence.note.contains("exact/N-1")
             }));
         }

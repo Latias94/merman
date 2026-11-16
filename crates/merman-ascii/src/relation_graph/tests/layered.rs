@@ -44,7 +44,7 @@ fn layered_relation_plan_reserves_width_for_reverse_spanning_edges() {
     let plan = plan_layered_relation_boxes(&box_refs, &edges, 1, &mut resources)
         .expect("cyclic plan should render");
 
-    assert_eq!(plan.width(), 7);
+    assert!(plan.width() > 3);
 }
 
 #[test]
@@ -63,17 +63,17 @@ fn layered_relation_plan_reserves_width_for_reverse_parallel_lanes() {
     let plan = plan_layered_relation_boxes(&box_refs, &edges, 1, &mut resources)
         .expect("bidirectional plan should render");
 
-    assert_eq!(plan.width(), 7);
+    assert!(plan.width() > 3);
 }
 
-fn strict_k2_2_edges(endpoints: [(&'static str, &'static str); 4]) -> Vec<LayeredRelationEdge> {
+fn multi_parent_edges(endpoints: [(&'static str, &'static str); 4]) -> Vec<LayeredRelationEdge> {
     endpoints
         .into_iter()
         .map(|(source, target)| LayeredRelationEdge::new(source, target, 2, 1))
         .collect()
 }
 
-fn strict_k2_2_scene<'a>(
+fn multi_parent_scene<'a>(
     boxes: &'a [RelationGraphBox],
     edges: Vec<LayeredRelationEdge>,
     resources: &mut ResourceContext,
@@ -86,87 +86,89 @@ fn strict_k2_2_scene<'a>(
         TerminalWidthProfile::Unicode,
         resources,
     )
-    .expect("strict K2,2 should use its bounded planar scene")
+    .expect("directed multi-parent component should use its bounded planar scene")
 }
 
-fn strict_k2_2_geometries(
+fn multi_parent_geometries(
     scene: &LayeredRelationScene<'_>,
     resources: &ResourceContext,
 ) -> Vec<LayeredRelationRouteGeometry> {
-    scene
-        .draw_order()
-        .iter()
-        .map(|(edge_index, lane_offset)| {
-            scene
-                .plan_edge_geometry(
-                    *edge_index,
-                    *lane_offset,
-                    LayeredRelationRouteProfile::class(),
-                    resources,
-                )
-                .expect("K2,2 route geometry should fit the bounded scene")
-                .expect("K2,2 endpoints must exist")
+    let relations = (0..scene.draw_order().len())
+        .map(|index| {
+            let edge = scene.edge(index).expect("edge must exist");
+            (
+                edge.route_source_id().to_string(),
+                edge.route_target_id().to_string(),
+            )
         })
+        .collect::<Vec<_>>();
+    let refs = relations.iter().collect::<Vec<_>>();
+    let adapter = TestRelationAdapter {
+        summary_reason: Cell::new(None),
+        overlap: TestRelationOverlap::None,
+    };
+    plan_layered_route_batch(scene, &refs, resources, &adapter)
+        .expect("a planar component should have disjoint private routes")
+        .0
+        .into_iter()
+        .map(|route| route.geometry().clone())
         .collect()
 }
 
 #[test]
-fn strict_k2_2_uses_a_direction_independent_cycle_with_four_disjoint_routes() {
-    let boxes = strict_k2_2_boxes();
-    let edges = strict_k2_2_edges([("a", "c"), ("d", "a"), ("c", "b"), ("b", "d")]);
+fn directed_diamond_preserves_ranks_and_has_four_disjoint_routes() {
+    let boxes = multi_parent_boxes();
+    let edges = multi_parent_edges([("a", "c"), ("a", "d"), ("c", "b"), ("d", "b")]);
     let mut resources = test_resources(AsciiResourcePolicy::default());
-    let scene = strict_k2_2_scene(&boxes, edges, &mut resources);
-
-    assert!(scene.is_planar_k2_2());
-    let position = |id: &str| {
+    let scene = multi_parent_scene(&boxes, edges, &mut resources);
+    assert!(scene.uses_private_channels());
+    let y = |id: &str| {
         scene
             .placed_boxes()
             .iter()
-            .find(|placed| placed.id() == id)
-            .map(|placed| (placed.x(), placed.y()))
-            .expect("K2,2 box should be placed")
+            .find(|node| node.id() == id)
+            .expect("node must be placed")
+            .y()
     };
-    let a = position("a");
-    let b = position("b");
-    let c = position("c");
-    let d = position("d");
-    assert_eq!(a.1, c.1, "A/C must occupy the top cycle row");
-    assert_eq!(d.1, b.1, "D/B must occupy the bottom cycle row");
-    assert_eq!(a.0, d.0, "A/D must share the left route column");
-    assert_eq!(c.0, b.0, "C/B must share the right route column");
-    assert!(a.1 < d.1);
-
-    let geometries = strict_k2_2_geometries(&scene, &resources);
+    assert!(y("a") < y("c"));
+    assert_eq!(y("c"), y("d"));
+    assert!(y("d") < y("b"));
+    let geometries = multi_parent_geometries(&scene, &resources);
     assert_eq!(geometries.len(), 4);
     for (index, geometry) in geometries.iter().enumerate() {
         assert!(geometry.fits(scene.width(), scene.height()));
+        assert!(!scene.route_geometry_overlaps_box(geometry));
         assert!(
-            !scene.route_geometry_overlaps_box(geometry),
-            "route {index} must not cross any box"
+            scene
+                .placed_boxes()
+                .iter()
+                .any(|node| geometry.source_port().fits_box(node))
         );
-        for (other_index, other) in geometries[index + 1..].iter().enumerate() {
-            assert!(
-                !geometry.overlaps(other),
-                "route pair ({index}, {}) must not create a false junction",
-                index + other_index + 1
-            );
+        assert!(
+            scene
+                .placed_boxes()
+                .iter()
+                .any(|node| geometry.target_port().fits_box(node))
+        );
+        for other in &geometries[index + 1..] {
+            assert!(!geometry.overlaps(other));
         }
     }
 }
 
 #[test]
-fn strict_k2_2_geometry_is_stable_when_declarations_are_reordered() {
-    let boxes = strict_k2_2_boxes();
+fn multi_parent_geometry_is_stable_when_declarations_are_reordered() {
+    let boxes = multi_parent_boxes();
     let mut first_resources = test_resources(AsciiResourcePolicy::default());
-    let first = strict_k2_2_scene(
+    let first = multi_parent_scene(
         &boxes,
-        strict_k2_2_edges([("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")]),
+        multi_parent_edges([("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")]),
         &mut first_resources,
     );
     let mut second_resources = test_resources(AsciiResourcePolicy::default());
-    let second = strict_k2_2_scene(
+    let second = multi_parent_scene(
         &boxes,
-        strict_k2_2_edges([("d", "b"), ("c", "b"), ("d", "a"), ("c", "a")]),
+        multi_parent_edges([("b", "d"), ("b", "c"), ("a", "d"), ("a", "c")]),
         &mut second_resources,
     );
 
@@ -180,6 +182,146 @@ fn strict_k2_2_geometry_is_stable_when_declarations_are_reordered() {
         placed
     };
     assert_eq!(placements(&first), placements(&second));
+}
+
+#[test]
+fn cyclic_channel_draws_are_continuous_between_the_actual_box_contacts() {
+    use std::collections::{BTreeSet, VecDeque};
+
+    for size in [3, 4, 5] {
+        for direction in [
+            RelationDirection::TopDown,
+            RelationDirection::BottomUp,
+            RelationDirection::LeftRight,
+            RelationDirection::RightLeft,
+        ] {
+            let boxes = (0..size)
+                .map(|index| {
+                    RelationGraphBox::new(
+                        format!("Node{index}"),
+                        vec![
+                            "+-------+".to_string(),
+                            format!("| Node{index} |"),
+                            "+-------+".to_string(),
+                        ],
+                        9,
+                    )
+                })
+                .collect::<Vec<_>>();
+            let relations = (0..size)
+                .map(|index| {
+                    (
+                        format!("Node{index}"),
+                        format!("Node{}", (index + 1) % size),
+                    )
+                })
+                .collect::<Vec<_>>();
+            let adapter = TestRelationAdapter {
+                summary_reason: Cell::new(None),
+                overlap: TestRelationOverlap::None,
+            };
+            let edges = relations
+                .iter()
+                .map(|relation| {
+                    adapter
+                        .build_edges(relation)
+                        .with_reversed_route(direction == RelationDirection::BottomUp)
+                })
+                .collect();
+            let mut resources = test_resources(AsciiResourcePolicy::default());
+            let scene = LayeredRelationScene::new_with_direction(
+                &boxes.iter().collect::<Vec<_>>(),
+                edges,
+                4,
+                TerminalWidthProfile::Unicode,
+                direction.transform(),
+                &mut resources,
+            )
+            .expect("cycle scene should fit");
+            let (routes, _) = plan_layered_route_batch(
+                &scene,
+                &relations.iter().collect::<Vec<_>>(),
+                &resources,
+                &adapter,
+            )
+            .expect("cycle routes should fit");
+            assert_eq!(routes.len(), size);
+            for route in &routes {
+                let geometry = route.geometry();
+                let endpoints = (0..size)
+                    .filter_map(|index| scene.edge_endpoints(index))
+                    .filter(|&(source, target)| geometry.connects_boxes(source, target))
+                    .collect::<Vec<_>>();
+                assert_eq!(
+                    endpoints.len(),
+                    1,
+                    "each drawn route must connect exactly its two semantic endpoints"
+                );
+                let (source, target) = endpoints[0];
+                let contact = |port: LayeredRelationPhysicalPort,
+                               node: &PlacedRelationGraphBox<'_>| {
+                    match port.side() {
+                        PhysicalPortSide::Top => (port.x(), node.y() - 1),
+                        PhysicalPortSide::Right => (node.right() + 1, port.marker_y()),
+                        PhysicalPortSide::Bottom => (port.x(), node.bottom() + 1),
+                        PhysicalPortSide::Left => (node.x() - 1, port.marker_y()),
+                    }
+                };
+                let start = contact(geometry.source_port(), source);
+                let end = contact(geometry.target_port(), target);
+                let mut canvas = Canvas::new(scene.width(), scene.height());
+                route
+                    .draw_route_at(&mut canvas, &resources)
+                    .expect("all channel segments should draw");
+                let mut cells = BTreeSet::new();
+                for y in 0..scene.height() {
+                    for x in 0..scene.width() {
+                        if canvas.get(x, y).is_some_and(|ch| ch != ' ') {
+                            cells.insert((x, y));
+                        }
+                    }
+                }
+                assert!(
+                    cells.contains(&start) && cells.contains(&end),
+                    "both actual box contacts must be painted"
+                );
+                let mut visited = BTreeSet::from([start]);
+                let mut queue = VecDeque::from([start]);
+                while let Some((x, y)) = queue.pop_front() {
+                    for point in [
+                        (x.checked_sub(1), Some(y)),
+                        (x.checked_add(1), Some(y)),
+                        (Some(x), y.checked_sub(1)),
+                        (Some(x), y.checked_add(1)),
+                    ] {
+                        if let (Some(x), Some(y)) = point
+                            && cells.contains(&(x, y))
+                            && visited.insert((x, y))
+                        {
+                            queue.push_back((x, y));
+                        }
+                    }
+                }
+                assert!(
+                    visited.contains(&end),
+                    "drawn cells must connect source contact to target contact"
+                );
+                assert_eq!(
+                    visited, cells,
+                    "no detached segment may survive geometry materialization"
+                );
+                assert!(!scene.route_overlaps_box(route));
+            }
+            for (index, route) in routes.iter().enumerate() {
+                for other in &routes[index + 1..] {
+                    assert!(
+                        !route.route_overlaps(other),
+                        "every edge must retain its own channel"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

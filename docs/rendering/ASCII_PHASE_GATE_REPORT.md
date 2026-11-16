@@ -134,6 +134,14 @@ and performs the final deferred document commit. New geometry belongs in the cor
 module, new encoding belongs in the document/canvas path, and any new fallback policy with an
 independent lifecycle must first be extracted behind a typed outcome.
 
+The current Class/ER relation planner supersedes the earlier strict K2×2 exception with a directed
+topology module and a private-channel module. Strongly connected components and the condensation
+DAG determine ranks before placement; all four directions consume that topology. Endpoint contacts,
+return paths, and label reading areas remain separate geometric claims. Bounded channel search and
+the final collision checks either produce a complete paint plan or retain the existing typed
+summary outcome. Parser-backed rings and DAG diamonds supplement the shared route, resource, and
+cancellation tests; this does not admit arbitrary dense topology or another Mermaid family.
+
 These are cohesion boundaries, not line-count exemptions. Repository review must reopen U30 if a
 second independent transaction, encoding lifecycle, or fallback policy is added to either retained
 root.

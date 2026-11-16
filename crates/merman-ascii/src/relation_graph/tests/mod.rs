@@ -17,22 +17,30 @@ struct TestRelationAdapter {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TestRelationOverlap {
     None,
-    Route,
     Overlay,
 }
 
 trait TestRelationEndpoints {
-    fn source_id(&self) -> &'static str;
-    fn target_id(&self) -> &'static str;
+    fn source_id(&self) -> &str;
+    fn target_id(&self) -> &str;
 }
 
 impl TestRelationEndpoints for (&'static str, &'static str) {
-    fn source_id(&self) -> &'static str {
+    fn source_id(&self) -> &str {
         self.0
     }
 
-    fn target_id(&self) -> &'static str {
+    fn target_id(&self) -> &str {
         self.1
+    }
+}
+
+impl TestRelationEndpoints for (String, String) {
+    fn source_id(&self) -> &str {
+        &self.0
+    }
+    fn target_id(&self) -> &str {
+        &self.1
     }
 }
 
@@ -42,11 +50,11 @@ struct NonCloneTestRelation {
 }
 
 impl TestRelationEndpoints for NonCloneTestRelation {
-    fn source_id(&self) -> &'static str {
+    fn source_id(&self) -> &str {
         self.source_id
     }
 
-    fn target_id(&self) -> &'static str {
+    fn target_id(&self) -> &str {
         self.target_id
     }
 }
@@ -117,15 +125,6 @@ where
     }
 
     fn layered_route_style(&self, _relation: &R) -> Result<LayeredRelationRouteStyle> {
-        if self.overlap == TestRelationOverlap::Route {
-            return Ok(LayeredRelationRouteStyle::new(
-                'X',
-                'X',
-                RelationLineChars::new(['X', 'X', 'X', 'X'], 'X'),
-                LayeredRelationRouteProfile::new(1, 0, 1, 0, 0),
-            ));
-        }
-
         Ok(LayeredRelationRouteStyle::new(
             '-',
             '-',
@@ -141,9 +140,16 @@ where
         _resources: &ResourceContext,
     ) -> Result<Vec<RelationOverlay>> {
         if self.overlap == TestRelationOverlap::Overlay {
+            let port = _geometry.source_port();
+            let (x, y) = match port.side() {
+                PhysicalPortSide::Top => (port.x(), port.marker_y() + 1),
+                PhysicalPortSide::Bottom => (port.x(), port.marker_y() - 1),
+                PhysicalPortSide::Left => (port.x() + 2, port.marker_y()),
+                PhysicalPortSide::Right => (port.x() - 2, port.marker_y()),
+            };
             return Ok(vec![RelationOverlay::glyph(
-                _geometry.source_x(),
-                0,
+                x,
+                y,
                 'X',
                 AsciiColorRole::EdgeLine,
             )]);
@@ -230,7 +236,6 @@ where
             feature: match error {
                 LayeredRelationError::MissingEndpoint => "missing endpoint",
                 LayeredRelationError::UnrelatedBoxes => "unrelated boxes",
-                LayeredRelationError::Crossing => "crossing",
             },
         }
     }
@@ -240,7 +245,7 @@ fn test_resources(policy: AsciiResourcePolicy) -> ResourceContext {
     ResourceContext::new(policy)
 }
 
-fn strict_k2_2_boxes() -> Vec<RelationGraphBox> {
+fn multi_parent_boxes() -> Vec<RelationGraphBox> {
     ["a", "b", "c", "d"]
         .into_iter()
         .map(|id| RelationGraphBox::new(id.to_string(), vec![id.to_uppercase()], 1))

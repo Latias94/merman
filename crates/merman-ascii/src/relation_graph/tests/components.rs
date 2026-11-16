@@ -192,34 +192,6 @@ fn cancelled_edge_admission_precedes_work_limit_without_ledger_pollution() {
 }
 
 #[test]
-fn render_layered_relation_component_uses_summary_when_route_path_overlaps_box() {
-    let boxes = vec![
-        RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
-        RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
-        RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
-    ];
-    let relations = vec![("a", "b"), ("a", "c")];
-    let adapter = TestRelationAdapter {
-        summary_reason: Cell::new(None),
-        overlap: TestRelationOverlap::Route,
-    };
-
-    let rendered = render_test_relation_components(
-        &boxes,
-        &relations,
-        AsciiResourcePolicy::default(),
-        &adapter,
-    )
-    .expect("route-overlapping layered relation should render as a summary");
-
-    assert_eq!(
-        adapter.summary_reason.get(),
-        Some(LayeredRelationSummaryReason::RouteCollision)
-    );
-    assert!(rendered.contains("relations:\nA --> B\nA --> B\n"));
-}
-
-#[test]
 fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
     let boxes = vec![
         RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
@@ -248,8 +220,8 @@ fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
 }
 
 #[test]
-fn strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_cells() {
-    let boxes = strict_k2_2_boxes();
+fn multi_parent_overlay_collision_keeps_speculative_work_but_discards_document_cells() {
+    let boxes = multi_parent_boxes();
     let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
     let options = AsciiRenderOptions::ascii();
     let mut resources = test_resources(AsciiResourcePolicy::default());
@@ -262,26 +234,20 @@ fn strict_k2_2_overlay_collision_keeps_speculative_work_but_discards_document_ce
         .iter()
         .map(|relation| adapter.build_edges(relation))
         .collect::<Vec<_>>();
-    let scene = match plan_layered_relation_scene(
+    let scene = LayeredRelationScene::new(
         &box_refs,
         edges,
         4,
         options.terminal_width_profile,
         &mut resources,
     )
-    .expect("strict K2,2 scene should plan")
-    {
-        LayeredRelationScenePlan::Routed(scene) => scene,
-        LayeredRelationScenePlan::Summary(reason) => {
-            panic!("strict K2,2 should not summarize before route planning: {reason:?}")
-        }
-    };
+    .expect("directed multi-parent component scene should plan");
     let relation_refs = relations.iter().collect::<Vec<_>>();
     let work_before = resources.layout_work_used();
     let document_before = resources.document_cells_used();
 
     let error = plan_layered_route_batch(&scene, &relation_refs, &resources, &adapter)
-        .expect_err("a colliding overlay must reject the whole K2,2 route batch");
+        .expect_err("a colliding overlay must reject the whole private route batch");
 
     assert!(matches!(
         error,
@@ -320,8 +286,8 @@ fn pairwise_validation_work_uses_the_exact_linear_prefix_formula() {
 }
 
 #[test]
-fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
-    let boxes = strict_k2_2_boxes();
+fn multi_parent_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
+    let boxes = multi_parent_boxes();
     let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
     let options = AsciiRenderOptions::ascii();
     let adapter = TestRelationAdapter {
@@ -335,20 +301,14 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
             .iter()
             .map(|relation| adapter.build_edges(relation))
             .collect::<Vec<_>>();
-        match plan_layered_relation_scene(
+        LayeredRelationScene::new(
             &box_refs,
             edges,
             4,
             options.terminal_width_profile,
             resources,
         )
-        .expect("strict K2,2 scene should plan")
-        {
-            LayeredRelationScenePlan::Routed(scene) => scene,
-            LayeredRelationScenePlan::Summary(reason) => {
-                panic!("strict K2,2 should not summarize before route planning: {reason:?}")
-            }
-        }
+        .expect("directed multi-parent component scene should plan")
     };
     let relation_refs = relations.iter().collect::<Vec<_>>();
 
@@ -361,7 +321,7 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
         &measured_resources,
         &adapter,
     )
-    .expect("unbounded K2,2 route batch should plan");
+    .expect("unbounded private route batch should plan");
     assert_eq!(plans.len(), 4);
     let route_work = measured_resources
         .layout_work_used()
@@ -402,8 +362,8 @@ fn strict_k2_2_route_batch_admits_exact_work_and_rolls_back_n_minus_one() {
 }
 
 #[test]
-fn strict_k2_2_route_batch_observes_control_from_the_resource_ledger() {
-    let boxes = strict_k2_2_boxes();
+fn multi_parent_route_batch_observes_control_from_the_resource_ledger() {
+    let boxes = multi_parent_boxes();
     let relations = [("a", "c"), ("a", "d"), ("b", "c"), ("b", "d")];
     let options = AsciiRenderOptions::ascii();
     let policy = AsciiResourcePolicy::default();
@@ -417,20 +377,14 @@ fn strict_k2_2_route_batch_observes_control_from_the_resource_ledger() {
         .iter()
         .map(|relation| adapter.build_edges(relation))
         .collect::<Vec<_>>();
-    let scene = match plan_layered_relation_scene(
+    let scene = LayeredRelationScene::new(
         &box_refs,
         edges,
         4,
         options.terminal_width_profile,
         &mut resources,
     )
-    .expect("strict K2,2 scene should plan")
-    {
-        LayeredRelationScenePlan::Routed(scene) => scene,
-        LayeredRelationScenePlan::Summary(reason) => {
-            panic!("strict K2,2 should not summarize before route planning: {reason:?}")
-        }
-    };
+    .expect("directed multi-parent component scene should plan");
     let relation_refs = relations.iter().collect::<Vec<_>>();
     let control = OperationControl::new();
     let controlled = resources.controlled(control.clone(), OperationPhase::Layout);

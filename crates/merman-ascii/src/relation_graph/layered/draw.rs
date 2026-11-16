@@ -25,6 +25,18 @@ impl RelationLineChars {
     fn contains(self, ch: char) -> bool {
         self.line_chars.contains(&ch) || ch == self.junction
     }
+
+    pub(super) fn private_corner(self, east: bool, south: bool) -> char {
+        if self.junction == '+' {
+            return '+';
+        }
+        match (east, south) {
+            (true, true) => '╭',
+            (false, true) => '╮',
+            (true, false) => '╰',
+            (false, false) => '╯',
+        }
+    }
 }
 
 pub(crate) fn marker_line_with_role(
