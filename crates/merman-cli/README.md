@@ -269,6 +269,10 @@ deterministic estimates. Unsupported individual probes and missing glyphs retain
 their documented per-request fallback. Rust library, bindings, ASCII, and committed
 Rustdoc generation defaults are unchanged.
 
+Explicit font directories and system discovery roots may be symlinks, including
+`~/.fonts` links into a dotfiles checkout. Root and ancestor aliases are resolved
+before scanning; symlinks encountered inside a directory are still skipped.
+
 Explicit font files and directories are protected inputs. With `--font-dir`,
 choose output outside that directory; existing output files with multiple hard
 links are rejected because an alias to a directory font cannot be excluded without

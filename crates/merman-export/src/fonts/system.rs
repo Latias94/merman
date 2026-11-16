@@ -63,8 +63,10 @@ impl SystemCatalog {
         };
         for root in roots {
             control.terminal_checkpoint_at(OperationPhase::Admission)?;
-            match fs::symlink_metadata(root) {
-                Ok(_) => discovery.directory(root, 0)?,
+            // Platform roots may be aliases, including ~/.fonts and macOS /var.
+            // Resolve the root once so discovery and deferred reads share real paths.
+            match fs::canonicalize(root) {
+                Ok(path) => discovery.directory(&path, 0)?,
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
                 Err(error) => return Err(source_error(root, error)),
             }
@@ -495,7 +497,15 @@ mod tests {
         loader: FontLoader,
         control: &OperationControl,
     ) -> Result<NativeFontContext, NativeFontError> {
-        let catalog = SystemCatalog::from_roots(&loader, control, std::slice::from_ref(&root.0))?;
+        context_from_roots(std::slice::from_ref(&root.0), loader, control)
+    }
+
+    fn context_from_roots(
+        roots: &[PathBuf],
+        loader: FontLoader,
+        control: &OperationControl,
+    ) -> Result<NativeFontContext, NativeFontError> {
+        let catalog = SystemCatalog::from_roots(&loader, control, roots)?;
         let default_family = catalog
             .selection
             .default_family(&catalog.database)
@@ -519,6 +529,125 @@ mod tests {
             state: Mutex::new(MeasurementState::default()),
             fatal: OnceLock::new(),
         })))
+    }
+
+    #[cfg(any(unix, windows))]
+    fn directory_alias(target: &Path, alias: &Path) -> bool {
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(target, alias).unwrap();
+        #[cfg(windows)]
+        if let Err(error) = std::os::windows::fs::symlink_dir(target, alias) {
+            if error.kind() == std::io::ErrorKind::PermissionDenied {
+                return false;
+            }
+            panic!("create directory alias: {error}");
+        }
+        true
+    }
+
+    #[cfg(any(unix, windows))]
+    fn remove_directory_alias(alias: &Path) {
+        #[cfg(unix)]
+        fs::remove_file(alias).unwrap();
+        #[cfg(windows)]
+        fs::remove_dir(alias).unwrap();
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn system_font_root_aliases_resolve_before_discovery_and_snapshot_reads() {
+        let root = Root::new();
+        let real = root.0.join("fonts");
+        fs::create_dir_all(real.join("nested")).unwrap();
+        fs::rename(
+            root.copy("Cousine-Regular.ttf"),
+            real.join("nested/font.ttf"),
+        )
+        .unwrap();
+        let alias = root.0.join("font-view");
+        if !directory_alias(Path::new("fonts"), &alias) {
+            return;
+        }
+        assert!(directory_alias(Path::new("."), &real.join("loop")));
+        let control = OperationControl::new();
+        for path in [&alias, &alias.join("nested")] {
+            let loader = FontLoader::new(NativeFontLimits::default(), control.clone());
+            let context = context_from_roots(std::slice::from_ref(path), loader, &control)
+                .expect("system roots must resolve directory and ancestor aliases");
+            assert_eq!(context.face_count(), 1);
+            assert_eq!(context.resident_font_bytes(), 0);
+            remove_directory_alias(&alias);
+            assert!(directory_alias(Path::new("missing"), &alias));
+            assert!(probe(&context, "Alias").unwrap().is_some());
+            assert!(context.resident_font_bytes() > 0);
+            context.check().unwrap();
+            remove_directory_alias(&alias);
+            assert!(directory_alias(Path::new("fonts"), &alias));
+        }
+        let loader = FontLoader::new(
+            NativeFontLimits {
+                max_directory_entries: 0,
+                ..Default::default()
+            },
+            control.clone(),
+        );
+        assert!(matches!(
+            context_from_roots(std::slice::from_ref(&alias), loader, &control),
+            Err(NativeFontError::Limit {
+                resource: "system-directory-entries",
+                ..
+            })
+        ));
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn missing_system_font_roots_are_skipped_but_invalid_roots_remain_errors() {
+        let root = Root::new();
+        let real = root.0.join("fonts");
+        fs::create_dir(&real).unwrap();
+        let file = real.join("font.ttf");
+        fs::rename(root.copy("Cousine-Regular.ttf"), &file).unwrap();
+        let dangling = root.0.join("dangling");
+        if !directory_alias(Path::new("missing"), &dangling) {
+            return;
+        }
+        let control = OperationControl::new();
+        let loader = FontLoader::new(NativeFontLimits::default(), control.clone());
+        let roots = [real, root.0.join("missing"), dangling];
+        let catalog = SystemCatalog::from_roots(&loader, &control, &roots).unwrap();
+        assert_eq!(catalog.database.faces().count(), 1);
+
+        let cycle = root.0.join("cycle");
+        assert!(directory_alias(Path::new("cycle"), &cycle));
+        for path in [cycle, file] {
+            assert!(matches!(
+                SystemCatalog::from_roots(&loader, &control, &[path]),
+                Err(NativeFontError::Source { .. })
+            ));
+        }
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn discovered_canonical_font_directory_replaced_by_a_symlink_is_rejected() {
+        let root = Root::new();
+        let real = root.0.join("fonts");
+        fs::create_dir(&real).unwrap();
+        fs::rename(root.copy("Cousine-Regular.ttf"), real.join("font.ttf")).unwrap();
+        let control = OperationControl::new();
+        let loader = FontLoader::new(NativeFontLimits::default(), control.clone());
+        let context = context_from_roots(std::slice::from_ref(&real), loader, &control).unwrap();
+        fs::rename(&real, root.0.join("moved-fonts")).unwrap();
+        if !directory_alias(Path::new("moved-fonts"), &real) {
+            return;
+        }
+        assert!(probe(&context, "Alias").is_err());
+        assert!(matches!(
+            context.check(),
+            Err(NativeFontError::Source { .. })
+        ));
+        assert_eq!(context.resident_font_bytes(), 0);
     }
 
     fn probe(context: &NativeFontContext, label: &str) -> HostMeasurementResult {

@@ -117,6 +117,127 @@ fn explicit_file_and_directory_order_produce_stable_content_identities() {
     assert_eq!(first, first.clone());
 }
 
+#[cfg(any(unix, windows))]
+fn directory_alias(target: &Path, alias: &Path) -> bool {
+    #[cfg(unix)]
+    std::os::unix::fs::symlink(target, alias).unwrap();
+    #[cfg(windows)]
+    if let Err(error) = std::os::windows::fs::symlink_dir(target, alias) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            return false;
+        }
+        panic!("create directory alias: {error}");
+    }
+    true
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn explicit_font_directory_aliases_preserve_identity_and_bounded_traversal() {
+    let directory = TestDirectory::new();
+    let real = directory.0.join("fonts");
+    std::fs::create_dir_all(real.join("nested")).unwrap();
+    std::fs::copy(font("Cousine-Regular.ttf"), real.join("nested/font.ttf")).unwrap();
+    let alias = directory.0.join("font-view");
+    if !directory_alias(Path::new("fonts"), &alias) {
+        return;
+    }
+    assert!(directory_alias(Path::new("."), &real.join("loop")));
+    let direct = NativeFontOptions::default()
+        .with_font_dir(&real)
+        .load(&OperationControl::new())
+        .unwrap();
+    for path in [&alias, &alias.join("nested")] {
+        let context = NativeFontOptions::default()
+            .with_font_dir(path)
+            .load(&OperationControl::new())
+            .expect("a selected directory or ancestor alias must resolve before traversal");
+        assert_eq!(context.identity(), direct.identity());
+        assert_eq!(context.face_count(), 1);
+        assert!(!context.uses_system_fonts());
+        let Some(HostTextMeasurement::HorizontalExtents { left, right }) =
+            measure(&context, "Alias", &style("400", "normal")).unwrap()
+        else {
+            panic!("the aliased font directory must supply native metrics");
+        };
+        let Some(HostTextMeasurement::HorizontalExtents {
+            left: expected_left,
+            right: expected_right,
+        }) = measure(&direct, "Alias", &style("400", "normal")).unwrap()
+        else {
+            panic!("the direct font directory must supply native metrics");
+        };
+        assert_eq!((left, right), (expected_left, expected_right));
+    }
+
+    for (limits, resource) in [
+        (
+            NativeFontLimits {
+                max_files: 0,
+                ..Default::default()
+            },
+            "files",
+        ),
+        (
+            NativeFontLimits {
+                max_bytes: 0,
+                ..Default::default()
+            },
+            "font-bytes",
+        ),
+        (
+            NativeFontLimits {
+                max_directory_entries: 0,
+                ..Default::default()
+            },
+            "directory-entries",
+        ),
+        (
+            NativeFontLimits {
+                max_directory_depth: 0,
+                ..Default::default()
+            },
+            "directory-depth",
+        ),
+    ] {
+        let result = NativeFontOptions::default()
+            .with_font_dir(&alias)
+            .with_limits(limits)
+            .load(&OperationControl::new());
+        assert!(
+            matches!(result, Err(NativeFontError::Limit { resource: actual, .. }) if actual == resource),
+            "directory aliases must retain the {resource} budget"
+        );
+    }
+}
+
+#[cfg(any(unix, windows))]
+#[test]
+fn invalid_font_directory_aliases_remain_source_errors() {
+    let directory = TestDirectory::new();
+    let missing = directory.0.join("missing-fonts");
+    if !directory_alias(Path::new("absent"), &missing) {
+        return;
+    }
+    let cycle = directory.0.join("cycle");
+    assert!(directory_alias(Path::new("cycle"), &cycle));
+    for path in [&missing, &cycle, &font("Cousine-Regular.ttf")] {
+        let error = NativeFontOptions::default()
+            .with_font_dir(path)
+            .load(&OperationControl::new())
+            .expect_err("invalid directory roots must remain source errors");
+        assert!(matches!(error, NativeFontError::Source { .. }));
+    }
+    let cancelled = OperationControl::new();
+    cancelled.cancel();
+    assert!(matches!(
+        NativeFontOptions::default()
+            .with_font_dir(missing)
+            .load(&cancelled),
+        Err(NativeFontError::Operation(_))
+    ));
+}
+
 #[test]
 fn bytes_and_files_share_identity_face_count_residency_and_metrics() {
     let control = OperationControl::new();

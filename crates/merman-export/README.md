@@ -44,7 +44,9 @@ font-source policy; otherwise they return `ExportError::FontSourceUnavailable`, 
 an empty discovered database. With `system-fonts` compiled, the context supports
 bounded system discovery through `NativeFontOptions::with_system_fonts(true)`;
 library callers opt in explicitly. Selected bytes are snapshotted and verified
-before measurement and painting. Metadata discovery reads one font file temporarily
+before measurement and painting. Explicit and system directory roots resolve symlinks
+and ancestor aliases before scanning; traversal within each resolved root still skips
+discovered symlinks. Metadata discovery reads one font file temporarily
 under the cumulative scan-byte budget; the independent resident-byte budget applies
 when a selected file is snapshotted, so discovery can inspect larger system collections.
 The resident-byte budget does not cap temporary scan buffers or process peak memory.
