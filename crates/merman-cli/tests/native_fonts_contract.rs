@@ -748,6 +748,95 @@ fn explicit_font_directories_are_protected_without_restricting_mermaid_inputs() 
 
 #[cfg(any(unix, windows))]
 #[test]
+fn explicit_relative_font_directory_symlinks_render_like_real_directories() {
+    let temp = tempfile::tempdir().unwrap();
+    let fonts = temp.path().join("fonts");
+    std::fs::create_dir(&fonts).unwrap();
+    let original = std::fs::read(font()).unwrap();
+    let font_path = fonts.join("selectedfont.ttf");
+    std::fs::write(&font_path, &original).unwrap();
+    let alias = temp.path().join("font-view");
+    #[cfg(unix)]
+    std::os::unix::fs::symlink("fonts", &alias).unwrap();
+    #[cfg(windows)]
+    if let Err(error) = std::os::windows::fs::symlink_dir("fonts", &alias) {
+        if error.kind() == std::io::ErrorKind::PermissionDenied {
+            return;
+        }
+        panic!("create directory alias: {error}");
+    }
+    let output_root = temp.path().join("fonts-output");
+    std::fs::create_dir(&output_root).unwrap();
+    let source = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Native font rendering: iii WWW mmm]\n";
+    let formats = [
+        "svg",
+        #[cfg(feature = "png")]
+        "png",
+    ];
+    for (command, input, svg_id) in [
+        ("render", "-", "--svg-id"),
+        ("mmdc", "--input=-", "--svgId"),
+    ] {
+        for format in formats {
+            let mut artifacts = Vec::new();
+            for (font_directory, name) in [("fonts", "real"), ("./font-view", "linked")] {
+                let output_path = output_root.join(format!("{command}-{name}.{format}"));
+                let output = support::run_with_stdin_in_dir(
+                    &[
+                        command,
+                        input,
+                        "--font-dir",
+                        font_directory,
+                        "--font-system=off",
+                        "--format",
+                        format,
+                        "--output",
+                        output_path.to_str().unwrap(),
+                        svg_id,
+                        "linked-font-root",
+                    ],
+                    source,
+                    Some(temp.path()),
+                );
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                assert!(
+                    output.status.success(),
+                    "{command}/{format}/{font_directory}: {stderr}"
+                );
+                assert!(output.stdout.is_empty());
+                let notices = measurement_notices(&stderr);
+                assert_eq!(notices.len(), 1, "{stderr}");
+                assert!(
+                    notices[0].starts_with("native measurement faces: Cousine-Regular#0; context "),
+                    "{stderr}"
+                );
+                assert!(
+                    !stderr.contains("native export font resolution is incomplete"),
+                    "{stderr}"
+                );
+                let artifact = std::fs::read(output_path).unwrap();
+                if format == "png" {
+                    assert!(artifact.starts_with(b"\x89PNG\r\n\x1a\n"));
+                } else {
+                    assert!(String::from_utf8_lossy(&artifact).contains("<svg"));
+                }
+                artifacts.push(artifact);
+            }
+            assert_eq!(
+                artifacts[0], artifacts[1],
+                "{command}/{format}: the directory alias must use the same font bytes"
+            );
+        }
+    }
+    assert_eq!(std::fs::read(&font_path).unwrap(), original);
+    assert_eq!(
+        std::fs::read(alias.join("selectedfont.ttf")).unwrap(),
+        original
+    );
+}
+
+#[cfg(any(unix, windows))]
+#[test]
 fn explicit_font_directory_protection_resolves_output_parent_aliases() {
     let temp = tempfile::tempdir().unwrap();
     let fonts = temp.path().join("fonts");
@@ -758,43 +847,51 @@ fn explicit_font_directory_protection_resolves_output_parent_aliases() {
     std::fs::write(fonts.join("existing.svg"), "previous output").unwrap();
     let alias = temp.path().join("font-view");
     #[cfg(unix)]
-    std::os::unix::fs::symlink(&fonts, &alias).unwrap();
+    std::os::unix::fs::symlink("fonts", &alias).unwrap();
     #[cfg(windows)]
-    if let Err(error) = std::os::windows::fs::symlink_dir(&fonts, &alias) {
+    if let Err(error) = std::os::windows::fs::symlink_dir("fonts", &alias) {
         if error.kind() == std::io::ErrorKind::PermissionDenied {
             return;
         }
         panic!("create directory alias: {error}");
     }
 
-    for output_name in ["font-view/existing.svg", "font-view/new.svg"] {
-        let output = support::run_before_stdin_close_in_dir(
-            &[
-                "render",
-                "-",
-                "--font-dir",
-                "fonts",
-                "--format",
-                "svg",
-                "--output",
-                output_name,
-            ],
-            Some(temp.path()),
-            std::time::Duration::from_secs(2),
-        );
-        assert!(!output.status.success());
-        assert!(output.stdout.is_empty());
-        let diagnostic = String::from_utf8_lossy(&output.stderr);
-        assert!(
-            diagnostic.contains("aliases protected font directory input"),
-            "expected canonical directory protection: {diagnostic}"
-        );
-        assert_eq!(std::fs::read(&font_path).unwrap(), original);
-        assert_eq!(
-            std::fs::read_to_string(fonts.join("existing.svg")).unwrap(),
-            "previous output"
-        );
-        assert!(!fonts.join("new.svg").exists());
+    for font_directory in ["fonts", "./font-view"] {
+        for output_name in [
+            "fonts/existing.svg",
+            "fonts/new.svg",
+            "font-view/existing.svg",
+            "font-view/new.svg",
+        ] {
+            let output = support::run_before_stdin_close_in_dir(
+                &[
+                    "render",
+                    "-",
+                    "--font-dir",
+                    font_directory,
+                    "--font-system=off",
+                    "--format",
+                    "svg",
+                    "--output",
+                    output_name,
+                ],
+                Some(temp.path()),
+                std::time::Duration::from_secs(2),
+            );
+            assert!(!output.status.success());
+            assert!(output.stdout.is_empty());
+            let diagnostic = String::from_utf8_lossy(&output.stderr);
+            assert!(
+                diagnostic.contains("aliases protected font directory input"),
+                "{font_directory}/{output_name}: expected canonical directory protection: {diagnostic}"
+            );
+            assert_eq!(std::fs::read(&font_path).unwrap(), original);
+            assert_eq!(
+                std::fs::read_to_string(fonts.join("existing.svg")).unwrap(),
+                "previous output"
+            );
+            assert!(!fonts.join("new.svg").exists());
+        }
     }
 }
 

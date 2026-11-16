@@ -39,6 +39,7 @@ mod system;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum FontSource {
     File(PathBuf),
+    /// Resolves root and ancestor aliases before bounded traversal. Discovered symlinks are skipped.
     Directory(PathBuf),
 }
 
@@ -152,7 +153,12 @@ impl NativeFontOptions {
             #[cfg(not(target_family = "wasm"))]
             match source {
                 FontSource::File(path) => loader.file(&path)?,
-                FontSource::Directory(path) => loader.directory(&path, 0)?,
+                FontSource::Directory(path) => {
+                    loader.checkpoint()?;
+                    let root =
+                        fs::canonicalize(&path).map_err(|error| source_error(&path, error))?;
+                    loader.directory(&root, 0)?;
+                }
             }
             #[cfg(target_family = "wasm")]
             match source {

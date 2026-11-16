@@ -179,7 +179,9 @@ verification rejects those experimental values and requires bounded discovery
 before layout.
 
 `--font-file` and `--font-dir` are repeatable and preserve argument order.
-Directories use bounded, stable traversal and skip discovered symlinks. Earlier
+Selected directory roots, including system font roots such as `~/.fonts`, resolve
+symlinks and ancestor aliases before scanning. Directory contents use bounded,
+stable traversal and skip discovered symlinks, including recursive links. Earlier
 equal family/style/weight faces take precedence. TTF, OTF, and TTC sources are
 supported; fonts are never fetched from a network. Font loading does not change
 Mermaid `fontFamily`: select your family in Mermaid configuration as well.
