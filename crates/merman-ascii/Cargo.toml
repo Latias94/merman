@@ -72,7 +72,7 @@ diagram-journey = ["merman-model/diagram-journey", "merman-core/diagram-journey"
 diagram-kanban = ["merman-model/diagram-kanban", "merman-core/diagram-kanban"]
 diagram-mindmap = ["merman-model/diagram-mindmap", "merman-core/diagram-mindmap"]
 diagram-packet = ["merman-model/diagram-packet", "merman-core/diagram-packet", "dep:ryu-js"]
-diagram-pie = ["merman-model/diagram-pie", "merman-core/diagram-pie"]
+diagram-pie = ["merman-model/diagram-pie", "merman-core/diagram-pie", "dep:ryu-js"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart", "merman-core/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "merman-core/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad", "merman-core/diagram-railroad"]
@@ -114,6 +114,10 @@ required-features = ["diagram-agentflow"]
 [[test]]
 name = "requirement_model"
 required-features = ["diagram-requirement"]
+
+[[test]]
+name = "pie_model"
+required-features = ["diagram-pie"]
 
 [[test]]
 name = "class_model"

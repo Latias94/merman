@@ -24,6 +24,8 @@ mod block;
 mod graph;
 #[cfg(feature = "diagram-packet")]
 mod packet;
+#[cfg(feature = "diagram-pie")]
+mod pie;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
@@ -32,6 +34,7 @@ mod packet;
     feature = "diagram-er",
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
+    feature = "diagram-pie",
     feature = "diagram-requirement",
     feature = "diagram-block"
 ))]
@@ -948,6 +951,10 @@ fn build_semantic_document(
     let packet_document = packet::write_if_packet(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-packet"))]
     let packet_document = false;
+    #[cfg(feature = "diagram-pie")]
+    let pie_document = pie::write_if_pie(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-pie"))]
+    let pie_document = false;
     #[cfg(feature = "diagram-usecase")]
     let usecase_document = usecase::write_if_usecase(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-usecase"))]
@@ -968,6 +975,7 @@ fn build_semantic_document(
     if !graph_document
         && !relation_document
         && !packet_document
+        && !pie_document
         && !usecase_document
         && !block_document
         && !agentflow_document
@@ -993,7 +1001,11 @@ fn build_semantic_document(
 }
 
 /// Encodes complete family-owned records, optionally following an admitted plain topology.
-#[cfg(any(feature = "diagram-agentflow", feature = "diagram-requirement"))]
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement",
+    feature = "diagram-pie"
+))]
 pub(crate) fn render_reading_primary(
     model: &AsciiDiagram<'_>,
     source: AsciiSourceContext<'_>,
@@ -1023,6 +1035,11 @@ pub(crate) fn render_reading_primary(
             records.push("Requirement records".to_string())?;
             requirement::write_if_requirement(model, &projection, &mut records)?;
         }
+        #[cfg(feature = "diagram-pie")]
+        AsciiDiagram::Pie(_) => {
+            records.push("Pie data".to_string())?;
+            pie::write_if_pie(model, &projection, &mut records)?;
+        }
         _ => {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "graph",
@@ -1039,9 +1056,7 @@ pub(crate) fn render_reading_primary(
     );
     if let Some(topology) = topology.filter(|text| !text.is_empty()) {
         for line in topology.lines() {
-            // This prefix is an already painted canvas. Its right padding is presentation,
-            // unlike spaces retained inside the quoted records below.
-            document.push_line(line.trim_end_matches(' '))?;
+            document.push_line(line)?;
         }
         document.push_line("")?;
     }

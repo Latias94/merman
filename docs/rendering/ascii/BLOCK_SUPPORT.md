@@ -119,7 +119,7 @@ records using the requested Unicode or CJK width profile.
 
 ## Evidence
 
-`tests/block_model.rs` covers small, typical, dense and CJK parser-backed fixtures
+`crates/merman-ascii/tests/block_model.rs` covers small, typical, dense and CJK parser-backed fixtures
 at 80/100/120 columns in ASCII/Unicode and both width profiles; source order,
 spans, spacers, nesting, marker/stroke distinctions, visible shape roles,
 malformed direct models, exact output-byte admission, resource limits,
@@ -133,7 +133,7 @@ aggregate byte boundary. Positioned-graph unit tests compare all admitted shape
 sizes and replayed labels with the existing eager text/shape rules, including
 both annotation forms, hard breaks, CJK/emoji, empty frame titles, and unchanged
 fixed coordinates. Fixtures live in
-`tests/testdata/local-semantic/block/`.
+`crates/merman-ascii/tests/testdata/local-semantic/block/`.
 
 Main integration runs these checks serially with the workspace's normal target:
 

@@ -1679,6 +1679,8 @@ fn ascii_diagram_from_full(
         ),
         #[cfg(feature = "diagram-packet")]
         RenderSemanticModel::Packet(model) => AsciiDiagram::Packet(model),
+        #[cfg(feature = "diagram-pie")]
+        RenderSemanticModel::Pie(model) => AsciiDiagram::Pie(model),
         #[cfg(feature = "diagram-requirement")]
         RenderSemanticModel::Requirement(model) => AsciiDiagram::Requirement(model),
         #[cfg(feature = "diagram-sequence")]

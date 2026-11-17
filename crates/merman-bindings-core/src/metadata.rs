@@ -2083,6 +2083,7 @@ mod tests {
                     "kanban",
                     "mindmap",
                     "packet",
+                    "pie",
                     "requirement",
                     "sequence",
                     "state",
@@ -2153,12 +2154,35 @@ mod tests {
         assert!(class.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
                 && evidence.source
-                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
+                    == "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         let er = ascii_capability(&capabilities, "er");
         assert_eq!(er.support_level, "partial");
         assert!(er.structured_text_fallback);
+
+        let pie = ascii_capability(&capabilities, "pie");
+        assert_eq!(pie.semantic_coverage, Some("partial"));
+        assert_eq!(pie.primary_projection, "diagrammatic");
+        assert_eq!(pie.support_level, "partial");
+        assert!(pie.structured_text_fallback);
+        assert_eq!(pie.layout_profiles, ["canonical"]);
+        assert_eq!(pie.graph_presentations, ["strict"]);
+        assert_eq!(pie.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            pie.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(pie.fallback_encodings, ["plain"]);
+        assert!(pie.evidence.iter().any(|evidence| {
+            evidence.kind == "local_semantic_probe"
+                && evidence.source == "crates/merman-ascii/tests/pie_model.rs"
+        }));
+        assert!(
+            pie.evidence
+                .iter()
+                .any(|evidence| { evidence.source == "docs/rendering/ascii/PIE_SUPPORT.md" })
+        );
 
         let requirement = ascii_capability(&capabilities, "requirement");
         assert_eq!(requirement.semantic_coverage, Some("partial"));
@@ -2182,7 +2206,7 @@ mod tests {
         }));
         assert!(
             requirement.evidence.iter().any(|evidence| {
-                evidence.source == "crates/merman-ascii/REQUIREMENT_SUPPORT.md"
+                evidence.source == "docs/rendering/ascii/REQUIREMENT_SUPPORT.md"
             })
         );
 
@@ -2213,7 +2237,7 @@ mod tests {
         assert!(xychart.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
                 && evidence.source
-                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
+                    == "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         assert_eq!(capabilities.len(), 34);

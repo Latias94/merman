@@ -46,14 +46,14 @@ Empty models retain their complete records without inventing a spatial scene.
 
 ## Evidence and references
 
-`tests/requirement_model.rs` owns parser-backed traceability, complete fields, direction, identity,
+`crates/merman-ascii/tests/requirement_model.rs` owns parser-backed traceability, complete fields, direction, identity,
 encoding, viewport, resource, and cancellation behavior. The independent graph route oracle checks
 both canonical axes and structural charsets, including all eight edges and both shared targets in
 the larger upstream example. `output/requirement.rs` owns the complete serialized record boundary.
 
 The historical R34 prototype duplicated shared nodes and was rejected. The current graph resolves
 that failure; its small/typical/dense reading floor is recorded in the
-[phase admission report](../../docs/rendering/ASCII_PHASE_GATE_REPORT.md#requirement-spatial-admission).
+[phase admission report](../ASCII_PHASE_GATE_REPORT.md#requirement-spatial-admission).
 Dense routing remains best effort, and records add vertical reading cost. This is Partial support,
 not an arbitrary-graph readability guarantee.
 

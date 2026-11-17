@@ -728,6 +728,99 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-pie")]
+    fn pie_binding_reports_keep_actual_projection_and_complete_keyed_records() {
+        for (dogs, cats, primary_projection) in
+            [(386, 85, "diagrammatic"), (0, 0, "structured_text")]
+        {
+            let source = format!("pie showData\ntitle Pets\n\"Dogs\": {dogs}\n\"Cats\": {cats}\n");
+            for width in [10, 20, 80] {
+                let options = serde_json::json!({
+                    "ascii": {
+                        "maxWidth": width,
+                        "overflow": "fallback",
+                        "colorMode": "plain",
+                        "graphPresentation": "strict",
+                    },
+                });
+                let result = crate::render_ascii_result(
+                    source.as_bytes(),
+                    &serde_json::to_vec(&options).unwrap(),
+                )
+                .unwrap();
+                let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+                else {
+                    panic!("Pie ASCII result must retain its canonical plan");
+                };
+                assert_eq!(plan.family(), "pie");
+                assert_eq!(plan.schema_version(), 4);
+                assert_eq!(plan.encoding(), "plain");
+                assert_eq!(plan.layout_profile(), Some("canonical"));
+                assert_eq!(plan.requested_graph_presentation(), "strict");
+                assert_eq!(plan.requested_max_width(), Some(width));
+                assert!(!plan.compact_attempted());
+                assert_eq!(plan.fallback_capability(), "available");
+                assert_eq!(plan.fallback_attempted(), width < 80);
+                assert_eq!(
+                    plan.fallback_reason(),
+                    if width < 80 {
+                        Some("primary_overflow")
+                    } else {
+                        None
+                    }
+                );
+                assert_eq!(plan.primary_overflowed(), Some(width < 80));
+                assert_eq!(
+                    plan.outcome(),
+                    if width < 80 { "fallback" } else { "primary" }
+                );
+                assert_eq!(
+                    plan.projection(),
+                    if width < 80 {
+                        "structured_text"
+                    } else {
+                        primary_projection
+                    }
+                );
+                assert!(!plan.emitted_overflowed());
+                assert!(plan.emitted_width() <= width);
+                assert_eq!(
+                    plan.lossiness(),
+                    if width < 80 && primary_projection == "diagrammatic" {
+                        "presentation_only"
+                    } else {
+                        "none"
+                    }
+                );
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(result.metadata_json()).unwrap();
+                assert_eq!(metadata["output_plan"]["family"], "pie");
+                assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+                assert_eq!(metadata["output_plan"]["outcome"], plan.outcome());
+                let text = std::str::from_utf8(result.data()).unwrap();
+                assert!(!text.contains('\u{1b}'));
+                let compact: String = text.split_whitespace().collect();
+                for expected in [
+                    format!("P1label=\"Dogs\"value={dogs}"),
+                    format!("P2label=\"Cats\"value={cats}"),
+                    "Pets".to_string(),
+                ] {
+                    assert!(compact.contains(&expected), "missing {expected:?}: {text}");
+                }
+                assert!(compact.find("P1label=").unwrap() < compact.find("P2label=").unwrap());
+            }
+        }
+
+        let error = render_ascii(
+            b"pie\ntitle Pets\n\"Dogs\": 386\n\"Cats\": 85\n",
+            br#"{"ascii":{"graphPresentation":"adaptive","colorMode":"plain"}}"#,
+        )
+        .expect_err("Pie admits only Strict graph presentation");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("graph_presentation"), "{error:?}");
+    }
+
+    #[test]
     #[cfg(feature = "diagram-requirement")]
     fn requirement_binding_reports_keep_primary_records_and_complete_width_fallback() {
         let source = concat!(

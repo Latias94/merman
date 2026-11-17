@@ -82,18 +82,23 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart, Usecase, Block, Agentflow, Requirement | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, Pie, XYChart, Usecase, Block, Agentflow, Requirement | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
 | Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Agentflow uses role-labelled spatial nodes and expanded flow frames for its admitted subset.
 Rich metadata, collapsed views, and ambiguous containment use complete keyed reading records as
 an explicitly reported StructuredText primary. Sequence, headless reference, and failure relationships
-remain distinct. See [Agentflow support](AGENTFLOW_SUPPORT.md) for the semantic boundary.
+remain distinct. See [Agentflow support](../../docs/rendering/ascii/AGENTFLOW_SUPPORT.md) for the semantic boundary.
 
 Requirement combines a shared-endpoint traceability graph with complete keyed node and relation
 records. Contains marks the source; other relation kinds retain dotted target arrows. Ambiguous
 names and unresolved references use explicit StructuredText primaries. See
-[Requirement support](REQUIREMENT_SUPPORT.md) for the field and presentation boundary.
+[Requirement support](../../docs/rendering/ascii/REQUIREMENT_SUPPORT.md) for the field and presentation boundary.
+
+Pie presents proportions as independent bars on one shared 0–100% scale, with complete keyed
+labels and exact values. Tiny positive categories retain an explicit marker; undefined
+distributions use StructuredText primaries. See [Pie support](../../docs/rendering/ascii/PIE_SUPPORT.md)
+for the rounding, numeric, and presentation boundary.
 
 Mindmap puts labels and hierarchy first. Distinct authored IDs, shapes, icons, and custom sections
 appear in a separate `Details:` block, referenced from the corresponding node. The standard
@@ -127,7 +132,7 @@ primary output with Strict graph presentation, while structured viewport fallbac
 `AsciiGraphPresentation::Strict` is the default. Adaptive is Plain-only and admitted only for
 Agentflow, Flowchart, Requirement, Swimlane, and State; other supported families expose Strict only. Styled Adaptive requests
 are rejected before routing, even if the input would fit. Other Mermaid families return
-`AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+`AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. The [ASCII documentation index](../../docs/rendering/ascii/README.md) links family support notes, design comparisons, and maintained evidence.
 
 Packet uses two cells per bit for integer `packet.bitsPerRow` in `1..=64`, with full field records
 after the grid. Source rendering honors `bitsPerRow`, `bitOrder`, and `showBits`; detached models
@@ -320,7 +325,7 @@ The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/R
 small-graph oracle, compound tests, and family tests define finite acceptance cases. Current-source
 recovery checks live in [adaptive_graph.rs](tests/adaptive_graph.rs) and the fixed dense-input owner
 [scene_planning_corpus.rs](tests/scene_planning_corpus.rs); these are separate from the historical
-[reference comparison](ASCII_REFERENCE_COMPARISON.md).
+[reference comparison](../../docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md).
 The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
 also checks State/Swimlane selection, logical identity, complete fields and measured extents across
 60/80/100/120 columns in both character sets and width profiles.

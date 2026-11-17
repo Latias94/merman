@@ -76,7 +76,7 @@ Required route or label search exhaustion returns `AsciiError::RoutingSearchExha
 authored edge index. Independent marker demand above the current fixed presentation's capacity
 upper bound returns `AsciiError::PortCapacityExceeded`. These diagnostics do not establish that
 other layouts are impossible and do not trigger structured width fallback. See the
-[graph presentation boundary](README.md#graph-presentation-boundary).
+[graph presentation boundary](../../../crates/merman-ascii/README.md#graph-presentation-boundary).
 
 ## `beautiful-mermaid` Delta Triage
 
@@ -96,7 +96,7 @@ reference implementation is only an implementation aid.
 | ANSI/HTML color roles | Ported | ADR 0067 added an opt-in color API, and flowchart now assigns semantic foreground/background roles after layout. | Covered by `flowchart_color_truecolor_emits_semantic_roles_without_changing_plain_text`, `flowchart_color_html_wraps_subgraph_roles_without_changing_plain_text`, and `flowchart_color_truecolor_preserves_roles_after_horizontal_mirror`. |
 | `classDef`, `class`, inline node styles, and `linkStyle` colors | Ported subset | The typed model preserves class/style/linkStyle declarations. The ASCII renderer maps safe terminal semantics: node/subgraph `color` to text/title, node/subgraph `stroke` to borders, node/subgraph `fill`/`background` to ANSI/HTML backgrounds, edge `stroke` to line/arrow foreground, and edge `color` to labels. | Covered by parser-backed `flowchart_style_color_*` tests. |
 | State diagram graph rendering | Split to state adapter | `stateDiagram` uses a different typed model, not `FlowchartModel`; it now renders through the state-to-graph adapter rather than the flowchart adapter. | See `STATE_SUPPORT.md`. |
-| Additional uncommon flowchart shapes | Ported subset | One projection registry assigns every pinned Mermaid shape name an implemented, approximate, annotated, or unsupported terminal disposition. Known annotated families retain a visible role in a measured compartment instead of silently becoming ordinary rectangles. Icon/image metadata uses complete terminal-safe text. Cross-family boxes, BPMN, and remaining rich object shapes remain explicit errors. | Parser-backed alias, asset identity, route/label, terminal safety, and cell-alignment regressions in `tests/flowchart_model/shapes.rs`; projection resource and output contracts. |
+| Additional uncommon flowchart shapes | Ported subset | One projection registry assigns every pinned Mermaid shape name an implemented, approximate, annotated, or unsupported terminal disposition. Known annotated families retain a visible role in a measured compartment instead of silently becoming ordinary rectangles. Icon/image metadata uses complete terminal-safe text. Cross-family boxes, BPMN, and remaining rich object shapes remain explicit errors. | Parser-backed alias, asset identity, route/label, terminal safety, and cell-alignment regressions in `crates/merman-ascii/tests/flowchart_model/shapes.rs`; projection resource and output contracts. |
 
 ## Known Limitations
 
@@ -201,7 +201,7 @@ The support boundary is covered by:
 Golden tests compare against immutable copied `mermaid-ascii` fixtures for the supported subset. The
 current corpus has 79 graph fixtures: 28 exact upstream matches, seven strict corrected compound
 snapshots, two strict local wire-style snapshots, and 42 named deterministic layout/route differences.
-The [fixture inventory](tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md) owns these dispositions;
+The [fixture inventory](../../../crates/merman-ascii/tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md) owns these dispositions;
 all cases must render and preserve their admitted text and parser-backed semantic contracts.
 The viewport characterization matrix additionally exercises canonical/compact, ASCII/Unicode,
 Unicode/CJK width profiles, Plain/ANSI16/ANSI256/TrueColor/HTML geometry parity, and

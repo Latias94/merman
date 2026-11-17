@@ -223,6 +223,82 @@ fn packet_facade_retains_source_geometry_policy_and_actual_projection() {
     }
 }
 
+#[cfg(all(feature = "presentation", feature = "diagram-pie"))]
+#[test]
+fn pie_ascii_matches_canonical_and_presentation_records_and_projection() {
+    for (dogs, cats, primary_projection) in [(386, 85, "diagrammatic"), (0, 0, "structured_text")] {
+        let source = format!("pie showData\ntitle Pets\n\"Dogs\": {dogs}\n\"Cats\": {cats}\n");
+        let renderer = Renderer::new();
+        for width in [10, 20, 80] {
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let semantic = renderer
+                .parse_semantic(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let presentation = renderer
+                .prepare_presentation(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical Pie ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation Pie ASCII output");
+            };
+            assert_eq!(canonical.text, full.text, "width {width}: {source}");
+            assert_eq!(canonical.report(), full.report());
+            assert_eq!(full.family, "pie");
+            assert_eq!(full.encoding.as_str(), "plain");
+            assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+            assert!(!full.compact_attempted);
+            assert_eq!(full.fallback.attempted, width < 80);
+            assert_eq!(full.primary_overflowed, Some(width < 80));
+            assert_eq!(
+                full.outcome,
+                if width < 80 {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+            assert_eq!(
+                full.projection.as_str(),
+                if width < 80 {
+                    "structured_text"
+                } else {
+                    primary_projection
+                }
+            );
+            assert!(!full.emitted_overflowed);
+            assert!(full.emitted_extent.width <= width);
+            let compact: String = full.text.split_whitespace().collect();
+            for expected in [
+                format!("P1label=\"Dogs\"value={dogs}"),
+                format!("P2label=\"Cats\"value={cats}"),
+                "Pets".to_string(),
+            ] {
+                assert!(
+                    compact.contains(&expected),
+                    "missing {expected:?}: {}",
+                    full.text
+                );
+            }
+            assert!(compact.find("P1label=").unwrap() < compact.find("P2label=").unwrap());
+        }
+    }
+}
+
 #[cfg(all(feature = "presentation", feature = "diagram-requirement"))]
 #[test]
 fn requirement_ascii_matches_canonical_and_presentation_records_and_projection() {

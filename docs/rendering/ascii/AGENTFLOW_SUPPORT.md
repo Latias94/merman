@@ -53,10 +53,10 @@ configuration, and titles remain complete records as well.
 
 ## Evidence and reference scope
 
-`tests/agentflow_model.rs` owns parser-backed roles, operators, containment, metadata, viewport,
-resource, and cancellation controls. `src/output/agentflow.rs` checks complete raw-envelope records,
+`crates/merman-ascii/tests/agentflow_model.rs` owns parser-backed roles, operators, containment, metadata, viewport,
+resource, and cancellation controls. `crates/merman-ascii/src/output/agentflow.rs` checks complete raw-envelope records,
 identity overlap, exact resource admission, and cancellation. The independent route oracle in
-`src/graph/routing/tests/generated.rs` checks the three operators' contacts, markers, continuity,
+`crates/merman-ascii/src/graph/routing/tests/generated.rs` checks the three operators' contacts, markers, continuity,
 and final paint in both canonical directions and structural character sets.
 
 The pinned Mermaid Agentflow implementation and syntax guide supply semantic evidence.

@@ -61,6 +61,8 @@ pub enum AsciiDiagram<'a> {
     Mindmap(merman_model::families::mindmap::MindmapTerminalView<'a>),
     #[cfg(feature = "diagram-packet")]
     Packet(&'a merman_model::families::packet::PacketDiagramModel),
+    #[cfg(feature = "diagram-pie")]
+    Pie(&'a merman_model::families::pie::PieDiagramModel),
     #[cfg(feature = "diagram-requirement")]
     Requirement(&'a merman_model::families::requirement::RequirementDiagramModel),
     #[cfg(feature = "diagram-sequence")]
@@ -142,6 +144,8 @@ impl<'a> AsciiDiagram<'a> {
             ),
             #[cfg(feature = "diagram-packet")]
             SemanticDiagramModel::Packet(model) => Self::Packet(model),
+            #[cfg(feature = "diagram-pie")]
+            SemanticDiagramModel::Pie(model) => Self::Pie(model),
             #[cfg(feature = "diagram-requirement")]
             SemanticDiagramModel::Requirement(model) => Self::Requirement(model),
             #[cfg(feature = "diagram-sequence")]
@@ -191,6 +195,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Mindmap(_) => "mindmap",
             #[cfg(feature = "diagram-packet")]
             Self::Packet(_) => "packet",
+            #[cfg(feature = "diagram-pie")]
+            Self::Pie(_) => "pie",
             #[cfg(feature = "diagram-requirement")]
             Self::Requirement(_) => "requirement",
             #[cfg(feature = "diagram-sequence")]
@@ -260,6 +266,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Mindmap(model) => model.complexity(),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-pie")]
+            Self::Pie(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-requirement")]
             Self::Requirement(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-sequence")]
@@ -330,6 +338,8 @@ impl Serialize for AsciiDiagram<'_> {
             Self::Mindmap(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-pie")]
+            Self::Pie(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-requirement")]
             Self::Requirement(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-sequence")]

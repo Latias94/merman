@@ -86,6 +86,8 @@ mod options;
 mod output;
 #[cfg(feature = "diagram-packet")]
 mod packet;
+#[cfg(feature = "diagram-pie")]
+mod pie;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 #[cfg_attr(
     not(all(feature = "diagram-class", feature = "diagram-er")),
@@ -395,6 +397,8 @@ impl AsciiRenderer {
             AsciiDiagram::Packet(packet) => {
                 packet::primary_projection(packet, Some(metadata.semantic_config), execution)?
             }
+            #[cfg(feature = "diagram-pie")]
+            AsciiDiagram::Pie(model) => pie::primary_projection(model, execution)?,
             _ => output::projection_for(capability),
         };
         let fallback_capability = capability.is_some_and(|capability| {
@@ -405,6 +409,8 @@ impl AsciiRenderer {
             AsciiDiagram::Agentflow(_) => projection == AsciiProjection::StructuredText,
             #[cfg(feature = "diagram-requirement")]
             AsciiDiagram::Requirement(_) => true,
+            #[cfg(feature = "diagram-pie")]
+            AsciiDiagram::Pie(_) => true,
             _ => false,
         };
         let output_context = output::OutputBuildContext {
@@ -604,6 +610,8 @@ fn render_model_with_execution(
         AsciiDiagram::Packet(model) => {
             render_packet_model(model, options, Some(_source.semantic_config), &execution)
         }
+        #[cfg(feature = "diagram-pie")]
+        AsciiDiagram::Pie(model) => pie::render(model, options, _source, execution),
         #[cfg(feature = "diagram-sequence")]
         AsciiDiagram::Sequence(model) => {
             render_sequence_model(model, options, policies.layout.sequence, &execution)

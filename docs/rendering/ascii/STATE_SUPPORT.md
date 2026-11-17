@@ -37,7 +37,7 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 Required shared-planner search exhaustion returns `AsciiError::RoutingSearchExhausted`, including
 the authored edge index. Fixed-presentation marker capacity failures use
 `AsciiError::PortCapacityExceeded`. These are separate from unsupported state semantics and do not
-trigger width fallback; see the [graph presentation boundary](README.md#graph-presentation-boundary).
+trigger width fallback; see the [graph presentation boundary](../../../crates/merman-ascii/README.md#graph-presentation-boundary).
 
 The shared planner measures cyclic compound-scope return-lane demand before searching routes. Label
 widths, overlapping returns, local directions, and container margins participate in the same
@@ -93,14 +93,14 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii --features diagram-state --test state_model -j 2`
 - `cargo nextest run -p merman-ascii --all-features -j 2`
 
-The parser-backed state tests live in `tests/state_model.rs` and exercise the public `render_model`
+The parser-backed state tests live in `crates/merman-ascii/tests/state_model.rs` and exercise the public `render_model`
 path from Mermaid text through `merman-core` into `merman-ascii`. Region coverage includes empty
 sections, intermediate-region skip edges, feedback, independent merge heads, and nested concurrency
 with distinct start/end pseudo states.
 Canonical density coverage checks short forward/reverse lifecycles, explicit legacy spacing and
 the CJK compound lifecycle across both character sets and width conventions, retaining all nine
 transition heads and the ordered internal states.
-`tests/graph_family_viewports.rs` additionally checks Canonical-only State viewport selection,
+`crates/merman-ascii/tests/graph_family_viewports.rs` additionally checks Canonical-only State viewport selection,
 complete note/condition fields, logical family identity and independent display-cell measurements
 at 60/80/100/120 columns through the public parsed-report entrypoint. The single-region return
 also remains a complete primary diagram at 20 columns, with no profile switch, fallback, lost

@@ -42,6 +42,7 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "er",
     "flowchart",
     "packet",
+    "pie",
     "requirement",
     "sequence",
     "state",

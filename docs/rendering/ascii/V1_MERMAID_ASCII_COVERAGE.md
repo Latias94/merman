@@ -19,7 +19,7 @@ The tracked graph copy also includes the later upstream no-whitespace edge fixtu
 `tight_arrow.txt` and `tight_arrow_mixed.txt`, copied from local `repo-ref/mermaid-ascii` commit
 `876b5b4` after upstream renamed those cases.
 
-`tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv` binds the baseline tree, supplemental blobs,
+`crates/merman-ascii/tests/testdata/mermaid-ascii/SOURCE_PROVENANCE.tsv` binds the baseline tree, supplemental blobs,
 and all tracked bytes. Of the 96 tracked files, 88 remain byte-identical to their recorded source;
 eight historical transformations are enumerated with both source and tracked SHA-256 digests. This
 is a provenance disclosure, not permission to refresh the snapshot again.
@@ -43,7 +43,7 @@ Summary:
 - Sequence copied fixture parity: 17 / 17.
 
 The graph differences are enumerated in
-`tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md`. Every named case must still render, and
+`crates/merman-ascii/tests/testdata/mermaid-ascii/GRAPH_FIXTURE_GAPS.md`. Every named case must still render, and
 parser-backed semantic tests separately protect nodes, edges, labels, directions, and compound
 ownership. A named difference is not permission to lose Mermaid facts or return a resource error.
 

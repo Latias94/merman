@@ -12,7 +12,7 @@ pub(super) enum RecordPart<'a> {
         not(feature = "all-diagrams"),
         allow(
             dead_code,
-            reason = "Block writes dynamic quoted fields through RecordWriter"
+            reason = "Some families write dynamic quoted fields through RecordWriter"
         )
     )]
     Quoted(&'a str),

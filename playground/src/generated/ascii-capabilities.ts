@@ -53,7 +53,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "support_matrix",
-        "source": "crates/merman-ascii/AGENTFLOW_SUPPORT.md",
+        "source": "docs/rendering/ascii/AGENTFLOW_SUPPORT.md",
         "note": "family-owned spatial admission and complete keyed reading records"
       }
     ]
@@ -130,7 +130,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "support_matrix",
-        "source": "crates/merman-ascii/BLOCK_SUPPORT.md",
+        "source": "docs/rendering/ascii/BLOCK_SUPPORT.md",
         "note": "family-owned fixed-grid support and diagnostic boundaries"
       }
     ]
@@ -215,7 +215,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "class compartments, annotations, and relationship coverage are capability prior art"
       },
       {
@@ -235,7 +235,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
         "note": "shared relation_graph gap owner records routed and summary boundaries"
       }
     ]
@@ -321,7 +321,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "ER attributes, relationships, and cardinalities are capability prior art"
       },
       {
@@ -341,7 +341,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
         "note": "shared relation_graph gap owner records routed and summary boundaries"
       }
     ]
@@ -426,12 +426,12 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "graph ASCII shape and disconnected-layout tests are capability prior art"
       },
       {
         "kind": "local_advantage",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
         "note": "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability"
       },
       {
@@ -828,25 +828,58 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "pie",
-    "display_name": "pie",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Pie",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "family-owned percent bars on one shared 0..100% scale with 50 terminal cells",
+      "all categories in source order with stable P1, P2, and subsequent reading keys",
+      "complete keyed labels and exact numeric values, including non-finite direct-model values",
+      "showData controls raw values beside bars; exact values always remain in records",
+      "title, accessibility metadata, source title, and source configuration in records",
+      "upstream first-duplicate-label wins for parsed input; direct-model duplicates retain separate keys",
+      "complete keyed reading records for non-spatial data and narrow width fallback"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "percent bars approximate Pie proportions rather than browser slice geometry",
+      "diagrammatic admission requires nonempty finite nonnegative values with a positive total",
+      "empty, all-zero, non-finite, or negative data use complete StructuredText primaries with an explicit reason",
+      "positive values quantized below one bar cell are explicitly marked; no category is filtered",
+      "narrow fallback reflows complete keyed records without truncation and requires Plain encoding",
+      "only Canonical layout and Strict graph presentation are admitted"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/pie_model.rs",
+        "note": "parser-backed percent bars, exact records, direct-model admission, viewports, encodings, and resource coverage"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/PIE_SUPPORT.md",
+        "note": "family-owned percent-bar admission and complete keyed Pie reading records"
       }
     ]
   },
@@ -975,7 +1008,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "support_matrix",
-        "source": "crates/merman-ascii/REQUIREMENT_SUPPORT.md",
+        "source": "docs/rendering/ascii/REQUIREMENT_SUPPORT.md",
         "note": "family-owned spatial admission and complete keyed Requirement reading records"
       }
     ]
@@ -1059,7 +1092,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "sequence parser and block-layout cases are capability prior art"
       },
       {
@@ -1113,7 +1146,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "state-oriented ASCII shape ideas are prior art, not a byte oracle"
       },
       {
@@ -1123,7 +1156,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-state-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-state-010",
         "note": "remaining state presentation metadata is explicitly tracked"
       }
     ]
@@ -1184,12 +1217,12 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "graph ASCII shape and disconnected-layout tests are capability prior art"
       },
       {
         "kind": "local_advantage",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
         "note": "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability"
       },
       {
@@ -1378,7 +1411,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "support_matrix",
-        "source": "crates/merman-ascii/USECASE_SUPPORT.md",
+        "source": "docs/rendering/ascii/USECASE_SUPPORT.md",
         "note": "family-owned role projection and bounded route admission"
       }
     ]
@@ -1483,7 +1516,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "XYChart ASCII and legend behavior are capability prior art"
       },
       {
@@ -1493,7 +1526,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
         "note": "shared line topology retains sample ownership; terminal quantization, dense bars, and marker reuse remain explicit compact-layout limits"
       }
     ]

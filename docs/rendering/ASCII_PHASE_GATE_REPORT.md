@@ -14,7 +14,7 @@ This extension changes neither the historical family-admission decisions below n
 Sequence, quantitative, or StructuredText family ownership. Policy and schema 4 migration belong
 to the [support matrix](ASCII_SUPPORT_MATRIX.md), scheduling admission to the
 [resource audit](ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning), and qualified reference
-comparisons to the [comparison note](../../crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#scene-planning-and-explicit-recovery).
+comparisons to the [comparison note](ascii/ASCII_REFERENCE_COMPARISON.md#scene-planning-and-explicit-recovery).
 These current owners supersede older strict-only planning descriptions without changing the
 source identity of historical receipts.
 
@@ -57,7 +57,7 @@ The evidence boundary is:
   graph and sequence byte oracle;
 - local moving-reference inspection at
   `b1b35f67d6a5dd0699ccfc968c00a763db573076`, classified in
-  `crates/merman-ascii/ASCII_MOVING_REFERENCE_MANIFEST.md` rather than used as a release oracle;
+  `docs/rendering/ascii/ASCII_MOVING_REFERENCE_MANIFEST.md` rather than used as a release oracle;
 - `beautiful-mermaid` commit `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488` for capability prior art
   only; and
 - tracked local parser/model, semantic, resource, capability, and fixture-inventory tests for the
@@ -96,8 +96,8 @@ non-authoritative and are not substitutes for that receipt.
 The moving-reference lane records each uniquely identified path with validity, admission, semantic
 feature, and evidence dispositions. The TSV authority owns the row set and derived counts. The
 copied oracle remains immutable. The complete comparison policy and exact copied-oracle counts live
-in `crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md` and
-`crates/merman-ascii/V1_MERMAID_ASCII_COVERAGE.md`.
+in `docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md` and
+`docs/rendering/ascii/V1_MERMAID_ASCII_COVERAGE.md`.
 
 ## Original StructuredText Dispositions
 
@@ -395,7 +395,7 @@ kinds use dotted target arrows. The circle approximates Mermaid's circled plus. 
 or kinds, ambiguous names, unresolved endpoints, and empty models select honest StructuredText
 primaries. Bounded routing failures remain Strict diagnostics or Plain Adaptive record recovery.
 
-`tests/requirement_model.rs` requires small, typical, and dense sources to remain Diagrammatic
+`crates/merman-ascii/tests/requirement_model.rs` requires small, typical, and dense sources to remain Diagrammatic
 Primary at 80, 100, and 120 columns, in ASCII and Unicode. The small verification pair keeps node
 fields inspectable; the typical three-node view shows containment and a shared verified target;
 the dense source is the same upstream larger example used by R34. Its two convergences are now
@@ -421,9 +421,37 @@ local completion diagnostic, not an official Trident ranking or a family-quality
 
 The map adds spatial traceability and vertical reading cost; the records remain the shorter audit
 view. Admission does not claim arbitrary dense-graph readability or a browser-shaped requirement
-box. The [Requirement support note](../../crates/merman-ascii/REQUIREMENT_SUPPORT.md) owns the current
+box. The [Requirement support note](ascii/REQUIREMENT_SUPPORT.md) owns the current
 field, identity, encoding, viewport, and resource boundary. Existing defaults and graph planning
 allowances are unchanged. Neither accepted terminal reference supplies a Requirement quality oracle.
+
+## Pie Proportion Admission
+
+Admitted: 2026-11-17, against canonical Pie sections and selected Mermaid `12.3.0` semantics.
+The explicitly named **Pie proportions** view uses independent bars on one 0–100% scale instead
+of circular geometry. Source order, zero and tiny sections, and the denominator of all values
+remain intact. Complete keyed labels, exact numeric values, and metadata follow the chart.
+
+The parser-backed small, typical, and dense cases in
+`crates/merman-ascii/tests/pie_model.rs` remain Diagrammatic Primary in both structural charsets
+at every required width. Actual CLI output includes the complete records in these measurements:
+
+| Source and reading task | Complete record baseline | 80 columns | 100 columns | 120 columns |
+| --- | --- | --- | --- | --- |
+| Small: compare Dogs and Cats | 75 × 6 | 75 × 14 | 75 × 14 | 75 × 14 |
+| Typical: compare Read/Write/Delete with `showData` | 75 × 7 | 75 × 16 | 75 × 16 | 75 × 16 |
+| Dense: eleven categories including tiny and zero values | 75 × 15 | 75 × 33 | 75 × 33 | 75 × 33 |
+
+The fixed scale makes relative magnitudes visible while the record baseline remains shorter.
+Independent filled-cell checks bound quantization error to half a cell and require common bar
+origins. Exact integer threshold comparisons cover ties and their adjacent binary64 values,
+subnormals, accumulator carry, and totals that would overflow f64. Empty, all-zero, negative, or
+non-finite borrowed models use complete StructuredText primaries with an explicit reason.
+
+The [Pie support note](ascii/PIE_SUPPORT.md) owns label, numeric, metadata, encoding, viewport,
+and resource details. Existing budgets remain unchanged. The inspected `mermaid-ascii` references
+provide no Pie output oracle. Trident label/completion replays do not independently prove this
+bar-and-record view's proportional fidelity; executable geometry checks own that claim.
 
 <a id="ishikawa-r34"></a>
 ## Ishikawa R34 Disposition

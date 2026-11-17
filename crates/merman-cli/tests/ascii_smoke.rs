@@ -438,6 +438,126 @@ fn agentflow_reports_distinguish_spatial_records_and_complete_width_fallback() {
     }
 }
 
+#[cfg(feature = "diagram-pie")]
+#[test]
+fn pie_cli_capabilities_admit_only_canonical_strict_output_and_plain_fallback() {
+    let output = run_with_stdin(&["capabilities", "--json"], "");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let capabilities: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let ascii = &capabilities["ascii"];
+    let pie = ascii["families"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|family| family["family"] == "pie")
+        .expect("Pie should be in the total ASCII capability matrix");
+    assert_eq!(pie["support_level"], "partial");
+    assert_eq!(pie["semantic_coverage"], "partial");
+    assert_eq!(pie["primary_projection"], "diagrammatic");
+    assert_eq!(pie["structured_text_fallback"], true);
+    assert_eq!(pie["layout_profiles"], serde_json::json!(["canonical"]));
+    assert_eq!(pie["graph_presentations"], serde_json::json!(["strict"]));
+    assert_eq!(pie["width_profiles"], serde_json::json!(["unicode", "cjk"]));
+    assert_eq!(
+        pie["encodings"],
+        serde_json::json!(["plain", "ansi16", "ansi256", "truecolor", "html"])
+    );
+    assert_eq!(pie["fallback_encodings"], serde_json::json!(["plain"]));
+    assert!(
+        ascii["detected_type_mappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mapping| mapping["detected_type"] == "pie" && mapping["family"] == "pie")
+    );
+}
+
+#[cfg(feature = "diagram-pie")]
+#[test]
+fn pie_cli_reports_keep_actual_projection_and_complete_keyed_records() {
+    for (dogs, cats, primary_projection) in [(386, 85, "diagrammatic"), (0, 0, "structured_text")] {
+        let source = format!("pie showData\ntitle Pets\n\"Dogs\": {dogs}\n\"Cats\": {cats}\n");
+        for width in [10, 20, 80] {
+            let limit = width.to_string();
+            let output = run_with_stdin(
+                &[
+                    "render",
+                    "-",
+                    "--format",
+                    "unicode",
+                    "--ascii-report",
+                    "--ascii-color",
+                    "plain",
+                    "--ascii-max-width",
+                    &limit,
+                    "--ascii-overflow",
+                    "fallback",
+                    "--ascii-graph-presentation",
+                    "strict",
+                ],
+                &source,
+            );
+            assert!(
+                output.status.success(),
+                "width {width}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let report = assert_plain_ascii_report(&output.stdout);
+            assert_eq!(report["family"], "pie");
+            assert_eq!(report["layout_profile"], "canonical");
+            assert_eq!(report["requested_graph_presentation"], "strict");
+            assert_eq!(report["requested_max_width"], width);
+            assert_eq!(report["compact_attempted"], false);
+            assert_eq!(report["fallback_capability"], "available");
+            assert_eq!(report["fallback_attempted"], width < 80);
+            assert_eq!(
+                report["fallback_reason"],
+                if width < 80 {
+                    serde_json::json!("primary_overflow")
+                } else {
+                    serde_json::Value::Null
+                }
+            );
+            assert_eq!(report["primary_overflowed"], width < 80);
+            assert_eq!(
+                report["outcome"],
+                if width < 80 { "fallback" } else { "primary" }
+            );
+            assert_eq!(
+                report["projection"],
+                if width < 80 {
+                    "structured_text"
+                } else {
+                    primary_projection
+                }
+            );
+            assert_eq!(report["emitted_overflowed"], false);
+            assert!(report["emitted_width"].as_u64().unwrap() <= width);
+            assert_eq!(
+                report["lossiness"],
+                if width < 80 && primary_projection == "diagrammatic" {
+                    "presentation_only"
+                } else {
+                    "none"
+                }
+            );
+            let text = report["text"].as_str().unwrap();
+            let compact: String = text.split_whitespace().collect();
+            for expected in [
+                format!("P1label=\"Dogs\"value={dogs}"),
+                format!("P2label=\"Cats\"value={cats}"),
+                "Pets".to_string(),
+            ] {
+                assert!(
+                    compact.contains(&expected),
+                    "missing {expected:?}: {report}"
+                );
+            }
+            assert!(compact.find("P1label=").unwrap() < compact.find("P2label=").unwrap());
+        }
+    }
+}
+
 #[cfg(feature = "diagram-requirement")]
 #[test]
 fn requirement_cli_capabilities_admit_canonical_graphs_and_complete_plain_records() {

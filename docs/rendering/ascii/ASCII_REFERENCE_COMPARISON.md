@@ -75,7 +75,7 @@ Merman independently compiles static protection into a bounded spatial hierarchy
 across congestion trials. Dynamic route ownership, marker berths, labels, group-boundary rules,
 and final validation remain separate and authoritative. This borrows the static/dynamic separation
 without adopting the reference's node-only collision policy. The
-[resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
+[resource audit](../ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
 owns the complexity and admission limits. No cross-renderer speed claim is made.
 
 ## Scene Planning and Explicit Recovery
@@ -100,7 +100,7 @@ reading floor and all baseline-success cases in the 486-attempt generated oracle
 controls rather than being resampled for the new algorithm.
 
 The fixed 20-node/33-edge and 100-node/195-edge dense sources are maintained under
-`tests/testdata/local-semantic/flowchart/scene_planning/`. Explicit adaptive Plain requests at 80
+`crates/merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/`. Explicit adaptive Plain requests at 80
 cells produce complete output within the existing Trusted Native work ceiling, retaining a valid
 diagram or selecting a keyed graph document after an admitted miss. Strict requests can still
 return a bounded routing miss; recovery does not establish strict routing success. The documents preserve every endpoint, direction, label,
@@ -119,8 +119,8 @@ comparison. The reduced diagram is still tall; no height-selection policy is adm
 
 These are bounded capability and information-preservation results. They do not show that Merman
 dominates every reference graph, or that finite terminal artwork can represent arbitrary density.
-The [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) owns policy admission and the
-[resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning)
+The [support matrix](../ASCII_SUPPORT_MATRIX.md) owns policy admission and the
+[resource audit](../ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning)
 owns the scheduling and accounting boundary.
 
 ## Extending Family Coverage
@@ -155,6 +155,7 @@ graph mechanisms do not establish another family's semantics:
 | --- | --- | --- |
 | Agentflow | `agentflow.rs`, `output/agentflow.rs` | Family-owned role contours and sequence/reference/failure semantics share graph routing. Expanded flow ownership is preserved; rich metadata, collapsed views, source diagnostics and ambiguous containment select honest complete keyed records. Neither the pinned nor current `mermaid-ascii` provides an Agentflow renderer or semantic quality oracle. See `AGENTFLOW_SUPPORT.md`. |
 | Requirement | `requirement.rs`, `output/requirement.rs` | A global shared-endpoint graph plus complete keyed records retains all seven relationship kinds and requirement/element fields. Contains keeps its source marker and headless target. Ambiguous names and unresolved endpoints remain explicit records. The historical R34 convergence failure is resolved; dense routing remains bounded. See `REQUIREMENT_SUPPORT.md`. |
+| Pie | `pie.rs`, `output/pie.rs` | Explicit shared-scale percentage bars retain canonical order, tiny/zero categories, exact values, labels, and metadata. Undefined distributions use complete StructuredText primaries. No Pie renderer exists in the copied or inspected moving `mermaid-ascii`; pinned Mermaid supplies source semantics, while independent geometry tests own terminal quality. See `PIE_SUPPORT.md`. |
 | Uncommon Flowchart shapes | `graph/shape.rs`, `graph/adapter.rs` | Admitted known aliases use a visible type compartment measured before contour sizing and routing. Unknown, cross-family, and remaining BPMN shapes retain precise diagnostics. |
 | Flowchart icon/image nodes | Family-owned measured node presentation | Complete labels, asset identities, form, position, constraint, and numeric dimensions are retained as terminal-safe text. Quoted whitespace survives wrapping and mirroring. Assets are not fetched; fixed-label control shapes reject metadata they cannot display. Aggregate temporary text counts against output admission. |
 | Flat cyclic Flowcharts | `graph/layout/feedback.rs`, `graph/layout/grid/rank.rs` | After a routing miss with no further capacity feedback, visible-edge scenes without authored side constraints may use SCC condensation ranks and transverse member lanes. No node or relationship is contracted. The frozen 100-node/195-edge and 20-node/33-edge inputs require complete spatial scenes; the independent route oracle checks every original contribution in both canonical axes and structural character sets. Two smaller cyclic controls preserve complete 50-column results and edge labels through existing capacity recovery. Rebuild and work allowances remain unchanged. |
@@ -213,7 +214,7 @@ contours, rounded turns for every ordinary Unicode wire, square branch junctions
 contacts, solid arrowheads, and complete labels. This separates a path from a rectangular object
 without spending extra cells or requiring color. Shape-specific node outlines, dotted and thick
 edge meanings, ASCII/CJK structural fallback, container ownership, and width/resource policy
-remain authoritative. The crate's [visual-style guide](README.md#terminal-visual-style) owns these
+remain authoritative. The crate's [visual-style guide](../../../crates/merman-ascii/README.md#terminal-visual-style) owns these
 defaults. Two copied Unicode self-loops now have strict local style expectations; their original
 fixture bytes and the full 79-case denominator remain intact.
 
@@ -240,7 +241,7 @@ per-case acceptance target, not a claim that one
 algorithm dominates every possible graph.
 
 The original inputs and reading questions live in
-[`tests/testdata/local-semantic/flowchart/presentation/`](tests/testdata/local-semantic/flowchart/presentation/README.md).
+[`crates/merman-ascii/tests/testdata/local-semantic/flowchart/presentation/`](../../../crates/merman-ascii/tests/testdata/local-semantic/flowchart/presentation/README.md).
 They are independent of copied upstream fixtures. They cover shared branches/merges, feedback,
 member endpoints, distinguishing label suffixes, CJK text, and narrow/tall output. The first
 capture compares 13 inputs with native unbounded output and an explicit 80-column request across
@@ -315,7 +316,7 @@ Current measured output dimensions, including all detail rows, are **columns × 
 | `fan-out-16-td`, 80 columns | 62 × 19, graph document | 41 × 640, model-field fallback | Grok: 77 × 20 source frame; first-use target declarations avoid a second lookup table |
 | `long-labels`, 80 columns | 79 × 11, graph document | 69 × 205, model-field fallback | Grok: 80 × 12 source frame; both complete conditions and all endpoints remain recoverable |
 
-The width matrix is executable in `tests/presentation_floor.rs`, using the same original 13 inputs
+The width matrix is executable in `crates/merman-ascii/tests/presentation_floor.rs`, using the same original 13 inputs
 at unbounded/60/80/100/120 cells, ASCII/Unicode structure, and Unicode/CJK width profiles. At those
 four bounded widths, sixteen-way TD uses 20/19/19/19 rows, and long-label output uses 13/11/11/9.
 The fallback declares each Flowchart node with its first relationship, then refers to its key;
@@ -410,7 +411,7 @@ The review explicitly accepts these remaining tradeoffs:
 
 Future density, label-placement, or style improvements are separate iterations. New semantic loss,
 unexplained regressions in the accepted corpus, or inaccurate diagnostics remain defects under the
-[graph presentation boundary](README.md#graph-presentation-boundary).
+[graph presentation boundary](../../../crates/merman-ascii/README.md#graph-presentation-boundary).
 
 ### Canonical density and detail wrapping
 
@@ -440,7 +441,7 @@ require large diagrams.
 Rank centering also changes the independently checked Issue #53 Compact layout from 63×50 to
 59×50, retaining seven heads, the dotted relation and every condition. It now fits the 60-column
 viewport, while Canonical remains 76×40. The current whitespace figures and encoding checks live
-in the [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md#testing-policy).
+in the [support matrix](../ASCII_SUPPORT_MATRIX.md#testing-policy).
 
 Graph detail records now use word-aware indented continuation, including full State authored
 documents, links and relations. Words can use the entire viewport when indentation would prevent
@@ -487,7 +488,7 @@ The benchmark executable SHA-256 is
 `738edeb19d241b52f56283febd7587a6629741f61573a4754c9b3ee6d04035c9`.
 The maintained compiled-list verifier also passed all ten benchmark registrations and preflight
 receipts. Reproduce these checks through the
-[ASCII benchmark contract](../../docs/performance/BENCHMARKING.md#ascii-semantic-depth-benchmark),
+[ASCII benchmark contract](../../performance/BENCHMARKING.md#ascii-semantic-depth-benchmark),
 using `--exact ascii_end_to_end/flowchart_medium` or `--exact ascii_end_to_end/flowchart_large`
 and `--warm-up-time 1 --measurement-time 2 --sample-size 10 --noplot` for the diagnostic timing.
 Raw captures, samples, commands, and environment evidence remain under ignored `target/`.
@@ -628,7 +629,7 @@ expected output.
 - Use `beautiful-mermaid` only as capability prior art. It can suggest coverage and layout ideas,
   but it is not a byte-level standard.
 - Use self-authored local fixtures when the diagram is dense, family-specific, or semantically
-  clearer than a copied render. Those fixtures live under `tests/testdata/local-semantic/`, and they
+  clearer than a copied render. Those fixtures live under `crates/merman-ascii/tests/testdata/local-semantic/`, and they
   are intentionally outside the copied fixture inventory gate.
 - Class/ER fixtures are local semantic fixtures by default. The pinned `mermaid-ascii` source does
   not cover those families; its moving local checkout now covers ER, but that post-snapshot work has
@@ -661,6 +662,7 @@ expected output.
 | Packet | Not part of the reference scope. | No Packet byte-parity oracle is adopted. | Bounded Partial Diagrammatic contract: integer rows of 1..=64 bits at two terminal cells per bit, exact gaps and cross-row splitting, source-configured order/number display, and complete authored-label/raw-DB records after the plot. Non-spatial cases report StructuredText; borrowed models default to 32/ascending/showBits. | Narrow labels may use `*` with a legend and exact details; geometry never expands for text. This is a terminal admission bound, not a Mermaid syntax limit. Small/typical/dense cases pass all 80/100/120-column gates against the complete record baseline; the phase report records dimensions and vertical cost. |
 | GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports preserve parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
 | Requirement | Not part of the pinned ASCII oracle or inspected moving renderer. | No Requirement byte or quality oracle is accepted. | Partial Diagrammatic shared-endpoint traceability with complete field records, plus honest StructuredText primaries for unresolved or ambiguous identities. | Small/typical/dense sources retain geometry at 80/100/120 columns; the independent route oracle checks both shared targets and all typed relation markers. Record rows add vertical cost. |
+| Pie | Not part of the pinned ASCII oracle or inspected moving renderer. | No Pie byte or quality oracle is accepted. | Partial Diagrammatic percentage bars share one scale and retain all sections, complete keyed labels, exact values, and metadata. Invalid distributions report StructuredText. | Small/typical/dense sources retain proportions at 80/100/120 columns; independent filled-cell checks bound rounding error. This intentionally substitutes bars for circular geometry and keeps tiny categories that Mermaid SVG filters. Trident label/completion replay is separate from proportional fidelity. |
 | Railroad / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report retains source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
 
 ## Intentional Differences
@@ -693,7 +695,7 @@ expected output.
 - Packet spatial admission remains bounded to integer rows of 1..=64 bits. Coordinates outside
   the exact nonnegative integer domain, non-spatial row widths/DB bit counts, overlaps, and out-of-order fields retain complete text;
   this does not justify label-driven width distortion or converting resource errors into success.
-  The [Packet admission note](../../docs/rendering/ASCII_PHASE_GATE_REPORT.md#packet-bounded-spatial-admission)
+  The [Packet admission note](../ASCII_PHASE_GATE_REPORT.md#packet-bounded-spatial-admission)
   owns the verified small/typical/dense width comparison, rather than a reference parity claim.
 - Railroad, Ishikawa, and Quadrant remain breadth candidates only after a new proposal
   supplies the complete spatial and width evidence required by

@@ -31,6 +31,8 @@ pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
         ),
         #[cfg(feature = "diagram-packet")]
         RenderSemanticModel::Packet(model) => AsciiDiagram::Packet(model),
+        #[cfg(feature = "diagram-pie")]
+        RenderSemanticModel::Pie(model) => AsciiDiagram::Pie(model),
         #[cfg(feature = "diagram-requirement")]
         RenderSemanticModel::Requirement(model) => AsciiDiagram::Requirement(model),
         #[cfg(feature = "diagram-sequence")]

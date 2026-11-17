@@ -307,7 +307,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "crates/merman-ascii/AGENTFLOW_SUPPORT.md",
+                source: "docs/rendering/ascii/AGENTFLOW_SUPPORT.md",
                 note: "family-owned spatial admission and complete keyed reading records",
             },
         ],
@@ -339,7 +339,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "crates/merman-ascii/BLOCK_SUPPORT.md",
+                source: "docs/rendering/ascii/BLOCK_SUPPORT.md",
                 note: "family-owned fixed-grid support and diagnostic boundaries",
             },
         ],
@@ -379,7 +379,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "class compartments, annotations, and relationship coverage are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -399,7 +399,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
+                source: "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
                 note: "shared relation_graph gap owner records routed and summary boundaries",
             },
         ],
@@ -440,7 +440,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "ER attributes, relationships, and cardinalities are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -460,7 +460,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
+                source: "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
                 note: "shared relation_graph gap owner records routed and summary boundaries",
             },
         ],
@@ -497,12 +497,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "graph ASCII shape and disconnected-layout tests are capability prior art",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalAdvantage,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
                 note: "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability",
             },
             AsciiCapabilityEvidence {
@@ -722,6 +722,42 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
     },
     AsciiCapabilityDefinition {
+        diagram_type: "pie",
+        display_name: "Pie",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "family-owned percent bars on one shared 0..100% scale with 50 terminal cells",
+            "all categories in source order with stable P1, P2, and subsequent reading keys",
+            "complete keyed labels and exact numeric values, including non-finite direct-model values",
+            "showData controls raw values beside bars; exact values always remain in records",
+            "title, accessibility metadata, source title, and source configuration in records",
+            "upstream first-duplicate-label wins for parsed input; direct-model duplicates retain separate keys",
+            "complete keyed reading records for non-spatial data and narrow width fallback",
+        ],
+        limits: &[
+            "percent bars approximate Pie proportions rather than browser slice geometry",
+            "diagrammatic admission requires nonempty finite nonnegative values with a positive total",
+            "empty, all-zero, non-finite, or negative data use complete StructuredText primaries with an explicit reason",
+            "positive values quantized below one bar cell are explicitly marked; no category is filtered",
+            "narrow fallback reflows complete keyed records without truncation and requires Plain encoding",
+            "only Canonical layout and Strict graph presentation are admitted",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/pie_model.rs",
+                note: "parser-backed percent bars, exact records, direct-model admission, viewports, encodings, and resource coverage",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "docs/rendering/ascii/PIE_SUPPORT.md",
+                note: "family-owned percent-bar admission and complete keyed Pie reading records",
+            },
+        ],
+    },
+    AsciiCapabilityDefinition {
         diagram_type: "requirement",
         display_name: "Requirement",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
@@ -752,7 +788,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "crates/merman-ascii/REQUIREMENT_SUPPORT.md",
+                source: "docs/rendering/ascii/REQUIREMENT_SUPPORT.md",
                 note: "family-owned spatial admission and complete keyed Requirement reading records",
             },
         ],
@@ -787,7 +823,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "sequence parser and block-layout cases are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -819,7 +855,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "state-oriented ASCII shape ideas are prior art, not a byte oracle",
             },
             AsciiCapabilityEvidence {
@@ -829,7 +865,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-state-010",
+                source: "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-state-010",
                 note: "remaining state presentation metadata is explicitly tracked",
             },
         ],
@@ -926,7 +962,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "crates/merman-ascii/USECASE_SUPPORT.md",
+                source: "docs/rendering/ascii/USECASE_SUPPORT.md",
                 note: "family-owned role projection and bounded route admission",
             },
         ],
@@ -962,7 +998,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::BeautifulMermaidPriorArt,
-                source: "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+                source: "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
                 note: "XYChart ASCII and legend behavior are capability prior art",
             },
             AsciiCapabilityEvidence {
@@ -972,7 +1008,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::GapRegistry,
-                source: "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
+                source: "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
                 note: "shared line topology retains sample ownership; terminal quantization, dense bars, and marker reuse remain explicit compact-layout limits",
             },
         ],
@@ -1071,6 +1107,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
         "kanban" => cfg!(feature = "diagram-kanban"),
         "mindmap" => cfg!(feature = "diagram-mindmap"),
         "packet" => cfg!(feature = "diagram-packet"),
+        "pie" => cfg!(feature = "diagram-pie"),
         "requirement" => cfg!(feature = "diagram-requirement"),
         "sequence" => cfg!(feature = "diagram-sequence"),
         "state" => cfg!(feature = "diagram-state"),
@@ -1121,27 +1158,27 @@ mod tests {
 
     const ALLOWED_EVIDENCE_ANCHORS: &[(&str, &str, &str)] = &[
         (
-            "crates/merman-ascii/ASCII_GAP_REGISTRY.md",
+            "docs/rendering/ascii/ASCII_GAP_REGISTRY.md",
             "a-classer-010",
             r#"id="a-classer-010""#,
         ),
         (
-            "crates/merman-ascii/ASCII_GAP_REGISTRY.md",
+            "docs/rendering/ascii/ASCII_GAP_REGISTRY.md",
             "a-state-010",
             r#"id="a-state-010""#,
         ),
         (
-            "crates/merman-ascii/ASCII_GAP_REGISTRY.md",
+            "docs/rendering/ascii/ASCII_GAP_REGISTRY.md",
             "a-xy-010",
             r#"id="a-xy-010""#,
         ),
         (
-            "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md",
+            "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md",
             "family-comparison",
             "## Family Comparison",
         ),
         (
-            "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md",
+            "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md",
             "intentional-differences",
             "## Intentional Differences",
         ),
@@ -1201,6 +1238,7 @@ mod tests {
                 "kanban",
                 "mindmap",
                 "packet",
+                "pie",
                 "requirement",
                 "sequence",
                 "state",
@@ -1220,6 +1258,7 @@ mod tests {
                 "er",
                 "flowchart",
                 "packet",
+                "pie",
                 "requirement",
                 "sequence",
                 "state",
@@ -1253,7 +1292,7 @@ mod tests {
             assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
         }
 
-        for diagram_type in ["state", "packet", "block", "usecase", "requirement"] {
+        for diagram_type in ["state", "packet", "pie", "block", "usecase", "requirement"] {
             let capability = find(diagram_type);
             assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
             assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Compact));
@@ -1316,6 +1355,12 @@ mod tests {
             find("packet").primary_projection,
             AsciiPrimaryProjection::Diagrammatic
         );
+        let pie = find("pie");
+        assert_eq!(pie.semantic_coverage, Some(AsciiSemanticCoverage::Partial));
+        assert_eq!(pie.primary_projection, AsciiPrimaryProjection::Diagrammatic);
+        assert_eq!(pie.support_level, AsciiSupportLevel::Partial);
+        assert!(pie.structured_text_fallback);
+        assert_eq!(pie.graph_presentations, STRICT_GRAPH_PRESENTATIONS);
         assert_eq!(find("treeView").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);

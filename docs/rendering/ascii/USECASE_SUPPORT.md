@@ -105,12 +105,12 @@ retain the caller's operation ownership; recoverable width overflow preserves sp
 
 ## Executable evidence
 
-`tests/usecase_model.rs` covers public canonical/full-model entries, small/typical/CJK and dense
+`crates/merman-ascii/tests/usecase_model.rs` covers public canonical/full-model entries, small/typical/CJK and dense
 fixtures at 80/100/120 columns, character sets and width profiles, direction transforms, markers,
 roles, metadata, membership, complete fallback records, malformed models, exact grid quotas, and
 resource/cancellation propagation. Family unit tests additionally cover aggregate raw-label bytes
 and display cells, exact versus one-below work quotas, cancellation inside large label scans, and
-transaction rollback. Local fixtures live under `tests/testdata/local-semantic/usecase/`.
+transaction rollback. Local fixtures live under `crates/merman-ascii/tests/testdata/local-semantic/usecase/`.
 
 The three `json-*.mmd` fixtures retain the exact documentation sources used by Trident's frozen
 Mermaid commit `370c4af57f43cb0bda05f4a9fe2d99c912ba16dd` (`docs/syntax/usecase.md`, fences at

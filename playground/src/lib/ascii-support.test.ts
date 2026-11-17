@@ -23,6 +23,28 @@ test("fallback uses the complete generated binding capability projection", () =>
       ({ primary_projection }) => primary_projection !== "none"
     ).map(({ diagram_type }) => diagram_type)
   );
+  assert.deepEqual(FALLBACK_ASCII_SUPPORTED_TYPES, [
+    "agentflow",
+    "block",
+    "class",
+    "er",
+    "flowchart",
+    "gantt",
+    "gitgraph",
+    "journey",
+    "kanban",
+    "mindmap",
+    "packet",
+    "pie",
+    "requirement",
+    "sequence",
+    "state",
+    "swimlane",
+    "timeline",
+    "treeView",
+    "usecase",
+    "xychart",
+  ]);
 
   const flowchart = FALLBACK_ASCII_CAPABILITIES.find(
     ({ diagram_type }) => diagram_type === "flowchart"
@@ -107,6 +129,29 @@ test("Requirement fallback metadata admits canonical spatial and adaptive record
   assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("requirement"));
 });
 
+test("Pie fallback metadata admits canonical strict percent bars and complete records", () => {
+  const pie = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "pie"
+  );
+  assert.ok(pie);
+  assert.equal(asciiSupportLabelKey(pie), "asciiSupport.levels.partial");
+  assert.equal(pie.semantic_coverage, "partial");
+  assert.equal(pie.primary_projection, "diagrammatic");
+  assert.equal(pie.structured_text_fallback, true);
+  assert.deepEqual(pie.layout_profiles, ["canonical"]);
+  assert.deepEqual(pie.graph_presentations, ["strict"]);
+  assert.deepEqual(pie.width_profiles, ["unicode", "cjk"]);
+  assert.deepEqual(pie.encodings, [
+    "plain",
+    "ansi16",
+    "ansi256",
+    "truecolor",
+    "html",
+  ]);
+  assert.deepEqual(pie.fallback_encodings, ["plain"]);
+  assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("pie"));
+});
+
 test("support labels follow the generated projection kind", () => {
   const byType = new Map(
     FALLBACK_ASCII_CAPABILITIES.map((capability) => [
@@ -121,6 +166,10 @@ test("support labels follow the generated projection kind", () => {
   );
   assert.equal(
     asciiSupportLabelKey(byType.get("swimlane") ?? null),
+    "asciiSupport.levels.partial"
+  );
+  assert.equal(
+    asciiSupportLabelKey(byType.get("pie") ?? null),
     "asciiSupport.levels.partial"
   );
   assert.equal(
