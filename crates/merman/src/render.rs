@@ -1651,6 +1651,8 @@ fn ascii_diagram_from_full(
     use merman_model::presentation::RenderSemanticModel;
 
     match model {
+        #[cfg(feature = "diagram-agentflow")]
+        RenderSemanticModel::Agentflow(model) => AsciiDiagram::Agentflow(model),
         #[cfg(feature = "diagram-block")]
         RenderSemanticModel::Block(model) => AsciiDiagram::Block(&model.semantic),
         #[cfg(feature = "diagram-class")]

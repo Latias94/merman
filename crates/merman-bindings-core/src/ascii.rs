@@ -648,9 +648,14 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "diagram-usecase", feature = "diagram-block"))]
-    fn usecase_and_block_binding_results_expose_the_selected_primary_and_fallback() {
+    #[cfg(all(
+        feature = "diagram-usecase",
+        feature = "diagram-block",
+        feature = "diagram-agentflow"
+    ))]
+    fn family_binding_results_expose_the_selected_primary_and_fallback() {
         for (family, source) in [
+            ("agentflow", "agentflow-beta\nA[Request] --> B[Result]\n"),
             (
                 "usecase",
                 "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n",
@@ -698,7 +703,7 @@ mod tests {
                             "E1:N1[open]--solidassociation--N2[point]",
                             "id=\"Checkout\"",
                         ]
-                    } else {
+                    } else if family == "block" {
                         &[
                             "start=\"A\"",
                             "end=\"B\"",
@@ -707,6 +712,11 @@ mod tests {
                             "span=2",
                             "type=\"space\"",
                             "children=[",
+                        ]
+                    } else {
+                        &[
+                            "E1[sequence-->]source=[N1]id=\"A\"target=[N2]id=\"B\"",
+                            "explicit-id=false",
                         ]
                     };
                     for expected in relationships {

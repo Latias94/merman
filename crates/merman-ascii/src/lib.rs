@@ -12,6 +12,8 @@ extern crate self as merman_ascii;
 #[path = "../tests/support/full_model.rs"]
 mod full_test_support;
 
+#[cfg(feature = "diagram-agentflow")]
+mod agentflow;
 #[cfg(feature = "diagram-block")]
 mod block;
 #[cfg_attr(
@@ -38,6 +40,7 @@ mod git_graph;
     feature = "diagram-swimlane",
     feature = "diagram-state",
     feature = "diagram-usecase",
+    feature = "diagram-agentflow",
     feature = "diagram-block"
 ))]
 #[cfg_attr(
@@ -45,7 +48,8 @@ mod git_graph;
         feature = "diagram-flowchart",
         feature = "diagram-swimlane",
         feature = "diagram-state",
-        feature = "diagram-usecase"
+        feature = "diagram-usecase",
+        feature = "diagram-agentflow"
     )),
     allow(
         dead_code,
@@ -356,7 +360,7 @@ impl AsciiRenderer {
                     &policies,
                     candidate_execution,
                     context.local_time_zone(),
-                    Some(metadata.semantic_config),
+                    metadata,
                 )
             },
         )?;
@@ -377,6 +381,10 @@ impl AsciiRenderer {
             .with_layout_profile(selected.profile)
             .resolve_policies();
         let projection = match model {
+            #[cfg(feature = "diagram-agentflow")]
+            AsciiDiagram::Agentflow(model) => {
+                agentflow::primary_projection(model, metadata, execution)?
+            }
             #[cfg(feature = "diagram-packet")]
             AsciiDiagram::Packet(packet) => {
                 packet::primary_projection(packet, Some(metadata.semantic_config), execution)?
@@ -386,11 +394,20 @@ impl AsciiRenderer {
         let fallback_capability = capability.is_some_and(|capability| {
             capability.supports_fallback_encoding(policies.output.encoding)
         });
+        #[cfg(feature = "diagram-agentflow")]
+        let record_primary = matches!(model, AsciiDiagram::Agentflow(_))
+            && projection == AsciiProjection::StructuredText;
+        #[cfg(not(feature = "diagram-agentflow"))]
+        let record_primary = false;
         let output_context = output::OutputBuildContext {
             color_mode: policies.output.color_mode,
             profile: policies.output.terminal_width_profile,
             layout_profile: selected.profile,
-            policy: viewport,
+            policy: if record_primary {
+                viewport.trim(AsciiTrimPolicy::Preserve)
+            } else {
+                viewport
+            },
             execution,
         };
         let requested_profile = self.options.layout_profile;
@@ -461,6 +478,11 @@ impl AsciiRenderer {
             )
             .map(annotate);
         }
+        if record_primary {
+            // Agentflow record encoding uses candidate-local cell storage and shared work.
+            // Commit only the selected document, after any width replacement has been decided.
+            primary.admit_document(execution)?;
+        }
         let mut output =
             output::build_output(metadata.diagram_type, primary, projection, output_context)?;
         output.fallback.capability = if fallback_capability {
@@ -516,7 +538,7 @@ fn render_model_with_execution(
     policies: &ResolvedAsciiPolicies,
     execution: operation::AsciiExecution<'_>,
     _local_time_zone: &merman_model::time::LocalTimeZone,
-    _semantic_config: Option<&merman_model::MermaidConfig>,
+    _source: AsciiSourceContext<'_>,
 ) -> Result<String> {
     execution.checkpoint(merman_model::OperationPhase::Admission)?;
     options.validate()?;
@@ -530,6 +552,14 @@ fn render_model_with_execution(
     )?;
 
     let rendered = match model {
+        #[cfg(feature = "diagram-agentflow")]
+        AsciiDiagram::Agentflow(agentflow_model) => agentflow::render(
+            agentflow_model,
+            options,
+            policies.layout.agentflow,
+            _source,
+            execution,
+        ),
         #[cfg(feature = "diagram-block")]
         AsciiDiagram::Block(model) => {
             block::render_block_diagram_with_execution(model, options, execution)
@@ -556,7 +586,7 @@ fn render_model_with_execution(
         AsciiDiagram::Mindmap(model) => render_mindmap_model(*model, options, &execution),
         #[cfg(feature = "diagram-packet")]
         AsciiDiagram::Packet(model) => {
-            render_packet_model(model, options, _semantic_config, &execution)
+            render_packet_model(model, options, Some(_source.semantic_config), &execution)
         }
         #[cfg(feature = "diagram-sequence")]
         AsciiDiagram::Sequence(model) => {

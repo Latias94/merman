@@ -133,12 +133,15 @@ fn facade_ascii_keeps_source_label_entities_in_primary_and_narrow_fallback() {
 
 #[cfg(all(
     feature = "presentation",
+    feature = "diagram-agentflow",
     feature = "diagram-block",
     feature = "diagram-usecase"
 ))]
 #[test]
 fn family_ascii_uses_the_same_semantics_from_canonical_and_presentation_artifacts() {
     let sources = [
+        "agentflow-beta\nA[Request] --> B[Result]",
+        "agentflow-beta\nA[Request]@{instruction: inspect, params: {retries: 3}} --> B[Result]",
         "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
         "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B",
     ];

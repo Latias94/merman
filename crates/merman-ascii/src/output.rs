@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
+#[cfg(feature = "diagram-agentflow")]
+mod agentflow;
 #[cfg(feature = "diagram-block")]
 mod block;
 #[cfg(any(
@@ -29,6 +31,7 @@ mod packet;
     feature = "diagram-class",
     feature = "diagram-er",
     feature = "diagram-usecase",
+    feature = "diagram-agentflow",
     feature = "diagram-block"
 ))]
 mod record;
@@ -420,7 +423,7 @@ impl MeasuredOutput {
         ))
     }
 
-    pub(crate) fn admit_fallback(&self, execution: AsciiExecution<'_>) -> Result<()> {
+    pub(crate) fn admit_document(&self, execution: AsciiExecution<'_>) -> Result<()> {
         let resources = execution.new_resource_context(OperationPhase::Emit);
         resources.transaction(|resources| {
             resources.charge_document_cells(self.metrics.document_cells)?;
@@ -743,7 +746,7 @@ fn finalize_fallback(
             OverflowPolicy::Allow => {}
         }
     }
-    emitted.admit_fallback(execution)?;
+    emitted.admit_document(execution)?;
     execution.checkpoint(OperationPhase::Emit)?;
     Ok(assemble_output(
         OutputAssembly {
@@ -950,11 +953,16 @@ fn build_semantic_document(
     let block_document = block::write_if_block(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-block"))]
     let block_document = false;
+    #[cfg(feature = "diagram-agentflow")]
+    let agentflow_document = agentflow::write_if_agentflow(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-agentflow"))]
+    let agentflow_document = false;
     if !graph_document
         && !relation_document
         && !packet_document
         && !usecase_document
         && !block_document
+        && !agentflow_document
     {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
@@ -973,6 +981,42 @@ fn build_semantic_document(
         reason,
         context,
     )
+}
+
+/// Builds complete Agentflow reading records as a primary for scenes outside the spatial subset.
+#[cfg(feature = "diagram-agentflow")]
+pub(crate) fn render_agentflow_primary(
+    model: &AsciiDiagram<'_>,
+    source: AsciiSourceContext<'_>,
+    options: &crate::AsciiRenderOptions,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    preflight_semantic_model(model, source, execution)?;
+    let projection =
+        semantic_fallback_projection(model, source, execution).map_err(|error| match error {
+            SemanticFallbackError::Cancelled(error) => AsciiError::Cancelled(error),
+            SemanticFallbackError::Resource(error) => error,
+            SemanticFallbackError::Unavailable => AsciiError::UnsupportedFeature {
+                diagram_type: "agentflow",
+                feature: "invalid serialized semantic projection",
+            },
+        })?;
+    let mut records = SemanticFallbackWriter::new(execution, 80, options.terminal_width_profile);
+    records.push("Agent workflow records".to_string())?;
+    agentflow::write_if_agentflow(model, &projection, &mut records)?;
+    let candidate = records.finish();
+    let mut document = crate::safe_text::BudgetedTextDocument::from_resources(
+        execution
+            .new_resource_context(OperationPhase::Emit)
+            .scoped(),
+        options,
+    );
+    for line in candidate.text().split('\n') {
+        document.push_line(line)?;
+    }
+    // Retain the measured records for ordinary StructuredText reflow. A spatial overflow signal
+    // would instead select graph-document fallback and wrongly report presentation loss here.
+    document.finish()
 }
 
 /// Admits authored model and source-config depth before streaming their borrowed fields.

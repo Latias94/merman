@@ -38,13 +38,25 @@ test("fallback uses the complete generated binding capability projection", () =>
   ]);
   assert.deepEqual(flowchart?.fallback_encodings, ["plain"]);
 
-  for (const diagramType of ["agentflow"]) {
+  for (const diagramType of ["zenuml"]) {
     const capability = FALLBACK_ASCII_CAPABILITIES.find(
       ({ diagram_type }) => diagram_type === diagramType
     );
     assert.ok(capability, `${diagramType} is included in the total matrix`);
     assert.equal(asciiSupportLabelKey(capability), "asciiSupport.unsupported");
   }
+  const agentflow = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "agentflow"
+  );
+  assert.equal(
+    asciiSupportLabelKey(agentflow ?? null),
+    "asciiSupport.levels.partial"
+  );
+  assert.equal(agentflow?.primary_projection, "diagrammatic");
+  assert.deepEqual(agentflow?.layout_profiles, ["canonical"]);
+  assert.deepEqual(agentflow?.graph_presentations, ["strict", "adaptive"]);
+  assert.deepEqual(agentflow?.fallback_encodings, ["plain"]);
+  assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("agentflow"));
   for (const diagramType of ["usecase", "block"]) {
     const capability = FALLBACK_ASCII_CAPABILITIES.find(
       ({ diagram_type }) => diagram_type === diagramType

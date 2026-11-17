@@ -2072,6 +2072,7 @@ mod tests {
             assert_eq!(
                 ascii_supported_diagrams(),
                 &[
+                    "agentflow",
                     "block",
                     "class",
                     "er",

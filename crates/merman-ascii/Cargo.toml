@@ -61,7 +61,7 @@ diagram-class = ["merman-model/diagram-class", "merman-core/diagram-class"]
 diagram-cynefin = ["merman-model/diagram-cynefin", "merman-core/diagram-cynefin"]
 diagram-er = ["merman-model/diagram-er", "merman-core/diagram-er"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling", "merman-core/diagram-event-modeling"]
-diagram-agentflow = ["merman-model/diagram-agentflow", "merman-core/diagram-agentflow"]
+diagram-agentflow = ["merman-model/diagram-agentflow", "merman-core/diagram-agentflow", "dep:dugong", "dep:rustc-hash"]
 diagram-usecase = ["merman-model/diagram-usecase", "merman-core/diagram-usecase", "dep:dugong", "dep:rustc-hash", "dep:ryu-js"]
 diagram-flowchart = ["merman-model/diagram-flowchart", "merman-core/diagram-flowchart", "dep:dugong", "dep:rustc-hash", "dep:pulldown-cmark"]
 diagram-gantt = ["merman-model/diagram-gantt", "merman-core/diagram-gantt"]
@@ -106,6 +106,10 @@ pulldown-cmark = { workspace = true, optional = true }
 data-encoding.workspace = true
 merman-core = { workspace = true, features = ["test-support", "presentation", "compat-json"] }
 sha2.workspace = true
+
+[[test]]
+name = "agentflow_model"
+required-features = ["diagram-agentflow"]
 
 [[test]]
 name = "class_model"

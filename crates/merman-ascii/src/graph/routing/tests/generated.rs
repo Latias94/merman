@@ -282,7 +282,7 @@ fn shape_contains(node: &NodeLayout, coord: CanvasCoord) -> bool {
     let (left, right) = match node.shape {
         GraphNodeShape::LeanRight => (node.x + shift, right - slant + shift),
         GraphNodeShape::LeanLeft => (node.x + slant - shift, right - shift),
-        GraphNodeShape::Rect | GraphNodeShape::Diamond => (node.x, right),
+        GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => (node.x, right),
         _ => panic!("generator introduced a shape without an independent contour oracle"),
     };
     (left..=right).contains(&coord.x)
@@ -1077,5 +1077,44 @@ fn capacity_recovery_keeps_every_edge_of_previously_readable_cycles() {
             edges,
             &[GraphDirection::TopDown],
         );
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-agentflow")]
+fn agentflow_operators_preserve_independent_contacts_markers_and_paint() {
+    let parsed = merman_core::SemanticParser::new().parse_diagram_sync(
+            "agentflow-beta\nstart[Start] --> next[Next]\nnext -.- docs[Guide]\nnext --x fail[Failure]\n",
+    ).unwrap();
+    let merman_model::SemanticDiagramModel::Agentflow(model) = &parsed.model else {
+        panic!("expected canonical Agentflow");
+    };
+    for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+        for mode in ["ascii", "unicode"] {
+            let options = options(mode);
+            let limits = AsciiResourcePolicy::unbounded();
+            let mut resources = ResourceContext::new(limits);
+            let mut graph =
+                crate::agentflow::project(model, options.terminal_width_profile, &resources)
+                    .unwrap();
+            graph.direction = direction;
+            assert_eq!((graph.nodes.len(), graph.edges.len()), (4, 3));
+            assert_eq!(graph.edges[0].end_marker, GraphEdgeMarker::Point);
+            assert_eq!(
+                (graph.edges[1].stroke, graph.edges[1].end_marker),
+                (GraphEdgeStroke::Dotted, GraphEdgeMarker::Open)
+            );
+            assert_eq!(graph.edges[2].end_marker, GraphEdgeMarker::Cross);
+            let planned = crate::graph::planning::plan_graph(
+                &graph,
+                &options.flowchart_layout().graph_policy(),
+                &GraphCharset::for_options(&options),
+                &mut resources,
+                AsciiExecution::for_test(&limits),
+            )
+            .unwrap();
+            let scene = planned.routes.materialize(&resources).unwrap();
+            information_oracle(&graph, &planned.layout, &scene, &options).unwrap();
+        }
     }
 }

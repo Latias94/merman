@@ -6,25 +6,55 @@ import type { AsciiCapability } from "@mermanjs/web";
 export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   {
     "diagram_type": "agentflow",
-    "display_name": "agentflow",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Agentflow",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "distinct task, tool, input, reference-document, action, decision, and connector roles",
+      "sequence arrows, headless dotted references, and failure cross markers",
+      "expanded flow containers, nesting, local directions, and global node ownership",
+      "complete keyed original entities and relationships for rich or collapsed reading records",
+      "metadata types, authored styles, diagnostics, source configuration, and quoted identities in records"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "semantic metadata, collapsed views, unsupported shapes, and ambiguous containment use StructuredText primaries",
+      "collapsed reading records disclose authored children and relationships rather than claiming browser-visible geometry",
+      "terminal shapes approximate browser geometry and do not execute tools or resolve connectorRef metadata",
+      "dense spatial routes remain bounded; Adaptive can select complete Plain records"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/agentflow_model.rs",
+        "note": "parser-backed roles, operators, scopes, metadata, viewport, resource and cancellation coverage"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "crates/merman-ascii/AGENTFLOW_SUPPORT.md",
+        "note": "family-owned spatial admission and complete keyed reading records"
       }
     ]
   },

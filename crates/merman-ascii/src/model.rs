@@ -39,6 +39,8 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum AsciiDiagram<'a> {
+    #[cfg(feature = "diagram-agentflow")]
+    Agentflow(&'a merman_model::families::agentflow::AgentflowDiagramModel),
     #[cfg(feature = "diagram-block")]
     Block(&'a merman_model::families::block::BlockDiagramModel),
     #[cfg(feature = "diagram-class")]
@@ -86,6 +88,8 @@ impl<'a> AsciiDiagram<'a> {
     ) -> Result<Self> {
         execution.checkpoint(merman_model::OperationPhase::Semantic)?;
         Ok(match model {
+            #[cfg(feature = "diagram-agentflow")]
+            SemanticDiagramModel::Agentflow(model) => Self::Agentflow(model),
             #[cfg(feature = "diagram-block")]
             SemanticDiagramModel::Block(model) => Self::Block(model),
             #[cfg(feature = "diagram-class")]
@@ -161,6 +165,8 @@ impl<'a> AsciiDiagram<'a> {
 
     pub fn kind(&self) -> &str {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(_) => "agentflow",
             #[cfg(feature = "diagram-block")]
             Self::Block(_) => "block",
             #[cfg(feature = "diagram-class")]
@@ -199,6 +205,8 @@ impl<'a> AsciiDiagram<'a> {
 
     pub(crate) fn complexity(&self) -> ModelComplexity {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-class")]
@@ -268,6 +276,8 @@ impl<'a> AsciiDiagram<'a> {
 impl Serialize for AsciiDiagram<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-class")]

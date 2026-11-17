@@ -382,6 +382,63 @@ fn usecase_and_block_reports_keep_family_geometry_and_complete_width_fallback() 
 }
 
 #[test]
+fn agentflow_reports_distinguish_spatial_records_and_complete_width_fallback() {
+    for (source, projection) in [
+        ("agentflow-beta\nA[Request] --> B[Result]\n", "diagrammatic"),
+        (
+            "agentflow-beta\nA[Request]@{instruction: inspect, params: {retries: 3}} --> B[Result]\n",
+            "structured_text",
+        ),
+    ] {
+        for width in [10, 120] {
+            let limit = width.to_string();
+            let output = run_with_stdin(
+                &[
+                    "render",
+                    "-",
+                    "--format",
+                    "unicode",
+                    "--ascii-report",
+                    "--ascii-color",
+                    "plain",
+                    "--ascii-max-width",
+                    &limit,
+                    "--ascii-overflow",
+                    "fallback",
+                    "--output",
+                    "-",
+                ],
+                source,
+            );
+            assert!(
+                output.status.success(),
+                "{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let report = assert_plain_ascii_report(&output.stdout);
+            assert_eq!(report["family"], "agentflow");
+            assert_eq!(
+                report["projection"],
+                if width == 10 {
+                    "structured_text"
+                } else {
+                    projection
+                }
+            );
+            assert!(!report["emitted_overflowed"].as_bool().unwrap());
+            assert!(report["emitted_width"].as_u64().unwrap() <= width);
+            let text = report["text"].as_str().unwrap();
+            let compact: String = text.split_whitespace().collect();
+            assert!(compact.contains("Request") && compact.contains("Result"));
+            if source.contains("instruction") {
+                assert!(compact.contains("inspect") && compact.contains("retries"));
+                assert!(compact.contains("[sequence-->]source=[N1]id=\"A\"target=[N2]id=\"B\""));
+            }
+        }
+    }
+}
+
+#[test]
 fn cli_renders_plain_ascii_output_to_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let out = tmp.path().join("diagram.txt");

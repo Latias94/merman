@@ -36,6 +36,7 @@ ASCII_ENCODINGS = ["plain", "ansi16", "ansi256", "truecolor", "html"]
 ASCII_WIDTH_PROFILES = ["unicode", "cjk"]
 
 ASCII_DIAGRAMMATIC_FAMILIES = {
+    "agentflow",
     "block",
     "class",
     "er",
@@ -168,7 +169,7 @@ def _expected_family_contract(family: str) -> dict[str, object]:
         "support_level": support_level,
         "layout_profiles": layouts,
         "graph_presentations": ["strict", "adaptive"]
-        if family in {"flowchart", "swimlane", "state"} else ["strict"],
+        if family in {"agentflow", "flowchart", "swimlane", "state"} else ["strict"],
         "width_profiles": ASCII_WIDTH_PROFILES,
         "encodings": ASCII_ENCODINGS,
         "fallback_encodings": ["plain"],

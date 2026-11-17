@@ -231,6 +231,7 @@ pub(crate) struct XyChartLayoutPolicy {
 pub(crate) struct AsciiLayoutPolicies {
     pub profile: AsciiLayoutProfile,
     pub flowchart: FlowchartLayoutPolicy,
+    pub agentflow: GraphLayoutPolicy,
     pub state: GraphLayoutPolicy,
     pub usecase: GraphLayoutPolicy,
     pub sequence: SequenceLayoutPolicy,
@@ -423,8 +424,9 @@ impl AsciiRenderOptions {
                     structural_charset: host.structural_charset,
                     terminal_width_profile: host.terminal_width_profile,
                 },
-                state: state_layout_policy(self, host),
-                usecase: usecase_layout_policy(self, host),
+                state: terminal_graph_layout_policy(self, host),
+                usecase: terminal_graph_layout_policy(self, host),
+                agentflow: terminal_graph_layout_policy(self, host),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
                     participant_spacing: self.resolved_sequence_participant_spacing(),
@@ -582,22 +584,10 @@ impl AsciiRenderOptions {
     }
 }
 
-fn state_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
-    GraphLayoutPolicy {
-        node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
-        node_padding_y: options.resolved_graph_node_padding_y(),
-        rank_gap_x: options.graph_padding_x,
-        rank_gap_y: options.resolved_graph_rank_gap_y(),
-        group_padding_x: 2,
-        group_padding_y: 2,
-        group_title_clearance: 3,
-        edge_label_lane_radius: GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
-        structural_charset: host.structural_charset,
-        terminal_width_profile: host.terminal_width_profile,
-    }
-}
-
-fn usecase_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
+fn terminal_graph_layout_policy(
+    options: AsciiRenderOptions,
+    host: AsciiHostPolicy,
+) -> GraphLayoutPolicy {
     GraphLayoutPolicy {
         node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
         node_padding_y: options.resolved_graph_node_padding_y(),

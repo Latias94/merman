@@ -158,7 +158,9 @@ impl AsciiCapability {
         };
         let graph_presentations = match definition.diagram_type {
             _ if !supported => &[],
-            "flowchart" | "swimlane" | "state" if supported => CORE_GRAPH_PRESENTATIONS,
+            "agentflow" | "flowchart" | "swimlane" | "state" if supported => {
+                CORE_GRAPH_PRESENTATIONS
+            }
             _ => STRICT_GRAPH_PRESENTATIONS,
         };
         let encodings = if supported { OUTPUT_ENCODINGS } else { &[] };
@@ -278,6 +280,38 @@ struct AsciiCapabilityDefinition {
 }
 
 const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
+    AsciiCapabilityDefinition {
+        diagram_type: "agentflow",
+        display_name: "Agentflow",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "distinct task, tool, input, reference-document, action, decision, and connector roles",
+            "sequence arrows, headless dotted references, and failure cross markers",
+            "expanded flow containers, nesting, local directions, and global node ownership",
+            "complete keyed original entities and relationships for rich or collapsed reading records",
+            "metadata types, authored styles, diagnostics, source configuration, and quoted identities in records",
+        ],
+        limits: &[
+            "semantic metadata, collapsed views, unsupported shapes, and ambiguous containment use StructuredText primaries",
+            "collapsed reading records disclose authored children and relationships rather than claiming browser-visible geometry",
+            "terminal shapes approximate browser geometry and do not execute tools or resolve connectorRef metadata",
+            "dense spatial routes remain bounded; Adaptive can select complete Plain records",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/agentflow_model.rs",
+                note: "parser-backed roles, operators, scopes, metadata, viewport, resource and cancellation coverage",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "crates/merman-ascii/AGENTFLOW_SUPPORT.md",
+                note: "family-owned spatial admission and complete keyed reading records",
+            },
+        ],
+    },
     AsciiCapabilityDefinition {
         diagram_type: "block",
         display_name: "Block",
@@ -990,6 +1024,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
         other => merman_model::family::diagram_type_family_kind(other).unwrap_or(other),
     };
     match family {
+        "agentflow" => cfg!(feature = "diagram-agentflow"),
         "block" => cfg!(feature = "diagram-block"),
         "class" => cfg!(feature = "diagram-class"),
         "er" => cfg!(feature = "diagram-er"),
@@ -1118,6 +1153,7 @@ mod tests {
         assert_eq!(
             ascii_supported_diagram_types(),
             &[
+                "agentflow",
                 "block",
                 "class",
                 "er",
@@ -1140,6 +1176,7 @@ mod tests {
         assert_eq!(
             ascii_diagrammatic_diagram_types(),
             &[
+                "agentflow",
                 "block",
                 "class",
                 "er",
@@ -1196,11 +1233,14 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_graph_admission_is_limited_to_the_three_core_families() {
+    fn adaptive_graph_admission_is_limited_to_the_four_admitted_families() {
         for capability in ascii_capabilities() {
             if !capability.is_supported() {
                 assert!(capability.graph_presentations.is_empty());
-            } else if matches!(capability.diagram_type, "flowchart" | "swimlane" | "state") {
+            } else if matches!(
+                capability.diagram_type,
+                "agentflow" | "flowchart" | "swimlane" | "state"
+            ) {
                 assert_eq!(capability.graph_presentations, CORE_GRAPH_PRESENTATIONS);
                 assert!(capability.supports_graph_presentation(AsciiGraphPresentation::Adaptive));
             } else {
