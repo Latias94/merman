@@ -144,6 +144,15 @@ boundary after feasibility completed, the validated incumbent survives; public r
 and cancellation still propagate. The probe, discarded trials, analysis, and rebuild all consume
 the same existing 1,000,000-unit reflow allowance and public ledger.
 
+Before conflict repair, a blocked direct route tries an unchanged-scene detour. Its private work
+slice is half the smaller of the remaining allocation credit and enclosing preparation credit;
+there is no enclosing cap during ordinary routing. The trial debits the existing allocation
+expansions and work, shares the public ledger, and does not consume replacement attempts. A
+private slice miss leaves room for repair and the later required search. Public limits,
+cancellation, deadlines, and allocation errors propagate even during this optional trial.
+Selected alternatives still pass the complete scene validator before becoming an incumbent.
+This adds no candidate pool or persistent storage and does not increase a search allowance.
+
 The return analysis itself uses one iterative scope-projected SCC pass and a sorted interval sweep.
 For `V` scoped endpoints, `E` semantic edges, nesting depth `D`, and traversed ID/label text `T`,
 the bound is `O((V + E) * (D + 1) + E log(E + 1) + T)` with expected ID-hash lookup cost and
@@ -156,12 +165,16 @@ and all start/state identities under the unchanged Trusted Native work ceiling.
 The 2026-11-17 source-through-CLI debug control uses the exact 520-byte CRLF source retained in
 `state_original_concurrent_conditions_keep_every_label_and_transition`, Unicode Plain output,
 Canonical geometry, and identical Flowchart/State/ER/Kanban feature closures. The minimum admitted
-ASCII work ceiling changes from 21,764,888 to 887,856; each exact value succeeds and one less
-rejects with the same value as `actual`. The three-region extent changes from 71×81 to 71×79;
-the two-region control changes from an 8,000,000-unit failure to a 65×56 diagram. This measures
-deterministic counted work, not elapsed-time speedup. Conservative spacing is a tradeoff: the
-single-region control widens from 20×32 to 56×32, while both fit a 60-column viewport. An original
-layout that cannot be proved within the bounded probe may still be widened.
+ASCII work ceiling changes from the pre-capacity-planning 21,764,888 to 700,138; each exact value
+succeeds and one less rejects with the same value as `actual`. The three-region extent changes
+from 71×81 to 71×79; the two-region control changes from an 8,000,000-unit failure to a 65×56 diagram. This measures
+deterministic counted work, not elapsed-time speedup. Against the previous repair-first planner,
+the single-region control changes from 56×32 and 586,045 work units to 20×32 and 172,600; the
+three-region control retains identical output while its work changes from 887,856 to 700,138.
+Each of these four public work thresholds is checked at the exact value and one less. Canonical
+State remains primary at 20/60/80/100/120 columns for the single-region case across both character
+sets and width profiles. Conservative spacing remains a limitation when the original layout
+cannot be proved within the bounded probe.
 
 Feasibility, displaced-route replacement, prospective allocation, complete-scene quality, and
 reflow have separate finite algorithmic allowances. They all charge the cumulative public work

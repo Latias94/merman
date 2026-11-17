@@ -16,6 +16,135 @@ mod markers;
 mod scene;
 
 #[test]
+fn undisplaced_route_probe_shares_credit_and_retains_failed_trial_work() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "Source");
+    graph.add_node("b", "Target");
+    graph.add_edge("a", "b");
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let occupancy =
+        SceneOccupancy::try_new(&[], &layout, &mut unbounded_resources(), "flowchart").unwrap();
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let request = EdgeRouteRequest {
+        graph: &graph,
+        graph_layout: &layout,
+        edges: &graph.edges,
+        from: &layout.nodes[0],
+        to: &layout.nodes[1],
+        edge_index: 0,
+        edge: &graph.edges[0],
+        charset: &charset,
+    };
+    let mut charged_misses = 0;
+    for (allocation_work, parent_work) in [
+        (0, None),
+        (1, None),
+        (2, None),
+        (3, None),
+        (5, None),
+        (500_000, Some(0)),
+        (500_000, Some(1)),
+        (500_000, Some(2)),
+        (500_000, Some(3)),
+        (500_000, Some(5)),
+        (5, Some(500_000)),
+        (500_000, None),
+    ] {
+        let budget = crate::operation::GraphPlanningBudget::default();
+        budget
+            .allocation
+            .debit(0, budget.allocation.remaining().1 - allocation_work);
+        let replacement = budget.replacement.remaining();
+        let mut resources = unbounded_resources();
+        if let Some(work) = parent_work {
+            resources = resources.with_planning_work_allowance(work);
+        }
+        let limits = resources.policy();
+        let execution = AsciiExecution::for_test(&limits).with_graph_planning(&budget);
+        let result = try_undisplaced_route(
+            request,
+            path::RouteObstacles {
+                scene: &occupancy,
+                routes: &[],
+                owner: &owner,
+            },
+            None,
+            &budget.allocation,
+            &mut resources,
+            execution,
+        )
+        .unwrap();
+        let spent = resources.layout_work_used();
+        assert!(spent <= allocation_work.min(parent_work.unwrap_or(usize::MAX)) / 2);
+        assert_eq!(allocation_work - budget.allocation.remaining().1, spent);
+        assert_eq!(budget.replacement.remaining(), replacement);
+        assert_eq!(budget.repair_attempts.get(), 4);
+        if result.is_none() && spent != 0 {
+            charged_misses += 1;
+        }
+        if allocation_work == 500_000 && parent_work.is_none() {
+            assert!(
+                result.is_some(),
+                "the admitted trial must still find an easy path"
+            );
+        }
+    }
+    assert!(
+        charged_misses > 0,
+        "failed private trials must retain spent work"
+    );
+
+    // Public work and cancellation remain fatal even though the trial is optional.
+    // In the work case both the public ceiling and the private slice end at one.
+    for cancel in [false, true] {
+        let limits = if cancel {
+            AsciiResourcePolicy::unbounded()
+        } else {
+            AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, 1)
+                .unwrap()
+        };
+        let budget = crate::operation::GraphPlanningBudget::default();
+        let mut resources = ResourceContext::new(limits);
+        let control = OperationControl::new();
+        if cancel {
+            control.cancel_after_checkpoints(8);
+        } else {
+            resources = resources.with_planning_work_allowance(2);
+        }
+        let execution = AsciiExecution::new(&control, &limits).with_graph_planning(&budget);
+        execution.rebind_resource_context(&mut resources, OperationPhase::Layout);
+        let error = match try_undisplaced_route(
+            request,
+            path::RouteObstacles {
+                scene: &occupancy,
+                routes: &[],
+                owner: &owner,
+            },
+            None,
+            &budget.allocation,
+            &mut resources,
+            execution,
+        ) {
+            Err(error) => error,
+            Ok(_) => panic!("fatal trial errors must not become ordinary misses"),
+        };
+        if cancel {
+            assert!(matches!(error, AsciiError::Cancelled(_)));
+        } else {
+            assert!(matches!(error, AsciiError::ResourceLimitExceeded(_)));
+        }
+        assert!(
+            resources.layout_work_used() > 0,
+            "the failure must occur inside the trial"
+        );
+        assert_eq!(execution.checkpoint(OperationPhase::Layout), Err(error));
+    }
+}
+
+#[test]
 fn edge_style_is_applied_to_route_plan_cells_and_labels() {
     let line = AsciiRgb::new(1, 2, 3);
     let arrow = AsciiRgb::new(4, 5, 6);

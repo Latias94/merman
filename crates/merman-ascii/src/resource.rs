@@ -446,6 +446,11 @@ impl ResourceContext {
         self
     }
 
+    pub(crate) fn remaining_planning_work(&self) -> Option<usize> {
+        self.planning_work_end
+            .map(|end| end.saturating_sub(self.layout_work_used()))
+    }
+
     /// Creates a ledger-sharing view whose resource admissions observe operation cancellation.
     pub(crate) fn controlled(&self, control: OperationControl, phase: OperationPhase) -> Self {
         Self {

@@ -4,6 +4,48 @@ use crate::graph::model::{GraphDirection, GraphEdgeMarker, GraphNodeShape};
 use crate::resource::AsciiResourcePolicy;
 
 #[test]
+#[cfg(feature = "diagram-state")]
+fn compound_probe_routes_without_displacing_valid_edges() {
+    use merman_model::families::state::StateTerminalView;
+    let source = "stateDiagram-v2\n[*] --> Active\nstate Active {\n[*] --> NumLockOff\nNumLockOff --> NumLockOn: EvNumLockPressed\nNumLockOn --> NumLockOff: EvNumLockPressed\n}\n";
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(source)
+        .unwrap();
+    let merman_model::SemanticDiagramModel::State(model) = &parsed.model else {
+        panic!("State");
+    };
+    let limits = AsciiResourcePolicy::unbounded();
+    let options = AsciiRenderOptions::unicode();
+    let policy = options.resolve_policies().layout.state;
+    let charset = GraphCharset::for_options(&options);
+    let mut resources = ResourceContext::new(limits);
+    let budget = GraphPlanningBudget::default();
+    let execution = AsciiExecution::for_test(&limits).with_graph_planning(&budget);
+    let graph = crate::state::from_state_view_with_context_and_execution(
+        StateTerminalView::from_semantic(model),
+        options.terminal_width_profile,
+        &mut resources,
+        execution,
+    )
+    .unwrap();
+    let input = LayoutInput::try_new(&graph, &policy, &mut resources, execution).unwrap();
+    let initial = input
+        .generate(&LayoutFeedback::default(), &mut resources, execution)
+        .unwrap();
+    let replacement = budget.replacement.remaining();
+    let attempts = budget.repair_attempts.get();
+    let prepared =
+        initial_layout(&graph, &input, &charset, &policy, &mut resources, execution).unwrap();
+    assert_eq!(prepared.measured.layout, initial.layout);
+    assert!(
+        prepared.incumbent.is_some(),
+        "retain the complete compact scene"
+    );
+    assert_eq!(budget.replacement.remaining(), replacement);
+    assert_eq!(budget.repair_attempts.get(), attempts);
+}
+
+#[test]
 fn compound_return_preparation_keeps_an_already_routable_viewport() {
     use crate::graph::layout::graph_canvas_extent;
     use crate::{AsciiViewportPolicy, OverflowPolicy};
@@ -53,6 +95,7 @@ fn compound_return_preparation_keeps_an_already_routable_viewport() {
         &resources,
     )
     .unwrap();
+    assert_eq!(extent.width(), 38);
     let rendered = crate::graph::draw::render_graph_with_execution(
         &graph,
         &options,

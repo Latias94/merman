@@ -167,10 +167,13 @@ return-space recovery made the final generation easy to route. Preparing compoun
 before searching avoids those generations. This is a deterministic work/admission improvement;
 it does not establish a calibrated latency improvement or arbitrary-graph success. No default
 ceiling is raised and no authored condition is shortened.
-The exact native CLI control admits 887,856 work units instead of 21,764,888 and emits 71×79
-instead of 71×81. Early spacing is conservative: a single-region control widens from 20×32 to
-56×32, even though both retain a 60-column primary diagram. These are bounded tradeoffs, not
-universal compactness or reference superiority claims.
+The exact native CLI control admits 700,138 work units instead of 21,764,888 and emits 71×79
+instead of 71×81. Before displacing existing routes, the planner now tries a bounded detour
+against unchanged occupancy, splitting remaining preparation/allocation credit with repair.
+This restores the single-region control from 56×32 to 20×32, with complete labels and heads;
+its exact public work threshold falls from 586,045 to 172,600. Conservative spacing can still
+widen layouts whose original route cannot be proved within the finite trial. These are bounded
+tradeoffs, not universal compactness or reference superiority claims.
 
 Usecase and Block next need independent complete vertical slices, each
 checked on small, typical, and dense inputs at 80/100/120 cells against a complete record baseline.

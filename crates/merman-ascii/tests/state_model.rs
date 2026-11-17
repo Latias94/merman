@@ -1411,6 +1411,8 @@ fn state_original_concurrent_conditions_keep_every_label_and_transition() {
     )
     .expect("the original concurrent State diagram must retain a complete strict rendering");
     support::assert_rectangular_terminal_grid(&rendered);
+    let (width, height) = support::terminal_extent(&rendered);
+    assert!(width <= 71 && height <= 79, "{rendered}");
     for condition in [
         "EvNumLockPressed",
         "EvCapsLockPressed",

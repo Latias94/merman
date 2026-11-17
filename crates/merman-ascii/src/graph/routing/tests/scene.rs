@@ -1,4 +1,6 @@
 use super::*;
+use crate::AsciiGraphPresentation;
+use crate::operation::GraphPlanningBudget;
 
 #[test]
 fn group_title_protection_matches_painted_rows_after_root_projection() {
@@ -1369,6 +1371,299 @@ fn terminal_port_repair_observes_exact_work_and_limit_minus_one() {
         };
         assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
         if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.actual == exact));
+    }
+}
+
+struct OptionalSceneQualityBaseline<'graph, 'layout> {
+    prepared: PreparedSceneRouting<'layout>,
+    incumbent: RouteScenePlan<'graph>,
+    feasibility_work: usize,
+    feasibility_checkpoints: usize,
+    quality_work: usize,
+    quality_checkpoints: usize,
+}
+
+fn optional_scene_quality_graph() -> AsciiGraph {
+    let mut graph = group_self_loop_graph();
+    graph.edges.retain(|edge| edge.from == edge.to);
+    graph.nodes.retain(|node| node.id != "Z");
+    graph
+}
+
+fn measure_optional_scene_quality<'graph, 'layout>(
+    graph: &AsciiGraph,
+    layout: &'layout GraphLayout,
+    input: &SceneRoutingInput<'graph>,
+    charset: &GraphCharset,
+    policy: &crate::options::GraphLayoutPolicy,
+    presentation: AsciiGraphPresentation,
+) -> OptionalSceneQualityBaseline<'graph, 'layout> {
+    use std::sync::{
+        Arc,
+        atomic::{AtomicUsize, Ordering},
+    };
+    use std::time::{Duration, Instant};
+
+    let checkpoints = Arc::new(AtomicUsize::new(0));
+    let clock_checkpoints = Arc::clone(&checkpoints);
+    let now = Instant::now();
+    let control = OperationControl::with_test_clock(Arc::new(move || {
+        clock_checkpoints.fetch_add(1, Ordering::Relaxed);
+        now
+    }))
+    .with_deadline(Duration::from_secs(60));
+    let resources_policy = AsciiResourcePolicy::unbounded();
+    let mut resources = ResourceContext::new(resources_policy);
+    let budget = GraphPlanningBudget::for_presentation(presentation);
+    let execution = AsciiExecution::new(&control, &resources_policy).with_graph_planning(&budget);
+    let before_checkpoints = checkpoints.load(Ordering::Relaxed);
+
+    // Mirror the wrapper's preparation so the measured boundary includes every checkpoint
+    // before optional quality, while obtaining the feasibility incumbent independently.
+    execution.rebind_resource_context(&mut resources, OperationPhase::Layout);
+    execution.checkpoint(OperationPhase::Layout).unwrap();
+    let preparation_work = budget.feasibility.remaining().1;
+    let prepared =
+        PreparedSceneRouting::try_new(graph, layout, input, charset, &resources, execution)
+            .unwrap();
+    budget
+        .feasibility
+        .account_scene_work(0, preparation_work, &resources);
+    let incumbent = route_scene_kernel(
+        graph,
+        &prepared,
+        input,
+        charset,
+        policy,
+        false,
+        &mut resources,
+        execution,
+    )
+    .expect("the fixture must finish a complete feasibility scene");
+    assert_eq!(incumbent.routes.len(), graph.edges.len());
+    assert!(
+        incumbent.quality_requested,
+        "the fixture must exercise optional quality after feasibility"
+    );
+    let feasibility_work = resources.layout_work_used();
+    let feasibility_checkpoints = checkpoints.load(Ordering::Relaxed) - before_checkpoints;
+    let improvement_work = budget.quality_improvement.remaining().1;
+    let quality = route_scene_kernel(
+        graph,
+        &prepared,
+        input,
+        charset,
+        policy,
+        true,
+        &mut resources,
+        execution,
+    );
+    if let Err(error) = quality {
+        assert!(
+            error.graph_planning_fallback_reason().is_some(),
+            "the unbounded reference quality pass must only fail recoverably: {error:?}"
+        );
+    }
+    assert!(
+        budget.quality_improvement.remaining().1 < improvement_work,
+        "the fixture must attempt terminal quality search, not just request it"
+    );
+    let quality_work = resources.layout_work_used() - feasibility_work;
+    let quality_checkpoints =
+        checkpoints.load(Ordering::Relaxed) - before_checkpoints - feasibility_checkpoints;
+    assert!(quality_work > 1 && quality_checkpoints > 1);
+    OptionalSceneQualityBaseline {
+        prepared,
+        incumbent,
+        feasibility_work,
+        feasibility_checkpoints,
+        quality_work,
+        quality_checkpoints,
+    }
+}
+
+#[test]
+fn optional_scene_quality_private_work_exhaustion_retains_the_complete_feasibility_incumbent() {
+    let graph = optional_scene_quality_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let policy = options.flowchart_layout().graph_policy();
+    let input =
+        SceneRoutingInput::try_new(&graph, &graph.edges, &charset, &mut unbounded_resources())
+            .unwrap();
+    for presentation in [
+        AsciiGraphPresentation::Adaptive,
+        AsciiGraphPresentation::Strict,
+    ] {
+        let baseline = measure_optional_scene_quality(
+            &graph,
+            &layout,
+            &input,
+            &charset,
+            &policy,
+            presentation,
+        );
+        let quality_work = baseline.quality_work / 2;
+        let boundary = baseline.feasibility_work + quality_work;
+        let resources_policy = AsciiResourcePolicy::unbounded();
+
+        // Verify the same optional kernel really hits the private boundary. This rules out
+        // a successful quality pass coincidentally returning the same routes as feasibility.
+        let probe = ResourceContext::new(resources_policy);
+        probe.charge_layout_work(baseline.feasibility_work).unwrap();
+        let mut probe = probe.with_planning_work_allowance(quality_work);
+        let probe_budget = GraphPlanningBudget::for_presentation(presentation);
+        let probe_execution =
+            AsciiExecution::for_test(&resources_policy).with_graph_planning(&probe_budget);
+        assert!(matches!(
+            route_scene_kernel(
+                &graph,
+                &baseline.prepared,
+                &input,
+                &charset,
+                &policy,
+                true,
+                &mut probe,
+                probe_execution,
+            ),
+            Err(AsciiError::PlanningWorkAllowanceExhausted)
+        ));
+        assert!(probe.layout_work_used() > baseline.feasibility_work);
+
+        let mut resources =
+            ResourceContext::new(resources_policy).with_planning_work_allowance(boundary);
+        let budget = GraphPlanningBudget::for_presentation(presentation);
+        let execution = AsciiExecution::for_test(&resources_policy).with_graph_planning(&budget);
+        let actual = route_scene_with_input(
+            &graph,
+            &layout,
+            &input,
+            &charset,
+            &policy,
+            &mut resources,
+            execution,
+        )
+        .expect("a private quality boundary must retain the complete feasibility incumbent");
+        assert_eq!(resources.policy(), resources_policy);
+        assert_eq!(resources.layout_work_used(), probe.layout_work_used());
+        assert_eq!(actual.routes.len(), graph.edges.len());
+        assert_eq!(actual.canvas_extent(), baseline.incumbent.canvas_extent());
+        assert_eq!(
+            actual.planned_cell_count,
+            baseline.incumbent.planned_cell_count
+        );
+        for (actual, expected) in actual.routes.iter().zip(&baseline.incumbent.routes) {
+            assert_eq!(actual.owner, expected.owner);
+            assert_eq!(actual.plan, expected.plan);
+        }
+    }
+}
+
+#[test]
+fn optional_scene_quality_propagates_public_work_exhaustion() {
+    let graph = optional_scene_quality_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let policy = options.flowchart_layout().graph_policy();
+    let input =
+        SceneRoutingInput::try_new(&graph, &graph.edges, &charset, &mut unbounded_resources())
+            .unwrap();
+    for presentation in [
+        AsciiGraphPresentation::Adaptive,
+        AsciiGraphPresentation::Strict,
+    ] {
+        let baseline = measure_optional_scene_quality(
+            &graph,
+            &layout,
+            &input,
+            &charset,
+            &policy,
+            presentation,
+        );
+        let boundary = baseline.feasibility_work + baseline.quality_work / 2;
+        let resources_policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, boundary)
+            .unwrap();
+        let mut resources = ResourceContext::new(resources_policy);
+        let control = OperationControl::new();
+        let budget = GraphPlanningBudget::for_presentation(presentation);
+        let execution =
+            AsciiExecution::new(&control, &resources_policy).with_graph_planning(&budget);
+        let error = match route_scene_with_input(
+            &graph,
+            &layout,
+            &input,
+            &charset,
+            &policy,
+            &mut resources,
+            execution,
+        ) {
+            Ok(_) => panic!("public quality work exhaustion must not return the incumbent"),
+            Err(error) => error,
+        };
+        assert!(matches!(&error, AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits
+                && details.max == boundary && details.actual > boundary));
+        assert!(resources.layout_work_used() > baseline.feasibility_work);
+        assert!(resources.layout_work_used() <= boundary);
+        assert_eq!(execution.checkpoint(OperationPhase::Layout), Err(error));
+    }
+}
+
+#[test]
+fn optional_scene_quality_propagates_requested_cancellation() {
+    let graph = optional_scene_quality_graph();
+    let options = AsciiRenderOptions::unicode();
+    let charset = GraphCharset::for_options(&options);
+    let layout = layout_graph(&graph, &options);
+    let policy = options.flowchart_layout().graph_policy();
+    let input =
+        SceneRoutingInput::try_new(&graph, &graph.edges, &charset, &mut unbounded_resources())
+            .unwrap();
+    for presentation in [
+        AsciiGraphPresentation::Adaptive,
+        AsciiGraphPresentation::Strict,
+    ] {
+        let baseline = measure_optional_scene_quality(
+            &graph,
+            &layout,
+            &input,
+            &charset,
+            &policy,
+            presentation,
+        );
+        let resources_policy = AsciiResourcePolicy::unbounded();
+        let mut resources = ResourceContext::new(resources_policy);
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(
+            baseline.feasibility_checkpoints + baseline.quality_checkpoints / 2,
+        );
+        let budget = GraphPlanningBudget::for_presentation(presentation);
+        let execution =
+            AsciiExecution::new(&control, &resources_policy).with_graph_planning(&budget);
+        let error = match route_scene_with_input(
+            &graph,
+            &layout,
+            &input,
+            &charset,
+            &policy,
+            &mut resources,
+            execution,
+        ) {
+            Ok(_) => panic!("cancelling optional quality must not return the incumbent"),
+            Err(error) => error,
+        };
+        assert!(matches!(&error, AsciiError::Cancelled(cancelled)
+            if cancelled.phase == OperationPhase::Layout
+                && cancelled.reason == CancelReason::Requested));
+        assert!(control.is_cancelled());
+        assert!(
+            resources.layout_work_used() > baseline.feasibility_work,
+            "cancellation must occur after feasibility, inside optional quality"
+        );
+        assert_eq!(execution.checkpoint(OperationPhase::Layout), Err(error));
     }
 }
 

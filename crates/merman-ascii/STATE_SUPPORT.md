@@ -43,9 +43,14 @@ The shared planner measures cyclic compound-scope return-lane demand before sear
 widths, overlapping returns, local directions, and container margins participate in the same
 request used by measured recovery. A bounded initial route trial keeps a complete incumbent when
 the original spacing already works; otherwise the remaining preparation credit can enlarge the
-measured geometry. Endpoint/container label classification is reused only within one immutable
-geometry generation. These steps charge the existing operation ledger and preserve cancellation, deadlines,
-public resource ceilings, and bounded search diagnostics.
+measured geometry. When a direct route is blocked by an existing edge, a bounded detour trial
+first searches without displacing the existing routes. It uses half the smaller of the remaining
+allocation work and private preparation work, leaving credit for conflict repair. A failed private
+trial keeps its work charged; public resource and operation errors still propagate. This preserves
+the single-region labeled return at 20 columns and 32 rows without changing the Canonical profile.
+Endpoint/container label classification is reused only within one immutable geometry generation.
+These steps charge the existing operation ledger and preserve cancellation, deadlines, public
+resource ceilings, and bounded search diagnostics.
 Root returns and self loops retain their existing exterior-envelope rules, with additional
 space requested only after a measured routing miss.
 
@@ -97,4 +102,7 @@ the CJK compound lifecycle across both character sets and width conventions, ret
 transition heads and the ordered internal states.
 `tests/graph_family_viewports.rs` additionally checks Canonical-only State viewport selection,
 complete note/condition fields, logical family identity and independent display-cell measurements
-at 60/80/100/120 columns through the public parsed-report entrypoint.
+at 60/80/100/120 columns through the public parsed-report entrypoint. The single-region return
+also remains a complete primary diagram at 20 columns, with no profile switch, fallback, lost
+transition heads, or additional rows. The original three-region conditions retain a 71-by-79
+extent ceiling under Trusted Native limits.

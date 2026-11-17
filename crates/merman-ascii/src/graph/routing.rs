@@ -790,7 +790,7 @@ fn route_scene_kernel<'a>(
                 allowance.account_scene_work(start_work, initial_allowance, resources);
             }
             let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-            let needs_terminal_search = selected.is_none()
+            let mut needs_terminal_search = selected.is_none()
                 || (quality || input.independent_incidents[edge_index])
                     && !honors_allocation
                     && selected.as_ref().is_some_and(|(score, _, plan)| {
@@ -837,6 +837,27 @@ fn route_scene_kernel<'a>(
                 if selected.is_none()
                     && !witnesses.blockers.is_empty()
                     && edge.from != edge.to
+                    && let Some((score, plan)) = try_undisplaced_route(
+                        request,
+                        path::RouteObstacles {
+                            scene: &occupancy,
+                            routes: &routes,
+                            owner: &owner,
+                        },
+                        label_plans.descriptor(edge_index),
+                        &budget.allocation,
+                        resources,
+                        execution,
+                    )?
+                {
+                    needs_terminal_search = input.independent_incidents[edge_index]
+                        && route_needs_search(forward, score, &plan, false);
+                    selected = Some((score, usize::MAX, plan));
+                    defer_loop_labels = false;
+                }
+                if selected.is_none()
+                    && !witnesses.blockers.is_empty()
+                    && edge.from != edge.to
                     && repair_blocked_scene_for_input(
                         request,
                         input,
@@ -852,7 +873,9 @@ fn route_scene_kernel<'a>(
                     quality_requested = true;
                     continue;
                 }
-                occupancy.begin_blocker_collection(resources)?;
+                if needs_terminal_search {
+                    occupancy.begin_blocker_collection(resources)?;
+                }
             }
             if needs_terminal_search
                 && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
@@ -1021,6 +1044,39 @@ fn route_scene_kernel<'a>(
         allowance.account_scene_work(start_work, initial_allowance, resources);
     }
     result
+}
+
+fn try_undisplaced_route(
+    request: EdgeRouteRequest<'_>,
+    obstacles: path::RouteObstacles<'_>,
+    label: Option<label::RoutedLabelDescriptor>,
+    allowance: &crate::operation::SearchAllowance,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+    // A blocked direct path need not displace another edge. Split the remaining
+    // slice between an unchanged-scene trial and repair, without adding credit.
+    let work = allowance
+        .remaining()
+        .1
+        .min(resources.remaining_planning_work().unwrap_or(usize::MAX))
+        / 2;
+    if work == 0 {
+        return Ok(None);
+    }
+    let mut trial = resources.clone().with_planning_work_allowance(work);
+    match terminal::plan_terminal_route_with_budget(
+        request,
+        obstacles,
+        label,
+        None,
+        terminal::SearchBudget::Limited(allowance),
+        &mut trial,
+        execution,
+    ) {
+        Err(AsciiError::PlanningWorkAllowanceExhausted) => Ok(None),
+        result => result,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
