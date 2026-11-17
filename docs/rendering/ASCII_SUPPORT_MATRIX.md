@@ -117,8 +117,8 @@ details. Flowchart first-use declarations avoid a separate repeated node table. 
 width fallback uses family-owned keyed declarations, members/attributes, and individual
 relationships with independent markers or cardinalities. Known defaults and derived layout
 caches are omitted; nondefault metadata and source configuration stay with their owner. Packet
-uses the existing bounded record reflow for Plain width fallback. Other families retain their
-existing fallback projections.
+and Gantt use the existing bounded record reflow for Plain width fallback. Other families retain
+their existing fallback projections.
 
 ### Admitted profile combinations
 
@@ -127,7 +127,7 @@ existing fallback projections.
 | Flowchart, Swimlane | `canonical`, `compact`, `auto` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Sequence | `canonical`, `compact`, `auto` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Agentflow, Requirement, State | `canonical` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
-| Class, ER, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, ZenUML, structured-text families | `canonical` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Class, ER, Gantt, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, ZenUML, structured-text families | `canonical` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Unsupported families | none | none | none | none | none |
 
 The primary encoding list applies to Strict requests. Adaptive is Plain-only even with Allow or
@@ -137,9 +137,9 @@ combination.
 ## Diagrammatic Families
 
 These families are counted as ASCII diagrams because the primary projection preserves a spatial
-relationship: nodes/edges, participants/messages, states/transitions, entities/relations, plot
-coordinates, or bit positions. A family remains `Partial` until its common semantic fields are
-both retained and readable at ordinary terminal widths.
+relationship: nodes/edges, participants/messages, states/transitions, entities/relations, time
+intervals, plot coordinates, or bit positions. A family remains `Partial` until its common semantic
+fields are both retained and readable at ordinary terminal widths.
 
 | Mermaid family | Semantic coverage | Primary projection | Structured-text fallback | What renders well | Important limits |
 | --- | --- | --- | --- | --- | --- |
@@ -156,6 +156,7 @@ both retained and readable at ordinary terminal widths.
 | Architecture | Partial | Diagrammatic | Yes | Family-owned services, junctions, nested groups, independent declared endpoint sides and arrowheads, service-anchored group contacts, ordered Row/Column constraints, and complete keyed records. Invalid or conflicting detached geometry uses StructuredText primaries. | Canonical and Strict only; both width profiles and standard primary encodings. Strict routing, resource, cancellation, and deadline failures remain errors. Plain-only width fallback; no universal dense-scene or spatial extent guarantee. See [Architecture support](ascii/ARCHITECTURE_SUPPORT.md). |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, directed component ranks, private channels for bounded cycles and DAG diamonds, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | Bounded channel search does not guarantee arbitrary dense routing. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, nested group frames and typed group endpoints, actual member identity on facade routes, directed component ranks, private channels for bounded cycles and DAG diamonds, and explicit relation summaries. | Ancestor/member edges use typed summaries alongside group geometry; unspecified group directions use TB. Duplicate groups, ambiguous ownership/route IDs, and hidden shadow-entity endpoints remain unsupported. Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; bounded search is best effort. Accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
+| Gantt | Partial | Diagrammatic | Yes | One shared elapsed-time axis uses global minimum start/maximum scheduled end, visible-end bars, scheduled-midpoint milestones, independent status badges, source-index T keys, and repeated section occurrences. Complete appended records retain exact UTC dates, raw endpoints, literal typed dependency rules, flags, classes, raw fields, and source metadata. | Canonical and Strict only. The 60–120-cell envelope has a natural width of 80 and a 26-cell key/status/label column; records reflow to the viewport. Non-spatial domains, including compact/unknown display modes, use StructuredText primaries. Plain width fallback retains the same keyed records. No second scheduler, excluded-day compression, current-clock today marker, dependency arrows, or SVG styling/tick parity. Identity/section errors and operation failures remain errors. See [Gantt support](ascii/GANTT_SUPPORT.md). |
 | Packet | Partial | Diagrammatic | Yes | Fixed two-cell bit positions and widths, gaps, physical row splitting, ascending/descending bit order, optional bit numbers, and complete authored labels plus raw numeric DB records after the plot. | Spatial admission requires integer `bitsPerRow` in `1..=64`. Labels never widen fields; narrow labels may use `*` with a legend and exact details. Non-spatial numeric values, overlaps, or out-of-order fields retain complete StructuredText records. Canonical-only; Plain width fallback uses bounded record reflow. |
 | Pie | Partial | Diagrammatic | Yes | Explicitly named Pie proportions view: independent 50-cell bars share a 0–100% scale, preserving canonical section order, all labels, exact values, `showData`, title, accessibility, and source metadata in complete keyed records. Tiny positive values retain a distinct marker and their denominator contribution. | Circular/donut geometry, legend placement, and browser interaction are not reproduced. Empty, zero-total, negative, and non-finite borrowed models have complete StructuredText primaries with an explicit reason. Canonical and Strict only; width fallback uses complete Plain records. See [Pie support](ascii/PIE_SUPPORT.md). |
 | XYChart | Partial | Diagrammatic | Yes | Model-owned x/y samples and point labels, band/linear axes, negative/reversed/degenerate ranges, grouped bars, jointly composed line topology, distinct line-series point markers, explicit shared sample cells, mixed series, titles, legends, display policy, injective record-oriented disclosure after the plot, empty-chart metadata reports, and horizontal/vertical variants. Parser-produced x coordinates derive from the typed axis/category domain and sample order. | Browser hover is replaced by terminal disclosure; coordinates are quantized, line markers repeat after six series, and dense bar/line overlap still needs exact records. Long individual fields and large geometry can exceed the viewport. Unknown direct-model orientations and band y-axes are rejected; accessibility title/description metadata is intentionally omitted. |
@@ -202,7 +203,6 @@ as its own product policy, but neither is the renderer's complete structured fal
 
 | Mermaid family | Semantic coverage | Primary projection | What the report preserves | Why it is not counted as an ASCII diagram |
 | --- | --- | --- | --- | --- |
-| Gantt | Partial | Structured text | Titles, empty sections, task ids, resolved and adjusted dates, time-of-day precision, start/end constraints such as multi-id `after`/`until`, tags, and relevant scheduling options. Authored strings and lists use quoted byte-length framing so field delimiters remain recoverable. | No timeline geometry; links and click callbacks are metadata-only; duplicate or empty task ids are rejected. |
 | GitGraph | Partial | Structured text | Newest-first commit history with bounded branch lanes, quoted identities/messages/tags, explicit parent references, cherry-pick source disclosure, and separate sequence/type/id override details. | Lane crossings or capacity conflicts, repeated IDs, external/forward parents, and nonchronological input use complete parent records in model order. This is a history report rather than Mermaid's two-dimensional Git layout; unknown direct-model commit types are rejected. |
 | Journey | Partial | Structured text | Sections, tasks, actors, and scores, with quoted byte-length framing for authored strings and list items. | Does not draw Mermaid journey geometry. |
 | Kanban | Partial | Structured text | Columns, stable authored group/card ids, independent repeated card occurrences, group parent ownership, assignments, metadata, and deterministic `Unassigned` grouping. Authored labels and metadata use quoted byte-length framing. | Drag/drop and nested board geometry are not represented; group parent ownership is disclosed as text; duplicate group ids and empty ids are rejected. |
@@ -243,7 +243,6 @@ in their typed models, but require a complete terminal slice before their capabi
 | Candidate | Useful first spatial slice | Required evidence |
 | --- | --- | --- |
 | GitGraph | Commit lanes with a branch and merge. | Each commit appears once; every parent edge remains traceable, including merges with custom display types and cherry-picks. |
-| Gantt | Task bars on a common resolved time scale. | Preserve task identity, dependency facts, milestones, excluded dates, and distinctions lost through cell quantization. |
 | Agentflow | Family-owned spatial roles and complete reading records. | Expand spatial metadata or collapsed visible topology only with source-backed ownership and complete-information evidence. |
 
 Compare small, typical, and dense cases against the existing complete text representation at

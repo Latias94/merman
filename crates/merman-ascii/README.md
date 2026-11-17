@@ -82,8 +82,8 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, Agentflow, Requirement | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
-| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Gantt, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, Agentflow, Requirement, ZenUML | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Structured text | GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Agentflow uses role-labelled spatial nodes and expanded flow frames for its admitted subset.
 Rich metadata, collapsed views, and ambiguous containment use complete keyed reading records as
@@ -113,6 +113,15 @@ Pie presents proportions as independent bars on one shared 0–100% scale, with 
 labels and exact values. Tiny positive categories retain an explicit marker; undefined
 distributions use StructuredText primaries. See [Pie support](../../docs/rendering/ascii/PIE_SUPPORT.md)
 for the rounding, numeric, and presentation boundary.
+
+Gantt uses one continuous elapsed-time axis over resolved task facts, with visible-end bars,
+scheduled-midpoint milestones, and independent done/active/critical badges. Source-index T keys
+link rows to complete UTC dates, raw endpoints, literal typed dependencies, and metadata records.
+The timeline uses a 60–120-cell envelope (naturally 80) with a 26-cell key/status/label column;
+records reflow to the viewport. Non-spatial domains, including compact/unknown display modes,
+have StructuredText primaries. Canonical/Strict and Plain-only complete width fallback retain
+existing limits and errors. See [Gantt support](../../docs/rendering/ascii/GANTT_SUPPORT.md) for
+admission, exact midpoint rounding, and the SVG styling/tick and dependency-arrow limits.
 
 Mindmap puts labels and hierarchy first. Distinct authored IDs, shapes, icons, and custom sections
 appear in a separate `Details:` block, referenced from the corresponding node. The standard

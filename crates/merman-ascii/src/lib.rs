@@ -206,8 +206,6 @@ use merman_model::families::class::ClassTopologyView;
 use merman_model::families::er::ErDiagramModel;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_model::families::flowchart::FlowchartModel;
-#[cfg(feature = "diagram-gantt")]
-use merman_model::families::gantt::GanttTerminalView;
 #[cfg(feature = "diagram-git-graph")]
 use merman_model::families::git_graph::GitGraphDiagramModel;
 #[cfg(feature = "diagram-journey")]
@@ -424,6 +422,8 @@ impl AsciiRenderer {
             AsciiDiagram::Pie(model) => pie::primary_projection(model, execution)?,
             #[cfg(feature = "diagram-zenuml")]
             AsciiDiagram::Zenuml(model) => zenuml::primary_projection(model, execution)?,
+            #[cfg(feature = "diagram-gantt")]
+            AsciiDiagram::Gantt(model) => gantt::primary_projection(*model, execution)?,
             _ => output::projection_for(capability),
         };
         let fallback_capability = capability.is_some_and(|capability| {
@@ -442,6 +442,8 @@ impl AsciiRenderer {
             AsciiDiagram::Pie(_) => true,
             #[cfg(feature = "diagram-zenuml")]
             AsciiDiagram::Zenuml(_) => true,
+            #[cfg(feature = "diagram-gantt")]
+            AsciiDiagram::Gantt(_) => true,
             _ => false,
         };
         let output_context = output::OutputBuildContext {
@@ -633,7 +635,7 @@ fn render_model_with_execution(
         }
         #[cfg(feature = "diagram-gantt")]
         AsciiDiagram::Gantt(model) => {
-            render_gantt_model(*model, options, _local_time_zone, &execution)
+            gantt::render_gantt_diagram(*model, options, _local_time_zone, _source, execution)
         }
         #[cfg(feature = "diagram-git-graph")]
         AsciiDiagram::GitGraph(model) => render_git_graph_model(model, options, &execution),
@@ -841,17 +843,6 @@ fn render_flowchart_model_inner(
         &mut layout_resources,
         execution,
     )
-}
-
-#[cfg(feature = "diagram-gantt")]
-fn render_gantt_model(
-    model: GanttTerminalView<'_>,
-    options: &AsciiRenderOptions,
-    local_time_zone: &merman_model::time::LocalTimeZone,
-    execution: &operation::AsciiExecution<'_>,
-) -> Result<String> {
-    execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    gantt::render_gantt_diagram(model, options, local_time_zone, *execution)
 }
 
 #[cfg(feature = "diagram-git-graph")]

@@ -583,7 +583,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         diagram_type: "gantt",
         display_name: "Gantt",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
-        primary_projection: AsciiPrimaryProjection::StructuredText,
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
         structured_text_fallback: true,
         supported_semantics: &[
             "titles",
@@ -596,24 +596,29 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "tags",
             "time-of-day precision",
             "deterministic date formatting",
-            "length-framed authored report fields",
+            "quoted authored report fields",
+            "shared elapsed-time axis over resolved task intervals",
+            "scheduled-midpoint milestones and visible-end task bars",
+            "independent done, active and critical status badges",
+            "complete source-ordered keyed task and metadata records",
         ],
         limits: &[
-            "no terminal timeline geometry",
-            "output is a readable task summary",
-            "links and click callbacks are metadata-only",
+            "terminal endpoints are rounded to cells; collapsed intervals use a marker",
+            "compact, vertical markers, unprocessed tasks, noncanonical order and zero-span domains retain complete records",
+            "calendar tick styling, today markers and dependency arrows are records rather than terminal geometry",
+            "links and click callbacks are retained as non-executable records",
             "duplicate or empty task ids are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
-                source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve task identity and typed scheduling constraints with injective authored-field framing without claiming pseudo-graph geometry",
+                source: "crates/merman-ascii/tests/gantt_timeline.rs",
+                note: "parser-backed aligned time axis, milestones, excludes, complete records, viewport and resource contracts",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-                note: "support matrix classifies Gantt as structured-text output",
+                source: "docs/rendering/ascii/GANTT_SUPPORT.md",
+                note: "bounded family-owned timeline admission and complete reading records",
             },
         ],
     },
@@ -1405,6 +1410,7 @@ mod tests {
                 "class",
                 "er",
                 "flowchart",
+                "gantt",
                 "packet",
                 "pie",
                 "requirement",
@@ -1521,11 +1527,15 @@ mod tests {
         assert!(pie.structured_text_fallback);
         assert_eq!(pie.graph_presentations, STRICT_GRAPH_PRESENTATIONS);
         assert_eq!(find("treeView").support_level, AsciiSupportLevel::Summary);
-        assert_eq!(find("gantt").support_level, AsciiSupportLevel::Summary);
+        assert_eq!(find("gantt").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(
+            find("gantt").primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
 
         for diagram_type in [
-            "gantt", "gitgraph", "journey", "kanban", "mindmap", "timeline", "treeView",
+            "gitgraph", "journey", "kanban", "mindmap", "timeline", "treeView",
         ] {
             let capability = find(diagram_type);
             assert_eq!(
@@ -1742,7 +1752,7 @@ mod tests {
 
     #[test]
     fn sectioned_structured_text_capabilities_disclose_injective_field_framing() {
-        for diagram_type in ["gantt", "journey", "timeline"] {
+        for diagram_type in ["journey", "timeline"] {
             assert!(
                 find(diagram_type)
                     .supported_semantics
@@ -1750,6 +1760,11 @@ mod tests {
                 "{diagram_type} should disclose its injective StructuredText field ownership",
             );
         }
+        assert!(
+            find("gantt")
+                .supported_semantics
+                .contains(&"quoted authored report fields")
+        );
     }
 
     #[test]

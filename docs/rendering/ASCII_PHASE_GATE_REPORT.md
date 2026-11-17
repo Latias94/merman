@@ -44,15 +44,18 @@ The second decision is a conservative release disposition, not a claim that thes
 never be useful in a terminal. A future proposal can reopen one family by supplying the complete
 spatial vertical slice and executable width evidence described below.
 
-The later [bounded Packet spatial admission](#packet-bounded-spatial-admission) reopens one
-existing StructuredText family. Its contract and pending verification are separate from the
-historical R34 decisions and measurements below.
+The later [bounded Packet spatial admission](#packet-bounded-spatial-admission) and
+[Gantt timeline admission contract](#gantt-timeline-admission) revisit existing StructuredText
+families. Their contracts and verification are separate from the historical R34 decisions and
+measurements below.
 
 ## Authority and Reproduction
 
 The evidence boundary is:
 
-- Mermaid `11.16.1`, pinned by `tools/upstreams/REPOS.lock.json`, for syntax and typed semantics;
+- Mermaid `11.16.1` for the historical syntax and typed-semantic baseline; later family sections
+  name their selected baseline (Gantt uses Mermaid `12.3.0`, currently pinned by
+  `tools/upstreams/REPOS.lock.json`);
 - `mermaid-ascii` commit `6fffb8e2714acab2c4cb41c78894fabbc62cee56` for the immutable copied
   graph and sequence byte oracle;
 - local moving-reference inspection at
@@ -102,14 +105,15 @@ in `docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md` and
 ## Original StructuredText Dispositions
 
 The original Phase 3 decision retained Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline,
-and TreeView as StructuredText. Those reports preserve typed facts useful in logs and review but
-do not claim timeline, lane, board, map, packet-width, spine, or two-dimensional tree geometry.
-These are deliberate projection boundaries, not fallbacks selected by resource pressure. Packet's
-later bounded contract is documented below; the other dispositions remain unchanged.
+and TreeView as StructuredText. Those original reports preserved typed facts useful in logs and
+review without claiming timeline, lane, board, map, packet-width, spine, or two-dimensional tree
+geometry. These were deliberate projection boundaries, not fallbacks selected by resource pressure.
+The later Packet and Gantt contracts below revisit those two dispositions; the others remain
+StructuredText.
 
 | Family | Representative terminal task | Diagrammatic decision |
 | --- | --- | --- |
-| Gantt | Inspect task identity, constraints, sections, flags, and resolved times. | Retain StructuredText; no aligned date-scale timeline was admitted. |
+| Gantt | Inspect task identity, constraints, sections, flags, and resolved times. | Originally StructuredText; no aligned date-scale timeline was admitted at this gate. See the [later timeline admission contract](#gantt-timeline-admission). |
 | GitGraph | Trace commit order, branches, merges, tags, and parent identities. | Retain StructuredText; no lane graph was admitted. |
 | Journey | Review ordered tasks, actors, sections, and scores. | Retain StructuredText intentionally; a browser-shaped journey adds insufficient terminal value. |
 | Kanban | Audit column/card identity, assignment, and metadata, including orphan handling. | Retain StructuredText; no spatial board was admitted. |
@@ -176,6 +180,59 @@ text primary, and viewport fallback. Capability tests, the CLI archive contract,
 Playground capability projection use the promoted descriptor. No Packet byte-parity oracle or
 claim of reference superiority is adopted: the inspected terminal references do not supply a
 Packet oracle.
+
+## Gantt Timeline Admission
+
+The later Gantt contract uses pinned Mermaid `12.3.0` semantics. Semantic coverage stays Partial;
+the primary family projection becomes Diagrammatic and the derived support level moves from
+Summary to Partial. The original Phase 3 disposition remains historical. An individual
+non-spatial model still reports a complete StructuredText primary.
+
+The timeline shares the global minimum start and maximum scheduled end on a continuous epoch-ms
+axis. Ordinary bars use visible-end overrides; milestones use the exact scheduled midpoint,
+including half milliseconds before cell rounding. Independent D/A/! badges, milestone `o`, and
+collapsed-interval `*` markers retain their meanings. Source-index T keys link every row to complete
+records of exact UTC dates, raw endpoints, literal typed dependencies, flags, classes, raw/source
+metadata, and repeated section occurrences. The renderer neither reschedules nor compresses
+excluded days or reads the current clock for a today marker.
+
+Spatial admission requires processed non-vertical tasks, empty `displayMode`, source-index order,
+valid start/visible/scheduled bounds, and a nonempty positive global span. Other domains retain
+complete records; existing identity/section errors and resource/allocation/cancellation/deadline
+failures remain errors. Canonical/Strict, Unicode/CJK, five primary encodings, and Plain-only
+complete width fallback keep the existing schemas, dependencies, and public limits.
+
+The presentation envelope is 60–120 cells, naturally 80, with a 26-cell key/status/label column.
+Records reflow to the viewport; below 60 cells, requested Plain width fallback selects the same
+complete keyed records. The [Gantt support note](ascii/GANTT_SUPPORT.md) owns the detailed contract.
+Admission verified: 2026-11-17. The parser-backed `gantt_timeline` tests compare small, typical,
+and dense schedules at 80/100/120 columns in ASCII, Unicode, and CJK, retaining each task row and
+record. The same target covers quantization, exact intervals, flags, metadata, excluded dates,
+inclusive ends, viewport/encoding policy, and operation failures. Family unit tests add
+canonical/full equality and exact/N-1 resource and simultaneous-buffer boundaries.
+
+Measured ASCII dimensions include the complete records, not only the timeline:
+
+| Sample | Previous summary at 80 | Complete records alone at 80 | 80 columns | 100 columns | 120 columns | Spatial reading task |
+| --- | --- | --- | --- | --- | --- | --- |
+| Small: sequential Design/Build | 78 × 6 | 80 × 27 | 80 × 37 | 100 × 34 | 120 × 30 | Recover the shared endpoint and relative duration. |
+| Typical: Design/Build/Review/Release | 80 × 14 | 80 × 47 | 80 × 60 | 100 × 52 | 120 × 49 | See parallel Build/Review, independent statuses, and the release milestone. |
+| Dense: 24 tasks in three sections | 77 × 53 | 80 × 226 | 80 × 261 | 100 × 212 | 120 × 187 | Recover every independently aligned interval on one global scale. |
+
+The timeline portions occupy 9, 12, and 34 rows respectively at these widths. The previous summary
+omitted some raw compatibility and interaction facts; it is not a completeness-equivalent
+baseline. Full records increase vertical extent, and the timeline adds another reading aid rather
+than claiming a shorter total result. Sample construction is retained in `gantt_timeline.rs`.
+
+An unchanged-source local Trident diagnostic returns output for all 16 distinct Gantt sources.
+Its original DaveBench checker classifies 30 of 32 accepted weighted occurrences as
+`fallback render: source header shown: gantt`, because complete metadata records include the
+family name. The two remaining occurrences pass. This is a checker/output-contract discrepancy,
+not an official score improvement; metadata and checker rules are preserved. The unchanged
+Drawing replay remains 123/127 correct with no previously correct result regressing.
+
+`repo-ref/mermaid-ascii` has no Gantt oracle; no Grok or Codex renderer code was consulted.
+This contract does not claim SVG styling/tick parity or dependency-arrow geometry.
 
 ## U30 Structural Closeout Disposition
 

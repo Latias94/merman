@@ -223,6 +223,266 @@ fn packet_facade_retains_source_geometry_policy_and_actual_projection() {
     }
 }
 
+#[cfg(all(feature = "presentation", feature = "diagram-gantt"))]
+#[test]
+fn gantt_ascii_matches_canonical_and_presentation_schedules_records_and_reports() {
+    let body = concat!(
+        "gantt\ntitle Release plan\naccTitle: Delivery plan\n",
+        "dateFormat YYYY-MM-DD\naxisFormat %d\ntodayMarker off\n",
+        "section Delivery work\nBuild phase: done, build, 2026-01-01, 2d\n",
+        "section Review work\nReview phase: crit, active, review, after build, 1d\n",
+        "section Delivery work\nShip phase: milestone, ship, after review, 0d\n",
+    );
+    let renderer = Renderer::new();
+    for compact_mode in [false, true] {
+        let source = if compact_mode {
+            format!("---\nconfig:\n  gantt:\n    displayMode: compact\n---\n{body}")
+        } else {
+            body.to_string()
+        };
+        let mut expected_records = None;
+        for width in [59, 60] {
+            let semantic = renderer
+                .parse_semantic(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let merman::model::SemanticDiagramModel::Gantt(model) = semantic.model() else {
+                panic!("expected canonical Gantt model");
+            };
+            let scheduled_fields: Vec<_> = model
+                .tasks
+                .iter()
+                .map(|task| {
+                    vec![
+                        format!("startTime:{}", task.start_ms),
+                        format!("endTime:{}", task.end_ms),
+                        format!(
+                            "renderEndTime:{}",
+                            serde_json::to_string(&task.render_end_ms).unwrap()
+                        ),
+                        format!(
+                            "startConstraint:{}",
+                            serde_json::to_string(&task.start_constraint).unwrap()
+                        ),
+                        format!(
+                            "endConstraint:{}",
+                            serde_json::to_string(&task.end_constraint).unwrap()
+                        ),
+                        format!("raw:{}", serde_json::to_string(&task.raw).unwrap()),
+                    ]
+                })
+                .collect();
+            assert_eq!(scheduled_fields.len(), 3);
+            let presentation = renderer
+                .prepare_presentation(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical Gantt ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation Gantt ASCII output");
+            };
+            assert_eq!(
+                canonical.text, full.text,
+                "compact {compact_mode}, width {width}"
+            );
+            assert_eq!(canonical.report(), full.report());
+            let fallback = !compact_mode && width < 60;
+            assert_eq!(full.family, "gantt");
+            assert_eq!(full.encoding.as_str(), "plain");
+            assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+            assert!(!full.compact_attempted);
+            assert_eq!(full.fallback.attempted, fallback);
+            assert_eq!(full.primary_overflowed, Some(fallback));
+            assert_eq!(
+                full.outcome,
+                if fallback {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+            assert_eq!(
+                full.projection.as_str(),
+                if compact_mode || fallback {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert!(!full.emitted_overflowed);
+            assert!(full.emitted_extent.width <= width);
+            assert_eq!(
+                full.text.contains("Gantt timeline (elapsed time)"),
+                !compact_mode && !fallback
+            );
+
+            // Remove only presentation continuation indents, preserving authored spaces.
+            let mut records: Vec<String> = Vec::new();
+            for line in full.text.lines() {
+                if let Some(continuation) = line.strip_prefix("  ")
+                    && let Some(record) = records.last_mut()
+                {
+                    record.push_str(continuation);
+                } else {
+                    records.push(line.to_string());
+                }
+            }
+            let records: Vec<_> = records
+                .into_iter()
+                .skip_while(|record| !record.starts_with("Keys: T1..Tn"))
+                .collect();
+            assert!(
+                !records.is_empty(),
+                "missing complete records: {}",
+                full.text
+            );
+            let task_keys: Vec<_> = records
+                .iter()
+                .filter(|record| record.contains(" [task] "))
+                .map(|record| record.split_once(' ').unwrap().0)
+                .collect();
+            assert_eq!(task_keys, ["T1", "T2", "T3"]);
+            for (index, (id, label, section, start, end)) in [
+                (
+                    "build",
+                    "Build phase",
+                    "Delivery work",
+                    "2026-01-01",
+                    "2026-01-03",
+                ),
+                (
+                    "review",
+                    "Review phase",
+                    "Review work",
+                    "2026-01-03",
+                    "2026-01-04",
+                ),
+                (
+                    "ship",
+                    "Ship phase",
+                    "Delivery work",
+                    "2026-01-04",
+                    "2026-01-04",
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let key = format!("T{}", index + 1);
+                assert!(records.contains(&format!(
+                    "{key} [task] id=\"{id}\" label=\"{label}\" section=\"{section}\" sectionIndex={index} order={index}"
+                )));
+                assert!(records.iter().any(|record| {
+                    record.starts_with(&format!("{key} interval (UTC): {start} -> {end}"))
+                }));
+                let details = records
+                    .iter()
+                    .find(|record| record.starts_with(&format!("{key} details: {{")))
+                    .expect("each task retains its complete details");
+                for expected in &scheduled_fields[index] {
+                    assert!(
+                        details.contains(expected),
+                        "missing {expected:?}: {details}"
+                    );
+                }
+                for field in [
+                    "type:",
+                    "classes:",
+                    "active:",
+                    "done:",
+                    "crit:",
+                    "milestone:",
+                    "vert:",
+                    "prevTaskId:",
+                    "processed:true",
+                    "manualEndTime:",
+                ] {
+                    assert!(details.contains(field), "missing {field:?}: {details}");
+                }
+            }
+            let metadata = records
+                .iter()
+                .find(|record| record.starts_with("gantt details: {"))
+                .expect("Gantt retains complete metadata");
+            for expected in [
+                "title:\"Release plan\"",
+                "accTitle:\"Delivery plan\"",
+                "sections:[\"Delivery work\",\"Review work\",\"Delivery work\"]",
+                "dateFormat:\"YYYY-MM-DD\"",
+                "axisFormat:\"%d\"",
+                "todayMarker:\"off\"",
+                "sourceConfig:",
+            ] {
+                assert!(
+                    metadata.contains(expected),
+                    "missing {expected:?}: {metadata}"
+                );
+            }
+            if let Some(expected) = &expected_records {
+                assert_eq!(
+                    &records, expected,
+                    "record reflow must preserve all content"
+                );
+            } else {
+                expected_records = Some(records);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-gantt")]
+#[test]
+fn gantt_ascii_uses_structured_text_primary_for_empty_zero_span_and_vertical_sources() {
+    for source in [
+        "gantt\nsection Empty work\n",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\nRelease marker: milestone, marker, 2026-01-01, 0d\n",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\nReview marker: vert, marker, 2026-01-01, 1d\n",
+    ] {
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::unicode(),
+                    viewport: AsciiViewportPolicy::with_max_width(10)
+                        .overflow(OverflowPolicy::Fallback),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(output)) = output else {
+            panic!("expected Gantt ASCII output");
+        };
+        assert_eq!(output.projection.as_str(), "structured_text");
+        assert_eq!(output.outcome, AsciiOutputOutcome::Primary);
+        assert!(!output.fallback.attempted);
+        assert_eq!(output.primary_overflowed, Some(false));
+        assert!(!output.emitted_overflowed);
+        assert!(output.emitted_extent.width <= 10);
+        let compact: String = output.text.split_whitespace().collect();
+        assert!(compact.contains("ganttdetails:{"));
+        if source.contains("marker,") {
+            assert!(compact.contains("T1[task]id=\"marker\""));
+            assert!(compact.contains("T1details:{"));
+            assert!(compact.contains("T1interval(UTC):2026-01-01->"));
+        }
+    }
+}
+
 #[cfg(all(feature = "presentation", feature = "diagram-pie"))]
 #[test]
 fn pie_ascii_matches_canonical_and_presentation_records_and_projection() {

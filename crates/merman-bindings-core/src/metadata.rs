@@ -2214,9 +2214,9 @@ mod tests {
         );
 
         let gantt = ascii_capability(&capabilities, "gantt");
-        assert_eq!(gantt.support_level, "summary");
+        assert_eq!(gantt.support_level, "partial");
         assert_eq!(gantt.semantic_coverage, Some("partial"));
-        assert_eq!(gantt.primary_projection, "structured_text");
+        assert_eq!(gantt.primary_projection, "diagrammatic");
         assert!(!gantt.supported_semantics.contains(&"dependencies"));
 
         let sequence = ascii_capability(&capabilities, "sequence");

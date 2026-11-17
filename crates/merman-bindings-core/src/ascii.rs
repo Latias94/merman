@@ -751,6 +751,126 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-gantt")]
+    fn gantt_binding_results_distinguish_timeline_compact_records_and_width_fallback() {
+        for (compact_mode, width, width_profile) in [
+            (false, 60, "unicode"),
+            (false, 59, "cjk"),
+            (true, 59, "unicode"),
+        ] {
+            let prefix = if compact_mode {
+                "---\nconfig:\n  gantt:\n    displayMode: compact\n---\n"
+            } else {
+                ""
+            };
+            let source = format!(
+                "{prefix}gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\nBuild phase: done, build, 2026-01-01, 2d\nReview phase: crit, active, review, after build, 1d\n"
+            );
+            let options = serde_json::to_vec(&serde_json::json!({
+                "ascii": {
+                    "maxWidth": width,
+                    "widthProfile": width_profile,
+                    "layoutProfile": "canonical",
+                    "graphPresentation": "strict",
+                    "colorMode": "plain",
+                    "overflow": "fallback",
+                },
+            }))
+            .unwrap();
+            let result = crate::render_ascii_result(source.as_bytes(), &options).unwrap();
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+            else {
+                panic!("Gantt ASCII result must retain its canonical plan");
+            };
+            let fallback = !compact_mode && width < 60;
+            assert_eq!(
+                result.data(),
+                render_ascii(source.as_bytes(), &options).unwrap()
+            );
+            assert_eq!(plan.family(), "gantt");
+            assert_eq!(plan.schema_version(), 4);
+            assert_eq!(plan.encoding(), "plain");
+            assert_eq!(plan.width_profile(), width_profile);
+            assert_eq!(plan.layout_profile(), Some("canonical"));
+            assert_eq!(plan.requested_graph_presentation(), "strict");
+            assert_eq!(plan.requested_max_width(), Some(width));
+            assert!(!plan.compact_attempted());
+            assert_eq!(plan.fallback_capability(), "available");
+            assert_eq!(plan.fallback_attempted(), fallback);
+            assert_eq!(plan.primary_overflowed(), Some(fallback));
+            assert_eq!(
+                plan.fallback_reason(),
+                if fallback {
+                    Some("primary_overflow")
+                } else {
+                    None
+                }
+            );
+            assert_eq!(
+                plan.outcome(),
+                if fallback { "fallback" } else { "primary" }
+            );
+            assert_eq!(
+                plan.projection(),
+                if compact_mode || fallback {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert!(!plan.emitted_overflowed());
+            assert!(plan.emitted_width() <= width);
+            let metadata: serde_json::Value =
+                serde_json::from_slice(result.metadata_json()).unwrap();
+            assert_eq!(metadata["output_plan"]["family"], "gantt");
+            assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+            assert_eq!(metadata["output_plan"]["outcome"], plan.outcome());
+            assert_eq!(
+                metadata["output_plan"]["emitted_width"],
+                plan.emitted_width()
+            );
+            let text = std::str::from_utf8(result.data()).unwrap();
+            assert!(!text.contains('\u{1b}'));
+            assert_eq!(
+                text.contains("Gantt timeline (elapsed time)"),
+                !compact_mode && !fallback
+            );
+            let compact: String = text.split_whitespace().collect();
+            for expected in [
+                "T1[task]id=\"build\"",
+                "T2[task]id=\"review\"",
+                "T1details:{",
+                "T2details:{",
+                "ganttdetails:{",
+            ] {
+                assert!(compact.contains(expected), "missing {expected:?}: {text}");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-gantt")]
+    fn gantt_binding_rejects_unadmitted_output_combinations() {
+        for ascii in [
+            serde_json::json!({"layoutProfile": "compact"}),
+            serde_json::json!({"layoutProfile": "auto", "maxWidth": 59}),
+            serde_json::json!({"graphPresentation": "adaptive"}),
+            serde_json::json!({"colorMode": "ansi16", "maxWidth": 59, "overflow": "fallback"}),
+            serde_json::json!({"colorMode": "ansi256", "maxWidth": 59, "overflow": "fallback"}),
+            serde_json::json!({"colorMode": "truecolor", "maxWidth": 59, "overflow": "fallback"}),
+            serde_json::json!({"colorMode": "html", "maxWidth": 59, "overflow": "fallback"}),
+        ] {
+            let options = serde_json::to_vec(&serde_json::json!({"ascii": ascii})).unwrap();
+            let error = render_ascii(
+                b"gantt\ndateFormat YYYY-MM-DD\nBuild: build, 2026-01-01, 2d\n",
+                &options,
+            )
+            .expect_err("Gantt admits only Canonical, Strict, and Plain viewport fallback");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument, "{error:?}");
+        }
+    }
+
+    #[test]
     #[cfg(feature = "diagram-zenuml")]
     fn zenuml_binding_results_keep_the_basic_scene_and_complete_width_fallback() {
         let source = b"zenuml\nAlice->Bob: Hello\nBob-->Alice: Reply\n";

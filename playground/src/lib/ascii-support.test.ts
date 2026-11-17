@@ -155,6 +155,29 @@ test("Pie fallback metadata admits canonical strict percent bars and complete re
   assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("pie"));
 });
 
+test("Gantt fallback metadata admits a canonical strict timeline and complete records", () => {
+  const gantt = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "gantt"
+  );
+  assert.ok(gantt);
+  assert.equal(asciiSupportLabelKey(gantt), "asciiSupport.levels.partial");
+  assert.equal(gantt.semantic_coverage, "partial");
+  assert.equal(gantt.primary_projection, "diagrammatic");
+  assert.equal(gantt.structured_text_fallback, true);
+  assert.deepEqual(gantt.layout_profiles, ["canonical"]);
+  assert.deepEqual(gantt.graph_presentations, ["strict"]);
+  assert.deepEqual(gantt.width_profiles, ["unicode", "cjk"]);
+  assert.deepEqual(gantt.encodings, [
+    "plain",
+    "ansi16",
+    "ansi256",
+    "truecolor",
+    "html",
+  ]);
+  assert.deepEqual(gantt.fallback_encodings, ["plain"]);
+  assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("gantt"));
+});
+
 test("ZenUML fallback metadata admits its own canonical strict projection and complete records", () => {
   const zenuml = FALLBACK_ASCII_CAPABILITIES.find(
     ({ diagram_type }) => diagram_type === "zenuml"
@@ -200,7 +223,7 @@ test("support labels follow the generated projection kind", () => {
   );
   assert.equal(
     asciiSupportLabelKey(byType.get("gantt") ?? null),
-    "asciiSupport.structuredText"
+    "asciiSupport.levels.partial"
   );
   assert.equal(
     asciiSupportLabelKey(byType.get("zenuml") ?? null),

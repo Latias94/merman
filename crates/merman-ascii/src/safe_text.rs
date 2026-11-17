@@ -56,9 +56,8 @@ pub(crate) use encode::visit_html_escaped_text;
     )
 )]
 pub(crate) use framing::{
-    push_document_field, push_document_list, push_line_field, push_line_list,
-    push_optional_document_field, push_wrapped_field, push_wrapped_list,
-    visit_quoted_terminal_text,
+    push_document_field, push_line_field, push_line_list, push_optional_document_field,
+    push_wrapped_field, push_wrapped_list, visit_quoted_terminal_text,
 };
 #[cfg(test)]
 #[cfg_attr(

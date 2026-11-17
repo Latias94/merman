@@ -506,7 +506,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "diagram_type": "gantt",
     "display_name": "Gantt",
     "semantic_coverage": "partial",
-    "primary_projection": "structured_text",
+    "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
@@ -528,7 +528,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "fallback_encodings": [
       "plain"
     ],
-    "support_level": "summary",
+    "support_level": "partial",
     "supported_semantics": [
       "titles",
       "sections",
@@ -540,24 +540,29 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "tags",
       "time-of-day precision",
       "deterministic date formatting",
-      "length-framed authored report fields"
+      "quoted authored report fields",
+      "shared elapsed-time axis over resolved task intervals",
+      "scheduled-midpoint milestones and visible-end task bars",
+      "independent done, active and critical status badges",
+      "complete source-ordered keyed task and metadata records"
     ],
     "limits": [
-      "no terminal timeline geometry",
-      "output is a readable task summary",
-      "links and click callbacks are metadata-only",
+      "terminal endpoints are rounded to cells; collapsed intervals use a marker",
+      "compact, vertical markers, unprocessed tasks, noncanonical order and zero-span domains retain complete records",
+      "calendar tick styling, today markers and dependency arrows are records rather than terminal geometry",
+      "links and click callbacks are retained as non-executable records",
       "duplicate or empty task ids are rejected"
     ],
     "evidence": [
       {
         "kind": "local_semantic_probe",
-        "source": "crates/merman-ascii/tests/new_family_models.rs",
-        "note": "typed-model tests preserve task identity and typed scheduling constraints with injective authored-field framing without claiming pseudo-graph geometry"
+        "source": "crates/merman-ascii/tests/gantt_timeline.rs",
+        "note": "parser-backed aligned time axis, milestones, excludes, complete records, viewport and resource contracts"
       },
       {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-        "note": "support matrix classifies Gantt as structured-text output"
+        "source": "docs/rendering/ascii/GANTT_SUPPORT.md",
+        "note": "bounded family-owned timeline admission and complete reading records"
       }
     ]
   },

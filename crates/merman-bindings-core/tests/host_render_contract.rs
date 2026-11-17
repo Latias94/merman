@@ -123,6 +123,86 @@ fn render(source: &str, options: &Value) -> String {
 
 #[cfg(feature = "ascii")]
 #[test]
+fn gantt_ascii_hosts_preserve_source_config_records_and_the_selected_projection() {
+    let body = concat!(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\n",
+        "Build phase: done, build, 2026-01-01, 2d\n",
+        "Review phase: crit, active, review, after build, 1d\n",
+    );
+    for (compact_mode, width) in [(false, 60_u64), (false, 59), (true, 59)] {
+        let gantt_config = if compact_mode {
+            "  gantt:\n    displayMode: compact\n"
+        } else {
+            ""
+        };
+        let source = format!(
+            "---\ntitle: Host release plan\nconfig:\n  theme: dark\n{gantt_config}---\n{body}"
+        );
+        let options = serde_json::to_vec(&json!({
+            "ascii": {"colorMode": "plain", "overflow": "fallback", "maxWidth": width},
+        }))
+        .unwrap();
+        let engine = merman_bindings_core::BindingEngine::from_options(&options).unwrap();
+        let cached = engine.render_ascii_result(source.as_bytes()).unwrap();
+        let once = merman_bindings_core::render_ascii_result(source.as_bytes(), &options).unwrap();
+        assert_eq!(
+            cached.data(),
+            once.data(),
+            "compact {compact_mode}, width {width}"
+        );
+        let cached_metadata: Value = serde_json::from_slice(cached.metadata_json()).unwrap();
+        let once_metadata: Value = serde_json::from_slice(once.metadata_json()).unwrap();
+        assert_eq!(cached_metadata["output_plan"], once_metadata["output_plan"]);
+        let plan = &cached_metadata["output_plan"];
+        let fallback = !compact_mode && width < 60;
+        assert_eq!(plan["kind"], "ascii");
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["family"], "gantt");
+        assert_eq!(plan["layout_profile"], "canonical");
+        assert_eq!(plan["compact_attempted"], false);
+        assert_eq!(plan["fallback_attempted"], fallback);
+        assert_eq!(
+            plan["outcome"],
+            if fallback { "fallback" } else { "primary" }
+        );
+        assert_eq!(
+            plan["projection"],
+            if compact_mode || fallback {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert!(plan["emitted_width"].as_u64().unwrap() <= width);
+        let text = std::str::from_utf8(cached.data()).unwrap();
+        assert!(!text.contains('\u{1b}'));
+        let records: String = text
+            .lines()
+            .map(|line| line.strip_prefix("  ").unwrap_or(line))
+            .collect();
+        for expected in [
+            "sourceTitle:\"Host release plan\"",
+            "label=\"Build phase\"",
+            "label=\"Review phase\"",
+            "section=\"Delivery work\"",
+            "T1 interval (UTC): 2026-01-01 -> 2026-01-03",
+            "T2 interval (UTC): 2026-01-03 -> 2026-01-04",
+        ] {
+            assert!(records.contains(expected), "missing {expected:?}: {text}");
+        }
+        let compact: String = text.split_whitespace().collect();
+        for expected in ["ganttdetails:{", "sourceConfig:{", "\"theme\":\"dark\""] {
+            assert!(compact.contains(expected), "missing {expected:?}: {text}");
+        }
+        if compact_mode {
+            assert!(compact.contains("\"gantt\":{\"displayMode\":\"compact\"}"));
+        }
+    }
+}
+
+#[cfg(feature = "ascii")]
+#[test]
 fn zenuml_ascii_hosts_keep_source_records_and_the_complete_width_fallback() {
     let source = format!("---\ntitle: Host ZenUML\nconfig:\n  theme: dark\n---\n{ZENUML}");
     for width in [None, Some(10)] {

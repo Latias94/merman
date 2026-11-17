@@ -25,9 +25,13 @@ product boundary.
   is not by itself evidence that a reader can recover the same graph.
 - `merman-ascii` is the product renderer. It is typed-model driven, keeps the model boundary
   explicit, and should prefer honest terminal semantics over browser-shaped approximations.
-- Mindmap, TreeView, Timeline, Gantt, Journey, Kanban, and GitGraph render as compact
+- Mindmap, TreeView, Timeline, Journey, Kanban, and GitGraph render as compact
   structured-text projections; keep those projections readable and headless rather than
   browser-shaped.
+- Gantt now has a Partial Diagrammatic elapsed-time timeline with complete keyed records and
+  output-local StructuredText for non-spatial domains. Pinned Mermaid `12.3.0` supplies the
+  semantic reference; `repo-ref/mermaid-ascii` has no Gantt oracle. No Grok or Codex renderer code
+  was consulted for this projection. See [Gantt support](GANTT_SUPPORT.md).
 - Packet's Partial Diagrammatic contract uses a fixed two-cell bit scale for integer row widths
   in `1..=64`, preserving exact positions, gaps, row splits, and configured bit order/number
   display. Complete byte-framed labels and raw DB counts follow the plot; non-spatial models
@@ -689,7 +693,8 @@ expected output.
 | State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
 | XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | One typed terminal plan preserves model-owned coordinates, grouped bars, missing-sample gaps, joint line topology, distinct series markers, shared sample cells, scale-aware ticks, and exact record-oriented disclosure after the plot. Measurement, painting, encodings, and resource admission consume the same plans. | Terminal quantization, marker reuse after six lines, dense bar/line overlap, and long individual fields still require exact records or viewport fallback. |
 | Mindmap / TreeView | Not part of the reference scope. | Broader mindmap/tree examples can suggest readable outline shapes. | Compact structured-text hierarchy outlines with preserved order and wrapped labels. | Keep the output readable and compact; do not imitate browser geometry. |
-| Timeline / Gantt | Not part of the reference scope. | Broader schedule renderers can suggest readable summary patterns. | Readable rows that preserve sections, tasks, spans, and flags. | Favor honest text summaries over pseudo-graphs. |
+| Timeline | Not part of the reference scope. | Broader schedule renderers can suggest readable summary patterns. | Readable structured-text rows preserve direction, sections, and events. | Keep the projection stable and compact. |
+| Gantt | No Gantt oracle in the copied source or `repo-ref/mermaid-ascii`. | No Gantt byte or quality oracle is accepted. | Partial Diagrammatic shared elapsed-time axis, visible-end bars, exact scheduled-midpoint milestones before cell rounding, independent status badges, source-index keys, and complete task/metadata records. Non-spatial domains report StructuredText. | Pinned Mermaid `12.3.0` semantics own the contract. A 60–120-cell envelope and reflowed records preserve the width policy; full literal typed dependencies remain records. Excluded days are not compressed, and SVG styling/tick parity is not claimed. See [Gantt support](GANTT_SUPPORT.md). |
 | Journey / Kanban | Not part of the reference scope. | Broader board renderers can suggest grouping and actor/card metadata patterns. | Readable structured-text reports that preserve section order, actor order, and card metadata. | Keep the projection stable and compact. |
 | Packet | Not part of the reference scope. | No Packet byte-parity oracle is adopted. | Bounded Partial Diagrammatic contract: integer rows of 1..=64 bits at two terminal cells per bit, exact gaps and cross-row splitting, source-configured order/number display, and complete authored-label/raw-DB records after the plot. Non-spatial cases report StructuredText; borrowed models default to 32/ascending/showBits. | Narrow labels may use `*` with a legend and exact details; geometry never expands for text. This is a terminal admission bound, not a Mermaid syntax limit. Small/typical/dense cases pass all 80/100/120-column gates against the complete record baseline; the phase report records dimensions and vertical cost. |
 | GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports preserve parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
@@ -726,6 +731,10 @@ expected output.
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.
 - XYChart dense-layout policy beyond the shipped compact plot and `values:` disclosure rows.
+- Gantt compact/vertical geometry and browser tick presentation remain outside the spatial
+  subset. Cell rounding retains exact dates and literal dependency rules in complete keyed
+  records; resource, allocation, and cancellation failures remain errors. The
+  [Gantt support note](GANTT_SUPPORT.md) owns the admission and viewport boundary.
 - C4 dense fixed-row routing and browser presentation beyond role-labelled rectangles and nested
   frames. Complete records retain details; Strict routing, resource, and cancellation failures
   remain errors. The [C4 support note](C4_SUPPORT.md) owns this boundary without a reference-parity claim.

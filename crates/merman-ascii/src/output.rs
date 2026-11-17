@@ -20,6 +20,8 @@ mod architecture;
 mod block;
 #[cfg(feature = "diagram-c4")]
 mod c4;
+#[cfg(feature = "diagram-gantt")]
+pub(crate) mod gantt;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
@@ -43,6 +45,7 @@ mod pie;
     feature = "diagram-requirement",
     feature = "diagram-block",
     feature = "diagram-c4",
+    feature = "diagram-gantt",
     feature = "diagram-zenuml"
 ))]
 mod record;
@@ -939,6 +942,13 @@ fn build_semantic_document(
             },
         })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
+    #[cfg(feature = "diagram-gantt")]
+    if matches!(model, AsciiDiagram::Gantt(_)) {
+        fallback.candidate_resources = fallback
+            .candidate_resources
+            .clone()
+            .with_additional_retained_output(projection.len())?;
+    }
     fallback.push(format!("family: {family}"))?;
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -994,6 +1004,10 @@ fn build_semantic_document(
     let zenuml_document = zenuml::write_if_zenuml(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-zenuml"))]
     let zenuml_document = false;
+    #[cfg(feature = "diagram-gantt")]
+    let gantt_document = gantt::write_if_gantt(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-gantt"))]
+    let gantt_document = false;
     if !graph_document
         && !relation_document
         && !packet_document
@@ -1005,10 +1019,12 @@ fn build_semantic_document(
         && !requirement_document
         && !c4_document
         && !zenuml_document
+        && !gantt_document
     {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
     let candidate = fallback.finish();
+    drop(projection);
     // Semantic records have no trailing canvas padding. Row suffixes can contain authored
     // whitespace in a wrapped field, so trimming them would make the projection lossy.
     let context = OutputBuildContext {

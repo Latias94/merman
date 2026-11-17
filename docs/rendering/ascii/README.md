@@ -14,6 +14,7 @@ terminal themes, and public options.
 | Block | [Columns, spans, nested grids, and fixed-position relationships](BLOCK_SUPPORT.md) |
 | C4 | [Five views, declaration-order frames, and complete reading records](C4_SUPPORT.md) |
 | Flowchart and Swimlane | [Graph semantics, shapes, labels, and routing](FLOWCHART_SUPPORT.md) |
+| Gantt | [Shared elapsed-time axis, task markers, and complete keyed records](GANTT_SUPPORT.md) |
 | Pie | [Shared-scale percentage bars and complete values](PIE_SUPPORT.md) |
 | Requirement | [Shared-endpoint traceability and keyed fields](REQUIREMENT_SUPPORT.md) |
 | Sequence | [Participants, signals, controls, and lifecycle](SEQUENCE_SUPPORT.md) |

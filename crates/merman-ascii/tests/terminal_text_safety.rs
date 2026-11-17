@@ -269,7 +269,13 @@ fn every_current_family_normalizes_authored_controls_in_every_encoder() {
                         "raw control {control:?} leaked from {family}/{mode:?}: {rendered:?}"
                     );
                 }
-                for visible in [r"\u{1B}", r"\u{7}", r"\u{9B}", r"\u{202E}"] {
+                let visible_controls = if family == "gantt" {
+                    // Complete JSON metadata retains serde's escapes for C0 controls.
+                    [r"\u001b", r"\u0007", r"\u{9B}", r"\u{202E}"]
+                } else {
+                    [r"\u{1B}", r"\u{7}", r"\u{9B}", r"\u{202E}"]
+                };
+                for visible in visible_controls {
                     assert!(
                         rendered.contains(visible),
                         "missing {visible} in {family}/{mode:?}: {rendered:?}"
