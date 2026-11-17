@@ -12,6 +12,7 @@ resolution. The `diagram-usecase` feature selects this adapter independently of 
 | --- | --- |
 | Actors | Rectangular terminal nodes labeled `[actor]`, `[actor: hollow]`, `[actor: awesome]`, or `[actor: icon]`. These preserve typed roles rather than reproduce SVG actor silhouettes. |
 | Use cases | Ellipses use stadium contours with `[use case]`; rectangular use cases use rectangular contours with `[use case: rect]`. |
+| JSON tables | A rectangular node with a `[JSON]` title compartment and aligned Path/Value columns preserves source property order, nested values, every array index, empty containers, and JavaScript number display. Tables participate in ordinary association routing. |
 | Business, stereotypes, icons | Visible `[business]`, `[stereotype]`, and `[icon]` records within the node label retain the authored values. Icon names are text; no icon font or asset lookup runs. |
 | Boundaries and packages | Flat group frames retain member ownership and visible `[boundary]` or `[package]` titles. Empty boundaries remain groups. |
 | Notes | Document-shaped nodes labeled `[note]`, with independent dotted, markerless attachments to their actual targets. Notes inside a boundary follow their target's membership. Exact SVG note positioning is approximate. |
@@ -55,12 +56,38 @@ Markdown styling. CSS classes/styles, animation, accessibility, title, and sourc
 retained by the complete reading document; SVG styling, interaction, animation, and icon glyphs are
 not spatially reproduced. Opt-in ANSI/HTML output uses the shared graph's renderer-owned colors.
 
+## JSON table presentation
+
+The terminal table follows source order in depth-first leaf rows. An explicit typed path such as
+`$["items"][0]["name"]` distinguishes arrays from numeric object keys and literal punctuation from
+nested properties. Unlike the browser table, every scalar array row retains its full indexed path.
+Strings are quoted so empty text, `"true"`, `true`, and `null` remain distinguishable. HTML tags,
+`<br>`, Markdown, and literal backslash-n are data rather than label markup. Empty objects and
+arrays retain `{}` and `[]`; an empty root object is the `$` row.
+
+Source-order metadata takes precedence over numeric-looking key order. Borrowed models without
+an object's order metadata use that typed map's iteration order. Supplied orders must be complete,
+duplicate-free permutations of the actual keys. Number labels use JavaScript binary64 formatting;
+signed infinity sidecars display `Infinity` or `-Infinity`, separately from ordinary `null`.
+
+For `json-utf16` storage, valid strings decode at the terminal boundary. A key or value containing
+an unpaired surrogate uses `utf16:` followed by its stored JSON string literal, preserving distinct
+code-unit identities instead of replacing them with the same glyph. Metadata lookup always uses
+the original encoded key and RFC 6901 pointer, independently of the visible path. Complete width
+records retain the original `value`, `stringEncoding`, `propertyOrder`, and `nonFiniteNumbers`.
+
+Table traversal is iterative and observes work, nesting, grapheme, document, output, and
+cancellation limits. Intermediate paths, rows, decoded strings, and table text receive output
+admission before allocation; the graph still owns final node-cell admission. Long paths or values
+may make a table wide. It is not clipped or silently wrapped into a different JSON value.
+
 ## Explicit rejection and validation
 
-JSON table nodes return `UnsupportedFeature { diagram_type: "usecase", feature: "JSON table nodes" }`
-under every viewport policy. Their ordered JSON properties, UTF-16 strings, and non-finite number
-metadata require a dedicated table projection; treating them as ordinary node labels would lose
-semantics. Width fallback does not turn this semantic rejection into accepted support.
+JSON roots must be objects. Invalid encoded strings, malformed property-order metadata, unreachable
+sidecars, and infinity sidecars on non-null values receive explicit diagnostics. As in the pinned
+grammar, JSON entities admit ordinary associations with point, reversed-point, or markerless
+endpoints; they cannot participate in include/extend/generalization, receive notes, or belong to
+system boundaries. Width fallback does not bypass those validation rules.
 
 Borrowed direct models receive family validation before graph allocation. Empty/duplicate entity
 and relationship identities, explicit-edge identity collisions, missing endpoints and note targets,
@@ -84,6 +111,14 @@ roles, metadata, membership, complete fallback records, malformed models, exact 
 resource/cancellation propagation. Family unit tests additionally cover aggregate raw-label bytes
 and display cells, exact versus one-below work quotas, cancellation inside large label scans, and
 transaction rollback. Local fixtures live under `tests/testdata/local-semantic/usecase/`.
+
+The three `json-*.mmd` fixtures retain the exact documentation sources used by Trident's frozen
+Mermaid commit `370c4af57f43cb0bda05f4a9fe2d99c912ba16dd` (`docs/syntax/usecase.md`, fences at
+lines 533, 581, and 852, each repeated once in that collection). Their parser-backed tests check
+spatial output, complete typed rows, CJK dimensions, and honest 120-column overflow reporting.
+Table-specific controls also verify aligned adjacent rows and uninterrupted title dividers in all
+four directions, literal and UTF-16 text, JavaScript numeric display, sidecar validation, and early
+capacity admission for wide containers.
 
 Run the family checks with the repository's serialized build/test workflow:
 

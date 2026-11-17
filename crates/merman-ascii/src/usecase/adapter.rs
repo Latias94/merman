@@ -8,6 +8,7 @@ use crate::graph::{
 use crate::operation::AsciiExecution;
 use crate::options::TerminalWidthProfile;
 use crate::resource::{AsciiResourceLimitId, ResourceContext};
+use crate::safe_text::LabelBreakPolicy;
 use merman_model::OperationPhase;
 use merman_model::families::usecase::{
     UsecaseActorType, UsecaseArrowType, UsecaseDiagramModel, UsecaseNode, UsecaseNodeKind,
@@ -42,18 +43,36 @@ pub(super) fn project(
         _ => return Err(unsupported("direction")),
     };
     let index = validation::validate(model, resources, execution)?;
-    let plans = plan_texts(model, &index, profile, resources, execution)?;
-    materialize(model, &index, plans, direction, resources, execution)
+    let tables = super::json_table::prepare(&model.json_nodes, profile, resources)?;
+    let table_bytes = tables.iter().try_fold(0, |bytes, table| {
+        add_metric(
+            resources,
+            AsciiResourceLimitId::MaxOutputBytes,
+            add_metric(
+                resources,
+                AsciiResourceLimitId::MaxOutputBytes,
+                bytes,
+                table.title.len(),
+            )?,
+            table.body.len(),
+        )
+    })?;
+    let resources = resources
+        .clone()
+        .with_additional_retained_output(table_bytes)?;
+    let plans = plan_texts(model, &tables, &index, profile, &resources, execution)?;
+    materialize(model, &index, plans, direction, &resources, execution)
 }
 
 fn plan_texts<'a>(
     model: &'a UsecaseDiagramModel,
+    tables: &'a [super::json_table::TableText],
     index: &Index<'_>,
     profile: TerminalWidthProfile,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<TextPlans<'a>> {
-    let mut nodes = reserved_vec(model.nodes.len())?;
+    let mut nodes = reserved_vec(resources.checked_work_add(model.nodes.len(), tables.len())?)?;
     let mut notes = reserved_vec(model.notes.len())?;
     let mut boundaries = reserved_vec(model.boundaries.len())?;
     let mut relationships = reserved_vec(model.relationships.len())?;
@@ -82,6 +101,48 @@ fn plan_texts<'a>(
                 .max(plan.source_materialization_work_units()),
         )?;
         add_copy(key_len(node_index), &mut work, &mut bytes, resources)?;
+        nodes.push(plan);
+    }
+    for (table_index, table) in tables.iter().enumerate() {
+        checkpoint(execution, table_index)?;
+        let primary = DeferredGraphLabelSectionPlan::try_single_with_break_policy(
+            table.title.strip_suffix('\n').unwrap_or(&table.title),
+            None,
+            FAMILY,
+            profile,
+            LabelBreakPolicy::LiteralRows,
+            resources,
+        )?;
+        let secondary = DeferredGraphLabelSectionPlan::try_single_with_break_policy(
+            table.body.strip_suffix('\n').unwrap_or(&table.body),
+            None,
+            FAMILY,
+            profile,
+            LabelBreakPolicy::LiteralRows,
+            resources,
+        )?;
+        let plan =
+            DeferredGraphNodeLabelPlan::table(primary, secondary, FAMILY, profile, resources)?;
+        work = resources.checked_work_add(work, plan.source_materialization_work_units())?;
+        planned_cells = add_metric(
+            resources,
+            AsciiResourceLimitId::MaxDocumentCells,
+            planned_cells,
+            plan.document_cells(),
+        )?;
+        bytes = add_metric(
+            resources,
+            AsciiResourceLimitId::MaxOutputBytes,
+            bytes,
+            plan.materialized_bytes()
+                .max(plan.source_materialization_work_units()),
+        )?;
+        add_copy(
+            key_len(model.nodes.len() + table_index),
+            &mut work,
+            &mut bytes,
+            resources,
+        )?;
         nodes.push(plan);
     }
     for (note_index, note) in model.notes.iter().enumerate() {
@@ -209,16 +270,16 @@ fn materialize(
 ) -> Result<AsciiGraph> {
     let mut graph = AsciiGraph::new_for_diagram(FAMILY, direction);
     graph.try_reserve_projection(
-        resources.checked_work_add(model.nodes.len(), model.notes.len())?,
+        resources.checked_work_add(plans.nodes.len(), model.notes.len())?,
         resources.checked_work_add(model.relationships.len(), model.notes.len())?,
         model.boundaries.len(),
     )?;
     graph.use_incoming_edge_roots();
-    for (node_index, (node, plan)) in model.nodes.iter().zip(plans.nodes).enumerate() {
+    for (node_index, plan) in plans.nodes.into_iter().enumerate() {
         checkpoint(execution, node_index)?;
-        let shape = match node.kind {
-            UsecaseNodeKind::Actor | UsecaseNodeKind::UseCaseRect => GraphNodeShape::Rect,
-            UsecaseNodeKind::UseCaseEllipse => GraphNodeShape::Stadium,
+        let shape = match model.nodes.get(node_index).map(|node| node.kind) {
+            Some(UsecaseNodeKind::UseCaseEllipse) => GraphNodeShape::Stadium,
+            _ => GraphNodeShape::Rect,
         };
         graph.add_node_with_prepared_text(
             key('n', node_index)?,

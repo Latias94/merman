@@ -1,6 +1,7 @@
 //! Family-owned Usecase projection into the shared spatial graph renderer.
 
 mod adapter;
+mod json_table;
 mod validation;
 
 #[cfg(test)]

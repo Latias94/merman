@@ -4,13 +4,15 @@ use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use crate::safe_text::charge_text_layout;
 use merman_model::families::usecase::{
-    UsecaseActorType, UsecaseDiagramModel, UsecaseNode, UsecaseNodeKind, UsecaseRelationshipType,
+    UsecaseActorType, UsecaseArrowType, UsecaseDiagramModel, UsecaseNode, UsecaseNodeKind,
+    UsecaseRelationshipType,
 };
 use std::collections::{HashMap, HashSet};
 
 #[derive(Clone, Copy)]
 enum Entity {
     Node(usize),
+    Json,
     Boundary(usize),
 }
 
@@ -27,6 +29,7 @@ pub(super) fn preflight(
 ) -> Result<()> {
     checkpoint(execution, 0)?;
     let mut items = resources.checked_work_add(model.nodes.len(), model.boundaries.len())?;
+    items = resources.checked_work_add(items, model.json_nodes.len())?;
     items = resources.checked_work_add(items, model.relationships.len())?;
     items = resources.checked_work_add(items, model.notes.len())?;
     items = resources.checked_work_add(items, model.class_defs.len())?;
@@ -48,6 +51,10 @@ pub(super) fn preflight(
             checkpoint(execution, index)?;
             charge_text_layout(resources, member)?;
         }
+    }
+    for (index, node) in model.json_nodes.iter().enumerate() {
+        checkpoint(execution, index)?;
+        charge_text_layout(resources, &node.id)?;
     }
     for (index, relationship) in model.relationships.iter().enumerate() {
         checkpoint(execution, index)?;
@@ -72,17 +79,15 @@ pub(super) fn validate<'a>(
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Index<'a>> {
-    if !model.json_nodes.is_empty() {
-        return Err(unsupported("JSON table nodes"));
-    }
-    let entity_count = resources.checked_work_add(model.nodes.len(), model.boundaries.len())?;
+    let node_count = resources.checked_work_add(model.nodes.len(), model.json_nodes.len())?;
+    let entity_count = resources.checked_work_add(node_count, model.boundaries.len())?;
     let mut entities = HashMap::new();
     entities
         .try_reserve(entity_count)
         .map_err(|_| allocation_failed())?;
     let mut nodes = HashMap::new();
     nodes
-        .try_reserve(model.nodes.len())
+        .try_reserve(node_count)
         .map_err(|_| allocation_failed())?;
     for (index, node) in model.nodes.iter().enumerate() {
         checkpoint(execution, index)?;
@@ -97,6 +102,16 @@ pub(super) fn validate<'a>(
         }
         validate_node(node)?;
         nodes.insert(node.id.as_str(), index);
+    }
+    for (index, node) in model.json_nodes.iter().enumerate() {
+        checkpoint(execution, index)?;
+        if node.id.is_empty() {
+            return Err(unsupported("empty JSON table ids"));
+        }
+        if entities.insert(node.id.as_str(), Entity::Json).is_some() {
+            return Err(unsupported("duplicate or colliding JSON table ids"));
+        }
+        nodes.insert(node.id.as_str(), model.nodes.len() + index);
     }
     for (index, boundary) in model.boundaries.iter().enumerate() {
         checkpoint(execution, index)?;
@@ -119,7 +134,9 @@ pub(super) fn validate<'a>(
             .as_deref()
             .map(|id| match entities.get(id) {
                 Some(Entity::Boundary(index)) => Ok(*index),
-                Some(Entity::Node(_)) => Err(unsupported("node parents that are not boundaries")),
+                Some(Entity::Node(_) | Entity::Json) => {
+                    Err(unsupported("node parents that are not boundaries"))
+                }
                 None => Err(unsupported("unknown node parent ids")),
             })
             .transpose()?;
@@ -161,6 +178,7 @@ pub(super) fn validate<'a>(
                         return Err(unsupported("boundaries in multiple containers"));
                     }
                 }
+                Some(Entity::Json) => return Err(unsupported("JSON tables inside boundaries")),
                 None => return Err(unsupported("boundary members with missing targets")),
             }
         }
@@ -195,8 +213,27 @@ pub(super) fn validate<'a>(
         let target = *nodes
             .get(relationship.target.as_str())
             .ok_or_else(|| unsupported("relationships with missing endpoint nodes"))?;
-        let source_actor = model.nodes[source].kind == UsecaseNodeKind::Actor;
-        let target_actor = model.nodes[target].kind == UsecaseNodeKind::Actor;
+        let source_actor = model
+            .nodes
+            .get(source)
+            .is_some_and(|node| node.kind == UsecaseNodeKind::Actor);
+        let target_actor = model
+            .nodes
+            .get(target)
+            .is_some_and(|node| node.kind == UsecaseNodeKind::Actor);
+        if (source >= model.nodes.len() || target >= model.nodes.len())
+            && (relationship.relationship_type != UsecaseRelationshipType::Association
+                || !matches!(
+                    relationship.arrow_type,
+                    UsecaseArrowType::Point
+                        | UsecaseArrowType::ReversedPoint
+                        | UsecaseArrowType::Line
+                ))
+        {
+            return Err(unsupported(
+                "JSON tables require plain association relationships",
+            ));
+        }
         match relationship.relationship_type {
             UsecaseRelationshipType::Include | UsecaseRelationshipType::Extend
                 if source_actor || target_actor =>
@@ -228,6 +265,9 @@ pub(super) fn validate<'a>(
         let target = *nodes
             .get(note.target.as_str())
             .ok_or_else(|| unsupported("notes with missing target nodes"))?;
+        if target >= model.nodes.len() {
+            return Err(unsupported("notes targeting JSON tables"));
+        }
         if let Some(parent) = parent_by_node[target] {
             let notes = &mut notes_by_boundary[parent];
             notes.try_reserve(1).map_err(|_| allocation_failed())?;

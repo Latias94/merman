@@ -839,11 +839,12 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "independent endpoint markers and dotted relationships",
             "top-down, bottom-up, left-right, and right-left directions",
             "boundary membership and note attachment",
+            "ordered JSON tables with typed paths, literal values, and non-finite number metadata",
             "complete keyed entity and relationship records for width fallback",
         ],
         limits: &[
             "terminal role presentation approximates browser actor and ellipse geometry",
-            "JSON table nodes require a separate terminal projection and are unsupported",
+            "JSON tables retain indexed array paths and quoted strings rather than browser cell geometry",
             "bounded routing may reject dense or colliding compound relationships",
             "styling, animation, and accessibility metadata are retained by fallback rather than browser painting",
         ],

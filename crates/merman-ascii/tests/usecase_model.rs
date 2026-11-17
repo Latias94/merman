@@ -10,8 +10,8 @@ use merman_ascii::{
 };
 use merman_core::SemanticParser;
 use merman_model::families::usecase::{
-    UsecaseActorType, UsecaseAnimation, UsecaseBoundary, UsecaseDiagramModel, UsecaseLabelType,
-    UsecaseRelationshipType,
+    UsecaseActorType, UsecaseAnimation, UsecaseArrowType, UsecaseBoundary, UsecaseDiagramModel,
+    UsecaseJsonInfinity, UsecaseJsonStringEncoding, UsecaseLabelType, UsecaseRelationshipType,
 };
 use merman_model::{
     MermaidConfig, OperationControl, SemanticDiagramModel, resources::ResourceProfile,
@@ -99,6 +99,78 @@ fn assert_report_measurement(report: &AsciiOutput, profile: TerminalWidthProfile
         AsciiLayoutProfile::Canonical
     );
     assert!(!report.compact_attempted);
+}
+
+fn assert_json_table_rows(report: &AsciiOutput, expected: &[(&str, &str)]) {
+    assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
+    assert_eq!(report.projection, AsciiProjection::Diagrammatic);
+    assert_eq!(report.lossiness, Lossiness::None);
+    assert_report_measurement(report, report.width_profile);
+    support::assert_rectangular_terminal_grid_with_profile(&report.text, report.width_profile);
+    let top = report
+        .text
+        .lines()
+        .find(|line| !line.trim().is_empty())
+        .unwrap()
+        .trim();
+    assert!(
+        (top.starts_with('+') && top.ends_with('+'))
+            || (top.starts_with('┌') && top.ends_with('┐')),
+        "a JSON table must have a rectangular frame:\n{}",
+        report.text
+    );
+    assert_json_table_body_rows(report, expected);
+}
+
+fn assert_json_table_body_rows(report: &AsciiOutput, expected: &[(&str, &str)]) {
+    let (header_y, header) = report
+        .text
+        .lines()
+        .enumerate()
+        .find_map(|(y, line)| line.split_once(" | Value").map(|(left, _)| (y, left)))
+        .expect("a table must have a Path | Value header");
+    assert!(header.trim_end().ends_with("Path"), "{}", report.text);
+    let column = support::terminal_extent_with_profile(header, report.width_profile).0 + 1;
+    let rows: Vec<_> = report
+        .text
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| line.contains('$'))
+        .collect();
+    assert_eq!(rows.len(), expected.len(), "{}", report.text);
+    for (index, ((y, row), &(path, value))) in rows.into_iter().zip(expected).enumerate() {
+        assert_eq!(
+            y,
+            header_y + index + 1,
+            "table body rows must be adjacent in source order:\n{}",
+            report.text
+        );
+        let start = row.find('$').unwrap();
+        let suffix = row[start..]
+            .strip_prefix(path)
+            .unwrap_or_else(|| panic!("expected {path}:\n{}", report.text));
+        let (padding, actual) = suffix.split_once(" | ").expect("two table columns");
+        assert!(padding.chars().all(|ch| ch == ' '), "{row}");
+        let left = &row[..start + path.len() + padding.len() + 1];
+        assert_eq!(
+            support::terminal_extent_with_profile(left, report.width_profile).0,
+            column,
+            "table separators must share one terminal column:\n{}",
+            report.text
+        );
+        let trailing = actual
+            .strip_prefix(value)
+            .unwrap_or_else(|| panic!("expected {path} | {value}:\n{}", report.text))
+            .trim_start_matches(' ');
+        assert!(
+            matches!(
+                trailing.chars().next(),
+                Some('|' | '│' | '+' | '├' | '┤' | '┼')
+            ),
+            "a table value must end at its rectangular frame: {path}\n{}",
+            report.text
+        );
+    }
 }
 
 #[test]
@@ -651,25 +723,510 @@ fn malformed_membership_and_cycles_are_distinguished_from_unsupported_nesting() 
 }
 
 #[test]
-fn json_tables_are_explicitly_unsupported_in_both_primary_and_fallback_requests() {
-    let source = "usecase-beta\njson Data@{\"a\":1}\nA(Alpha)\nData --> A";
-    for overflow in [
-        OverflowPolicy::Allow,
-        OverflowPolicy::Error,
-        OverflowPolicy::Fallback,
+fn json_table_associations_keep_titles_labels_and_all_directions() {
+    let expected = [
+        (r#"$["id"]"#, "1"),
+        (r#"$["客户·"]"#, r#""👩‍💻""#),
+        (r#"$["items"][0]["x"]"#, r#""a longer value""#),
+        (r#"$["items"][1]"#, r#""短""#),
+    ];
+    for (direction, arrow, horizontal, reversed) in [
+        ("LR", "-- sends -->", true, false),
+        ("RL", "<-- sends --", true, true),
+        ("TB", "-- sends ---", false, false),
+        ("BT", "-- sends -->", false, true),
     ] {
-        assert!(matches!(
-            report(
-                source,
-                AsciiRenderOptions::ascii(),
-                AsciiViewportPolicy::with_max_width(20).overflow(overflow)
-            ),
-            Err(AsciiError::UnsupportedFeature {
-                diagram_type: "usecase",
-                feature: "JSON table nodes"
-            })
-        ));
+        let source = format!(
+            r#"usecase-beta
+direction {direction}
+json Data@{{"id":1,"客户·":"👩‍💻","items":[{{"x":"a longer value"}},"短"]}}
+Consumer(Receiver)
+Data {arrow} Consumer"#
+        );
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+                let report = report(
+                    &source,
+                    options.with_terminal_width_profile(profile),
+                    AsciiViewportPolicy::unrestricted(),
+                )
+                .unwrap();
+                assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
+                assert_eq!(report.projection, AsciiProjection::Diagrammatic);
+                assert_report_measurement(&report, profile);
+                support::assert_rectangular_terminal_grid_with_profile(&report.text, profile);
+                assert_json_table_body_rows(&report, &expected);
+                for label in [r#""Data" [JSON]"#, "sends"] {
+                    assert!(
+                        report.text.contains(label),
+                        "missing {label}:\n{}",
+                        report.text
+                    );
+                }
+                let position = |label: &str| {
+                    report
+                        .text
+                        .lines()
+                        .enumerate()
+                        .find_map(|(y, row)| row.find(label).map(|x| (x, y)))
+                        .unwrap()
+                };
+                let data = position(r#""Data" [JSON]"#);
+                let receiver = position("Receiver");
+                let increasing = if horizontal {
+                    data.0 < receiver.0
+                } else {
+                    data.1 < receiver.1
+                };
+                assert_eq!(increasing, !reversed, "{direction}\n{}", report.text);
+            }
+        }
     }
+}
+
+#[test]
+fn json_table_title_dividers_stay_uninterrupted_after_direction_transforms() {
+    for json in [
+        r#"{"a":1}"#,
+        r#"{"a":1,"items":[{"x":"longer value"},"短"]}"#,
+    ] {
+        for direction in ["LR", "RL", "TB", "BT"] {
+            let source = format!("usecase-beta\ndirection {direction}\njson D@{json}");
+            for (options, left, horizontal, right) in [
+                (AsciiRenderOptions::ascii(), '+', '-', '+'),
+                (AsciiRenderOptions::unicode(), '├', '─', '┤'),
+            ] {
+                let report = report(&source, options, AsciiViewportPolicy::unrestricted()).unwrap();
+                assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
+                let lines: Vec<_> = report.text.lines().map(str::trim).collect();
+                let title = lines
+                    .iter()
+                    .position(|line| line.contains(r#""D" [JSON]"#))
+                    .unwrap();
+                let header = lines
+                    .iter()
+                    .position(|line| line.contains(" | Value"))
+                    .unwrap();
+                assert_eq!(header, title + 2, "{direction} {json}:\n{}", report.text);
+                let width = lines[title].chars().count();
+                let divider = format!("{left}{}{right}", horizontal.to_string().repeat(width - 2));
+                assert_eq!(
+                    lines[title + 1],
+                    divider,
+                    "the full title divider must survive {direction} for {json}:\n{}",
+                    report.text
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn frozen_trident_json_fixtures_remain_diagrammatic_with_measured_cjk_output() {
+    for (fixture, labels, rows) in [
+        (
+            "json-payload",
+            &["Inspect payload", r#""Payload" [JSON]"#][..],
+            &[
+                (r#"$["2"]"#, r#""second in source""#),
+                (r#"$["1"]"#, r#""first after 2""#),
+                (r#"$["enabled"]"#, "true"),
+                (r#"$["count"]"#, "3"),
+                (r#"$["missing"]"#, "null"),
+                (r#"$["colors"][0]"#, r#""Red""#),
+                (r#"$["colors"][1]"#, r#""Green""#),
+                (r#"$["address"]["city"]"#, r#""Oslo""#),
+                (r#"$["items"][0]["name"]"#, r#""Book""#),
+                (r#"$["emptyObject"]"#, "{}"),
+                (r#"$["emptyArray"]"#, "[]"),
+            ][..],
+        ),
+        (
+            "json-styled-entities",
+            &[
+                "Customer",
+                "Checkout",
+                "Account",
+                "Edit profile",
+                r#""Session" [JSON]"#,
+            ][..],
+            &[(r#"$["active"]"#, "true")][..],
+        ),
+        (
+            "json-ordering-system",
+            &[
+                "Ordering System",
+                "Order staff",
+                "places order",
+                "<<include>>",
+                r#""OrderData" [JSON]"#,
+            ][..],
+            &[
+                (r#"$["status"]"#, r#""pending""#),
+                (r#"$["items"][0]["name"]"#, r#""Book""#),
+                (r#"$["items"][0]["quantity"]"#, "1"),
+                (r#"$["total"]"#, "29.95"),
+            ][..],
+        ),
+    ] {
+        let source = support::local_semantic_input(&format!("usecase/{fixture}.mmd"));
+        let profile = TerminalWidthProfile::Cjk;
+        let report = report(
+            &source,
+            AsciiRenderOptions::unicode().with_terminal_width_profile(profile),
+            AsciiViewportPolicy::with_max_width(120).overflow(OverflowPolicy::Allow),
+        )
+        .unwrap_or_else(|error| panic!("{fixture}: {error}"));
+        assert_eq!(
+            report.projection,
+            AsciiProjection::Diagrammatic,
+            "{fixture}"
+        );
+        assert_eq!(report.lossiness, Lossiness::None);
+        assert_report_measurement(&report, profile);
+        support::assert_rectangular_terminal_grid_with_profile(&report.text, profile);
+        let overflowed = report.emitted_extent.width > 120;
+        assert_eq!(report.emitted_overflowed, overflowed);
+        assert_eq!(report.primary_overflowed, Some(overflowed));
+        assert_eq!(report.primary_extent, Some(report.emitted_extent));
+        assert_eq!(
+            report.outcome,
+            if overflowed {
+                AsciiOutputOutcome::WideAllowed
+            } else {
+                AsciiOutputOutcome::Primary
+            }
+        );
+        assert!(!report.fallback.attempted);
+        assert_json_table_body_rows(&report, rows);
+        for &label in labels {
+            assert!(
+                report.text.contains(label),
+                "{fixture} missing {label}:\n{}",
+                report.text
+            );
+        }
+    }
+}
+
+#[test]
+fn json_tables_use_source_order_typed_paths_and_index_every_array_item() {
+    let source = r#"usecase-beta
+json Data@{"10":"ten","2":2,"items":[{"z":true,"a":null},[1,{"0":"zero"}],[],{}],"a/b~c":{"q\"[x]":"<br>\\n"},"":{},"客户·":"👩‍💻"}
+"#;
+    let expected = [
+        (r#"$["10"]"#, r#""ten""#),
+        (r#"$["2"]"#, "2"),
+        (r#"$["items"][0]["z"]"#, "true"),
+        (r#"$["items"][0]["a"]"#, "null"),
+        (r#"$["items"][1][0]"#, "1"),
+        (r#"$["items"][1][1]["0"]"#, r#""zero""#),
+        (r#"$["items"][2]"#, "[]"),
+        (r#"$["items"][3]"#, "{}"),
+        (r#"$["a/b~c"]["q\"[x]"]"#, r#""<br>\\n""#),
+        (r#"$[""]"#, "{}"),
+        (r#"$["客户·"]"#, r#""👩‍💻""#),
+    ];
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+            let report = report(
+                source,
+                options.with_terminal_width_profile(profile),
+                AsciiViewportPolicy::unrestricted(),
+            )
+            .unwrap();
+            assert_json_table_rows(&report, &expected);
+        }
+    }
+}
+
+#[test]
+fn json_tables_keep_empty_roots_and_choose_explicit_or_typed_map_order() {
+    let empty = report(
+        "usecase-beta\njson Empty@{}",
+        AsciiRenderOptions::ascii(),
+        AsciiViewportPolicy::unrestricted(),
+    )
+    .unwrap();
+    assert_json_table_rows(&empty, &[("$", "{}")]);
+
+    let mut model = model(
+        r#"usecase-beta
+json Data@{"z":3,"a":1,"m":2}
+"#,
+    );
+    let rows: Vec<_> = model.json_nodes[0]
+        .value
+        .as_object()
+        .unwrap()
+        .iter()
+        .map(|(key, value)| {
+            (
+                format!("$[{}]", serde_json::to_string(key).unwrap()),
+                value.to_string(),
+            )
+        })
+        .collect();
+    model.json_nodes[0]
+        .property_order
+        .insert("".into(), vec!["m".into(), "z".into(), "a".into()]);
+    assert_json_table_rows(
+        &render_direct(&model).unwrap(),
+        &[(r#"$["m"]"#, "2"), (r#"$["z"]"#, "3"), (r#"$["a"]"#, "1")],
+    );
+    model.json_nodes[0].property_order.clear();
+    let expected: Vec<_> = rows
+        .iter()
+        .map(|(path, value)| (path.as_str(), value.as_str()))
+        .collect();
+    assert_json_table_rows(&render_direct(&model).unwrap(), &expected);
+}
+
+#[test]
+fn json_table_quoted_text_keeps_controls_html_breaks_and_backslashes_literal() {
+    let source = r#"usecase-beta
+json Data@{"break":"a<br>b","escaped":"a\\nb","newline":"a\nb","tab":"a\tb","quote":"a\"b","control":"\u001b[31m\u202e"}
+"#;
+    let mut model = model(source);
+    model.json_nodes[0].id = "Data \"quoted\"<br>\\n".into();
+    let report = render_direct(&model).unwrap();
+    assert!(
+        report.text.contains(r#""Data \"quoted\"<br>\\n" [JSON]"#),
+        "{}",
+        report.text
+    );
+    assert!(!report.text.contains(['\u{1b}', '\u{202e}']));
+    assert_json_table_rows(
+        &report,
+        &[
+            (r#"$["break"]"#, r#""a<br>b""#),
+            (r#"$["escaped"]"#, r#""a\\nb""#),
+            (r#"$["newline"]"#, r#""a\nb""#),
+            (r#"$["tab"]"#, r#""a\tb""#),
+            (r#"$["quote"]"#, r#""a\"b""#),
+            (r#"$["control"]"#, r#""\u{1B}[31m\u{202E}""#),
+        ],
+    );
+}
+
+#[test]
+fn json_tables_distinguish_unpaired_surrogates_from_replacement_and_literal_escapes() {
+    let source = r#"usecase-beta
+json Data@{"\ud800":"\udc00","\ud801":"\ud800","�":"replacement","\\ud800":"literal","\ud83d\ude00":"pair key","pair":"\ud83d\ude00","normal":"hello"}
+"#;
+    let model: UsecaseDiagramModel =
+        serde_json::from_slice(&serde_json::to_vec(&model(source)).unwrap()).unwrap();
+    assert_eq!(
+        model.json_nodes[0].string_encoding,
+        Some(UsecaseJsonStringEncoding::JsonUtf16)
+    );
+    let expected = [
+        (r#"$[utf16:"\ud800"]"#, r#"utf16:"\udc00""#),
+        (r#"$[utf16:"\ud801"]"#, r#"utf16:"\ud800""#),
+        (r#"$["�"]"#, r#""replacement""#),
+        (r#"$["\\ud800"]"#, r#""literal""#),
+        (r#"$["😀"]"#, r#""pair key""#),
+        (r#"$["pair"]"#, r#""😀""#),
+        (r#"$["normal"]"#, r#""hello""#),
+    ];
+    assert_json_table_rows(&render_direct(&model).unwrap(), &expected);
+    let parsed = report(
+        source,
+        AsciiRenderOptions::unicode(),
+        AsciiViewportPolicy::unrestricted(),
+    )
+    .unwrap();
+    assert_json_table_rows(&parsed, &expected);
+}
+
+#[test]
+fn json_tables_format_js_numbers_and_distinguish_infinity_null_and_strings() {
+    let source = r#"usecase-beta
+json Data@{"rounded":9007199254740993,"negativeZero":-0,"large":1e20,"exponent":1e21,"small":1e-6,"tiny":1e-7,"positive":1e400,"negative":-1e400,"nothing":null,"text":"Infinity"}
+"#;
+    let expected = [
+        (r#"$["rounded"]"#, "9007199254740992"),
+        (r#"$["negativeZero"]"#, "0"),
+        (r#"$["large"]"#, "100000000000000000000"),
+        (r#"$["exponent"]"#, "1e+21"),
+        (r#"$["small"]"#, "0.000001"),
+        (r#"$["tiny"]"#, "1e-7"),
+        (r#"$["positive"]"#, "Infinity"),
+        (r#"$["negative"]"#, "-Infinity"),
+        (r#"$["nothing"]"#, "null"),
+        (r#"$["text"]"#, r#""Infinity""#),
+    ];
+    let parsed = report(
+        source,
+        AsciiRenderOptions::ascii(),
+        AsciiViewportPolicy::unrestricted(),
+    )
+    .unwrap();
+    assert_json_table_rows(&parsed, &expected);
+    let mut model = model(source);
+    model.json_nodes[0].value["rounded"] = serde_json::json!(9_007_199_254_740_993_u64);
+    assert_json_table_rows(&render_direct(&model).unwrap(), &expected);
+}
+
+#[test]
+fn json_table_width_fallback_appends_keys_and_preserves_raw_sidecars() {
+    let mut model = model(
+        r#"usecase-beta
+json Data@{"z":"\ud800","payloadValue":1e400}
+actor User
+json Empty@{}
+Action(Act)
+User -- request --> Data
+Data --> Action
+Empty --- Data
+note for Action "Regular note"
+"#,
+    );
+    model.json_nodes[0].classes.push("payload".into());
+    model.json_nodes[0].styles.push("fill:red".into());
+    let serialized = serde_json::to_value(&model.json_nodes[0]).unwrap();
+    for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+        let report = direct_report(
+            &model,
+            AsciiRenderOptions::ascii().with_terminal_width_profile(profile),
+            AsciiViewportPolicy::with_max_width(24).overflow(OverflowPolicy::Fallback),
+            &OperationControl::new(),
+            AsciiResourcePolicy::default(),
+        )
+        .unwrap();
+        assert_report_measurement(&report, profile);
+        assert_eq!(report.outcome, AsciiOutputOutcome::Fallback);
+        assert_eq!(report.projection, AsciiProjection::StructuredText);
+        assert_eq!(report.lossiness, Lossiness::PresentationOnly);
+        assert_eq!(
+            report.fallback.reason,
+            Some(AsciiFallbackReason::PrimaryOverflow)
+        );
+        assert_eq!(report.primary_overflowed, Some(true));
+        assert!(report.primary_extent.unwrap().width > 24);
+        assert!(!report.emitted_overflowed);
+        let collapsed = report.text.split_whitespace().collect::<String>();
+        for expected in [
+            r#"N1[actor]id="User""#,
+            r#"N2[use-caseellipse]id="Action""#,
+            r#"N3[JSONtable]id="Data""#,
+            r#"N4[JSONtable]id="Empty""#,
+            "E1:N1[open]--solidassociation--N3[point]",
+            "E2:N3[open]--solidassociation--N2[point]",
+            "E3:N4[open]--solidassociation--N3[open]",
+            r#"label:"request""#,
+            "T1noteforN2",
+        ] {
+            assert!(
+                collapsed.contains(expected),
+                "missing {expected}:\n{}",
+                report.text
+            );
+        }
+        for field in [
+            "value",
+            "stringEncoding",
+            "propertyOrder",
+            "nonFiniteNumbers",
+            "classes",
+            "styles",
+        ] {
+            let expected = format!("{field}:{}", serialized[field]);
+            assert!(
+                collapsed.contains(&expected),
+                "missing {expected}:\n{}",
+                report.text
+            );
+        }
+    }
+}
+
+#[test]
+fn malformed_direct_json_roots_order_and_infinity_metadata_are_rejected() {
+    let base = model(
+        r#"usecase-beta
+json Data@{"a":1,"b":null,"nested":{"x":true}}
+"#,
+    );
+    let mut bad = base.clone();
+    bad.json_nodes[0].value = serde_json::json!([1]);
+    invalid(&bad, "JSON table roots must be objects");
+    for order in [vec!["a", "a", "nested"], vec!["a", "b"]] {
+        let mut bad = base.clone();
+        bad.json_nodes[0]
+            .property_order
+            .insert("".into(), order.into_iter().map(str::to_string).collect());
+        invalid(
+            &bad,
+            "JSON property order must contain every key exactly once",
+        );
+    }
+    let mut bad = base.clone();
+    bad.json_nodes[0]
+        .property_order
+        .insert("/missing".into(), vec![]);
+    invalid(&bad, "unreachable JSON table metadata");
+    for (pointer, feature) in [
+        ("/missing", "unreachable JSON table metadata"),
+        ("/a", "JSON infinity metadata must identify null values"),
+    ] {
+        let mut bad = base.clone();
+        bad.json_nodes[0]
+            .non_finite_numbers
+            .insert(pointer.into(), UsecaseJsonInfinity::Positive);
+        invalid(&bad, feature);
+    }
+
+    let mut bad = base;
+    bad.json_nodes[0].string_encoding = Some(UsecaseJsonStringEncoding::JsonUtf16);
+    invalid(&bad, "invalid JSON UTF-16 strings");
+    let mut bad = model(
+        r#"usecase-beta
+json Data@{"text":"\ud800"}
+"#,
+    );
+    let key = bad.json_nodes[0].property_order[""][0].clone();
+    bad.json_nodes[0].value[&key] = serde_json::json!("not a JSON string literal");
+    invalid(&bad, "invalid JSON UTF-16 strings");
+}
+
+#[test]
+fn direct_json_entities_reject_colliding_ids_special_links_notes_and_membership() {
+    let base = model(
+        r#"usecase-beta
+actor User
+Action(Act)
+json Data@{}
+User --> Data
+note for Action "Ordinary note"
+systemBoundary Scope(Scope)
+end
+"#,
+    );
+    let mut bad = base.clone();
+    bad.json_nodes[0].id.clear();
+    invalid(&bad, "empty JSON table ids");
+    let mut bad = base.clone();
+    bad.json_nodes[0].id = "User".into();
+    invalid(&bad, "duplicate or colliding JSON table ids");
+    for (relationship_type, arrow_type) in [
+        (UsecaseRelationshipType::Include, UsecaseArrowType::Point),
+        (
+            UsecaseRelationshipType::Association,
+            UsecaseArrowType::Circle,
+        ),
+    ] {
+        let mut bad = base.clone();
+        bad.relationships[0].relationship_type = relationship_type;
+        bad.relationships[0].arrow_type = arrow_type;
+        invalid(&bad, "JSON tables require plain association relationships");
+    }
+    let mut bad = base.clone();
+    bad.notes[0].target = "Data".into();
+    invalid(&bad, "notes targeting JSON tables");
+    let mut bad = base;
+    bad.boundaries[0].members.push("Data".into());
+    invalid(&bad, "JSON tables inside boundaries");
 }
 
 #[test]
