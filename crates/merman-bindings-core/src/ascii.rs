@@ -649,6 +649,7 @@ mod tests {
 
     #[test]
     #[cfg(all(
+        feature = "diagram-architecture",
         feature = "diagram-usecase",
         feature = "diagram-block",
         feature = "diagram-c4",
@@ -657,6 +658,10 @@ mod tests {
     fn family_binding_results_expose_the_selected_primary_and_fallback() {
         for (family, source) in [
             ("agentflow", "agentflow-beta\nA[Request] --> B[Result]\n"),
+            (
+                "architecture",
+                "architecture-beta\nservice api(server)[API]\nservice db(database)[Database]\napi:R --> L:db\n",
+            ),
             (
                 "usecase",
                 "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n",
@@ -723,6 +728,13 @@ mod tests {
                             "E1[relationship]type=\"rel_b\"source=[S2]alias=\"api\"target=[S1]alias=\"user\"heads=source",
                             "S2techn={text:\"Rust\"}",
                             "parentBoundary=[B2]alias=\"zone\"",
+                        ]
+                    } else if family == "architecture" {
+                        &[
+                            "N1[service]id=\"api\"title=\"API\"",
+                            "N2[service]id=\"db\"title=\"Database\"",
+                            "E1lhs=[N1]id=\"api\"lhsDir=\"R\"lhsInto=null",
+                            "E1rhs=[N2]id=\"db\"rhsDir=\"L\"rhsInto=true",
                         ]
                     } else {
                         &[

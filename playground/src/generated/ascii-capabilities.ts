@@ -60,25 +60,54 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "architecture",
-    "display_name": "architecture",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Architecture",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "canonical services, junctions, nested groups, and typed relationships",
+      "independent declared source and target sides and arrow ownership",
+      "group endpoints anchored to their owning service rather than arbitrary group members",
+      "ordered row and column alignment constraints with explicit conflict classification",
+      "complete keyed node, group, edge, layout-hint, accessibility, and source records"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "terminal roles and frames approximate browser geometry; icons and authored metadata remain records",
+      "invalid or conflicting detached geometry uses complete StructuredText primaries",
+      "Canonical layout and Strict graph presentation only; no universal spatial extent guarantee",
+      "strict routing, resources, cancellation, and deadlines remain errors; Plain width fallback retains complete records"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/architecture_model.rs",
+        "note": "family-local identity, declared sides, group anchors, alignment, records, and operation boundaries"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/ARCHITECTURE_SUPPORT.md",
+        "note": "family-owned spatial semantics and complete Architecture reading records"
       }
     ]
   },

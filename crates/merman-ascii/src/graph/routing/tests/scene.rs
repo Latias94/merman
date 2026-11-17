@@ -2,6 +2,134 @@ use super::*;
 use crate::AsciiGraphPresentation;
 use crate::operation::GraphPlanningBudget;
 
+#[cfg(feature = "diagram-architecture")]
+#[test]
+fn authored_cardinal_ports_survive_search_and_final_route_validation() {
+    use crate::graph::model::{GraphEndpointPort, GraphPortSide};
+    let sides = [
+        (GraphPortSide::Left, StepDirection::Left),
+        (GraphPortSide::Right, StepDirection::Right),
+        (GraphPortSide::Top, StepDirection::Up),
+        (GraphPortSide::Bottom, StepDirection::Down),
+    ];
+    for &(source, departure) in &sides {
+        for &(target, arrival) in &sides {
+            let mut graph = AsciiGraph::new_for_diagram("architecture", GraphDirection::TopDown);
+            graph.add_node("first", "First");
+            graph.add_node("second", "Second");
+            graph.add_edge_with_attrs(
+                "first",
+                "second",
+                GraphEdgeAttrs {
+                    source_port: Some(GraphEndpointPort {
+                        side: source,
+                        anchor: None,
+                    }),
+                    target_port: Some(GraphEndpointPort {
+                        side: target,
+                        anchor: None,
+                    }),
+                    start_marker: GraphEdgeMarker::Point,
+                    end_marker: GraphEdgeMarker::Point,
+                    ..Default::default()
+                },
+            );
+            let options = AsciiRenderOptions::ascii();
+            let mut layout = layout_graph(&graph, &options);
+            for (node, (x, y)) in layout.nodes.iter_mut().zip([(12, 12), (38, 30)]) {
+                node.x = x;
+                node.y = y;
+                node.width = 11;
+                node.height = 7;
+            }
+            let charset = GraphCharset::for_options(&options);
+            let scene = prepare_route_scene(&graph, &layout, &graph.edges, &charset)
+                .unwrap_or_else(|error| panic!("{source:?} -> {target:?}: {error:?}"));
+            assert_eq!(scene.routes.len(), 1);
+            let contacts = scene.routes[0].plan.attachments.unwrap();
+            assert_eq!(
+                contacts.start.outward, departure,
+                "{source:?} -> {target:?}"
+            );
+            assert_eq!(contacts.end.outward, arrival, "{source:?} -> {target:?}");
+        }
+    }
+}
+
+#[cfg(feature = "diagram-architecture")]
+#[test]
+fn group_ports_keep_the_declared_member_center_instead_of_the_frame_center() {
+    use crate::graph::model::{GraphEndpointPort, GraphPortSide};
+    for (source, target, peer, expected) in [
+        (GraphPortSide::Left, GraphPortSide::Right, (5, 38), (30, 40)),
+        (
+            GraphPortSide::Right,
+            GraphPortSide::Left,
+            (80, 38),
+            (58, 40),
+        ),
+        (GraphPortSide::Top, GraphPortSide::Bottom, (43, 5), (46, 25)),
+        (
+            GraphPortSide::Bottom,
+            GraphPortSide::Top,
+            (43, 75),
+            (46, 53),
+        ),
+    ] {
+        let mut graph = AsciiGraph::new_for_diagram("architecture", GraphDirection::TopDown);
+        graph.add_node("anchor", "Anchor");
+        graph.add_node("peer", "Peer");
+        graph.add_group_with_style(
+            "frame",
+            "Frame",
+            None,
+            vec!["anchor".into()],
+            Default::default(),
+        );
+        graph.add_edge_with_attrs(
+            "frame",
+            "peer",
+            GraphEdgeAttrs {
+                source_port: Some(GraphEndpointPort {
+                    side: source,
+                    anchor: Some("anchor".into()),
+                }),
+                target_port: Some(GraphEndpointPort {
+                    side: target,
+                    anchor: None,
+                }),
+                ..Default::default()
+            },
+        );
+        let options = AsciiRenderOptions::ascii();
+        let mut layout = layout_graph(&graph, &options);
+        for (node, (x, y)) in layout.nodes.iter_mut().zip([(43, 38), peer]) {
+            node.x = x;
+            node.y = y;
+            node.width = 7;
+            node.height = 5;
+        }
+        let frame = &mut layout.groups[0];
+        frame.x = 30;
+        frame.y = 25;
+        frame.width = 29;
+        frame.height = 29;
+        let scene = prepare_route_scene(
+            &graph,
+            &layout,
+            &graph.edges,
+            &GraphCharset::for_options(&options),
+        )
+        .unwrap_or_else(|error| panic!("{source:?}: {error:?}"));
+        let start = scene.routes[0].plan.attachments.unwrap().start.contact;
+        assert_eq!(
+            (start.x, start.y),
+            expected,
+            "{source:?}: member anchor must survive"
+        );
+    }
+}
+
 #[test]
 fn group_title_protection_matches_painted_rows_after_root_projection() {
     use crate::graph::surface::OutputTransform;

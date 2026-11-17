@@ -159,7 +159,7 @@ The research checkout at `5a9df1560871e1ef8037c052b3b5d87de503bc9e` has three ex
 adapters: Graph, Sequence, and ER. Its
 [`DiagramFactory`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/render/diagram.go#L13)
 routes other inputs to the graph parser, which requires a `graph` or `flowchart` declaration;
-this is not support for State, Kanban, Block, C4, Usecase, Agentflow, or Requirement. The moving ER parser
+this is not support for State, Kanban, Block, C4, Architecture, Usecase, Agentflow, or Requirement. The moving ER parser
 explicitly [rejects subgraphs](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/er/parser.go#L181).
 These omissions distinguish transferable layout techniques from solved family semantics.
 
@@ -195,6 +195,7 @@ graph mechanisms do not establish another family's semantics:
 | Usecase | `usecase/adapter.rs`, `usecase/validation.rs`, `usecase/json_table.rs`, `output/usecase.rs` | Family-owned role labels and contours distinguish actors, cases, flat boundaries/packages, and attached notes. Include, extend, and generalization retain explicit kinds, labels, independent endpoint markers, and direction. Ordered JSON tables retain typed indexed paths, quoted literal values, UTF-16 identities, and signed infinity metadata; nested direct-model boundaries remain diagnostics. See `USECASE_SUPPORT.md`. |
 | Block | `block/pack.rs`, `block/validate.rs`, `graph/positioned.rs`, `output/block.rs` | Family-owned integer packing preserves columns, spans, source order, spaces, and nested frames. The positioned graph seam shares routing and painting without invoking Dagre or moving authored blocks. Dense routing misses remain diagnostics; unsupported numeric geometry and ambiguous bindings are rejected. See `BLOCK_SUPPORT.md`. |
 | C4 | `c4/pack.rs`, `c4/validate.rs`, `graph/positioned.rs`, `output/c4.rs` | Five views share a borrowed model and preserve declaration-order rows, nested frames, shape-first endpoints, and independent arrowheads. Role/name headings and short E keys keep the overview small; technology, environment type, descriptions, styles, and raw values remain complete records. Invalid detached models use StructuredText primaries; Strict routing failures remain errors. Pinned Mermaid supplies semantics; neither copied nor inspected moving `mermaid-ascii` supplies a C4 byte or quality oracle. See [C4 support](C4_SUPPORT.md). |
+| Architecture | `architecture`, `graph/positioned.rs`, `output/architecture.rs` | A borrowed canonical model supplies services, junctions, groups, and relationships. Spatial output must preserve declared sides, independent arrowheads, service-anchored group contacts, and ordered Row/Column constraints. Invalid or conflicting detached geometry uses complete StructuredText primaries; Strict routing and operation failures remain errors. See [Architecture support](ARCHITECTURE_SUPPORT.md). |
 
 The exact three-region Trident State source is retained as a parser-backed Trusted Native
 regression with all six full condition occurrences, six state labels, four starts, and ten heads.
@@ -695,6 +696,7 @@ expected output.
 | Requirement | Not part of the pinned ASCII oracle or inspected moving renderer. | No Requirement byte or quality oracle is accepted. | Partial Diagrammatic shared-endpoint traceability with complete field records, plus honest StructuredText primaries for unresolved or ambiguous identities. | Small/typical/dense sources retain geometry at 80/100/120 columns; the independent route oracle checks both shared targets and all typed relation markers. Record rows add vertical cost. |
 | Pie | Not part of the pinned ASCII oracle or inspected moving renderer. | No Pie byte or quality oracle is accepted. | Partial Diagrammatic percentage bars share one scale and retain all sections, complete keyed labels, exact values, and metadata. Invalid distributions report StructuredText. | Small/typical/dense sources retain proportions at 80/100/120 columns; independent filled-cell checks bound rounding error. This intentionally substitutes bars for circular geometry and keeps tiny categories that Mermaid SVG filters. Trident label/completion replay is separate from proportional fidelity. |
 | C4 | Neither copied nor inspected moving source has a C4 renderer; no byte or quality oracle is accepted. | No C4 byte or quality oracle is accepted. | Partial Diagrammatic Context, Container, Component, Dynamic, and Deployment views retain ordered rows, roles, nested frames, alias identity, arrow ownership, and complete keyed records. Non-spatial detached models report StructuredText. | Pinned Mermaid DB/renderer semantics and local C4 contracts own the comparison. Overview headings omit repeated details; browser assets remain records. Dense Strict routing remains bounded under the existing resource policy. See [C4 support](C4_SUPPORT.md). |
+| Architecture | No Architecture byte or quality oracle is accepted. | No Architecture byte or quality oracle is accepted. | Partial Diagrammatic services, junctions, and nested groups preserve independent endpoint sides and arrows, service-anchored group contacts, ordered alignment hints, and complete records. Invalid or conflicting detached geometry reports StructuredText. | Pinned Mermaid semantics and family-local contracts own admission. Canonical/Strict, both width profiles, standard primary encodings, and Plain width fallback do not promise arbitrary dense-scene or viewport coverage. See [Architecture support](ARCHITECTURE_SUPPORT.md). |
 | Railroad / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report retains source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
 
 ## Intentional Differences
@@ -727,6 +729,11 @@ expected output.
 - C4 dense fixed-row routing and browser presentation beyond role-labelled rectangles and nested
   frames. Complete records retain details; Strict routing, resource, and cancellation failures
   remain errors. The [C4 support note](C4_SUPPORT.md) owns this boundary without a reference-parity claim.
+- Architecture dense or nested spatial coverage beyond family-local tests. Declared sides,
+  service anchors, and alignment order cannot be weakened to obtain a convenient layout. Invalid
+  or conflicting geometry retains complete records; routing and operation failures remain errors.
+  The [Architecture support note](ARCHITECTURE_SUPPORT.md) owns the boundary without an extent or
+  reference-parity guarantee.
 - Packet spatial admission remains bounded to integer rows of 1..=64 bits. Coordinates outside
   the exact nonnegative integer domain, non-spatial row widths/DB bit counts, overlaps, and out-of-order fields retain complete text;
   this does not justify label-driven width distortion or converting resource errors into success.

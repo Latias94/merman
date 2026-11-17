@@ -82,7 +82,7 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, Pie, XYChart, Usecase, Block, C4, Agentflow, Requirement | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, Agentflow, Requirement | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
 | Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Agentflow uses role-labelled spatial nodes and expanded flow frames for its admitted subset.
@@ -101,6 +101,13 @@ boundary keys/names; technology, environment type, descriptions, and browser sty
 records. Invalid detached models use honest StructuredText primaries. Canonical and Strict are
 the admitted profiles; routing failures remain errors, and width fallback is Plain-only. See
 [C4 support](../../docs/rendering/ascii/C4_SUPPORT.md) for identity, arrows, and resource boundaries.
+
+Architecture borrows its canonical services, junctions, groups, edges, and layout hints directly.
+Spatial output preserves declared endpoint sides, arrow ownership, service-anchored group
+contacts, and Row/Column member order. Invalid or conflicting detached geometry uses complete
+StructuredText primaries. Canonical and Strict are admitted; routing and operation failures remain
+errors, and width fallback is Plain-only. See
+[Architecture support](../../docs/rendering/ascii/ARCHITECTURE_SUPPORT.md) for the semantic boundary.
 
 Pie presents proportions as independent bars on one shared 0–100% scale, with complete keyed
 labels and exact values. Tiny positive categories retain an explicit marker; undefined

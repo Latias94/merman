@@ -23,6 +23,8 @@ mod full_test_support;
 
 #[cfg(feature = "diagram-agentflow")]
 mod agentflow;
+#[cfg(feature = "diagram-architecture")]
+mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
 #[cfg(feature = "diagram-c4")]
@@ -54,6 +56,7 @@ mod git_graph;
     feature = "diagram-agentflow",
     feature = "diagram-requirement",
     feature = "diagram-block",
+    feature = "diagram-architecture",
     feature = "diagram-c4"
 ))]
 #[cfg_attr(
@@ -67,7 +70,7 @@ mod git_graph;
     )),
     allow(
         dead_code,
-        reason = "Block and C4 own their geometry; ranked layout remains shared by other graph families"
+        reason = "Architecture, Block and C4 own their geometry; ranked layout remains shared by other graph families"
     )
 )]
 mod graph;
@@ -403,6 +406,10 @@ impl AsciiRenderer {
             AsciiDiagram::Agentflow(model) => {
                 agentflow::primary_projection(model, metadata, execution)?
             }
+            #[cfg(feature = "diagram-architecture")]
+            AsciiDiagram::Architecture(model) => {
+                architecture::primary_projection(model, execution)?
+            }
             #[cfg(feature = "diagram-requirement")]
             AsciiDiagram::Requirement(model) => requirement::primary_projection(model, execution)?,
             #[cfg(feature = "diagram-packet")]
@@ -421,6 +428,8 @@ impl AsciiRenderer {
         let record_primary = match model {
             #[cfg(feature = "diagram-agentflow")]
             AsciiDiagram::Agentflow(_) => projection == AsciiProjection::StructuredText,
+            #[cfg(feature = "diagram-architecture")]
+            AsciiDiagram::Architecture(_) => true,
             #[cfg(feature = "diagram-requirement")]
             AsciiDiagram::Requirement(_) => true,
             #[cfg(feature = "diagram-c4")]
@@ -590,6 +599,10 @@ fn render_model_with_execution(
             _source,
             execution,
         ),
+        #[cfg(feature = "diagram-architecture")]
+        AsciiDiagram::Architecture(model) => {
+            architecture::render(model, options, _source, execution)
+        }
         #[cfg(feature = "diagram-requirement")]
         AsciiDiagram::Requirement(model) => requirement::render(
             model,

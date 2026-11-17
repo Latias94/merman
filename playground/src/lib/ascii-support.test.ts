@@ -25,6 +25,7 @@ test("fallback uses the complete generated binding capability projection", () =>
   );
   assert.deepEqual(FALLBACK_ASCII_SUPPORTED_TYPES, [
     "agentflow",
+    "architecture",
     "block",
     "c4",
     "class",
@@ -80,7 +81,7 @@ test("fallback uses the complete generated binding capability projection", () =>
   assert.deepEqual(agentflow?.graph_presentations, ["strict", "adaptive"]);
   assert.deepEqual(agentflow?.fallback_encodings, ["plain"]);
   assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("agentflow"));
-  for (const diagramType of ["usecase", "block", "c4"]) {
+  for (const diagramType of ["architecture", "usecase", "block", "c4"]) {
     const capability = FALLBACK_ASCII_CAPABILITIES.find(
       ({ diagram_type }) => diagram_type === diagramType
     );

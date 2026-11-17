@@ -7,7 +7,9 @@ use crate::graph::routing::label::RoutedLabelDescriptor;
 use crate::graph::routing::occupancy::RouteCandidateScore;
 use crate::graph::routing::path::{RouteObstacles, StepDirection};
 use crate::graph::routing::plan::orthogonal::{plan_terminal_path, terminal_label_hosts};
-use crate::graph::routing::plan::{EdgeRouteRequest, EndpointGeometry, NodeAttachments, RoutePlan};
+use crate::graph::routing::plan::{
+    EdgeRouteRequest, EndpointGeometry, MarkerEndpoint, NodeAttachments, RoutePlan,
+};
 use crate::graph::routing::{
     admit_route_candidate, forward_route_direction, layout_allocation_failed,
     route_candidate_is_better,
@@ -34,10 +36,8 @@ pub(in crate::graph::routing) fn plan_direct_route(
             return Ok(None);
         }
     }
-    let from =
-        EndpointGeometry::for_route(request.from, request.to, request.graph_layout, resources)?;
-    let to =
-        EndpointGeometry::for_route(request.to, request.from, request.graph_layout, resources)?;
+    let from = EndpointGeometry::for_request(request, MarkerEndpoint::Start, resources)?;
+    let to = EndpointGeometry::for_request(request, MarkerEndpoint::End, resources)?;
     let starts = central_ports(from, request, resources, execution)?;
     let ends = central_ports(to, request, resources, execution)?;
     let mut extent = obstacles.scene.occupied_extent();

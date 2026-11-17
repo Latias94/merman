@@ -474,6 +474,8 @@ mod tests {
             end_marker: GraphEdgeMarker::Point,
             length: 1,
             style: GraphEdgeStyle::default(),
+            source_port: None,
+            target_port: None,
         }
     }
 

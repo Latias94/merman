@@ -295,6 +295,11 @@ bar [2, 8]
 fn family_reports_keep_geometry_and_complete_width_fallback() {
     for (family, source, fields) in [
         (
+            "architecture",
+            "architecture-beta\nservice api(server)[API]\nservice db(database)[Database]\napi:R --> L:db\n",
+            &["API", "Database", "api", "db"][..],
+        ),
+        (
             "usecase",
             "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n",
             &["Customer", "Place order"][..],
@@ -384,6 +389,13 @@ fn family_reports_keep_geometry_and_complete_width_fallback() {
                         "span=2",
                         "type=\"space\"",
                         "children=[",
+                    ]
+                } else if family == "architecture" {
+                    &[
+                        "N1[service]id=\"api\"title=\"API\"",
+                        "N2[service]id=\"db\"title=\"Database\"",
+                        "E1lhs=[N1]id=\"api\"lhsDir=\"R\"lhsInto=null",
+                        "E1rhs=[N2]id=\"db\"rhsDir=\"L\"rhsInto=true",
                     ]
                 } else {
                     &[

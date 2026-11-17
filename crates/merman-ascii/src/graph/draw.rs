@@ -240,7 +240,11 @@ fn prepare_graph_render_controlled(
 }
 
 /// Uses the same route, viewport, resource, and painting contract for family-owned positions.
-#[cfg(any(feature = "diagram-block", feature = "diagram-c4"))]
+#[cfg(any(
+    feature = "diagram-architecture",
+    feature = "diagram-block",
+    feature = "diagram-c4"
+))]
 pub(super) fn render_positioned_graph(
     graph: &AsciiGraph,
     graph_layout: GraphLayout,

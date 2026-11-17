@@ -5,6 +5,8 @@ pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
     match model {
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => AsciiDiagram::Agentflow(model),
+        #[cfg(feature = "diagram-architecture")]
+        RenderSemanticModel::Architecture(model) => AsciiDiagram::Architecture(model),
         #[cfg(feature = "diagram-block")]
         RenderSemanticModel::Block(model) => AsciiDiagram::Block(&model.semantic),
         #[cfg(feature = "diagram-c4")]

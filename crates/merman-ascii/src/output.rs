@@ -14,6 +14,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 #[cfg(feature = "diagram-agentflow")]
 mod agentflow;
+#[cfg(feature = "diagram-architecture")]
+mod architecture;
 #[cfg(feature = "diagram-block")]
 mod block;
 #[cfg(feature = "diagram-c4")]
@@ -36,6 +38,7 @@ mod pie;
     feature = "diagram-er",
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
+    feature = "diagram-architecture",
     feature = "diagram-pie",
     feature = "diagram-requirement",
     feature = "diagram-block",
@@ -970,6 +973,11 @@ fn build_semantic_document(
     let agentflow_document = agentflow::write_if_agentflow(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-agentflow"))]
     let agentflow_document = false;
+    #[cfg(feature = "diagram-architecture")]
+    let architecture_document =
+        architecture::write_if_architecture(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-architecture"))]
+    let architecture_document = false;
     #[cfg(feature = "diagram-requirement")]
     let requirement_document =
         requirement::write_if_requirement(model, &projection, &mut fallback)?;
@@ -986,6 +994,7 @@ fn build_semantic_document(
         && !usecase_document
         && !block_document
         && !agentflow_document
+        && !architecture_document
         && !requirement_document
         && !c4_document
     {
@@ -1011,6 +1020,7 @@ fn build_semantic_document(
 /// Encodes complete family-owned records, optionally following an admitted plain topology.
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-architecture",
     feature = "diagram-c4",
     feature = "diagram-requirement",
     feature = "diagram-pie"
@@ -1038,6 +1048,11 @@ pub(crate) fn render_reading_primary(
         AsciiDiagram::Agentflow(_) => {
             records.push("Agent workflow records".to_string())?;
             agentflow::write_if_agentflow(model, &projection, &mut records)?;
+        }
+        #[cfg(feature = "diagram-architecture")]
+        AsciiDiagram::Architecture(_) => {
+            records.push("Architecture records".to_string())?;
+            architecture::write_if_architecture(model, &projection, &mut records)?;
         }
         #[cfg(feature = "diagram-c4")]
         AsciiDiagram::C4(_) => {

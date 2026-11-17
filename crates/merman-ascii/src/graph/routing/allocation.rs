@@ -148,6 +148,11 @@ impl BranchAllocation {
             .map_err(|_| layout_allocation_failed())?;
         for (canonical, edge) in canonical_edges.iter().enumerate() {
             scene.scan()?;
+            // Ranked common-trunk candidates cannot replace independently authored sides.
+            // Reuse the admitted edge scan instead of allocating another preflight pass.
+            if edge.source_port.is_some() || edge.target_port.is_some() {
+                return Ok(Self::default());
+            }
             resources
                 .charge_layout_work(resources.checked_work_add(edge.from.len(), edge.to.len())?)?;
             let (Some(&source), Some(&target)) = (

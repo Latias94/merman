@@ -887,7 +887,11 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
 
 impl PreparedGraphNodeText {
     /// Transfers a single prepared source and its replay plan without rescanning or copying it.
-    #[cfg(any(feature = "diagram-block", feature = "diagram-c4"))]
+    #[cfg(any(
+        feature = "diagram-architecture",
+        feature = "diagram-block",
+        feature = "diagram-c4"
+    ))]
     pub(super) fn into_single_label_plan(mut self) -> crate::Result<(String, GraphNodeLabelPlan)> {
         if self.compartments.is_some() || self.plans.len() != 1 {
             return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
@@ -1093,7 +1097,11 @@ impl GraphNodeLabelPlan {
     }
 
     /// Replays a prepared group title after the family has finished its source-copy batch.
-    #[cfg(any(feature = "diagram-block", feature = "diagram-c4"))]
+    #[cfg(any(
+        feature = "diagram-architecture",
+        feature = "diagram-block",
+        feature = "diagram-c4"
+    ))]
     pub(super) fn materialize_single_label(
         &self,
         source: &str,

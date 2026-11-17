@@ -54,7 +54,7 @@ all-diagrams = [
     "diagram-xychart",
     "diagram-zenuml",
 ]
-diagram-architecture = ["merman-model/diagram-architecture", "merman-core/diagram-architecture"]
+diagram-architecture = ["merman-model/diagram-architecture", "merman-core/diagram-architecture", "dep:dugong", "dep:rustc-hash"]
 diagram-block = ["merman-model/diagram-block", "merman-core/diagram-block", "dep:dugong", "dep:rustc-hash"]
 diagram-c4 = ["merman-model/diagram-c4", "merman-core/diagram-c4", "dep:dugong", "dep:rustc-hash"]
 diagram-class = ["merman-model/diagram-class", "merman-core/diagram-class"]
@@ -110,6 +110,10 @@ sha2.workspace = true
 [[test]]
 name = "agentflow_model"
 required-features = ["diagram-agentflow"]
+
+[[test]]
+name = "architecture_model"
+required-features = ["diagram-architecture"]
 
 [[test]]
 name = "requirement_model"

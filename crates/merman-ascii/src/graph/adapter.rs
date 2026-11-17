@@ -178,6 +178,8 @@ fn from_flowchart_model_transactional(
                 end_marker: parse_flow_edge_marker(edge.end_marker),
                 length: edge.length,
                 style,
+                source_port: None,
+                target_port: None,
             },
             label_break_policy,
         );

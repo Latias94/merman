@@ -1262,6 +1262,16 @@ fn forward_route_direction(
     request: EdgeRouteRequest<'_>,
     resources: &ResourceContext,
 ) -> Result<Option<StepDirection>> {
+    use super::model::GraphPortSide;
+    if let (Some(source), Some(target)) = (&request.edge.source_port, &request.edge.target_port) {
+        return Ok(match (source.side, target.side) {
+            (GraphPortSide::Right, GraphPortSide::Left) => Some(StepDirection::Right),
+            (GraphPortSide::Left, GraphPortSide::Right) => Some(StepDirection::Left),
+            (GraphPortSide::Bottom, GraphPortSide::Top) => Some(StepDirection::Down),
+            (GraphPortSide::Top, GraphPortSide::Bottom) => Some(StepDirection::Up),
+            _ => None,
+        });
+    }
     let Some(direction) = compound_route_direction(
         request.graph,
         request.graph_layout,
@@ -1435,18 +1445,8 @@ fn admit_route_candidate(
         return Ok(None);
     }
     let Some(plan) = plan.resolve_endpoint_attachments(
-        plan::EndpointGeometry::for_route(
-            request.from,
-            request.to,
-            request.graph_layout,
-            resources,
-        )?,
-        plan::EndpointGeometry::for_route(
-            request.to,
-            request.from,
-            request.graph_layout,
-            resources,
-        )?,
+        plan::EndpointGeometry::for_request(request, MarkerEndpoint::Start, resources)?,
+        plan::EndpointGeometry::for_request(request, MarkerEndpoint::End, resources)?,
         request.charset,
         resources,
     )?
@@ -1546,6 +1546,14 @@ fn canonicalize_edges(
         .map_err(|_| layout_allocation_failed())?;
     for index in &order {
         resources.charge_layout_work(1)?;
+        for port in [&edges[*index].source_port, &edges[*index].target_port]
+            .into_iter()
+            .flatten()
+        {
+            if let Some(anchor) = &port.anchor {
+                resources.charge_layout_work(anchor.len())?;
+            }
+        }
         canonical_edges.push(edges[*index].clone());
     }
     Ok(CanonicalEdges {
@@ -1568,6 +1576,8 @@ fn compare_edges(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> Ordering {
         .then_with(|| marker_order(left.start_marker).cmp(&marker_order(right.start_marker)))
         .then_with(|| marker_order(left.end_marker).cmp(&marker_order(right.end_marker)))
         .then_with(|| left.length.cmp(&right.length))
+        .then_with(|| left.source_port.cmp(&right.source_port))
+        .then_with(|| left.target_port.cmp(&right.target_port))
         .then_with(|| color_order(left.style.line).cmp(&color_order(right.style.line)))
         .then_with(|| color_order(left.style.arrow).cmp(&color_order(right.style.arrow)))
         .then_with(|| color_order(left.style.label).cmp(&color_order(right.style.label)))

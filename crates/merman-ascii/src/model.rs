@@ -41,6 +41,8 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
 pub enum AsciiDiagram<'a> {
     #[cfg(feature = "diagram-agentflow")]
     Agentflow(&'a merman_model::families::agentflow::AgentflowDiagramModel),
+    #[cfg(feature = "diagram-architecture")]
+    Architecture(&'a merman_model::families::architecture::ArchitectureDiagramModel),
     #[cfg(feature = "diagram-block")]
     Block(&'a merman_model::families::block::BlockDiagramModel),
     #[cfg(feature = "diagram-c4")]
@@ -96,6 +98,8 @@ impl<'a> AsciiDiagram<'a> {
         Ok(match model {
             #[cfg(feature = "diagram-agentflow")]
             SemanticDiagramModel::Agentflow(model) => Self::Agentflow(model),
+            #[cfg(feature = "diagram-architecture")]
+            SemanticDiagramModel::Architecture(model) => Self::Architecture(model),
             #[cfg(feature = "diagram-block")]
             SemanticDiagramModel::Block(model) => Self::Block(model),
             #[cfg(feature = "diagram-c4")]
@@ -179,6 +183,8 @@ impl<'a> AsciiDiagram<'a> {
         match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow(_) => "agentflow",
+            #[cfg(feature = "diagram-architecture")]
+            Self::Architecture(_) => "architecture",
             #[cfg(feature = "diagram-block")]
             Self::Block(_) => "block",
             #[cfg(feature = "diagram-c4")]
@@ -225,6 +231,8 @@ impl<'a> AsciiDiagram<'a> {
         match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-architecture")]
+            Self::Architecture(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-c4")]
@@ -302,6 +310,8 @@ impl Serialize for AsciiDiagram<'_> {
         match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-architecture")]
+            Self::Architecture(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-c4")]

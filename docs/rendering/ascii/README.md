@@ -10,6 +10,7 @@ terminal themes, and public options.
 | Family | Maintained support note |
 | --- | --- |
 | Agentflow | [Roles, expanded flows, and complete reading records](AGENTFLOW_SUPPORT.md) |
+| Architecture | [Declared sides, service-anchored group contacts, and alignment constraints](ARCHITECTURE_SUPPORT.md) |
 | Block | [Columns, spans, nested grids, and fixed-position relationships](BLOCK_SUPPORT.md) |
 | C4 | [Five views, declaration-order frames, and complete reading records](C4_SUPPORT.md) |
 | Flowchart and Swimlane | [Graph semantics, shapes, labels, and routing](FLOWCHART_SUPPORT.md) |

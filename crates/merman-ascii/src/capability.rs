@@ -313,6 +313,38 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
     },
     AsciiCapabilityDefinition {
+        diagram_type: "architecture",
+        display_name: "Architecture",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "canonical services, junctions, nested groups, and typed relationships",
+            "independent declared source and target sides and arrow ownership",
+            "group endpoints anchored to their owning service rather than arbitrary group members",
+            "ordered row and column alignment constraints with explicit conflict classification",
+            "complete keyed node, group, edge, layout-hint, accessibility, and source records",
+        ],
+        limits: &[
+            "terminal roles and frames approximate browser geometry; icons and authored metadata remain records",
+            "invalid or conflicting detached geometry uses complete StructuredText primaries",
+            "Canonical layout and Strict graph presentation only; no universal spatial extent guarantee",
+            "strict routing, resources, cancellation, and deadlines remain errors; Plain width fallback retains complete records",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/architecture_model.rs",
+                note: "family-local identity, declared sides, group anchors, alignment, records, and operation boundaries",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "docs/rendering/ascii/ARCHITECTURE_SUPPORT.md",
+                note: "family-owned spatial semantics and complete Architecture reading records",
+            },
+        ],
+    },
+    AsciiCapabilityDefinition {
         diagram_type: "block",
         display_name: "Block",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
@@ -1132,6 +1164,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
     };
     match family {
         "agentflow" => cfg!(feature = "diagram-agentflow"),
+        "architecture" => cfg!(feature = "diagram-architecture"),
         "block" => cfg!(feature = "diagram-block"),
         "c4" => cfg!(feature = "diagram-c4"),
         "class" => cfg!(feature = "diagram-class"),
@@ -1264,6 +1297,7 @@ mod tests {
             ascii_supported_diagram_types(),
             &[
                 "agentflow",
+                "architecture",
                 "block",
                 "c4",
                 "class",
@@ -1290,6 +1324,7 @@ mod tests {
             ascii_diagrammatic_diagram_types(),
             &[
                 "agentflow",
+                "architecture",
                 "block",
                 "c4",
                 "class",
@@ -1334,6 +1369,7 @@ mod tests {
             "state",
             "packet",
             "pie",
+            "architecture",
             "block",
             "c4",
             "usecase",

@@ -24,6 +24,10 @@ pub(crate) use super::model::{
     GraphEdgeMarker as PositionedMarker, GraphEdgeStroke as PositionedStroke,
     GraphNodeShape as PositionedShape,
 };
+#[cfg(feature = "diagram-architecture")]
+pub(crate) use super::model::{
+    GraphEndpointPort as PositionedPort, GraphPortSide as PositionedSide,
+};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct PositionedSize {
@@ -382,6 +386,33 @@ impl PositionedGraph {
                 ..GraphEdgeAttrs::default()
             },
         );
+        Ok(())
+    }
+
+    #[cfg(feature = "diagram-architecture")]
+    pub(crate) fn try_add_port_edge(
+        &mut self,
+        edge: PositionedEdge<'_>,
+        source: (PositionedSide, Option<&str>),
+        target: (PositionedSide, Option<&str>),
+        resources: &ResourceContext,
+    ) -> Result<()> {
+        self.try_add_edge(edge, resources)?;
+        let source = PositionedPort {
+            side: source.0,
+            anchor: source.1.map(|id| copy_text(id, resources)).transpose()?,
+        };
+        let target = PositionedPort {
+            side: target.0,
+            anchor: target.1.map(|id| copy_text(id, resources)).transpose()?,
+        };
+        let edge = self
+            .graph
+            .edges
+            .last_mut()
+            .ok_or_else(|| invalid_geometry("architecture"))?;
+        edge.source_port = Some(source);
+        edge.target_port = Some(target);
         Ok(())
     }
 
