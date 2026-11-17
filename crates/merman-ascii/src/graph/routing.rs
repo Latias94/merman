@@ -424,6 +424,7 @@ impl RouteScene {
                     text,
                     placement: label.placement,
                     color: label.paint.color,
+                    mirrored_horizontally: false,
                 });
                 draw_routed_label(canvas, &label)?;
             }
@@ -446,6 +447,7 @@ impl RouteScene {
                     text,
                     placement: label.placement,
                     color: label.paint.color,
+                    mirrored_horizontally: false,
                 });
                 draw_routed_label(canvas, &label)?;
             }
@@ -466,6 +468,7 @@ impl RouteLabelTransform {
         match self {
             Self::Identity => label,
             Self::HorizontalMirror { width } => EdgeLabel {
+                mirrored_horizontally: !label.mirrored_horizontally,
                 placement: label.placement.with_position(
                     width
                         .saturating_sub(label.placement.x())
@@ -483,6 +486,7 @@ impl RouteLabelTransform {
                         height.saturating_sub(label.placement.y().saturating_add(line_count)),
                     ),
                     color: label.color,
+                    mirrored_horizontally: label.mirrored_horizontally,
                 }
             }
         }

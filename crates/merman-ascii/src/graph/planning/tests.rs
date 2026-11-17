@@ -278,9 +278,12 @@ fn initial_capacity_preparation_stays_within_its_allowance_and_preserves_hard_er
         vec!["a".into(), "b".into()],
         Default::default(),
     );
-    let policy = AsciiRenderOptions::ascii()
+    // This control starts with enough room for the return caption and its
+    // independent-stem reading margin; infeasible layouts exercise reflow elsewhere.
+    let mut policy = AsciiRenderOptions::ascii()
         .flowchart_layout()
         .graph_policy();
+    policy.group_padding_x = graph.edges[1].label.as_ref().unwrap().len();
     let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
     let limits = AsciiResourcePolicy::unbounded();
     let mut preparation = ResourceContext::new(limits);

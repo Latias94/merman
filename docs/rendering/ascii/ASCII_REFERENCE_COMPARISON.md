@@ -100,22 +100,20 @@ reading floor and all baseline-success cases in the 486-attempt generated oracle
 controls rather than being resampled for the new algorithm.
 
 The fixed 20-node/33-edge and 100-node/195-edge dense sources are maintained under
-`crates/merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/`. Explicit adaptive Plain requests at 80
-cells produce complete output within the existing Trusted Native work ceiling, retaining a valid
-diagram or selecting a keyed graph document after an admitted miss. Strict requests can still
-return a bounded routing miss; recovery does not establish strict routing success. The documents preserve every endpoint, direction, label,
-marker, stroke, membership, and individually keyed relationship. Width policy remains independent,
-and an unmeasured primary scene is reported as unavailable under ASCII schema 4. Resource and
-cancellation errors remain errors in every mode.
+`crates/merman-ascii/tests/testdata/local-semantic/flowchart/scene_planning/`. Both now require
+complete Strict spatial primaries under the unchanged Trusted Native work ceiling. Adaptive Plain
+requests may still select a keyed graph document after other admitted misses. Those documents
+preserve every endpoint, direction, label, marker, stroke, membership, and individually keyed
+relationship. Width policy remains independent, and an unmeasured primary scene is reported as
+unavailable under ASCII schema 4. Resource and cancellation errors remain errors in every mode.
 
-Current-source optimized native controls use the source-backed CLI operation, Canonical,
+Current-source native controls use the source-backed CLI operation, Canonical,
 Plain, both ASCII and Unicode charsets, the unchanged Trusted Native policy, and a 10-second
-operation control. At 80 cells, the reduced source returns a 24×115 strict diagram; the original
-source returns a strict routing-search diagnostic and a complete 53×198 adaptive document.
-Removing the caller's work/width ceilings retains those strict outcomes. The dense integration
-test permits a future validated diagrammatic improvement instead of pinning a particular failed
-edge. These controls establish completion and presentation outcomes, not a calibrated speed
-comparison. The reduced diagram is still tall; no height-selection policy is admitted.
+operation control. At 80 cells, the reduced source returns a 24×115 Strict diagram and the original
+source returns a 55×119 Strict diagram. The source bytes and complete scene requirements remain
+frozen; crossing paint changes additionally require both axes to remain visible. These controls
+establish completion and presentation outcomes, not a calibrated speed comparison or arbitrary
+dense routing. Both diagrams are still tall; no height-selection policy is admitted.
 
 These are bounded capability and information-preservation results. They do not show that Merman
 dominates every reference graph, or that finite terminal artwork can represent arbitrary density.
@@ -124,6 +122,38 @@ The [support matrix](../ASCII_SUPPORT_MATRIX.md) owns policy admission and the
 owns the scheduling and accounting boundary.
 
 ## Extending Family Coverage
+
+### Terminal relationship observation
+
+Completion and Drawing label checks do not establish route continuity or endpoint ownership.
+Merman's independent route oracle additionally checks actual crossing ink after painting, so a
+preserved internal path cannot hide a missing visible axis. Unicode `╪` distinguishes an
+independent crossing from joined `┼`; ASCII/CJK uses the conventional `+` with a disclosed
+one-cell ambiguity. Adjacent cells carry each stroke, and label rows share a host column across
+odd/even terminal widths and output mirrors. Independent vertical stems keep one blank column
+beside a caption in both planning orders, so a long dotted-edge caption cannot appear attached
+to a neighboring solid relationship. Its own host remains available.
+
+Trident `ceb42fa4` has additional representation limits that must remain separate from product
+failures. Its terminal graph observer has no qualified independent-crossing `╪` or dotted-turn
+`·` glyph profile. Its Class member comparison treats equivalent abstract-classifier spellings
+as different strings, and its endpoint observer requires cardinalities/markers to use its admitted
+placement. The
+anonymous-subgraph regression contract explicitly sets the default `arrow` marker, while the
+observed ordinary arrow omits it; direct tuple comparison reports a mismatch even after tracing
+the correct `a -> b` route. The label checker also matches the header `mindmap` inside preserved
+`mindmapCircle` shape metadata. These are observer/contract boundaries, not permission to drop
+metadata, alter source semantics, join independent paths, or claim an unassessed topology passed.
+
+The executable controls remain family-owned. Generated small graphs and the fixed dense inputs
+must preserve all endpoints, markers, labels, and painted continuations. Multiline labels and
+eight parallel self-loops exercise both canonical axes; crossed branches retain their authored
+TD scene. Both structural character sets are covered. The additional LR branch variant already
+has a bounded planning miss at the baseline and does not acquire a spatial-success claim from a
+paint or clearance change. Exact reference bytes remain immutable; unfamiliar output is
+reported separately from admitted reference parity.
+
+### Additional family mechanisms
 
 The research checkout at `5a9df1560871e1ef8037c052b3b5d87de503bc9e` has three explicit renderer
 adapters: Graph, Sequence, and ER. Its

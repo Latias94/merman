@@ -472,7 +472,9 @@ mod tests {
         assert!(evidence.blockers[0].contains(ReservationKind::Marker));
 
         let label = OccupiedRect::try_new(7, 8, 2, 2, &resources).unwrap();
-        scene.occupy_label(label, 41, &mut resources).unwrap();
+        scene
+            .occupy_label(label, label, 41, &mut resources)
+            .unwrap();
         let label_cells = scene.labels.len();
         let extent = scene.occupied_extent();
         let mut vertical = route(100, 8)

@@ -249,12 +249,14 @@ fn route_label_transform_mirrors_horizontal_label_placement() {
         text: &text,
         placement: RoutedLabelPlacement::new(2, 4, 5),
         color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
+        mirrored_horizontally: false,
     };
 
     let transformed = RouteLabelTransform::HorizontalMirror { width: 20 }.apply(label);
 
     assert_eq!(transformed.text.lines(), ["north", "south"]);
     assert_eq!(transformed.placement, RoutedLabelPlacement::new(13, 4, 5));
+    assert!(transformed.mirrored_horizontally);
 }
 
 #[test]
@@ -264,6 +266,7 @@ fn route_label_transform_preserves_vertical_mirrored_multiline_label_order() {
         text: &text,
         placement: RoutedLabelPlacement::new(2, 4, 5),
         color: CanvasColor::Role(AsciiColorRole::EdgeLabel),
+        mirrored_horizontally: false,
     };
 
     let transformed = RouteLabelTransform::VerticalMirror { height: 20 }.apply(label);

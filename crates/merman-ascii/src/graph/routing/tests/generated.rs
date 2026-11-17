@@ -347,10 +347,14 @@ fn straight_stroke(stroke: GraphEdgeStroke, axis: u8, unicode: bool) -> Option<c
 fn axes(cell: &PlannedRouteCell, cells: &CellIndex<'_>) -> u8 {
     match cell.ch {
         '-' | '.' | '=' | '─' | '┄' | '━' | '<' | '>' | '◄' | '►' => 1,
-        '|' | ':' | '#' | '│' | '┆' | '┃' | '^' | 'v' | '▲' | '▼' => 2,
-        '┌' | '┐' | '└' | '┘' | '┏' | '┓' | '┗' | '┛' | '├' | '┤' | '┬' | '┴' | '┣' | '┫' | '┳'
-        | '┻' | '┝' | '┥' | '┰' | '┸' | '┼' | '╋' => 3,
-        '+' | 'o' | 'x' | '○' | '×' => {
+        '|' | '│' | '┆' | '┃' | '^' | 'v' | '▲' | '▼' => 2,
+        '┌' | '┐' | '└' | '┘' | '╭' | '╮' | '╰' | '╯' | '┏' | '┓' | '┗' | '┛' | '├' | '┤' | '┬'
+        | '┴' | '┣' | '┫' | '┳' | '┻' | '┝' | '┥' | '┰' | '┸' | '┼' | '╋' => {
+            3
+        }
+        // ASCII dotted/thick bends share their vertical glyph; infer their axes
+        // from this route's coordinates instead of treating every ':'/'#' as straight.
+        '+' | ':' | '#' | '·' | 'o' | 'x' | '○' | '×' => {
             let mut axes = 0;
             for direction in [
                 StepDirection::Up,
@@ -723,6 +727,7 @@ fn information_oracle(
             .all(|(index, edge)| seen[index] == (edge.stroke != GraphEdgeStroke::Invisible)),
         "edge: missing canonical multiplicity"
     );
+    let mut crossings = BTreeSet::new();
     for (a_index, a) in scene.routes.iter().enumerate() {
         for (b_index, b) in scene.routes.iter().enumerate().skip(a_index + 1) {
             let (ea, eb) = (
@@ -738,6 +743,9 @@ fn information_oracle(
                         ),
                         (1, 2) | (2, 1)
                     );
+                    if transverse {
+                        crossings.insert(*coord);
+                    }
                     require!(
                         (transverse
                             && cell_a.kind != PlannedRouteCellKind::EdgeArrow
@@ -781,20 +789,65 @@ fn information_oracle(
             "marker: final painting erased {glyph:?} at {coord:?}"
         );
     }
+    for (x, y) in crossings {
+        let glyph = canvas.get(x, y);
+        require!(
+            if unicode {
+                matches!(glyph, Some('╪' | '┼' | '╋' | '┿' | '╂'))
+            } else {
+                glyph == Some('+')
+            },
+            "paint: crossing erased a continuing axis at ({x}, {y}): {glyph:?}"
+        );
+    }
     for route in &scene.routes {
         for label in &route.plan.labels {
             let text = scene
                 .labels
                 .get(label.descriptor)
                 .map_err(|error| format!("label: {error}"))?;
-            for (row, line) in text.lines().iter().enumerate() {
-                let x = label.placement.x() + (label.placement.width() - line.len()) / 2;
-                for (column, glyph) in line.chars().enumerate() {
-                    require!(
-                        canvas.get(x + column, label.placement.y() + row) == Some(glyph),
-                        "label: final painting truncated text"
-                    );
+            for y in label.placement.y()..label.placement.y() + text.line_count() {
+                for x in [
+                    label.placement.x().checked_sub(1),
+                    Some(label.placement.x() + label.placement.width()),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    for (other_index, other) in scene.routes.iter().enumerate() {
+                        if other.owner.canonical_edge_index == route.owner.canonical_edge_index {
+                            continue;
+                        }
+                        let cells = &indices[other_index];
+                        if let Some(cell) = cells.get(&(x, y)) {
+                            require!(
+                                axes(cell, cells) & 2 == 0,
+                                "label: an unrelated vertical stem touches the caption"
+                            );
+                        }
+                    }
                 }
+            }
+            for (row, line) in text.lines().iter().enumerate() {
+                // A hard-break row retains its reserved geometry and line count,
+                // but has no painted text centre to observe.
+                if line.is_empty() {
+                    continue;
+                }
+                let painted: String = (label.placement.x()
+                    ..label.placement.x() + label.placement.width())
+                    .map(|x| canvas.get(x, label.placement.y() + row).unwrap_or(' '))
+                    .collect();
+                let Some(byte_offset) = painted.find(line) else {
+                    return Err("label: final painting truncated text".into());
+                };
+                let offset = painted[..byte_offset].chars().count();
+                let centre_twice = 2 * offset + line.len().saturating_sub(1);
+                let host_twice = 2 * (label.placement.width() / 2);
+                require!(
+                    centre_twice.abs_diff(host_twice) <= 1,
+                    "label: painted row left its shared host column"
+                );
             }
         }
     }
@@ -1016,6 +1069,57 @@ fn assert_planned_flowchart_preserves_information(
             information_oracle(&graph, &planned.layout, &scene, &options)
                 .unwrap_or_else(|error| panic!("{case}: {error}"));
         }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn multiline_labels_crossed_branches_and_parallel_self_loops_keep_complete_painted_routes() {
+    use std::fmt::Write;
+    let mut loops = String::from("flowchart TD\nStart --> Queue\nQueue --> Done\n");
+    for index in 1..=8 {
+        writeln!(loops, "Queue -->|retry {index}| Queue").unwrap();
+    }
+    for (name, source, nodes, edges, directions) in [
+        (
+            "mixed-parity-label",
+            "graph TD\nA -->|First<br>Second| B\n",
+            2,
+            1,
+            &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
+        ),
+        (
+            "mixed-parity-with-blank-row",
+            "graph TD\nA -->|First<br><br>Second| B\n",
+            2,
+            1,
+            &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
+        ),
+        // The authored TD case is admitted. This source's additional LR variant
+        // already has a bounded planning miss at the baseline, before paint changes.
+        (
+            "crossed-branches",
+            "graph TD\nA & B --> C & D\nC --> E\nD --> E\n",
+            5,
+            6,
+            &[GraphDirection::TopDown][..],
+        ),
+        (
+            "independent-caption-clearance",
+            "flowchart TD\nMermaid[Mermaid.js] -->|derivative| Beautiful[Beautiful Mermaid]\nASCII[Mermaid ASCII] -.->|ASCII component port| Beautiful\n",
+            3,
+            2,
+            &[GraphDirection::TopDown][..],
+        ),
+        (
+            "parallel-self-loops",
+            loops.as_str(),
+            3,
+            10,
+            &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
+        ),
+    ] {
+        assert_planned_flowchart_preserves_information(name, source, nodes, edges, directions);
     }
 }
 

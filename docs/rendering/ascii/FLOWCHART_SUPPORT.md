@@ -151,11 +151,17 @@ reference implementation is only an implementation aid.
   contacts and transit cells respect their footprints. Terminal-cell paths try their straight
   segments as label hosts in stable length order. A boundary route without a vertical transit
   segment keeps its label on an inline
-  host instead of dropping it. Transverse normal/dotted/thick crossings preserve each axis's
-  stroke; Unicode uses
-  `┿` or `╂` when one axis is heavy. Incompatible mixed-stroke overlaps must use another lane.
+  host instead of dropping it. Transverse crossings keep both axes visible: Unicode `╪`
+  denotes an independent overpass, while `┼` denotes a joined four-way channel. ASCII/CJK
+  structure uses `+` for both and cannot make that distinction in one cell. The crossing cell
+  is neutral to stroke weight; adjacent cells retain normal/dotted/thick identity, and the
+  horizontal route supplies its color. Incompatible mixed-stroke overlaps must use another lane.
+  Multiline label rows share one integer host column even when their terminal widths have
+  different parity. Reverse-direction output mirrors their padding while preserving text order.
   Labels respect endpoint-container ownership, shared ancestor interiors, and planned marker
-  berths. Vertical markers retain a column of reading clearance from neighboring labels.
+  berths. Independent vertical stems and vertical markers retain a column of reading clearance
+  from neighboring labels, regardless of which relationship is planned first. A label can still
+  use its own vertical host or inline horizontal stroke.
   External group labels cannot leak into member space. Single-cell terminal paths require
   at most one visible endpoint marker; dual-marker edges try another port pair. Arbitrary dense
   routing and non-transverse mixed-stroke junctions remain outside the admitted boundary.

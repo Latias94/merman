@@ -253,12 +253,16 @@ coordinates. The [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_
 defines this adjacency-work bound separately from complete routing cost.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
-transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
-segments try another lane. Committed routes reserve their label footprints before subsequent
+transversely. Unicode uses `╪` for an independent crossing and `┼` for a joined four-way channel;
+ASCII and CJK structure use `+` for both. Both continuing axes remain visible. The crossing cell
+is neutral to stroke weight; adjacent cells retain each route's solid, dotted, or thick stroke,
+and the crossing keeps the horizontal route's color. Incompatible overlapping segments try
+another lane. Committed routes reserve their label footprints before subsequent
 edges are planned. Parallel node self-loops reserve nested lane space before node projection and
 assign their labels as one route batch before unrelated edges or a searched loop are planned.
-Searched-loop labels are committed immediately. Vertical markers keep one column of reading
-clearance from neighboring labels, preventing an ASCII `v` from merging with label text.
+Searched-loop labels are committed immediately. Independent vertical stems and markers keep one
+column of reading clearance from neighboring labels, preventing an ASCII `v` from merging with
+label text or a caption from appearing attached to another relationship.
 A graph with no safe route, label placement, or independent marker berth still returns a structured
 diagnostic rather than a partial drawing. Boundary routes with no vertical transit segment
 retain their labels on an available inline segment. Label candidates respect container ownership
@@ -525,6 +529,13 @@ This applies to canonical Class/ER geometry and does not add Compact or Auto pro
 Private Unicode route bends use rounded corners and the edge-line color role. A bend does not
 claim a branch or crossing; ASCII and CJK structure keep single-cell `+` turns. Endpoint markers,
 cardinalities, and labels retain their family-owned meanings.
+
+Private-channel endpoint markers touch their class/entity frames. Cardinality text sits beside
+vertical stems, with multiline values sharing one left edge, so text does not interrupt the
+connection or separate its marker from the owner. The same label anchor is used for collision
+checks, scene compaction, and drawing. Measured endpoint text filters unusable contacts before
+path search, including wide multiline values beside horizontal chains. Unsafe endpoint text
+uses the existing complete summary.
 
 Class and ER diagrams fall back to readable `relations:` summary sections when bounded planning cannot produce a complete terminal grid, contacts do not fit, or route/overlay checks would damage another object. Simple relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; byte-length-framed fields disclose the authored member identity. Dense or colliding namespace scenes retain the complete summary. Default output hides the planning reason. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add `reason: route_collision` or `reason: overlay_collision` under `relations:`; contact and exhausted-channel failures use `route_collision`. Resource limits return `AsciiError::ResourceLimitExceeded` instead of selecting a summary.
 

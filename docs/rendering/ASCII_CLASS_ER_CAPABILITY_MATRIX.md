@@ -29,6 +29,15 @@ least one cell between separated features; the compacted scene is validated agai
 This improves canonical geometry without admitting a separate Compact layout profile or changing
 the authored direction. Dense topology can still select a complete summary.
 
+Private-channel endpoints keep markers adjacent to their frames and place cardinality text beside
+continuous vertical stems. Multiline endpoint text uses one left edge; measurement, collision
+checks, compaction, and painting share that anchor. Endpoint text cannot replace its own stem or
+another object's cells. Class route profiles retain each endpoint's measured text extent so port
+selection excludes contacts whose labels already overlap a frame or occupied area. Unsafe
+placement retains the complete `relations:` summary. Parser-backed Class controls cover all four
+directions, both structural charsets, independent markers, headless
+ends, and literal cardinality ownership; shared port tests retain the ER marker widths.
+
 Viewport overflow has a separate Plain reading document: keyed declarations retain full names,
 namespace/group ownership, members/attributes, interfaces/notes, and individual relationships.
 Class marker types and endpoint labels remain independent. Qualified aliases retain their authored

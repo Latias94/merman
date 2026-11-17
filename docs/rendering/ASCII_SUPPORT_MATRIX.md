@@ -242,6 +242,8 @@ in their typed models, but require a complete terminal slice before their capabi
 
 | Candidate | Useful first spatial slice | Required evidence |
 | --- | --- | --- |
+| C4 | Role-labelled nodes and nested boundaries with shared endpoint relationships in the authored row layout. | All five views, alias-based identity, boundary endpoints, ordered Dynamic numbering, reverse/bidirectional markers, final relation overwrite semantics, and complete typed values. Browser decoration may use records; object-valued labels require an honest projection. |
+| Architecture | Services, junctions, nested groups, and relationships attached to their declared sides. | Independent L/R/T/B port constraints, source/target arrows, service-anchored group contacts, Row/Column order and conflict diagnostics. A generic graph layout must not discard those constraints. |
 | GitGraph | Commit lanes with a branch and merge. | Each commit appears once; every parent edge remains traceable, including merges with custom display types and cherry-picks. |
 | Gantt | Task bars on a common resolved time scale. | Preserve task identity, dependency facts, milestones, excluded dates, and distinctions lost through cell quantization. |
 | Agentflow | Family-owned spatial roles and complete reading records. | Expand spatial metadata or collapsed visible topology only with source-backed ownership and complete-information evidence. |

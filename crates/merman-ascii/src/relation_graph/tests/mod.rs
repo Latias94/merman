@@ -18,6 +18,7 @@ struct TestRelationAdapter {
 enum TestRelationOverlap {
     None,
     Overlay,
+    EndpointOnStem,
 }
 
 trait TestRelationEndpoints {
@@ -153,6 +154,27 @@ where
                 'X',
                 AsciiColorRole::EdgeLine,
             )]);
+        }
+        if self.overlap == TestRelationOverlap::EndpointOnStem {
+            let mut deferred = DeferredTextRegistry::new();
+            let label = RelationGraphLabelPlan::try_new(
+                "0..*",
+                TerminalWidthProfile::Unicode,
+                &deferred,
+                _resources,
+            )?
+            .expect("a literal cardinality has label text")
+            .materialize(&mut deferred, _resources)?;
+            let mut overlay = RelationOverlay::label(
+                _geometry.source_x(),
+                _geometry.source_marker_y(),
+                label,
+                AsciiColorRole::EdgeLabel,
+            );
+            if let RelationOverlay::Label { endpoint, .. } = &mut overlay {
+                *endpoint = true;
+            }
+            return Ok(vec![overlay]);
         }
 
         Ok(Vec::new())

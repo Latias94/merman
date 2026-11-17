@@ -15,7 +15,7 @@ use crate::error::{AsciiError, Result};
 use crate::operation::AsciiExecution;
 use crate::resource::ResourceContext;
 use merman_model::{OperationControl, OperationPhase};
-use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
+use rustc_hash::FxHashMap as HashMap;
 use std::cell::RefCell;
 use std::collections::hash_map::Entry;
 use std::rc::Rc;
@@ -321,6 +321,12 @@ struct LabelOccupant {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum LabelCellKind {
+    Text,
+    HostClearance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ProtectedKind {
     Node,
     GroupBorder,
@@ -424,7 +430,7 @@ pub(super) struct SceneOccupancy<'layout> {
     source_ports: HashMap<(CanvasCoord, StepDirection), usize>,
     markers: HashMap<CanvasCoord, MarkerOccupant>,
     // Includes each label's text and the clear perpendicular gap to its host.
-    labels: HashSet<CanvasCoord>,
+    labels: HashMap<CanvasCoord, LabelCellKind>,
     label_owners: Vec<LabelOccupant>,
     blockers: RefCell<Option<BlockerWitnesses>>,
     pub(super) protected: Rc<ProtectedScene<'layout>>,
@@ -536,7 +542,7 @@ impl<'layout> SceneOccupancy<'layout> {
             target_ports: HashMap::default(),
             source_ports: HashMap::default(),
             markers: HashMap::default(),
-            labels: HashSet::default(),
+            labels: HashMap::default(),
             label_owners: Vec::new(),
             blockers: RefCell::new(None),
             protected,
@@ -775,7 +781,7 @@ impl<'layout> SceneOccupancy<'layout> {
         if let Some(marker) = self.markers.get(&coord) {
             self.record_marker_blockers(routes, coord, *marker, resources)?;
         }
-        if self.labels.contains(&coord) {
+        if self.labels.contains_key(&coord) {
             self.record_label_blockers(coord, resources)?;
         }
         if let Some(cell) = self.route_cells.get(&coord) {
@@ -1049,9 +1055,23 @@ impl<'layout> SceneOccupancy<'layout> {
         resources: &mut ResourceContext,
     ) -> Result<bool> {
         self.checkpoint_layout()?;
-        if self.labels.contains(&coord) {
+        if self.labels.contains_key(&coord) {
             self.record_label_blockers(coord, resources)?;
             return Ok(false);
+        }
+        if !self.labels.is_empty() && directions & (DIR_UP | DIR_DOWN) != 0 {
+            for x in [coord.x.checked_sub(1), coord.x.checked_add(1)]
+                .into_iter()
+                .flatten()
+            {
+                self.checkpoint_layout()?;
+                resources.charge_layout_work(1)?;
+                let neighbor = CanvasCoord { x, ..coord };
+                if self.labels.get(&neighbor) == Some(&LabelCellKind::Text) {
+                    self.record_label_blockers(neighbor, resources)?;
+                    return Ok(false);
+                }
+            }
         }
         if !self.protected.all_at(coord, resources, |protected| {
             let is_endpoint_port = protected.allows_endpoint_port(&owner.from, coord)
@@ -1380,7 +1400,7 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(false);
         }
 
-        if !self.label_reading_clearance_is_clear(existing_routes, candidate, resources)? {
+        if !self.label_reading_clearance_is_clear(existing_routes, None, candidate, resources)? {
             return Ok(false);
         }
 
@@ -1391,7 +1411,7 @@ impl<'layout> SceneOccupancy<'layout> {
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
                 if self.markers.contains_key(&coord)
-                    || self.labels.contains(&coord)
+                    || self.labels.contains_key(&coord)
                     || self.route_cells.contains_key(&coord)
                 {
                     self.record_reserved_cell_blockers(existing_routes, coord, resources)?;
@@ -1685,7 +1705,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     x,
                     ..candidate.coord
                 };
-                if self.labels.contains(&coord) {
+                if self.labels.contains_key(&coord) {
                     self.record_label_blockers(coord, resources)?;
                     return Ok(false);
                 }
@@ -2209,7 +2229,12 @@ impl<'layout> SceneOccupancy<'layout> {
             return Ok(false);
         }
 
-        if !self.label_reading_clearance_is_clear(existing_routes, candidate, resources)? {
+        if !self.label_reading_clearance_is_clear(
+            existing_routes,
+            Some(route_index),
+            candidate,
+            resources,
+        )? {
             return Ok(false);
         }
 
@@ -2219,11 +2244,11 @@ impl<'layout> SceneOccupancy<'layout> {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
-                if self.markers.contains_key(&coord) || self.labels.contains(&coord) {
+                if self.markers.contains_key(&coord) || self.labels.contains_key(&coord) {
                     if let Some(marker) = self.markers.get(&coord) {
                         self.record_marker_blockers(existing_routes, coord, *marker, resources)?;
                     }
-                    if self.labels.contains(&coord) {
+                    if self.labels.contains_key(&coord) {
                         self.record_label_blockers(coord, resources)?;
                     }
                     if !self.collecting_blockers() {
@@ -2297,11 +2322,13 @@ impl<'layout> SceneOccupancy<'layout> {
     fn label_reading_clearance_is_clear(
         &self,
         existing_routes: &[PreparedRoute],
+        route_index: Option<usize>,
         candidate: OccupiedRect,
         resources: &ResourceContext,
     ) -> Result<bool> {
         // The ordinary footprint check owns the interior. Reserve only the two adjacent
-        // columns here so independent labels require exactly one blank reading column.
+        // columns here so independent labels, vertical stems, and vertical markers
+        // retain one blank reading column without blocking inline horizontal ink.
         let right = resources.checked_grid_add(candidate.right, 1)?;
         let mut clear = true;
         for y in candidate.y..candidate.bottom {
@@ -2312,7 +2339,34 @@ impl<'layout> SceneOccupancy<'layout> {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
                 let coord = CanvasCoord { x, y };
-                if self.labels.contains(&coord)
+                if let Some(cell) = self.route_cells.get(&coord) {
+                    for owner in &cell.owners {
+                        self.checkpoint_layout()?;
+                        resources.charge_layout_work(1)?;
+                        let cell =
+                            &existing_routes[owner.route_index].plan.cells[owner.cell.index()];
+                        let directions = if cell.directions == 0 {
+                            route_char_directions(cell.ch)
+                        } else {
+                            cell.directions
+                        };
+                        if Some(owner.route_index) != route_index
+                            && directions & (DIR_UP | DIR_DOWN) != 0
+                        {
+                            self.record_route_blocker(
+                                existing_routes,
+                                owner.route_index,
+                                ReservationKind::Route,
+                                resources,
+                            )?;
+                            if !self.collecting_blockers() {
+                                return Ok(false);
+                            }
+                            clear = false;
+                        }
+                    }
+                }
+                if self.labels.contains_key(&coord)
                     || self.markers.get(&coord).is_some_and(|marker| {
                         matches!(
                             marker.point_direction,
@@ -2320,7 +2374,7 @@ impl<'layout> SceneOccupancy<'layout> {
                         )
                     })
                 {
-                    if self.labels.contains(&coord) {
+                    if self.labels.contains_key(&coord) {
                         self.record_label_blockers(coord, resources)?;
                     }
                     if let Some(marker) = self.markers.get(&coord)
@@ -2343,6 +2397,7 @@ impl<'layout> SceneOccupancy<'layout> {
 
     fn occupy_label(
         &mut self,
+        text: OccupiedRect,
         footprint: OccupiedRect,
         canonical_edge_index: usize,
         resources: &mut ResourceContext,
@@ -2372,7 +2427,12 @@ impl<'layout> SceneOccupancy<'layout> {
             for x in footprint.x..footprint.right {
                 self.checkpoint_layout()?;
                 resources.charge_layout_work(1)?;
-                self.labels.insert(CanvasCoord { x, y });
+                let kind = if text.contains(x, y) {
+                    LabelCellKind::Text
+                } else {
+                    LabelCellKind::HostClearance
+                };
+                self.labels.insert(CanvasCoord { x, y }, kind);
             }
         }
         Ok(())

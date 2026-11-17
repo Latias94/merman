@@ -83,7 +83,12 @@ impl<'layout> SceneOccupancy<'layout> {
                             feature: "finalized edge label without a host reservation",
                         })?;
                 resources.charge_layout_work(reservation.cell_count(resources)?)?;
-                rebuilt.occupy_label(reservation, route.owner.canonical_edge_index, resources)?;
+                rebuilt.occupy_label(
+                    text,
+                    reservation,
+                    route.owner.canonical_edge_index,
+                    resources,
+                )?;
             }
         }
         // Marker relocation changes the plan's anchor. Preserve the original candidate
@@ -296,7 +301,10 @@ mod tests {
                             for x in
                                 label.placement.x()..label.placement.x() + label.placement.width()
                             {
-                                assert!(rebuilt.labels.contains(&CanvasCoord { x, y }));
+                                assert_eq!(
+                                    rebuilt.labels.get(&CanvasCoord { x, y }),
+                                    Some(&super::super::LabelCellKind::Text)
+                                );
                             }
                         }
                         assert!(rebuilt.label_owners.iter().any(|owner| {
@@ -439,7 +447,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(scene.markers.len(), 4);
-        assert!(scene.labels.contains(&CanvasCoord { x: 1, y: 21 }));
+        assert!(scene.labels.contains_key(&CanvasCoord { x: 1, y: 21 }));
         assert!(
             scene
                 .terminal_claims
@@ -457,8 +465,8 @@ mod tests {
         assert_eq!(routes[0].plan, plan);
         assert_eq!(scene.markers.len(), 2);
         assert!(scene.markers.contains_key(&CanvasCoord { x: 5, y: 0 }));
-        assert!(scene.labels.contains(&CanvasCoord { x: 1, y: 1 }));
-        assert!(scene.labels.iter().all(|coord| coord.y < 4));
+        assert!(scene.labels.contains_key(&CanvasCoord { x: 1, y: 1 }));
+        assert!(scene.labels.keys().all(|coord| coord.y < 4));
         assert!(scene.terminal_claims.iter().all(
             |(coord, claims)| coord.y == 0 && claims.iter().all(|claim| claim.route_index == 0)
         ));

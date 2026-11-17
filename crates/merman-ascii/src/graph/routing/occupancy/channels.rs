@@ -105,17 +105,25 @@ impl SceneOccupancy<'_> {
         }
         // Labels store their complete host-gap reservations as cells. Extract only
         // the union's boundary events, retaining no model-sized per-cell vector.
-        for coord in &self.labels {
+        for coord in self.labels.keys() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(5)?;
             for x in [coord.x.checked_sub(1), coord.x.checked_add(1)] {
-                if x.is_none_or(|x| !self.labels.contains(&super::CanvasCoord { x, ..*coord })) {
+                if x.is_none_or(|x| {
+                    !self
+                        .labels
+                        .contains_key(&super::CanvasCoord { x, ..*coord })
+                }) {
                     AxisEvents::insert(&mut events.x, coord.x, resources)?;
                     break;
                 }
             }
             for y in [coord.y.checked_sub(1), coord.y.checked_add(1)] {
-                if y.is_none_or(|y| !self.labels.contains(&super::CanvasCoord { y, ..*coord })) {
+                if y.is_none_or(|y| {
+                    !self
+                        .labels
+                        .contains_key(&super::CanvasCoord { y, ..*coord })
+                }) {
                     AxisEvents::insert(&mut events.y, coord.y, resources)?;
                     break;
                 }
@@ -148,9 +156,9 @@ mod tests {
             AsciiExecution::for_test(&policy),
         )
         .unwrap();
-        scene
-            .labels
-            .extend((10..1010).map(|x| CanvasCoord { x, y: 10 }));
+        scene.labels.extend(
+            (10..1010).map(|x| (CanvasCoord { x, y: 10 }, super::super::LabelCellKind::Text)),
+        );
         let measured = ResourceContext::new(policy);
         let axes = scene.routing_channel_coordinates(&[], &measured).unwrap();
         assert_eq!(axes.0, [8, 9, 10, 11, 12, 1007, 1008, 1009, 1010, 1011]);
