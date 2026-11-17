@@ -958,3 +958,124 @@ fn generated_information_oracle_rejects_corrupted_successes() {
         assert!(error.starts_with(class), "expected {class}, got {error}");
     }
 }
+
+#[cfg(feature = "diagram-flowchart")]
+fn assert_planned_flowchart_preserves_information(
+    fixture: &str,
+    source: &str,
+    node_count: usize,
+    edge_count: usize,
+    directions: &[GraphDirection],
+) {
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(source)
+        .unwrap_or_else(|error| panic!("{fixture}: typed parse failed: {error}"));
+    let merman_model::SemanticDiagramModel::Flowchart(model) = &parsed.model else {
+        panic!("{fixture}: expected a typed flowchart model");
+    };
+    assert_eq!(
+        (model.nodes.len(), model.edges.len()),
+        (node_count, edge_count),
+        "{fixture}: frozen authored node and edge counts"
+    );
+    for &direction in directions {
+        for mode in ["ascii", "unicode"] {
+            let case = format!("{fixture}/{direction:?}/{mode}");
+            let options = options(mode);
+            let policy = options.flowchart_layout().graph_policy();
+            let charset = GraphCharset::for_options(&options);
+            let limits = AsciiResourcePolicy::unbounded();
+            let mut resources = ResourceContext::new(limits);
+            let mut graph =
+                crate::graph::adapter::from_flowchart_model(model, &options, &mut resources)
+                    .unwrap_or_else(|error| panic!("{case}: projection failed: {error}"));
+            graph.direction = direction;
+            assert_eq!(
+                (graph.nodes.len(), graph.edges.len()),
+                (node_count, edge_count),
+                "{case}: projection must retain every authored node and edge"
+            );
+            // Exercise recovery with the default internal work and repair allowances.
+            let planned = crate::graph::planning::plan_graph(
+                &graph,
+                &policy,
+                &charset,
+                &mut resources,
+                AsciiExecution::for_test(&limits),
+            )
+            .unwrap_or_else(|error| panic!("{case}: graph planning failed: {error}"));
+            let scene = planned
+                .routes
+                .materialize(&resources)
+                .unwrap_or_else(|error| panic!("{case}: route materialization failed: {error}"));
+            assert_eq!(
+                (planned.layout.nodes.len(), scene.routes.len()),
+                (node_count, edge_count),
+                "{case}: the scene must contain every authored node and edge without summaries"
+            );
+            information_oracle(&graph, &planned.layout, &scene, &options)
+                .unwrap_or_else(|error| panic!("{case}: {error}"));
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn dense_minimized_planning_preserves_information() {
+    assert_planned_flowchart_preserves_information(
+        "dense-minimized",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/testdata/local-semantic/flowchart/scene_planning/dense-minimized.mmd"
+        )),
+        20,
+        33,
+        &[GraphDirection::TopDown, GraphDirection::LeftRight],
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn dense_work_budget_component_rank_reflow_preserves_information() {
+    assert_planned_flowchart_preserves_information(
+        "dense-work-budget",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/testdata/local-semantic/flowchart/scene_planning/dense-work-budget.mmd"
+        )),
+        100,
+        195,
+        &[GraphDirection::TopDown, GraphDirection::LeftRight],
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn capacity_recovery_keeps_every_edge_of_previously_readable_cycles() {
+    for (fixture, source, edges) in [
+        (
+            "labelled-cycle-capacity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/testdata/local-semantic/flowchart/scene_planning/labelled-cycle-capacity.mmd"
+            )),
+            12,
+        ),
+        (
+            "narrow-cycle-capacity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/testdata/local-semantic/flowchart/scene_planning/narrow-cycle-capacity.mmd"
+            )),
+            15,
+        ),
+    ] {
+        assert_planned_flowchart_preserves_information(
+            fixture,
+            source,
+            8,
+            edges,
+            &[GraphDirection::TopDown],
+        );
+    }
+}

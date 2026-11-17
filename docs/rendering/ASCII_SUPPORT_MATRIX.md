@@ -97,8 +97,12 @@ propagates that error. Resource, allocation, cancellation, and deadline errors s
 an incumbent. Narrower output can be taller; Auto does not choose a graph direction or truncate long labels.
 
 The shared graph planner uses actual reservation blockers and atomic shared-channel repair, with
-at most two rebuilds driven by new measured capacity demand after the initial geometry in each
-attempted profile. It remains best effort. The [graph presentation boundary](../../crates/merman-ascii/README.md#graph-presentation-boundary)
+at most two measured rebuilds after the initial geometry in each attempted profile. Flat visible-edge
+Flowcharts without authored side constraints can use component ranks after a routing miss when
+existing endpoint, corridor, and return-lane feedback cannot grow: the condensation DAG sets levels,
+while every original node and relationship remains independently rendered. This candidate shares
+the existing work allowance and preserves valid initial and capacity-recovered scenes. Planning
+remains best effort. The [graph presentation boundary](../../crates/merman-ascii/README.md#graph-presentation-boundary)
 describes this private planner and the remaining density/height limits. Class/ER relation planning,
 Sequence ordering, quantitative diagrams, and StructuredText families retain their family owners.
 

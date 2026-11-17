@@ -51,6 +51,28 @@ fn capacity_miss() -> AsciiError {
     }
 }
 
+fn component_rank_graph(direction: GraphDirection) -> AsciiGraph {
+    let mut graph = AsciiGraph::new(direction);
+    for prefix in ["a", "b"] {
+        for index in 0..5 {
+            let id = format!("{prefix}{index}");
+            graph.add_node(&id, &id);
+        }
+        for index in 0..5 {
+            graph.add_edge(
+                format!("{prefix}{index}"),
+                format!("{prefix}{}", (index + 1) % 5),
+            );
+        }
+    }
+    for index in 0..5 {
+        graph.add_edge(format!("a{index}"), format!("b{index}"));
+    }
+    graph.add_node("tail", "Tail");
+    graph.add_edge("b4", "tail");
+    graph
+}
+
 #[test]
 fn measured_bar_deficit_reserves_independent_contacts_at_both_ends() {
     let graph = capacity_graph(GraphNodeShape::ForkJoinHorizontal, GraphDirection::TopDown);
@@ -560,6 +582,312 @@ fn measured_corridor_gap_survives_flat_compaction_and_keeps_minlen_ranks() {
                 .record_failure(&graph, &policy, &rebuilt, &miss, &resources)
                 .unwrap()
         );
+    }
+}
+
+#[test]
+fn component_rank_candidate_keeps_every_direction_and_source_fact() {
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    for direction in [
+        GraphDirection::LeftRight,
+        GraphDirection::RightLeft,
+        GraphDirection::TopDown,
+        GraphDirection::BottomTop,
+    ] {
+        let mut graph = component_rank_graph(direction);
+        graph.add_edge("a0", "a0");
+        graph.add_edge("tail", "tail");
+        graph.edges[10].id = Some("crossing".into());
+        graph.edges[10].is_user_defined_id = true;
+        graph.edges[10].label = Some("crossing condition".into());
+        graph.edges[10].start_marker = GraphEdgeMarker::Circle;
+        graph.edges[10].end_marker = GraphEdgeMarker::Cross;
+        let original = graph.clone();
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let mut feedback = LayoutFeedback::default();
+        let mut initial = measured(&graph, &feedback, &mut resources);
+        let input = LayoutInput::prepare(&graph, &policy, &mut resources).unwrap();
+        assert!(feedback.component_ranks().is_none());
+        assert!(
+            !feedback
+                .record_initial_returns_with_input(&input, &initial, &resources)
+                .unwrap()
+        );
+        assert!(feedback.component_ranks().is_none());
+        feedback
+            .record_failure_with_input(&input, &initial, &capacity_miss(), &resources)
+            .unwrap();
+        assert!(feedback.component_ranks().is_none());
+        assert!(
+            feedback
+                .record_component_ranks_with_input(&input, &initial, &resources)
+                .unwrap()
+        );
+        let expected = [0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 8];
+        assert_eq!(feedback.component_ranks(), Some(expected.as_slice()));
+        assert!(feedback.corridors.is_empty());
+        assert_eq!(graph, original);
+
+        // A new analysis must not request another generation when only the transverse
+        // placement differs; the candidate compares measured main-grid coordinates.
+        for (node, &rank) in initial.layout.nodes.iter_mut().zip(&expected) {
+            if direction.canonical() == GraphDirection::LeftRight {
+                node.grid.x = rank;
+                node.grid.y += 1;
+            } else {
+                node.grid.y = rank;
+                node.grid.x += 1;
+            }
+        }
+        let mut unchanged = LayoutFeedback::default();
+        assert!(
+            !unchanged
+                .record_component_ranks_with_input(&input, &initial, &resources)
+                .unwrap()
+        );
+        assert!(unchanged.component_ranks().is_none());
+    }
+}
+
+#[test]
+fn component_ranks_keep_parallel_minlen_and_longest_paths_with_singletons() {
+    let mut graph = component_rank_graph(GraphDirection::TopDown);
+    for (edge, length) in graph.edges[10..15].iter_mut().zip([0, 1, 3, 2, 5]) {
+        edge.length = length;
+    }
+    graph.edges[15].length = 0;
+    graph.add_edge_with_attrs(
+        "a0",
+        "tail",
+        GraphEdgeAttrs {
+            length: 5,
+            ..Default::default()
+        },
+    );
+    graph.add_node("isolated", "Isolated");
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
+    let input = LayoutInput::prepare(&graph, &policy, &mut resources).unwrap();
+    let mut feedback = LayoutFeedback::default();
+    assert!(
+        feedback
+            .record_component_ranks_with_input(&input, &initial, &resources)
+            .unwrap()
+    );
+    // The five parallel condensation edges require five ranks. The zero-length tail
+    // still needs one more, so this path wins over the direct five-rank source edge.
+    assert_eq!(
+        feedback.component_ranks(),
+        Some([0, 0, 0, 0, 0, 20, 20, 20, 20, 20, 24, 0].as_slice())
+    );
+}
+
+#[test]
+fn component_rank_feedback_rejects_unsupported_scenes() {
+    use crate::graph::model::{
+        GraphEdgeStroke, GraphNodeSide as AuthoredNodeSide, GraphNodeSideConstraint,
+    };
+
+    let graph = component_rank_graph(GraphDirection::TopDown);
+    let mut other_family = graph.clone();
+    other_family.diagram_type = "stateDiagram";
+    let mut grouped = graph.clone();
+    grouped.add_group_with_style(
+        "scope",
+        "Scope",
+        None,
+        vec![
+            "a0".into(),
+            "a1".into(),
+            "a2".into(),
+            "a3".into(),
+            "a4".into(),
+        ],
+        Default::default(),
+    );
+    let mut constrained = graph.clone();
+    constrained.nodes[1].semantics.side_constraint =
+        Some(GraphNodeSideConstraint::new("a0", AuthoredNodeSide::Left));
+    let mut invisible = graph.clone();
+    invisible.edges[10].stroke = GraphEdgeStroke::Invisible;
+    let mut acyclic = graph.clone();
+    acyclic.edges.retain(|edge| {
+        !(edge.from == "a4" && edge.to == "a0" || edge.from == "b4" && edge.to == "b0")
+    });
+    let mut self_loop = graph.clone();
+    self_loop.edges.clear();
+    self_loop.add_edge("tail", "tail");
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
+    for (name, graph) in [
+        ("diagram family", other_family),
+        ("compound groups", grouped),
+        ("authored side constraint", constrained),
+        ("invisible rank constraint", invisible),
+        ("acyclic graph", acyclic),
+        ("self loop alone", self_loop),
+    ] {
+        let input = LayoutInput::prepare(&graph, &policy, &mut resources).unwrap();
+        let mut feedback = LayoutFeedback::default();
+        assert!(
+            !feedback
+                .record_component_ranks_with_input(&input, &initial, &resources)
+                .unwrap(),
+            "{name}"
+        );
+        assert!(feedback.component_ranks().is_none(), "{name}");
+    }
+}
+
+#[test]
+fn component_ranks_wait_until_existing_capacity_feedback_stops_growing() {
+    let graph = component_rank_graph(GraphDirection::TopDown);
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let mut initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
+    let input = LayoutInput::prepare(&graph, &policy, &mut resources).unwrap();
+    initial.layout.nodes[5].x = initial.layout.nodes[0].x;
+    initial.layout.nodes[5].y = initial.layout.nodes[0].bottom() + 1;
+    let miss = AsciiError::RoutingSearchExhausted {
+        diagram_type: "flowchart",
+        edge_index: 10,
+    };
+    let mut feedback = LayoutFeedback::default();
+    assert!(
+        feedback
+            .record_failure_with_input(&input, &initial, &miss, &resources)
+            .unwrap()
+    );
+    assert_eq!(feedback.corridors.len(), 1);
+    assert!(feedback.component_ranks().is_none());
+    // Even the final recovery phase must honor an available capacity request first.
+    let mut return_feedback = LayoutFeedback::default();
+    assert!(
+        return_feedback
+            .record_return_failure_with_input(&input, &initial, &miss, &resources)
+            .unwrap()
+    );
+    assert_eq!(return_feedback.corridors.len(), 1);
+    assert!(return_feedback.component_ranks().is_none());
+    assert!(
+        feedback
+            .record_return_failure_with_input(&input, &initial, &miss, &resources)
+            .unwrap()
+    );
+    assert_eq!(
+        feedback.component_ranks(),
+        Some([0, 0, 0, 0, 0, 4, 4, 4, 4, 4, 8].as_slice())
+    );
+    assert_eq!(feedback.corridors.len(), 1);
+    assert!(
+        !feedback
+            .record_return_failure_with_input(&input, &initial, &miss, &resources)
+            .unwrap()
+    );
+}
+
+#[test]
+fn scoped_return_growth_precedes_component_rank_recovery_for_flat_cycles() {
+    let graph = component_rank_graph(GraphDirection::TopDown);
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
+    let input = LayoutInput::prepare(&graph, &policy, &mut resources).unwrap();
+    let miss = AsciiError::RoutingSearchExhausted {
+        diagram_type: "flowchart",
+        edge_index: 4,
+    };
+    let mut feedback = LayoutFeedback::default();
+    feedback
+        .record_failure_with_input(&input, &initial, &miss, &resources)
+        .unwrap();
+    assert!(
+        feedback
+            .record_return_failure_with_input(&input, &initial, &miss, &resources)
+            .unwrap()
+    );
+    assert!(!feedback.returns.is_empty());
+    assert!(feedback.component_ranks().is_none());
+}
+
+#[test]
+fn component_rank_feedback_has_exact_work_admission_and_atomic_cancellation() {
+    let graph = component_rank_graph(GraphDirection::TopDown);
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut preparation = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let initial = measured(&graph, &LayoutFeedback::default(), &mut preparation);
+    let input = LayoutInput::prepare(&graph, &policy, &mut preparation).unwrap();
+    let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    assert!(
+        LayoutFeedback::default()
+            .record_component_ranks_with_input(&input, &initial, &resources)
+            .unwrap()
+    );
+    let work = resources.layout_work_used();
+    for (limit, admitted) in [(work, true), (work - 1, false)] {
+        for private_allowance in [false, true] {
+            let resources = if private_allowance {
+                ResourceContext::new(AsciiResourcePolicy::unbounded())
+                    .with_planning_work_allowance(limit)
+            } else {
+                ResourceContext::new(
+                    AsciiResourcePolicy::unbounded()
+                        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                        .unwrap(),
+                )
+            };
+            let mut feedback = LayoutFeedback::default();
+            let result = feedback.record_component_ranks_with_input(&input, &initial, &resources);
+            assert_eq!(result.is_ok(), admitted);
+            if admitted {
+                assert!(result.unwrap());
+                assert!(feedback.component_ranks().is_some());
+                assert_eq!(resources.layout_work_used(), work);
+            } else {
+                if private_allowance {
+                    assert!(matches!(
+                        result,
+                        Err(AsciiError::PlanningWorkAllowanceExhausted)
+                    ));
+                } else {
+                    assert!(matches!(result, Err(AsciiError::ResourceLimitExceeded(_))));
+                }
+                assert!(feedback.component_ranks().is_none());
+            }
+            assert!(feedback.corridors.is_empty());
+        }
+    }
+    for checkpoints in [0, 30, 300] {
+        let control = OperationControl::new();
+        if checkpoints > 0 {
+            control.cancel_after_checkpoints(checkpoints);
+        } else {
+            control.cancel();
+        }
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded())
+            .controlled(control, OperationPhase::Layout);
+        let mut feedback = LayoutFeedback::default();
+        assert!(matches!(
+            feedback.record_component_ranks_with_input(&input, &initial, &resources),
+            Err(AsciiError::Cancelled(_))
+        ));
+        assert!(feedback.component_ranks().is_none());
+        assert!(feedback.corridors.is_empty());
+        assert_eq!(resources.layout_work_used() > 0, checkpoints > 0);
     }
 }
 

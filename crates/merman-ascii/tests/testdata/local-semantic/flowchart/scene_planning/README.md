@@ -16,28 +16,35 @@ final newline. It retains `C0..C19` and their original edges except `C0 -> C5` a
 Neither declarations nor retained edges were reordered; no labels or directions were changed.
 CI uses only the promoted inputs, not those machine-local paths or a reference runtime.
 
-## Baseline qualification
+## Spatial qualification
 
-The historical strict Unicode/Plain, Canonical, unrestricted runs with unbounded trusted-input
-resources and a 10-second operation timeout reported `RoutingSearchExhausted`: original authored
-`edge[32]` (`C16 -> C17`) and reduced `edge[14]` (`C8 -> C9`). Both emitted no document and reported
-no resource-limit error. The release binary SHA-256 was
-`8beb5c357b77b61e9758e1b1dc1980ec7667d92403024a0143e479c9295192ee`; its equivalence to the current
-source was not independently established. Separate instrumented debug captures located both
-misses at route selection, without proving that a different repair strategy can solve them.
+Both exact inputs must produce complete Canonical/Strict spatial primaries under the unchanged
+Trusted Native resource profile, in ASCII and Unicode. At a 120-column Allow viewport they must
+fit the width. The original must use at most 300 rows; the reduced source keeps its narrower
+capacity-recovered layout within 120 rows. After a routing miss with no further measured capacity
+growth, the planner may assign one main-axis level to each strongly connected component; every
+member remains a separate node and every original relationship is routed and validated. Component
+analysis and the new generation share the existing work ledger and finite rebuild allowances.
 
-The small strict outcome is exercised through the Rust renderer with unbounded resources;
-the large historical miss is recorded here without adding its expensive strict render to the
-suite. Neither input is a constructive feasibility witness. The suite permits new strict
-success and otherwise requires an authored-index planning diagnostic. A particular failed
-edge is historical evidence, not a permanent failure contract.
-One-unit work controls separately require typed resource errors for both inputs.
+The private generated-scene owner additionally runs both exact sources in TD and LR, ASCII and
+Unicode, through the full planner and its independent information oracle. It requires all 195 or
+33 relationships, their actual endpoint contacts, markers, continuity, and final paint. These
+constructive successes replace the earlier accepted routing-miss outcomes; no fixture bytes,
+labels, directions, or edges are shortened or omitted. One-unit work controls still require typed
+resource errors for both inputs.
+
+`labelled-cycle-capacity.mmd` and `narrow-cycle-capacity.mmd` are eight-node controls for recovery
+priority. Both must retain complete Strict spatial results at a 50-column Error viewport in ASCII
+and Unicode. Endpoint/corridor and return-lane growth take precedence over the component candidate;
+the labelled source must keep all six edge labels. The independent oracle additionally checks every
+relationship and its final paint for both sources in TD and both character sets.
 
 ## Reading worksheet and existing owners
 
 Review the complete emitted document before consulting the source. An adaptive Plain request
 at 80 columns must preserve every fact under the existing Trusted Native work ceiling. Strict
-results remain separate. No dense reading floor or reference output is qualified yet.
+results remain separate. The frozen scenes now have a spatial acceptance bound; no dense reference
+output is qualified and arbitrary larger graphs are not promised the same reading floor.
 
 | Question | Required answer |
 | --- | --- |
@@ -61,6 +68,9 @@ The independent oracle in `src/graph/routing/tests/generated.rs` still owns all 
 `(0x19a47c21, 2)`, `(0x73b9025d, 5)`, `(0xd061e8af, 8)`, two directions, three modes, and three
 edge orders. Keep the shuffled-order salt `0xa81b2047`, spacing variants, independent continuity
 checks, and every prior success. These fixtures neither duplicate nor resample that harness.
+Separate recovery tests add eight exact dense-source scenes and four capacity-priority controls
+through the full planner and the same independent oracle; they do not alter the original attempts
+or success floor.
 
 ## Constructive private-test proposals
 

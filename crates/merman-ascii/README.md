@@ -282,12 +282,23 @@ and label reservations identify actual blockers for repair. A trial includes the
 shared-channel membership and replaces their contacts, paths, markers, and labels atomically. A
 failed trial restores the incumbent without refunding spent work; a fatal error propagates.
 
-Within each attempted layout profile, the planner permits at most two capacity-driven rebuilds
-after the initial geometry: first for new measured endpoint/corridor demand, then for scoped
-feedback-lane demand. An unchanged request does not justify a rebuild. Each new generation rebuilds
+Within each attempted layout profile, the planner permits at most two measured rebuilds
+after the initial geometry: first for endpoint/corridor demand, then for scoped feedback-lane
+demand. Only when neither capacity request grows may the final recovery phase select a cyclic
+rank candidate. An unchanged request does not justify a rebuild. Each new generation rebuilds
 coordinate-dependent allocations, contacts, protection, and search axes while retaining semantic
 identities, authored directions, and group ownership. These private allowances bound a best-effort
 search; they are neither new public resource limits nor a proof of complete or optimal routing.
+
+After a routing miss, a flat Flowchart with visible edges and no authored side constraints may
+use strongly connected components to generate another rank assignment. The condensation DAG
+determines the main-axis levels, including cross-component relationship lengths; every member
+remains a separate node in a transverse lane and every original relationship is routed normally.
+This avoids stretching a chain of small cycles into one long column. It is an internal geometric
+candidate within the same profile and operation budget, not a collapsed semantic summary or a new
+layout option. Complete initial and capacity-recovered scenes retain their existing geometry.
+Compound graphs and invisible rank constraints keep their existing planning rules, and arbitrary
+cyclic graphs can still exhaust bounded search.
 
 Static node, frame, and title protection is compiled into one spatial hierarchy per geometry
 generation and shared by fixed-layout congestion trials. Cell, marker, and label queries prune
