@@ -283,7 +283,7 @@ impl<'a> AsciiDiagram<'a> {
             #[cfg(feature = "diagram-gantt")]
             Self::Gantt(model) => model.complexity(),
             #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(model) => ModelComplexity::from_serializable(model),
+            Self::GitGraph(model) => return crate::git_graph::complexity(model, resources),
             #[cfg(feature = "diagram-journey")]
             Self::Journey(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-kanban")]

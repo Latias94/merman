@@ -6,8 +6,7 @@
 use super::record::{RecordWriter, details, write_plain_record};
 use super::{AsciiDiagram, AsciiError, RawValue, Result, SemanticFallbackWriter};
 use crate::operation::AsciiExecution;
-use crate::{AsciiColorMode, AsciiRenderOptions, AsciiSourceContext};
-use merman_model::OperationPhase;
+use crate::{AsciiRenderOptions, AsciiSourceContext};
 use merman_model::time::LocalTimeZone;
 use serde::Deserialize;
 use std::collections::BTreeMap;
@@ -22,59 +21,7 @@ pub(crate) fn render_primary(
     execution: AsciiExecution<'_>,
     topology: Option<&str>,
 ) -> Result<String> {
-    let resources = execution
-        .new_resource_context(OperationPhase::Semantic)
-        .with_additional_retained_output(topology.map_or(0, str::len))?;
-    let serialization = execution.with_render_ledger(&resources);
-    super::preflight_semantic_model(model, source, serialization)?;
-    let projection =
-        super::semantic_fallback_projection(model, source, serialization).map_err(|error| {
-            match error {
-                super::SemanticFallbackError::Cancelled(error) => AsciiError::Cancelled(error),
-                super::SemanticFallbackError::Resource(error) => error,
-                super::SemanticFallbackError::Unavailable => invalid_projection(),
-            }
-        })?;
-    let retained = resources
-        .clone()
-        .with_additional_retained_output(projection.len())?;
-    let record_execution = execution.with_render_ledger(&retained);
-    let record_width = execution.max_width().unwrap_or(80);
-    let mut records = SemanticFallbackWriter::new(
-        record_execution,
-        record_width,
-        options.terminal_width_profile,
-    );
-    if let Some(topology) = topology.filter(|text| !text.is_empty()) {
-        // A time axis must never be reflowed. The measured wide primary lets the caller's
-        // overflow policy choose Error, Allow, or complete record fallback afterward.
-        records.max_width = usize::MAX;
-        for line in topology.lines() {
-            records.push(line.to_string())?;
-        }
-        records.push(String::new())?;
-        records.max_width = record_width;
-    }
-    records.push("Gantt records".to_string())?;
-    write_if_gantt(model, &projection, &mut records)?;
-    let candidate = records.finish().into_text();
-    drop(projection);
-    if options.color_mode != AsciiColorMode::Html {
-        // Plain and ANSI documents have identical bytes: the family uses readable status
-        // badges, not color-only semantics. Transfer the already safe buffer without copying.
-        return Ok(candidate);
-    }
-    let mut document = crate::safe_text::BudgetedTextDocument::from_resources(
-        resources
-            .scoped()
-            .with_additional_retained_output(candidate.len())?,
-        options,
-    );
-    execution.rebind_resource_context(document.resources_mut(), OperationPhase::Emit);
-    for line in candidate.split('\n') {
-        document.push_line(line)?;
-    }
-    document.finish()
+    super::retained::render_primary(model, source, options, execution, topology)
 }
 
 pub(super) fn write_if_gantt(

@@ -45,6 +45,81 @@ fn run_ascii_with_resource_limit(limit_id: &str, max: u64, source: &str) -> Outp
     )
 }
 
+#[cfg(feature = "diagram-git-graph")]
+#[test]
+fn gitgraph_cli_reports_tracks_parallel_records_and_complete_width_fallback() {
+    let body = "gitGraph LR:\ncommit id:\"A\"\nbranch feature\ncommit id:\"F\"\ncheckout main\ncommit id:\"B\"\nmerge feature id:\"M\" tag:\"v1\"\n";
+    for (parallel, width) in [(false, "80"), (false, "20"), (true, "80")] {
+        let source = if parallel {
+            format!("---\nconfig:\n  gitGraph:\n    parallelCommits: true\n---\n{body}")
+        } else {
+            body.to_string()
+        };
+        let output = run_with_stdin(
+            &[
+                "render",
+                "--format",
+                "ascii",
+                "--ascii-report",
+                "--ascii-max-width",
+                width,
+                "--ascii-overflow",
+                "fallback",
+                "-",
+            ],
+            &source,
+        );
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = assert_plain_ascii_report(&output.stdout);
+        assert_eq!(report["family"], "gitGraph");
+        assert_eq!(
+            report["projection"],
+            if !parallel && width == "80" {
+                "diagrammatic"
+            } else {
+                "structured_text"
+            }
+        );
+        assert_eq!(
+            report["outcome"],
+            if width == "20" { "fallback" } else { "primary" }
+        );
+        assert_eq!(report["fallback_attempted"], width == "20");
+        assert!(report["emitted_width"].as_u64().unwrap() <= width.parse::<u64>().unwrap());
+        let records: String = report["text"]
+            .as_str()
+            .unwrap()
+            .split_once("GitGraph records")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect();
+        assert_eq!(records.matches("[commit]").count(), 4);
+        assert!(records.contains("tags=[\"v1\"]parents=[\"B\",\"F\"]"));
+        if parallel {
+            assert!(records.contains("\"parallelCommits\":true"));
+        }
+    }
+    let output = Command::new(assert_cmd::cargo_bin!("merman-cli"))
+        .args(["capabilities", "--json"])
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let capabilities: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let gitgraph = capabilities["ascii"]["families"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|family| family["family"] == "gitgraph")
+        .unwrap();
+    assert_eq!(gitgraph["primary_projection"], "diagrammatic");
+    assert_eq!(gitgraph["support_level"], "partial");
+}
+
 fn assert_plain_ascii_report(bytes: &[u8]) -> serde_json::Value {
     assert!(
         !bytes.windows(2).any(|window| window == b"\x1b["),

@@ -201,6 +201,54 @@ fn gantt_ascii_hosts_preserve_source_config_records_and_the_selected_projection(
     }
 }
 
+#[cfg(all(feature = "ascii", feature = "diagram-git-graph"))]
+#[test]
+fn gitgraph_ascii_hosts_keep_track_records_and_the_actual_output_plan() {
+    let body = "gitGraph LR:\ncommit id:\"A\"\nbranch feature\ncommit id:\"F\"\ncheckout main\ncommit id:\"B\"\nmerge feature id:\"M\" tag:\"v1\"\n";
+    for (parallel, width) in [(false, 80), (false, 20), (true, 80)] {
+        let source = format!(
+            "---\ntitle: Host history\nconfig:\n  theme: dark\n  gitGraph:\n    parallelCommits: {parallel}\n---\n{body}"
+        );
+        let options = serde_json::to_vec(&json!({ "ascii": { "colorMode": "plain", "overflow": "fallback", "maxWidth": width } })).unwrap();
+        let engine = merman_bindings_core::BindingEngine::from_options(&options).unwrap();
+        let cached = engine.render_ascii_result(source.as_bytes()).unwrap();
+        let once = merman_bindings_core::render_ascii_result(source.as_bytes(), &options).unwrap();
+        assert_eq!(cached.data(), once.data());
+        assert_eq!(cached.metadata_json(), once.metadata_json());
+        let Some(merman_bindings_core::BindingOutputPlan::Ascii(plan)) =
+            cached.metadata().output_plan()
+        else {
+            panic!("missing ASCII plan")
+        };
+        assert_eq!(plan.family(), "gitGraph");
+        assert_eq!(
+            plan.projection(),
+            if !parallel && width == 80 {
+                "diagrammatic"
+            } else {
+                "structured_text"
+            }
+        );
+        assert_eq!(
+            plan.outcome(),
+            if width == 20 { "fallback" } else { "primary" }
+        );
+        assert_eq!(plan.fallback_attempted(), width == 20);
+        assert!(plan.emitted_width() <= width);
+        let records: String = std::str::from_utf8(cached.data())
+            .unwrap()
+            .split_once("GitGraph records")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect();
+        assert_eq!(records.matches("[commit]").count(), 4);
+        assert!(records.contains("parents=[\"B\",\"F\"]"));
+        assert!(records.contains("sourceTitle:\"Hosthistory\""));
+        assert!(records.contains("\"theme\":\"dark\""));
+    }
+}
+
 #[cfg(feature = "ascii")]
 #[test]
 fn zenuml_ascii_hosts_keep_source_records_and_the_complete_width_fallback() {

@@ -108,13 +108,13 @@ The original Phase 3 decision retained Gantt, GitGraph, Journey, Kanban, Mindmap
 and TreeView as StructuredText. Those original reports preserved typed facts useful in logs and
 review without claiming timeline, lane, board, map, packet-width, spine, or two-dimensional tree
 geometry. These were deliberate projection boundaries, not fallbacks selected by resource pressure.
-The later Packet and Gantt contracts below revisit those two dispositions; the others remain
+The later Packet, Gantt, and GitGraph contracts below revisit those dispositions; the others remain
 StructuredText.
 
 | Family | Representative terminal task | Diagrammatic decision |
 | --- | --- | --- |
 | Gantt | Inspect task identity, constraints, sections, flags, and resolved times. | Originally StructuredText; no aligned date-scale timeline was admitted at this gate. See the [later timeline admission contract](#gantt-timeline-admission). |
-| GitGraph | Trace commit order, branches, merges, tags, and parent identities. | Retain StructuredText; no lane graph was admitted. |
+| GitGraph | Trace commit order, branches, merges, tags, and parent identities. | Originally StructuredText; the branch-track admission below adds fixed spatial tracks and complete records. |
 | Journey | Review ordered tasks, actors, sections, and scores. | Retain StructuredText intentionally; a browser-shaped journey adds insufficient terminal value. |
 | Kanban | Audit column/card identity, assignment, and metadata, including orphan handling. | Retain StructuredText; no spatial board was admitted. |
 | Mindmap | Recover hierarchy, identity, cycles, and disconnected components. | Retain StructuredText; the outline is useful, but it is not counted as two-dimensional geometry. |
@@ -122,11 +122,11 @@ StructuredText.
 | Timeline | Inspect direction, sections, and ordered events. | Retain StructuredText; no spatial time spine was admitted. |
 | TreeView | Inspect file/directory hierarchy and disclosed node metadata. | Retain StructuredText; charset-aware tree prefixes are an outline, not a two-dimensional diagram. |
 
-GitGraph now adds bounded branch lanes to its newest-first history report, with explicit parent
+GitGraph previously added bounded branch lanes to its newest-first history report, with explicit parent
 records whenever a lane would collide, exceed capacity, or misrepresent caller-authored history.
-Mindmap now puts labels and hierarchy before referenced metadata. Both remain StructuredText:
-these readability improvements do not admit Mermaid's two-dimensional Git or node-shape layouts.
-The [support matrix](ASCII_SUPPORT_MATRIX.md#structured-text-outputs) owns their current limits.
+Mindmap puts labels and hierarchy before referenced metadata. Those improvements alone did not
+admit two-dimensional geometry. The later GitGraph admission replaces that report; Mindmap
+remains StructuredText. The [support matrix](ASCII_SUPPORT_MATRIX.md) owns their current limits.
 
 ## Packet Bounded Spatial Admission
 
@@ -233,6 +233,67 @@ Drawing replay remains 123/127 correct with no previously correct result regress
 
 `repo-ref/mermaid-ascii` has no Gantt oracle; no Grok or Codex renderer code was consulted.
 This contract does not claim SVG styling/tick parity or dependency-arrow geometry.
+
+## GitGraph Branch Track Admission
+
+The later GitGraph contract replaces the newest-first history summary with fixed branch tracks
+over pinned Mermaid `12.3.0` facts. Semantic coverage stays Partial; the family projection is
+Diagrammatic. An individual output reports StructuredText when its history is outside the
+spatial domain, independently of that family capability. The
+[GitGraph support note](ascii/GITGRAPH_SUPPORT.md) owns the detailed contract.
+
+Tracks follow canonical branch order and a uniform chronological event axis in LR, TB, and BT.
+Every commit carries a source-index C key. Real ancestry is retained independently of custom
+commit appearance. Shared sources may fork; incoming paths meet at the actual child marker,
+with endpoint arrows pointing to that child. Unrelated crossings use `x`/`╳`. Cherry-pick sources
+remain explicit keyed records rather than an additional ancestry line. Empty branches retain B
+keys without guessed heads or branch-creation instants.
+
+The parser-backed `git_graph_tracks` tests read the emitted characters and follow connections
+backwards, obeying the endpoint arrows and keeping crossing routes separate. They compare the
+reachable parent occurrences against the model rather than merely checking that IDs appear.
+The frozen generator uses 16 histories in LR/TB/BT: 48/48 admit spatial output, and all 192
+Allow/Fallback attempts return complete records at 80/100/120 columns. This is a bounded local
+property corpus, not a claim about arbitrary graphs or an official Trident score.
+
+Further probes cover custom merge types, cherry-pick source/parent equality, declared branch
+order, delayed forks, independent crossings, aliases of inherited old heads, duplicate IDs and
+overwrite warnings, missing/external/forward identities, nonconsecutive sequence, all primary
+encodings, Unicode/CJK profiles, canonical/full-model equality, and explicit width policy.
+TB/BT with one commit and 999/1000 branches checks header bounds. Resource tests admit retained
+tracks, JSON facts, and records cumulatively, and interrupt complexity counting inside large
+tag arrays. Unknown real commit types, resource failures, and operation cancellation remain
+errors under unchanged defaults.
+
+Parallel commit positioning, old non-tip parent routes, and ambiguous detached histories use
+complete record primaries with a reason. Spatial tracks are never reflowed or rotated to make
+them fit; Plain width fallback uses the same family records. Complete metadata increases total
+height over the old summary, while the track overview exposes branch and merge structure.
+The frozen admission sources use two linear commits, the four-commit branch/merge from
+`git_graph_tracks`, and a twelve-commit/four-branch history that repeatedly merges one source.
+The actual CLI comparison against `f9dcd0919` measures complete ASCII output, including records:
+
+| Sample | Previous 80-column report | New 80-column output | New 100-column output | New 120-column output |
+| --- | --- | --- | --- | --- |
+| Small linear | 38 × 8, StructuredText | 80 × 21, tracks + records | 99 × 18, tracks + records | 119 × 18, tracks + records |
+| Branch and merge | 71 × 15, StructuredText | 80 × 31, tracks + records | 99 × 27, tracks + records | 119 × 26, tracks + records |
+| Repeated-source merges | 79 × 36, StructuredText | 80 × 39, complete width fallback | 100 × 54, tracks + records | 119 × 50, tracks + records |
+
+The four-commit 80-column track overview is six rows before its legend and records. The dense
+80-column spatial candidate measures 85 columns, so Fallback selects complete records rather
+than wrapping connections. ASCII and Unicode both return complete output at all three widths.
+
+An unchanged-source local probe also replays the three frozen project GitGraph sources with
+Trident's unchanged DaveBench validity checker. The two previously rendered inputs now have
+Diagrammatic primaries with complete records, but the checker rejects both for
+`fallback render: source header shown: gitGraph`: the complete metadata scope includes the
+family name as a word. The third input keeps the same parser error in both builds
+(`invalid gitGraph reference: 主线`). The three synthetic admission samples pass that checker
+before and after because their headers include `LR:`. These are local diagnostic results,
+not an official benchmark improvement; source, metadata, and checker rules are preserved.
+
+`repo-ref/mermaid-ascii` provides no GitGraph implementation or byte oracle. No Grok or Codex
+renderer code was consulted, and no universal superiority claim is made.
 
 ## U30 Structural Closeout Disposition
 

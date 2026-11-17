@@ -22,6 +22,8 @@ mod block;
 mod c4;
 #[cfg(feature = "diagram-gantt")]
 pub(crate) mod gantt;
+#[cfg(feature = "diagram-git-graph")]
+pub(crate) mod git_graph;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
@@ -46,6 +48,7 @@ mod pie;
     feature = "diagram-block",
     feature = "diagram-c4",
     feature = "diagram-gantt",
+    feature = "diagram-git-graph",
     feature = "diagram-zenuml"
 ))]
 mod record;
@@ -53,6 +56,8 @@ mod record;
 mod relation;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
+#[cfg(any(feature = "diagram-gantt", feature = "diagram-git-graph"))]
+mod retained;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
 #[cfg(feature = "diagram-zenuml")]
@@ -942,8 +947,14 @@ fn build_semantic_document(
             },
         })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
-    #[cfg(feature = "diagram-gantt")]
-    if matches!(model, AsciiDiagram::Gantt(_)) {
+    let retains_projection = match model {
+        #[cfg(feature = "diagram-gantt")]
+        AsciiDiagram::Gantt(_) => true,
+        #[cfg(feature = "diagram-git-graph")]
+        AsciiDiagram::GitGraph(_) => true,
+        _ => false,
+    };
+    if retains_projection {
         fallback.candidate_resources = fallback
             .candidate_resources
             .clone()
@@ -1008,6 +1019,10 @@ fn build_semantic_document(
     let gantt_document = gantt::write_if_gantt(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-gantt"))]
     let gantt_document = false;
+    #[cfg(feature = "diagram-git-graph")]
+    let git_graph_document = git_graph::write_if_git_graph(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-git-graph"))]
+    let git_graph_document = false;
     if !graph_document
         && !relation_document
         && !packet_document
@@ -1020,6 +1035,7 @@ fn build_semantic_document(
         && !c4_document
         && !zenuml_document
         && !gantt_document
+        && !git_graph_document
     {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
@@ -2085,7 +2101,7 @@ mod tests {
         assert_eq!(capability.diagram_type, "gitgraph");
         assert_eq!(
             projection_for(Some(capability)),
-            AsciiProjection::StructuredText
+            AsciiProjection::Diagrammatic
         );
         assert!(capability.structured_text_fallback);
     }

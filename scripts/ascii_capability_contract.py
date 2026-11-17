@@ -43,6 +43,8 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "class",
     "er",
     "flowchart",
+    "gantt",
+    "gitgraph",
     "packet",
     "pie",
     "requirement",
@@ -51,10 +53,9 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "swimlane",
     "usecase",
     "xychart",
+    "zenuml",
 }
 ASCII_SUMMARY_FAMILIES = {
-    "gantt",
-    "gitgraph",
     "journey",
     "kanban",
     "mindmap",

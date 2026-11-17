@@ -37,6 +37,53 @@ fn deeply_nested_flowchart(depth: usize) -> String {
     lines.join("\n")
 }
 
+#[cfg(feature = "diagram-git-graph")]
+#[test]
+fn gitgraph_facade_preserves_actual_projection_and_keyed_parent_records() {
+    let body = "gitGraph LR:\ncommit id:\"A\"\nbranch feature\ncommit id:\"F\"\ncheckout main\ncommit id:\"B\"\nmerge feature id:\"M\" tag:\"v1\"\n";
+    for (parallel, width) in [(false, 80), (false, 20), (true, 80)] {
+        let source = if parallel {
+            format!("---\nconfig:\n  gitGraph:\n    parallelCommits: true\n---\n{body}")
+        } else {
+            body.to_string()
+        };
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                &source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::ascii(),
+                    viewport: AsciiViewportPolicy::with_max_width(width)
+                        .overflow(OverflowPolicy::Fallback),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(output)) = output else {
+            panic!("missing ASCII report")
+        };
+        assert_eq!(
+            output.projection.as_str(),
+            if !parallel && width == 80 {
+                "diagrammatic"
+            } else {
+                "structured_text"
+            }
+        );
+        assert_eq!(output.fallback.attempted, width == 20);
+        assert!(output.emitted_extent.width <= width);
+        let records: String = output
+            .text
+            .split_once("GitGraph records")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect();
+        assert_eq!(records.matches("[commit]").count(), 4);
+        assert!(records.contains("parents=[\"B\",\"F\"]"));
+    }
+}
+
 #[test]
 fn renderer_renders_ascii_flowchart_from_mermaid_text() {
     let output = Renderer::new()

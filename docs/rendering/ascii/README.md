@@ -15,6 +15,7 @@ terminal themes, and public options.
 | C4 | [Five views, declaration-order frames, and complete reading records](C4_SUPPORT.md) |
 | Flowchart and Swimlane | [Graph semantics, shapes, labels, and routing](FLOWCHART_SUPPORT.md) |
 | Gantt | [Shared elapsed-time axis, task markers, and complete keyed records](GANTT_SUPPORT.md) |
+| GitGraph | [Fixed branch tracks, explicit crossings, and complete commit records](GITGRAPH_SUPPORT.md) |
 | Pie | [Shared-scale percentage bars and complete values](PIE_SUPPORT.md) |
 | Requirement | [Shared-endpoint traceability and keyed fields](REQUIREMENT_SUPPORT.md) |
 | Sequence | [Participants, signals, controls, and lifecycle](SEQUENCE_SUPPORT.md) |

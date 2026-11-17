@@ -82,8 +82,8 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Gantt, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, Agentflow, Requirement, ZenUML | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
-| Partial | Structured text | GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Gantt, GitGraph, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, Agentflow, Requirement, ZenUML | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Structured text | Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Agentflow uses role-labelled spatial nodes and expanded flow frames for its admitted subset.
 Rich metadata, collapsed views, and ambiguous containment use complete keyed reading records as
@@ -135,12 +135,12 @@ root
 \-- right
 ```
 
-GitGraph presents newest-first history with a bounded set of branch lanes and explicit parent
-IDs. Cherry-picks identify the picked source separately from the first parent. Histories whose
-lanes would collide or exceed capacity use complete parent records in model order, as do
-repeated IDs, external/forward references, and nonchronological sequences. Messages, tags, and
-identities remain quoted; unusual sequence/type/ID metadata stays in a separate details block.
-These family presentations remain StructuredText and do not change capability admission.
+GitGraph has fixed branch tracks in LR/TB/BT with child-pointing arrows and explicit independent
+crossings. Source-index C and B keys link the overview to complete commit, branch, and metadata
+records. Cherry-picks disclose their picked source separately from ancestry. Parallel commits,
+ambiguous/non-tip histories, and unsafe overlaps retain StructuredText primaries; Plain width
+fallback uses the same complete records. See
+[GitGraph support](../../docs/rendering/ascii/GITGRAPH_SUPPORT.md) for admission and tradeoffs.
 
 Every selected logical model family has one capability record, including unsupported terminal
 projections. These records describe this crate's local adapters even when another dependency selects

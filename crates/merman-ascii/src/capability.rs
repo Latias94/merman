@@ -626,7 +626,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         diagram_type: "gitgraph",
         display_name: "GitGraph",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
-        primary_projection: AsciiPrimaryProjection::StructuredText,
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
         structured_text_fallback: true,
         supported_semantics: &[
             "commits",
@@ -637,22 +637,26 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "parent topology",
             "explicit merge id and type overrides",
             "ordering",
+            "fixed branch tracks in LR, TB, and BT directions",
+            "crossings distinct from ancestry junctions",
+            "source-index commit and branch records",
         ],
         limits: &[
-            "does not draw a full Git lane graph",
-            "terminal output normalizes implementation flags into semantic labels",
+            "parallel commits and ambiguous or non-tip routes use complete record primaries",
+            "cherry-pick sources are records rather than ancestry lines",
+            "branch heads and creation points absent from the model are not inferred",
             "unknown direct-model commit types are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::LocalSemanticProbe,
-                source: "crates/merman-ascii/tests/new_family_models.rs",
-                note: "typed-model tests preserve graph history facts in terminal text",
+                source: "crates/merman-ascii/tests/git_graph_tracks.rs",
+                note: "parser-backed direction, topology, identity, width, and encoding probes",
             },
             AsciiCapabilityEvidence {
                 kind: AsciiEvidenceKind::SupportMatrix,
-                source: "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-                note: "support matrix classifies GitGraph as structured-text output",
+                source: "docs/rendering/ascii/GITGRAPH_SUPPORT.md",
+                note: "bounded branch tracks and complete records own the spatial admission contract",
             },
         ],
     },
@@ -1411,6 +1415,7 @@ mod tests {
                 "er",
                 "flowchart",
                 "gantt",
+                "gitgraph",
                 "packet",
                 "pie",
                 "requirement",
@@ -1533,10 +1538,13 @@ mod tests {
             AsciiPrimaryProjection::Diagrammatic
         );
         assert_eq!(find("xychart").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(find("gitgraph").support_level, AsciiSupportLevel::Partial);
+        assert_eq!(
+            find("gitgraph").primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
 
-        for diagram_type in [
-            "gitgraph", "journey", "kanban", "mindmap", "timeline", "treeView",
-        ] {
+        for diagram_type in ["journey", "kanban", "mindmap", "timeline", "treeView"] {
             let capability = find(diagram_type);
             assert_eq!(
                 capability.primary_projection,

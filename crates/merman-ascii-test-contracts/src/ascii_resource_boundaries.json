@@ -19,7 +19,7 @@
       "id": "max_ascii_document_cells",
       "phase": "ascii_document",
       "source": "gitGraph\n  commit id: \"A\"",
-      "exact": 108
+      "exact": 780
     },
     {
       "id": "max_ascii_output_bytes",

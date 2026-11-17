@@ -206,8 +206,6 @@ use merman_model::families::class::ClassTopologyView;
 use merman_model::families::er::ErDiagramModel;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use merman_model::families::flowchart::FlowchartModel;
-#[cfg(feature = "diagram-git-graph")]
-use merman_model::families::git_graph::GitGraphDiagramModel;
 #[cfg(feature = "diagram-journey")]
 use merman_model::families::journey::JourneyDiagramModel;
 #[cfg(feature = "diagram-kanban")]
@@ -424,6 +422,10 @@ impl AsciiRenderer {
             AsciiDiagram::Zenuml(model) => zenuml::primary_projection(model, execution)?,
             #[cfg(feature = "diagram-gantt")]
             AsciiDiagram::Gantt(model) => gantt::primary_projection(*model, execution)?,
+            #[cfg(feature = "diagram-git-graph")]
+            AsciiDiagram::GitGraph(model) => {
+                git_graph::primary_projection(model, metadata, execution)?
+            }
             _ => output::projection_for(capability),
         };
         let fallback_capability = capability.is_some_and(|capability| {
@@ -444,6 +446,8 @@ impl AsciiRenderer {
             AsciiDiagram::Zenuml(_) => true,
             #[cfg(feature = "diagram-gantt")]
             AsciiDiagram::Gantt(_) => true,
+            #[cfg(feature = "diagram-git-graph")]
+            AsciiDiagram::GitGraph(_) => true,
             _ => false,
         };
         let output_context = output::OutputBuildContext {
@@ -638,7 +642,9 @@ fn render_model_with_execution(
             gantt::render_gantt_diagram(*model, options, _local_time_zone, _source, execution)
         }
         #[cfg(feature = "diagram-git-graph")]
-        AsciiDiagram::GitGraph(model) => render_git_graph_model(model, options, &execution),
+        AsciiDiagram::GitGraph(model) => {
+            git_graph::render_git_graph_diagram(model, options, _source, execution)
+        }
         #[cfg(feature = "diagram-journey")]
         AsciiDiagram::Journey(model) => render_journey_model(model, options, &execution),
         #[cfg(feature = "diagram-kanban")]
@@ -843,16 +849,6 @@ fn render_flowchart_model_inner(
         &mut layout_resources,
         execution,
     )
-}
-
-#[cfg(feature = "diagram-git-graph")]
-fn render_git_graph_model(
-    model: &GitGraphDiagramModel,
-    options: &AsciiRenderOptions,
-    execution: &operation::AsciiExecution<'_>,
-) -> Result<String> {
-    execution.checkpoint(merman_model::OperationPhase::Layout)?;
-    git_graph::render_git_graph_diagram(model, options, *execution)
 }
 
 #[cfg(feature = "diagram-journey")]
