@@ -21,6 +21,11 @@ Label classification and return-capacity extension: 2026-11-17. Geometry-local r
 cyclic-scope demand supplement the same receipt; public ceilings and private work allowances
 remain unchanged.
 
+Output candidate ownership extension: 2026-11-18. A family returns its actual projection and
+document-admission policy with the rendered text. Final reporting does not reconstruct family
+indexes, geometry, or admission decisions. Complete-record families share the staged retained
+composer described below; public ceilings remain unchanged.
+
 This audit records the input-amplification and panic-path boundary reviewed for the ASCII
 semantic-depth closeout. It is not a claim that every Rust allocation is fallible or that the crate
 contains no invariant assertions. It identifies where authored-size work is admitted, where large
@@ -41,6 +46,26 @@ document does not replace the exact package and Clippy gates recorded in `ASCII_
 | GitGraph tracks | Controlled shallow complexity counting admits collection lengths before walking; grid extents and each route step use the shared policy. Labels stay within admitted rows. | Fallible indexes/canvas allocation, typed occurrence keys, explicit crossing/arrow ownership, and cumulative tracks + JSON + records admission. The shared retained-record composer also admits logical text during HTML encoding. | `git_graph_tracks`, emitted-character parent tracing, 999/1000-branch headers, retained-output peak boundaries, nested-array pre-admission, and cancellation during complexity counting. |
 | StructuredText families | Family validators charge authored records and text before section/group indices and output rows; shared encoders enforce document/output limits. | Sectioned Journey/Timeline, Mindmap, Kanban, and TreeView use fallible reserves for authored-size indexes and rows on their audited paths. | `new_family_models`, `sectioned_structured_text`, terminal safety, and per-family resource boundary tests in the ASCII package gate. |
 | Facade and bindings | Source/model limits are applied before parse/model handoff; typed ASCII errors preserve the limit id, phase, actual, maximum, and profile through public adapters. | The facade does not replace a renderer resource error with an unbounded compatibility allocation. | Facade exact-boundary tests such as `ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one`, binding metadata/resource tests, UniFFI/WASM tests, and CLI diagnostic tests. |
+
+## Complete Reading Documents
+
+Agentflow record primaries, Architecture, C4, Requirement, Pie, ZenUML, Gantt, and GitGraph use one
+composer. Spatial overview rows remain indivisible; reading records use the requested terminal
+width, or 80 cells when no width is supplied. The selected document owns its final cell admission
+and preserves authored whitespace. Canonical/Compact selection moves these facts with the text;
+an optional candidate cannot replace the incumbent's metadata independently of its bytes.
+
+The composer admits the overview during serialization, then admits serialized facts and overview
+alongside the growing record document. It releases serialization before HTML encoding. HTML
+escaping reads the existing safe logical document directly after encoded-length admission,
+without allocating another document-sized owned-line buffer. Spatial rows are borrowed into the
+controlled writer, so their complete copies are not allocated before admission. Work remains
+cumulative and cancellation-aware; records do not recover resource or operation errors.
+
+`reading_records`, `output_report`, the family suites, and retained-output exact/N-1 tests protect
+the classification, reflow, field framing, and simultaneous-buffer boundary. The safe HTML encoder
+has its own exact retained-byte and cancellation controls. These are deterministic accounting
+claims, not calibrated latency or universal density claims.
 
 The GitGraph refactor intentionally changes the frozen Binding Core Interactive document-cell
 fixture (`gitGraph` with one explicit `A` commit) from 108 to 780: it now accounts for the

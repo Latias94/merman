@@ -476,6 +476,12 @@ fn width_fallback_is_complete_at_representative_terminal_widths() {
     .unwrap();
     let baseline = compact(natural.text.split_once("ZenUML records").unwrap().1);
     for width in [10, 60, 80, 100, 120] {
+        let allowed = render(
+            source,
+            AsciiRenderOptions::ascii(),
+            AsciiViewportPolicy::with_max_width(width),
+        )
+        .unwrap();
         let output = render(
             source,
             AsciiRenderOptions::ascii(),
@@ -483,13 +489,18 @@ fn width_fallback_is_complete_at_representative_terminal_widths() {
         )
         .unwrap();
         assert!(output.emitted_extent.width <= width, "{}", output.text);
-        if natural.emitted_extent.width > width {
+        assert_eq!(output.primary_extent, allowed.primary_extent);
+        if allowed.emitted_extent.width > width {
             assert_eq!(output.projection, AsciiProjection::StructuredText);
             let records = compact(&output.text);
             assert_eq!(records.strip_prefix("family:zenuml").unwrap(), baseline);
         } else {
             assert_eq!(output.projection, AsciiProjection::Diagrammatic);
-            assert_eq!(output.text, natural.text);
+            assert_eq!(output.text, allowed.text);
+            assert_eq!(
+                compact(output.text.split_once("ZenUML records").unwrap().1),
+                baseline
+            );
         }
     }
 }

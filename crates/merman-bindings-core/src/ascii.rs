@@ -1080,7 +1080,12 @@ mod tests {
                 "structured_text",
             ),
         ] {
-            for (width, presentation) in [(10, "strict"), (80, "strict"), (80, "adaptive")] {
+            for (width, presentation) in [
+                (4, "strict"),
+                (10, "strict"),
+                (80, "strict"),
+                (80, "adaptive"),
+            ] {
                 let options = serde_json::json!({
                     "ascii": {
                         "maxWidth": width,
@@ -1104,14 +1109,19 @@ mod tests {
                 assert_eq!(plan.layout_profile(), Some("canonical"));
                 assert_eq!(plan.requested_graph_presentation(), presentation);
                 assert_eq!(plan.requested_max_width(), Some(width));
-                assert_eq!(plan.fallback_attempted(), width == 10);
+                let fallback_expected = width == 4 && primary_projection == "diagrammatic";
+                assert_eq!(plan.fallback_attempted(), fallback_expected);
                 assert_eq!(
                     plan.outcome(),
-                    if width == 10 { "fallback" } else { "primary" }
+                    if fallback_expected {
+                        "fallback"
+                    } else {
+                        "primary"
+                    }
                 );
                 assert_eq!(
                     plan.projection(),
-                    if width == 10 {
+                    if fallback_expected {
                         "structured_text"
                     } else {
                         primary_projection

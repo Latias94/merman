@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-11-17
+Last updated: 2026-11-18
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
 notes what may be visible in the optional local reference checkouts:
@@ -28,6 +28,11 @@ product boundary.
 - Mindmap, TreeView, Timeline, Journey, and Kanban render as compact
   structured-text projections; keep those projections readable and headless rather than
   browser-shaped.
+- Output-local family decisions now travel with the rendered candidate through measurement,
+  selection, and reporting. Reporting does not replan tracks or rebuild family indexes. Existing
+  complete-record families share retained-buffer composition, viewport-aware record reflow,
+  indivisible spatial rows, and direct HTML escaping of the safe logical document. This is an
+  internal ownership improvement, not a new family or a cross-renderer speed claim.
 - GitGraph now has Partial Diagrammatic fixed branch tracks in LR/TB/BT, explicit independent
   crossings, and complete keyed records. Non-spatial domains have StructuredText primaries.
   Pinned Mermaid semantics own the contract; `mermaid-ascii` has no GitGraph oracle and no

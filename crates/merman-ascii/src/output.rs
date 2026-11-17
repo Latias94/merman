@@ -56,7 +56,16 @@ mod record;
 mod relation;
 #[cfg(feature = "diagram-requirement")]
 mod requirement;
-#[cfg(any(feature = "diagram-gantt", feature = "diagram-git-graph"))]
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-architecture",
+    feature = "diagram-c4",
+    feature = "diagram-requirement",
+    feature = "diagram-pie",
+    feature = "diagram-zenuml",
+    feature = "diagram-gantt",
+    feature = "diagram-git-graph"
+))]
 mod retained;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
@@ -384,6 +393,59 @@ pub(crate) struct OutputMetrics {
     pub document_cells: usize,
     pub grapheme_bytes: usize,
     pub encoded_bytes: usize,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RenderedPrimary {
+    pub text: String,
+    pub facts: PrimaryOutputFacts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrimaryDocument {
+    /// The renderer has admitted its document through the shared ledger.
+    Admitted,
+    /// A complete reading document preserves authored whitespace and commits on selection.
+    CompleteRecords,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PrimaryOutputFacts {
+    pub projection: AsciiProjection,
+    pub document: PrimaryDocument,
+}
+
+impl RenderedPrimary {
+    pub(crate) fn new(text: String, projection: AsciiProjection) -> Self {
+        Self {
+            text,
+            facts: PrimaryOutputFacts {
+                projection,
+                document: PrimaryDocument::Admitted,
+            },
+        }
+    }
+
+    #[cfg(any(
+        test,
+        feature = "diagram-agentflow",
+        feature = "diagram-architecture",
+        feature = "diagram-c4",
+        feature = "diagram-requirement",
+        feature = "diagram-pie",
+        feature = "diagram-zenuml",
+        feature = "diagram-gantt",
+        feature = "diagram-git-graph"
+    ))]
+    pub(crate) fn records(text: String, projection: AsciiProjection) -> Self {
+        Self {
+            text,
+            facts: PrimaryOutputFacts {
+                projection,
+                document: PrimaryDocument::CompleteRecords,
+            },
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -948,6 +1010,18 @@ fn build_semantic_document(
         })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
     let retains_projection = match model {
+        #[cfg(feature = "diagram-agentflow")]
+        AsciiDiagram::Agentflow(_) => true,
+        #[cfg(feature = "diagram-architecture")]
+        AsciiDiagram::Architecture(_) => true,
+        #[cfg(feature = "diagram-requirement")]
+        AsciiDiagram::Requirement(_) => true,
+        #[cfg(feature = "diagram-c4")]
+        AsciiDiagram::C4(_) => true,
+        #[cfg(feature = "diagram-pie")]
+        AsciiDiagram::Pie(_) => true,
+        #[cfg(feature = "diagram-zenuml")]
+        AsciiDiagram::Zenuml(_) => true,
         #[cfg(feature = "diagram-gantt")]
         AsciiDiagram::Gantt(_) => true,
         #[cfg(feature = "diagram-git-graph")]
@@ -1057,91 +1131,18 @@ fn build_semantic_document(
     )
 }
 
-/// Encodes complete family-owned records, optionally following an admitted plain topology.
+/// Composes complete family-owned records and an optional indivisible spatial overview.
 #[cfg(any(
     feature = "diagram-agentflow",
     feature = "diagram-architecture",
     feature = "diagram-c4",
     feature = "diagram-requirement",
     feature = "diagram-pie",
-    feature = "diagram-zenuml"
+    feature = "diagram-zenuml",
+    feature = "diagram-gantt",
+    feature = "diagram-git-graph"
 ))]
-pub(crate) fn render_reading_primary(
-    model: &AsciiDiagram<'_>,
-    source: AsciiSourceContext<'_>,
-    options: &crate::AsciiRenderOptions,
-    execution: AsciiExecution<'_>,
-    topology: Option<&str>,
-) -> Result<String> {
-    preflight_semantic_model(model, source, execution)?;
-    let projection =
-        semantic_fallback_projection(model, source, execution).map_err(|error| match error {
-            SemanticFallbackError::Cancelled(error) => AsciiError::Cancelled(error),
-            SemanticFallbackError::Resource(error) => error,
-            SemanticFallbackError::Unavailable => AsciiError::UnsupportedFeature {
-                diagram_type: "graph",
-                feature: "invalid serialized semantic projection",
-            },
-        })?;
-    let mut records = SemanticFallbackWriter::new(execution, 80, options.terminal_width_profile);
-    match model {
-        #[cfg(feature = "diagram-agentflow")]
-        AsciiDiagram::Agentflow(_) => {
-            records.push("Agent workflow records".to_string())?;
-            agentflow::write_if_agentflow(model, &projection, &mut records)?;
-        }
-        #[cfg(feature = "diagram-architecture")]
-        AsciiDiagram::Architecture(_) => {
-            records.push("Architecture records".to_string())?;
-            architecture::write_if_architecture(model, &projection, &mut records)?;
-        }
-        #[cfg(feature = "diagram-c4")]
-        AsciiDiagram::C4(_) => {
-            records.push("C4 records".to_string())?;
-            c4::write_if_c4(model, &projection, &mut records)?;
-        }
-        #[cfg(feature = "diagram-requirement")]
-        AsciiDiagram::Requirement(_) => {
-            records.push("Requirement records".to_string())?;
-            requirement::write_if_requirement(model, &projection, &mut records)?;
-        }
-        #[cfg(feature = "diagram-pie")]
-        AsciiDiagram::Pie(_) => {
-            records.push("Pie data".to_string())?;
-            pie::write_if_pie(model, &projection, &mut records)?;
-        }
-        #[cfg(feature = "diagram-zenuml")]
-        AsciiDiagram::Zenuml(_) => {
-            records.push("ZenUML records".to_string())?;
-            zenuml::write_if_zenuml(model, &projection, &mut records)?;
-        }
-        _ => {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "graph",
-                feature: "reading records",
-            });
-        }
-    }
-    let candidate = records.finish();
-    let mut document = crate::safe_text::BudgetedTextDocument::from_resources(
-        execution
-            .new_resource_context(OperationPhase::Emit)
-            .scoped(),
-        options,
-    );
-    if let Some(topology) = topology.filter(|text| !text.is_empty()) {
-        for line in topology.lines() {
-            document.push_line(line)?;
-        }
-        document.push_line("")?;
-    }
-    for line in candidate.text().split('\n') {
-        document.push_line(line)?;
-    }
-    // Retain the measured records for ordinary StructuredText reflow. A spatial overflow signal
-    // would instead select graph-document fallback and wrongly report presentation loss here.
-    document.finish()
-}
+pub(crate) use retained::render_primary as render_reading_primary;
 
 /// Admits authored model and source-config depth before streaming their borrowed fields.
 pub(crate) fn preflight_semantic_model(
@@ -1364,12 +1365,12 @@ impl<'a> SemanticFallbackWriter<'a> {
         }
     }
 
-    fn push(&mut self, line: String) -> Result<()> {
+    fn push(&mut self, line: impl AsRef<str>) -> Result<()> {
         let (mut width, mut has_content) = self.begin_line()?;
         let mut emit_resources = self.emit_resources.clone();
         crate::safe_text::visit_safe_line_fragments(
             &mut emit_resources,
-            &line,
+            line.as_ref(),
             self.profile,
             |fragment, fragment_width, fragment_grapheme_bytes| {
                 self.push_wrapped_fragment(
@@ -2201,7 +2202,7 @@ mod tests {
             SemanticFallbackWriter::new(exact_execution, 80, TerminalWidthProfile::Unicode);
 
         exact
-            .push(authored.to_string())
+            .push(authored)
             .expect("the exact normalized output-byte boundary should succeed");
         assert_eq!(exact.finish().into_text(), expected);
 
@@ -2213,7 +2214,7 @@ mod tests {
             SemanticFallbackWriter::new(below_execution, 80, TerminalWidthProfile::Unicode);
 
         let error = below
-            .push(authored.to_string())
+            .push(authored)
             .expect_err("the N-1 normalized output-byte boundary should fail");
         assert!(matches!(
             error,
@@ -2231,7 +2232,7 @@ mod tests {
         let mut fallback = SemanticFallbackWriter::new(execution, 8, TerminalWidthProfile::Unicode);
 
         fallback
-            .push("a\u{202e}b".to_string())
+            .push("a\u{202e}b")
             .expect("terminal-safe fallback should render");
 
         assert_eq!(fallback.finish().into_text(), "a\n\\u{202E}\nb");

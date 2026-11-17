@@ -94,19 +94,6 @@ fn declarations(model: &RequirementDiagramModel) -> impl Iterator<Item = (Readin
         }))
 }
 
-pub(crate) fn primary_projection(
-    model: &RequirementDiagramModel,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Semantic);
-    let identities = Identities::new(model, &resources)?;
-    Ok(if spatially_eligible(model, &identities, &resources)? {
-        AsciiProjection::Diagrammatic
-    } else {
-        AsciiProjection::StructuredText
-    })
-}
-
 fn spatially_eligible(
     model: &RequirementDiagramModel,
     identities: &Identities<'_>,
@@ -144,7 +131,7 @@ pub(crate) fn render(
     policy: GraphLayoutPolicy,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     let resources = execution.new_resource_context(OperationPhase::Semantic);
     let identities = Identities::new(model, &resources)?;
     let topology = if spatially_eligible(model, &identities, &resources)? {
@@ -169,6 +156,11 @@ pub(crate) fn render(
     } else {
         None
     };
+    let projection = if topology.is_some() {
+        AsciiProjection::Diagrammatic
+    } else {
+        AsciiProjection::StructuredText
+    };
     crate::output::render_reading_primary(
         &AsciiDiagram::Requirement(model),
         source,
@@ -176,6 +168,7 @@ pub(crate) fn render(
         execution,
         topology.as_deref(),
     )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 pub(crate) fn project(

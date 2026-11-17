@@ -5,24 +5,11 @@
 
 use super::record::{RecordWriter, details, write_plain_record};
 use super::{AsciiDiagram, AsciiError, RawValue, Result, SemanticFallbackWriter};
-use crate::operation::AsciiExecution;
-use crate::{AsciiRenderOptions, AsciiSourceContext};
 use merman_model::time::LocalTimeZone;
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
 type Fields<'a> = BTreeMap<String, &'a RawValue>;
-
-/// Build one logical document, retaining only the buffers needed by the active stage.
-pub(crate) fn render_primary(
-    model: &AsciiDiagram<'_>,
-    source: AsciiSourceContext<'_>,
-    options: &AsciiRenderOptions,
-    execution: AsciiExecution<'_>,
-    topology: Option<&str>,
-) -> Result<String> {
-    super::retained::render_primary(model, source, options, execution, topology)
-}
 
 pub(super) fn write_if_gantt(
     model: &AsciiDiagram<'_>,
@@ -131,6 +118,7 @@ fn invalid_projection() -> AsciiError {
 mod tests {
     use super::*;
     use crate::operation::AsciiExecution;
+    use crate::{AsciiRenderOptions, AsciiSourceContext};
     use crate::{AsciiResourceLimitId, AsciiResourcePolicy, TerminalWidthProfile};
     use merman_model::families::gantt::{GanttDiagramModel, GanttTerminalView};
     use merman_model::{MermaidConfig, OperationControl, OperationPhase};
@@ -312,6 +300,7 @@ mod tests {
                 source,
                 AsciiExecution::for_test(&policy),
             )
+            .map(|primary| primary.text)
         };
         let text = render(AsciiResourcePolicy::unbounded()).unwrap();
         let topology_bytes = text.split_once("\n\nGantt records").unwrap().0.len();

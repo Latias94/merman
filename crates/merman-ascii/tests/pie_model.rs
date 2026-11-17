@@ -405,7 +405,6 @@ fn width_recovery_is_complete_and_reports_primary_and_fallback_truthfully() {
         assert_eq!(output.lossiness, Lossiness::PresentationOnly);
         assert!(output.fallback.attempted);
         assert!(output.emitted_extent.width <= width);
-        assert_eq!(output.primary_extent, natural.primary_extent);
         let text = compact(&output.text);
         for (key, label, value) in [(1, "Read", 7), (2, "Write", 2), (3, "Delete", 1)] {
             assert!(
@@ -422,9 +421,10 @@ fn width_recovery_is_complete_and_reports_primary_and_fallback_truthfully() {
             AsciiResourcePolicy::default(),
         )
         .unwrap();
-        assert_eq!(allowed.text, natural.text);
+        assert_eq!(output.primary_extent, allowed.primary_extent);
+        assert_eq!(bars(&allowed.text), bars(&natural.text));
         assert!(
-            matches!(report_with(&parsed, AsciiRenderOptions::ascii(), AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Error), &OperationControl::new(), AsciiResourcePolicy::default()), Err(AsciiError::WidthOverflow{actual_width,..}) if actual_width == natural.emitted_extent.width)
+            matches!(report_with(&parsed, AsciiRenderOptions::ascii(), AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Error), &OperationControl::new(), AsciiResourcePolicy::default()), Err(AsciiError::WidthOverflow{actual_width,..}) if actual_width == allowed.emitted_extent.width)
         );
     }
 }
@@ -591,23 +591,23 @@ fn every_tracked_pie_fixture_renders_complete_bounded_output() {
 }
 
 #[test]
-fn retained_cells_and_bytes_are_admitted_once_for_bars_and_record_reflow() {
+fn retained_cells_are_admitted_once_for_each_viewport_document() {
     for source in [SMALL, "pie\n\"Zero\": 0\n"] {
         let parsed = parse(source);
         let options = AsciiRenderOptions::ascii();
-        let primary = report_with(
-            &parsed,
-            options,
-            AsciiViewportPolicy::unrestricted(),
-            &OperationControl::new(),
-            AsciiResourcePolicy::unbounded(),
-        )
-        .unwrap();
-        let primary_cells = primary.text.lines().map(str::len).sum::<usize>();
         for viewport in [
             AsciiViewportPolicy::unrestricted(),
             AsciiViewportPolicy::with_max_width(20).overflow(OverflowPolicy::Fallback),
         ] {
+            let primary = report_with(
+                &parsed,
+                options,
+                viewport.overflow(OverflowPolicy::Allow),
+                &OperationControl::new(),
+                AsciiResourcePolicy::unbounded(),
+            )
+            .unwrap();
+            let primary_cells = primary.text.lines().map(str::len).sum::<usize>();
             let output = report_with(
                 &parsed,
                 options,
@@ -617,30 +617,19 @@ fn retained_cells_and_bytes_are_admitted_once_for_bars_and_record_reflow() {
             )
             .unwrap();
             let cells = primary_cells.max(output.text.lines().map(str::len).sum::<usize>());
-            let bytes = primary.text.len().max(output.text.len());
-            for (id, exact) in [
-                (AsciiResourceLimitId::MaxDocumentCells, cells),
-                (AsciiResourceLimitId::MaxOutputBytes, bytes),
-            ] {
-                // The byte ceiling also bounds semantic-envelope materialization. The bars
-                // case has a larger final document than that envelope; the zero-only record
-                // case can be shorter and therefore owns the cell boundary here instead.
-                if id == AsciiResourceLimitId::MaxOutputBytes && source != SMALL {
-                    continue;
-                }
-                for limit in [exact, exact - 1] {
-                    let policy = AsciiResourcePolicy::unbounded()
-                        .with_limit(id, limit)
-                        .unwrap();
-                    let result =
-                        report_with(&parsed, options, viewport, &OperationControl::new(), policy);
-                    if limit == exact {
-                        assert_eq!(result.unwrap().text, output.text);
-                    } else {
-                        assert!(
-                            matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == id)
-                        );
-                    }
+            let id = AsciiResourceLimitId::MaxDocumentCells;
+            for limit in [cells, cells - 1] {
+                let policy = AsciiResourcePolicy::unbounded()
+                    .with_limit(id, limit)
+                    .unwrap();
+                let result =
+                    report_with(&parsed, options, viewport, &OperationControl::new(), policy);
+                if limit == cells {
+                    assert_eq!(result.unwrap().text, output.text);
+                } else {
+                    assert!(
+                        matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == id)
+                    );
                 }
             }
         }
@@ -678,10 +667,12 @@ fn authored_label_spaces_survive_trim_requests_and_narrow_record_reflow() {
             AsciiResourcePolicy::default(),
         )
         .unwrap();
-        assert_eq!(
-            output.text.replace('\n', ""),
-            baseline.text.replace('\n', "")
-        );
+        let unfold = |text: &str| -> String {
+            text.lines()
+                .map(|line| line.strip_prefix("  ").unwrap_or(line))
+                .collect()
+        };
+        assert_eq!(unfold(&output.text), unfold(&baseline.text));
         assert!(!output.trimmed);
         assert_eq!(output.lossiness, Lossiness::None);
     }

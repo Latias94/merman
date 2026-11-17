@@ -141,28 +141,21 @@ impl fmt::Display for ExactValue {
     }
 }
 
-pub(crate) fn primary_projection(
-    model: &PieDiagramModel,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Layout);
-    Ok(if Proportions::measure(model, &resources)?.is_ok() {
-        AsciiProjection::Diagrammatic
-    } else {
-        AsciiProjection::StructuredText
-    })
-}
-
 pub(crate) fn render(
     model: &PieDiagramModel,
     options: &AsciiRenderOptions,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     let resources = execution
         .new_resource_context(OperationPhase::Layout)
         .scoped();
     let proportions = Proportions::measure(model, &resources)?;
+    let projection = if proportions.is_ok() {
+        AsciiProjection::Diagrammatic
+    } else {
+        AsciiProjection::StructuredText
+    };
     let mut chart = BudgetedTextDocument::from_resources(
         resources,
         &options.with_color_mode(AsciiColorMode::Plain),
@@ -187,6 +180,7 @@ pub(crate) fn render(
         execution,
         Some(&chart),
     )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 fn write_bars(

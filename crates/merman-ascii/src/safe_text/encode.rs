@@ -4,6 +4,21 @@ use crate::resource::{AsciiResourceLimitId, AsciiResourcePolicy, CheckedOutput, 
 
 const ENCODE_CHECKPOINT_INTERVAL: usize = 64;
 
+/// Encodes an already normalized logical document without retaining another line buffer.
+/// The caller reserves the borrowed document alongside the encoded output.
+pub(crate) fn encode_safe_html_document(text: &str, resources: &ResourceContext) -> Result<String> {
+    resources.transaction(|resources| {
+        resources.charge_layout_work(text.len())?;
+        let expected_len = encoded_text_len_with_resources(text, AsciiColorMode::Html, resources)?;
+        resources.check(AsciiResourceLimitId::MaxOutputBytes, expected_len)?;
+        resources.charge_layout_work(expected_len)?;
+        let mut output = CheckedOutput::try_prebudgeted(resources, expected_len)?;
+        push_html_escaped_text_with_resources(&mut output, text, resources)?;
+        resources.checkpoint()?;
+        Ok(output.finish())
+    })
+}
+
 pub(super) fn encode_budgeted_lines_with_expected(
     lines: Vec<String>,
     color_mode: AsciiColorMode,
@@ -210,6 +225,46 @@ mod tests {
     use crate::AsciiError;
     use crate::resource::{AsciiResourcePolicy, ResourceContext};
     use merman_model::{OperationControl, OperationPhase};
+
+    #[test]
+    fn borrowed_html_document_admits_the_exact_live_buffer_peak() {
+        let text = "客户 <&>\"'\n  literal spaces  \n";
+        let expected = "客户 &lt;&amp;&gt;&quot;&#39;\n  literal spaces  \n";
+        let retained_overview = 17;
+        let peak = retained_overview + text.len() + expected.len();
+        for limit in [peak - 1, peak] {
+            let policy = AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, limit)
+                .unwrap();
+            let resources = ResourceContext::new(policy)
+                .with_additional_retained_output(retained_overview + text.len())
+                .unwrap();
+            let result = encode_safe_html_document(text, &resources);
+            if limit == peak {
+                assert_eq!(result.unwrap(), expected);
+            } else {
+                assert!(
+                    matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                    if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                        && details.actual == peak && details.max == peak - 1)
+                );
+                assert_eq!(resources.layout_work_used(), 0);
+            }
+        }
+    }
+
+    #[test]
+    fn borrowed_html_document_cancellation_rolls_back_work() {
+        let control = OperationControl::new();
+        control.cancel_after_checkpoints(5);
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded())
+            .controlled(control, OperationPhase::Emit);
+        let error = encode_safe_html_document(&"<&".repeat(2048), &resources).unwrap_err();
+        assert!(
+            matches!(error, AsciiError::Cancelled(details) if details.phase == OperationPhase::Emit)
+        );
+        assert_eq!(resources.layout_work_used(), 0);
+    }
 
     #[test]
     fn structured_text_counting_cancellation_rolls_back_the_ledger() {

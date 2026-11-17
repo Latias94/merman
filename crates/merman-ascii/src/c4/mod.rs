@@ -67,24 +67,12 @@ fn role(value: &str) -> Option<&'static str> {
     })
 }
 
-pub(crate) fn primary_projection(
-    model: &C4DiagramModel,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Semantic);
-    Ok(if validate::prepare(model, &resources)?.is_some() {
-        AsciiProjection::Diagrammatic
-    } else {
-        AsciiProjection::StructuredText
-    })
-}
-
 pub(crate) fn render(
     model: &C4DiagramModel,
     options: &AsciiRenderOptions,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     let resources = execution.new_resource_context(OperationPhase::Semantic);
     let topology = if let Some(hierarchy) = validate::prepare(model, &resources)? {
         let scene_resources = resources.scoped();
@@ -103,6 +91,11 @@ pub(crate) fn render(
     } else {
         None
     };
+    let projection = if topology.is_some() {
+        AsciiProjection::Diagrammatic
+    } else {
+        AsciiProjection::StructuredText
+    };
     crate::output::render_reading_primary(
         &AsciiDiagram::C4(model),
         source,
@@ -110,6 +103,7 @@ pub(crate) fn render(
         execution,
         topology.as_deref(),
     )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 fn render_topology(

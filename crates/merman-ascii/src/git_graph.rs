@@ -14,30 +14,20 @@ mod complexity;
 mod tracks;
 pub(crate) use complexity::measure as complexity;
 
-pub(super) fn primary_projection(
-    model: &GitGraphDiagramModel,
-    source: AsciiSourceContext<'_>,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Layout);
-    Ok(
-        match tracks::plan(model, source.semantic_config, &resources)? {
-            tracks::Admission::Spatial(_) => AsciiProjection::Diagrammatic,
-            tracks::Admission::Records(_) => AsciiProjection::StructuredText,
-        },
-    )
-}
-
 pub(super) fn render_git_graph_diagram(
     model: &GitGraphDiagramModel,
     options: &AsciiRenderOptions,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     let resources = execution.new_resource_context(OperationPhase::Layout);
     validate_commit_types(&model.commits, &resources)?;
     crate::output::preflight_semantic_model(&AsciiDiagram::GitGraph(model), source, execution)?;
     let admission = tracks::plan(model, source.semantic_config, &resources)?;
+    let projection = match &admission {
+        tracks::Admission::Spatial(_) => AsciiProjection::Diagrammatic,
+        tracks::Admission::Records(_) => AsciiProjection::StructuredText,
+    };
     let mut document = BudgetedTextDocument::from_resources(
         resources.scoped(),
         &options.with_color_mode(AsciiColorMode::Plain),
@@ -59,13 +49,14 @@ pub(super) fn render_git_graph_diagram(
         }
     }
     let topology = document.finish()?;
-    crate::output::git_graph::render_primary(
+    crate::output::render_reading_primary(
         &AsciiDiagram::GitGraph(model),
         source,
         options,
         execution,
         Some(&topology),
     )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 fn validate_commit_types(commits: &[GitGraphCommit], resources: &ResourceContext) -> Result<()> {

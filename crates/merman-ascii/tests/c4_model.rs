@@ -912,14 +912,20 @@ fn complete_keyed_records_retain_every_shape_boundary_and_relation_metadata_fiel
     );
     for width in [12, 24, 40] {
         let output = borrowed(&data, bounded(width));
-        assert_eq!(output.projection, AsciiProjection::StructuredText);
-        assert_eq!(output.outcome, AsciiOutputOutcome::Fallback);
-        assert_eq!(output.lossiness, Lossiness::PresentationOnly);
-        assert_eq!(
-            output.fallback.reason,
-            Some(AsciiFallbackReason::PrimaryOverflow)
-        );
-        assert_eq!(output.primary_extent, natural.primary_extent);
+        if width == 12 {
+            assert_eq!(output.projection, AsciiProjection::StructuredText);
+            assert_eq!(output.outcome, AsciiOutputOutcome::Fallback);
+            assert_eq!(output.lossiness, Lossiness::PresentationOnly);
+            assert_eq!(
+                output.fallback.reason,
+                Some(AsciiFallbackReason::PrimaryOverflow)
+            );
+        } else {
+            assert_primary(&output, AsciiProjection::Diagrammatic);
+        }
+        let allowed = borrowed(&data, AsciiViewportPolicy::with_max_width(width));
+        assert_eq!(output.primary_extent, allowed.primary_extent);
+        assert_eq!(topology(&allowed), topology(&natural));
         assert_measured(&output);
         assert!(output.emitted_extent.width <= width);
         assert_eq!(compact(records(&output)), compact(records(&natural)));
@@ -975,14 +981,14 @@ fn allow_and_error_report_the_same_natural_primary_extent_as_plain_fallback() {
     let width = 20;
     assert!(natural.emitted_extent.width > width);
     let fallback = report(BASIC, AsciiRenderOptions::ascii(), bounded(width));
-    assert_eq!(fallback.primary_extent, natural.primary_extent);
     assert_eq!(fallback.projection, AsciiProjection::StructuredText);
     let allowed = report(
         BASIC,
         AsciiRenderOptions::ascii(),
         AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Allow),
     );
-    assert_eq!(allowed.text, natural.text);
+    assert_eq!(fallback.primary_extent, allowed.primary_extent);
+    assert_eq!(topology(&allowed), topology(&natural));
     assert_eq!(allowed.outcome, AsciiOutputOutcome::WideAllowed);
     assert!(allowed.emitted_overflowed);
     let error = report_with(
@@ -994,7 +1000,7 @@ fn allow_and_error_report_the_same_natural_primary_extent_as_plain_fallback() {
     )
     .unwrap_err();
     assert!(
-        matches!(error, AsciiError::WidthOverflow { actual_width, .. } if actual_width == natural.emitted_extent.width)
+        matches!(error, AsciiError::WidthOverflow { actual_width, .. } if actual_width == allowed.emitted_extent.width)
     );
 }
 
@@ -1037,14 +1043,14 @@ fn resource_limits_and_cancellation_are_terminal_instead_of_selecting_records() 
 }
 
 #[test]
-fn exact_output_byte_budget_accepts_the_complete_primary_and_one_less_fails() {
+fn final_output_bytes_alone_do_not_admit_retained_overview_and_serialization() {
     let parsed = parse(BASIC);
     let natural = report(
         BASIC,
         AsciiRenderOptions::ascii(),
         AsciiViewportPolicy::unrestricted(),
     );
-    for (maximum, succeeds) in [(natural.text.len(), true), (natural.text.len() - 1, false)] {
+    for maximum in [natural.text.len(), natural.text.len() - 1] {
         let result = report_with(
             &parsed,
             AsciiRenderOptions::ascii(),
@@ -1054,12 +1060,8 @@ fn exact_output_byte_budget_accepts_the_complete_primary_and_one_less_fails() {
                 .with_limit(AsciiResourceLimitId::MaxOutputBytes, maximum)
                 .unwrap(),
         );
-        if succeeds {
-            assert_eq!(result.unwrap().text, natural.text);
-        } else {
-            assert!(
-                matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == AsciiResourceLimitId::MaxOutputBytes)
-            );
-        }
+        assert!(
+            matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == AsciiResourceLimitId::MaxOutputBytes)
+        );
     }
 }

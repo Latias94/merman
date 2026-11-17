@@ -12,31 +12,13 @@ use std::collections::{HashMap, HashSet};
 
 mod timeline;
 
-pub(super) fn primary_projection(
-    model: GanttTerminalView<'_>,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(merman_model::OperationPhase::Semantic);
-    let index =
-        admit_then_materialize_gantt_structure(model, &resources, |admission, resources| {
-            GanttTaskIndex::materialize(model, admission, resources)
-        })?;
-    Ok(
-        if timeline::domain(model, index.as_ref(), &resources)?.is_some() {
-            AsciiProjection::Diagrammatic
-        } else {
-            AsciiProjection::StructuredText
-        },
-    )
-}
-
 pub(super) fn render_gantt_diagram(
     model: GanttTerminalView<'_>,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_model::time::LocalTimeZone,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     crate::output::preflight_semantic_model(&AsciiDiagram::Gantt(model), source, execution)?;
     let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let task_index = admit_then_materialize_gantt_structure(
@@ -63,13 +45,19 @@ pub(super) fn render_gantt_diagram(
         } else {
             None
         };
-    crate::output::gantt::render_primary(
+    let projection = if topology.is_some() {
+        AsciiProjection::Diagrammatic
+    } else {
+        AsciiProjection::StructuredText
+    };
+    crate::output::render_reading_primary(
         &AsciiDiagram::Gantt(model),
         source,
         options,
         execution,
         topology.as_deref(),
     )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -464,7 +452,8 @@ mod tests {
             ),
             (
                 AsciiResourceLimitId::MaxDocumentCells,
-                text.lines()
+                text.text
+                    .lines()
                     .map(|line| {
                         crate::text::display_width_with_profile(
                             line,

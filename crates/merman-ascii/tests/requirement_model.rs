@@ -326,10 +326,16 @@ fn width_recovery_keeps_complete_records_and_allow_error_are_measured() {
         AsciiResourcePolicy::default(),
     )
     .unwrap();
-    for width in [20, 40] {
+    for width in [10, 20, 40] {
         let recovered = report(SMALL, AsciiRenderOptions::ascii(), width);
-        assert_eq!(recovered.projection, AsciiProjection::StructuredText);
-        assert!(recovered.fallback.attempted);
+        if width == 10 {
+            assert_eq!(recovered.projection, AsciiProjection::StructuredText);
+            assert!(recovered.fallback.attempted);
+        } else {
+            assert_eq!(recovered.projection, AsciiProjection::Diagrammatic);
+            assert_eq!(recovered.outcome, AsciiOutputOutcome::Primary);
+            assert!(!recovered.fallback.attempted);
+        }
         assert!(recovered.emitted_extent.width <= width);
         assert_records(
             &recovered.text,
@@ -343,18 +349,31 @@ fn width_recovery_keeps_complete_records_and_allow_error_are_measured() {
             AsciiResourcePolicy::default(),
         )
         .unwrap();
-        assert_eq!(allowed.text, primary.text);
-        let error = report_with(
+        let overview = primary.text.split_once("Requirement records").unwrap().0;
+        assert_eq!(
+            allowed
+                .text
+                .lines()
+                .take(overview.lines().count())
+                .collect::<Vec<_>>(),
+            overview.lines().collect::<Vec<_>>()
+        );
+        assert_eq!(recovered.primary_extent, allowed.primary_extent);
+        let result = report_with(
             &parsed,
             AsciiRenderOptions::ascii(),
             AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Error),
             &OperationControl::new(),
             AsciiResourcePolicy::default(),
-        )
-        .unwrap_err();
-        assert!(
-            matches!(error, AsciiError::WidthOverflow { actual_width, .. } if actual_width == primary.emitted_extent.width)
         );
+        if width == 10 {
+            assert!(
+                matches!(result, Err(AsciiError::WidthOverflow { actual_width, .. })
+                if actual_width == allowed.emitted_extent.width)
+            );
+        } else {
+            assert_eq!(result.unwrap().text, allowed.text);
+        }
     }
 }
 
@@ -458,7 +477,7 @@ fn resource_failures_and_cancellation_never_become_reading_fallbacks() {
 }
 
 #[test]
-fn combined_primary_and_record_reflow_admit_retained_cells_and_bytes_once() {
+fn combined_primary_and_record_reflow_admit_retained_cells_once() {
     for source in [SMALL, "requirementDiagram\nmissing - verifies -> absent\n"] {
         let parsed = parse(source);
         let primary = report_with(
@@ -507,13 +526,9 @@ fn combined_primary_and_record_reflow_admit_retained_cells_and_bytes_once() {
                         .unwrap();
                     let result =
                         report_with(&parsed, options, viewport, &OperationControl::new(), policy);
-                    if limit == natural.text.len() {
-                        assert_eq!(result.unwrap().text, natural.text);
-                    } else {
-                        assert!(
-                            matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == AsciiResourceLimitId::MaxOutputBytes)
-                        );
-                    }
+                    assert!(
+                        matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == AsciiResourceLimitId::MaxOutputBytes)
+                    );
                 }
             }
         }
@@ -552,10 +567,12 @@ fn record_whitespace_is_not_trimmed_or_lost_on_narrower_reflow() {
             AsciiResourcePolicy::default(),
         )
         .unwrap();
-        assert_eq!(
-            output.text.replace('\n', ""),
-            baseline.text.replace('\n', "")
-        );
+        let unfold = |text: &str| -> String {
+            text.lines()
+                .map(|line| line.strip_prefix("  ").unwrap_or(line))
+                .collect()
+        };
+        assert_eq!(unfold(&output.text), unfold(&baseline.text));
         assert_eq!(output.lossiness, Lossiness::None);
         assert!(!output.trimmed);
     }
@@ -575,28 +592,24 @@ fn large_canvas_padding_is_not_charged_as_retained_document_text() {
     .unwrap();
     let cells = natural.text.lines().map(str::len).sum::<usize>();
     assert!(natural.emitted_extent.width * natural.emitted_extent.height > cells * 2);
-    for (id, limit) in [
-        (AsciiResourceLimitId::MaxDocumentCells, cells),
-        (AsciiResourceLimitId::MaxOutputBytes, natural.text.len()),
-    ] {
+    let id = AsciiResourceLimitId::MaxDocumentCells;
+    for limit in [cells, cells - 1] {
         let exact = AsciiResourcePolicy::unbounded()
             .with_limit(id, limit)
             .unwrap();
-        let output = report_with(
+        let result = report_with(
             &parsed,
             options,
             AsciiViewportPolicy::unrestricted(),
             &OperationControl::new(),
             exact,
-        )
-        .unwrap();
-        assert_eq!(output.text, natural.text);
-        let below = AsciiResourcePolicy::unbounded()
-            .with_limit(id, limit - 1)
-            .unwrap();
-        assert!(
-            matches!(report_with(&parsed, options, AsciiViewportPolicy::unrestricted(),
-            &OperationControl::new(), below), Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == id)
         );
+        if limit == cells {
+            assert_eq!(result.unwrap().text, natural.text);
+        } else {
+            assert!(
+                matches!(result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == id)
+            );
+        }
     }
 }

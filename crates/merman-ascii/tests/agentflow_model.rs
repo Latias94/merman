@@ -743,6 +743,23 @@ fn width_error_and_plain_fallback_preserve_both_primary_types_without_truncation
         let allow = report(source, options, AsciiViewportPolicy::with_max_width(24)).unwrap();
         assert_measurement(&allow);
         assert_eq!(allow.projection, projection);
+        if projection == AsciiProjection::StructuredText {
+            assert_eq!(allow.outcome, AsciiOutputOutcome::Primary);
+            assert!(!allow.emitted_overflowed);
+            for overflow in [OverflowPolicy::Error, OverflowPolicy::Fallback] {
+                let output = report(
+                    source,
+                    options,
+                    AsciiViewportPolicy::with_max_width(24).overflow(overflow),
+                )
+                .unwrap();
+                assert_eq!(output.text, allow.text);
+                assert_eq!(output.projection, projection);
+                assert_eq!(output.outcome, AsciiOutputOutcome::Primary);
+                assert!(!output.fallback.attempted);
+            }
+            continue;
+        }
         assert_eq!(allow.outcome, AsciiOutputOutcome::WideAllowed);
         assert!(allow.emitted_overflowed);
         assert!(matches!(
@@ -766,25 +783,17 @@ fn width_error_and_plain_fallback_preserve_both_primary_types_without_truncation
         );
         assert!(!fallback.emitted_overflowed);
         assert!(fallback.emitted_extent.width <= 24);
-        if projection == AsciiProjection::StructuredText {
-            assert_eq!(fallback.lossiness, Lossiness::None);
-            assert_eq!(
-                fallback.text.replace('\n', ""),
-                allow.text.replace('\n', "")
-            );
-        } else {
-            assert_eq!(fallback.lossiness, Lossiness::PresentationOnly);
-            let compact = fallback.text.split_whitespace().collect::<String>();
-            assert_contains(
-                &compact,
-                &[
-                    r#"label="Adeliberatelylongauthoredlabelwithcompletewordsandtrailingcontent""#,
-                    r#"N2[task]id="B"label="Finalresult""#,
-                    r#"N3[task]id="C"label="Isolated""#,
-                    r#"E1[sequence-->]source=[N1]id="A"target=[N2]id="B""#,
-                ],
-            );
-        }
+        assert_eq!(fallback.lossiness, Lossiness::PresentationOnly);
+        let compact = fallback.text.split_whitespace().collect::<String>();
+        assert_contains(
+            &compact,
+            &[
+                r#"label="Adeliberatelylongauthoredlabelwithcompletewordsandtrailingcontent""#,
+                r#"N2[task]id="B"label="Finalresult""#,
+                r#"N3[task]id="C"label="Isolated""#,
+                r#"E1[sequence-->]source=[N1]id="A"target=[N2]id="B""#,
+            ],
+        );
     }
 }
 
@@ -947,7 +956,7 @@ fn canonical_layout_and_plain_adaptive_are_admitted_without_expanding_other_poli
 }
 
 #[test]
-fn exact_output_bytes_work_limits_and_cancellation_remain_terminal_for_both_primaries() {
+fn output_byte_work_limits_and_cancellation_remain_terminal_for_both_primaries() {
     for source in [
         "agentflow-beta LR\nA[Alpha] --> B[Beta]\n",
         "agentflow-beta\nA[Alpha]@{instruction: run}\n",
@@ -974,7 +983,7 @@ fn exact_output_bytes_work_limits_and_cancellation_remain_terminal_for_both_prim
                 &OperationControl::new(),
                 resources,
             );
-            if limit == length {
+            if limit == length && baseline.projection == AsciiProjection::Diagrammatic {
                 assert_eq!(result.unwrap().text, baseline.text);
             } else {
                 assert!(
@@ -1059,14 +1068,22 @@ fn replacing_records_charges_document_cells_once_and_keeps_field_spaces_under_tr
         natural.text.lines().any(|line| line.ends_with(' ')),
         "the field must wrap after an authored space"
     );
-    let cells = natural.text.lines().map(str::len).sum::<usize>();
-    let exact = AsciiResourcePolicy::unbounded()
-        .with_limit(AsciiResourceLimitId::MaxDocumentCells, cells)
-        .unwrap();
     for viewport in [
         AsciiViewportPolicy::unrestricted(),
         AsciiViewportPolicy::with_max_width(24).overflow(OverflowPolicy::Fallback),
     ] {
+        let candidate = controlled_report(
+            &parsed,
+            options,
+            viewport,
+            &OperationControl::new(),
+            AsciiResourcePolicy::unbounded(),
+        )
+        .unwrap();
+        let cells = candidate.text.lines().map(str::len).sum::<usize>();
+        let exact = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, cells)
+            .unwrap();
         let preserved =
             controlled_report(&parsed, options, viewport, &OperationControl::new(), exact).unwrap();
         let trimmed = controlled_report(

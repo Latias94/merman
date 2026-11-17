@@ -187,12 +187,24 @@ fn facade_ascii_keeps_source_label_entities_in_primary_and_narrow_fallback() {
 #[test]
 fn family_ascii_uses_the_same_semantics_from_canonical_and_presentation_artifacts() {
     let sources = [
-        "agentflow-beta\nA[Request] --> B[Result]",
-        "agentflow-beta\nA[Request]@{instruction: inspect, params: {retries: 3}} --> B[Result]",
-        "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
-        "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B",
+        (
+            "agentflow-beta\nA[Request] --> B[Result]",
+            AsciiOutputOutcome::Fallback,
+        ),
+        (
+            "agentflow-beta\nA[Request]@{instruction: inspect, params: {retries: 3}} --> B[Result]",
+            AsciiOutputOutcome::Primary,
+        ),
+        (
+            "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
+            AsciiOutputOutcome::Fallback,
+        ),
+        (
+            "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B",
+            AsciiOutputOutcome::Fallback,
+        ),
     ];
-    for source in sources {
+    for (source, narrow_outcome) in sources {
         for width in [10, 80, 100, 120] {
             let request = AsciiRequest {
                 options: AsciiRenderOptions::unicode(),
@@ -229,7 +241,7 @@ fn family_ascii_uses_the_same_semantics_from_canonical_and_presentation_artifact
             assert_eq!(
                 full.outcome,
                 if width == 10 {
-                    AsciiOutputOutcome::Fallback
+                    narrow_outcome
                 } else {
                     AsciiOutputOutcome::Primary
                 }
@@ -862,7 +874,7 @@ fn requirement_ascii_matches_canonical_and_presentation_records_and_projection()
         ),
     ] {
         let renderer = Renderer::new();
-        for width in [10, 80] {
+        for width in [4, 10, 80] {
             let semantic = renderer
                 .parse_semantic(&source, OperationControl::new())
                 .unwrap()
@@ -892,9 +904,10 @@ fn requirement_ascii_matches_canonical_and_presentation_records_and_projection()
             assert_eq!(canonical.text, full.text, "width {width}: {source}");
             assert_eq!(canonical.report(), full.report());
             assert_eq!(full.family, "requirement");
+            let fallback_expected = width == 4 && primary_projection == "diagrammatic";
             assert_eq!(
                 full.outcome,
-                if width == 10 {
+                if fallback_expected {
                     AsciiOutputOutcome::Fallback
                 } else {
                     AsciiOutputOutcome::Primary
@@ -902,7 +915,7 @@ fn requirement_ascii_matches_canonical_and_presentation_records_and_projection()
             );
             assert_eq!(
                 full.projection.as_str(),
-                if width == 10 {
+                if fallback_expected {
                     "structured_text"
                 } else {
                     primary_projection

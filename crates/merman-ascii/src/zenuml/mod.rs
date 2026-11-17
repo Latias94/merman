@@ -10,24 +10,12 @@ use crate::{
 use merman_model::OperationPhase;
 use merman_model::families::zenuml::ZenumlDiagramModel;
 
-pub(crate) fn primary_projection(
-    model: &ZenumlDiagramModel,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Semantic);
-    Ok(if plan::prepare(model, &resources)?.is_some() {
-        AsciiProjection::Diagrammatic
-    } else {
-        AsciiProjection::StructuredText
-    })
-}
-
 pub(crate) fn render(
     model: &ZenumlDiagramModel,
     options: &AsciiRenderOptions,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     crate::output::preflight_semantic_model(&AsciiDiagram::Zenuml(model), source, execution)?;
     let resources = execution.new_resource_context(OperationPhase::Semantic);
     let topology = if let Some(plan) = plan::prepare(model, &resources)? {
@@ -47,6 +35,11 @@ pub(crate) fn render(
     } else {
         None
     };
+    let projection = if topology.is_some() {
+        AsciiProjection::Diagrammatic
+    } else {
+        AsciiProjection::StructuredText
+    };
     crate::output::render_reading_primary(
         &AsciiDiagram::Zenuml(model),
         source,
@@ -54,6 +47,7 @@ pub(crate) fn render(
         execution,
         topology.as_deref(),
     )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 fn reserve<T>(items: &mut Vec<T>, additional: usize) -> Result<()> {

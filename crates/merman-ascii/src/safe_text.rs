@@ -47,7 +47,7 @@ pub(crate) use document::{
         reason = "Family adapters use different projections of the shared text API"
     )
 )]
-pub(crate) use encode::visit_html_escaped_text;
+pub(crate) use encode::{encode_safe_html_document, visit_html_escaped_text};
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(

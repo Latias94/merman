@@ -978,7 +978,12 @@ fn requirement_cli_reports_distinguish_spatial_records_and_complete_width_fallba
             "structured_text",
         ),
     ] {
-        for (width, presentation) in [(10, "strict"), (80, "strict"), (80, "adaptive")] {
+        for (width, presentation) in [
+            (4, "strict"),
+            (10, "strict"),
+            (80, "strict"),
+            (80, "adaptive"),
+        ] {
             let limit = width.to_string();
             let output = run_with_stdin(
                 &[
@@ -1008,14 +1013,19 @@ fn requirement_cli_reports_distinguish_spatial_records_and_complete_width_fallba
             assert_eq!(report["layout_profile"], "canonical");
             assert_eq!(report["requested_graph_presentation"], presentation);
             assert_eq!(report["compact_attempted"], false);
-            assert_eq!(report["fallback_attempted"], width == 10);
+            let fallback_expected = width == 4 && primary_projection == "diagrammatic";
+            assert_eq!(report["fallback_attempted"], fallback_expected);
             assert_eq!(
                 report["outcome"],
-                if width == 10 { "fallback" } else { "primary" }
+                if fallback_expected {
+                    "fallback"
+                } else {
+                    "primary"
+                }
             );
             assert_eq!(
                 report["projection"],
-                if width == 10 {
+                if fallback_expected {
                     "structured_text"
                 } else {
                     primary_projection

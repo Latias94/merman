@@ -18,61 +18,52 @@ use std::collections::HashMap;
 
 const FAMILY: &str = "agentflow";
 
-pub(crate) fn primary_projection(
-    model: &AgentflowDiagramModel,
-    source: AsciiSourceContext<'_>,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Semantic);
-    Ok(
-        if source.title.is_none() && spatially_eligible(model, &resources)? {
-            AsciiProjection::Diagrammatic
-        } else {
-            AsciiProjection::StructuredText
-        },
-    )
-}
-
 pub(crate) fn render(
     model: &AgentflowDiagramModel,
     options: &AsciiRenderOptions,
     policy: GraphLayoutPolicy,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
-    if primary_projection(model, source, execution)? == AsciiProjection::StructuredText {
+) -> Result<crate::output::RenderedPrimary> {
+    let resources = execution.new_resource_context(OperationPhase::Semantic);
+    if source.title.is_some() || !spatially_eligible(model, &resources)? {
         return crate::output::render_reading_primary(
             &AsciiDiagram::Agentflow(model),
             source,
             options,
             execution,
             None,
-        );
-    }
-    let resources = execution.new_resource_context(OperationPhase::Semantic);
-    resources.transaction(|resources| {
-        let result = resources.transaction_preserving_layout_work(|resources| {
-            let graph = project(model, options.terminal_width_profile, resources)?;
-            let mut layout_resources =
-                execution.resource_context(resources, OperationPhase::Layout);
-            crate::graph::render_graph_with_resolved_policy_and_execution(
-                &graph,
-                options,
-                policy,
-                &mut layout_resources,
-                execution,
-            )
+        )
+        .map(|text| {
+            crate::output::RenderedPrimary::records(text, AsciiProjection::StructuredText)
         });
-        match result {
-            Err(error)
-                if execution.preserves_graph_work_on_error(&error, options.graph_presentation) =>
-            {
-                Ok(Err(error))
+    }
+    resources
+        .transaction(|resources| {
+            let result = resources.transaction_preserving_layout_work(|resources| {
+                let graph = project(model, options.terminal_width_profile, resources)?;
+                let mut layout_resources =
+                    execution.resource_context(resources, OperationPhase::Layout);
+                crate::graph::render_graph_with_resolved_policy_and_execution(
+                    &graph,
+                    options,
+                    policy,
+                    &mut layout_resources,
+                    execution,
+                )
+            });
+            match result {
+                Err(error)
+                    if execution
+                        .preserves_graph_work_on_error(&error, options.graph_presentation) =>
+                {
+                    Ok(Err(error))
+                }
+                Ok(text) => Ok(Ok(text)),
+                Err(error) => Err(error),
             }
-            Ok(text) => Ok(Ok(text)),
-            Err(error) => Err(error),
-        }
-    })?
+        })?
+        .map(|text| crate::output::RenderedPrimary::new(text, AsciiProjection::Diagrammatic))
 }
 
 /// Admit only scenes whose visible geometry can carry their domain facts. Rich metadata and

@@ -242,7 +242,7 @@ in their typed models, but require a complete terminal slice before their capabi
 
 | Candidate | Useful first spatial slice | Required evidence |
 | --- | --- | --- |
-| GitGraph | Commit lanes with a branch and merge. | Each commit appears once; every parent edge remains traceable, including merges with custom display types and cherry-picks. |
+| Radar | Independently owned curve tracks on one original-unit scale, grouped by axis. | Compare small/typical/dense models at 80/100/120 cells against complete records. Recover sample ownership, genuine ties, zero values, and within-axis order without per-series normalization. Nonrectangular or invalid domains must retain complete facts and an honest classification. |
 | Agentflow | Family-owned spatial roles and complete reading records. | Expand spatial metadata or collapsed visible topology only with source-backed ownership and complete-information evidence. |
 
 Compare small, typical, and dense cases against the existing complete text representation at
@@ -251,6 +251,12 @@ preserving identity, labels, and the existing width, encoding, cancellation, and
 For Railroad, Ishikawa, and Quadrant, reopening the earlier decision additionally
 requires resolving the concrete ownership or quantization failure recorded in the linked admission
 report. A new outline or table remains StructuredText.
+
+GitGraph's fixed branch tracks are already admitted; its current boundary is documented in
+[GitGraph support](ascii/GITGRAPH_SUPPORT.md). Radar remains a proposed admission experiment,
+not an available terminal target. Wardley requires a fixed-position collision/ownership strategy;
+Sankey must preserve repeated links and cannot reconstruct numeric distinctions already merged
+by canonical ingestion.
 
 ## Playground Filtering
 

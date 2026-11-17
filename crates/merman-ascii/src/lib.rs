@@ -399,66 +399,14 @@ impl AsciiRenderer {
             .options
             .with_layout_profile(selected.profile)
             .resolve_policies();
-        let projection = match model {
-            #[cfg(feature = "diagram-agentflow")]
-            AsciiDiagram::Agentflow(model) => {
-                agentflow::primary_projection(model, metadata, execution)?
-            }
-            #[cfg(feature = "diagram-architecture")]
-            AsciiDiagram::Architecture(model) => {
-                architecture::primary_projection(model, execution)?
-            }
-            #[cfg(feature = "diagram-requirement")]
-            AsciiDiagram::Requirement(model) => requirement::primary_projection(model, execution)?,
-            #[cfg(feature = "diagram-packet")]
-            AsciiDiagram::Packet(packet) => {
-                packet::primary_projection(packet, Some(metadata.semantic_config), execution)?
-            }
-            #[cfg(feature = "diagram-c4")]
-            AsciiDiagram::C4(model) => c4::primary_projection(model, execution)?,
-            #[cfg(feature = "diagram-pie")]
-            AsciiDiagram::Pie(model) => pie::primary_projection(model, execution)?,
-            #[cfg(feature = "diagram-zenuml")]
-            AsciiDiagram::Zenuml(model) => zenuml::primary_projection(model, execution)?,
-            #[cfg(feature = "diagram-gantt")]
-            AsciiDiagram::Gantt(model) => gantt::primary_projection(*model, execution)?,
-            #[cfg(feature = "diagram-git-graph")]
-            AsciiDiagram::GitGraph(model) => {
-                git_graph::primary_projection(model, metadata, execution)?
-            }
-            _ => output::projection_for(capability),
-        };
         let fallback_capability = capability.is_some_and(|capability| {
             capability.supports_fallback_encoding(policies.output.encoding)
         });
-        let record_primary = match model {
-            #[cfg(feature = "diagram-agentflow")]
-            AsciiDiagram::Agentflow(_) => projection == AsciiProjection::StructuredText,
-            #[cfg(feature = "diagram-architecture")]
-            AsciiDiagram::Architecture(_) => true,
-            #[cfg(feature = "diagram-requirement")]
-            AsciiDiagram::Requirement(_) => true,
-            #[cfg(feature = "diagram-c4")]
-            AsciiDiagram::C4(_) => true,
-            #[cfg(feature = "diagram-pie")]
-            AsciiDiagram::Pie(_) => true,
-            #[cfg(feature = "diagram-zenuml")]
-            AsciiDiagram::Zenuml(_) => true,
-            #[cfg(feature = "diagram-gantt")]
-            AsciiDiagram::Gantt(_) => true,
-            #[cfg(feature = "diagram-git-graph")]
-            AsciiDiagram::GitGraph(_) => true,
-            _ => false,
-        };
-        let output_context = output::OutputBuildContext {
+        let mut output_context = output::OutputBuildContext {
             color_mode: policies.output.color_mode,
             profile: policies.output.terminal_width_profile,
             layout_profile: selected.profile,
-            policy: if record_primary {
-                viewport.trim(AsciiTrimPolicy::Preserve)
-            } else {
-                viewport
-            },
+            policy: viewport,
             execution,
         };
         let requested_profile = self.options.layout_profile;
@@ -469,7 +417,7 @@ impl AsciiRenderer {
             output.compact_attempted = compact_attempted;
             output
         };
-        let primary = match selected.candidate {
+        let (primary, facts) = match selected.candidate {
             layout_selection::LayoutCandidate::PlanningMiss(error) => {
                 return output::build_graph_recovery_for_family(
                     metadata.diagram_type,
@@ -480,7 +428,7 @@ impl AsciiRenderer {
                 )
                 .map(annotate);
             }
-            layout_selection::LayoutCandidate::Measured(primary) => primary,
+            layout_selection::LayoutCandidate::Measured { output, facts } => (output, facts),
             layout_selection::LayoutCandidate::Overflow(primary_extent) => {
                 if viewport.overflow == OverflowPolicy::Error {
                     return Err(AsciiError::WidthOverflow {
@@ -499,6 +447,11 @@ impl AsciiRenderer {
                 .map(annotate);
             }
         };
+        let projection = facts.projection;
+        let record_primary = facts.document == output::PrimaryDocument::CompleteRecords;
+        if record_primary {
+            output_context.policy = viewport.trim(AsciiTrimPolicy::Preserve);
+        }
         let primary_extent = primary.metrics().extent;
         let overflowed = viewport
             .max_width
@@ -590,7 +543,7 @@ fn render_model_with_execution(
     execution: operation::AsciiExecution<'_>,
     _local_time_zone: &merman_model::time::LocalTimeZone,
     _source: AsciiSourceContext<'_>,
-) -> Result<String> {
+) -> Result<output::RenderedPrimary> {
     execution.checkpoint(merman_model::OperationPhase::Admission)?;
     options.validate()?;
     validate_local_handler(diagram_type)?;
@@ -602,6 +555,12 @@ fn render_model_with_execution(
         policies,
     )?;
 
+    let _static_primary = |text| {
+        output::RenderedPrimary::new(
+            text,
+            output::projection_for(capability::capability_for_diagram_type(diagram_type)),
+        )
+    };
     let rendered = match model {
         #[cfg(feature = "diagram-agentflow")]
         AsciiDiagram::Agentflow(agentflow_model) => agentflow::render(
@@ -628,14 +587,18 @@ fn render_model_with_execution(
         #[cfg(feature = "diagram-block")]
         AsciiDiagram::Block(model) => {
             block::render_block_diagram_with_execution(model, options, execution)
+                .map(_static_primary)
         }
         #[cfg(feature = "diagram-class")]
-        AsciiDiagram::Class(model) => render_class_model(model, options, &execution),
+        AsciiDiagram::Class(model) => {
+            render_class_model(model, options, &execution).map(_static_primary)
+        }
         #[cfg(feature = "diagram-er")]
-        AsciiDiagram::Er(model) => render_er_model(model, options, &execution),
+        AsciiDiagram::Er(model) => render_er_model(model, options, &execution).map(_static_primary),
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         AsciiDiagram::Flowchart(model) => {
             render_flowchart_model(model, options, policies.layout.flowchart, &execution)
+                .map(_static_primary)
         }
         #[cfg(feature = "diagram-gantt")]
         AsciiDiagram::Gantt(model) => {
@@ -646,11 +609,17 @@ fn render_model_with_execution(
             git_graph::render_git_graph_diagram(model, options, _source, execution)
         }
         #[cfg(feature = "diagram-journey")]
-        AsciiDiagram::Journey(model) => render_journey_model(model, options, &execution),
+        AsciiDiagram::Journey(model) => {
+            render_journey_model(model, options, &execution).map(_static_primary)
+        }
         #[cfg(feature = "diagram-kanban")]
-        AsciiDiagram::Kanban(model) => render_kanban_model(*model, options, &execution),
+        AsciiDiagram::Kanban(model) => {
+            render_kanban_model(*model, options, &execution).map(_static_primary)
+        }
         #[cfg(feature = "diagram-mindmap")]
-        AsciiDiagram::Mindmap(model) => render_mindmap_model(*model, options, &execution),
+        AsciiDiagram::Mindmap(model) => {
+            render_mindmap_model(*model, options, &execution).map(_static_primary)
+        }
         #[cfg(feature = "diagram-packet")]
         AsciiDiagram::Packet(model) => {
             render_packet_model(model, options, Some(_source.semantic_config), &execution)
@@ -660,13 +629,17 @@ fn render_model_with_execution(
         #[cfg(feature = "diagram-sequence")]
         AsciiDiagram::Sequence(model) => {
             render_sequence_model(model, options, policies.layout.sequence, &execution)
+                .map(_static_primary)
         }
         #[cfg(feature = "diagram-state")]
         AsciiDiagram::State(model) => {
             render_state_model(*model, options, policies.layout.state, &execution)
+                .map(_static_primary)
         }
         #[cfg(feature = "diagram-timeline")]
-        AsciiDiagram::Timeline(model) => render_timeline_model(model, options, &execution),
+        AsciiDiagram::Timeline(model) => {
+            render_timeline_model(model, options, &execution).map(_static_primary)
+        }
         #[cfg(feature = "diagram-xychart")]
         AsciiDiagram::XyChart { model, display } => render_xychart_model(
             model,
@@ -674,16 +647,20 @@ fn render_model_with_execution(
             options,
             policies.layout.xychart,
             &execution,
-        ),
+        )
+        .map(_static_primary),
         #[cfg(feature = "diagram-tree-view")]
-        AsciiDiagram::TreeView(model) => render_tree_view_model(model, options, &execution),
+        AsciiDiagram::TreeView(model) => {
+            render_tree_view_model(model, options, &execution).map(_static_primary)
+        }
         #[cfg(feature = "diagram-usecase")]
         AsciiDiagram::Usecase(model) => usecase::render_usecase_diagram_with_execution(
             model,
             options,
             policies.layout.usecase,
             execution,
-        ),
+        )
+        .map(_static_primary),
         #[cfg(feature = "diagram-zenuml")]
         AsciiDiagram::Zenuml(model) => zenuml::render(model, options, _source, execution),
         _ => Err(AsciiError::UnsupportedDiagram {
@@ -887,7 +864,7 @@ fn render_packet_model(
     options: &AsciiRenderOptions,
     config: Option<&merman_model::MermaidConfig>,
     execution: &operation::AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<output::RenderedPrimary> {
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     resources.transaction(|resources| {

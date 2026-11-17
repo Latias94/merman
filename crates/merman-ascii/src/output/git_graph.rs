@@ -2,22 +2,10 @@
 
 use super::record::{RecordWriter, details, write_plain_record};
 use super::{AsciiDiagram, AsciiError, RawValue, Result, SemanticFallbackWriter};
-use crate::operation::AsciiExecution;
-use crate::{AsciiRenderOptions, AsciiSourceContext};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
 type Fields<'a> = BTreeMap<String, &'a RawValue>;
-
-pub(crate) fn render_primary(
-    model: &AsciiDiagram<'_>,
-    source: AsciiSourceContext<'_>,
-    options: &AsciiRenderOptions,
-    execution: AsciiExecution<'_>,
-    topology: Option<&str>,
-) -> Result<String> {
-    super::retained::render_primary(model, source, options, execution, topology)
-}
 
 pub(super) fn write_if_git_graph(
     model: &AsciiDiagram<'_>,
@@ -35,7 +23,7 @@ pub(super) fn write_if_git_graph(
     if commits.len() != model.commits.len() || branches.len() != model.branches.len() {
         return Err(invalid_projection());
     }
-    lines.push("GitGraph records".to_string())?;
+    lines.push("GitGraph records")?;
     write_plain_record(
         "Keys: C1..Cn and B1..Bn follow model order. Parent lists retain literal IDs and order; a cherry-pick's second entry is its source, not ancestry.",
         lines,
@@ -120,7 +108,9 @@ fn invalid_projection() -> AsciiError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::operation::AsciiExecution;
     use crate::{AsciiColorMode, AsciiResourceLimitId, AsciiResourcePolicy};
+    use crate::{AsciiRenderOptions, AsciiSourceContext};
     use merman_model::families::git_graph::{GitGraphBranch, GitGraphCommit, GitGraphDiagramModel};
 
     #[test]
@@ -164,7 +154,7 @@ mod tests {
         )
         .unwrap_or_else(|_| panic!("valid projection"));
         let topology = "retained tracks";
-        let baseline = render_primary(
+        let baseline = super::super::render_reading_primary(
             &model,
             source,
             &AsciiRenderOptions::ascii(),
@@ -178,7 +168,7 @@ mod tests {
             AsciiColorMode::Ansi16,
             AsciiColorMode::Html,
         ] {
-            let encoded = render_primary(
+            let encoded = super::super::render_reading_primary(
                 &model,
                 source,
                 &AsciiRenderOptions::ascii().with_color_mode(color),
@@ -195,7 +185,7 @@ mod tests {
                 let policy = unbounded
                     .with_limit(AsciiResourceLimitId::MaxOutputBytes, limit)
                     .unwrap();
-                let result = render_primary(
+                let result = super::super::render_reading_primary(
                     &model,
                     source,
                     &AsciiRenderOptions::ascii().with_color_mode(color),

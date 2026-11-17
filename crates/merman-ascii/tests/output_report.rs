@@ -119,6 +119,48 @@ fn default_report_preserves_text_projection_and_records_extent() {
     assert_eq!(report.as_text(), report.text);
 }
 
+#[cfg(all(feature = "diagram-gantt", feature = "diagram-git-graph"))]
+#[test]
+fn family_reports_fit_the_single_render_work_boundary_without_replanning() {
+    for (source, exact_work, records) in [
+        (
+            "gantt\ndateFormat YYYY-MM-DD\nDesign: design,2026-01-01,1d\nBuild: build,after design,2d\n",
+            19_651,
+            "Gantt records",
+        ),
+        (
+            "gitGraph LR:\ncommit id:\"A\" msg:\"Initial\"\nbranch feature\ncommit id:\"F\" msg:\"Work\"\ncheckout main\ncommit id:\"B\" msg:\"Base\"\nmerge feature id:\"M\" tag:\"v1\"\n",
+            14_451,
+            "GitGraph records",
+        ),
+    ] {
+        let baseline = render_report(source, AsciiViewportPolicy::unrestricted()).unwrap();
+        for limit in [exact_work, exact_work - 1] {
+            let policy = merman_ascii::AsciiResourcePolicy::unbounded()
+                .with_limit(
+                    merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits,
+                    limit,
+                )
+                .unwrap();
+            let result =
+                render_report_with_resources(source, AsciiViewportPolicy::unrestricted(), policy);
+            if limit == exact_work {
+                let output = result.unwrap();
+                assert_eq!(output.text, baseline.text);
+                assert_eq!(output.projection, AsciiProjection::Diagrammatic);
+                assert_eq!(output.outcome, AsciiOutputOutcome::Primary);
+                assert!(output.text.contains(records));
+            } else {
+                assert!(
+                    matches!(result, Err(AsciiError::ResourceLimitExceeded(details))
+                    if details.limit == merman_ascii::AsciiResourceLimitId::MaxLayoutWorkUnits
+                        && details.actual == exact_work && details.max == limit)
+                );
+            }
+        }
+    }
+}
+
 #[cfg(feature = "diagram-er")]
 #[test]
 fn er_group_reports_distinguish_genuine_geometry_from_the_reading_fallback() {
