@@ -1,8 +1,13 @@
-use crate::options::{AsciiLayoutProfile, TerminalWidthProfile};
+use crate::options::{AsciiGraphPresentation, AsciiLayoutProfile, TerminalWidthProfile};
 use crate::output::AsciiOutputEncoding;
 use std::sync::OnceLock;
 
 const CANONICAL_LAYOUT_PROFILES: &[AsciiLayoutProfile] = &[AsciiLayoutProfile::Canonical];
+const STRICT_GRAPH_PRESENTATIONS: &[AsciiGraphPresentation] = &[AsciiGraphPresentation::Strict];
+const CORE_GRAPH_PRESENTATIONS: &[AsciiGraphPresentation] = &[
+    AsciiGraphPresentation::Strict,
+    AsciiGraphPresentation::Adaptive,
+];
 const FLOWCHART_SEQUENCE_LAYOUT_PROFILES: &[AsciiLayoutProfile] = &[
     AsciiLayoutProfile::Canonical,
     AsciiLayoutProfile::Compact,
@@ -118,6 +123,8 @@ pub struct AsciiCapability {
     pub structured_text_fallback: bool,
     /// Layout profiles admitted for this diagram family.
     pub layout_profiles: &'static [AsciiLayoutProfile],
+    /// Graph presentation policies admitted for this diagram family.
+    pub graph_presentations: &'static [AsciiGraphPresentation],
     /// Terminal display-width conventions admitted for this diagram family.
     pub width_profiles: &'static [TerminalWidthProfile],
     /// Encoded output representations admitted for primary output.
@@ -149,6 +156,11 @@ impl AsciiCapability {
         } else {
             &[]
         };
+        let graph_presentations = match definition.diagram_type {
+            _ if !supported => &[],
+            "flowchart" | "swimlane" | "state" if supported => CORE_GRAPH_PRESENTATIONS,
+            _ => STRICT_GRAPH_PRESENTATIONS,
+        };
         let encodings = if supported { OUTPUT_ENCODINGS } else { &[] };
         let fallback_encodings = if supported && definition.structured_text_fallback {
             PLAIN_FALLBACK_ENCODINGS
@@ -162,6 +174,7 @@ impl AsciiCapability {
             primary_projection: definition.primary_projection,
             structured_text_fallback: definition.structured_text_fallback,
             layout_profiles,
+            graph_presentations,
             width_profiles,
             encodings,
             fallback_encodings,
@@ -200,6 +213,11 @@ impl AsciiCapability {
     #[must_use]
     pub fn supports_layout_profile(self, profile: AsciiLayoutProfile) -> bool {
         self.layout_profiles.contains(&profile)
+    }
+
+    #[must_use]
+    pub fn supports_graph_presentation(self, presentation: AsciiGraphPresentation) -> bool {
+        self.graph_presentations.contains(&presentation)
     }
 
     #[must_use]
@@ -1094,6 +1112,22 @@ mod tests {
         assert!(unsupported.width_profiles.is_empty());
         assert!(unsupported.encodings.is_empty());
         assert!(unsupported.fallback_encodings.is_empty());
+        assert!(unsupported.graph_presentations.is_empty());
+    }
+
+    #[test]
+    fn adaptive_graph_admission_is_limited_to_the_three_core_families() {
+        for capability in ascii_capabilities() {
+            if !capability.is_supported() {
+                assert!(capability.graph_presentations.is_empty());
+            } else if matches!(capability.diagram_type, "flowchart" | "swimlane" | "state") {
+                assert_eq!(capability.graph_presentations, CORE_GRAPH_PRESENTATIONS);
+                assert!(capability.supports_graph_presentation(AsciiGraphPresentation::Adaptive));
+            } else {
+                assert_eq!(capability.graph_presentations, STRICT_GRAPH_PRESENTATIONS);
+                assert!(!capability.supports_graph_presentation(AsciiGraphPresentation::Adaptive));
+            }
+        }
     }
 
     #[test]

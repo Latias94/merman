@@ -6,8 +6,8 @@
 
 This crate consumes canonical and full data from `merman-model`. Its production dependencies do not include Mermaid source parsing. Applications can construct models directly or obtain them from `merman-core`.
 
-The host supplies width, charset, color mode, palette, and overflow policy. This crate does not probe
-terminal state or own a pager, cache, viewer, clipboard, or source-display policy. The
+The host supplies width, charset, color mode, palette, graph presentation, and overflow policy.
+This crate does not probe terminal state or own a pager, cache, viewer, clipboard, or source-display policy. The
 [host integration recipes](../merman/examples/README.md#host-integration-recipes) show facade requests
 for terminal text and plain agent/log output without adding a host-policy abstraction.
 
@@ -65,6 +65,17 @@ merman = { path = "../merman/crates/merman", default-features = false, features 
 
 Depend on `merman-ascii` directly when the application owns a `merman_model::ParsedSemanticDiagram` for `AsciiRenderer::render_parsed` or `render_parsed_report`, or supplies a borrowed `AsciiDiagram` with `AsciiSourceContext`. Explicitly project a full `merman_model::presentation::RenderSemanticModel` into those borrowed inputs before rendering.
 
+With a current-source `merman` executable on PATH, this PowerShell command requests adaptive Plain
+output at 80 columns and returns the canonical report JSON, including the complete `text`:
+
+```powershell
+echo 'flowchart LR; A --> B & C; B --> C & D; D --> C' | merman render - --format unicode --ascii-color plain --ascii-graph-presentation adaptive --ascii-layout-profile auto --ascii-max-width 80 --ascii-overflow fallback --ascii-report --output -
+```
+
+Adaptive keeps a valid fitting diagram. It permits a complete graph document after an admitted
+planning miss; the independent width policy controls whether a wide candidate is allowed, rejected,
+or reflowed. See [Graph Presentation Boundary](#graph-presentation-boundary).
+
 ## Supported Families
 
 ASCII support describes the quality of the terminal projection, not whether Merman can parse the Mermaid family. Query the runtime capability records when an application needs to populate an output picker.
@@ -98,11 +109,14 @@ projections. These records describe this crate's local adapters even when anothe
 additional model data. The source facade intersects these capabilities with its actual parsers. Flowchart and Swimlane have
 separate rows and share their terminal implementation. `semantic_coverage`,
 `primary_projection`, and `structured_text_fallback` are independent; legacy `support_level` is
-derived from them. The same record exposes `layout_profiles`, `width_profiles`, `encodings`, and
-`fallback_encodings`, so a host can reject an unsupported combination before rendering. Compact and Auto
+derived from them. The same record exposes `layout_profiles`, `graph_presentations`, `width_profiles`,
+`encodings`, and `fallback_encodings`, so a host can reject an unsupported combination before rendering. Compact and Auto
 layout selection are currently admitted only for Flowchart, Swimlane, and Sequence; every other supported family reports
 canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
-primary output, while structured viewport fallback is Plain-only. Other Mermaid families return
+primary output with Strict graph presentation, while structured viewport fallback is Plain-only.
+`AsciiGraphPresentation::Strict` is the default. Adaptive is Plain-only and admitted only for
+Flowchart, Swimlane, and State; other supported families expose Strict only. Styled Adaptive requests
+are rejected before routing, even if the input would fit. Other Mermaid families return
 `AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
 
 Packet uses two cells per bit for integer `packet.bitsPerRow` in `1..=64`, with full field records
@@ -119,24 +133,32 @@ Enabling one graph language does not enable the other; query `ascii_capabilities
 language availability.
 
 The canonical report API is `AsciiRenderer::render_model_report` or
-`AsciiRenderer::render_parsed_report`. It returns the text together with the display-cell
-`primary_extent` and `emitted_extent`, projection, width profile, layout profile, requested bound,
+`AsciiRenderer::render_parsed_report`. It returns the text together with optional display-cell
+`primary_extent`, measured `emitted_extent`, projection, width profile, layout profile, requested bound,
 overflow outcome, fallback capability/attempt/reason state, trim state, and lossiness. The convenience
 `render_model`/`render_parsed` helpers project only the text. `OverflowPolicy::Fallback` never
 clips or ellipsizes authored values; it either returns a complete typed compatibility projection or
 `AsciiError::FallbackUnavailable`.
 
-`AsciiOutput::metadata()` is the canonical schema-3 transport payload for binding operation plans;
-`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Schema 3 identifies the
-text `encoding`, requested/effective layout profiles, and whether Compact was attempted. CLI report mode is a machine channel: `auto` resolves to Plain there and
+`AsciiOutput::metadata()` is the canonical schema-4 transport payload for binding operation plans;
+`AsciiOutput::report()` adds the exact text projection for CLI report JSON. Schema 4 records
+`requested_graph_presentation`, the text `encoding`, requested/effective layout profiles, and whether
+Compact was attempted. `projection` identifies the effective presentation. When planning yields no
+valid primary scene, `primary_width`, `primary_height`, `layout_profile`, and `primary_overflowed`
+are all explicitly null; Rust exposes `primary_extent: None`. A real empty primary remains measured
+as `0×0`, with a non-null layout profile and `primary_overflowed: false`. `emitted_overflowed` always
+compares the actual emitted width with the requested bound, so `outcome: fallback` alone does not
+mean width overflow. This replaces schema 3's `overflowed` field; Options JSON remains version 3 and
+outer binding operation metadata remains version 1. The [migration guide](../../docs/migrations/render-reuse-host-integration.md#ascii-terminal-graph-planning)
+describes the source and report changes. CLI report mode is a machine channel: `auto` resolves to Plain there and
 an explicitly styled report request is rejected. Styled Rust and binding results remain supported
 and carry their exact encoding identity. Both projections are derived from the same measured
 candidate, so CLI, Rust, and bindings do not remeasure text or reconstruct enum and field names
 independently. Extent height counts logical content rows; a final line terminator does not create an
 extra row. The measured seam accounts for display cells, encoded bytes, grapheme limits, and the
-render-wide layout ledger once per emitted candidate. A Plain fallback candidate is checked
+render-wide layout ledger once per emitted candidate. A Plain structured candidate is checked
 incrementally in a detached candidate scope and admitted to the render-wide ledger only after it is
-complete and within the requested width. Styled fallback requests are rejected during capability
+complete and permitted by the requested width policy. Styled fallback requests are rejected during capability
 preflight. Semantic fallback projection first applies typed-model complexity admission; Flowchart's
 typed JSON projection is serialized through a bounded, cancellation-aware writer before flattening,
 so a rejected candidate does not allocate an unbounded intermediate under a bounded resource
@@ -231,12 +253,18 @@ sibling branches together. Axis projection uses a valid separating axis for meas
 clearance, keeping external nodes outside their endpoint containers even at zero preferred padding.
 
 Auto requires an explicit `AsciiViewportPolicy::with_max_width` and is admitted only for Flowchart,
-Swimlane, and Sequence. It tries Canonical first, then Compact once on width overflow, selecting the narrower
-valid diagram (Canonical on ties). The existing `Allow`, `Error`, or `Fallback` policy applies to
-the selected candidate. A narrower diagram may be taller; Auto does not change direction or
-truncate labels. String-only renderer methods without a viewport reject Auto.
+Swimlane, and Sequence. It retains a fitting Canonical diagram; if Canonical is wide, it tries
+Compact once and selects the narrower valid diagram, keeping Canonical on ties. Strict preserves
+an initial planning error. Adaptive Auto for Flowchart and Swimlane can also try Compact once after
+a Canonical planning miss, before selecting a graph document. Explicit Canonical and Compact never
+switch profiles, and State remains Canonical-only. An optional Compact search/capacity miss retains
+a valid Canonical candidate. Strict also retains Canonical on an optional Compact `UnsupportedFeature`;
+Adaptive propagates that error. Resource, allocation, cancellation, and deadline errors propagate
+under both policies, including with an incumbent. The existing `Allow`, `Error`, or
+`Fallback` policy applies after selection. A narrower diagram may be taller; Auto does not change
+direction or truncate labels. String-only renderer methods without a viewport reject Auto.
 
-`AsciiOutput::layout_profile` identifies the selected primary geometry, while
+`AsciiOutput::layout_profile` identifies the selected primary geometry when one exists, while
 `requested_layout_profile` and `compact_attempted` explain automatic selection. All attempts share
 one work budget and cancellation control. Retained candidate text counts toward storage admission.
 Use the spacing builders for explicit overrides, including a value equal to the default; direct
@@ -244,38 +272,61 @@ assignment of a default-valued public field cannot record that intent.
 
 ## Graph Presentation Boundary
 
-Flowchart, Swimlane, and State share whole-scene endpoint and label demand, compatible channel
-allocation, bounded reversible congestion repair, and final route validation. The terminal planner
-refactor is complete for this admitted subset; future density or style improvements are separate
-iterations. The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/README.md),
-generated small-graph oracle, compound tests, and family tests define the finite acceptance boundary.
-They do not establish globally optimal or complete routing for arbitrary graphs.
-Static node, frame, and title protection is compiled into one spatial hierarchy and shared by
-congestion trials. Cell, marker, and label queries prune unrelated bounds before applying the
-same exact protection rules. The hierarchy retains linear storage; a query can still visit every
-protected region when bounds overlap. The routing algorithm, terminal semantics, and resource
-and cancellation policies remain unchanged. Work accounting includes index preparation and
-visited hierarchy nodes; the [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
-records the changed fixed-fixture boundary.
+Flowchart, Swimlane, and State use one private [scene planner](src/graph/planning.rs) to join measured
+demand, layout generations, compatible channel allocation, routing, and final validation. Required
+feasibility follows the finite channel states under the caller's public work/deadline policy.
+Adaptive adds an early search-work stop to leave room for complete document recovery; replacement
+and optional quality search have separate finite allowances. Quality work starts only after a
+complete validated incumbent exists. Rejected route, port, marker,
+and label reservations identify actual blockers for repair. A trial includes the affected routes'
+shared-channel membership and replaces their contacts, paths, markers, and labels atomically. A
+failed trial restores the incumbent without refunding spent work; a fatal error propagates.
+
+Within each attempted layout profile, the planner permits at most two capacity-driven rebuilds
+after the initial geometry: first for new measured endpoint/corridor demand, then for scoped
+feedback-lane demand. An unchanged request does not justify a rebuild. Each new generation rebuilds
+coordinate-dependent allocations, contacts, protection, and search axes while retaining semantic
+identities, authored directions, and group ownership. These private allowances bound a best-effort
+search; they are neither new public resource limits nor a proof of complete or optimal routing.
+
+Static node, frame, and title protection is compiled into one spatial hierarchy per geometry
+generation and shared by fixed-layout congestion trials. Cell, marker, and label queries prune
+unrelated bounds before applying the same exact protection rules. The hierarchy retains linear
+storage; overlapping bounds can still require visiting every protected region. Work accounting
+includes index preparation and visited hierarchy nodes; the [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
+owns those structural bounds and historical measurements.
+The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/README.md), generated
+small-graph oracle, compound tests, and family tests define finite acceptance cases. Current-source
+recovery checks live in [adaptive_graph.rs](tests/adaptive_graph.rs) and the fixed dense-input owner
+[scene_planning_corpus.rs](tests/scene_planning_corpus.rs); these are separate from the historical
+[reference comparison](ASCII_REFERENCE_COMPARISON.md).
 The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
 also checks State/Swimlane selection, logical identity, complete fields and measured extents across
 60/80/100/120 columns in both character sets and width profiles.
 
 | Request or result | Behavior |
 | --- | --- |
-| Valid diagram fits the viewport | Return complete diagrammatic output, preserving markers, conditions and actual node/group endpoints. |
-| Flowchart or Swimlane Auto exceeds the viewport | Try Compact once and retain the narrower valid diagram; preserve Canonical on ties or an unsupported/search/capacity failure in the optional Compact attempt. |
-| Selected valid diagram remains too wide | Apply the host's Allow, Error, or Plain Fallback policy. Fallback emits complete keyed graph records and reports `structured_text`, `fallback`, and `presentation_only`. |
+| Valid diagram fits the viewport, or no width bound is supplied | Strict and Adaptive retain the complete diagram, preserving markers, conditions and actual node/group endpoints. |
+| Selected valid diagram remains too wide | Apply Allow, Error, or Plain Fallback. Successful width fallback reports `structured_text`, `fallback`, `presentation_only`, and reason `primary_overflow`, retaining the measured primary extent. |
 | State width request | Use Canonical and the same overflow policies; Compact and Auto are not admitted. |
-| Required routing search finds no valid scene | Return `RoutingSearchExhausted`; this is a bounded search miss, not a proof that no layout exists. |
-| Independent markers exceed the fixed presentation's certified capacity | Return `PortCapacityExceeded`; the certificate does not apply to other layouts or presentations. |
-| Resource, cancellation, or unsupported semantic input | Return the corresponding error. Width fallback does not conceal these failures. |
+| Required planning ends with `RoutingSearchExhausted` | Strict returns the error. Adaptive may emit a complete graph document with reason `routing_search_exhausted`; the miss does not prove that no layout exists. |
+| Required planning ends with `PortCapacityExceeded` | Strict returns the error. Adaptive may emit a complete graph document with reason `port_capacity_exceeded`; the certificate applies only to the current fixed-terminal presentation. |
+| Adaptive recovery document exceeds an explicit width | Allow emits the complete natural records with `emitted_overflowed: true`; Error returns `WidthOverflow`; Fallback reflows complete records or returns `FallbackUnavailable` if they cannot fit. Successful recovery retains its planning reason and `outcome: fallback`. |
+| Parse/model error, unsupported semantics, resource/allocation failure, cancellation, or deadline | Return the corresponding error without partial output. Adaptive never catches arbitrary `UnsupportedFeature` errors. |
 
-Graph planning precedes viewport admission, so a narrower width cannot bypass a required routing
-failure. All attempts share the operation's work budget. Structured graph records preserve full
-labels, typed connectors, membership and per-edge conditions, but do not reproduce spatial
-direction. They can be taller than a valid diagram: State keeps its canonical geometry and full
-authored-detail disclosure, and the renderer has no maximum-height selection policy. Hosts that
+Graph presentation and width overflow are independent policies. Adaptive requires neither a width
+bound nor `OverflowPolicy::Fallback`: without a bound, all three width policies accept the complete
+natural recovery document. With a bound, Allow and Error measure its natural records, while Fallback
+reflows them. Strict width fallback requires a valid primary candidate and cannot bypass a required
+planning failure. All candidate, repair, rebuild, and document work shares the operation's cumulative
+ledger, cancellation control, and deadline; choosing Adaptive does not raise resource ceilings.
+
+Structured graph records preserve full labels, direct endpoints, relationship direction and
+multiplicity, typed connectors, membership, and per-edge conditions within the family's existing
+semantic contract. Flowchart uses first-use declarations and individually keyed relationships.
+Records do not reproduce spatial direction and can be taller than a valid diagram. State retains
+Canonical-only layout admission and full authored-detail disclosure, and the renderer has no
+maximum-height selection policy. Hosts that
 need a pager or alternate view own that presentation choice.
 
 Graph detail records use word-aware wrapping with indented continuation rows. A word that fits
@@ -460,7 +511,8 @@ the same output/resource/cancellation rules as other viewport fallbacks.
 
 ```rust,no_run
 use merman_ascii::{
-    AsciiOutputOutcome, AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy,
+    AsciiGraphPresentation, AsciiLayoutProfile, AsciiOutputOutcome,
+    AsciiRenderOptions, AsciiRenderer, AsciiResourcePolicy,
     AsciiViewportPolicy, OverflowPolicy,
 };
 use merman_core::{OperationControl, ParseOptions, SemanticParser};
@@ -478,7 +530,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         )??
         .expect("diagram detected");
 
-    let renderer = AsciiRenderer::new(AsciiRenderOptions::default())?;
+    let options = AsciiRenderOptions::unicode()
+        .with_graph_presentation(AsciiGraphPresentation::Adaptive)
+        .with_layout_profile(AsciiLayoutProfile::Auto);
+    let renderer = AsciiRenderer::new(options)?;
     let resources = AsciiResourcePolicy::default();
     let report = renderer.render_parsed_report(
         &parsed,

@@ -163,6 +163,7 @@ fn reorder_opens_a_blocked_exit_and_preserves_both_relationships_and_the_conditi
             &routes,
             &occupancy,
             &mut budget,
+            RepairSearch::Missing,
             &mut resources,
             execution
         )
@@ -361,6 +362,7 @@ fn reorder_requires_both_blocking_contributors_and_preserves_their_relationships
                 retained,
                 &trial,
                 &mut budget,
+                RepairSearch::Missing,
                 &mut resources,
                 execution,
             )
@@ -388,7 +390,6 @@ fn reorder_requires_both_blocking_contributors_and_preserves_their_relationships
         )
         .unwrap()
     );
-    assert_eq!(budget.attempts, MAX_REORDER_ATTEMPTS - 3);
     assert_eq!(routes.len(), 3);
     assert_eq!(
         routes
@@ -436,7 +437,7 @@ fn reorder_requires_both_blocking_contributors_and_preserves_their_relationships
 }
 
 #[test]
-fn reorder_cannot_assign_a_different_path_to_a_joint_channel_contributor() {
+fn reorder_dissolves_the_complete_channel_before_changing_its_path() {
     let (graph, layout, charset) = constrained_scene();
     let policy = AsciiResourcePolicy::unbounded();
     let mut resources = ResourceContext::new(policy);
@@ -462,13 +463,9 @@ fn reorder_cannot_assign_a_different_path_to_a_joint_channel_contributor() {
         label_host: Some([start, end]),
     });
     let old = routes[0].plan.clone();
-    let allocation = routes[0].owner.allocated_branch;
     let owner = RouteOwner::for_test(1, "s", "t");
-    // The ordinary version of this scene is repairable (tested above). Here the
-    // required private label host crosses the proposed new edge, so this one-edge
-    // reorder must fail rather than detach a branch from its retained allocation.
     assert!(
-        !reorder_failed_route(
+        reorder_failed_route(
             request(&graph, &layout, &charset, 1),
             None,
             &labels,
@@ -481,9 +478,17 @@ fn reorder_cannot_assign_a_different_path_to_a_joint_channel_contributor() {
         )
         .unwrap()
     );
-    assert_eq!(routes.len(), 1);
-    assert_eq!(routes[0].plan, old);
-    assert_eq!(routes[0].owner.allocated_branch, allocation);
+    assert_eq!(routes.len(), 2);
+    let replacement = routes
+        .iter()
+        .find(|route| route.owner.canonical_edge_index == 0)
+        .unwrap();
+    assert_ne!(replacement.plan, old);
+    assert_eq!(replacement.owner.allocated_branch, None);
+    assert_eq!(
+        replacement.plan.labels[0].descriptor,
+        old.labels[0].descriptor
+    );
 }
 
 #[test]

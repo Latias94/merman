@@ -50,6 +50,9 @@ pub enum AsciiError {
     },
     #[error("ASCII rendering could not allocate bounded storage during `{phase}`")]
     AllocationFailed { phase: &'static str },
+    #[doc(hidden)]
+    #[error("ASCII private planning work allowance exhausted")]
+    PlanningWorkAllowanceExhausted,
     #[error(transparent)]
     ResourceLimitExceeded(#[from] AsciiResourceLimitExceeded),
     #[error(transparent)]
@@ -86,5 +89,19 @@ pub enum AsciiError {
 impl AsciiError {
     pub(crate) const fn allocation_failed(phase: &'static str) -> Self {
         Self::AllocationFailed { phase }
+    }
+
+    pub(crate) const fn graph_planning_fallback_reason(
+        &self,
+    ) -> Option<crate::AsciiFallbackReason> {
+        match self {
+            Self::RoutingSearchExhausted { .. } => {
+                Some(crate::AsciiFallbackReason::RoutingSearchExhausted)
+            }
+            Self::PortCapacityExceeded { .. } => {
+                Some(crate::AsciiFallbackReason::PortCapacityExceeded)
+            }
+            _ => None,
+        }
     }
 }

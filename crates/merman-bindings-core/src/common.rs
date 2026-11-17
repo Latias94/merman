@@ -944,6 +944,8 @@ pub(crate) struct AsciiOptionsJson {
     pub(crate) trim_trailing_spaces: Option<bool>,
     #[serde(default, alias = "layoutProfile")]
     pub(crate) layout_profile: Option<String>,
+    #[serde(default, alias = "graphPresentation")]
+    pub(crate) graph_presentation: Option<String>,
 }
 
 #[cfg(feature = "ascii")]
@@ -4174,6 +4176,16 @@ mod tests {
     #[test]
     fn request_ascii_alias_spelling_collisions_remain_duplicate_field_errors() {
         for (base, request, field) in [
+            (
+                br#"{"ascii":{"graph_presentation":"strict"}}"#.as_slice(),
+                br#"{"ascii":{"graphPresentation":"adaptive"}}"#.as_slice(),
+                "graph_presentation",
+            ),
+            (
+                br#"{"ascii":{"graphPresentation":"adaptive"}}"#.as_slice(),
+                br#"{"ascii":{"graph_presentation":"strict"}}"#.as_slice(),
+                "graph_presentation",
+            ),
             (
                 br#"{"ascii":{"default_direction":"leftToRight"}}"#.as_slice(),
                 br#"{"ascii":{"defaultDirection":"topDown"}}"#.as_slice(),

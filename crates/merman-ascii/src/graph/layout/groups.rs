@@ -45,6 +45,7 @@ pub(super) fn reserve_compound_axis_spacing(
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
     demand: &crate::graph::demand::SceneDemand<'_>,
+    feedback: &super::LayoutFeedback,
     column_widths: &mut super::grid::AxisSizes,
     row_heights: &mut super::grid::AxisSizes,
     resources: &mut ResourceContext,
@@ -54,11 +55,12 @@ pub(super) fn reserve_compound_axis_spacing(
     // rather than adding a second allowance to an already expanded separator band.
     let transaction_resources = resources.clone();
     transaction_resources.transaction(|resources| {
-        let divider_rows = bounds::empty_divider_row_requirements(
+        let divider_rows = bounds::empty_divider_row_requirements_with_feedback(
             graph,
             layouts,
             topology,
             policy,
+            feedback,
             row_heights,
             resources,
             execution,
@@ -83,6 +85,7 @@ pub(super) fn reserve_compound_axis_spacing(
             topology,
             policy,
             demand,
+            feedback,
             column_widths,
             row_heights,
             &mut spacing_resources,
@@ -100,10 +103,13 @@ pub(super) fn layout_scene_groups(
     layouts: &mut [NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    feedback: &super::LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<(LaidOutGroups, usize, usize)> {
-    bounds::layout_scene_groups(graph, layouts, topology, policy, resources, execution)
+    bounds::layout_scene_groups(
+        graph, layouts, topology, policy, feedback, resources, execution,
+    )
 }
 
 pub(super) fn empty_group_minimum_size(

@@ -51,6 +51,7 @@ Query the loaded resource catalog instead of copying numerical profile defaults 
   },
   "ascii": {
     "charset": "unicode",
+    "graphPresentation": "strict",
     "defaultDirection": "leftRight",
     "colorMode": "plain",
     "sequenceMirrorActors": false,
@@ -628,7 +629,8 @@ explicit terminal, machine-channel, SVG, and raster request composition.
 | --- | --- | --- | --- |
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
 | `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
-| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` preserves the established geometry. `compact` uses a 24-cell Flowchart node wrap and a 3-cell horizontal rank gap, or 3-cell Sequence participant spacing, unless explicitly overridden. `auto` requires `max_width` and tries Compact once after Canonical overflows. Both are admitted only for Flowchart and Sequence. |
+| `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` selects the family's default layout. `compact` uses a 24-cell Flowchart/Swimlane node wrap and a 3-cell horizontal rank gap, or 3-cell Sequence participant spacing, unless explicitly overridden. `auto` requires `max_width`; it tries Compact once after a wide Canonical primary, or an admitted Canonical planning miss in Adaptive mode. Compact/Auto are admitted only for Flowchart, Swimlane, and Sequence; State is Canonical-only. |
+| `ascii.graph_presentation` / `ascii.graphPresentation` | string | `strict` | `strict` preserves required graph-planning errors. `adaptive` permits complete graph-document recovery only for Flowchart, Swimlane, and State, with Plain encoding. It is independent of `layout_profile` and `overflow`; unsupported families or styled Adaptive requests are rejected before routing. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`/`none`, `ansi16`/`ansi-16`/`ansi_16`, `ansi256`/`ansi-256`/`ansi_256`, `truecolor`/`true-color`/`true_color`, or `html`. Bindings reject host-dependent `auto`; the host must resolve it before constructing environment-independent options. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
@@ -645,7 +647,7 @@ explicit terminal, machine-channel, SVG, and raster request composition.
 | `ascii.xychart_horizontal_plot_width` / `ascii.xychartHorizontalPlotWidth` | positive integer | `10` | Compact horizontal XYChart value axis width. |
 | `ascii.relation_summary_diagnostics` / `ascii.relationSummaryDiagnostics` | boolean | `false` | When true, Class/ER `relations:` readability fallbacks include a `reason:` row such as `crossing`, `route_collision`, or `overlay_collision`. Resource limits return structured errors instead. |
 | `ascii.max_width` / `ascii.maxWidth` | positive integer | none | Optional terminal display-cell bound used for planned-extent admission and Auto selection. It is independent from ASCII resource limits and must not exceed `9007199254740991`, the portable JSON integer limit shared by generated bindings. |
-| `ascii.overflow` | string | `allow` | `allow` emits the complete wide primary projection, `fallback` selects one complete typed structured projection when available, and `error` returns a width diagnostic. |
+| `ascii.overflow` | string | `allow` | Width policy over valid candidates: `allow` emits complete output even when wide, `error` rejects an over-width candidate, and Plain `fallback` selects/reflows a complete structured projection or returns `FallbackUnavailable`. Adaptive recovery also applies this policy to its graph document. |
 | `ascii.trim_trailing_spaces` / `ascii.trimTrailingSpaces` | boolean | `false` | Explicitly removes only trailing spaces/tabs from emitted rows; the primary width gate remains based on the untrimmed projection. |
 
 `ascii.theme` is independent of SVG `theme`. TrueColor resolves terminal roles through
@@ -658,33 +660,53 @@ owns any mapping of its application theme into both output-specific inputs. See
 internal fallback reasons; hosts can enable the field for support logs, diagnostics panels, or tests
 that need to classify why a dense Class/ER relation layout used a summary.
 
-ASCII capability records expose `layout_profiles`, `width_profiles`, `encodings`, and
-`fallback_encodings` (camelCase in generated host DTOs where applicable). Preflight those arrays for
-the detected diagram family before rendering. Every supported family currently admits `unicode` and
-`cjk` width profiles plus Plain, ANSI16, ANSI256, TrueColor, and HTML primary encodings. Only
-Flowchart and Sequence admit `compact` and `auto`; all other supported families are canonical-only.
+ASCII capability records expose `layout_profiles`, `graph_presentations`, `width_profiles`,
+`encodings`, and `fallback_encodings` (camelCase in generated host DTOs where applicable). Preflight
+those arrays and their combination rules for the detected diagram family before rendering. Every
+supported family currently admits `unicode` and `cjk` width profiles plus Plain, ANSI16, ANSI256,
+TrueColor, and HTML primary encodings with Strict graph presentation. Flowchart, Swimlane, and
+Sequence admit `compact` and `auto`; all other supported families are Canonical-only.
 
-Viewport `fallback` is currently admitted only with `color_mode: "plain"`. Styled fallback requests
-are rejected before rendering, even if the diagram would fit, instead of returning an ambiguous or
-partially styled compatibility projection.
-`allow` and `error` remain valid with every admitted primary encoding. The canonical ASCII output
-plan is schema `3`; it includes `encoding`, `requested_layout_profile`, `layout_profile` (the
-selected primary geometry), and `compact_attempted`. Its logical height excludes a final line
-terminator. The options JSON version is `3`; the output schema version is independent. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves
-to Plain there and an explicit styled report request is rejected.
+Strict is the default for every supported family. Only Flowchart, Swimlane, and State admit
+Adaptive, and Adaptive requires `color_mode: "plain"`, including with `overflow: "allow"` or
+`"error"`. Viewport `fallback` is also Plain-only. Both styled combinations are rejected before
+routing, even when the input would fit. Strict `allow` and `error` retain every admitted primary
+encoding. CLI `--ascii-report` is a separate machine-safe Plain channel: host `auto` resolves to
+Plain there and an explicit styled report request is rejected.
 
-Auto selects the narrower valid primary candidate and prefers Canonical on equal width. It does
-not change graph direction or truncate long edge labels. A narrower result may be taller. After
-selection, `overflow` determines whether a still-wide diagram is emitted, rejected, or replaced
-with the existing complete structured projection. Canonical and Compact remain fixed selections.
-No resource or cancellation failure triggers another attempt. With `allow`, retaining the first
-candidate while trying Compact consumes additional bounded text storage.
+Auto retains a fitting Canonical primary. If it is wide, Auto tries Compact once, selects the
+narrower valid candidate, and prefers Canonical on equal width. Strict preserves an initial
+planning error. Adaptive Auto for Flowchart and Swimlane may additionally try Compact once after
+a Canonical planning miss, before graph-document recovery. Explicit Canonical and Compact never
+switch profiles; State remains Canonical-only. An optional Compact search/capacity miss retains a
+valid Canonical primary; resource, allocation, cancellation, and deadline errors still propagate.
+Strict also retains its existing optional-Compact `UnsupportedFeature` handling; Adaptive propagates
+that error.
+Auto does not change direction or truncate labels, and a narrower result may be taller. With
+`allow`, retaining the first candidate while trying Compact consumes additional bounded storage.
 
-For an 80-column Flowchart or Sequence request in an ASCII-capable artifact, use:
+Adaptive catches only `RoutingSearchExhausted` and `PortCapacityExceeded` after semantic construction
+succeeds. Successful graph-document recovery reports reason `routing_search_exhausted` or
+`port_capacity_exceeded`, `projection: "structured_text"`, `outcome: "fallback"`, and
+`lossiness: "presentation_only"`. It preserves complete keyed nodes/groups, individual relationships,
+markers, strokes, conditions, and authored details within the family's existing contract. Arbitrary
+`UnsupportedFeature`, parse/model, resource/allocation, cancellation, and deadline failures remain
+errors with no partial output. All attempts share cumulative operation work and deadline state.
+
+Graph presentation and width overflow are independent. Without a bound, any width policy permits
+the complete natural recovery document. With a bound, `allow` may emit wide records, `error` returns
+`WidthOverflow` for over-width natural records, and `fallback` reflows complete records or returns
+`FallbackUnavailable` if they cannot fit. Successful recovery retains its planning reason through
+width reflow. Width fallback from a valid primary instead reports `primary_overflow` and retains
+that primary's measured dimensions.
+
+For an adaptive 80-column Flowchart or Swimlane request in an ASCII-capable artifact, use:
 
 ```json
 {
+  "version": 3,
   "ascii": {
+    "graph_presentation": "adaptive",
     "layout_profile": "auto",
     "max_width": 80,
     "overflow": "fallback",
@@ -693,9 +715,32 @@ For an 80-column Flowchart or Sequence request in an ASCII-capable artifact, use
 }
 ```
 
-Use `allow` or `error` with styled primary output; Auto does not relax the Plain-only fallback
-contract. `primary_width`/`primary_height` and `overflowed` describe the selected primary candidate,
-even when structured fallback is emitted. `compact_attempted` is independent of `fallback_attempted`.
+For Sequence, use the same width request with `graph_presentation` omitted or set to `strict`.
+For adaptive State output, select `layout_profile: "canonical"`. Both snake_case and camelCase
+option spellings reach the same binding owner.
+
+### ASCII output schema 4
+
+`AsciiOutput::metadata()` owns the canonical ASCII output plan. Binding operations embed it as
+`output_plan` with `kind: "ascii"`; CLI report JSON adds the exact `text`. Current writers emit
+ASCII schema `4`. Options JSON stays version `3`, outer operation metadata stays version `1`, and
+SVG and semantic JSON schemas are unchanged. Refresh SDKs, generated wrappers, and runtime
+artifacts together using the [current migration guide](../migrations/render-reuse-host-integration.md).
+
+| Fields | Meaning |
+| --- | --- |
+| `primary_width`, `primary_height`, `layout_profile`, `primary_overflowed` | Required nullable group. All four are present and non-null for a valid measured primary, including width fallback, or explicitly null together when graph planning produced no valid primary scene. |
+| Real empty primary | Dimensions remain numeric `0`/`0`, `layout_profile` identifies the measured primary, and `primary_overflowed` is `false`; `outcome` is `empty`. |
+| `emitted_width`, `emitted_height`, `emitted_overflowed` | Actual complete output dimensions and width comparison after permitted trimming. Height excludes a final line terminator. Emitted overflow is false without an explicit width bound. |
+| `requested_layout_profile`, `compact_attempted` | Requested profile and actual Compact attempt, retained even when the effective `layout_profile` is null. `compact_attempted` is independent of `fallback_attempted`. |
+| `requested_graph_presentation`, `projection`, `encoding` | Requested policy, effective presentation, and exact output encoding. |
+
+Schema 4 replaces schema 3's `overflowed` with nullable `primary_overflowed` and measured
+`emitted_overflowed`. A valid primary without a width bound has `primary_overflowed: false`;
+an unavailable primary has null. `outcome: "fallback"` alone does not imply width overflow:
+an adaptive recovery document can fit, or can be wide under Allow. Archived schema-3 reports retain
+their original meanings and need an explicitly versioned decoder; do not reinterpret them as
+schema 4 or manufacture zero-sized primary diagrams.
 
 The terminal-grid budget is resource policy, not an ASCII presentation option. Set `resources.limits.max_ascii_grid_cells`; the removed `ascii.max_grid_cells` and `ascii.maxGridCells` fields are rejected with a migration error.
 
@@ -938,7 +983,7 @@ environment contracts as `null`.
 | UniFFI/Python | `Merman.runtime_catalog_json()` / `merman.get_runtime_catalog(api)` |
 | Web/TypeScript | `runtimeCatalog()` |
 
-The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `7`, and payload
+The runtime-contract schema is independent of native ABI `3`, UniFFI binding API `8`, and payload
 schema numbers. Reject a contract schema newer than the host understands before interpreting its
 nested fields. Detailed language catalogs are not embedded in this flat object: use the
 transport's named metadata API (`metadata_collect` for the C ABI) for

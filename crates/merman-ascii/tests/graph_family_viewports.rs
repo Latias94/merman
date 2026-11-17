@@ -46,13 +46,18 @@ fn assert_viewports(
                 assert_eq!(report.width_profile, profile, "{context}");
                 assert_eq!(report.requested_max_width, Some(width), "{context}");
                 assert_eq!(report.requested_layout_profile, layout, "{context}");
-                assert_eq!(report.layout_profile, AsciiLayoutProfile::Canonical);
+                assert_eq!(report.layout_profile, Some(AsciiLayoutProfile::Canonical));
                 let fallback = width < primary_from;
                 let compact_attempted = layout == AsciiLayoutProfile::Auto && fallback;
                 assert_eq!(report.compact_attempted, compact_attempted, "{context}");
                 assert_eq!(report.fallback.attempted, fallback, "{context}");
-                assert_eq!(report.overflowed, fallback, "{context}");
-                assert_eq!(report.primary_extent.width > width, fallback, "{context}");
+                assert_eq!(report.primary_overflowed, Some(fallback), "{context}");
+                assert!(!report.emitted_overflowed, "{context}");
+                assert_eq!(
+                    report.primary_extent.unwrap().width > width,
+                    fallback,
+                    "{context}"
+                );
                 if fallback {
                     assert_eq!(report.outcome, AsciiOutputOutcome::Fallback, "{context}");
                     assert_eq!(report.projection, AsciiProjection::StructuredText);
@@ -66,7 +71,11 @@ fn assert_viewports(
                     assert_eq!(report.projection, AsciiProjection::Diagrammatic);
                     assert_eq!(report.lossiness, Lossiness::None, "{context}");
                     assert_eq!(report.fallback.reason, None, "{context}");
-                    assert_eq!(report.primary_extent, report.emitted_extent, "{context}");
+                    assert_eq!(
+                        report.primary_extent,
+                        Some(report.emitted_extent),
+                        "{context}"
+                    );
                 }
 
                 let measured_width = report

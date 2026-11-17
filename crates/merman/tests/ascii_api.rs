@@ -415,7 +415,7 @@ fn host_recipe_preserves_typed_auto_outcomes_and_hard_failures() {
         };
         assert_eq!(report.outcome, expected);
         assert_eq!(report.requested_layout_profile, AsciiLayoutProfile::Auto);
-        assert_eq!(report.layout_profile, AsciiLayoutProfile::Compact);
+        assert_eq!(report.layout_profile, Some(AsciiLayoutProfile::Compact));
         assert!(report.compact_attempted);
         assert!(!report.text.contains('\u{1b}'));
         let json = serde_json::to_value(report.report()).unwrap();

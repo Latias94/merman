@@ -8,6 +8,7 @@
         "name": "version",
         "json_type": "unsigned-integer",
         "required": true,
+        "nullable": false,
         "integer_width_bits": 32,
         "open_value": false
       },
@@ -15,6 +16,7 @@
         "name": "operation_id",
         "json_type": "string",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       },
@@ -22,6 +24,7 @@
         "name": "media_type",
         "json_type": "string",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       },
@@ -29,6 +32,7 @@
         "name": "runtime_policy",
         "json_type": "string",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       },
@@ -36,6 +40,7 @@
         "name": "byte_length",
         "json_type": "unsigned-integer",
         "required": true,
+        "nullable": false,
         "integer_width_bits": 64,
         "open_value": false
       },
@@ -43,6 +48,7 @@
         "name": "output_plan",
         "json_type": "object",
         "required": false,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       },
@@ -50,6 +56,7 @@
         "name": "layout_adaptation",
         "json_type": "object",
         "required": false,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       },
@@ -57,6 +64,7 @@
         "name": "theme_execution_evidence",
         "json_type": "object",
         "required": false,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       }
@@ -69,6 +77,7 @@
             "name": "kind",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -76,6 +85,7 @@
             "name": "schema_version",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 16,
             "open_value": false
           },
@@ -83,6 +93,7 @@
             "name": "family",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -90,6 +101,7 @@
             "name": "projection",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -97,6 +109,7 @@
             "name": "encoding",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -104,6 +117,7 @@
             "name": "primary_width",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": true,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -111,6 +125,7 @@
             "name": "primary_height",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": true,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -118,6 +133,7 @@
             "name": "emitted_width",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -125,6 +141,7 @@
             "name": "emitted_height",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -132,6 +149,7 @@
             "name": "width_profile",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -139,6 +157,7 @@
             "name": "layout_profile",
             "json_type": "string",
             "required": true,
+            "nullable": true,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -146,6 +165,15 @@
             "name": "requested_layout_profile",
             "json_type": "string",
             "required": true,
+            "nullable": false,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "requested_graph_presentation",
+            "json_type": "string",
+            "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -153,6 +181,7 @@
             "name": "compact_attempted",
             "json_type": "boolean",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -160,13 +189,23 @@
             "name": "requested_max_width",
             "json_type": "unsigned-integer",
             "required": false,
+            "nullable": false,
             "integer_width_bits": 64,
             "open_value": false
           },
           {
-            "name": "overflowed",
+            "name": "primary_overflowed",
             "json_type": "boolean",
             "required": true,
+            "nullable": true,
+            "integer_width_bits": null,
+            "open_value": false
+          },
+          {
+            "name": "emitted_overflowed",
+            "json_type": "boolean",
+            "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -174,6 +213,7 @@
             "name": "outcome",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -181,6 +221,7 @@
             "name": "fallback_capability",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -188,6 +229,7 @@
             "name": "fallback_attempted",
             "json_type": "boolean",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -195,6 +237,7 @@
             "name": "fallback_reason",
             "json_type": "string",
             "required": false,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -202,6 +245,7 @@
             "name": "trimmed",
             "json_type": "boolean",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -209,6 +253,7 @@
             "name": "lossiness",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           }
@@ -221,6 +266,7 @@
             "name": "kind",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -228,6 +274,7 @@
             "name": "requested_width_px",
             "json_type": "number",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -235,6 +282,7 @@
             "name": "requested_height_px",
             "json_type": "number",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -242,6 +290,7 @@
             "name": "width_px",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 32,
             "open_value": false
           },
@@ -249,6 +298,7 @@
             "name": "height_px",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 32,
             "open_value": false
           },
@@ -256,6 +306,7 @@
             "name": "requested_scale",
             "json_type": "number",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -263,6 +314,7 @@
             "name": "effective_scale",
             "json_type": "number",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -270,6 +322,7 @@
             "name": "limited",
             "json_type": "boolean",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           }
@@ -282,6 +335,7 @@
             "name": "kind",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -289,6 +343,7 @@
             "name": "filtered_groups",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -296,6 +351,7 @@
             "name": "requested_scale",
             "json_type": "number",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -303,6 +359,7 @@
             "name": "effective_scale",
             "json_type": "number",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -310,6 +367,7 @@
             "name": "requested_image_pixels",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -317,6 +375,7 @@
             "name": "effective_image_pixels",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 64,
             "open_value": false
           },
@@ -324,6 +383,7 @@
             "name": "limited",
             "json_type": "boolean",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           }
@@ -338,6 +398,7 @@
             "name": "version",
             "json_type": "unsigned-integer",
             "required": true,
+            "nullable": false,
             "integer_width_bits": 32,
             "open_value": false
           },
@@ -345,6 +406,7 @@
             "name": "family_id",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -352,6 +414,7 @@
             "name": "theme_status",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -359,6 +422,7 @@
             "name": "output_mutated",
             "json_type": "boolean",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -366,6 +430,7 @@
             "name": "target_kind",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -373,6 +438,7 @@
             "name": "target_status",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -380,6 +446,7 @@
             "name": "target_reason_ids",
             "json_type": "array",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -387,6 +454,7 @@
             "name": "font_source",
             "json_type": "string",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           },
@@ -394,6 +462,7 @@
             "name": "materialized_theme",
             "json_type": "string-or-null",
             "required": true,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": false
           },
@@ -401,6 +470,7 @@
             "name": "diagnostics",
             "json_type": "array",
             "required": false,
+            "nullable": false,
             "integer_width_bits": null,
             "open_value": true
           }
@@ -415,6 +485,7 @@
         "name": "mode",
         "json_type": "string",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": true
       },
@@ -422,6 +493,7 @@
         "name": "requested_width",
         "json_type": "number",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": false
       },
@@ -429,6 +501,7 @@
         "name": "actual_width",
         "json_type": "number",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": false
       },
@@ -436,6 +509,7 @@
         "name": "overflowed",
         "json_type": "boolean",
         "required": true,
+        "nullable": false,
         "integer_width_bits": null,
         "open_value": false
       }

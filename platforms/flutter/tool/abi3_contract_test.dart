@@ -361,6 +361,7 @@ void decodesTypedMetadataCatalogs() {
     'primary_projection': 'diagrammatic',
     'structured_text_fallback': false,
     'layout_profiles': ['canonical', 'compact', 'auto'],
+    'graph_presentations': ['strict', 'adaptive'],
     'width_profiles': ['unicode', 'cjk'],
     'encodings': ['plain', 'ansi16'],
     'fallback_encodings': ['plain'],
@@ -502,6 +503,7 @@ void acceptsAdditiveTypedMetadataFields() {
     'primary_projection': 'diagrammatic',
     'structured_text_fallback': false,
     'layout_profiles': ['canonical'],
+    'graph_presentations': ['strict'],
     'width_profiles': ['unicode'],
     'encodings': ['plain'],
     'fallback_encodings': <String>[],
@@ -1555,9 +1557,9 @@ void decodesTypedOperationMetadata() {
       'byte_length': 96,
       'output_plan': {
         'kind': 'ascii',
-        'schema_version': 3,
+        'schema_version': 4,
         'family': 'flowchart-v2',
-        'projection': 'unicode',
+        'projection': 'structured_text',
         'encoding': 'utf-8',
         'primary_width': 42,
         'primary_height': 8,
@@ -1566,24 +1568,26 @@ void decodesTypedOperationMetadata() {
         'width_profile': 'unicode',
         'layout_profile': 'compact',
         'requested_layout_profile': 'auto',
+        'requested_graph_presentation': 'strict',
         'compact_attempted': true,
         'requested_max_width': 40,
-        'overflowed': true,
+        'primary_overflowed': true,
+        'emitted_overflowed': false,
         'outcome': 'fallback',
-        'fallback_capability': 'ascii',
+        'fallback_capability': 'available',
         'fallback_attempted': true,
         'fallback_reason': 'primary_overflow',
         'trimmed': true,
-        'lossiness': 'fallback',
+        'lossiness': 'presentation_only',
       },
     }),
   );
   final asciiPlan = ascii.outputPlan;
   _expect(
     asciiPlan is MermanAsciiOutputPlan &&
-        asciiPlan.schemaVersion == 3 &&
+        asciiPlan.schemaVersion == 4 &&
         asciiPlan.family == 'flowchart-v2' &&
-        asciiPlan.projection == 'unicode' &&
+        asciiPlan.projection == 'structured_text' &&
         asciiPlan.encoding == 'utf-8' &&
         asciiPlan.primaryWidth == 42 &&
         asciiPlan.primaryHeight == 8 &&
@@ -1592,17 +1596,132 @@ void decodesTypedOperationMetadata() {
         asciiPlan.widthProfile == 'unicode' &&
         asciiPlan.layoutProfile == 'compact' &&
         asciiPlan.requestedLayoutProfile == 'auto' &&
+        asciiPlan.requestedGraphPresentation == 'strict' &&
         asciiPlan.compactAttempted &&
         asciiPlan.requestedMaxWidth == 40 &&
-        asciiPlan.overflowed &&
+        asciiPlan.primaryOverflowed == true &&
+        !asciiPlan.emittedOverflowed &&
         asciiPlan.outcome == 'fallback' &&
-        asciiPlan.fallbackCapability == 'ascii' &&
+        asciiPlan.fallbackCapability == 'available' &&
         asciiPlan.fallbackAttempted &&
         asciiPlan.fallbackReason == 'primary_overflow' &&
         asciiPlan.trimmed &&
-        asciiPlan.lossiness == 'fallback',
+        asciiPlan.lossiness == 'presentation_only',
     'generated metadata decoder must project ASCII plans',
   );
+
+  final noPrimaryMetadata = jsonDecode(ascii.rawJson) as Map<String, Object?>;
+  final noPrimaryFields =
+      noPrimaryMetadata['output_plan'] as Map<String, Object?>;
+  noPrimaryFields.addAll({
+    'primary_width': null,
+    'primary_height': null,
+    'layout_profile': null,
+    'primary_overflowed': null,
+    'requested_graph_presentation': 'adaptive',
+    'fallback_reason': 'port_capacity_exceeded',
+    'trimmed': false,
+  });
+  final noPrimary = binding.decodeMermanOperationMetadata(
+    jsonEncode(noPrimaryMetadata),
+  );
+  final noPrimaryPlan = noPrimary.outputPlan as MermanAsciiOutputPlan;
+  _expect(
+    noPrimaryPlan.primaryWidth == null &&
+        noPrimaryPlan.primaryHeight == null &&
+        noPrimaryPlan.layoutProfile == null &&
+        noPrimaryPlan.primaryOverflowed == null &&
+        noPrimaryPlan.emittedWidth == 40 &&
+        noPrimaryPlan.emittedHeight == 8 &&
+        !noPrimaryPlan.emittedOverflowed &&
+        noPrimaryPlan.requestedGraphPresentation == 'adaptive' &&
+        noPrimaryPlan.requestedLayoutProfile == 'auto' &&
+        noPrimaryPlan.compactAttempted &&
+        noPrimaryPlan.fallbackReason == 'port_capacity_exceeded',
+    'unavailable primary geometry must remain null without losing selection evidence',
+  );
+
+  const measuredPrimary = {
+    'primary_width': 0,
+    'primary_height': 0,
+    'layout_profile': 'canonical',
+    'primary_overflowed': false,
+  };
+  final empty = binding.decodeMermanOperationMetadata(
+    jsonEncode({
+      ...noPrimaryMetadata,
+      'output_plan': {
+        ...noPrimaryFields,
+        ...measuredPrimary,
+        'projection': 'diagrammatic',
+        'emitted_width': 0,
+        'emitted_height': 0,
+        'requested_layout_profile': 'canonical',
+        'requested_graph_presentation': 'strict',
+        'compact_attempted': false,
+        'outcome': 'empty',
+        'fallback_attempted': false,
+        'fallback_reason': null,
+        'lossiness': 'none',
+      },
+    }),
+  );
+  final emptyPlan = empty.outputPlan as MermanAsciiOutputPlan;
+  _expect(
+    emptyPlan.primaryWidth == 0 &&
+        emptyPlan.primaryHeight == 0 &&
+        emptyPlan.layoutProfile == 'canonical' &&
+        emptyPlan.primaryOverflowed == false,
+    'measured zero geometry and false overflow must remain distinct from null',
+  );
+  for (final field in const [
+    'primary_width',
+    'primary_height',
+    'layout_profile',
+    'primary_overflowed',
+    'requested_graph_presentation',
+    'emitted_overflowed',
+  ]) {
+    final fields = Map<String, Object?>.of(noPrimaryFields)..remove(field);
+    _expectThrows<FormatException>(
+      () => binding.decodeMermanOperationMetadata(
+        jsonEncode({...noPrimaryMetadata, 'output_plan': fields}),
+      ),
+    );
+  }
+  for (final entry in measuredPrimary.entries) {
+    _expectThrows<FormatException>(
+      () => binding.decodeMermanOperationMetadata(
+        jsonEncode({
+          ...noPrimaryMetadata,
+          'output_plan': {...noPrimaryFields, entry.key: entry.value},
+        }),
+      ),
+    );
+  }
+  for (final entry in (const <String, Object?>{
+    'requested_graph_presentation': null,
+    'emitted_overflowed': null,
+  }).entries) {
+    _expectThrows<FormatException>(
+      () => binding.decodeMermanOperationMetadata(
+        jsonEncode({
+          ...noPrimaryMetadata,
+          'output_plan': {...noPrimaryFields, entry.key: entry.value},
+        }),
+      ),
+    );
+  }
+  for (final version in const [0, 1, 2, 3, 5]) {
+    _expectThrows<FormatException>(
+      () => binding.decodeMermanOperationMetadata(
+        jsonEncode({
+          ...noPrimaryMetadata,
+          'output_plan': {...noPrimaryFields, 'schema_version': version},
+        }),
+      ),
+    );
+  }
   _expectThrows<FormatException>(
     () => binding.decodeMermanOperationMetadata(
       jsonEncode({
@@ -1624,9 +1743,11 @@ void decodesTypedOperationMetadata() {
           'width_profile': 'unicode',
           'layout_profile': 'canonical',
           'requested_layout_profile': 'canonical',
+          'requested_graph_presentation': 'strict',
           'compact_attempted': false,
           'requested_max_width': null,
-          'overflowed': false,
+          'primary_overflowed': false,
+          'emitted_overflowed': false,
           'outcome': 'primary',
           'fallback_capability': 'none',
           'fallback_attempted': false,

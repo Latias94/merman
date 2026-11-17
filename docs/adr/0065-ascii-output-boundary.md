@@ -145,6 +145,28 @@ final output is structured fallback. Compact selection is independent from fallb
 The options JSON schema remains version 2. Width fitting does not guarantee reduced height/area,
 and it does not authorize edge-label truncation or automatic direction changes.
 
+## 2026-11-16 scene planning and adaptive output addendum
+
+Flowchart, Swimlane, and State now use one private scene planner for stable semantic demand,
+actual-blocker transactional repair, and at most two measured capacity rebuilds per profile.
+Required feasibility/replacement and optional complete-scene quality have separate finite
+allowances within the same cumulative operation ledger. Geometry generations invalidate contacts
+and occupancy; a failed trial retains the incumbent and the work already spent.
+
+`AsciiGraphPresentation::Strict` remains the default. Explicit `Adaptive` is Plain-only for these
+three families and may select the complete graph-document projection after an admitted routing or
+capacity miss. It never catches arbitrary unsupported semantics, resource exhaustion, allocation
+failure, or cancellation. Adaptive Auto may try Compact once after a Canonical planning miss;
+explicit profiles remain fixed, and State remains Canonical-only. Width policy remains independent.
+
+ASCII output schema 4 replaces the old `overflowed` field with nullable `primary_overflowed` and
+measured `emitted_overflowed`, adds `requested_graph_presentation`, and makes primary dimensions
+and effective layout nullable together when no primary geometry was accepted. Numeric zero still
+identifies a valid empty scene. Options JSON remains 3 and outer operation metadata remains 1.
+The [current migration](../migrations/render-reuse-host-integration.md) owns consumer instructions;
+the [support matrix](../rendering/ASCII_SUPPORT_MATRIX.md) owns family admission. The dated
+schema-2/schema-3 decisions above retain their historical meaning.
+
 ## Terminal layer ordering and coordinate ownership
 
 Flowchart, State, and Swimlane retain Dugong's rank seed. Cross-axis placement uses bounded

@@ -121,11 +121,13 @@ pub(super) fn layout_scene_groups(
     layouts: &mut [NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    feedback: &super::super::LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<(LaidOutGroups, usize, usize)> {
-    let mut bounds =
-        raw_group_bounds_batch(graph, layouts, topology, policy, resources, execution)?;
+    let mut bounds = raw_group_bounds_batch_with_feedback(
+        graph, layouts, topology, policy, feedback, resources, execution,
+    )?;
     resources.charge_layout_work(resources.checked_work_add(bounds.len(), layouts.len())?)?;
     let mut min_x = 0isize;
     let mut min_y = 0isize;
@@ -152,7 +154,7 @@ pub(super) fn layout_scene_groups(
         node.y = resources.checked_grid_add(node.y, offset_y)?;
     }
     let groups = layout_groups_from_bounds(
-        graph, layouts, topology, policy, &bounds, resources, execution,
+        graph, layouts, topology, policy, feedback, &bounds, resources, execution,
     )?;
     Ok((groups, offset_x, offset_y))
 }
@@ -173,6 +175,7 @@ pub(super) fn layout_groups(
         layouts,
         topology,
         policy,
+        &super::super::LayoutFeedback::default(),
         &resolved_bounds,
         resources,
         execution,
@@ -185,13 +188,15 @@ pub(super) fn layout_groups_from_bounds(
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    feedback: &super::super::LayoutFeedback,
     resolved_bounds: &[Option<RawBounds>],
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<LaidOutGroups> {
-    let routing_policies = super::transit::group_routing_policies(
+    let mut routing_policies = super::transit::group_routing_policies(
         graph, layouts, topology, policy, resources, execution,
     )?;
+    feedback.apply_group_policies(&mut routing_policies, resources)?;
     // Charge indexed lookups plus the linear topology, layout, and output passes up front.
     let mut member_count = 0usize;
     for (group_index, group) in graph.groups.iter().enumerate() {
@@ -626,6 +631,7 @@ pub(super) fn raw_group_bounds_for_members(
     }
 }
 
+#[cfg(test)]
 pub(super) fn raw_group_bounds_batch(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
@@ -634,10 +640,31 @@ pub(super) fn raw_group_bounds_batch(
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<Option<RawBounds>>> {
+    raw_group_bounds_batch_with_feedback(
+        graph,
+        layouts,
+        topology,
+        policy,
+        &super::super::LayoutFeedback::default(),
+        resources,
+        execution,
+    )
+}
+
+pub(super) fn raw_group_bounds_batch_with_feedback(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    policy: &GraphLayoutPolicy,
+    feedback: &super::super::LayoutFeedback,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<Option<RawBounds>>> {
     resources.transaction(|resources| {
-        let routing_policies = super::transit::group_routing_policies(
+        let mut routing_policies = super::transit::group_routing_policies(
             graph, layouts, topology, policy, resources, execution,
         )?;
+        feedback.apply_group_policies(&mut routing_policies, resources)?;
         checkpoint_layout(execution, 0)?;
         resources.charge_layout_work(graph.groups.len())?;
         let mut member_count = 0usize;
@@ -826,11 +853,35 @@ pub(super) fn raw_group_bounds_batch(
 /// Empty sections have no node bands of their own. Reserve their measured height in the row
 /// separating their preceding and following populated sections, using the shared projection.
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub(super) fn empty_divider_row_requirements(
     graph: &AsciiGraph,
     layouts: &[NodeLayout],
     topology: &GraphGroupTopology<'_>,
     policy: &GraphLayoutPolicy,
+    row_heights: &grid::AxisSizes,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<grid::AxisSizes> {
+    empty_divider_row_requirements_with_feedback(
+        graph,
+        layouts,
+        topology,
+        policy,
+        &super::super::LayoutFeedback::default(),
+        row_heights,
+        resources,
+        execution,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(super) fn empty_divider_row_requirements_with_feedback(
+    graph: &AsciiGraph,
+    layouts: &[NodeLayout],
+    topology: &GraphGroupTopology<'_>,
+    policy: &GraphLayoutPolicy,
+    feedback: &super::super::LayoutFeedback,
     row_heights: &grid::AxisSizes,
     resources: &ResourceContext,
     execution: AsciiExecution<'_>,
@@ -849,8 +900,9 @@ pub(super) fn empty_divider_row_requirements(
         if !has_empty || !has_divider {
             return Ok(requirements);
         }
-        let completed =
-            raw_group_bounds_batch(graph, layouts, topology, policy, resources, execution)?;
+        let completed = raw_group_bounds_batch_with_feedback(
+            graph, layouts, topology, policy, feedback, resources, execution,
+        )?;
         let scopes = CompoundScopes::try_new(graph, layouts, topology, resources, execution)?;
         resources.charge_layout_work(scopes.children.len())?;
         let mut membership_resources = resources.clone();

@@ -433,7 +433,7 @@ fn execute_controlled_output(
 #[derive(Debug, Clone, PartialEq)]
 #[non_exhaustive]
 pub enum BindingOutputPlan {
-    Ascii(BindingAsciiOutputPlan),
+    Ascii(Box<BindingAsciiOutputPlan>),
     Raster(BindingRasterOutputPlan),
     PdfFilterImages(BindingPdfFilterImageOutputPlan),
     Unknown(BindingUnknownOutputPlan),
@@ -489,16 +489,18 @@ pub struct BindingAsciiOutputPlan {
     family: String,
     projection: String,
     encoding: String,
-    primary_width: u64,
-    primary_height: u64,
+    primary_width: Option<u64>,
+    primary_height: Option<u64>,
     emitted_width: u64,
     emitted_height: u64,
     width_profile: String,
-    layout_profile: String,
+    layout_profile: Option<String>,
     requested_layout_profile: String,
+    requested_graph_presentation: String,
     compact_attempted: bool,
     requested_max_width: Option<u64>,
-    overflowed: bool,
+    primary_overflowed: Option<bool>,
+    emitted_overflowed: bool,
     outcome: String,
     fallback_capability: String,
     fallback_attempted: bool,
@@ -534,9 +536,11 @@ impl BindingAsciiOutputPlan {
             width_profile: metadata.width_profile,
             layout_profile: metadata.layout_profile,
             requested_layout_profile: metadata.requested_layout_profile,
+            requested_graph_presentation: metadata.requested_graph_presentation,
             compact_attempted: metadata.compact_attempted,
             requested_max_width: metadata.requested_max_width,
-            overflowed: metadata.overflowed,
+            primary_overflowed: metadata.primary_overflowed,
+            emitted_overflowed: metadata.emitted_overflowed,
             outcome: metadata.outcome,
             fallback_capability: metadata.fallback_capability,
             fallback_attempted: metadata.fallback_attempted,
@@ -566,13 +570,15 @@ impl BindingAsciiOutputPlan {
         &self.encoding
     }
 
+    /// Measured primary width, unavailable when planning produced no primary geometry.
     #[must_use]
-    pub const fn primary_width(&self) -> u64 {
+    pub const fn primary_width(&self) -> Option<u64> {
         self.primary_width
     }
 
+    /// Measured primary height, with the same availability as [`Self::primary_width`].
     #[must_use]
-    pub const fn primary_height(&self) -> u64 {
+    pub const fn primary_height(&self) -> Option<u64> {
         self.primary_height
     }
 
@@ -591,15 +597,22 @@ impl BindingAsciiOutputPlan {
         &self.width_profile
     }
 
+    /// Effective primary layout, unavailable when no primary geometry exists.
     #[must_use]
-    pub fn layout_profile(&self) -> &str {
-        &self.layout_profile
+    pub fn layout_profile(&self) -> Option<&str> {
+        self.layout_profile.as_deref()
     }
 
     /// Layout profile requested by the host, including automatic selection.
     #[must_use]
     pub fn requested_layout_profile(&self) -> &str {
         &self.requested_layout_profile
+    }
+
+    /// Requested graph policy; [`Self::projection`] records the emitted presentation.
+    #[must_use]
+    pub fn requested_graph_presentation(&self) -> &str {
+        &self.requested_graph_presentation
     }
 
     /// Whether automatic selection attempted a Compact candidate.
@@ -613,9 +626,16 @@ impl BindingAsciiOutputPlan {
         self.requested_max_width
     }
 
+    /// Primary width overflow, unavailable when no primary geometry was measured.
     #[must_use]
-    pub const fn overflowed(&self) -> bool {
-        self.overflowed
+    pub const fn primary_overflowed(&self) -> Option<bool> {
+        self.primary_overflowed
+    }
+
+    /// Whether the emitted output exceeds the requested width.
+    #[must_use]
+    pub const fn emitted_overflowed(&self) -> bool {
+        self.emitted_overflowed
     }
 
     #[must_use]
@@ -1049,7 +1069,7 @@ impl BindingOperationOutput {
         if !include_metadata {
             return Self::plain(output.into_bytes());
         }
-        let plan = BindingOutputPlan::Ascii(BindingAsciiOutputPlan::from_output(&output));
+        let plan = BindingOutputPlan::Ascii(Box::new(BindingAsciiOutputPlan::from_output(&output)));
         Self {
             data: output.into_bytes(),
             output_plan: Some(plan),
@@ -1130,29 +1150,9 @@ fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
     })?;
     let kind = required_string(object, "kind")?;
     match kind {
-        "ascii" => Ok(BindingOutputPlan::Ascii(BindingAsciiOutputPlan {
-            schema_version: required_u16(object, "schema_version")?,
-            family: required_string(object, "family")?.to_owned(),
-            projection: required_string(object, "projection")?.to_owned(),
-            encoding: required_string(object, "encoding")?.to_owned(),
-            primary_width: required_u64(object, "primary_width")?,
-            primary_height: required_u64(object, "primary_height")?,
-            emitted_width: required_u64(object, "emitted_width")?,
-            emitted_height: required_u64(object, "emitted_height")?,
-            width_profile: required_string(object, "width_profile")?.to_owned(),
-            layout_profile: required_string(object, "layout_profile")?.to_owned(),
-            requested_layout_profile: required_string(object, "requested_layout_profile")?
-                .to_owned(),
-            compact_attempted: required_bool(object, "compact_attempted")?,
-            requested_max_width: optional_u64(object, "requested_max_width")?,
-            overflowed: required_bool(object, "overflowed")?,
-            outcome: required_string(object, "outcome")?.to_owned(),
-            fallback_capability: required_string(object, "fallback_capability")?.to_owned(),
-            fallback_attempted: required_bool(object, "fallback_attempted")?,
-            fallback_reason: optional_string(object, "fallback_reason")?.map(str::to_owned),
-            trimmed: required_bool(object, "trimmed")?,
-            lossiness: required_string(object, "lossiness")?.to_owned(),
-        })),
+        "ascii" => parse_ascii_output_plan(object)
+            .map(Box::new)
+            .map(BindingOutputPlan::Ascii),
         "raster" => Ok(BindingOutputPlan::Raster(BindingRasterOutputPlan {
             requested_width_px: required_f64(object, "requested_width_px")?,
             requested_height_px: required_f64(object, "requested_height_px")?,
@@ -1177,6 +1177,52 @@ fn parse_output_plan(value: &Value) -> Result<BindingOutputPlan, BindingError> {
             value: value.clone(),
         })),
     }
+}
+
+fn parse_ascii_output_plan(
+    object: &Map<String, Value>,
+) -> Result<BindingAsciiOutputPlan, BindingError> {
+    let schema_version = required_u16(object, "schema_version")?;
+    if schema_version != 4 {
+        return Err(BindingError::invalid_argument(format!(
+            "unsupported ASCII output schema version {schema_version}; expected 4"
+        )));
+    }
+    let plan = BindingAsciiOutputPlan {
+        schema_version,
+        family: required_string(object, "family")?.to_owned(),
+        projection: required_string(object, "projection")?.to_owned(),
+        encoding: required_string(object, "encoding")?.to_owned(),
+        primary_width: required_nullable_u64(object, "primary_width")?,
+        primary_height: required_nullable_u64(object, "primary_height")?,
+        emitted_width: required_u64(object, "emitted_width")?,
+        emitted_height: required_u64(object, "emitted_height")?,
+        width_profile: required_string(object, "width_profile")?.to_owned(),
+        layout_profile: required_nullable_string(object, "layout_profile")?.map(str::to_owned),
+        requested_layout_profile: required_string(object, "requested_layout_profile")?.to_owned(),
+        requested_graph_presentation: required_string(object, "requested_graph_presentation")?
+            .to_owned(),
+        compact_attempted: required_bool(object, "compact_attempted")?,
+        requested_max_width: optional_u64(object, "requested_max_width")?,
+        primary_overflowed: required_nullable_bool(object, "primary_overflowed")?,
+        emitted_overflowed: required_bool(object, "emitted_overflowed")?,
+        outcome: required_string(object, "outcome")?.to_owned(),
+        fallback_capability: required_string(object, "fallback_capability")?.to_owned(),
+        fallback_attempted: required_bool(object, "fallback_attempted")?,
+        fallback_reason: optional_string(object, "fallback_reason")?.map(str::to_owned),
+        trimmed: required_bool(object, "trimmed")?,
+        lossiness: required_string(object, "lossiness")?.to_owned(),
+    };
+    let primary_available = plan.primary_width.is_some();
+    if plan.primary_height.is_some() != primary_available
+        || plan.layout_profile.is_some() != primary_available
+        || plan.primary_overflowed.is_some() != primary_available
+    {
+        return Err(BindingError::invalid_argument(
+            "invalid operation metadata JSON: primary_width, primary_height, layout_profile and primary_overflowed must all be null or all be non-null",
+        ));
+    }
+    Ok(plan)
 }
 
 fn required_value<'a>(
@@ -1244,6 +1290,33 @@ fn optional_u64(object: &Map<String, Value>, field: &str) -> Result<Option<u64>,
             ))
         }),
     }
+}
+
+fn required_nullable_u64(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Option<u64>, BindingError> {
+    required_value(object, field)?;
+    optional_u64(object, field)
+}
+
+fn required_nullable_bool(
+    object: &Map<String, Value>,
+    field: &str,
+) -> Result<Option<bool>, BindingError> {
+    if required_value(object, field)?.is_null() {
+        Ok(None)
+    } else {
+        required_bool(object, field).map(Some)
+    }
+}
+
+fn required_nullable_string<'a>(
+    object: &'a Map<String, Value>,
+    field: &str,
+) -> Result<Option<&'a str>, BindingError> {
+    required_value(object, field)?;
+    optional_string(object, field)
 }
 
 fn optional_string<'a>(
@@ -1780,6 +1853,206 @@ mod tests {
         };
         assert_eq!(plan.kind(), "future-plan");
         assert_eq!(plan.value()["nested"]["answer"], 42);
+    }
+
+    fn ascii_metadata_value() -> Value {
+        serde_json::json!({
+            "version": 1,
+            "operation_id": "ascii",
+            "media_type": "text/plain; charset=utf-8",
+            "runtime_policy": "deterministic",
+            "byte_length": 7,
+            "output_plan": {
+                "kind": "ascii",
+                "schema_version": 4,
+                "family": "flowchart-v2",
+                "projection": "structured_text",
+                "encoding": "plain",
+                "primary_width": null,
+                "primary_height": null,
+                "emitted_width": 7,
+                "emitted_height": 1,
+                "width_profile": "unicode",
+                "layout_profile": null,
+                "requested_layout_profile": "canonical",
+                "requested_graph_presentation": "adaptive",
+                "compact_attempted": false,
+                "requested_max_width": 80,
+                "primary_overflowed": null,
+                "emitted_overflowed": false,
+                "outcome": "fallback",
+                "fallback_capability": "available",
+                "fallback_attempted": true,
+                "fallback_reason": "routing_search_exhausted",
+                "trimmed": false,
+                "lossiness": "presentation_only"
+            }
+        })
+    }
+
+    #[test]
+    fn typed_ascii_metadata_distinguishes_unmeasured_and_empty_primary() {
+        let unmeasured = ascii_metadata_value();
+        let mut empty = unmeasured.clone();
+        let plan = &mut empty["output_plan"];
+        plan["primary_width"] = Value::from(0);
+        plan["primary_height"] = Value::from(0);
+        plan["layout_profile"] = Value::from("canonical");
+        plan["primary_overflowed"] = Value::from(false);
+        plan["emitted_width"] = Value::from(0);
+        plan["emitted_height"] = Value::from(0);
+        plan["requested_graph_presentation"] = Value::from("strict");
+        plan["outcome"] = Value::from("empty");
+        plan["fallback_attempted"] = Value::from(false);
+        plan["fallback_reason"] = Value::Null;
+        plan["lossiness"] = Value::from("none");
+
+        for (value, expected_width, expected_profile, expected_overflow) in [
+            (unmeasured, None, None, None),
+            (empty, Some(0), Some("canonical"), Some(false)),
+        ] {
+            let json = serde_json::to_vec(&value).unwrap();
+            let metadata = BindingOperationMetadata::from_json_bytes(&json).unwrap();
+            assert_eq!(metadata.version(), 1);
+            assert_eq!(metadata.json_bytes(), json);
+            let Some(BindingOutputPlan::Ascii(plan)) = metadata.output_plan() else {
+                panic!("expected an ASCII output plan");
+            };
+            assert_eq!(plan.schema_version(), 4);
+            assert_eq!(plan.primary_width(), expected_width);
+            assert_eq!(plan.primary_height(), expected_width);
+            assert_eq!(plan.layout_profile(), expected_profile);
+            assert_eq!(plan.primary_overflowed(), expected_overflow);
+            assert!(!plan.emitted_overflowed());
+            assert_eq!(
+                serde_json::to_value(metadata.output_plan().unwrap()).unwrap(),
+                value["output_plan"]
+            );
+        }
+    }
+
+    #[test]
+    fn typed_ascii_metadata_requires_schema_four_and_explicit_nullable_fields() {
+        for field in [
+            "primary_width",
+            "primary_height",
+            "layout_profile",
+            "primary_overflowed",
+            "requested_graph_presentation",
+            "emitted_overflowed",
+        ] {
+            let mut value = ascii_metadata_value();
+            value["output_plan"].as_object_mut().unwrap().remove(field);
+            let error =
+                BindingOperationMetadata::from_json_bytes(&serde_json::to_vec(&value).unwrap())
+                    .expect_err("schema 4 fields must be explicit, including nulls");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+            assert!(error.message().contains(field), "{field}: {error:?}");
+        }
+        for (field, invalid) in [
+            ("primary_width", Value::from(-1)),
+            ("primary_height", Value::from(1.5)),
+            ("layout_profile", Value::from(false)),
+            ("primary_overflowed", Value::from("false")),
+            ("requested_graph_presentation", Value::Null),
+            ("emitted_overflowed", Value::Null),
+        ] {
+            let mut value = ascii_metadata_value();
+            value["output_plan"][field] = invalid;
+            assert!(
+                BindingOperationMetadata::from_json_bytes(&serde_json::to_vec(&value).unwrap())
+                    .is_err(),
+                "{field} must reject invalid types"
+            );
+        }
+        for version in [0, 1, 2, 3, 5, 65536] {
+            let mut value = ascii_metadata_value();
+            value["output_plan"]["schema_version"] = Value::from(version);
+            let error =
+                BindingOperationMetadata::from_json_bytes(&serde_json::to_vec(&value).unwrap())
+                    .expect_err("ASCII schema revisions must not silently gain schema 4 meanings");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        }
+    }
+
+    #[test]
+    fn typed_ascii_metadata_rejects_inconsistent_primary_availability() {
+        for (width, height, profile, overflow) in [
+            (Some(0), None, None, None),
+            (None, Some(0), None, None),
+            (None, None, Some("canonical"), None),
+            (None, None, None, Some(false)),
+            (Some(0), Some(0), None, Some(false)),
+            (Some(0), Some(0), Some("canonical"), None),
+        ] {
+            let mut value = ascii_metadata_value();
+            let plan = &mut value["output_plan"];
+            plan["primary_width"] = serde_json::to_value(width).unwrap();
+            plan["primary_height"] = serde_json::to_value(height).unwrap();
+            plan["layout_profile"] = serde_json::to_value(profile).unwrap();
+            plan["primary_overflowed"] = serde_json::to_value(overflow).unwrap();
+            let error =
+                BindingOperationMetadata::from_json_bytes(&serde_json::to_vec(&value).unwrap())
+                    .expect_err(
+                        "primary dimensions, layout and overflow must have matching availability",
+                    );
+            assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        }
+    }
+
+    #[test]
+    fn typed_ascii_metadata_preserves_planning_reasons_without_inventing_overflow() {
+        for reason in ["routing_search_exhausted", "port_capacity_exceeded"] {
+            for (max_width, emitted_width, emitted_overflowed) in
+                [(None, 7, false), (Some(80), 7, false), (Some(5), 7, true)]
+            {
+                let mut value = ascii_metadata_value();
+                value["output_plan"]["fallback_reason"] = Value::from(reason);
+                value["output_plan"]["requested_max_width"] =
+                    serde_json::to_value(max_width).unwrap();
+                value["output_plan"]["emitted_width"] = Value::from(emitted_width);
+                value["output_plan"]["emitted_overflowed"] = Value::from(emitted_overflowed);
+                let metadata =
+                    BindingOperationMetadata::from_json_bytes(&serde_json::to_vec(&value).unwrap())
+                        .unwrap();
+                let Some(BindingOutputPlan::Ascii(plan)) = metadata.output_plan() else {
+                    panic!("expected an ASCII output plan");
+                };
+                assert_eq!(plan.fallback_reason(), Some(reason));
+                assert_eq!(plan.requested_graph_presentation(), "adaptive");
+                assert_eq!(plan.primary_width(), None);
+                assert_eq!(plan.primary_overflowed(), None);
+                assert_eq!(plan.emitted_overflowed(), emitted_overflowed);
+                assert_eq!(plan.requested_max_width(), max_width);
+            }
+        }
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn ascii_plan_copies_canonical_metadata_without_reinterpreting_availability() {
+        let output = merman::Renderer::new()
+            .render(merman::RenderRequest::ascii(
+                "flowchart LR\nA --> B",
+                OperationControl::new(),
+                merman::AsciiRequest::default(),
+            ))
+            .unwrap();
+        let merman::RenderOutput::Ascii(Some(output)) = output else {
+            panic!("expected canonical ASCII output");
+        };
+        for width in [None, Some(0), Some(40)] {
+            let mut metadata = output.metadata();
+            metadata.primary_width = width;
+            metadata.primary_height = width;
+            metadata.layout_profile = width.map(|_| "canonical".to_owned());
+            metadata.primary_overflowed = width.map(|_| false);
+            metadata.requested_graph_presentation = "adaptive".to_owned();
+            metadata.emitted_overflowed = false;
+            let expected = serde_json::to_value(&metadata).unwrap();
+            let plan = BindingAsciiOutputPlan::from_metadata(metadata);
+            assert_eq!(serde_json::to_value(plan).unwrap(), expected);
+        }
     }
 
     #[test]
@@ -2932,6 +3205,23 @@ mod tests {
     #[test]
     fn ascii_request_propagates_caller_control_into_the_canonical_renderer() {
         assert_render_request_propagates_control("ascii");
+    }
+
+    #[cfg(feature = "ascii")]
+    #[test]
+    fn adaptive_ascii_requests_preserve_cancellation_across_transport_paths() {
+        let options = br#"{"ascii":{"graphPresentation":"adaptive"}}"#;
+        let engine = BindingEngine::from_options(options).unwrap();
+        let control = OperationControl::new();
+        control.cancel();
+        let request = BindingOperationRequest::new("ascii", b"flowchart LR\nA --> B")
+            .with_options_json(options)
+            .with_control(control);
+        let error = engine.execute(request.clone()).unwrap_err();
+        assert_structured_requested_cancellation(&error, "admission");
+        assert_eq!(engine.execute_data(request.clone()).unwrap_err(), error);
+        assert_eq!(execute_once(request.clone()).unwrap_err(), error);
+        assert_eq!(execute_once_data(request).unwrap_err(), error);
     }
 
     #[cfg(any(feature = "svg", feature = "ascii"))]

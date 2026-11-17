@@ -6,7 +6,8 @@ This guide owns the direct object-binding contract implemented by
 [Kotlin package](ANDROID_JNI.md) uses its own JNI transport. Applications must deploy each generated
 UniFFI projection with its matching native library.
 
-The current direct binding API is `7`. Its runtime contract is schema `1`; the C ABI and the
+The current direct binding API is `8`, with ASCII output schema `4`. Options JSON remains schema
+`3`; the runtime catalog and outer operation metadata remain schema `1`. The C ABI and
 text-measurement protocol have separate version ownership.
 
 Theme authoring errors preserve `details_json` with the versioned `theme_authoring`
@@ -27,7 +28,7 @@ The generated API exposes:
 - `MermanTextMeasurer` for synchronous host measurement; and
 - structured `MermanError::Binding { code, code_name, kind, capability_id, resource, diagnostic, icon_registry, cancellation, details_json, message }` failures, where resource, diagnostic, icon-registry, and cancellation evidence remain separate optional records.
 
-`Merman::binding_api_version_v7()` reports `7`. Use `runtime_catalog_json()` to inspect the
+`Merman::binding_api_version_v8()` reports `8`. Use `runtime_catalog_json()` to inspect the
 atomic runtime catalog: loaded package/options versions, capability and output IDs, registry facts,
 resource limits, and the descriptor-owned vocabulary used to validate those identifiers. Do not
 copy capability IDs into a language wrapper.
@@ -35,7 +36,8 @@ copy capability IDs into a language wrapper.
 The versioned probe symbol rejects older generated bindings before they decode revised records.
 UniFFI method checksums alone do not cover all nested record-field changes. Regenerate the complete
 projection when the binding API changes and deploy it with the matching library; the probe and
-generated code form one deployment unit. For changes between published releases, use the
+generated code form one deployment unit. Replace the API 7 probe with
+`binding_api_version_v8()` when upgrading to API 8. For changes between published releases, use the
 [versioned upgrade index](../release/README.md#workspace-upgrades).
 
 Every operation is available through `execute(request)`, and `MermanOperationRequestV4.options_json`
@@ -47,13 +49,19 @@ transport-specific stub result.
 
 Use result-returning binary methods when operation metadata or the effective output plan matters.
 `MermanOutputPlan` is an open record: switch on `kind`, inspect optional `raster`,
-`pdf_filter_images`, or `ascii`, and preserve `raw_json` for future kinds. The schema-3 ASCII plan
-includes projection, encoding, emitted dimensions, viewport fallback, `requested_layout_profile`,
-and `compact_attempted`. Its effective `layout_profile` is Canonical or Compact; the request may
-select Auto. `MermanAsciiCapability` reports `layout_profiles`, `width_profiles`, `encodings`, and
-`fallback_encodings`. Runtime operation, metadata, option-group, constructor-service, and
-resource-limit IDs remain open discovery values; request-input vocabularies use generated closed
-types.
+`pdf_filter_images`, or `ascii`, and preserve `raw_json` for future kinds. The schema-4 ASCII plan
+adds `requested_graph_presentation` and replaces `overflowed` with nullable `primary_overflowed`
+and required `emitted_overflowed`. `primary_width`, `primary_height`, `layout_profile`, and
+`primary_overflowed` are required JSON fields. They are all non-null when measured, or all null
+when no valid primary layout was produced. Preserve measured `0` and `false`; keep unavailable
+primary values null. Emitted dimensions and overflow describe the actual output. `requested_layout_profile`
+and `compact_attempted` retain native selection evidence; the effective `layout_profile` is
+Canonical or Compact when present. `MermanAsciiCapability` reports `layout_profiles`,
+`graph_presentations`, `width_profiles`, `encodings`, and `fallback_encodings`. The native renderer
+owns layout and fallback selection. See [ASCII options](OPTIONS_JSON.md#ascii-options) for graph
+presentation, encoding, and viewport policy. Runtime operation, metadata, option-group,
+constructor-service, and resource-limit IDs remain open discovery values; request-input
+vocabularies use generated closed types.
 
 Set `MermanOperationRequestV4.control` when a host needs to cancel or deadline one synchronous
 operation. Retain another reference and call `cancel()` from a different thread or callback. The

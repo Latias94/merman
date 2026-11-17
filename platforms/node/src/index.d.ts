@@ -4,6 +4,29 @@ export type MermanResourceProfile =
   | "trusted-native"
   | "unbounded-for-trusted-input";
 
+export type MermanAsciiGraphPresentation = "strict" | "adaptive";
+
+/** Options for the canonical `ascii` operation, also accepted through optionsJson. */
+export interface MermanAsciiRenderOptions {
+  /** Defaults to strict. Adaptive is Plain-only for Flowchart, Swimlane, and State. */
+  graph_presentation?: MermanAsciiGraphPresentation;
+  graphPresentation?: MermanAsciiGraphPresentation;
+  /** State supports Canonical only; Auto requires a maximum width. */
+  layout_profile?: "canonical" | "compact" | "auto";
+  layoutProfile?: "canonical" | "compact" | "auto";
+  charset?: "ascii" | "unicode";
+  max_width?: number;
+  maxWidth?: number;
+  overflow?: "allow" | "fallback" | "error";
+  color_mode?:
+    | "plain" | "none"
+    | "ansi16" | "ansi-16" | "ansi_16"
+    | "ansi256" | "ansi-256" | "ansi_256"
+    | "truecolor" | "true-color" | "true_color" | "html";
+  colorMode?: MermanAsciiRenderOptions["color_mode"];
+  [key: string]: unknown;
+}
+
 export interface MermanBindingOptions {
   version?: 3;
   runtime_policy?: "deterministic";
@@ -22,6 +45,7 @@ export interface MermanBindingOptions {
   };
   /** A supplied selection replaces the complete constructor theme; null clears it. */
   theme?: DiagramThemeSelection | null;
+  ascii?: MermanAsciiRenderOptions;
   [key: string]: unknown;
 }
 
@@ -173,7 +197,11 @@ export interface MermanOperationRequest {
   operationId: string;
   source: string;
   uri?: string | null;
-  /** Raw per-request options JSON merged over the reusable engine baseline. */
+  /**
+   * Raw per-request options JSON merged over the reusable engine baseline.
+   * For ASCII, use operationId "ascii" and JSON.stringify({ ascii: { graph_presentation: "adaptive" } }
+   * satisfies MermanBindingOptions). Admission is advertised by metadataJson("ascii-capabilities").
+   */
   optionsJson?: string;
 }
 
@@ -181,6 +209,7 @@ export interface MermanOperationResult {
   operation_id: string;
   media_type: string;
   data: string;
+  /** Canonical metadata JSON; ASCII output_plan uses report schema 4 within metadata version 1. */
   metadata_json: string;
 }
 

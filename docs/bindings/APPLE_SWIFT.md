@@ -8,6 +8,9 @@ This guide owns Swift generation and XCFramework integration. The
 [package README](../../platforms/apple/README.md) owns application examples, and the
 [UniFFI contract](UNIFFI.md) owns shared API versions, output records, and lifecycle rules.
 
+Current-source examples require direct UniFFI binding API `8` and ASCII output schema `4`.
+Regenerate Swift source and the matching XCFramework together when upgrading from API 7.
+
 For binary installation, start with the complete local SwiftPM archive described in the
 [prebuilt product guide](../release/PREBUILT_PRODUCTS.md). That main-line package includes
 the facade and resource contract beside the XCFramework. Published v0.9.3 retains the older
@@ -63,7 +66,7 @@ import Merman
 let source = "flowchart TD\nA[Hello] --> B[World]"
 let merman = Merman()
 
-guard merman.bindingApiVersionV7() == 7 else {
+guard merman.bindingApiVersionV8() == 8 else {
     fatalError("unexpected Merman UniFFI binding API")
 }
 
@@ -77,7 +80,11 @@ let request = MermanOperationRequestV4(
     optionsJson: options,
     control: nil
 )
-let ascii = try merman.execute(request: request).data
+let asciiResult = try merman.execute(request: request)
+let ascii = asciiResult.data
+if let plan = asciiResult.metadata.outputPlan?.ascii {
+    precondition(plan.schemaVersion == 4)
+}
 ```
 
 `Merman` owns discovery, metadata, and one-shot operations. Construct `MermanEngine` directly when
@@ -131,9 +138,17 @@ rejects opaque math rendering even when math is compiled. Retain host execution 
 cooperative cancellation cannot preempt an opaque backend call. See the
 [Swift product example](../release/PREBUILT_PRODUCTS.md#swift-installation).
 
-Use `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective output planning is
-required. Switch on `outputPlan.kind`, inspect optional format payloads, and retain `rawJson` for
-future kinds; see the [shared output contract](UNIFFI.md#public-model).
+Use `renderAsciiResult`, `renderPngResult`, `renderJpegResult`, or `renderPdfResult` when effective
+output planning is required. Switch on `outputPlan.kind`, inspect optional format payloads, and
+retain `rawJson` for future kinds; see the [shared output contract](UNIFFI.md#public-model).
+Schema-4 ASCII plans carry `primaryWidth`, `primaryHeight`, `layoutProfile`, and `primaryOverflowed`
+as optional values: all are `nil` when no valid primary layout was produced. Preserve measured
+`0` and `false`; emitted dimensions and `emittedOverflowed` describe the actual output. API 8
+replaces `overflowed` with `primaryOverflowed` and `emittedOverflowed`, and adds
+`requestedGraphPresentation`. Discover supported policies through capability `graphPresentations`
+and pass `ascii.graph_presentation` in request options. The native renderer owns selection; see
+[ASCII options](OPTIONS_JSON.md#ascii-options) for policy combinations. Options JSON schema `3`
+and outer operation metadata schema `1` are unchanged.
 
 Generated `MermanError.Binding` values carry `kind: MermanErrorKind`, an optional `capabilityId`,
 and optional `resource`, `diagnostic`, `iconRegistry`, and `cancellation` details. The corresponding

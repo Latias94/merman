@@ -5,11 +5,83 @@
 //! complete ASCII layout and output resource policy.
 
 use crate::error::Result;
-use crate::options::TerminalWidthProfile;
+use crate::options::{AsciiGraphPresentation, TerminalWidthProfile};
 use crate::output::{AsciiViewportPolicy, OverflowPolicy};
 use crate::resource::{AsciiResourcePolicy, ResourceContext, operation_terminal_error};
 use merman_model::{OperationControl, OperationPhase};
+use std::cell::Cell;
 const COOPERATIVE_CHECKPOINT_INTERVAL: usize = 64;
+
+#[derive(Debug)]
+pub(crate) struct SearchAllowance {
+    expansions: Cell<usize>,
+    work: Cell<usize>,
+}
+
+impl SearchAllowance {
+    const fn new(expansions: usize, work: usize) -> Self {
+        Self {
+            expansions: Cell::new(expansions),
+            work: Cell::new(work),
+        }
+    }
+
+    pub(crate) fn remaining(&self) -> (usize, usize) {
+        (self.expansions.get(), self.work.get())
+    }
+
+    pub(crate) fn debit(&self, expansions: usize, work: usize) {
+        self.expansions
+            .set(self.expansions.get().saturating_sub(expansions));
+        self.work.set(self.work.get().saturating_sub(work));
+    }
+
+    pub(crate) fn account_scene_work(
+        &self,
+        start_work: usize,
+        initial_allowance: usize,
+        resources: &ResourceContext,
+    ) {
+        let spent = resources.layout_work_used().saturating_sub(start_work);
+        let charged = initial_allowance.saturating_sub(self.work.get());
+        self.debit(0, spent.saturating_sub(charged));
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct GraphPlanningBudget {
+    pub(crate) feasibility: SearchAllowance,
+    pub(crate) allocation: SearchAllowance,
+    pub(crate) replacement: SearchAllowance,
+    pub(crate) quality: SearchAllowance,
+    pub(crate) quality_improvement: SearchAllowance,
+    pub(crate) repair_attempts: Cell<usize>,
+    pub(crate) reflow_work: Cell<usize>,
+}
+
+impl Default for GraphPlanningBudget {
+    fn default() -> Self {
+        Self {
+            feasibility: SearchAllowance::new(usize::MAX, usize::MAX),
+            allocation: SearchAllowance::new(4_096, 500_000),
+            replacement: SearchAllowance::new(8_192, 1_000_000),
+            quality: SearchAllowance::new(8_192, 1_000_000),
+            quality_improvement: SearchAllowance::new(4_096, 500_000),
+            repair_attempts: Cell::new(4),
+            reflow_work: Cell::new(1_000_000),
+        }
+    }
+}
+
+impl GraphPlanningBudget {
+    pub(crate) fn for_presentation(presentation: AsciiGraphPresentation) -> Self {
+        let mut budget = Self::default();
+        if presentation == AsciiGraphPresentation::Adaptive {
+            budget.feasibility = SearchAllowance::new(65_536, 3_000_000);
+        }
+        budget
+    }
+}
 
 /// Narrow operation projection consumed by the model-to-text backend.
 #[derive(Debug, Clone, Copy)]
@@ -19,6 +91,7 @@ pub(crate) struct AsciiExecution<'a> {
     viewport: AsciiViewportPolicy,
     optional_layout_candidate: bool,
     render_ledger: Option<&'a ResourceContext>,
+    graph_planning: Option<&'a GraphPlanningBudget>,
 }
 
 impl<'a> AsciiExecution<'a> {
@@ -30,6 +103,7 @@ impl<'a> AsciiExecution<'a> {
             viewport: AsciiViewportPolicy::unrestricted(),
             render_ledger: None,
             optional_layout_candidate: false,
+            graph_planning: None,
         }
     }
 
@@ -40,6 +114,17 @@ impl<'a> AsciiExecution<'a> {
 
     pub(crate) const fn max_width(self) -> Option<usize> {
         self.viewport.max_width
+    }
+
+    pub(crate) const fn with_graph_planning(mut self, budget: &'a GraphPlanningBudget) -> Self {
+        if self.graph_planning.is_none() {
+            self.graph_planning = Some(budget);
+        }
+        self
+    }
+
+    pub(crate) const fn graph_planning(self) -> Option<&'a GraphPlanningBudget> {
+        self.graph_planning
     }
 
     /// Binds the execution to the render-wide ledger owned by the top-level request.
@@ -59,6 +144,28 @@ impl<'a> AsciiExecution<'a> {
 
     pub(crate) const fn is_optional_layout_candidate(self) -> bool {
         self.optional_layout_candidate
+    }
+
+    /// Retains cumulative work across both graph and family transaction boundaries when
+    /// selection can continue with another candidate or a complete graph document.
+    pub(crate) fn preserves_graph_work_on_error(
+        self,
+        error: &crate::AsciiError,
+        presentation: AsciiGraphPresentation,
+    ) -> bool {
+        match error {
+            crate::AsciiError::PrimaryViewportOverflow { .. } => true,
+            crate::AsciiError::RoutingSearchExhausted { .. }
+            | crate::AsciiError::PortCapacityExceeded { .. } => {
+                presentation == AsciiGraphPresentation::Adaptive
+                    || self.is_optional_layout_candidate()
+            }
+            crate::AsciiError::UnsupportedFeature { .. } => {
+                presentation == AsciiGraphPresentation::Strict
+                    && self.is_optional_layout_candidate()
+            }
+            _ => false,
+        }
     }
 
     pub(crate) fn admit_primary_extent(

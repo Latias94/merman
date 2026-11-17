@@ -97,6 +97,7 @@ const renderWasmExportNames = [
 
 const asciiRuntimeExportNames = [
   "renderAscii",
+  "renderAsciiResult",
   "asciiSupportedDiagrams",
   "asciiCapabilities",
   "asciiDiagrammaticDiagrams",
@@ -104,6 +105,7 @@ const asciiRuntimeExportNames = [
 
 const asciiWasmExportNames = [
   "renderAscii",
+  "renderAsciiResult",
   "asciiSupportedDiagrams",
   "asciiCapabilities",
 ];

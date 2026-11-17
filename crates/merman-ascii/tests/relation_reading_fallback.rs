@@ -57,7 +57,7 @@ fn fallback(
     assert_eq!(report.lossiness.as_str(), "presentation_only");
     assert!(report.fallback.attempted);
     assert!(!report.trimmed, "authored trailing spaces must survive");
-    assert!(report.primary_extent.width > width);
+    assert!(report.primary_extent.unwrap().width > width);
     assert_eq!(report.emitted_extent.height, report.text.lines().count());
     for line in report.text.lines() {
         let cells = match report.width_profile {

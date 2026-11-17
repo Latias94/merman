@@ -1,9 +1,42 @@
 # Prepared rendering and host integration migration
 
-This guide covers migration from Merman `0.9.3` to `0.10.0-alpha.1`.
-It does not change the contracts of installed `0.9.3` artifacts. Build Rust crates and generated
-wrappers from the same release; Web artifacts require transport API `8`.
+This guide tracks current-source integration changes after published Merman `v0.10.0`, alongside
+the earlier prepared-rendering migrations introduced between `0.9.3` and `0.10.0-alpha.1`.
+Installed artifacts retain their published contracts. Build Rust crates, SDKs, generated wrappers,
+and runtime artifacts from matching source or release versions.
 See the [release index](../release/README.md) for published-version migrations.
+
+## Refresh wrappers and runtime artifacts
+
+The current ASCII scene-planning contract changes these independent versions once from the
+published `v0.10.0` baseline:
+
+| Contract | Published `v0.10.0` | Current source |
+| --- | --- | --- |
+| Web/WASM transport API | `10` | `11` |
+| UniFFI binding API | `7` | `8` |
+| ASCII report / `output_plan.schema_version` | `3` | `4` |
+| Options JSON | `3` | `3` |
+| Outer binding operation metadata `version` | `1` | `1` |
+| Node transport API | `1` | `1` |
+| Native C ABI | `3` | `3` |
+
+Update the Web SDK and its WASM assets together to transport API `11`, including ASCII-capable
+artifacts and feature-selected packages. Regenerate UniFFI wrappers against the binding API `8`
+library; the versioned Rust discovery method is now `binding_api_version_v8`. Python, Swift, and
+other generated consumers must use that library's matching wrappers.
+
+Refresh Node and native SDK metadata readers for ASCII schema `4` even though their transport API
+and C ABI versions remain unchanged. This includes generated metadata DTOs on Android, Apple,
+Flutter, and Python surfaces that consume the shared operation result. Read the loaded runtime
+catalog for transport, options, payload, and compiled-operation admission before invoking ASCII.
+The current typed ASCII metadata decoder requires schema `4` and the explicit nullable field group
+described [below](#ascii-output-schema-3-to-4). An archive reader for schema `3` must retain that
+version's original meanings. Published documentation and historical receipts remain tied to their
+recorded artifacts.
+
+SVG and semantic JSON schemas are unchanged by this ASCII contract migration. Their earlier
+source/API migrations in this guide retain their own scope.
 
 ## Reuse parsed source in Rust
 
@@ -209,6 +242,10 @@ See [headless layout](../rendering/HEADLESS_LAYOUT.md#explicit-kanban-width-adap
 
 ## ASCII terminal graph planning
 
+Rust binding consumers that directly construct `BindingOutputPlan::Ascii` now pass
+`Box::new(plan)`. Borrowed pattern matches and plan getters retain their use; this storage change
+does not change serialized operation metadata.
+
 Flowchart and Swimlane use denser vertical defaults: zero vertical padding inside ordinary nodes
 and a one-cell preferred vertical rank gap. Horizontal spacing and explicit layout profiles retain
 their meanings. To request the former spacing explicitly, use
@@ -217,17 +254,76 @@ with `with_node_padding_x` / `with_node_padding_y`. State keeps its independentl
 defaults. Node dimensions now follow their own labels, contours, and contact demand; a wide node
 does not force an unrelated short node to share its width.
 
-Width Fallback for Flowchart, State, and Swimlane is a readable graph document with stable node,
-group, and relationship keys. Full labels may wrap across physical rows. Consumers must use the
-report's projection and outcome metadata instead of parsing old flattened-field prefixes or
-assuming that a quoted label occupies one row. Report schema 3 and Plain-only fallback admission
-remain unchanged; Allow and Error keep their existing contracts.
+### Choose graph presentation separately from width
+
+`AsciiGraphPresentation::Strict` remains the default. Adaptive is an explicit Plain-only option for
+Flowchart, Swimlane, and State. It permits the existing complete graph document after semantic
+construction succeeds and bounded planning returns `RoutingSearchExhausted` or
+`PortCapacityExceeded`. It does not recover arbitrary `UnsupportedFeature` errors. Other supported
+families retain Strict and their existing family-owned presentation; unsupported families gain no
+terminal admission.
+
+Rust callers select graph presentation and width independently:
+
+```rust
+use merman::ascii::{
+    AsciiGraphPresentation, AsciiLayoutProfile, AsciiRenderOptions,
+    AsciiViewportPolicy, OverflowPolicy,
+};
+
+let options = AsciiRenderOptions::unicode()
+    .with_graph_presentation(AsciiGraphPresentation::Adaptive)
+    .with_layout_profile(AsciiLayoutProfile::Auto);
+let viewport = AsciiViewportPolicy::with_max_width(80)
+    .overflow(OverflowPolicy::Fallback);
+```
+
+Pass these values through the existing ASCII request/report API. Bindings accept
+`ascii.graph_presentation` or `ascii.graphPresentation` with `strict`/`adaptive`; the
+[Options JSON example](../bindings/OPTIONS_JSON.md#ascii-options) retains `version: 3`.
+Adaptive with ANSI16/ANSI256/TrueColor/HTML is rejected before routing, even with Allow or Error.
+Strict styled primary output remains admitted; viewport Fallback is also Plain-only.
+
+Auto still requires an explicit maximum width and is admitted only for Flowchart, Swimlane, and
+Sequence. It keeps a fitting Canonical primary; otherwise it tries Compact once on width overflow
+and chooses the narrower valid primary, keeping Canonical on ties. Strict preserves an initial
+planning error. Adaptive Auto for Flowchart and Swimlane may also try Compact once after a
+Canonical planning miss before graph-document recovery. Explicit Canonical/Compact never changes
+profile, and State remains Canonical-only. An optional Compact search/capacity miss retains a valid
+Canonical primary; resource, allocation, cancellation, and deadline errors propagate even when an
+incumbent exists. Strict retains its established Canonical result on an optional Compact
+`UnsupportedFeature`; Adaptive propagates that error.
+
+| Candidate or failure | Width policy | Behavior |
+| --- | --- | --- |
+| Valid primary exceeds the requested width | Allow / Error / Fallback | Emit complete wide primary / return `WidthOverflow` / select complete Plain width fallback or return `FallbackUnavailable`. Successful width fallback retains the measured primary and reason `primary_overflow`. |
+| Admitted planning miss under Strict | Any | Return the original typed planning error. |
+| Admitted planning miss under Adaptive | Allow | Emit the complete natural graph document; its actual width may exceed an explicit bound. |
+| Same Adaptive miss | Error | Measure natural records and return `WidthOverflow` only if they exceed the requested bound. |
+| Same Adaptive miss | Fallback | Reflow complete records to the bound, or return `FallbackUnavailable` if they cannot fit. |
+| Parse/model error, unsupported semantics, resource/allocation failure, cancellation, or deadline | Any | Preserve the error without partial publication. |
+
+Adaptive requires neither a width bound nor the Fallback width policy. Without a bound, all width
+policies accept the complete natural recovery document. Successful planning recovery reports
+`projection: structured_text`, `outcome: fallback`, `lossiness: presentation_only`, and reason
+`routing_search_exhausted` or `port_capacity_exceeded`. Width reflow retains that planning reason;
+fallback outcome alone does not imply width overflow. Adaptive leaves resource ceilings and
+operation deadlines unchanged; resource exhaustion and cancellation always return errors.
+
+Flowchart, State, and Swimlane width fallback and adaptive recovery use stable node, group, and
+relationship keys, complete labels, typed connectors, membership, and actual member/frame endpoints
+within their existing family contracts. Flowchart first-use declarations avoid a separate repeated
+node table. Full fields may wrap across physical rows. Consumers must use projection and outcome
+metadata instead of parsing old flattened-field prefixes or assuming that a quoted label occupies
+one row.
 
 Wrapped node and relationship records now prefer complete words and indent physical continuations
 by two layout spaces when width permits. These spaces are presentation framing; authored spaces
 inside fields remain intact. Very long words still wrap at grapheme boundaries, and visible control
 escapes remain atomic. Consumers requiring graph facts should use typed models instead of treating
 physical text rows as records.
+
+### Keep planning errors and recovery reasons distinct
 
 `AsciiError::RoutingSearchExhausted` distinguishes a bounded routing search from unsupported
 semantics. Its `edge_index` is the original zero-based semantic edge index, before canonical
@@ -237,9 +333,49 @@ convert a resource or cancellation failure into fallback output.
 
 `AsciiError::PortCapacityExceeded` reports a necessary marker-capacity bound for the current
 fixed-terminal presentation, with diagnostic code `merman.ascii.port_capacity_exceeded` and the
-endpoint in `field`. Both new routing diagnostics map to `RenderError` in bindings. Unsupported
+endpoint in `field`. Both planning diagnostics map to `RenderError` in bindings. Unsupported
 semantics retain their existing classification; a capacity certificate does not rule out another
-layout or presentation.
+layout or presentation. Strict returns these typed errors; Adaptive may use their corresponding
+snake_case fallback reasons only after successful complete-document construction. Width rejection
+remains `WidthOverflow` or `FallbackUnavailable`, with diagnostic codes
+`merman.ascii.width_overflow` and `merman.ascii.fallback_unavailable`.
+
+One private graph planner owns layout generations and validated route selection. Repair uses
+bounded witnesses of actual route/port/marker/label blockers and includes every affected member of
+a shared channel in one atomic replacement. It retains the incumbent until all replacement routes
+and reservations validate. Within each attempted profile, at most two rebuilds after the initial
+geometry respond to new measured endpoint/corridor and scoped feedback-lane demand; unchanged
+requests do not justify another generation. Required feasibility/repair work is separate from
+optional quality allowances, while all work shares the operation ledger, cancellation, and deadline.
+Rollback refunds no spent work. These bounds describe best-effort planning, not arbitrary-graph
+completeness, global optimality, or a maximum-height guarantee.
+
+### ASCII output schema 3 to 4
+
+Current `AsciiOutput::metadata()` and `AsciiOutput::report()` writers emit schema `4`. Migrate both
+Rust consumers and binding/CLI report decoders together:
+
+| Schema-3 use | Schema-4 use |
+| --- | --- |
+| Rust `primary_extent: AsciiExtent` | `primary_extent: Option<AsciiExtent>`; `None` means planning produced no valid primary scene. |
+| Non-null `primary_width`, `primary_height`, `layout_profile` | Required fields that are non-null together with `primary_overflowed` for a valid measured primary, or explicitly null as a group for planning recovery without primary geometry. Rust's `layout_profile` is also optional. |
+| `overflowed` | Nullable `primary_overflowed` describes the selected untrimmed primary; `emitted_overflowed` compares actual emitted width with the requested bound after permitted trimming. |
+| Infer effective presentation from a fallback flag | Read `projection` and `fallback_reason`; `requested_graph_presentation` records the independent requested `strict`/`adaptive` policy. |
+| Assume the selected profile always exists | Preserve `requested_layout_profile` and actual `compact_attempted` even when effective `layout_profile` is null. |
+
+The nullable group is exactly `primary_width`, `primary_height`, `layout_profile`, and
+`primary_overflowed`. Decoders require all four fields and reject mixed null/non-null groups. A
+real empty primary remains measured as `0×0`, with a selected layout profile,
+`primary_overflowed: false`, and `outcome: empty`. Never convert an unavailable primary into zero
+dimensions. A valid primary without a width bound has `primary_overflowed: false`; a missing primary
+has null.
+
+`emitted_width` and `emitted_height` always describe the complete emitted document. Height counts
+logical content rows; a final line terminator does not add a row. `emitted_overflowed` is false
+without a width bound, and can be true for an adaptive recovery document emitted under Allow even
+though `outcome` remains `fallback`. Width fallback from a measured primary instead retains its
+primary dimensions and `primary_overflowed: true` while the fitting emitted document reports false.
+Options JSON `3`, outer operation metadata `1`, SVG, and semantic JSON keep their existing contracts.
 
 See the [ASCII architecture decision](../adr/0065-ascii-output-boundary.md) and
 [support matrix](../rendering/ASCII_SUPPORT_MATRIX.md) for routing and presentation boundaries.

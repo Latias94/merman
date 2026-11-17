@@ -4,7 +4,7 @@ Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS
 
 Current examples target `0.10.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.10.0` package for the current examples.
 
-> **Binding contract:** Merman `0.10.0` uses direct UniFFI binding API `7` and Options JSON schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
+> **Binding contract:** Current source uses direct UniFFI binding API `8` and ASCII output schema `4`; published Merman `0.10.0` wrappers retain API `7`. Options JSON remains schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
 ## Requirements
 
@@ -229,12 +229,19 @@ precondition(svg.hasPrefix("<svg"))
 
 Use `MermanOperationRequestV4` and `client.execute(request:)` when the selected output is dynamic; put its options in the request's `optionsJson` field and pass `control: nil` when cancellation is not needed. The generated `MermanOperationResult` carries binary-safe bytes, media type, and typed operation metadata. For repeated work, construct `try MermanEngine(optionsJson:services:)` directly with baseline options and an optional immutable `MermanEngineServices` bundle. Per-operation options deep-merge over that baseline but cannot change the constructor-owned runtime policy. Call `close()` deterministically when an engine may retain foreign services; close is idempotent and retryable after busy or reentrant failures.
 
-The generated binding API is 7. `MermanOperationRequestV4` remains the current request record name;
-it does not identify the binding API version. API 7 preserves theme-authoring diagnostics and exposes `requestedLayoutProfile` and
-`compactAttempted` in the schema-3 ASCII output plan. The effective `layoutProfile` remains
-Canonical or Compact. Replace `bindingApiVersionV6()` with `bindingApiVersionV7()` when
-regenerating source and the XCFramework together. API 6 introduced capability admission arrays
-and explicit output encoding. `MermanError.Binding` includes an optional
+The current-source binding API is 8. `MermanOperationRequestV4` remains the request record name;
+it does not identify the binding API version. Replace `bindingApiVersionV7()` with
+`bindingApiVersionV8()` and regenerate Swift source and the XCFramework together. ASCII output
+schema `4` adds `requestedGraphPresentation` and replaces `overflowed` with nullable
+`primaryOverflowed` and required `emittedOverflowed`. `primaryWidth`, `primaryHeight`,
+`layoutProfile`, and `primaryOverflowed` are all present or all `nil` when no valid primary layout
+was produced. Preserve measured `0` and `false`; use emitted dimensions and overflow to describe
+the actual output without filling missing primary fields. `requestedLayoutProfile` and
+`compactAttempted` retain native selection evidence. Discover policies through capability
+`graphPresentations` and request `ascii.graph_presentation` (`strict` by default, or `adaptive`
+for admitted families); the native renderer owns layout and fallback selection. Options JSON
+schema `3`, outer operation metadata schema `1`, and C ABI `3` are unchanged.
+`MermanError.Binding` includes an optional
 `MermanDiagnosticErrorDetails` payload with a stable code, optional source span, field, and diagram
 type. Use those structured details for parser and ASCII failures rather than matching display text.
 

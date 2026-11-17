@@ -1,5 +1,9 @@
 import type {
   AsciiCapability,
+  AsciiGraphPresentation,
+  AsciiLayoutProfile,
+  AsciiOutputEncoding,
+  AsciiWidthProfile,
   BindingStatusCodeName,
   DiagramFamilyCapability,
   DiagramType,
@@ -919,6 +923,7 @@ export type CommonBindingOptions = BindingVersionOptions &
 export type AsciiCharsetOption = "ascii" | "unicode";
 export type AsciiWidthProfileOption = "unicode" | "cjk";
 export type AsciiLayoutProfileOption = "canonical" | "compact" | "auto";
+export type AsciiGraphPresentationOption = AsciiGraphPresentation;
 export type AsciiOverflowOption = "allow" | "fallback" | "error";
 export type AsciiDirectionOption =
   | "lr"
@@ -963,9 +968,12 @@ export interface AsciiRenderOptions {
   overflow?: AsciiOverflowOption;
   trim_trailing_spaces?: boolean;
   trimTrailingSpaces?: boolean;
-  /** Auto requires max_width and tries Compact once when Canonical exceeds it. */
+  /** Auto requires max_width; State supports Canonical only. */
   layout_profile?: AsciiLayoutProfileOption;
   layoutProfile?: AsciiLayoutProfileOption;
+  /** Defaults to strict. Adaptive recovery is Plain-only for Flowchart, Swimlane, and State. */
+  graph_presentation?: AsciiGraphPresentationOption;
+  graphPresentation?: AsciiGraphPresentationOption;
   width_profile?: AsciiWidthProfileOption;
   widthProfile?: AsciiWidthProfileOption;
   default_direction?: AsciiDirectionOption;
@@ -1010,6 +1018,8 @@ export interface AsciiRenderOptions {
 
 interface AsciiBindingFields {
   ascii?: AsciiRenderOptions;
+  /** Relative deadline for this Web/WASM operation, in milliseconds. */
+  timeout_ms?: number;
 }
 
 export type AsciiBindingOptions = CommonBindingOptions & AsciiBindingFields;
@@ -1488,21 +1498,66 @@ export interface LayoutAdaptationObservation {
   overflowed: boolean;
 }
 
-/** Existing binding metadata for the exact SVG returned by the same execution. */
-export interface SvgRenderMetadata {
+/** Canonical binding metadata for the output returned by the same execution. */
+export interface BindingOperationMetadata {
   version: 1;
-  operation_id: "svg";
-  media_type: "image/svg+xml";
+  operation_id: string;
+  media_type: string;
   runtime_policy: string;
   byte_length: number;
+  [key: string]: unknown;
+}
+
+/** Existing binding metadata for the exact SVG returned by the same execution. */
+export interface SvgRenderMetadata extends BindingOperationMetadata {
+  operation_id: "svg";
+  media_type: "image/svg+xml";
   theme_execution_evidence: ThemeExecutionEvidence;
   layout_adaptation?: LayoutAdaptationObservation;
-  [key: string]: unknown;
 }
 
 export interface SvgRenderResult {
   svg: string;
   metadata: SvgRenderMetadata;
+}
+
+/** Schema 4 report from the canonical ASCII operation; dimensions use terminal display cells. */
+export interface AsciiOutputPlan {
+  kind: "ascii";
+  schema_version: 4;
+  family: string;
+  projection: "diagrammatic" | "structured_text";
+  encoding: AsciiOutputEncoding;
+  /** The four primary fields are all null when unmeasured; a valid empty primary retains zeroes. */
+  primary_width: number | null;
+  primary_height: number | null;
+  layout_profile: Exclude<AsciiLayoutProfile, "auto"> | null;
+  primary_overflowed: boolean | null;
+  emitted_width: number;
+  emitted_height: number;
+  emitted_overflowed: boolean;
+  width_profile: AsciiWidthProfile;
+  requested_layout_profile: AsciiLayoutProfile;
+  requested_graph_presentation: AsciiGraphPresentation;
+  compact_attempted: boolean;
+  requested_max_width: number | null;
+  outcome: "primary" | "wide_allowed" | "fallback" | "empty";
+  fallback_capability: "available" | "unsupported";
+  fallback_attempted: boolean;
+  fallback_reason: "primary_overflow" | "routing_search_exhausted" | "port_capacity_exceeded" | null;
+  trimmed: boolean;
+  lossiness: "none" | "presentation_only";
+}
+
+export interface AsciiRenderMetadata extends BindingOperationMetadata {
+  operation_id: "ascii";
+  media_type: "text/plain; charset=utf-8";
+  output_plan: AsciiOutputPlan;
+}
+
+export interface AsciiRenderResult {
+  text: string;
+  metadata: AsciiRenderMetadata;
 }
 
 /**
@@ -1804,6 +1859,7 @@ export interface MermanWasmModule extends MermanWasmModuleBase {
     measurer: HostTextMeasurer
   ) => string;
   renderAscii: (source: string, optionsJson?: string | null) => string;
+  renderAsciiResult: (source: string, optionsJson?: string | null) => AsciiRenderResult;
   parseJson: (source: string, optionsJson?: string | null) => string;
   layoutJson: (source: string, optionsJson?: string | null) => string;
   layoutJsonWithTextMeasurer?: (

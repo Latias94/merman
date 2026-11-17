@@ -13,6 +13,10 @@ supplement the same historical receipt.
 Indexed channel adjacency extension: 2026-11-16. Its search-state and work bounds below also
 supplement the historical receipt.
 
+Scene planning extension: 2026-11-16. Conflict-directed repair, measured reflow, and explicit
+adaptive presentation use the same public operation ledger and resource ceilings. The scene
+planning section below supplements the historical receipt.
+
 This audit records the input-amplification and panic-path boundary reviewed for the ASCII
 semantic-depth closeout. It is not a claim that every Rust allocation is fallible or that the crate
 contains no invariant assertions. It identifies where authored-size work is admitted, where large
@@ -96,6 +100,51 @@ constant adjacency work, exact/N-1 limits, cancellation, and state storage size.
 8/64/512/4096, 512 neighbor queries each charge 512 units; initial coordinate resolution is measured
 separately. Existing compressed/unit-grid oracle tests retain path quality and segment semantics,
 including markers, labels, compound frames, long gaps, and winner materialization.
+
+## Graph Scene Planning
+
+`graph::planning` prepares stable semantic demand and route identities once for each admitted
+layout profile. It owns the initial geometry and at most two measured capacity rebuilds. Every
+generation recreates coordinate-dependent contacts, channels, and occupancy; immutable protection
+is shared only between trials within one generation. Retired geometry is dropped before the next
+generation is built.
+
+Feasibility, displaced-route replacement, prospective allocation, complete-scene quality, and
+reflow have separate finite algorithmic allowances. They all charge the cumulative public work
+ledger and observe the caller's cancellation/deadline. These scheduling allowances are not public
+resource ceilings and do not make a difficult graph unlimited under the trusted-unbounded policy.
+Optional quality begins with a validated complete incumbent; exhausting that allowance retains
+the incumbent. The planner never raises a public ceiling to make a candidate succeed.
+
+Strict feasibility retains the finite channel-state search and the caller's public work ceiling.
+Adaptive feasibility additionally stops speculative search early enough to leave room for complete
+document recovery. Deterministic candidate construction and route commits always charge the public
+ledger; they do not consume that adaptive search allowance. A long, directly routable chain is not
+rejected merely because constructing its earlier routes used more than a fixed search-work slice.
+The existing 200-node compound-chain benchmark remains a strict admission control.
+
+Rejected route, port, marker, and label reservations record at most 64 distinct canonical blockers.
+The witness records static/capacity conflicts and truncation separately; it does not certify global
+impossibility. Repair expands to all semantic members of affected shared channels and validates the
+entire replacement before committing. Failed trials restore the incumbent without allocating or
+replaying cancellation-sensitive work. Work already spent remains charged. Reflow uses a private
+work boundary checked before each charge; public resource errors in all dimensions and cancellation
+take precedence over that boundary. Discarded reflow geometry restores speculative document cells
+while retaining the work spent to build it.
+
+The unchanged two-node Binding Core fixture now needs 954 work units (953 rejects with actual
+954), following the earlier static-protection checkpoint of 950. The structured resource-boundary
+fixture and exact/N-1 transport tests own this count; no profile ceiling changed. Core tests cover
+private-boundary precedence, failed transactions, useful replacement credit for wide contacts,
+four-contributor repair, and a 97-marker capacity deficit corrected through reflow.
+
+Adaptive presentation catches only admitted `RoutingSearchExhausted` and `PortCapacityExceeded`
+misses after semantic construction. It uses the existing complete Plain graph-document writer;
+allocation failures, public resource exhaustion, cancellation, and unsupported semantics still
+return errors. Its text construction and encoding retain the same document/output admission.
+Both fixed dense sources in `tests/scene_planning_corpus.rs` complete at 80 cells under the
+unchanged 8,000,000-unit Trusted Native work ceiling. This is a deterministic admission result,
+not a latency or arbitrary-graph routing guarantee.
 
 ## Panic and Invariant Review
 

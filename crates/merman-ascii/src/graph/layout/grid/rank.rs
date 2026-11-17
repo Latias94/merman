@@ -22,6 +22,7 @@ pub(super) struct RankLevels {
     pub(super) leaf_groups: Vec<Option<usize>>,
     pub(super) parent_indices: Vec<Vec<usize>>,
     pub(super) side_constraints: Vec<Option<ResolvedNodeSideConstraint>>,
+    pub(super) reversed_edge_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -33,6 +34,7 @@ pub(super) struct ResolvedNodeSideConstraint {
 struct DagreRankLevels {
     nodes: Vec<usize>,
     leaf_groups: Vec<Option<usize>>,
+    reversed_edge_indices: Vec<usize>,
 }
 
 struct DagreRankGraph {
@@ -43,6 +45,7 @@ struct DagreRankGraph {
     node_ids: Vec<String>,
     group_ids: Vec<String>,
     group_anchors: Vec<GroupRankAnchor>,
+    source_edge_indices: Vec<usize>,
 }
 
 struct PlannedDagreRanks {
@@ -50,6 +53,7 @@ struct PlannedDagreRanks {
     node_ids: Vec<String>,
     group_ids: Vec<String>,
     group_anchors: Vec<GroupRankAnchor>,
+    source_edge_indices: Vec<usize>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -89,6 +93,7 @@ pub(super) fn rank_levels(
         leaf_groups: levels.leaf_groups,
         parent_indices,
         side_constraints,
+        reversed_edge_indices: levels.reversed_edge_indices,
     })
 }
 
@@ -282,6 +287,7 @@ fn plan_dagre_ranks(
         node_ids,
         group_ids,
         group_anchors,
+        source_edge_indices,
     } = build_dagre_rank_graph(graph, topology, direction, resources, execution)?;
     let plan = {
         let mut work_control = AsciiDagreWorkControl::new(resources, execution);
@@ -296,6 +302,7 @@ fn plan_dagre_ranks(
         node_ids,
         group_ids,
         group_anchors,
+        source_edge_indices,
     })
 }
 
@@ -310,7 +317,29 @@ fn project_dagre_rank_levels(
         node_ids,
         group_ids,
         group_anchors,
+        source_edge_indices,
     } = planned;
+
+    resources.charge_layout_work(plan.reversed_edges.len())?;
+    let mut reversed_edge_indices = Vec::new();
+    try_reserve_vec(&mut reversed_edge_indices, plan.reversed_edges.len())?;
+    for (index, edge) in plan.reversed_edges.into_iter().enumerate() {
+        checkpoint_layout(execution, index)?;
+        let source_index = edge
+            .name
+            .as_deref()
+            .and_then(|name| name.strip_prefix("edge:"))
+            .and_then(|ordinal| ordinal.parse::<usize>().ok())
+            .and_then(|ordinal| source_edge_indices.get(ordinal))
+            .copied()
+            .ok_or(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "Dagre feedback edges without semantic identity",
+            })?;
+        reversed_edge_indices.push(source_index);
+    }
+    charge_sort_work(reversed_edge_indices.len(), resources)?;
+    reversed_edge_indices.sort_unstable();
 
     let endpoint_count = resources.checked_work_add(node_ids.len(), group_ids.len())?;
     let projection_work = resources.checked_work_add(
@@ -415,6 +444,7 @@ fn project_dagre_rank_levels(
     Ok(DagreRankLevels {
         nodes: node_levels,
         leaf_groups: leaf_group_levels,
+        reversed_edge_indices,
     })
 }
 
@@ -513,7 +543,7 @@ fn build_dagre_rank_graph(
         .transpose()?
         .unwrap_or_default();
     let edge_order = graphlib_edge_order(graph)?;
-    for (ordinal, edge_index) in edge_order.into_iter().enumerate() {
+    for (ordinal, edge_index) in edge_order.iter().copied().enumerate() {
         checkpoint_layout(execution, ordinal)?;
         let edge = &graph.edges[edge_index];
         let constrained_endpoints = side_constraint_for_edge(graph, &index_by_id, edge);
@@ -578,6 +608,7 @@ fn build_dagre_rank_graph(
         node_ids,
         group_ids,
         group_anchors,
+        source_edge_indices: edge_order,
     })
 }
 
@@ -976,6 +1007,32 @@ mod tests {
     }
 
     #[test]
+    fn cycle_breaking_retains_original_edge_indices_past_an_ignored_self_loop() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        for id in ["a", "b", "c"] {
+            graph.add_node(id, id);
+        }
+        for (from, to) in [("a", "a"), ("a", "b"), ("b", "c"), ("c", "a")] {
+            graph.add_edge(from, to);
+        }
+        let mut resources = unbounded_resources();
+        let policy = resources.policy();
+        let ranks = rank_levels(
+            &graph,
+            None,
+            GraphDirection::TopDown,
+            &mut resources,
+            AsciiExecution::for_test(&policy),
+        )
+        .unwrap();
+        // The controlled Dagre DFS reverses c -> a. Self-loops are not rank edges,
+        // but their authored position must remain part of the semantic index space.
+        assert_eq!(ranks.reversed_edge_indices, [3]);
+        assert!(ranks.nodes[0] < ranks.nodes[1]);
+        assert!(ranks.nodes[1] < ranks.nodes[2]);
+    }
+
+    #[test]
     fn graphlib_node_and_group_order_preserves_ordinary_creation_order() {
         let mut graph = AsciiGraph::new(GraphDirection::TopDown);
         for id in ["z", "10", "a", "2", "01", "4294967295"] {
@@ -1289,6 +1346,7 @@ mod tests {
             node_ids,
             group_ids,
             group_anchors: anchors,
+            ..
         } = build_dagre_rank_graph(
             &graph,
             Some(&topology),

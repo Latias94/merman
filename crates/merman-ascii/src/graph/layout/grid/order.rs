@@ -142,6 +142,7 @@ pub(super) fn compact_nodes(
     nodes: &mut [NodeLayout],
     sizes: &[GraphNodeShapeSize],
     demand: &SceneDemand<'_>,
+    feedback: &super::super::LayoutFeedback,
     policy: &GraphLayoutPolicy,
     resources: &ResourceContext,
 ) -> Result<()> {
@@ -210,6 +211,7 @@ pub(super) fn compact_nodes(
                 let center = resources.checked_grid_add(cursor, extent / 2)?;
                 offsets[index] = resources.checked_grid_mul(center, 2)?;
                 positions[index] = offsets[index];
+                let gap = feedback.cross_gap(graph, index, horizontal, gap, resources)?;
                 cursor =
                     resources.checked_grid_add(resources.checked_grid_add(cursor, extent)?, gap)?;
             }

@@ -76,6 +76,51 @@ without adopting the reference's node-only collision policy. The
 [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#static-graph-protection)
 owns the complexity and admission limits. No cross-renderer speed claim is made.
 
+## Scene Planning and Explicit Recovery
+
+The shared Flowchart/Swimlane/State scene planner now couples allocation with measured capacity
+feedback. Rejected reservations identify actual canonical owners; atomic repair includes every
+member of an affected shared channel. Stable semantic demand survives geometry changes, while
+contacts and occupancy are rebuilt. The retained ranking engine may rebuild geometry at most
+twice after the initial generation. Required feasibility and replacement work have separate finite
+allowances from optional complete-scene quality work.
+
+The reference informs the design without becoming a completeness claim. The MIT mermaid-ascii
+node-occupancy search described above does not account for Merman's independent route, label,
+marker, and frame ownership. Grok's compact presentation remains qualified by the complete-fact
+reading checks below; its Apache-2.0 terminal implementation is not copied or translated.
+
+Two constructive strict regressions demonstrate expanded diagrammatic capability independently
+of fallback: one requires removing four actual label contributors together, and the other needs
+measured reflow for 97 independent circle-marker contacts. The tests verify complete geometry and
+relationship ownership; selecting text cannot satisfy either regression. The frozen thirteen-input
+reading floor and all baseline-success cases in the 486-attempt generated oracle remain acceptance
+controls rather than being resampled for the new algorithm.
+
+The fixed 20-node/33-edge and 100-node/195-edge dense sources are maintained under
+`tests/testdata/local-semantic/flowchart/scene_planning/`. Explicit adaptive Plain requests at 80
+cells produce complete output within the existing Trusted Native work ceiling, retaining a valid
+diagram or selecting a keyed graph document after an admitted miss. Strict requests can still
+return a bounded routing miss; recovery does not establish strict routing success. The documents preserve every endpoint, direction, label,
+marker, stroke, membership, and individually keyed relationship. Width policy remains independent,
+and an unmeasured primary scene is reported as unavailable under ASCII schema 4. Resource and
+cancellation errors remain errors in every mode.
+
+Current-source optimized native controls use the source-backed CLI operation, Canonical,
+Plain, both ASCII and Unicode charsets, the unchanged Trusted Native policy, and a 10-second
+operation control. At 80 cells, the reduced source returns a 24×115 strict diagram; the original
+source returns a strict routing-search diagnostic and a complete 53×198 adaptive document.
+Removing the caller's work/width ceilings retains those strict outcomes. The dense integration
+test permits a future validated diagrammatic improvement instead of pinning a particular failed
+edge. These controls establish completion and presentation outcomes, not a calibrated speed
+comparison. The reduced diagram is still tall; no height-selection policy is admitted.
+
+These are bounded capability and information-preservation results. They do not show that Merman
+dominates every reference graph, or that finite terminal artwork can represent arbitrary density.
+The [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) owns policy admission and the
+[resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning)
+owns the scheduling and accounting boundary.
+
 ## Terminal Visual Direction
 
 Grok's pinned terminal implementation provides useful examples of compact text and restrained
@@ -564,7 +609,9 @@ expected output.
   gate for new families and more complex grapheme clusters.
 - Flowchart dense compound scenes beyond the bounded channel-search and congestion-repair budgets.
   The shared planner validates complete label ownership and route connectivity, but a search miss
-  remains an explicit diagnostic rather than a claim that no presentation is possible.
+  remains an explicit strict diagnostic rather than a claim that no presentation is possible.
+  Explicit adaptive Plain mode can select a complete graph document after an admitted planning miss;
+  this does not promise continuous artwork or suppress fatal operation errors.
 - Class and ER dense relation topologies beyond the admitted directed rings and DAG diamonds; new policy
   decisions should keep explicit crossing, port-fit, route, and overlay boundaries. Resource budgets
   remain typed hard errors rather than summary selectors.

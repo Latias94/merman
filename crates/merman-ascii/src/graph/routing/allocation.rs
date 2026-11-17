@@ -228,6 +228,40 @@ impl BranchAllocation {
                 first = end;
             }
         }
+        charge_sort_work(indexed.len(), resources)?;
+        indexed.sort_unstable_by_key(|edge| (edge.source, edge.target, edge.canonical));
+        let mut first = 0;
+        while first < indexed.len() {
+            scene.scan()?;
+            let mut end = first + 1;
+            while end < indexed.len()
+                && (indexed[end].source, indexed[end].target)
+                    == (indexed[first].source, indexed[first].target)
+            {
+                scene.scan()?;
+                end += 1;
+            }
+            if end - first > 1 && indexed[first].source != indexed[first].target {
+                scene.allocate_parallel(&indexed[first..end], &mut branches)?;
+            }
+            first = end;
+        }
+        charge_sort_work(indexed.len(), resources)?;
+        indexed.sort_unstable_by_key(|edge| (edge.unordered_pair(), edge.canonical));
+        let mut first = 0;
+        while first < indexed.len() {
+            let mut end = first + 1;
+            while end < indexed.len()
+                && indexed[end].unordered_pair() == indexed[first].unordered_pair()
+            {
+                scene.scan()?;
+                end += 1;
+            }
+            if end - first > 2 {
+                scene.allocate_pair_returns(&indexed[first..end], &mut branches)?;
+            }
+            first = end;
+        }
         execution.checkpoint(OperationPhase::Layout)?;
         Ok(Self { branches })
     }
@@ -238,6 +272,239 @@ impl BranchAllocation {
 }
 
 impl AllocationScene<'_> {
+    fn allocate_pair_returns(
+        &self,
+        group: &[IndexedEdge],
+        branches: &mut [Option<AllocatedBranch>],
+    ) -> Result<()> {
+        self.resources.charge_layout_work_product(group.len(), 2)?;
+        if group
+            .iter()
+            .any(|edge| branches[edge.canonical].is_some() || edge.source == edge.target)
+            || !group
+                .iter()
+                .any(|edge| edge.source == group[0].target && edge.target == group[0].source)
+        {
+            return Ok(());
+        }
+        let first = &self.layout.nodes[group[0].source];
+        let second = &self.layout.nodes[group[0].target];
+        let cross_near = |node: &NodeLayout| if self.horizontal { node.y } else { node.x };
+        let cross_far = |node: &NodeLayout| {
+            if self.horizontal {
+                node.bottom()
+            } else {
+                node.right()
+            }
+        };
+        let main_near = |node: &NodeLayout| if self.horizontal { node.x } else { node.y };
+        let main_far = |node: &NodeLayout| {
+            if self.horizontal {
+                node.right()
+            } else {
+                node.bottom()
+            }
+        };
+        if cross_near(first) != cross_near(second)
+            || cross_far(first) != cross_far(second)
+            || main_far(first) >= main_near(second)
+        {
+            return Ok(());
+        }
+        let contacts = (main_far(first) - main_near(first))
+            .min(main_far(second) - main_near(second))
+            .saturating_sub(1);
+        if group.len() - 1 > contacts {
+            return Ok(());
+        }
+        let mut proposals = Vec::new();
+        proposals
+            .try_reserve_exact(group.len())
+            .map_err(|_| layout_allocation_failed())?;
+        let source = self.port(first, true)?;
+        let target = self.port(second, false)?;
+        let (Some(source), Some(target)) = (source, target) else {
+            return Ok(());
+        };
+        let first_edge = &self.edges[group[0].canonical];
+        let span = self
+            .main(target.berth)
+            .saturating_sub(self.main(source.berth));
+        let extra_length = self
+            .resources
+            .checked_grid_mul(first_edge.length.saturating_sub(1), 2)?;
+        if span < self.resources.checked_grid_add(2, extra_length)? {
+            return Ok(());
+        }
+        proposals.push(AllocatedBranch {
+            group: group[0].canonical,
+            shared_endpoint: MarkerEndpoint::Start,
+            attachments: NodeAttachments {
+                start: source.attachment,
+                end: target.attachment,
+            },
+            points: [source.berth, source.berth, target.berth, target.berth],
+            label_host: Some([source.berth, target.berth]),
+        });
+        let mut channel = cross_far(first).max(cross_far(second));
+        for (ordinal, indexed) in group.iter().enumerate().skip(1) {
+            self.scan()?;
+            let edge = &self.edges[indexed.canonical];
+            let metrics = edge
+                .label
+                .as_deref()
+                .map(|raw| {
+                    try_measure_edge_label(
+                        raw,
+                        self.charset.width_profile,
+                        self.resources,
+                        edge.label_break_policy,
+                    )
+                })
+                .transpose()?
+                .flatten();
+            let label_cross = metrics.map_or(0, |metrics| {
+                if self.horizontal {
+                    metrics.line_count
+                } else {
+                    metrics.max_width
+                }
+            });
+            channel = self
+                .resources
+                .checked_grid_add(channel, self.resources.checked_grid_add(label_cross, 3)?)?;
+            let from = &self.layout.nodes[indexed.source];
+            let to = &self.layout.nodes[indexed.target];
+            let outward = if self.horizontal {
+                StepDirection::Down
+            } else {
+                StepDirection::Right
+            };
+            let start = self.coord(
+                self.resources.checked_grid_add(main_near(from), ordinal)?,
+                self.resources.checked_grid_add(cross_far(from), 1)?,
+            );
+            let end = self.coord(
+                self.resources.checked_grid_add(main_near(to), ordinal)?,
+                self.resources.checked_grid_add(cross_far(to), 1)?,
+            );
+            let (Some(start_attachment), Some(end_attachment)) = (
+                NodeAttachment::resolve(from, start, outward.opposite(), self.charset),
+                NodeAttachment::resolve(to, end, outward.opposite(), self.charset),
+            ) else {
+                return Ok(());
+            };
+            let start_turn = self.coord(self.main(start), channel);
+            let end_turn = self.coord(self.main(end), channel);
+            let along = self.main(start_turn).abs_diff(self.main(end_turn));
+            let label_along = metrics.map_or(0, |metrics| {
+                if self.horizontal {
+                    metrics.max_width
+                } else {
+                    metrics.line_count
+                }
+            });
+            if label_along > along.saturating_sub(2) {
+                return Ok(());
+            }
+            proposals.push(AllocatedBranch {
+                group: indexed.canonical,
+                shared_endpoint: MarkerEndpoint::Start,
+                attachments: NodeAttachments {
+                    start: start_attachment,
+                    end: end_attachment,
+                },
+                points: [start, start_turn, end_turn, end],
+                label_host: metrics.map(|_| [start_turn, end_turn]),
+            });
+            channel = self.resources.checked_grid_add(channel, label_cross)?;
+        }
+        for (edge, proposal) in group.iter().zip(proposals) {
+            self.scan()?;
+            branches[edge.canonical] = Some(proposal);
+        }
+        Ok(())
+    }
+
+    fn allocate_parallel(
+        &self,
+        group: &[IndexedEdge],
+        branches: &mut [Option<AllocatedBranch>],
+    ) -> Result<()> {
+        let source = &self.layout.nodes[group[0].source];
+        let target = &self.layout.nodes[group[0].target];
+        let (first, last, source_main, target_main, outward) = if self.horizontal {
+            (
+                source.y.max(target.y),
+                source.bottom().min(target.bottom()),
+                source.right(),
+                target.x,
+                StepDirection::Right,
+            )
+        } else {
+            (
+                source.x.max(target.x),
+                source.right().min(target.right()),
+                source.bottom(),
+                target.y,
+                StepDirection::Down,
+            )
+        };
+        let pitch = READING_MARGIN * 2 + 1;
+        let span = self.resources.checked_grid_add(
+            self.resources
+                .checked_grid_mul(group.len().saturating_sub(1), pitch)?,
+            4,
+        )?;
+        if last.saturating_sub(first) < span || source_main.saturating_add(2) >= target_main {
+            return Ok(());
+        }
+        let mut allocated = Vec::new();
+        self.resources.charge_layout_work(group.len())?;
+        allocated
+            .try_reserve_exact(group.len())
+            .map_err(|_| layout_allocation_failed())?;
+        for (ordinal, indexed) in group.iter().enumerate() {
+            self.scan()?;
+            let edge = &self.edges[indexed.canonical];
+            if branches[indexed.canonical].is_some()
+                || edge
+                    .label
+                    .as_deref()
+                    .is_some_and(|label| !label.trim().is_empty())
+            {
+                return Ok(());
+            }
+            let cross = self.resources.checked_grid_add(
+                self.resources.checked_grid_add(first, 2)?,
+                self.resources.checked_grid_mul(ordinal, pitch)?,
+            )?;
+            let start = self.coord(self.resources.checked_grid_add(source_main, 1)?, cross);
+            let end = self.coord(target_main - 1, cross);
+            let (Some(start_attachment), Some(end_attachment)) = (
+                NodeAttachment::resolve(source, start, outward.opposite(), self.charset),
+                NodeAttachment::resolve(target, end, outward, self.charset),
+            ) else {
+                return Ok(());
+            };
+            allocated.push(AllocatedBranch {
+                group: indexed.canonical,
+                shared_endpoint: MarkerEndpoint::Start,
+                attachments: NodeAttachments {
+                    start: start_attachment,
+                    end: end_attachment,
+                },
+                points: [start, start, end, end],
+                label_host: None,
+            });
+        }
+        for (indexed, channel) in group.iter().zip(allocated) {
+            self.scan()?;
+            branches[indexed.canonical] = Some(channel);
+        }
+        Ok(())
+    }
+
     fn scan(&self) -> Result<()> {
         self.execution.checkpoint(OperationPhase::Layout)?;
         self.resources.charge_layout_work(1)
@@ -584,6 +851,44 @@ mod tests {
                 allocation.get(index).is_none(),
                 "unexpected branch at {index}"
             );
+        }
+    }
+
+    #[test]
+    fn parallel_marked_relationships_receive_distinct_measured_channels() {
+        let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+        graph.add_node_with_shape_and_style(
+            "source",
+            "",
+            GraphNodeShape::ForkJoinHorizontal,
+            Default::default(),
+        );
+        graph.add_node("target", "Target");
+        for _ in 0..97 {
+            graph.add_edge("source", "target");
+            let edge = graph.edges.last_mut().unwrap();
+            edge.start_marker = GraphEdgeMarker::Circle;
+            edge.end_marker = GraphEdgeMarker::Open;
+        }
+        let options = AsciiRenderOptions::ascii();
+        let charset = GraphCharset::for_options(&options);
+        let mut layout = layout_graph(&graph, &options);
+        for (node, top) in layout.nodes.iter_mut().zip([8, 24]) {
+            (node.x, node.y, node.width, node.height) = (8, top, 293, 3);
+        }
+        let allocation = allocate(&graph, &layout, &charset);
+        let mut contacts = std::collections::BTreeSet::new();
+        let mut groups = std::collections::BTreeSet::new();
+        for index in 0..97 {
+            let channel = allocation
+                .get(index)
+                .expect("independent parallel channels fit the measured contours");
+            assert!(contacts.insert(channel.points[0].x));
+            assert!(groups.insert(channel.group));
+            assert_eq!(channel.attachments.start.outward, StepDirection::Down);
+            assert_eq!(channel.attachments.end.outward, StepDirection::Up);
+            assert_eq!(channel.points[0].x, channel.points[3].x);
+            assert!(channel.label_host.is_none());
         }
     }
 

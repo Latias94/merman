@@ -1808,11 +1808,11 @@ fn compiled_capabilities_match_the_full_test_artifact() {
 
     let ascii = &payload["ascii"];
     assert_eq!(ascii["schema_version"], 1);
-    assert_eq!(ascii["output_schema_version"], 3);
+    assert_eq!(ascii["output_schema_version"], 4);
     assert_eq!(
         ascii["report"],
         serde_json::json!({
-            "success_schema_version": 3,
+            "success_schema_version": 4,
             "error_schema_version": 1,
             "encoding": "plain",
             "styled_output": false,
@@ -1850,12 +1850,24 @@ fn compiled_capabilities_match_the_full_test_artifact() {
             serde_json::json!(["plain", "ansi16", "ansi256", "truecolor", "html"])
         );
         assert_eq!(family["fallback_encodings"], serde_json::json!(["plain"]));
+        assert_eq!(
+            family["graph_presentations"],
+            if family_id == "sequence" {
+                serde_json::json!(["strict"])
+            } else {
+                serde_json::json!(["strict", "adaptive"])
+            }
+        );
     }
     let state = families
         .iter()
         .find(|family| family["family"] == "state")
         .expect("missing ASCII State family");
     assert_eq!(state["layout_profiles"], serde_json::json!(["canonical"]));
+    assert_eq!(
+        state["graph_presentations"],
+        serde_json::json!(["strict", "adaptive"])
+    );
 
     let mappings = ascii["detected_type_mappings"]
         .as_array()

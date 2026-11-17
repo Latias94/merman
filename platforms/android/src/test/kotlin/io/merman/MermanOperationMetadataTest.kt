@@ -1,5 +1,6 @@
 package io.merman
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -74,9 +75,9 @@ class MermanOperationMetadataTest {
                 outputPlan = """
                     {
                       "kind":"ascii",
-                      "schema_version":3,
+                      "schema_version":4,
                       "family":"flowchart-v2",
-                      "projection":"unicode",
+                      "projection":"structured_text",
                       "encoding":"utf-8",
                       "primary_width":42,
                       "primary_height":8,
@@ -85,24 +86,26 @@ class MermanOperationMetadataTest {
                       "width_profile":"unicode",
                       "layout_profile":"compact",
                       "requested_layout_profile":"auto",
+                      "requested_graph_presentation":"strict",
                       "compact_attempted":true,
                       "requested_max_width":40,
-                      "overflowed":true,
+                      "primary_overflowed":true,
+                      "emitted_overflowed":false,
                       "outcome":"fallback",
-                      "fallback_capability":"ascii",
+                      "fallback_capability":"available",
                       "fallback_attempted":true,
                       "fallback_reason":"primary_overflow",
                       "trimmed":true,
-                      "lossiness":"fallback"
+                      "lossiness":"presentation_only"
                     }
                 """.trimIndent(),
             ),
         )
 
         val plan = metadata.outputPlan as MermanAsciiOutputPlan
-        assertEquals(3, plan.schemaVersion)
+        assertEquals(4, plan.schemaVersion)
         assertEquals("flowchart-v2", plan.family)
-        assertEquals("unicode", plan.projection)
+        assertEquals("structured_text", plan.projection)
         assertEquals("utf-8", plan.encoding)
         assertEquals(42L, plan.primaryWidth)
         assertEquals(8L, plan.primaryHeight)
@@ -111,15 +114,97 @@ class MermanOperationMetadataTest {
         assertEquals("unicode", plan.widthProfile)
         assertEquals("compact", plan.layoutProfile)
         assertEquals("auto", plan.requestedLayoutProfile)
+        assertEquals("strict", plan.requestedGraphPresentation)
         assertTrue(plan.compactAttempted)
         assertEquals(40L, plan.requestedMaxWidth)
-        assertTrue(plan.overflowed)
+        assertEquals(true, plan.primaryOverflowed)
+        assertFalse(plan.emittedOverflowed)
         assertEquals("fallback", plan.outcome)
-        assertEquals("ascii", plan.fallbackCapability)
+        assertEquals("available", plan.fallbackCapability)
         assertTrue(plan.fallbackAttempted)
         assertEquals("primary_overflow", plan.fallbackReason)
         assertTrue(plan.trimmed)
-        assertEquals("fallback", plan.lossiness)
+        assertEquals("presentation_only", plan.lossiness)
+    }
+
+    @Test
+    fun preservesUnavailableAsciiPrimaryGeometryAndMeasuredZero() {
+        val metadata = decodeMermanOperationMetadata(asciiMetadataWithoutPrimary())
+        val plan = metadata.outputPlan as MermanAsciiOutputPlan
+        assertEquals(4, plan.schemaVersion)
+        assertNull(plan.primaryWidth)
+        assertNull(plan.primaryHeight)
+        assertNull(plan.layoutProfile)
+        assertNull(plan.primaryOverflowed)
+        assertEquals("adaptive", plan.requestedGraphPresentation)
+        assertEquals("auto", plan.requestedLayoutProfile)
+        assertTrue(plan.compactAttempted)
+        assertEquals(40L, plan.emittedWidth)
+        assertEquals(100L, plan.emittedHeight)
+        assertFalse(plan.emittedOverflowed)
+        assertEquals("port_capacity_exceeded", plan.fallbackReason)
+
+        val empty = JSONObject(asciiMetadataWithoutPrimary())
+        empty.getJSONObject("output_plan").apply {
+            put("primary_width", 0)
+            put("primary_height", 0)
+            put("layout_profile", "canonical")
+            put("primary_overflowed", false)
+            put("emitted_width", 0)
+            put("emitted_height", 0)
+            put("projection", "diagrammatic")
+            put("requested_layout_profile", "canonical")
+            put("requested_graph_presentation", "strict")
+            put("compact_attempted", false)
+            put("outcome", "empty")
+            put("fallback_attempted", false)
+            put("fallback_reason", JSONObject.NULL)
+            put("lossiness", "none")
+        }
+        val emptyPlan = decodeMermanOperationMetadata(empty.toString()).outputPlan as MermanAsciiOutputPlan
+        assertEquals(0L, emptyPlan.primaryWidth)
+        assertEquals(0L, emptyPlan.primaryHeight)
+        assertEquals("canonical", emptyPlan.layoutProfile)
+        assertEquals(false, emptyPlan.primaryOverflowed)
+    }
+
+    @Test
+    fun asciiSchemaFourRequiresExplicitPairedNullableFields() {
+        for (field in listOf(
+            "primary_width", "primary_height", "layout_profile", "primary_overflowed",
+            "requested_graph_presentation", "emitted_overflowed",
+        )) {
+            val metadata = JSONObject(asciiMetadataWithoutPrimary())
+            metadata.getJSONObject("output_plan").remove(field)
+            val error = runCatching { decodeMermanOperationMetadata(metadata.toString()) }.exceptionOrNull()
+            assertTrue("missing $field must fail", error is MermanException)
+        }
+        for ((field, value) in listOf(
+            "primary_width" to 0,
+            "primary_height" to 0,
+            "layout_profile" to "canonical",
+            "primary_overflowed" to false,
+        )) {
+            val metadata = JSONObject(asciiMetadataWithoutPrimary())
+            metadata.getJSONObject("output_plan").put(field, value)
+            val error = runCatching { decodeMermanOperationMetadata(metadata.toString()) }.exceptionOrNull()
+            assertTrue("partially available primary field $field must fail", error is MermanException)
+        }
+        for ((field, value) in listOf(
+            "requested_graph_presentation" to JSONObject.NULL,
+            "emitted_overflowed" to JSONObject.NULL,
+        )) {
+            val metadata = JSONObject(asciiMetadataWithoutPrimary())
+            metadata.getJSONObject("output_plan").put(field, value)
+            val error = runCatching { decodeMermanOperationMetadata(metadata.toString()) }.exceptionOrNull()
+            assertTrue("invalid $field must fail", error is MermanException)
+        }
+        for (version in listOf(0, 1, 2, 3, 5)) {
+            val metadata = JSONObject(asciiMetadataWithoutPrimary())
+            metadata.getJSONObject("output_plan").put("schema_version", version)
+            val error = runCatching { decodeMermanOperationMetadata(metadata.toString()) }.exceptionOrNull()
+            assertTrue("ASCII schema $version must fail", error is MermanException)
+        }
     }
 
     @Test
@@ -240,9 +325,11 @@ class MermanOperationMetadataTest {
                           "width_profile":"unicode",
                           "layout_profile":"canonical",
                           "requested_layout_profile":"canonical",
+                          "requested_graph_presentation":"strict",
                           "compact_attempted":false,
                           "requested_max_width":null,
-                          "overflowed":false,
+                          "primary_overflowed":false,
+                          "emitted_overflowed":false,
                           "outcome":"primary",
                           "fallback_capability":"none",
                           "fallback_attempted":false,
@@ -274,6 +361,39 @@ class MermanOperationMetadataTest {
             assertEquals(expectedMessage, error.message)
         }
     }
+
+    private fun asciiMetadataWithoutPrimary(): String = metadataJson(
+        operationId = "ascii",
+        mediaType = "text/plain; charset=utf-8",
+        byteLength = 96,
+        outputPlan = """
+            {
+              "kind":"ascii",
+              "schema_version":4,
+              "family":"flowchart-v2",
+              "projection":"structured_text",
+              "encoding":"utf-8",
+              "primary_width":null,
+              "primary_height":null,
+              "emitted_width":40,
+              "emitted_height":100,
+              "width_profile":"unicode",
+              "layout_profile":null,
+              "requested_layout_profile":"auto",
+              "requested_graph_presentation":"adaptive",
+              "compact_attempted":true,
+              "requested_max_width":80,
+              "primary_overflowed":null,
+              "emitted_overflowed":false,
+              "outcome":"fallback",
+              "fallback_capability":"available",
+              "fallback_attempted":true,
+              "fallback_reason":"port_capacity_exceeded",
+              "trimmed":false,
+              "lossiness":"presentation_only"
+            }
+        """.trimIndent(),
+    )
 
     private fun metadataJson(
         operationId: String,

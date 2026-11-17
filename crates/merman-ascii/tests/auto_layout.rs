@@ -41,13 +41,14 @@ fn auto_width_matrix_keeps_complete_nodes_and_arrows_when_compact_is_taller() {
             .expect("Allow should emit the complete narrower candidate");
             assert_eq!(output.text, compact);
             assert_eq!(output.requested_layout_profile, AsciiLayoutProfile::Auto);
-            assert_eq!(output.layout_profile, AsciiLayoutProfile::Compact);
+            assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Compact));
             assert!(output.compact_attempted);
             assert!(!output.fallback.attempted);
-            assert_eq!(output.primary_extent.width, compact_extent.0);
-            assert_eq!(output.primary_extent.height, compact_extent.1);
-            assert_eq!(output.emitted_extent, output.primary_extent);
-            assert_eq!(output.overflowed, width < 120);
+            assert_eq!(output.primary_extent.unwrap().width, compact_extent.0);
+            assert_eq!(output.primary_extent.unwrap().height, compact_extent.1);
+            assert_eq!(Some(output.emitted_extent), output.primary_extent);
+            assert_eq!(output.primary_overflowed, Some(width < 120));
+            assert_eq!(output.emitted_overflowed, width < 120);
             assert_eq!(
                 output.outcome,
                 if width < 120 {
@@ -97,11 +98,11 @@ fn auto_keeps_canonical_without_retry_when_it_fits_exactly() {
             )
             .expect("an exact fit should emit canonical output under every overflow policy");
             assert_eq!(output.text, canonical);
-            assert_eq!(output.layout_profile, AsciiLayoutProfile::Canonical);
+            assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Canonical));
             assert_eq!(output.requested_layout_profile, AsciiLayoutProfile::Auto);
             assert!(!output.compact_attempted);
             assert!(!output.fallback.attempted);
-            assert!(!output.overflowed);
+            assert_eq!(output.primary_overflowed, Some(false));
         }
     }
 }
@@ -121,7 +122,7 @@ fn auto_applies_error_or_structured_fallback_to_the_selected_primary_extent() {
     assert!(matches!(
         error,
         AsciiError::WidthOverflow { max_width: 60, actual_width, .. }
-            if actual_width == selected.primary_extent.width
+            if actual_width == selected.primary_extent.unwrap().width
     ));
 
     let fallback = render_model_report(
@@ -131,11 +132,11 @@ fn auto_applies_error_or_structured_fallback_to_the_selected_primary_extent() {
     )
     .expect("the complete structured graph should fit sixty cells");
     assert_eq!(fallback.primary_extent, selected.primary_extent);
-    assert_eq!(fallback.layout_profile, AsciiLayoutProfile::Compact);
+    assert_eq!(fallback.layout_profile, Some(AsciiLayoutProfile::Compact));
     assert_eq!(fallback.requested_layout_profile, AsciiLayoutProfile::Auto);
     assert!(fallback.compact_attempted);
     assert!(fallback.fallback.attempted);
-    assert!(fallback.overflowed);
+    assert_eq!(fallback.primary_overflowed, Some(true));
     assert_eq!(fallback.outcome, AsciiOutputOutcome::Fallback);
     assert_eq!(fallback.projection, AsciiProjection::StructuredText);
     assert!(fallback.emitted_extent.width <= 60);
@@ -162,7 +163,7 @@ fn explicit_canonical_remains_fixed_even_when_compact_would_fit() {
     let output = render_model_report(&model, &options, AsciiViewportPolicy::with_max_width(120))
         .expect("fixed Canonical with Allow should keep its full width");
     assert_eq!(output.text, canonical);
-    assert_eq!(output.layout_profile, AsciiLayoutProfile::Canonical);
+    assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Canonical));
     assert_eq!(
         output.requested_layout_profile,
         AsciiLayoutProfile::Canonical
@@ -210,9 +211,9 @@ fn explicit_family_overrides_survive_auto_and_equal_width_prefers_canonical() {
         )
         .expect("Auto should preserve a complete canonical candidate on a width tie");
         assert_eq!(output.text, canonical);
-        assert_eq!(output.layout_profile, AsciiLayoutProfile::Canonical);
+        assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Canonical));
         assert!(output.compact_attempted);
-        assert!(output.overflowed);
+        assert_eq!(output.primary_overflowed, Some(true));
     }
 }
 
@@ -228,7 +229,7 @@ fn auto_sequence_with_notes_and_self_messages_respects_required_label_space() {
         AsciiViewportPolicy::with_max_width(105).overflow(OverflowPolicy::Error),
     )
     .expect("Compact should fit the note/self-message diagram");
-    assert_eq!(output.layout_profile, AsciiLayoutProfile::Compact);
+    assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Compact));
     assert!(output.compact_attempted);
     assert_eq!(
         (output.emitted_extent.width, output.emitted_extent.height),
@@ -358,7 +359,7 @@ fn auto_preserves_styled_encoding_and_rejects_styled_fallback_preflight() {
             AsciiViewportPolicy::with_max_width(120).overflow(OverflowPolicy::Error),
         )
         .expect("automatic fitting supports styled primary output");
-        assert_eq!(output.layout_profile, AsciiLayoutProfile::Compact);
+        assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Compact));
         assert!(output.compact_attempted);
         assert!(output.text.contains(encoded_marker));
         assert!(output.emitted_extent.width <= 120);
@@ -377,7 +378,7 @@ fn auto_preserves_styled_encoding_and_rejects_styled_fallback_preflight() {
 }
 
 #[test]
-fn schema_three_serializes_requested_and_selected_layout_without_conflating_fallback() {
+fn schema_four_serializes_requested_and_selected_layout_without_conflating_fallback() {
     let model = parse_model(LONG_NODE_CHAIN);
     let output = render_model_report(
         &model,
@@ -386,10 +387,14 @@ fn schema_three_serializes_requested_and_selected_layout_without_conflating_fall
     )
     .expect("automatic fitting should produce a report");
     let metadata = serde_json::to_value(output.metadata()).expect("metadata should serialize");
-    assert_eq!(metadata["schema_version"], 3);
+    assert_eq!(metadata["schema_version"], 4);
     assert_eq!(metadata["requested_layout_profile"], "auto");
     assert_eq!(metadata["layout_profile"], "compact");
     assert_eq!(metadata["compact_attempted"], true);
+    assert_eq!(metadata["requested_graph_presentation"], "strict");
+    assert_eq!(metadata["primary_overflowed"], false);
+    assert_eq!(metadata["emitted_overflowed"], false);
+    assert!(metadata.get("overflowed").is_none());
     assert_eq!(metadata["fallback_attempted"], false);
     let report = serde_json::to_value(output.report()).expect("report should serialize");
     for (field, value) in metadata.as_object().expect("metadata object") {
@@ -454,18 +459,21 @@ fn auto_sequence_retains_canonical_document_under_the_same_exact_cell_budget() {
             panic!("{profile:?} must fit exactly {exact_cells} cells: {error}")
         });
         assert_eq!(output.text, compact);
-        assert_eq!(output.layout_profile, AsciiLayoutProfile::Compact);
+        assert_eq!(output.layout_profile, Some(AsciiLayoutProfile::Compact));
         assert_eq!(output.requested_layout_profile, profile);
         assert_eq!(
             output.compact_attempted,
             profile == AsciiLayoutProfile::Auto
         );
         assert_eq!(
-            (output.primary_extent.width, output.primary_extent.height),
+            (
+                output.primary_extent.unwrap().width,
+                output.primary_extent.unwrap().height
+            ),
             (105, 58)
         );
-        assert_eq!(output.emitted_extent, output.primary_extent);
-        assert!(!output.overflowed);
+        assert_eq!(Some(output.emitted_extent), output.primary_extent);
+        assert_eq!(output.primary_overflowed, Some(false));
         assert!(!output.fallback.attempted);
 
         let error = render_with_budget(exact_cells - 1)
@@ -496,15 +504,15 @@ fn compact_and_auto_keep_sibling_group_frames_separate_at_width_fifty() {
             AsciiViewportPolicy::with_max_width(50),
         )
         .unwrap();
-        assert_eq!(compact.primary_extent.width, 50);
-        assert_eq!(compact.primary_extent.height, 9);
+        assert_eq!(compact.primary_extent.unwrap().width, 50);
+        assert_eq!(compact.primary_extent.unwrap().height, 9);
         let automatic = render_model_report(
             &model,
             &options.with_layout_profile(AsciiLayoutProfile::Auto),
             AsciiViewportPolicy::with_max_width(50),
         )
         .unwrap();
-        assert_eq!(automatic.layout_profile, AsciiLayoutProfile::Compact);
+        assert_eq!(automatic.layout_profile, Some(AsciiLayoutProfile::Compact));
         assert_eq!(automatic.text, compact.text);
         let top: Vec<char> = compact.text.lines().next().unwrap().chars().collect();
         let bottom: Vec<char> = compact.text.lines().last().unwrap().chars().collect();

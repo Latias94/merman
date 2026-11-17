@@ -525,7 +525,7 @@ fn flowchart_and_sequence_width_policy_matrix_is_typed_and_complete() {
                     plain_options.terminal_width_profile,
                 );
                 for max_width in WIDTH_MATRIX {
-                    let overflowed = baseline.primary_extent.width > max_width;
+                    let overflowed = baseline.primary_extent.unwrap().width > max_width;
                     for (color_mode, encoding) in [
                         (AsciiColorMode::Plain, AsciiOutputEncoding::Plain),
                         (AsciiColorMode::Ansi16, AsciiOutputEncoding::Ansi16),
@@ -545,7 +545,8 @@ fn flowchart_and_sequence_width_policy_matrix_is_typed_and_complete() {
                         assert_eq!(allow.encoding, encoding);
                         assert_eq!(allow.primary_extent, baseline.primary_extent);
                         assert_eq!(allow.emitted_extent, baseline.emitted_extent);
-                        assert_eq!(allow.overflowed, overflowed);
+                        assert_eq!(allow.primary_overflowed, Some(overflowed));
+                        assert_eq!(allow.emitted_overflowed, overflowed);
                         assert_eq!(
                             allow.outcome,
                             if overflowed {
@@ -574,7 +575,7 @@ fn flowchart_and_sequence_width_policy_matrix_is_typed_and_complete() {
                                         actual_width,
                                         ..
                                     }) if actual_max == max_width
-                                        && actual_width == baseline.primary_extent.width
+                                        && actual_width == baseline.primary_extent.unwrap().width
                                 ),
                                 "Error {fixture}/{options:?}/width={max_width} produced {error_result:?}"
                             );

@@ -104,19 +104,43 @@ pub(in crate::graph::routing) fn terminal_label_hosts(
             let end = path[index];
             let span =
                 resources.checked_work_add(start.x.abs_diff(end.x), start.y.abs_diff(end.y))?;
+            let cross_extent = if descriptor.line_count() == 1 {
+                0
+            } else if start.y == end.y {
+                descriptor.line_count()
+            } else {
+                descriptor.width()
+            };
+            let along_extent = if start.y == end.y {
+                descriptor.width()
+            } else {
+                descriptor.line_count()
+            };
+            let deficit = if descriptor.line_count() == 1 {
+                0
+            } else {
+                along_extent.saturating_sub(span.saturating_add(1))
+            };
             segments
                 .try_reserve(1)
                 .map_err(|_| super::super::layout_allocation_failed())?;
-            segments.push((std::cmp::Reverse(span), start_index, start, end));
+            segments.push((
+                (deficit, cross_extent),
+                std::cmp::Reverse(span),
+                start_index,
+                start,
+                end,
+            ));
             start_index = index;
         }
     }
     crate::graph::layout::charge_sort_work(segments.len(), resources)?;
-    segments.sort_unstable_by_key(|(span, index, _, _)| (*span, *index));
+    segments
+        .sort_unstable_by_key(|(cross_extent, span, index, _, _)| (*cross_extent, *span, *index));
     labels
         .try_reserve(segments.len())
         .map_err(|_| super::super::layout_allocation_failed())?;
-    for (_, _, start, end) in segments {
+    for (_, _, _, start, end) in segments {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
         if let Some(label) = planned_label(Some(descriptor), start, end) {
@@ -144,5 +168,29 @@ fn direction_mask(direction: StepDirection) -> u8 {
         StepDirection::Down => DIR_DOWN,
         StepDirection::Left => DIR_LEFT,
         StepDirection::Right => DIR_RIGHT,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{AsciiResourcePolicy, TerminalWidthProfile};
+
+    #[test]
+    fn label_hosts_minimize_the_measured_perpendicular_footprint() {
+        let path: Vec<_> = (4..=20)
+            .map(|column| CanvasCoord { x: column, y: 2 })
+            .chain((3..=12).map(|row| CanvasCoord { x: 20, y: row }))
+            .chain((4..20).rev().map(|column| CanvasCoord { x: column, y: 12 }))
+            .collect();
+        let descriptor =
+            RoutedLabelDescriptor::for_test(0, "b<br>b<br>b", TerminalWidthProfile::Unicode)
+                .unwrap();
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let hosts = terminal_label_hosts(&path, Some(descriptor), &resources).unwrap();
+        let first = hosts.first().unwrap().as_ref().unwrap();
+        assert!(
+            matches!(first.anchor, super::super::LabelAnchor::Segment { start, end, .. } if start.x == end.x)
+        );
     }
 }

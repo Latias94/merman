@@ -23,6 +23,7 @@ const EXPECTATION_BY_ID = new Map(
 );
 const SVG_EXPECTATION = EXPECTATION_BY_ID.get("svg");
 const PNG_EXPECTATION = EXPECTATION_BY_ID.get("png");
+const ASCII_EXPECTATION = EXPECTATION_BY_ID.get("ascii");
 const REQUIRE_UNAVAILABLE = { requireUnavailable: true };
 
 function successEnvelope(
@@ -532,6 +533,59 @@ test("success envelopes are strict while preserving unknown future fields", () =
       () => decodeWireResponse(JSON.stringify(envelope), SVG_EXPECTATION),
       MermanInvalidTransportError,
     );
+  }
+});
+
+test("ASCII schema 4 metadata preserves unmeasured and empty primary geometry", () => {
+  const unmeasured = {
+    kind: "ascii",
+    schema_version: 4,
+    family: "flowchart",
+    projection: "structured_text",
+    encoding: "plain",
+    primary_width: null,
+    primary_height: null,
+    emitted_width: 9,
+    emitted_height: 1,
+    width_profile: "unicode",
+    layout_profile: null,
+    requested_layout_profile: "canonical",
+    requested_graph_presentation: "adaptive",
+    compact_attempted: false,
+    requested_max_width: null,
+    primary_overflowed: null,
+    emitted_overflowed: false,
+    outcome: "fallback",
+    fallback_capability: "available",
+    fallback_attempted: true,
+    fallback_reason: "port_capacity_exceeded",
+    trimmed: false,
+    lossiness: "presentation_only",
+  };
+  const empty = {
+    ...unmeasured,
+    projection: "diagrammatic",
+    primary_width: 0,
+    primary_height: 0,
+    emitted_width: 0,
+    emitted_height: 0,
+    layout_profile: "canonical",
+    requested_graph_presentation: "strict",
+    primary_overflowed: false,
+    outcome: "empty",
+    fallback_attempted: false,
+    fallback_reason: null,
+    lossiness: "none",
+  };
+  for (const [plan, text] of [[unmeasured, "N1: Alpha"], [empty, ""]]) {
+    const wire = successEnvelope(ASCII_EXPECTATION, text, { metadata: { output_plan: plan } });
+    const result = decodeWireResponse(wire, ASCII_EXPECTATION);
+    assert.equal(result.data, text);
+    assert.equal(result.metadata_json, JSON.parse(wire).result.metadata_json);
+    const metadata = JSON.parse(result.metadata_json);
+    assert.equal(metadata.version, 1);
+    assert.deepEqual(metadata.output_plan, plan);
+    assert.equal("overflowed" in metadata.output_plan, false);
   }
 });
 

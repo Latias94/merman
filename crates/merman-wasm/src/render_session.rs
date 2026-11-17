@@ -2,7 +2,7 @@
 
 use crate::{
     binding_error_to_js, execute_wasm_operation_result_with_services,
-    execute_wasm_operation_with_services, options_bytes, string_result, svg_result,
+    execute_wasm_operation_with_services, options_bytes, string_result, text_operation_result,
 };
 use merman_bindings_core::{BindingEngineServices, BindingError, build_icon_registry_from_json};
 use std::cell::Cell;
@@ -155,12 +155,15 @@ impl WasmRenderSession {
         options_json: Option<String>,
         services: BindingEngineServices,
     ) -> Result<JsValue, JsValue> {
-        svg_result(execute_wasm_operation_result_with_services(
+        text_operation_result(
+            execute_wasm_operation_result_with_services(
+                "svg",
+                source.as_bytes(),
+                options_bytes(options_json.as_deref()),
+                services,
+            ),
             "svg",
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-            services,
-        ))
+        )
     }
 
     fn with_operation<T>(&self, run: impl FnOnce() -> Result<T, JsValue>) -> Result<T, JsValue> {

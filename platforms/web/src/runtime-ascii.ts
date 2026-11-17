@@ -4,6 +4,7 @@ import type {
   AsciiCapability,
   AsciiCapabilityEvidence,
   AsciiDiagramType,
+  AsciiGraphPresentation,
   AsciiLayoutProfile,
   AsciiOutputEncoding,
   AsciiPrimaryProjection,
@@ -11,7 +12,7 @@ import type {
   AsciiSupportLevel,
   AsciiWidthProfile,
 } from "./public-catalog.js";
-import type { AsciiBindingOptions } from "./public-types.js";
+import type { AsciiBindingOptions, AsciiRenderResult } from "./public-types.js";
 import type { MermanRuntimeState } from "./runtime-state.js";
 
 interface AsciiRuntimeCache {
@@ -26,6 +27,14 @@ export function renderAscii(
   options?: AsciiBindingOptions | string
 ): string {
   return getMerman().renderAscii(source, encodeOptions(options));
+}
+
+/** Returns the text and canonical metadata from the same render operation. */
+export function renderAsciiResult(
+  source: string,
+  options?: AsciiBindingOptions | string
+): AsciiRenderResult {
+  return getMerman().renderAsciiResult(source, encodeOptions(options));
 }
 
 export function asciiSupportedDiagrams(): AsciiDiagramType[] {
@@ -43,6 +52,7 @@ export function asciiCapabilities(): AsciiCapability[] {
     .map(normalizeAsciiCapability);
   return cache.capabilities.map((capability) => ({
     ...capability,
+    graph_presentations: [...capability.graph_presentations],
     layout_profiles: [...capability.layout_profiles],
     width_profiles: [...capability.width_profiles],
     encodings: [...capability.encodings],
@@ -115,6 +125,7 @@ function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability 
     semantic_coverage: semanticCoverage,
     primary_projection: primaryProjection,
     structured_text_fallback: Boolean(capability.structured_text_fallback),
+    graph_presentations: normalizeAsciiGraphPresentations(capability.graph_presentations),
     layout_profiles: normalizeAsciiLayoutProfiles(capability.layout_profiles),
     width_profiles: normalizeAsciiWidthProfiles(capability.width_profiles),
     encodings: normalizeAsciiOutputEncodings(capability.encodings, "encodings"),
@@ -129,6 +140,16 @@ function normalizeAsciiCapability(capability: AsciiCapability): AsciiCapability 
     limits: Array.isArray(capability.limits) ? capability.limits.map(String) : [],
     evidence,
   };
+}
+
+function normalizeAsciiGraphPresentations(value: unknown): AsciiGraphPresentation[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Merman WASM returned invalid ASCII graph presentations.");
+  }
+  return value.map((presentation) => {
+    if (presentation === "strict" || presentation === "adaptive") return presentation;
+    throw new Error("Merman WASM returned an unknown ASCII graph presentation.");
+  });
 }
 
 function normalizeAsciiLayoutProfiles(value: unknown): AsciiLayoutProfile[] {

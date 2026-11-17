@@ -2,7 +2,7 @@ import json
 
 import merman
 from theme_authoring import run_theme_authoring_smoke
-from wheel_smoke import assert_math_svg
+from wheel_smoke import assert_ascii_output_metadata, assert_math_svg
 
 
 SOURCE = 'flowchart TD\nA@{ icon: "smoke:rocket", label: "Hello" } --> B[World]'
@@ -25,7 +25,7 @@ class Measurer(merman.MermanTextMeasurer):
 
 def main() -> None:
     api = merman.Merman()
-    require(api.binding_api_version_v7() == 7, "unexpected UniFFI binding API version")
+    require(api.binding_api_version_v8() == 8, "unexpected UniFFI binding API version")
 
     tiny_source_options = (
         merman.ResourceOptionsBuilder()
@@ -70,6 +70,7 @@ def main() -> None:
         '{"resources":{"profile":"constrained"}}', services
     )
     catalog = merman.get_runtime_catalog(api)
+    require(catalog["transport_api_version"] == 8, "unexpected catalog transport API")
     capabilities = set(catalog["capabilities"]["capability_ids"])
     require(
         {
@@ -103,20 +104,19 @@ def main() -> None:
     )
     ascii_plan = ascii_result.metadata.output_plan.ascii
     raw_plan = json.loads(ascii_result.metadata.output_plan.raw_json)
-    require(ascii_plan.schema_version == 3, "unexpected ASCII schema")
+    require(ascii_plan.schema_version == 4, "unexpected ASCII schema")
     require(ascii_plan.requested_layout_profile == "auto", "requested layout lost")
-    require(ascii_plan.compact_attempted == raw_plan["compact_attempted"], "Compact metadata lost")
-    compact_source = "flowchart LR\nA --> B --> C --> D"
-    compact = api.render_ascii_result(
-        compact_source, '{"ascii":{"layout_profile":"compact"}}'
+    require(ascii_plan.requested_graph_presentation == "strict", "requested presentation lost")
+    require(
+        ascii_plan.primary_width == raw_plan["primary_width"]
+        and ascii_plan.primary_height == raw_plan["primary_height"]
+        and ascii_plan.layout_profile == raw_plan["layout_profile"]
+        and ascii_plan.primary_overflowed is False
+        and ascii_plan.emitted_overflowed is False,
+        "primary geometry or overflow metadata lost",
     )
-    selected = api.render_ascii_result(compact_source, json.dumps({"ascii": {
-        "layout_profile": "auto", "max_width": compact.metadata.output_plan.ascii.primary_width,
-        "overflow": "error",
-    }}))
-    require(selected.metadata.output_plan.ascii.compact_attempted, "Compact attempt lost")
-    require(selected.metadata.output_plan.ascii.layout_profile == "compact", "effective layout lost")
-    require(selected.data == compact.data, "Auto did not preserve selected Compact output")
+    require(ascii_plan.compact_attempted == raw_plan["compact_attempted"], "Compact metadata lost")
+    assert_ascii_output_metadata(api)
     require(engine.analyze_json(BASIC_SOURCE, None), "analysis smoke failed")
     assert_math_svg(api.render_svg('flowchart TD\nA["$$x^2$$"] --> B', None))
 

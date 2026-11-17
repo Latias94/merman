@@ -1789,6 +1789,16 @@ pub(crate) struct TextOutputCliArgs {
     )]
     pub(crate) ascii_layout_profile: TextLayoutProfile,
 
+    /// Permit a complete Plain graph document when bounded routing cannot draw the graph.
+    #[arg(
+        long = "ascii-graph-presentation",
+        value_enum,
+        default_value = "strict",
+        help_heading = "Text output",
+        hide_short_help = true
+    )]
+    pub(crate) ascii_graph_presentation: TextGraphPresentation,
+
     /// Emit the canonical ASCII report JSON instead of text bytes.
     #[arg(
         long = "ascii-report",
@@ -1836,6 +1846,14 @@ pub(crate) enum TextLayoutProfile {
     Compact,
     /// Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow.
     Auto,
+}
+
+#[cfg(feature = "ascii")]
+#[derive(Debug, Clone, Copy, Default, ValueEnum)]
+pub(crate) enum TextGraphPresentation {
+    #[default]
+    Strict,
+    Adaptive,
 }
 
 #[cfg(feature = "ascii")]

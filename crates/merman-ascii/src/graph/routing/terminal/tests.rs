@@ -1257,6 +1257,115 @@ fn compressed_search_and_materialization_share_exact_layout_work_limits() {
 }
 
 #[test]
+fn exhausted_optional_search_does_not_consume_required_route_allowance() {
+    let policy = AsciiResourcePolicy::unbounded();
+    let budget = crate::operation::GraphPlanningBudget::default();
+    let initial = budget.feasibility.remaining();
+    let execution = AsciiExecution::for_test(&policy).with_graph_planning(&budget);
+    let mut resources = ResourceContext::new(policy);
+    let (graph, layout, charset) = channel_fixture(64);
+    let scene = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let obstacles = RouteObstacles {
+        scene: &scene,
+        routes: &[],
+        owner: &owner,
+    };
+    budget.quality.debit(usize::MAX, usize::MAX);
+    assert!(
+        plan_terminal_route_with_budget(
+            channel_request(&graph, &layout, &charset),
+            obstacles,
+            None,
+            None,
+            SearchBudget::Limited(&budget.quality),
+            &mut resources,
+            execution,
+        )
+        .unwrap()
+        .is_none()
+    );
+    let before = resources.layout_work_used();
+    let required = plan_terminal_route_with_budget(
+        channel_request(&graph, &layout, &charset),
+        obstacles,
+        None,
+        None,
+        SearchBudget::Limited(&budget.feasibility),
+        &mut resources,
+        execution,
+    )
+    .unwrap()
+    .expect("required routing retains its independent allowance");
+    assert!(required.1.attachments.is_some());
+    assert!(resources.layout_work_used() > before);
+    assert_eq!(budget.quality.remaining(), (0, 0));
+    let remaining = budget.feasibility.remaining();
+    assert!(remaining.0 < initial.0 && remaining.1 < initial.1);
+    assert!(
+        plan_terminal_route_with_budget(
+            channel_request(&graph, &layout, &charset),
+            obstacles,
+            None,
+            None,
+            SearchBudget::Limited(&budget.replacement),
+            &mut resources,
+            execution,
+        )
+        .unwrap()
+        .is_some()
+    );
+    assert_eq!(budget.feasibility.remaining(), remaining);
+}
+
+#[test]
+fn replacement_search_keeps_useful_credit_for_wide_offset_contacts() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    for id in ["a", "b", "block"] {
+        graph.add_node(id, id);
+    }
+    graph.add_edge("a", "b");
+    let options = AsciiRenderOptions::ascii();
+    let charset = GraphCharset::for_options(&options);
+    let mut layout = layout_graph(&graph, &options);
+    for (node, (left, top, width, height)) in
+        layout
+            .nodes
+            .iter_mut()
+            .zip([(10, 10, 100, 5), (10, 40, 100, 5), (58, 15, 5, 5)])
+    {
+        (node.x, node.y, node.width, node.height) = (left, top, width, height);
+    }
+    let policy = AsciiResourcePolicy::unbounded();
+    let budget = crate::operation::GraphPlanningBudget::default();
+    let execution = AsciiExecution::for_test(&policy).with_graph_planning(&budget);
+    let mut resources = ResourceContext::new(policy);
+    let scene = SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+    let owner = RouteOwner::for_test(0, "a", "b");
+    let before = budget.replacement.remaining();
+    let (_, route) = plan_terminal_route_with_budget(
+        channel_request(&graph, &layout, &charset),
+        RouteObstacles {
+            scene: &scene,
+            routes: &[],
+            owner: &owner,
+        },
+        None,
+        None,
+        SearchBudget::Replacement(&budget.replacement),
+        &mut resources,
+        execution,
+    )
+    .unwrap()
+    .expect("a wide contour must not divide every actual search down to one expansion");
+    let ports = route.attachments.unwrap();
+    assert_eq!(ports.start.outward, StepDirection::Down);
+    assert_ne!(ports.start.contact.x, layout.nodes[0].center_x());
+    assert!(budget.replacement.remaining().0 < before.0);
+    assert!(budget.replacement.remaining().0 > 0);
+}
+
+#[test]
 fn compressed_axes_segment_scans_and_winner_expansion_observe_cancellation() {
     let policy = AsciiResourcePolicy::unbounded();
     let mut resources = ResourceContext::new(policy);

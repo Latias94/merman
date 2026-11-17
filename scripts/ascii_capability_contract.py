@@ -18,13 +18,14 @@ ASCII_FAMILY_FIELDS = {
     "structured_text_fallback",
     "support_level",
     "layout_profiles",
+    "graph_presentations",
     "width_profiles",
     "encodings",
     "fallback_encodings",
 }
 ASCII_MAPPING_FIELDS = {"detected_type", "family"}
 ASCII_REPORT = {
-    "success_schema_version": 3,
+    "success_schema_version": 4,
     "error_schema_version": 1,
     "encoding": "plain",
     "styled_output": False,
@@ -150,6 +151,7 @@ def _expected_family_contract(family: str) -> dict[str, object]:
             "structured_text_fallback": False,
             "support_level": "unsupported",
             "layout_profiles": [],
+            "graph_presentations": [],
             "width_profiles": [],
             "encodings": [],
             "fallback_encodings": [],
@@ -163,6 +165,8 @@ def _expected_family_contract(family: str) -> dict[str, object]:
         "structured_text_fallback": True,
         "support_level": support_level,
         "layout_profiles": layouts,
+        "graph_presentations": ["strict", "adaptive"]
+        if family in {"flowchart", "swimlane", "state"} else ["strict"],
         "width_profiles": ASCII_WIDTH_PROFILES,
         "encodings": ASCII_ENCODINGS,
         "fallback_encodings": ["plain"],
@@ -183,7 +187,7 @@ def canonical_ascii_capabilities() -> dict[str, object]:
         )
     return {
         "schema_version": 1,
-        "output_schema_version": 3,
+        "output_schema_version": 4,
         "report": dict(ASCII_REPORT),
         "families": families,
         "detected_type_mappings": [
@@ -202,7 +206,7 @@ def validate_ascii_capabilities(value: object) -> None:
         raise AsciiCapabilityContractError("ASCII schema version drifted")
     if (
         type(value["output_schema_version"]) is not int
-        or value["output_schema_version"] != 3
+        or value["output_schema_version"] != 4
     ):
         raise AsciiCapabilityContractError("ASCII output schema version drifted")
     if value["report"] != ASCII_REPORT:

@@ -2,7 +2,11 @@
 
 Status: experimental publishable Python package.
 
-This guide targets `0.10.0-alpha.1` (`0.10.0a1` on PyPI), a five-target ordinary SVG product with math. Published `0.9.2` keeps its original three-target coverage and omits math; use its tagged documentation for that version. Candidate qualification does not establish PyPI availability or change existing artifacts.
+Current-source API examples use direct UniFFI binding API `8` and ASCII output schema `4`.
+The `0.10.0-alpha.1` (`0.10.0a1` in Python packaging) release recipe uses a five-target ordinary SVG
+product with math. Published `0.9.2` keeps its original three-target coverage and omits math; use
+tagged documentation for released artifacts and their binding contracts. Candidate qualification
+does not establish PyPI availability or change existing artifacts.
 
 This guide owns Python generation, wheel assembly, and release procedures. The
 [package generator](../../crates/merman-uniffi/examples/generate_python_package.rs) reads UniFFI
@@ -64,15 +68,24 @@ merman.require_text_measurement_protocol_version(
     merman.TEXT_MEASUREMENT_PROTOCOL_VERSION
 )
 print(api.package_version())
-assert api.binding_api_version_v7() == 7
+assert api.binding_api_version_v8() == 8
 catalog = merman.get_runtime_catalog(api)
 capabilities = catalog["capabilities"]
 assert catalog["schema_version"] == 1
-assert catalog["transport_api_version"] == api.binding_api_version_v7()
+assert catalog["transport_api_version"] == api.binding_api_version_v8()
 assert "svg" in capabilities["capability_ids"]
 
 svg = api.render_svg("flowchart TD\nA[Hello] --> B[World]", None)
-ascii_text = api.render_ascii("flowchart TD\nA[Hello] --> B[World]", None)
+ascii_result = api.render_ascii_result(
+    "flowchart TD\nA[Hello] --> B[World]",
+    json.dumps({"ascii": {
+        "graph_presentation": "adaptive", "max_width": 80, "overflow": "fallback",
+    }}),
+)
+ascii_plan = ascii_result.metadata.output_plan.ascii
+assert ascii_plan.schema_version == 4
+assert ascii_plan.requested_graph_presentation == "adaptive"
+ascii_text = bytes(ascii_result.data).decode("utf-8")
 semantic_json = api.parse_json("flowchart TD\nA[Hello] --> B[World]", None)
 layout_json = api.layout_json("flowchart TD\nA[Hello] --> B[World]", None)
 document_json = api.analyze_document_json(
@@ -160,7 +173,7 @@ The optional `options_json` argument uses the shared contract documented in
 references and policy tags, for editor settings, diagnostic explanations, or LSP rule
 configuration.
 
-The direct UniFFI binding API is `7`, independently versioned from the native C ABI and the
+The direct UniFFI binding API is `8`, independently versioned from the native C ABI and the
 text-measurement protocol. `get_runtime_catalog()` reads one atomic catalog, validates
 flat schema `1`, artifact identity, sorted stable IDs, and local output/operation and
 adapter/capability relations before returning it. Do not infer availability from Cargo feature
@@ -168,6 +181,16 @@ names or copy an ID table into Python; inspect the loaded catalog instead. Prese
 discovery IDs. The [UniFFI contract](UNIFFI.md#public-model) owns version checks and the open
 `MermanOutputPlan` record. Result-returning binary methods preserve operation metadata; inspect
 `output_plan.kind` and optional format payloads, and retain `raw_json` for future kinds.
+
+For schema-4 ASCII plans, `primary_width`, `primary_height`, `layout_profile`, and
+`primary_overflowed` are `None` together when the primary layout is unavailable. Preserve measured
+`0` and `False` values; `emitted_width`, `emitted_height`, and `emitted_overflowed` describe the
+actual output. Capability records expose `graph_presentations`; the plan records
+`requested_graph_presentation` alongside the native layout selection evidence. Follow
+[ASCII options](OPTIONS_JSON.md#ascii-options) for admitted policy combinations. Regenerate the
+package and matching native library together when replacing `binding_api_version_v7()` with
+`binding_api_version_v8()`; Options JSON schema `3` and outer operation metadata schema `1` are
+unchanged.
 
 ## Text Measurement
 

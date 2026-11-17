@@ -146,12 +146,15 @@ pub fn render_svg(source: &str, options_json: Option<String>) -> Result<String, 
 /// Renders once and retains the execution metadata for the returned SVG.
 #[wasm_bindgen(js_name = renderSvgResult)]
 pub fn render_svg_result(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
-    svg_result(execute_wasm_operation_result(
+    text_operation_result(
+        execute_wasm_operation_result(
+            "svg",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            None,
+        ),
         "svg",
-        source.as_bytes(),
-        options_bytes(options_json.as_deref()),
-        None,
-    ))
+    )
 }
 
 #[wasm_bindgen(js_name = svgPlanJson)]
@@ -193,12 +196,15 @@ pub fn render_svg_result_with_text_measurer(
     with_host_text_measure_callback(callback, || {
         let services = merman_bindings_core::BindingEngineServices::new()
             .with_host_text_measurer(Arc::new(WasmHostTextMeasurer));
-        svg_result(execute_wasm_operation_result_with_services(
+        text_operation_result(
+            execute_wasm_operation_result_with_services(
+                "svg",
+                source.as_bytes(),
+                options_bytes(options_json.as_deref()),
+                services,
+            ),
             "svg",
-            source.as_bytes(),
-            options_bytes(options_json.as_deref()),
-            services,
-        ))
+        )
     })
 }
 
@@ -278,6 +284,20 @@ pub fn render_ascii(source: &str, options_json: Option<String>) -> Result<String
         options_bytes(options_json.as_deref()),
         None,
     ))
+}
+
+/// Renders once and retains the execution metadata for the returned ASCII text.
+#[wasm_bindgen(js_name = renderAsciiResult)]
+pub fn render_ascii_result(source: &str, options_json: Option<String>) -> Result<JsValue, JsValue> {
+    text_operation_result(
+        execute_wasm_operation_result(
+            "ascii",
+            source.as_bytes(),
+            options_bytes(options_json.as_deref()),
+            None,
+        ),
+        "text",
+    )
 }
 
 #[wasm_bindgen]
@@ -599,13 +619,16 @@ fn execute_wasm_operation_result_with_services(
     )
 }
 
-fn svg_result(result: Result<BindingOperationResult, BindingError>) -> Result<JsValue, JsValue> {
+fn text_operation_result(
+    result: Result<BindingOperationResult, BindingError>,
+    text_field: &str,
+) -> Result<JsValue, JsValue> {
     let output = result.map_err(binding_error_to_js)?;
     let (_, _, data, metadata) = output.into_parts();
-    let svg = String::from_utf8(data).map_err(|error| JsValue::from_str(&error.to_string()))?;
+    let text = String::from_utf8(data).map_err(|error| JsValue::from_str(&error.to_string()))?;
     let metadata: serde_json::Value = serde_json::from_slice(metadata.json_bytes())
         .map_err(|error| JsValue::from_str(&error.to_string()))?;
-    serde_json::json!({ "svg": svg, "metadata": metadata })
+    serde_json::json!({ (text_field): text, "metadata": metadata })
         .serialize(&serde_wasm_bindgen::Serializer::json_compatible())
         .map_err(|error| JsValue::from_str(&error.to_string()))
 }
@@ -903,7 +926,7 @@ mod tests {
     #[test]
     fn transport_api_version_is_independent_from_host_measurement_protocol() {
         assert_eq!(transport_api_version(), WASM_TRANSPORT_API_VERSION);
-        assert_eq!(WASM_TRANSPORT_API_VERSION, 10);
+        assert_eq!(WASM_TRANSPORT_API_VERSION, 11);
     }
 
     #[cfg(feature = "ascii")]
@@ -923,7 +946,27 @@ mod tests {
         assert_eq!(flowchart["semantic_coverage"], "partial");
         assert_eq!(flowchart["primary_projection"], "diagrammatic");
         assert_eq!(flowchart["support_level"], "partial");
+        assert_eq!(
+            flowchart["graph_presentations"],
+            serde_json::json!(["strict", "adaptive"])
+        );
         assert!(flowchart.get("summary_fallback").is_none());
+
+        let state = capabilities
+            .iter()
+            .find(|capability| capability["diagram_type"] == "state")
+            .unwrap();
+        assert_eq!(
+            state["graph_presentations"],
+            serde_json::json!(["strict", "adaptive"])
+        );
+        assert_eq!(state["layout_profiles"], serde_json::json!(["canonical"]));
+
+        let class = capabilities
+            .iter()
+            .find(|capability| capability["diagram_type"] == "class")
+            .unwrap();
+        assert_eq!(class["graph_presentations"], serde_json::json!(["strict"]));
 
         let zenuml = capabilities
             .iter()
@@ -932,6 +975,7 @@ mod tests {
         assert!(zenuml["semantic_coverage"].is_null());
         assert_eq!(zenuml["primary_projection"], "none");
         assert_eq!(zenuml["support_level"], "unsupported");
+        assert_eq!(zenuml["graph_presentations"], serde_json::json!([]));
     }
 
     #[test]
@@ -1863,6 +1907,151 @@ mod tests {
         assert!(!text.contains("Alpha Beta Gamma Delta"), "{text}");
     }
 
+    #[cfg(all(feature = "ascii", feature = "diagram-flowchart"))]
+    #[test]
+    fn wasm_ascii_result_preserves_the_canonical_report_and_text_projection() {
+        let source = "flowchart LR\nA[Hello] --> B[World]";
+        let result = execute_wasm_operation_result("ascii", source.as_bytes(), b"", None).unwrap();
+        assert_eq!(
+            result.data(),
+            render_ascii(source, None).unwrap().as_bytes()
+        );
+        let metadata: Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        assert_eq!(metadata["version"], 1);
+        assert_eq!(metadata["operation_id"], "ascii");
+        assert_eq!(metadata["byte_length"], result.data().len());
+        let plan = &metadata["output_plan"];
+        assert_eq!(plan["kind"], "ascii");
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["requested_graph_presentation"], "strict");
+        assert_eq!(plan["projection"], "diagrammatic");
+        assert_eq!(plan["layout_profile"], "canonical");
+        assert_eq!(plan["primary_width"], plan["emitted_width"]);
+        assert_eq!(plan["primary_height"], plan["emitted_height"]);
+        assert_eq!(plan["primary_overflowed"], false);
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert!(plan.get("overflowed").is_none());
+
+        let empty = execute_wasm_operation_result("ascii", b"flowchart LR", b"", None).unwrap();
+        assert!(empty.data().is_empty());
+        let metadata: Value = serde_json::from_slice(empty.metadata_json()).unwrap();
+        let plan = &metadata["output_plan"];
+        assert_eq!(plan["primary_width"], 0);
+        assert_eq!(plan["primary_height"], 0);
+        assert_eq!(plan["primary_overflowed"], false);
+        assert_eq!(plan["layout_profile"], "canonical");
+        assert_eq!(plan["outcome"], "empty");
+    }
+
+    #[cfg(all(feature = "ascii", feature = "diagram-flowchart"))]
+    #[test]
+    fn wasm_ascii_adaptive_result_keeps_unmeasured_primary_fields_null() {
+        let mut source = String::from("flowchart LR\nA@{ shape: f-circ }\nB[Target 🦀]\n");
+        for _ in 0..97 {
+            source.push_str("A o--o B\n");
+        }
+        let result = execute_wasm_operation_result(
+            "ascii",
+            source.as_bytes(),
+            br#"{"version":3,"ascii":{"graph_presentation":"adaptive","charset":"ascii"}}"#,
+            None,
+        )
+        .unwrap();
+        let metadata: Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        assert_eq!(metadata["byte_length"], result.data().len());
+        let plan = &metadata["output_plan"];
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["requested_graph_presentation"], "adaptive");
+        assert_eq!(plan["projection"], "structured_text");
+        assert_eq!(plan["outcome"], "fallback");
+        assert_eq!(plan["fallback_reason"], "port_capacity_exceeded");
+        assert_eq!(plan["requested_layout_profile"], "canonical");
+        assert_eq!(plan["compact_attempted"], false);
+        for field in [
+            "primary_width",
+            "primary_height",
+            "layout_profile",
+            "primary_overflowed",
+            "requested_max_width",
+        ] {
+            assert_eq!(plan.get(field), Some(&Value::Null), "{field}");
+        }
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert!(plan.get("overflowed").is_none());
+        assert!(plan["emitted_width"].as_u64().unwrap() > 0);
+        let text = std::str::from_utf8(result.data()).unwrap();
+        assert!(text.contains("Target 🦀"));
+        assert!(text.contains("E97:"));
+    }
+
+    #[cfg(all(feature = "ascii", feature = "diagram-timeline"))]
+    #[test]
+    fn wasm_ascii_result_reports_measured_width_fallback() {
+        let result = execute_wasm_operation_result(
+            "ascii",
+            b"timeline\ntitle Basic\n2024 : Event with a long authored value",
+            br#"{"ascii":{"maxWidth":10,"overflow":"fallback"}}"#,
+            None,
+        )
+        .unwrap();
+        let metadata: Value = serde_json::from_slice(result.metadata_json()).unwrap();
+        let plan = &metadata["output_plan"];
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["requested_graph_presentation"], "strict");
+        assert_eq!(plan["outcome"], "fallback");
+        assert_eq!(plan["fallback_reason"], "primary_overflow");
+        assert_eq!(plan["primary_overflowed"], true);
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert!(plan["primary_width"].as_u64().unwrap() > 10);
+        assert!(plan["emitted_width"].as_u64().unwrap() <= 10);
+        assert_eq!(plan["layout_profile"], "canonical");
+    }
+
+    #[cfg(all(
+        feature = "ascii",
+        feature = "diagram-flowchart",
+        feature = "diagram-sequence",
+        feature = "diagram-state"
+    ))]
+    #[test]
+    fn wasm_ascii_result_retains_presentation_admission_boundaries() {
+        for (source, options) in [
+            (
+                "flowchart LR\nA --> B",
+                r#"{"ascii":{"graphPresentation":"adaptive","colorMode":"ansi16"}}"#,
+            ),
+            (
+                "sequenceDiagram\nA->>B: Hello",
+                r#"{"ascii":{"graph_presentation":"adaptive"}}"#,
+            ),
+            (
+                "stateDiagram-v2\nA --> B",
+                r#"{"ascii":{"graphPresentation":"adaptive","layoutProfile":"compact"}}"#,
+            ),
+        ] {
+            let error =
+                execute_wasm_operation_result("ascii", source.as_bytes(), options.as_bytes(), None)
+                    .expect_err("invalid presentation must remain an error");
+            assert_eq!(
+                error.status(),
+                merman_bindings_core::BindingStatus::InvalidArgument
+            );
+        }
+        let styled = execute_wasm_operation_result(
+            "ascii",
+            b"flowchart LR\nA --> B",
+            br#"{"ascii":{"colorMode":"ansi16"}}"#,
+            None,
+        )
+        .unwrap();
+        let metadata: Value = serde_json::from_slice(styled.metadata_json()).unwrap();
+        assert_eq!(
+            metadata["output_plan"]["requested_graph_presentation"],
+            "strict"
+        );
+        assert_eq!(metadata["output_plan"]["encoding"], "ansi16");
+    }
+
     #[cfg(feature = "ascii")]
     #[test]
     fn wasm_ascii_operation_preserves_a_typed_exact_resource_boundary() {
@@ -1882,7 +2071,7 @@ mod tests {
         assert!(!output.is_empty());
 
         let below_options = wasm_ascii_options(&case.id, expected - 1);
-        let error = execute_wasm_operation(
+        let error = execute_wasm_operation_result(
             "ascii",
             case.source.as_bytes(),
             below_options.as_bytes(),

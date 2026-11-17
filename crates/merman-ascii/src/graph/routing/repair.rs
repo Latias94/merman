@@ -1,5 +1,6 @@
+use super::conflict::BlockerWitnesses;
 use super::label::{RoutedLabelCatalogPlan, RoutedLabelDescriptor};
-use super::occupancy::{OccupiedRect, SceneOccupancy};
+use super::occupancy::SceneOccupancy;
 use super::path::RouteObstacles;
 use super::plan::{EdgeRouteRequest, MarkerEndpoint, RoutePlan};
 use super::terminal::{self, SearchBudget};
@@ -8,29 +9,57 @@ use super::{
     allocate_committed_route_labels, allocate_committed_route_marker_berths, endpoint_layout,
 };
 use crate::error::{AsciiError, Result};
-use crate::graph::layout::ROUTING_GRID_MARGIN;
 use crate::graph::topology::GraphGroupTopology;
-use crate::operation::AsciiExecution;
+use crate::operation::{AsciiExecution, GraphPlanningBudget};
 use crate::resource::ResourceContext;
 use merman_model::OperationPhase;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod witness_tests;
 
 // A scene shares both allowances. A failed proposal consumes its attempt and search work.
 const MAX_REORDER_ATTEMPTS: usize = 4;
-const MAX_CONFLICT_CONTRIBUTORS: usize = 3;
 
-pub(super) struct SceneRepairBudget {
-    pub(super) expansions: usize,
-    attempts: usize,
+enum RepairSearch {
+    Missing,
+    Displaced,
 }
 
-impl Default for SceneRepairBudget {
+pub(super) struct SceneRepairBudget<'budget> {
+    pub(super) expansions: usize,
+    attempts: usize,
+    shared: Option<&'budget GraphPlanningBudget>,
+}
+
+impl Default for SceneRepairBudget<'_> {
     fn default() -> Self {
         Self {
             expansions: terminal::MAX_REPAIR_EXPANSIONS,
             attempts: MAX_REORDER_ATTEMPTS,
+            shared: None,
+        }
+    }
+}
+
+impl<'budget> SceneRepairBudget<'budget> {
+    pub(super) fn for_execution(execution: AsciiExecution<'budget>) -> Self {
+        match execution.graph_planning() {
+            Some(shared) => Self {
+                expansions: shared.replacement.remaining().0,
+                attempts: shared.repair_attempts.get(),
+                shared: Some(shared),
+            },
+            None => Self::default(),
+        }
+    }
+}
+
+impl Drop for SceneRepairBudget<'_> {
+    fn drop(&mut self) {
+        if let Some(shared) = self.shared {
+            shared.repair_attempts.set(self.attempts);
         }
     }
 }
@@ -38,78 +67,72 @@ impl Default for SceneRepairBudget {
 /// Give a blocked edge priority over a bounded conflict set. The original occupancy
 /// remains live until every replacement, its markers, and its labels are valid.
 #[allow(clippy::too_many_arguments)]
-pub(super) fn reorder_failed_route(
+pub(super) fn repair_blocked_scene(
     request: EdgeRouteRequest<'_>,
     topology: Option<&GraphGroupTopology<'_>>,
     labels: &RoutedLabelCatalogPlan<'_>,
     owner: &RouteOwner,
+    witnesses: &BlockerWitnesses,
     routes: &mut Vec<PreparedRoute>,
     occupancy: &mut SceneOccupancy<'_>,
-    budget: &mut SceneRepairBudget,
+    budget: &mut SceneRepairBudget<'_>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<bool> {
+    let mut start_work = resources.layout_work_used();
+    let initial_allowance = budget.shared.map(|shared| shared.replacement.remaining().1);
     if budget.attempts == 0 || routes.is_empty() {
         return Ok(false);
     }
-    let left = request
-        .from
-        .x
-        .min(request.to.x)
-        .saturating_sub(ROUTING_GRID_MARGIN);
-    let top = request
-        .from
-        .y
-        .min(request.to.y)
-        .saturating_sub(ROUTING_GRID_MARGIN);
-    let right = resources.checked_grid_add(
-        request.from.right().max(request.to.right()),
-        ROUTING_GRID_MARGIN + 1,
-    )?;
-    let bottom = resources.checked_grid_add(
-        request.from.bottom().max(request.to.bottom()),
-        ROUTING_GRID_MARGIN + 1,
-    )?;
-    let corridor = OccupiedRect::try_new(left, top, right - left, bottom - top, resources)?;
     let original_len = routes.len();
-    resources.charge_layout_work(MAX_CONFLICT_CONTRIBUTORS)?;
     let mut conflicts = Vec::new();
     conflicts
-        .try_reserve_exact(MAX_CONFLICT_CONTRIBUTORS)
+        .try_reserve_exact(witnesses.blockers.len())
         .map_err(|_| super::layout_allocation_failed())?;
-    for removed_index in (0..original_len).rev() {
+    for blocker in &witnesses.blockers {
         execution.checkpoint(OperationPhase::Layout)?;
-        resources.charge_layout_work(1)?;
-        if !occupancy.route_bounds[removed_index].is_some_and(|bounds| bounds.intersects(corridor))
+        resources.charge_layout_work(routes.len())?;
+        if routes
+            .iter()
+            .any(|route| route.owner.canonical_edge_index == blocker.canonical_edge_index)
         {
-            continue;
-        }
-        conflicts.push(removed_index);
-        if conflicts.len() == MAX_CONFLICT_CONTRIBUTORS {
-            break;
+            conflicts.push(blocker.canonical_edge_index);
         }
     }
-    // Try individual contributors first, then their complete local conflict component.
-    // Storage and proposal counts remain independent of graph degree.
-    for proposal in 0..conflicts.len() + usize::from(conflicts.len() > 1) {
-        if budget.attempts == 0 {
-            break;
+    let mut try_closure = true;
+    let mut single_cursor = 0;
+    while budget.attempts != 0 && !conflicts.is_empty() {
+        if let (Some(shared), Some(initial)) = (budget.shared, initial_allowance) {
+            shared
+                .replacement
+                .account_scene_work(start_work, initial, resources);
+            if shared.replacement.remaining().1 == 0 {
+                break;
+            }
         }
         execution.checkpoint(OperationPhase::Layout)?;
-        let mut omitted = [0; MAX_CONFLICT_CONTRIBUTORS];
-        let count = if proposal < conflicts.len() {
-            omitted[0] = conflicts[proposal];
-            1
+        let selected = if try_closure {
+            try_closure = false;
+            &conflicts[..]
         } else {
-            omitted[..conflicts.len()].copy_from_slice(&conflicts);
-            omitted[..conflicts.len()].sort_unstable();
-            conflicts.len()
+            if single_cursor == conflicts.len() || conflicts.len() == 1 {
+                break;
+            }
+            single_cursor += 1;
+            &conflicts[single_cursor - 1..single_cursor]
         };
-        let omitted = &omitted[..count];
-        resources.charge_layout_work(count)?;
+        let mut omitted = conflict_closure(routes, selected, resources)?;
+        omitted.sort_unstable();
+        let omitted = omitted.as_slice();
+        let count = omitted.len();
+        resources.charge_layout_work(resources.checked_work_add(count, routes.capacity())?)?;
         let mut displaced = Vec::new();
         displaced
             .try_reserve_exact(count)
+            .map_err(|_| super::layout_allocation_failed())?;
+        let mut restored = Vec::new();
+        restored
+            .try_reserve_exact(routes.capacity())
             .map_err(|_| super::layout_allocation_failed())?;
         budget.attempts -= 1;
         let mut trial = occupancy.rebuild_for_routes(
@@ -118,12 +141,24 @@ pub(super) fn reorder_failed_route(
             resources,
             request.graph.diagram_type(),
         )?;
-        for &index in omitted.iter().rev() {
-            displaced.push((index, routes.remove(index)));
+        trial.begin_blocker_collection(resources)?;
+        let mut original_route_index = 0;
+        let mut next_omitted = omitted.iter().copied().peekable();
+        let extracted = routes.extract_if(.., |_| {
+            let remove = next_omitted.peek().copied() == Some(original_route_index);
+            original_route_index += 1;
+            if remove {
+                next_omitted.next();
+            }
+            remove
+        });
+        for (&index, route) in omitted.iter().zip(extracted) {
+            displaced.push((index, route));
         }
-        displaced.reverse();
         let result = (|| {
-            let Some(plan) = select_route(
+            let feasibility_start = resources.layout_work_used();
+            let feasibility_credit = budget.shared.map(|shared| shared.feasibility.remaining().1);
+            let selected = select_route(
                 request,
                 topology,
                 labels.descriptor(request.edge_index),
@@ -131,10 +166,21 @@ pub(super) fn reorder_failed_route(
                 routes,
                 &trial,
                 budget,
+                RepairSearch::Missing,
                 resources,
                 execution,
-            )?
-            else {
+            );
+            if let (Some(shared), Some(initial)) = (budget.shared, feasibility_credit) {
+                shared
+                    .feasibility
+                    .account_scene_work(feasibility_start, initial, resources);
+            }
+            start_work = start_work.saturating_add(
+                resources
+                    .layout_work_used()
+                    .saturating_sub(feasibility_start),
+            );
+            let Some(plan) = selected? else {
                 return Ok(false);
             };
             append_route(request, owner, plan, routes, &mut trial, resources)?;
@@ -156,14 +202,17 @@ pub(super) fn reorder_failed_route(
                     edge,
                     ..request
                 };
+                let mut displaced_owner = displaced.owner.try_clone(resources)?;
+                displaced_owner.allocated_branch = None;
                 let Some(plan) = select_route(
                     displaced_request,
                     topology,
                     labels.descriptor(edge_index),
-                    &displaced.owner,
+                    &displaced_owner,
                     routes,
                     &trial,
                     budget,
+                    RepairSearch::Displaced,
                     resources,
                     execution,
                 )?
@@ -172,7 +221,7 @@ pub(super) fn reorder_failed_route(
                 };
                 append_route(
                     displaced_request,
-                    &displaced.owner,
+                    &displaced_owner,
                     plan,
                     routes,
                     &mut trial,
@@ -180,28 +229,148 @@ pub(super) fn reorder_failed_route(
                 )?;
             }
             execution.checkpoint(OperationPhase::Layout)?;
-            Ok(true)
+            let valid = super::validate::first_invalid_retained_route(
+                request.graph,
+                request.graph_layout,
+                request.edges,
+                routes,
+                labels,
+                request.charset,
+                resources,
+                execution,
+            )?
+            .is_none();
+            if valid {
+                trial.take_blocker_collection(resources)?;
+            }
+            Ok(valid)
         })();
         if matches!(result, Ok(true)) {
+            if let (Some(shared), Some(initial)) = (budget.shared, initial_allowance) {
+                shared
+                    .replacement
+                    .account_scene_work(start_work, initial, resources);
+            }
             *occupancy = trial;
             return Ok(true);
         }
         // The original plans and occupancy were retained. No replay, allocation, or
         // cancellation checkpoint is needed to roll back an unsuccessful proposal.
         routes.truncate(original_len - count);
+        let mut retained = routes.drain(..);
         for (index, route) in displaced {
-            routes.insert(index, route);
+            let preceding = index - restored.len();
+            restored.extend(retained.by_ref().take(preceding));
+            restored.push(route);
         }
+        restored.extend(retained);
+        *routes = restored;
         match result {
-            Ok(false)
-            | Err(
-                AsciiError::UnsupportedFeature { .. } | AsciiError::RoutingSearchExhausted { .. },
-            ) => {}
+            Ok(false) | Err(AsciiError::RoutingSearchExhausted { .. }) => {
+                if let Some(additional) = trial.take_blocker_collection(resources)? {
+                    for blocker in additional.blockers {
+                        resources.charge_layout_work(
+                            resources.checked_work_add(routes.len(), conflicts.len())?,
+                        )?;
+                        if !conflicts.contains(&blocker.canonical_edge_index)
+                            && conflicts.len() < super::conflict::MAX_BLOCKER_WITNESSES
+                            && routes.iter().any(|route| {
+                                route.owner.canonical_edge_index == blocker.canonical_edge_index
+                            })
+                        {
+                            conflicts
+                                .try_reserve(1)
+                                .map_err(|_| super::layout_allocation_failed())?;
+                            conflicts.push(blocker.canonical_edge_index);
+                            try_closure = true;
+                        }
+                    }
+                    conflicts.sort_unstable();
+                }
+            }
             Err(error) => return Err(error),
             Ok(true) => unreachable!("successful proposals return before rollback"),
         }
     }
+    if let (Some(shared), Some(initial)) = (budget.shared, initial_allowance) {
+        shared
+            .replacement
+            .account_scene_work(start_work, initial, resources);
+    }
     Ok(false)
+}
+
+fn conflict_closure(
+    routes: &[PreparedRoute],
+    canonical_indices: &[usize],
+    resources: &ResourceContext,
+) -> Result<Vec<usize>> {
+    let mut omitted = Vec::new();
+    omitted
+        .try_reserve_exact(routes.len())
+        .map_err(|_| super::layout_allocation_failed())?;
+    let mut groups = Vec::new();
+    groups
+        .try_reserve_exact(canonical_indices.len())
+        .map_err(|_| super::layout_allocation_failed())?;
+    for route in routes {
+        resources.charge_layout_work(canonical_indices.len())?;
+        if canonical_indices.contains(&route.owner.canonical_edge_index)
+            && let Some(group) = route.owner.shared_channel_group()
+        {
+            groups.push(group);
+        }
+    }
+    for (index, route) in routes.iter().enumerate() {
+        resources.checkpoint()?;
+        resources.charge_layout_work(
+            resources.checked_work_add(canonical_indices.len(), groups.len())?,
+        )?;
+        if canonical_indices.contains(&route.owner.canonical_edge_index)
+            || route
+                .owner
+                .shared_channel_group()
+                .is_some_and(|group| groups.contains(&group))
+        {
+            omitted.push(index);
+        }
+    }
+    Ok(omitted)
+}
+
+#[cfg(test)]
+#[allow(clippy::too_many_arguments)]
+fn reorder_failed_route(
+    request: EdgeRouteRequest<'_>,
+    topology: Option<&GraphGroupTopology<'_>>,
+    labels: &RoutedLabelCatalogPlan<'_>,
+    owner: &RouteOwner,
+    routes: &mut Vec<PreparedRoute>,
+    occupancy: &mut SceneOccupancy<'_>,
+    budget: &mut SceneRepairBudget<'_>,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<bool> {
+    occupancy.begin_blocker_collection(resources)?;
+    let _ = select_route(
+        request,
+        topology,
+        labels.descriptor(request.edge_index),
+        owner,
+        routes,
+        occupancy,
+        budget,
+        RepairSearch::Missing,
+        resources,
+        execution,
+    )?;
+    let witnesses = occupancy
+        .take_blocker_collection(resources)?
+        .unwrap_or_default();
+    repair_blocked_scene(
+        request, topology, labels, owner, &witnesses, routes, occupancy, budget, resources,
+        execution,
+    )
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -212,7 +381,8 @@ fn select_route(
     owner: &RouteOwner,
     routes: &[PreparedRoute],
     occupancy: &SceneOccupancy<'_>,
-    budget: &mut SceneRepairBudget,
+    budget: &mut SceneRepairBudget<'_>,
+    search: RepairSearch,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Option<RoutePlan>> {
@@ -265,7 +435,13 @@ fn select_route(
             label,
             best.as_ref()
                 .map(|(score, plan)| (*score, plan.attachments)),
-            SearchBudget::Optional(&mut budget.expansions),
+            match budget.shared {
+                Some(shared) => match search {
+                    RepairSearch::Missing => SearchBudget::Limited(&shared.feasibility),
+                    RepairSearch::Displaced => SearchBudget::Replacement(&shared.replacement),
+                },
+                None => SearchBudget::Optional(&mut budget.expansions),
+            },
             resources,
             execution,
         )?
@@ -283,10 +459,6 @@ fn append_route(
     occupancy: &mut SceneOccupancy<'_>,
     resources: &mut ResourceContext,
 ) -> Result<()> {
-    resources.charge_layout_work(resources.checked_work_add(
-        resources.checked_work_add(owner.from.len(), owner.to.len())?,
-        owner.boundary_group_indices.len(),
-    )?)?;
     let mut plan = plan.try_with_stroke(
         request.edge.stroke,
         request.charset,
@@ -297,7 +469,7 @@ fn append_route(
     let end = plan.terminal_candidate(MarkerEndpoint::End, request.graph.diagram_type())?;
     let route = PreparedRoute {
         plan,
-        owner: owner.clone(),
+        owner: owner.try_clone(resources)?,
     };
     let index = routes.len();
     resources.charge_layout_work(route.plan.cells.len())?;
@@ -316,7 +488,7 @@ fn append_route(
         request.graph.diagram_type(),
     )?;
     allocate_committed_route_labels(
-        &mut routes[index],
+        routes,
         index,
         occupancy,
         resources,

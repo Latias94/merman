@@ -11,6 +11,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -34,6 +35,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -57,6 +59,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -80,6 +83,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -104,6 +108,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -181,6 +188,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -205,6 +213,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -279,6 +290,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -305,6 +317,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "canonical",
       "compact",
       "auto"
+    ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
     ],
     "width_profiles": [
       "unicode",
@@ -368,6 +384,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "layout_profiles": [
       "canonical"
     ],
+    "graph_presentations": [
+      "strict"
+    ],
     "width_profiles": [
       "unicode",
       "cjk"
@@ -424,6 +443,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "layout_profiles": [
       "canonical"
     ],
+    "graph_presentations": [
+      "strict"
+    ],
     "width_profiles": [
       "unicode",
       "cjk"
@@ -474,6 +496,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -497,6 +520,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -521,6 +545,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -568,6 +595,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -621,6 +651,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "layout_profiles": [
       "canonical"
     ],
+    "graph_presentations": [
+      "strict"
+    ],
     "width_profiles": [
       "unicode",
       "cjk"
@@ -673,6 +706,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -730,6 +766,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -753,6 +790,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -776,6 +814,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -799,6 +838,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -822,6 +862,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -845,6 +886,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -871,6 +913,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "canonical",
       "compact",
       "auto"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -932,6 +977,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "layout_profiles": [
       "canonical"
     ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
+    ],
     "width_profiles": [
       "unicode",
       "cjk"
@@ -988,6 +1037,10 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "canonical",
       "compact",
       "auto"
+    ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
     ],
     "width_profiles": [
       "unicode",
@@ -1051,6 +1104,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "layout_profiles": [
       "canonical"
     ],
+    "graph_presentations": [
+      "strict"
+    ],
     "width_profiles": [
       "unicode",
       "cjk"
@@ -1098,6 +1154,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -1148,6 +1207,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -1171,6 +1231,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -1194,6 +1255,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -1217,6 +1279,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],
@@ -1241,6 +1304,9 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
     ],
     "width_profiles": [
       "unicode",
@@ -1304,6 +1370,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "primary_projection": "none",
     "structured_text_fallback": false,
     "layout_profiles": [],
+    "graph_presentations": [],
     "width_profiles": [],
     "encodings": [],
     "fallback_encodings": [],

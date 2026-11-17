@@ -87,6 +87,7 @@ export {
   asciiDiagrammaticDiagrams,
   asciiSupportedDiagrams,
   renderAscii,
+  renderAsciiResult,
 } from "./runtime-ascii.js";
 export {
   createBrowserTextMeasurementSession,

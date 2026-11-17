@@ -884,31 +884,7 @@ MermanOperationMetadata decodeMermanOperationMetadata(String rawJson) {
 MermanOutputPlan _decodeMermanOutputPlan(Map<String, Object?> plan) {
   final kind = _requiredGeneratedString(plan, 'kind');
   return switch (kind) {
-    'ascii' => MermanAsciiOutputPlan(
-        schemaVersion: _requiredGeneratedUint16(plan, 'schema_version'),
-        family: _requiredGeneratedString(plan, 'family'),
-        projection: _requiredGeneratedString(plan, 'projection'),
-        encoding: _requiredGeneratedString(plan, 'encoding'),
-        primaryWidth: _requiredGeneratedUint64(plan, 'primary_width'),
-        primaryHeight: _requiredGeneratedUint64(plan, 'primary_height'),
-        emittedWidth: _requiredGeneratedUint64(plan, 'emitted_width'),
-        emittedHeight: _requiredGeneratedUint64(plan, 'emitted_height'),
-        widthProfile: _requiredGeneratedString(plan, 'width_profile'),
-        layoutProfile: _requiredGeneratedString(plan, 'layout_profile'),
-        requestedLayoutProfile: _requiredGeneratedString(plan, 'requested_layout_profile'),
-        compactAttempted: _requiredGeneratedBool(plan, 'compact_attempted'),
-        requestedMaxWidth:
-            _optionalGeneratedUint64(plan, 'requested_max_width'),
-        overflowed: _requiredGeneratedBool(plan, 'overflowed'),
-        outcome: _requiredGeneratedString(plan, 'outcome'),
-        fallbackCapability:
-            _requiredGeneratedString(plan, 'fallback_capability'),
-        fallbackAttempted:
-            _requiredGeneratedBool(plan, 'fallback_attempted'),
-        fallbackReason: _optionalGeneratedString(plan, 'fallback_reason'),
-        trimmed: _requiredGeneratedBool(plan, 'trimmed'),
-        lossiness: _requiredGeneratedString(plan, 'lossiness'),
-      ),
+    'ascii' => _decodeMermanAsciiOutputPlan(plan),
     'raster' => MermanRasterOutputPlan(
         requestedWidthPx: _requiredGeneratedDouble(plan, 'requested_width_px'),
         requestedHeightPx:
@@ -931,6 +907,75 @@ MermanOutputPlan _decodeMermanOutputPlan(Map<String, Object?> plan) {
       ),
     _ => MermanUnknownOutputPlan(kind: kind, rawJson: jsonEncode(plan)),
   };
+}
+
+MermanAsciiOutputPlan _decodeMermanAsciiOutputPlan(Map<String, Object?> plan) {
+  final schemaVersion = _requiredGeneratedUint16(plan, 'schema_version');
+  if (schemaVersion != 4) {
+    throw FormatException(
+      'unsupported Merman ASCII output schema $schemaVersion; expected 4',
+    );
+  }
+  final primaryWidth = _requiredGeneratedNullableUint64(plan, 'primary_width');
+  final primaryHeight = _requiredGeneratedNullableUint64(plan, 'primary_height');
+  final layoutProfile = _requiredGeneratedNullableString(plan, 'layout_profile');
+  final primaryOverflowed =
+      _requiredGeneratedNullableBool(plan, 'primary_overflowed');
+  final primaryAvailable = primaryWidth != null;
+  if ((primaryHeight != null) != primaryAvailable ||
+      (layoutProfile != null) != primaryAvailable ||
+      (primaryOverflowed != null) != primaryAvailable) {
+    throw const FormatException(
+      'ASCII primary_width, primary_height, layout_profile and primary_overflowed '
+      'must all be null or all be non-null',
+    );
+  }
+  return MermanAsciiOutputPlan(
+    schemaVersion: schemaVersion,
+    family: _requiredGeneratedString(plan, 'family'),
+    projection: _requiredGeneratedString(plan, 'projection'),
+    encoding: _requiredGeneratedString(plan, 'encoding'),
+    primaryWidth: primaryWidth,
+    primaryHeight: primaryHeight,
+    emittedWidth: _requiredGeneratedUint64(plan, 'emitted_width'),
+    emittedHeight: _requiredGeneratedUint64(plan, 'emitted_height'),
+    widthProfile: _requiredGeneratedString(plan, 'width_profile'),
+    layoutProfile: layoutProfile,
+    requestedLayoutProfile: _requiredGeneratedString(plan, 'requested_layout_profile'),
+    requestedGraphPresentation:
+        _requiredGeneratedString(plan, 'requested_graph_presentation'),
+    compactAttempted: _requiredGeneratedBool(plan, 'compact_attempted'),
+    requestedMaxWidth: _optionalGeneratedUint64(plan, 'requested_max_width'),
+    primaryOverflowed: primaryOverflowed,
+    emittedOverflowed: _requiredGeneratedBool(plan, 'emitted_overflowed'),
+    outcome: _requiredGeneratedString(plan, 'outcome'),
+    fallbackCapability: _requiredGeneratedString(plan, 'fallback_capability'),
+    fallbackAttempted: _requiredGeneratedBool(plan, 'fallback_attempted'),
+    fallbackReason: _optionalGeneratedString(plan, 'fallback_reason'),
+    trimmed: _requiredGeneratedBool(plan, 'trimmed'),
+    lossiness: _requiredGeneratedString(plan, 'lossiness'),
+  );
+}
+
+void _requireGeneratedField(Map<String, Object?> value, String key) {
+  if (!value.containsKey(key)) {
+    throw FormatException('operation metadata is missing required field `$key`');
+  }
+}
+
+int? _requiredGeneratedNullableUint64(Map<String, Object?> value, String key) {
+  _requireGeneratedField(value, key);
+  return _optionalGeneratedUint64(value, key);
+}
+
+String? _requiredGeneratedNullableString(Map<String, Object?> value, String key) {
+  _requireGeneratedField(value, key);
+  return _optionalGeneratedString(value, key);
+}
+
+bool? _requiredGeneratedNullableBool(Map<String, Object?> value, String key) {
+  _requireGeneratedField(value, key);
+  return value[key] == null ? null : _requiredGeneratedBool(value, key);
 }
 
 Map<String, Object?> _requiredGeneratedObject(Object? value, String name) {

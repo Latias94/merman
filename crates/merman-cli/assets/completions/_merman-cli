@@ -260,6 +260,7 @@ ayu-dark\:"\[alpha\] Ayu Dark"))' \
 '--ascii-layout-profile=[Select canonical, compact, or automatic ASCII layout (auto requires --ascii-max-width)]:ASCII_LAYOUT_PROFILE:((canonical\:""
 compact\:""
 auto\:"Try Compact once if Canonical exceeds the explicit width; then apply --ascii-overflow"))' \
+'--ascii-graph-presentation=[Permit a complete Plain graph document when bounded routing cannot draw the graph]:ASCII_GRAPH_PRESENTATION:(strict adaptive)' \
 '--resource-profile=[Resource policy for input, semantic models, output, and CLI acquisition]:PROFILE:((interactive\:"General interactive applications and public binding surfaces"
 constrained\:"Constrained rendering for untrusted or publicly submitted documents"
 trusted-native\:"Local CLI and controlled native batch rendering"

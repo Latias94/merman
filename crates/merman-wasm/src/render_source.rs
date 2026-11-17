@@ -1,8 +1,8 @@
 //! A render-capable WASM instance owns one immutable canonical parse snapshot.
 
 use crate::{
-    binding_error_to_js, options_bytes, string_result, svg_result, wasm_artifact_contract,
-    wasm_operation_control, wasm_options,
+    binding_error_to_js, options_bytes, string_result, text_operation_result,
+    wasm_artifact_contract, wasm_operation_control, wasm_options,
 };
 use merman_bindings_core::{BindingEngineServices, BindingError, BindingPreparedSource};
 use std::cell::Cell;
@@ -50,10 +50,13 @@ impl WasmPreparedSource {
     #[wasm_bindgen(js_name = renderSvgResult)]
     pub fn render_svg_result(&self, options_json: Option<String>) -> Result<JsValue, JsValue> {
         self.with_operation(|| {
-            svg_result(self.output_options(options_json, |options, control| {
-                self.source
-                    .render_svg_result(options, control, &BindingEngineServices::new())
-            }))
+            text_operation_result(
+                self.output_options(options_json, |options, control| {
+                    self.source
+                        .render_svg_result(options, control, &BindingEngineServices::new())
+                }),
+                "svg",
+            )
         })
     }
 
@@ -102,9 +105,12 @@ impl WasmPreparedSource {
     ) -> Result<JsValue, JsValue> {
         self.with_operation(|| {
             self.with_measurer(callback, |services| {
-                svg_result(self.output_options(options_json, |options, control| {
-                    self.source.render_svg_result(options, control, &services)
-                }))
+                text_operation_result(
+                    self.output_options(options_json, |options, control| {
+                        self.source.render_svg_result(options, control, &services)
+                    }),
+                    "svg",
+                )
             })
         })
     }

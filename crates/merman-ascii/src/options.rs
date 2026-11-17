@@ -53,6 +53,26 @@ impl AsciiLayoutProfile {
     }
 }
 
+/// Presentation policy for the admitted Flowchart, Swimlane, and State graph families.
+#[non_exhaustive]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AsciiGraphPresentation {
+    #[default]
+    Strict,
+    /// Permits a complete Plain graph document after a bounded graph planning miss.
+    Adaptive,
+}
+
+impl AsciiGraphPresentation {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Strict => "strict",
+            Self::Adaptive => "adaptive",
+        }
+    }
+}
+
 impl TerminalWidthProfile {
     #[must_use]
     pub const fn as_str(self) -> &'static str {
@@ -69,6 +89,7 @@ pub struct AsciiRenderOptions {
     pub charset: AsciiCharset,
     pub terminal_width_profile: TerminalWidthProfile,
     pub layout_profile: AsciiLayoutProfile,
+    pub graph_presentation: AsciiGraphPresentation,
     pub default_direction: AsciiDirection,
     pub color_mode: AsciiColorMode,
     pub color_theme: AsciiColorTheme,
@@ -239,6 +260,7 @@ impl Default for AsciiRenderOptions {
             charset: AsciiCharset::Unicode,
             terminal_width_profile: TerminalWidthProfile::Unicode,
             layout_profile: AsciiLayoutProfile::Canonical,
+            graph_presentation: AsciiGraphPresentation::Strict,
             default_direction: AsciiDirection::LeftRight,
             color_mode: AsciiColorMode::Plain,
             color_theme: AsciiColorTheme::default_light(),
@@ -286,6 +308,12 @@ impl AsciiRenderOptions {
     #[must_use]
     pub fn with_layout_profile(mut self, profile: AsciiLayoutProfile) -> Self {
         self.layout_profile = profile;
+        self
+    }
+
+    #[must_use]
+    pub fn with_graph_presentation(mut self, presentation: AsciiGraphPresentation) -> Self {
+        self.graph_presentation = presentation;
         self
     }
 
