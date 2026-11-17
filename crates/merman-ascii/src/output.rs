@@ -42,7 +42,8 @@ mod pie;
     feature = "diagram-pie",
     feature = "diagram-requirement",
     feature = "diagram-block",
-    feature = "diagram-c4"
+    feature = "diagram-c4",
+    feature = "diagram-zenuml"
 ))]
 mod record;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
@@ -51,6 +52,8 @@ mod relation;
 mod requirement;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
+#[cfg(feature = "diagram-zenuml")]
+pub(crate) mod zenuml;
 
 pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 4;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
@@ -987,6 +990,10 @@ fn build_semantic_document(
     let c4_document = c4::write_if_c4(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-c4"))]
     let c4_document = false;
+    #[cfg(feature = "diagram-zenuml")]
+    let zenuml_document = zenuml::write_if_zenuml(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-zenuml"))]
+    let zenuml_document = false;
     if !graph_document
         && !relation_document
         && !packet_document
@@ -997,6 +1004,7 @@ fn build_semantic_document(
         && !architecture_document
         && !requirement_document
         && !c4_document
+        && !zenuml_document
     {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
@@ -1023,7 +1031,8 @@ fn build_semantic_document(
     feature = "diagram-architecture",
     feature = "diagram-c4",
     feature = "diagram-requirement",
-    feature = "diagram-pie"
+    feature = "diagram-pie",
+    feature = "diagram-zenuml"
 ))]
 pub(crate) fn render_reading_primary(
     model: &AsciiDiagram<'_>,
@@ -1069,6 +1078,11 @@ pub(crate) fn render_reading_primary(
             records.push("Pie data".to_string())?;
             pie::write_if_pie(model, &projection, &mut records)?;
         }
+        #[cfg(feature = "diagram-zenuml")]
+        AsciiDiagram::Zenuml(_) => {
+            records.push("ZenUML records".to_string())?;
+            zenuml::write_if_zenuml(model, &projection, &mut records)?;
+        }
         _ => {
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "graph",
@@ -1098,15 +1112,15 @@ pub(crate) fn render_reading_primary(
 }
 
 /// Admits authored model and source-config depth before streaming their borrowed fields.
-fn preflight_semantic_model(
+pub(crate) fn preflight_semantic_model(
     model: &AsciiDiagram<'_>,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     execution.checkpoint(OperationPhase::Semantic)?;
-    let complexity = model.complexity();
-    let config = merman_model::resources::ModelComplexity::from_json(source.config.as_value());
     let resources = execution.new_resource_context(OperationPhase::Semantic);
+    let complexity = model.complexity(&resources)?;
+    let config = merman_model::resources::ModelComplexity::from_json(source.config.as_value());
     resources.check_nesting_depth(complexity.nesting_depth)?;
     resources.check_nesting_depth(config.nesting_depth)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, complexity.text_bytes)?;
@@ -1145,6 +1159,35 @@ fn semantic_fallback_projection(
     metadata: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
 ) -> std::result::Result<Vec<u8>, SemanticFallbackError> {
+    #[cfg(feature = "diagram-zenuml")]
+    if let AsciiDiagram::Zenuml(model) = model {
+        #[derive(Serialize)]
+        struct Envelope<'a, 'model> {
+            #[serde(flatten)]
+            model: &'a zenuml::ControlledProjection<'model, 'a>,
+            #[serde(rename = "type")]
+            diagram_type: &'a str,
+            #[serde(rename = "sourceConfig")]
+            source_config: &'a Value,
+            #[serde(rename = "sourceTitle")]
+            source_title: Option<&'a str>,
+        }
+        let resources = execution.new_resource_context(OperationPhase::Semantic);
+        let projection = zenuml::ControlledProjection::new(model, &resources);
+        let result = serialize_bounded_json(
+            &Envelope {
+                model: &projection,
+                diagram_type: metadata.diagram_type,
+                source_config: metadata.config.as_value(),
+                source_title: metadata.title,
+            },
+            execution,
+        );
+        if let Some(error) = projection.take_error() {
+            return Err(map_semantic_fallback_error(error));
+        }
+        return result;
+    }
     let tag = match model {
         #[cfg(feature = "diagram-class")]
         AsciiDiagram::Class(_) => None,
@@ -2463,7 +2506,9 @@ mod tests {
             nested = Value::Array(vec![nested]);
         }
         let model = flowchart_model_with_subgraph_metadata(nested);
-        let complexity = crate::full_test_support::view(&model).complexity();
+        let complexity = crate::full_test_support::view(&model)
+            .complexity(&ResourceContext::new(crate::AsciiResourcePolicy::default()))
+            .unwrap();
         assert!(complexity.nesting_depth >= 299);
 
         let exact_policy = crate::AsciiResourcePolicy::unbounded()

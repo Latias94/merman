@@ -56,6 +56,8 @@ pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
             model: &model.semantic,
             display: model.display,
         },
+        #[cfg(feature = "diagram-zenuml")]
+        RenderSemanticModel::Zenuml(model) => AsciiDiagram::Zenuml(model),
         _ => AsciiDiagram::Unsupported(model.kind()),
     }
 }

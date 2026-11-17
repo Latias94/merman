@@ -1080,6 +1080,43 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             },
         ],
     },
+    AsciiCapabilityDefinition {
+        diagram_type: "zenuml",
+        display_name: "ZenUML",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "declaration-ordered keyed participants and depth-first keyed statements",
+            "synchronous, asynchronous, return, self, creation, and nested call paths",
+            "nested control frames with sections, participant group heading bands, references, and dividers",
+            "complete appended ZenUML records retain identities, metadata, spans, and source configuration",
+            "iterative flat serialization preserves nested statement and section ownership",
+        ],
+        limits: &[
+            "missing references, duplicate identities, invalid groups, and invalid lifecycles use complete StructuredText primaries",
+            "terminal lifelines and frames approximate browser geometry; presentation metadata remains records",
+            "Canonical layout and Strict graph presentation only; no universal dense-scene or spatial extent guarantee",
+            "resource/allocation failures, cancellation, and deadlines remain errors under unchanged budgets; width fallback is Plain-only",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/zenuml_model.rs",
+                note: "family-local message, control, identity, record, viewport, resource, and cancellation contracts",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman/tests/ascii_api.rs",
+                note: "basic ZenUML scene and complete Plain fallback agree across canonical and presentation adapters",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "docs/rendering/ascii/ZENUML_SUPPORT.md",
+                note: "family-owned borrowed ZenUML projection, complete records, and explicit admission boundaries",
+            },
+        ],
+    },
 ];
 
 /// Reports local terminal adapters for the selected canonical model families.
@@ -1185,6 +1222,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
         "treeView" => cfg!(feature = "diagram-tree-view"),
         "usecase" => cfg!(feature = "diagram-usecase"),
         "xychart" => cfg!(feature = "diagram-xychart"),
+        "zenuml" => cfg!(feature = "diagram-zenuml"),
         _ => false,
     }
 }
@@ -1218,6 +1256,42 @@ pub fn ascii_diagrammatic_diagram_types() -> &'static [&'static str] {
                 .collect()
         })
         .as_slice()
+}
+
+#[cfg(all(test, feature = "diagram-zenuml"))]
+mod zenuml_tests {
+    use super::*;
+
+    #[test]
+    fn zenuml_capability_admits_its_family_without_sequence() {
+        let zenuml = capability_for_diagram_type("zenuml").expect("ZenUML capability");
+        assert_eq!(
+            zenuml.semantic_coverage,
+            Some(AsciiSemanticCoverage::Partial)
+        );
+        assert_eq!(
+            zenuml.primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
+        assert_eq!(zenuml.support_level, AsciiSupportLevel::Partial);
+        assert!(zenuml.structured_text_fallback);
+        assert_eq!(zenuml.layout_profiles, CANONICAL_LAYOUT_PROFILES);
+        assert_eq!(zenuml.graph_presentations, STRICT_GRAPH_PRESENTATIONS);
+        assert_eq!(zenuml.width_profiles, TERMINAL_WIDTH_PROFILES);
+        assert_eq!(zenuml.encodings, OUTPUT_ENCODINGS);
+        assert_eq!(zenuml.fallback_encodings, PLAIN_FALLBACK_ENCODINGS);
+        assert!(ascii_supported_diagram_types().contains(&"zenuml"));
+        assert!(ascii_diagrammatic_diagram_types().contains(&"zenuml"));
+        if !cfg!(feature = "diagram-sequence") {
+            assert!(!ascii_supported_diagram_types().contains(&"sequence"));
+        }
+        assert!(zenuml.evidence.iter().all(|evidence| matches!(
+            evidence.kind,
+            AsciiEvidenceKind::LocalSemanticProbe
+                | AsciiEvidenceKind::SupportMatrix
+                | AsciiEvidenceKind::GapRegistry
+        )));
+    }
 }
 
 #[cfg(all(test, feature = "all-diagrams"))]
@@ -1318,6 +1392,7 @@ mod tests {
                 "treeView",
                 "usecase",
                 "xychart",
+                "zenuml",
             ]
         );
         assert_eq!(
@@ -1338,6 +1413,7 @@ mod tests {
                 "swimlane",
                 "usecase",
                 "xychart",
+                "zenuml",
             ]
         );
     }
@@ -1374,6 +1450,7 @@ mod tests {
             "c4",
             "usecase",
             "requirement",
+            "zenuml",
         ] {
             let capability = find(diagram_type);
             assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
@@ -1384,7 +1461,7 @@ mod tests {
             assert_eq!(capability.fallback_encodings, &[AsciiOutputEncoding::Plain]);
         }
 
-        let unsupported = find("zenuml");
+        let unsupported = find("wardley");
         assert!(unsupported.layout_profiles.is_empty());
         assert!(unsupported.width_profiles.is_empty());
         assert!(unsupported.encodings.is_empty());
@@ -1462,9 +1539,16 @@ mod tests {
         }
 
         let zenuml = find("zenuml");
-        assert_eq!(zenuml.semantic_coverage, None);
-        assert_eq!(zenuml.primary_projection, AsciiPrimaryProjection::None);
-        assert_eq!(zenuml.support_level, AsciiSupportLevel::Unsupported);
+        assert_eq!(
+            zenuml.semantic_coverage,
+            Some(AsciiSemanticCoverage::Partial)
+        );
+        assert_eq!(
+            zenuml.primary_projection,
+            AsciiPrimaryProjection::Diagrammatic
+        );
+        assert_eq!(zenuml.support_level, AsciiSupportLevel::Partial);
+        assert!(zenuml.structured_text_fallback);
 
         for capability in ascii_capabilities() {
             assert_eq!(capability.support_level, capability.derived_support_level());

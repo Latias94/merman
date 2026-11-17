@@ -19,6 +19,7 @@ terminal themes, and public options.
 | Sequence | [Participants, signals, controls, and lifecycle](SEQUENCE_SUPPORT.md) |
 | State | [State roles, concurrency, and compound transitions](STATE_SUPPORT.md) |
 | Usecase | [Roles, boundaries, relationships, and ordered JSON tables](USECASE_SUPPORT.md) |
+| ZenUML | [Family-owned lifelines, nested controls, and complete reading records](ZENUML_SUPPORT.md) |
 
 Class and ER keep their [joint capability matrix](../ASCII_CLASS_ER_CAPABILITY_MATRIX.md).
 Packet, XYChart, and structured-text families are described by the shared support matrix and

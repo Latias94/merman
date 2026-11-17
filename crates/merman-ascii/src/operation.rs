@@ -124,7 +124,8 @@ impl<'a> AsciiExecution<'a> {
     #[cfg(any(
         feature = "diagram-architecture",
         feature = "diagram-requirement",
-        feature = "diagram-c4"
+        feature = "diagram-c4",
+        feature = "diagram-zenuml"
     ))]
     pub(crate) const fn with_trimmed_canvas(mut self) -> Self {
         self.trim_canvas_padding = true;

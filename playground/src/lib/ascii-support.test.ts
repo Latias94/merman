@@ -46,6 +46,7 @@ test("fallback uses the complete generated binding capability projection", () =>
     "treeView",
     "usecase",
     "xychart",
+    "zenuml",
   ]);
 
   const flowchart = FALLBACK_ASCII_CAPABILITIES.find(
@@ -62,7 +63,7 @@ test("fallback uses the complete generated binding capability projection", () =>
   ]);
   assert.deepEqual(flowchart?.fallback_encodings, ["plain"]);
 
-  for (const diagramType of ["zenuml"]) {
+  for (const diagramType of ["wardley"]) {
     const capability = FALLBACK_ASCII_CAPABILITIES.find(
       ({ diagram_type }) => diagram_type === diagramType
     );
@@ -154,6 +155,29 @@ test("Pie fallback metadata admits canonical strict percent bars and complete re
   assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("pie"));
 });
 
+test("ZenUML fallback metadata admits its own canonical strict projection and complete records", () => {
+  const zenuml = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "zenuml"
+  );
+  assert.ok(zenuml);
+  assert.equal(asciiSupportLabelKey(zenuml), "asciiSupport.levels.partial");
+  assert.equal(zenuml.semantic_coverage, "partial");
+  assert.equal(zenuml.primary_projection, "diagrammatic");
+  assert.equal(zenuml.structured_text_fallback, true);
+  assert.deepEqual(zenuml.layout_profiles, ["canonical"]);
+  assert.deepEqual(zenuml.graph_presentations, ["strict"]);
+  assert.deepEqual(zenuml.width_profiles, ["unicode", "cjk"]);
+  assert.deepEqual(zenuml.encodings, [
+    "plain",
+    "ansi16",
+    "ansi256",
+    "truecolor",
+    "html",
+  ]);
+  assert.deepEqual(zenuml.fallback_encodings, ["plain"]);
+  assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("zenuml"));
+});
+
 test("support labels follow the generated projection kind", () => {
   const byType = new Map(
     FALLBACK_ASCII_CAPABILITIES.map((capability) => [
@@ -180,6 +204,10 @@ test("support labels follow the generated projection kind", () => {
   );
   assert.equal(
     asciiSupportLabelKey(byType.get("zenuml") ?? null),
+    "asciiSupport.levels.partial"
+  );
+  assert.equal(
+    asciiSupportLabelKey(byType.get("wardley") ?? null),
     "asciiSupport.unsupported"
   );
 });

@@ -2073,7 +2073,9 @@ mod tests {
                 ascii_supported_diagrams(),
                 &[
                     "agentflow",
+                    "architecture",
                     "block",
+                    "c4",
                     "class",
                     "er",
                     "flowchart",
@@ -2092,6 +2094,7 @@ mod tests {
                     "treeView",
                     "usecase",
                     "xychart",
+                    "zenuml",
                 ]
             );
         } else {
@@ -2111,7 +2114,7 @@ mod tests {
                 .collect();
 
             assert_eq!(ascii_supported_diagrams(), supported.as_slice());
-            assert!(!supported.contains(&"zenuml"));
+            assert!(supported.contains(&"zenuml"));
         } else {
             assert!(capabilities.is_empty());
             assert!(ascii_supported_diagrams().is_empty());
@@ -2227,10 +2230,28 @@ mod tests {
         assert_eq!(sequence.graph_presentations, ["strict"]);
 
         let zenuml = ascii_capability(&capabilities, "zenuml");
-        assert!(zenuml.layout_profiles.is_empty());
-        assert!(zenuml.width_profiles.is_empty());
-        assert!(zenuml.encodings.is_empty());
-        assert!(zenuml.fallback_encodings.is_empty());
+        assert_eq!(zenuml.semantic_coverage, Some("partial"));
+        assert_eq!(zenuml.primary_projection, "diagrammatic");
+        assert_eq!(zenuml.support_level, "partial");
+        assert!(zenuml.structured_text_fallback);
+        assert_eq!(zenuml.layout_profiles, ["canonical"]);
+        assert_eq!(zenuml.graph_presentations, ["strict"]);
+        assert_eq!(zenuml.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            zenuml.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(zenuml.fallback_encodings, ["plain"]);
+        assert!(zenuml.evidence.iter().any(|evidence| {
+            evidence.kind == "local_semantic_probe"
+                && evidence.source == "crates/merman-ascii/tests/zenuml_model.rs"
+        }));
+        assert!(
+            zenuml
+                .evidence
+                .iter()
+                .any(|evidence| { evidence.source == "docs/rendering/ascii/ZENUML_SUPPORT.md" })
+        );
 
         let xychart = ascii_capability(&capabilities, "xychart");
         assert_eq!(xychart.support_level, "partial");
@@ -2241,10 +2262,6 @@ mod tests {
         }));
 
         assert_eq!(capabilities.len(), 34);
-        let zenuml = ascii_capability(&capabilities, "zenuml");
-        assert_eq!(zenuml.semantic_coverage, None);
-        assert_eq!(zenuml.primary_projection, "none");
-        assert_eq!(zenuml.support_level, "unsupported");
 
         let json: Value = serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let first = &json.as_array().unwrap()[0];

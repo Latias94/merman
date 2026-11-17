@@ -168,6 +168,8 @@ mod tree_view;
 mod usecase;
 #[cfg(feature = "diagram-xychart")]
 mod xychart;
+#[cfg(feature = "diagram-zenuml")]
+mod zenuml;
 
 pub use capability::{
     AsciiCapability, AsciiCapabilityEvidence, AsciiEvidenceKind, AsciiPrimaryProjection,
@@ -420,6 +422,8 @@ impl AsciiRenderer {
             AsciiDiagram::C4(model) => c4::primary_projection(model, execution)?,
             #[cfg(feature = "diagram-pie")]
             AsciiDiagram::Pie(model) => pie::primary_projection(model, execution)?,
+            #[cfg(feature = "diagram-zenuml")]
+            AsciiDiagram::Zenuml(model) => zenuml::primary_projection(model, execution)?,
             _ => output::projection_for(capability),
         };
         let fallback_capability = capability.is_some_and(|capability| {
@@ -436,6 +440,8 @@ impl AsciiRenderer {
             AsciiDiagram::C4(_) => true,
             #[cfg(feature = "diagram-pie")]
             AsciiDiagram::Pie(_) => true,
+            #[cfg(feature = "diagram-zenuml")]
+            AsciiDiagram::Zenuml(_) => true,
             _ => false,
         };
         let output_context = output::OutputBuildContext {
@@ -670,6 +676,8 @@ fn render_model_with_execution(
             policies.layout.usecase,
             execution,
         ),
+        #[cfg(feature = "diagram-zenuml")]
+        AsciiDiagram::Zenuml(model) => zenuml::render(model, options, _source, execution),
         _ => Err(AsciiError::UnsupportedDiagram {
             diagram_type: model.kind().to_string(),
         }),

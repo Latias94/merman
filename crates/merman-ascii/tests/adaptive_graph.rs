@@ -371,12 +371,12 @@ fn unsupported_models_keep_the_original_diagram_error_under_both_policies() {
                 .unwrap();
         assert!(matches!(
             renderer.render_model(
-                &AsciiDiagram::Unsupported("zenuml"),
+                &AsciiDiagram::Unsupported("radar"),
                 &OperationControl::new(),
                 &context,
                 AsciiResourcePolicy::default(),
             ),
-            Err(AsciiError::UnsupportedDiagram { diagram_type }) if diagram_type == "zenuml"
+            Err(AsciiError::UnsupportedDiagram { diagram_type }) if diagram_type == "radar"
         ));
     }
 }

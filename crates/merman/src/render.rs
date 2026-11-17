@@ -1655,6 +1655,8 @@ fn ascii_diagram_from_full(
         RenderSemanticModel::Agentflow(model) => AsciiDiagram::Agentflow(model),
         #[cfg(feature = "diagram-architecture")]
         RenderSemanticModel::Architecture(model) => AsciiDiagram::Architecture(model),
+        #[cfg(feature = "diagram-zenuml")]
+        RenderSemanticModel::Zenuml(model) => AsciiDiagram::Zenuml(model),
         #[cfg(feature = "diagram-block")]
         RenderSemanticModel::Block(model) => AsciiDiagram::Block(&model.semantic),
         #[cfg(feature = "diagram-c4")]

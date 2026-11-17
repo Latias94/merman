@@ -469,6 +469,127 @@ fn agentflow_reports_distinguish_spatial_records_and_complete_width_fallback() {
     }
 }
 
+#[cfg(feature = "diagram-zenuml")]
+#[test]
+fn zenuml_cli_capabilities_admit_only_canonical_strict_output_and_plain_fallback() {
+    let output = run_with_stdin(&["capabilities", "--json"], "");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let capabilities: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let ascii = &capabilities["ascii"];
+    let zenuml = ascii["families"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|family| family["family"] == "zenuml")
+        .expect("ZenUML should be in the total ASCII capability matrix");
+    assert_eq!(zenuml["support_level"], "partial");
+    assert_eq!(zenuml["semantic_coverage"], "partial");
+    assert_eq!(zenuml["primary_projection"], "diagrammatic");
+    assert_eq!(zenuml["structured_text_fallback"], true);
+    assert_eq!(zenuml["layout_profiles"], serde_json::json!(["canonical"]));
+    assert_eq!(zenuml["graph_presentations"], serde_json::json!(["strict"]));
+    assert_eq!(
+        zenuml["width_profiles"],
+        serde_json::json!(["unicode", "cjk"])
+    );
+    assert_eq!(
+        zenuml["encodings"],
+        serde_json::json!(["plain", "ansi16", "ansi256", "truecolor", "html"])
+    );
+    assert_eq!(zenuml["fallback_encodings"], serde_json::json!(["plain"]));
+    assert!(
+        ascii["detected_type_mappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mapping| mapping["detected_type"] == "zenuml" && mapping["family"] == "zenuml")
+    );
+}
+
+#[cfg(feature = "diagram-zenuml")]
+#[test]
+fn zenuml_cli_reports_keep_the_basic_scene_and_complete_width_fallback() {
+    let source = "zenuml\nAlice->Bob: Hello\nBob-->Alice: Reply\n";
+    for width in [None, Some(10_u64)] {
+        let mut args = vec![
+            "render",
+            "-",
+            "--format",
+            "unicode",
+            "--ascii-report",
+            "--ascii-color",
+            "plain",
+            "--ascii-overflow",
+            "fallback",
+        ];
+        if width.is_some() {
+            args.extend(["--ascii-max-width", "10"]);
+        }
+        let output = run_with_stdin(&args, source);
+        assert!(
+            output.status.success(),
+            "width {width:?}: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        let report = assert_plain_ascii_report(&output.stdout);
+        assert_eq!(report["family"], "zenuml");
+        assert_eq!(report["layout_profile"], "canonical");
+        assert_eq!(report["requested_graph_presentation"], "strict");
+        assert_eq!(report["requested_max_width"], serde_json::json!(width));
+        assert_eq!(report["compact_attempted"], false);
+        assert_eq!(report["fallback_capability"], "available");
+        assert_eq!(report["fallback_attempted"], width.is_some());
+        assert_eq!(report["primary_overflowed"], width.is_some());
+        assert_eq!(report["emitted_overflowed"], false);
+        assert_eq!(
+            report["fallback_reason"],
+            if width.is_some() {
+                serde_json::json!("primary_overflow")
+            } else {
+                serde_json::Value::Null
+            }
+        );
+        assert_eq!(
+            report["projection"],
+            if width.is_some() {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert_eq!(
+            report["outcome"],
+            if width.is_some() {
+                "fallback"
+            } else {
+                "primary"
+            }
+        );
+        if let Some(width) = width {
+            assert!(report["emitted_width"].as_u64().unwrap() <= width);
+        }
+        let compact: String = report["text"]
+            .as_str()
+            .unwrap()
+            .split_whitespace()
+            .collect();
+        for expected in [
+            "P1[participant]name=\"Alice\"",
+            "P2[participant]name=\"Bob\"",
+            "S1[message]id=\"zenuml-statement-0\"parent=nullsection=nullfrom=[P1]name=\"Alice\"to=[P2]name=\"Bob\"style=asynchronousassignment=nulllabel=\"Hello\"bodyCount=0",
+            "S2[return]id=\"zenuml-statement-1\"parent=nullsection=nullfrom=[P2]name=\"Bob\"to=[P1]name=\"Alice\"label=\"Reply\"",
+            "S1details:{",
+            "S2details:{",
+            "explicit_from:\"Alice\"",
+            "explicit_to:\"Alice\"",
+            "span:{",
+            "occurrences:[",
+        ] {
+            assert!(compact.contains(expected), "missing {expected:?}: {report}");
+        }
+    }
+}
+
 #[cfg(feature = "diagram-pie")]
 #[test]
 fn pie_cli_capabilities_admit_only_canonical_strict_output_and_plain_fallback() {

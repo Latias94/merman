@@ -454,6 +454,89 @@ fn architecture_ascii_matches_canonical_and_presentation_records_and_projection(
     }
 }
 
+#[cfg(all(feature = "presentation", feature = "diagram-zenuml"))]
+#[test]
+fn zenuml_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = "zenuml\nAlice->Bob: Hello\nBob-->Alice: Reply\n";
+    let renderer = Renderer::new();
+    for width in [None, Some(10)] {
+        let semantic = renderer
+            .parse_semantic(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let presentation = renderer
+            .prepare_presentation(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let request = AsciiRequest {
+            options: AsciiRenderOptions::unicode(),
+            viewport: width.map_or_else(AsciiViewportPolicy::unrestricted, |width| {
+                AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Fallback)
+            }),
+            ..Default::default()
+        };
+        let RenderOutput::Ascii(Some(canonical)) = semantic
+            .render(merman::RenderTarget::Ascii(request.clone()))
+            .unwrap()
+        else {
+            panic!("expected canonical ZenUML ASCII output");
+        };
+        let RenderOutput::Ascii(Some(full)) = presentation
+            .render(merman::RenderTarget::Ascii(request))
+            .unwrap()
+        else {
+            panic!("expected presentation ZenUML ASCII output");
+        };
+        assert_eq!(canonical.text, full.text, "width {width:?}");
+        assert_eq!(canonical.report(), full.report());
+        assert_eq!(full.family, "zenuml");
+        assert_eq!(full.encoding.as_str(), "plain");
+        assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+        assert!(!full.compact_attempted);
+        assert_eq!(full.fallback.attempted, width.is_some());
+        assert_eq!(full.primary_overflowed, Some(width.is_some()));
+        assert_eq!(
+            full.outcome,
+            if width.is_some() {
+                AsciiOutputOutcome::Fallback
+            } else {
+                AsciiOutputOutcome::Primary
+            }
+        );
+        assert_eq!(
+            full.projection.as_str(),
+            if width.is_some() {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert!(!full.emitted_overflowed);
+        if let Some(width) = width {
+            assert!(full.emitted_extent.width <= width);
+        }
+        let compact: String = full.text.split_whitespace().collect();
+        for expected in [
+            "P1[participant]name=\"Alice\"",
+            "P2[participant]name=\"Bob\"",
+            "S1[message]id=\"zenuml-statement-0\"parent=nullsection=nullfrom=[P1]name=\"Alice\"to=[P2]name=\"Bob\"style=asynchronousassignment=nulllabel=\"Hello\"bodyCount=0",
+            "S2[return]id=\"zenuml-statement-1\"parent=nullsection=nullfrom=[P2]name=\"Bob\"to=[P1]name=\"Alice\"label=\"Reply\"",
+            "S1details:{",
+            "S2details:{",
+            "explicit_from:\"Alice\"",
+            "explicit_to:\"Alice\"",
+            "span:{",
+            "occurrences:[",
+        ] {
+            assert!(
+                compact.contains(expected),
+                "missing {expected:?}: {}",
+                full.text
+            );
+        }
+    }
+}
+
 #[cfg(all(feature = "presentation", feature = "diagram-requirement"))]
 #[test]
 fn requirement_ascii_matches_canonical_and_presentation_records_and_projection() {

@@ -84,6 +84,8 @@ pub enum AsciiDiagram<'a> {
         model: &'a merman_model::families::xy_chart::XyChartDiagramModel,
         display: merman_model::families::xy_chart::XyChartDisplayPolicy,
     },
+    #[cfg(feature = "diagram-zenuml")]
+    Zenuml(&'a merman_model::families::zenuml::ZenumlDiagramModel),
     /// Retains an unsupported host family's identity for normal capability admission.
     Unsupported(&'a str),
 }
@@ -175,6 +177,8 @@ impl<'a> AsciiDiagram<'a> {
                     source.semantic_config,
                 ),
             },
+            #[cfg(feature = "diagram-zenuml")]
+            SemanticDiagramModel::Zenuml(model) => Self::Zenuml(model),
             _ => Self::Unsupported(source.diagram_type),
         })
     }
@@ -223,12 +227,18 @@ impl<'a> AsciiDiagram<'a> {
             Self::Usecase(_) => "usecase",
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { .. } => "xychart",
+            #[cfg(feature = "diagram-zenuml")]
+            Self::Zenuml(_) => "zenuml",
             Self::Unsupported(kind) => kind,
         }
     }
 
-    pub(crate) fn complexity(&self) -> ModelComplexity {
-        match self {
+    pub(crate) fn complexity(
+        &self,
+        resources: &crate::resource::ResourceContext,
+    ) -> Result<ModelComplexity> {
+        let _ = resources;
+        Ok(match self {
             #[cfg(feature = "diagram-agentflow")]
             Self::Agentflow(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-architecture")]
@@ -300,8 +310,10 @@ impl<'a> AsciiDiagram<'a> {
             Self::Usecase(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { model, .. } => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-zenuml")]
+            Self::Zenuml(model) => return crate::output::zenuml::complexity(model, resources),
             Self::Unsupported(_) => ModelComplexity::default(),
-        }
+        })
     }
 }
 
@@ -396,6 +408,8 @@ impl Serialize for AsciiDiagram<'_> {
                 }
                 Projection { model, display }.serialize(serializer)
             }
+            #[cfg(feature = "diagram-zenuml")]
+            Self::Zenuml(model) => crate::output::zenuml::Projection(model).serialize(serializer),
             Self::Unsupported(kind) => {
                 let _ = serializer;
                 Err(serde::ser::Error::custom(format_args!(

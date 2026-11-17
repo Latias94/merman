@@ -751,6 +751,107 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-zenuml")]
+    fn zenuml_binding_results_keep_the_basic_scene_and_complete_width_fallback() {
+        let source = b"zenuml\nAlice->Bob: Hello\nBob-->Alice: Reply\n";
+        for width in [None, Some(10)] {
+            let mut options = serde_json::json!({
+                "ascii": {"colorMode": "plain", "overflow": "fallback"},
+            });
+            if let Some(width) = width {
+                options["ascii"]["maxWidth"] = serde_json::json!(width);
+            }
+            let options = serde_json::to_vec(&options).unwrap();
+            let result = crate::render_ascii_result(source, &options).unwrap();
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+            else {
+                panic!("ZenUML ASCII result must retain its canonical plan");
+            };
+            assert_eq!(result.data(), render_ascii(source, &options).unwrap());
+            assert_eq!(plan.family(), "zenuml");
+            assert_eq!(plan.schema_version(), 4);
+            assert_eq!(plan.encoding(), "plain");
+            assert_eq!(plan.layout_profile(), Some("canonical"));
+            assert_eq!(plan.requested_graph_presentation(), "strict");
+            assert_eq!(plan.requested_max_width(), width);
+            assert!(!plan.compact_attempted());
+            assert_eq!(plan.fallback_capability(), "available");
+            assert_eq!(plan.fallback_attempted(), width.is_some());
+            assert_eq!(plan.primary_overflowed(), Some(width.is_some()));
+            assert_eq!(
+                plan.fallback_reason(),
+                if width.is_some() {
+                    Some("primary_overflow")
+                } else {
+                    None
+                }
+            );
+            assert_eq!(
+                plan.outcome(),
+                if width.is_some() {
+                    "fallback"
+                } else {
+                    "primary"
+                }
+            );
+            assert_eq!(
+                plan.projection(),
+                if width.is_some() {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert!(!plan.emitted_overflowed());
+            if let Some(width) = width {
+                assert!(plan.emitted_width() <= width);
+            }
+            let metadata: serde_json::Value =
+                serde_json::from_slice(result.metadata_json()).unwrap();
+            assert_eq!(metadata["output_plan"]["family"], "zenuml");
+            assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+            assert_eq!(metadata["output_plan"]["outcome"], plan.outcome());
+            assert_eq!(
+                metadata["output_plan"]["emitted_width"],
+                plan.emitted_width()
+            );
+            let text = std::str::from_utf8(result.data()).unwrap();
+            assert!(!text.contains('\u{1b}'));
+            let compact: String = text.split_whitespace().collect();
+            for expected in [
+                "P1[participant]name=\"Alice\"",
+                "P2[participant]name=\"Bob\"",
+                "S1[message]id=\"zenuml-statement-0\"parent=nullsection=nullfrom=[P1]name=\"Alice\"to=[P2]name=\"Bob\"style=asynchronousassignment=nulllabel=\"Hello\"bodyCount=0",
+                "S2[return]id=\"zenuml-statement-1\"parent=nullsection=nullfrom=[P2]name=\"Bob\"to=[P1]name=\"Alice\"label=\"Reply\"",
+                "S1details:{",
+                "S2details:{",
+                "explicit_from:\"Alice\"",
+                "explicit_to:\"Alice\"",
+                "span:{",
+                "occurrences:[",
+            ] {
+                assert!(compact.contains(expected), "missing {expected:?}: {text}");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-zenuml")]
+    fn zenuml_binding_rejects_unadmitted_output_combinations() {
+        for ascii in [
+            serde_json::json!({"layoutProfile": "compact"}),
+            serde_json::json!({"layoutProfile": "auto"}),
+            serde_json::json!({"graphPresentation": "adaptive"}),
+            serde_json::json!({"colorMode": "ansi16", "maxWidth": 10, "overflow": "fallback"}),
+        ] {
+            let options = serde_json::to_vec(&serde_json::json!({"ascii": ascii})).unwrap();
+            let error = render_ascii(b"zenuml\nAlice->Bob: Hello\n", &options)
+                .expect_err("ZenUML admits only Canonical, Strict, and Plain viewport fallback");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument, "{error:?}");
+        }
+    }
+
+    #[test]
     #[cfg(feature = "diagram-pie")]
     fn pie_binding_reports_keep_actual_projection_and_complete_keyed_records() {
         for (dogs, cats, primary_projection) in

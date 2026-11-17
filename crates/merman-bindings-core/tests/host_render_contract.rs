@@ -121,6 +121,74 @@ fn render(source: &str, options: &Value) -> String {
         .unwrap()
 }
 
+#[cfg(feature = "ascii")]
+#[test]
+fn zenuml_ascii_hosts_keep_source_records_and_the_complete_width_fallback() {
+    let source = format!("---\ntitle: Host ZenUML\nconfig:\n  theme: dark\n---\n{ZENUML}");
+    for width in [None, Some(10)] {
+        let mut options = json!({"ascii": {"colorMode": "plain", "overflow": "fallback"}});
+        if let Some(width) = width {
+            options["ascii"]["maxWidth"] = json!(width);
+        }
+        let options = serde_json::to_vec(&options).unwrap();
+        let engine = merman_bindings_core::BindingEngine::from_options(&options).unwrap();
+        let cached = engine.render_ascii_result(source.as_bytes()).unwrap();
+        let once = merman_bindings_core::render_ascii_result(source.as_bytes(), &options).unwrap();
+        assert_eq!(cached.data(), once.data(), "width {width:?}");
+        let cached_metadata: Value = serde_json::from_slice(cached.metadata_json()).unwrap();
+        let once_metadata: Value = serde_json::from_slice(once.metadata_json()).unwrap();
+        assert_eq!(cached_metadata["output_plan"], once_metadata["output_plan"]);
+        let plan = &cached_metadata["output_plan"];
+        assert_eq!(plan["kind"], "ascii");
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["family"], "zenuml");
+        assert_eq!(plan["encoding"], "plain");
+        assert_eq!(plan["layout_profile"], "canonical");
+        assert_eq!(plan["requested_graph_presentation"], "strict");
+        assert_eq!(plan["compact_attempted"], false);
+        assert_eq!(plan["fallback_capability"], "available");
+        assert_eq!(plan["fallback_attempted"], width.is_some());
+        assert_eq!(plan["primary_overflowed"], width.is_some());
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert_eq!(
+            plan["projection"],
+            if width.is_some() {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert_eq!(
+            plan["outcome"],
+            if width.is_some() {
+                "fallback"
+            } else {
+                "primary"
+            }
+        );
+        if let Some(width) = width {
+            assert!(plan["emitted_width"].as_u64().unwrap() <= width);
+        }
+        let text = std::str::from_utf8(cached.data()).unwrap();
+        assert!(!text.contains('\u{1b}'));
+        let compact: String = text.split_whitespace().collect();
+        for expected in [
+            "zenumldetails:{",
+            "sourceTitle:\"HostZenUML\"",
+            "sourceConfig:{",
+            "\"theme\":\"dark\"",
+            "Alice",
+            "Bob",
+            "Hello",
+            "Reply",
+            "zenuml-statement-0",
+            "zenuml-statement-1",
+        ] {
+            assert!(compact.contains(expected), "missing {expected:?}: {text}");
+        }
+    }
+}
+
 fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
     node.attribute("class")
         .is_some_and(|classes| classes.split_ascii_whitespace().any(|item| item == class))

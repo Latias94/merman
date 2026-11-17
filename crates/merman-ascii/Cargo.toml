@@ -202,3 +202,7 @@ required-features = ["all-diagrams"]
 [[test]]
 name = "c4_model"
 required-features = ["diagram-c4"]
+
+[[test]]
+name = "zenuml_model"
+required-features = ["diagram-zenuml"]

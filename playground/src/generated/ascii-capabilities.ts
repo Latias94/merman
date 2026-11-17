@@ -1594,25 +1594,59 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "zenuml",
-    "display_name": "zenuml",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "ZenUML",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "declaration-ordered keyed participants and depth-first keyed statements",
+      "synchronous, asynchronous, return, self, creation, and nested call paths",
+      "nested control frames with sections, participant group heading bands, references, and dividers",
+      "complete appended ZenUML records retain identities, metadata, spans, and source configuration",
+      "iterative flat serialization preserves nested statement and section ownership"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "missing references, duplicate identities, invalid groups, and invalid lifecycles use complete StructuredText primaries",
+      "terminal lifelines and frames approximate browser geometry; presentation metadata remains records",
+      "Canonical layout and Strict graph presentation only; no universal dense-scene or spatial extent guarantee",
+      "resource/allocation failures, cancellation, and deadlines remain errors under unchanged budgets; width fallback is Plain-only"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/zenuml_model.rs",
+        "note": "family-local message, control, identity, record, viewport, resource, and cancellation contracts"
+      },
+      {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman/tests/ascii_api.rs",
+        "note": "basic ZenUML scene and complete Plain fallback agree across canonical and presentation adapters"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/ZENUML_SUPPORT.md",
+        "note": "family-owned borrowed ZenUML projection, complete records, and explicit admission boundaries"
       }
     ]
   }
