@@ -438,6 +438,138 @@ fn agentflow_reports_distinguish_spatial_records_and_complete_width_fallback() {
     }
 }
 
+#[cfg(feature = "diagram-requirement")]
+#[test]
+fn requirement_cli_capabilities_admit_canonical_graphs_and_complete_plain_records() {
+    let output = run_with_stdin(&["capabilities", "--json"], "");
+    assert!(output.status.success(), "stderr: {:?}", output.stderr);
+    let capabilities: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    let ascii = &capabilities["ascii"];
+    let requirement = ascii["families"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|family| family["family"] == "requirement")
+        .expect("Requirement should be in the total ASCII capability matrix");
+    assert_eq!(requirement["support_level"], "partial");
+    assert_eq!(requirement["semantic_coverage"], "partial");
+    assert_eq!(requirement["primary_projection"], "diagrammatic");
+    assert_eq!(requirement["structured_text_fallback"], true);
+    assert_eq!(
+        requirement["layout_profiles"],
+        serde_json::json!(["canonical"])
+    );
+    assert_eq!(
+        requirement["graph_presentations"],
+        serde_json::json!(["strict", "adaptive"])
+    );
+    assert_eq!(
+        requirement["width_profiles"],
+        serde_json::json!(["unicode", "cjk"])
+    );
+    assert_eq!(
+        requirement["encodings"],
+        serde_json::json!(["plain", "ansi16", "ansi256", "truecolor", "html"])
+    );
+    assert_eq!(
+        requirement["fallback_encodings"],
+        serde_json::json!(["plain"])
+    );
+    assert!(
+        ascii["detected_type_mappings"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|mapping| {
+                mapping["detected_type"] == "requirement" && mapping["family"] == "requirement"
+            })
+    );
+}
+
+#[cfg(feature = "diagram-requirement")]
+#[test]
+fn requirement_cli_reports_distinguish_spatial_records_and_complete_width_fallback() {
+    let source = concat!(
+        "requirementDiagram\n",
+        "requirement req {\nid: R-1\ntext: Login required\nrisk: high\nverifymethod: test\n}\n",
+        "element sys {\ntype: service\ndocref: spec.md\n}\n",
+        "sys - satisfies -> req\n",
+    );
+    for (source, primary_projection) in [
+        (source.to_string(), "diagrammatic"),
+        (
+            source.replace("sys - satisfies", "missing - satisfies"),
+            "structured_text",
+        ),
+    ] {
+        for (width, presentation) in [(10, "strict"), (80, "strict"), (80, "adaptive")] {
+            let limit = width.to_string();
+            let output = run_with_stdin(
+                &[
+                    "render",
+                    "-",
+                    "--format",
+                    "unicode",
+                    "--ascii-report",
+                    "--ascii-color",
+                    "plain",
+                    "--ascii-max-width",
+                    &limit,
+                    "--ascii-overflow",
+                    "fallback",
+                    "--ascii-graph-presentation",
+                    presentation,
+                ],
+                &source,
+            );
+            assert!(
+                output.status.success(),
+                "{width}/{presentation}: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            let report = assert_plain_ascii_report(&output.stdout);
+            assert_eq!(report["family"], "requirement");
+            assert_eq!(report["layout_profile"], "canonical");
+            assert_eq!(report["requested_graph_presentation"], presentation);
+            assert_eq!(report["compact_attempted"], false);
+            assert_eq!(report["fallback_attempted"], width == 10);
+            assert_eq!(
+                report["outcome"],
+                if width == 10 { "fallback" } else { "primary" }
+            );
+            assert_eq!(
+                report["projection"],
+                if width == 10 {
+                    "structured_text"
+                } else {
+                    primary_projection
+                }
+            );
+            assert_eq!(report["emitted_overflowed"], false);
+            assert!(report["emitted_width"].as_u64().unwrap() <= width);
+            let text = report["text"].as_str().unwrap();
+            let compact: String = text.split_whitespace().collect();
+            for expected in [
+                "name=\"req\"id=\"R-1\"",
+                "text=\"Loginrequired\"risk=\"High\"verifyMethod=\"Test\"",
+                "N1[element]name=\"sys\"type=\"service\"docRef=\"spec.md\"",
+                "E1[\"satisfies\"]",
+            ] {
+                assert!(compact.contains(expected), "missing {expected:?}: {report}");
+            }
+            let endpoints = if primary_projection == "structured_text" {
+                "source=[](unresolved)name=\"missing\"target=[R1]name=\"req\""
+            } else {
+                "source=[N1]name=\"sys\"target=[R1]name=\"req\""
+            };
+            assert!(
+                compact.contains(endpoints),
+                "missing {endpoints:?}: {report}"
+            );
+        }
+    }
+}
+
 #[test]
 fn cli_renders_plain_ascii_output_to_file() {
     let tmp = tempfile::tempdir().expect("tempdir");

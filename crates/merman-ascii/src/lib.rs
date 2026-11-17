@@ -41,6 +41,7 @@ mod git_graph;
     feature = "diagram-state",
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
+    feature = "diagram-requirement",
     feature = "diagram-block"
 ))]
 #[cfg_attr(
@@ -49,7 +50,8 @@ mod git_graph;
         feature = "diagram-swimlane",
         feature = "diagram-state",
         feature = "diagram-usecase",
-        feature = "diagram-agentflow"
+        feature = "diagram-agentflow",
+        feature = "diagram-requirement"
     )),
     allow(
         dead_code,
@@ -93,6 +95,8 @@ mod packet;
     )
 )]
 mod relation_graph;
+#[cfg(feature = "diagram-requirement")]
+mod requirement;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -385,6 +389,8 @@ impl AsciiRenderer {
             AsciiDiagram::Agentflow(model) => {
                 agentflow::primary_projection(model, metadata, execution)?
             }
+            #[cfg(feature = "diagram-requirement")]
+            AsciiDiagram::Requirement(model) => requirement::primary_projection(model, execution)?,
             #[cfg(feature = "diagram-packet")]
             AsciiDiagram::Packet(packet) => {
                 packet::primary_projection(packet, Some(metadata.semantic_config), execution)?
@@ -394,11 +400,13 @@ impl AsciiRenderer {
         let fallback_capability = capability.is_some_and(|capability| {
             capability.supports_fallback_encoding(policies.output.encoding)
         });
-        #[cfg(feature = "diagram-agentflow")]
-        let record_primary = matches!(model, AsciiDiagram::Agentflow(_))
-            && projection == AsciiProjection::StructuredText;
-        #[cfg(not(feature = "diagram-agentflow"))]
-        let record_primary = false;
+        let record_primary = match model {
+            #[cfg(feature = "diagram-agentflow")]
+            AsciiDiagram::Agentflow(_) => projection == AsciiProjection::StructuredText,
+            #[cfg(feature = "diagram-requirement")]
+            AsciiDiagram::Requirement(_) => true,
+            _ => false,
+        };
         let output_context = output::OutputBuildContext {
             color_mode: policies.output.color_mode,
             profile: policies.output.terminal_width_profile,
@@ -479,7 +487,7 @@ impl AsciiRenderer {
             .map(annotate);
         }
         if record_primary {
-            // Agentflow record encoding uses candidate-local cell storage and shared work.
+            // Reading-record documents use candidate-local cell storage and shared work.
             // Commit only the selected document, after any width replacement has been decided.
             primary.admit_document(execution)?;
         }
@@ -557,6 +565,14 @@ fn render_model_with_execution(
             agentflow_model,
             options,
             policies.layout.agentflow,
+            _source,
+            execution,
+        ),
+        #[cfg(feature = "diagram-requirement")]
+        AsciiDiagram::Requirement(model) => requirement::render(
+            model,
+            options,
+            policies.layout.requirement,
             _source,
             execution,
         ),

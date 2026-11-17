@@ -76,7 +76,7 @@ diagram-pie = ["merman-model/diagram-pie", "merman-core/diagram-pie"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart", "merman-core/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "merman-core/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad", "merman-core/diagram-railroad"]
-diagram-requirement = ["merman-model/diagram-requirement", "merman-core/diagram-requirement"]
+diagram-requirement = ["merman-model/diagram-requirement", "merman-core/diagram-requirement", "dep:dugong", "dep:rustc-hash"]
 diagram-sankey = ["merman-model/diagram-sankey", "merman-core/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "merman-core/diagram-sequence"]
 diagram-state = ["merman-model/diagram-state", "merman-core/diagram-state", "dep:dugong", "dep:rustc-hash"]
@@ -110,6 +110,10 @@ sha2.workspace = true
 [[test]]
 name = "agentflow_model"
 required-features = ["diagram-agentflow"]
+
+[[test]]
+name = "requirement_model"
+required-features = ["diagram-requirement"]
 
 [[test]]
 name = "class_model"

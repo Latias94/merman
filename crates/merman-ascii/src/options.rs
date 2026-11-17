@@ -53,7 +53,7 @@ impl AsciiLayoutProfile {
     }
 }
 
-/// Presentation policy for the admitted Flowchart, Swimlane, and State graph families.
+/// Presentation policy for admitted Agentflow, Flowchart, Requirement, Swimlane, and State graphs.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiGraphPresentation {
@@ -232,6 +232,7 @@ pub(crate) struct AsciiLayoutPolicies {
     pub profile: AsciiLayoutProfile,
     pub flowchart: FlowchartLayoutPolicy,
     pub agentflow: GraphLayoutPolicy,
+    pub requirement: GraphLayoutPolicy,
     pub state: GraphLayoutPolicy,
     pub usecase: GraphLayoutPolicy,
     pub sequence: SequenceLayoutPolicy,
@@ -427,6 +428,7 @@ impl AsciiRenderOptions {
                 state: terminal_graph_layout_policy(self, host),
                 usecase: terminal_graph_layout_policy(self, host),
                 agentflow: terminal_graph_layout_policy(self, host),
+                requirement: terminal_graph_layout_policy(self, host),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
                     participant_spacing: self.resolved_sequence_participant_spacing(),

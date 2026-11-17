@@ -46,13 +46,15 @@ pub(crate) use draw::render_graph_with_execution;
     feature = "diagram-swimlane",
     feature = "diagram-state",
     feature = "diagram-usecase",
-    feature = "diagram-agentflow"
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement"
 ))]
 pub(crate) use draw::render_graph_with_resolved_policy_and_execution;
 #[cfg(any(
     feature = "diagram-state",
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
+    feature = "diagram-requirement",
     feature = "diagram-block"
 ))]
 pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
@@ -60,7 +62,11 @@ pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphNodeSemantics, GraphNodeSide, GraphNodeSideConstraint,
 };
 
-#[cfg(any(feature = "diagram-usecase", feature = "diagram-agentflow"))]
+#[cfg(any(
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement"
+))]
 pub(crate) use model::GraphEdgeStroke;
 #[cfg(feature = "diagram-state")]
 pub(crate) use model::GraphGroupKind;
@@ -69,9 +75,14 @@ pub(crate) use model::GraphGroupKind;
     feature = "diagram-usecase",
     feature = "diagram-agentflow"
 ))]
-pub(crate) use model::{
-    GraphEdgeAttrs, GraphEdgeMarker, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
-};
+pub(crate) use model::GraphGroupStyle;
+#[cfg(any(
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement"
+))]
+pub(crate) use model::{GraphEdgeAttrs, GraphEdgeMarker, GraphNodeShape, GraphNodeStyle};
 
 #[cfg(test)]
 mod graph_golden {

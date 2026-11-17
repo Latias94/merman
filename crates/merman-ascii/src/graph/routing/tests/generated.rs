@@ -1118,3 +1118,64 @@ fn agentflow_operators_preserve_independent_contacts_markers_and_paint() {
         }
     }
 }
+
+#[test]
+#[cfg(feature = "diagram-requirement")]
+fn requirement_shared_endpoints_and_typed_markers_pass_the_independent_oracle() {
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/requirement/upstream_docs_requirementdiagram_larger_example_010.mmd"
+        )))
+        .unwrap();
+    let merman_model::SemanticDiagramModel::Requirement(model) = &parsed.model else {
+        panic!("expected Requirement");
+    };
+    for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+        for mode in ["ascii", "unicode"] {
+            let options = options(mode);
+            let limits = AsciiResourcePolicy::default();
+            let mut resources = ResourceContext::new(limits);
+            let mut graph =
+                crate::requirement::project(model, options.terminal_width_profile, &resources)
+                    .unwrap();
+            graph.direction = direction;
+            assert_eq!((graph.nodes.len(), graph.edges.len()), (9, 8));
+            assert_eq!((&*graph.edges[7].from, &*graph.edges[7].to), ("N2", "R1"));
+            assert_eq!(graph.edges.iter().filter(|edge| edge.to == "R2").count(), 2);
+            assert_eq!(graph.edges.iter().filter(|edge| edge.to == "R5").count(), 2);
+            for (edge, authored) in graph.edges.iter().zip(&model.relationships) {
+                assert_eq!(edge.label.as_deref(), Some(authored.rel_type.as_str()));
+                if authored.rel_type == "contains" {
+                    assert_eq!(
+                        (edge.stroke, edge.start_marker, edge.end_marker),
+                        (
+                            GraphEdgeStroke::Normal,
+                            GraphEdgeMarker::Circle,
+                            GraphEdgeMarker::Open
+                        )
+                    );
+                } else {
+                    assert_eq!(
+                        (edge.stroke, edge.start_marker, edge.end_marker),
+                        (
+                            GraphEdgeStroke::Dotted,
+                            GraphEdgeMarker::Open,
+                            GraphEdgeMarker::Point
+                        )
+                    );
+                }
+            }
+            let planned = crate::graph::planning::plan_graph(
+                &graph,
+                &options.flowchart_layout().graph_policy(),
+                &GraphCharset::for_options(&options),
+                &mut resources,
+                AsciiExecution::for_test(&limits),
+            )
+            .unwrap();
+            let scene = planned.routes.materialize(&resources).unwrap();
+            information_oracle(&graph, &planned.layout, &scene, &options).unwrap();
+        }
+    }
+}

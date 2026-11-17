@@ -32,11 +32,14 @@ mod packet;
     feature = "diagram-er",
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
+    feature = "diagram-requirement",
     feature = "diagram-block"
 ))]
 mod record;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 mod relation;
+#[cfg(feature = "diagram-requirement")]
+mod requirement;
 #[cfg(feature = "diagram-usecase")]
 mod usecase;
 
@@ -957,12 +960,18 @@ fn build_semantic_document(
     let agentflow_document = agentflow::write_if_agentflow(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-agentflow"))]
     let agentflow_document = false;
+    #[cfg(feature = "diagram-requirement")]
+    let requirement_document =
+        requirement::write_if_requirement(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-requirement"))]
+    let requirement_document = false;
     if !graph_document
         && !relation_document
         && !packet_document
         && !usecase_document
         && !block_document
         && !agentflow_document
+        && !requirement_document
     {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
@@ -983,13 +992,14 @@ fn build_semantic_document(
     )
 }
 
-/// Builds complete Agentflow reading records as a primary for scenes outside the spatial subset.
-#[cfg(feature = "diagram-agentflow")]
-pub(crate) fn render_agentflow_primary(
+/// Encodes complete family-owned records, optionally following an admitted plain topology.
+#[cfg(any(feature = "diagram-agentflow", feature = "diagram-requirement"))]
+pub(crate) fn render_reading_primary(
     model: &AsciiDiagram<'_>,
     source: AsciiSourceContext<'_>,
     options: &crate::AsciiRenderOptions,
     execution: AsciiExecution<'_>,
+    topology: Option<&str>,
 ) -> Result<String> {
     preflight_semantic_model(model, source, execution)?;
     let projection =
@@ -997,13 +1007,29 @@ pub(crate) fn render_agentflow_primary(
             SemanticFallbackError::Cancelled(error) => AsciiError::Cancelled(error),
             SemanticFallbackError::Resource(error) => error,
             SemanticFallbackError::Unavailable => AsciiError::UnsupportedFeature {
-                diagram_type: "agentflow",
+                diagram_type: "graph",
                 feature: "invalid serialized semantic projection",
             },
         })?;
     let mut records = SemanticFallbackWriter::new(execution, 80, options.terminal_width_profile);
-    records.push("Agent workflow records".to_string())?;
-    agentflow::write_if_agentflow(model, &projection, &mut records)?;
+    match model {
+        #[cfg(feature = "diagram-agentflow")]
+        AsciiDiagram::Agentflow(_) => {
+            records.push("Agent workflow records".to_string())?;
+            agentflow::write_if_agentflow(model, &projection, &mut records)?;
+        }
+        #[cfg(feature = "diagram-requirement")]
+        AsciiDiagram::Requirement(_) => {
+            records.push("Requirement records".to_string())?;
+            requirement::write_if_requirement(model, &projection, &mut records)?;
+        }
+        _ => {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "graph",
+                feature: "reading records",
+            });
+        }
+    }
     let candidate = records.finish();
     let mut document = crate::safe_text::BudgetedTextDocument::from_resources(
         execution
@@ -1011,6 +1037,14 @@ pub(crate) fn render_agentflow_primary(
             .scoped(),
         options,
     );
+    if let Some(topology) = topology.filter(|text| !text.is_empty()) {
+        for line in topology.lines() {
+            // This prefix is an already painted canvas. Its right padding is presentation,
+            // unlike spaces retained inside the quoted records below.
+            document.push_line(line.trim_end_matches(' '))?;
+        }
+        document.push_line("")?;
+    }
     for line in candidate.text().split('\n') {
         document.push_line(line)?;
     }

@@ -728,6 +728,94 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "diagram-requirement")]
+    fn requirement_binding_reports_keep_primary_records_and_complete_width_fallback() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "requirement req {\nid: R-1\ntext: Login required\nrisk: high\nverifymethod: test\n}\n",
+            "element sys {\ntype: service\ndocref: spec.md\n}\n",
+            "sys - satisfies -> req\n",
+        );
+        for (source, primary_projection) in [
+            (source.to_string(), "diagrammatic"),
+            (
+                source.replace("sys - satisfies", "missing - satisfies"),
+                "structured_text",
+            ),
+        ] {
+            for (width, presentation) in [(10, "strict"), (80, "strict"), (80, "adaptive")] {
+                let options = serde_json::json!({
+                    "ascii": {
+                        "maxWidth": width,
+                        "overflow": "fallback",
+                        "colorMode": "plain",
+                        "graphPresentation": presentation,
+                    },
+                });
+                let result = crate::render_ascii_result(
+                    source.as_bytes(),
+                    &serde_json::to_vec(&options).unwrap(),
+                )
+                .unwrap();
+                let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+                else {
+                    panic!("Requirement ASCII result must retain its canonical plan");
+                };
+                assert_eq!(plan.family(), "requirement");
+                assert_eq!(plan.schema_version(), 4);
+                assert_eq!(plan.encoding(), "plain");
+                assert_eq!(plan.layout_profile(), Some("canonical"));
+                assert_eq!(plan.requested_graph_presentation(), presentation);
+                assert_eq!(plan.requested_max_width(), Some(width));
+                assert_eq!(plan.fallback_attempted(), width == 10);
+                assert_eq!(
+                    plan.outcome(),
+                    if width == 10 { "fallback" } else { "primary" }
+                );
+                assert_eq!(
+                    plan.projection(),
+                    if width == 10 {
+                        "structured_text"
+                    } else {
+                        primary_projection
+                    }
+                );
+                assert!(!plan.emitted_overflowed());
+                assert!(plan.emitted_width() <= width);
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(result.metadata_json()).unwrap();
+                assert_eq!(metadata["output_plan"]["family"], "requirement");
+                assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+                let text = std::str::from_utf8(result.data()).unwrap();
+                assert!(!text.contains('\u{1b}'));
+                let compact: String = text.split_whitespace().collect();
+                for expected in [
+                    "name=\"req\"id=\"R-1\"",
+                    "text=\"Loginrequired\"risk=\"High\"verifyMethod=\"Test\"",
+                    "N1[element]name=\"sys\"type=\"service\"docRef=\"spec.md\"",
+                    "E1[\"satisfies\"]",
+                ] {
+                    assert!(compact.contains(expected), "missing {expected:?}: {text}");
+                }
+                let endpoints = if primary_projection == "structured_text" {
+                    "source=[](unresolved)name=\"missing\"target=[R1]name=\"req\""
+                } else {
+                    "source=[N1]name=\"sys\"target=[R1]name=\"req\""
+                };
+                assert!(compact.contains(endpoints), "missing {endpoints:?}: {text}");
+            }
+        }
+
+        let error = render_ascii(
+            source.as_bytes(),
+            br#"{"ascii":{"graphPresentation":"adaptive","colorMode":"ansi16"}}"#,
+        )
+        .expect_err("Requirement adaptive records require Plain encoding");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("graph_presentation"), "{error:?}");
+    }
+
+    #[test]
     fn styled_ascii_results_identify_their_exact_encoding() {
         for (color_mode, expected_encoding, required_bytes) in [
             ("ansi16", "ansi16", "\u{1b}["),

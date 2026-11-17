@@ -90,6 +90,7 @@ pub(crate) struct AsciiExecution<'a> {
     resources: &'a AsciiResourcePolicy,
     viewport: AsciiViewportPolicy,
     optional_layout_candidate: bool,
+    trim_canvas_padding: bool,
     render_ledger: Option<&'a ResourceContext>,
     graph_planning: Option<&'a GraphPlanningBudget>,
 }
@@ -103,6 +104,7 @@ impl<'a> AsciiExecution<'a> {
             viewport: AsciiViewportPolicy::unrestricted(),
             render_ledger: None,
             optional_layout_candidate: false,
+            trim_canvas_padding: false,
             graph_planning: None,
         }
     }
@@ -114,6 +116,19 @@ impl<'a> AsciiExecution<'a> {
 
     pub(crate) const fn max_width(self) -> Option<usize> {
         self.viewport.max_width
+    }
+
+    /// A canvas embedded in a reading document must admit its retained rows, rather than a
+    /// padded rectangle that the document composer would immediately discard. This is local
+    /// materialization policy, independent of the caller's final document trim request.
+    #[cfg(feature = "diagram-requirement")]
+    pub(crate) const fn with_trimmed_canvas(mut self) -> Self {
+        self.trim_canvas_padding = true;
+        self
+    }
+
+    pub(crate) const fn trims_canvas_padding(self) -> bool {
+        self.trim_canvas_padding
     }
 
     pub(crate) const fn with_graph_planning(mut self, budget: &'a GraphPlanningBudget) -> Self {

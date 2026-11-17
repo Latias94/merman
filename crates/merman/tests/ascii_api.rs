@@ -223,6 +223,96 @@ fn packet_facade_retains_source_geometry_policy_and_actual_projection() {
     }
 }
 
+#[cfg(all(feature = "presentation", feature = "diagram-requirement"))]
+#[test]
+fn requirement_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = concat!(
+        "---\ntitle: Traceability\n---\n",
+        "requirementDiagram\n",
+        "requirement req {\nid: R-1\ntext: Login required\nrisk: high\nverifymethod: test\n}\n",
+        "element sys {\ntype: service\ndocref: spec.md\n}\n",
+        "sys - satisfies -> req\n",
+    );
+    for (source, primary_projection) in [
+        (source.to_string(), "diagrammatic"),
+        (
+            source.replace("sys - satisfies", "missing - satisfies"),
+            "structured_text",
+        ),
+    ] {
+        let renderer = Renderer::new();
+        for width in [10, 80] {
+            let semantic = renderer
+                .parse_semantic(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let presentation = renderer
+                .prepare_presentation(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical Requirement ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation Requirement ASCII output");
+            };
+            assert_eq!(canonical.text, full.text, "width {width}: {source}");
+            assert_eq!(canonical.report(), full.report());
+            assert_eq!(full.family, "requirement");
+            assert_eq!(
+                full.outcome,
+                if width == 10 {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+            assert_eq!(
+                full.projection.as_str(),
+                if width == 10 {
+                    "structured_text"
+                } else {
+                    primary_projection
+                }
+            );
+            assert!(full.emitted_extent.width <= width);
+            let compact: String = full.text.split_whitespace().collect();
+            for expected in [
+                "name=\"req\"id=\"R-1\"",
+                "text=\"Loginrequired\"risk=\"High\"verifyMethod=\"Test\"",
+                "N1[element]name=\"sys\"type=\"service\"docRef=\"spec.md\"",
+                "Traceability",
+            ] {
+                assert!(
+                    compact.contains(expected),
+                    "missing {expected:?}: {}",
+                    full.text
+                );
+            }
+            if primary_projection == "structured_text" {
+                assert!(
+                    compact
+                        .contains("source=[](unresolved)name=\"missing\"target=[R1]name=\"req\"")
+                );
+            } else {
+                assert!(compact.contains("source=[N1]name=\"sys\"target=[R1]name=\"req\""));
+            }
+        }
+    }
+}
+
 #[cfg(all(
     feature = "diagram-class",
     feature = "diagram-er",

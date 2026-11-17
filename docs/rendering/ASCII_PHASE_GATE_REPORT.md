@@ -29,8 +29,9 @@ Baseline: pinned Mermaid `11.16.1`
 Last updated: 2026-08-15
 
 This report is the tracked gate artifact required by U16 and U17 of the ASCII semantic-depth plan.
-It records why common-family depth remains the priority and why Railroad, Requirement, Ishikawa,
-and Quadrant remain Unsupported. It does not promote any existing Partial family to Full.
+It records the historical rejection of Railroad, Requirement, Ishikawa, and Quadrant. The later
+[Requirement admission](#requirement-spatial-admission) supersedes that family's disposition;
+the other three remain Unsupported. No existing Partial family is promoted to Full.
 
 The report distinguishes two decisions:
 
@@ -380,6 +381,50 @@ Disposition: **Unsupported**. The prototype preserves relation records but does 
 global node-owned graph, so it adds no traceability advantage over the lossless edge list. Reopen
 with shared endpoints, direction-aware layout, and Requirement-owned relation labels/markers.
 
+## Requirement Spatial Admission
+
+Reopened: 2026-11-17, against the current canonical model and selected Mermaid `12.3.0` semantics.
+Requirement now has Partial Diagrammatic output for unambiguous declared endpoints. The historical
+tree prototype above remains rejected; the production adapter uses one global graph and does not
+copy shared nodes into independent branches.
+
+Each declaration has an R requirement or N element key. Geometry shows that key and the wrapped
+name, while complete field records follow the graph. Each relationship keeps its kind and source/
+target identities. Contains uses a solid line with a source circle and no target arrow; other
+kinds use dotted target arrows. The circle approximates Mermaid's circled plus. Unknown directions
+or kinds, ambiguous names, unresolved endpoints, and empty models select honest StructuredText
+primaries. Bounded routing failures remain Strict diagnostics or Plain Adaptive record recovery.
+
+`tests/requirement_model.rs` requires small, typical, and dense sources to remain Diagrammatic
+Primary at 80, 100, and 120 columns, in ASCII and Unicode. The small verification pair keeps node
+fields inspectable; the typical three-node view shows containment and a shared verified target;
+the dense source is the same upstream larger example used by R34. Its two convergences are now
+visible, every node appears once, and all eight typed relations remain attached to their endpoints.
+Complete attributes in the records are the same facts available in the record-only baseline.
+The independent route oracle separately checks every contact, marker, label, path contribution,
+and final paint in both canonical axes and structural charsets.
+
+The real CLI replay measures complete output, including records, rather than only its grid:
+
+| Source and reading task | Complete record baseline | 80 columns | 100 columns | 120 columns |
+| --- | --- | --- | --- | --- |
+| Small: one requirement verified by a test-suite element | 79 × 13 | 79 × 28 | 79 × 28 | 79 × 28 |
+| Typical: containment and a second contributor to the same requirement | 79 × 17 | 79 × 32 | 79 × 32 | 79 × 32 |
+| Dense: six requirements, three elements, eight typed relations | 79 × 40 | 79 × 91 | 79 × 91 | 79 × 91 |
+
+All nine width cases and both structural charsets are Diagrammatic Primary without fallback.
+The dense graph retains all seven kinds and both shared targets; the small graph alone offers
+little scan advantage, while its records remain the shorter single-relation view. The larger
+graph resolves R34's concrete shared-identity failure. The 11 distinct Requirement sources in
+the frozen Trident DaveBench extraction also complete in both charsets at 80 columns. This is a
+local completion diagnostic, not an official Trident ranking or a family-quality oracle.
+
+The map adds spatial traceability and vertical reading cost; the records remain the shorter audit
+view. Admission does not claim arbitrary dense-graph readability or a browser-shaped requirement
+box. The [Requirement support note](../../crates/merman-ascii/REQUIREMENT_SUPPORT.md) owns the current
+field, identity, encoding, viewport, and resource boundary. Existing defaults and graph planning
+allowances are unchanged. Neither accepted terminal reference supplies a Requirement quality oracle.
+
 <a id="ishikawa-r34"></a>
 ## Ishikawa R34 Disposition
 
@@ -540,7 +585,7 @@ that preserves relative order without relying on the point table for the missing
 
 ## Binding Decision
 
-Railroad, Requirement, Ishikawa, and Quadrant remain present in the exhaustive 31-family runtime
+Railroad, Ishikawa, and Quadrant remain present in the exhaustive runtime
 capability metadata with `semantic_coverage = null`, `primary_projection = none`, and derived
 `support_level = unsupported`. They remain absent from both supported-output and diagrammatic lists.
 The typed dispatch returns `UnsupportedDiagram`; there is no dispatcher stub, summary-only shortcut,
@@ -550,3 +595,5 @@ The test `crates/merman-ascii/tests/candidate_admission.rs` binds the current ru
 catalog, representative tracked fixtures, and explicit unsupported dispatch. The historical
 80/100/120 prototype measurements above remain an auditable decision record, but are intentionally
 not re-executed as part of the standing test suite.
+Requirement's later production admission is covered by its family tests and complete host
+capability integration; the historical unsupported dispatcher assertion no longer applies to it.

@@ -23,11 +23,6 @@ const REJECTED_CANDIDATES: &[RejectedCandidate] = &[
         fixture: "fixtures/railroad/upstream_cypress_railroad_spec_renders_sequences_and_choices_002.mmd",
     },
     RejectedCandidate {
-        capability_type: "requirement",
-        render_kind: "requirement",
-        fixture: "fixtures/requirement/relations.mmd",
-    },
-    RejectedCandidate {
         capability_type: "ishikawa",
         render_kind: "ishikawa",
         fixture: "fixtures/ishikawa/upstream_cypress_ishikawa_spec_1_should_render_a_simple_ishikawa_diagram_001.mmd",

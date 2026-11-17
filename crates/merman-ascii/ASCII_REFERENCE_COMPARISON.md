@@ -34,11 +34,13 @@ product boundary.
   retain complete records and report StructuredText. The Packet admission note in the phase
   report records the complete-text comparison and verified 80/100/120-column results.
 - The Phase 0-3 evidence and R34 admission decisions are tracked in
-  `docs/rendering/ASCII_PHASE_GATE_REPORT.md`. Railroad, Requirement, Ishikawa, and Quadrant remain
+  `docs/rendering/ASCII_PHASE_GATE_REPORT.md`. Railroad, Ishikawa, and Quadrant remain
   Unsupported because each current prototype fails at least one required dense or typed-topology
   case at 80/100/120 columns; Ishikawa typical and Quadrant small/typical still demonstrate useful
   spatial signals. This is a current-cycle admission result, not a claim of permanent terminal
-  unsuitability.
+  unsuitability. Requirement has since reopened Partial Diagrammatic admission with a global
+  shared-endpoint traceability graph and complete keyed records; its original tree prototype
+  remains rejected.
 - CJK/emoji terminal-cell coverage is semantic, not byte-exact: primitive cell ownership plus
   Flowchart, Sequence, Class, ER, and XYChart tests prove visibility/alignment without copying
   reference spacing.
@@ -127,7 +129,7 @@ The research checkout at `5a9df1560871e1ef8037c052b3b5d87de503bc9e` has three ex
 adapters: Graph, Sequence, and ER. Its
 [`DiagramFactory`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/render/diagram.go#L13)
 routes other inputs to the graph parser, which requires a `graph` or `flowchart` declaration;
-this is not support for State, Kanban, Block, Usecase, or Agentflow. The moving ER parser
+this is not support for State, Kanban, Block, Usecase, Agentflow, or Requirement. The moving ER parser
 explicitly [rejects subgraphs](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/er/parser.go#L181).
 These omissions distinguish transferable layout techniques from solved family semantics.
 
@@ -152,6 +154,7 @@ graph mechanisms do not establish another family's semantics:
 | Area | Owner | Current boundary or next acceptance condition |
 | --- | --- | --- |
 | Agentflow | `agentflow.rs`, `output/agentflow.rs` | Family-owned role contours and sequence/reference/failure semantics share graph routing. Expanded flow ownership is preserved; rich metadata, collapsed views, source diagnostics and ambiguous containment select honest complete keyed records. Neither the pinned nor current `mermaid-ascii` provides an Agentflow renderer or semantic quality oracle. See `AGENTFLOW_SUPPORT.md`. |
+| Requirement | `requirement.rs`, `output/requirement.rs` | A global shared-endpoint graph plus complete keyed records retains all seven relationship kinds and requirement/element fields. Contains keeps its source marker and headless target. Ambiguous names and unresolved endpoints remain explicit records. The historical R34 convergence failure is resolved; dense routing remains bounded. See `REQUIREMENT_SUPPORT.md`. |
 | Uncommon Flowchart shapes | `graph/shape.rs`, `graph/adapter.rs` | Admitted known aliases use a visible type compartment measured before contour sizing and routing. Unknown, cross-family, and remaining BPMN shapes retain precise diagnostics. |
 | Flowchart icon/image nodes | Family-owned measured node presentation | Complete labels, asset identities, form, position, constraint, and numeric dimensions are retained as terminal-safe text. Quoted whitespace survives wrapping and mirroring. Assets are not fetched; fixed-label control shapes reject metadata they cannot display. Aggregate temporary text counts against output admission. |
 | Flat cyclic Flowcharts | `graph/layout/feedback.rs`, `graph/layout/grid/rank.rs` | After a routing miss with no further capacity feedback, visible-edge scenes without authored side constraints may use SCC condensation ranks and transverse member lanes. No node or relationship is contracted. The frozen 100-node/195-edge and 20-node/33-edge inputs require complete spatial scenes; the independent route oracle checks every original contribution in both canonical axes and structural character sets. Two smaller cyclic controls preserve complete 50-column results and edge labels through existing capacity recovery. Rebuild and work allowances remain unchanged. |
@@ -657,7 +660,8 @@ expected output.
 | Journey / Kanban | Not part of the reference scope. | Broader board renderers can suggest grouping and actor/card metadata patterns. | Readable structured-text reports that preserve section order, actor order, and card metadata. | Keep the projection stable and compact. |
 | Packet | Not part of the reference scope. | No Packet byte-parity oracle is adopted. | Bounded Partial Diagrammatic contract: integer rows of 1..=64 bits at two terminal cells per bit, exact gaps and cross-row splitting, source-configured order/number display, and complete authored-label/raw-DB records after the plot. Non-spatial cases report StructuredText; borrowed models default to 32/ascending/showBits. | Narrow labels may use `*` with a legend and exact details; geometry never expands for text. This is a terminal admission bound, not a Mermaid syntax limit. Small/typical/dense cases pass all 80/100/120-column gates against the complete record baseline; the phase report records dimensions and vertical cost. |
 | GitGraph | Not part of the reference scope. | Broader process-diagram examples can suggest readable lane reports. | Readable structured-text reports preserve parents, tags, commit order, and warnings. | Favor traceable text over decorative pseudo-graphs. |
-| Railroad / Requirement / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report executes source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
+| Requirement | Not part of the pinned ASCII oracle or inspected moving renderer. | No Requirement byte or quality oracle is accepted. | Partial Diagrammatic shared-endpoint traceability with complete field records, plus honest StructuredText primaries for unresolved or ambiguous identities. | Small/typical/dense sources retain geometry at 80/100/120 columns; the independent route oracle checks both shared targets and all typed relation markers. Record rows add vertical cost. |
+| Railroad / Ishikawa / Quadrant | Not part of the pinned ASCII oracle. | No reference output is accepted as Mermaid byte authority for these families. | Typed core models exist, but ASCII dispatch and exhaustive capability metadata remain explicitly Unsupported. | The tracked R34 report retains source-backed test-private spatial prototypes at 80/100/120 columns: each family has a concrete dense-case failure, while Ishikawa typical and Quadrant small/typical retain positive design signals. A future complete spatial vertical slice may reopen admission. |
 
 ## Intentional Differences
 
@@ -691,6 +695,6 @@ expected output.
   this does not justify label-driven width distortion or converting resource errors into success.
   The [Packet admission note](../../docs/rendering/ASCII_PHASE_GATE_REPORT.md#packet-bounded-spatial-admission)
   owns the verified small/typical/dense width comparison, rather than a reference parity claim.
-- Railroad, Requirement, Ishikawa, and Quadrant remain breadth candidates only after a new proposal
+- Railroad, Ishikawa, and Quadrant remain breadth candidates only after a new proposal
   supplies the complete spatial and width evidence required by
   `docs/rendering/ASCII_PHASE_GATE_REPORT.md`; summary-only output does not clear that gate.

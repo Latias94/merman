@@ -2083,6 +2083,7 @@ mod tests {
                     "kanban",
                     "mindmap",
                     "packet",
+                    "requirement",
                     "sequence",
                     "state",
                     "swimlane",
@@ -2158,6 +2159,32 @@ mod tests {
         let er = ascii_capability(&capabilities, "er");
         assert_eq!(er.support_level, "partial");
         assert!(er.structured_text_fallback);
+
+        let requirement = ascii_capability(&capabilities, "requirement");
+        assert_eq!(requirement.semantic_coverage, Some("partial"));
+        assert_eq!(requirement.primary_projection, "diagrammatic");
+        assert_eq!(requirement.support_level, "partial");
+        assert!(requirement.structured_text_fallback);
+        assert_eq!(requirement.layout_profiles, ["canonical"]);
+        assert_eq!(requirement.graph_presentations, ["strict", "adaptive"]);
+        assert_eq!(requirement.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            requirement.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(requirement.fallback_encodings, ["plain"]);
+        assert!(requirement.limits.iter().any(|limit| {
+            limit.contains("unresolved endpoints") && limit.contains("StructuredText primaries")
+        }));
+        assert!(requirement.evidence.iter().any(|evidence| {
+            evidence.kind == "local_semantic_probe"
+                && evidence.source == "crates/merman-ascii/tests/requirement_model.rs"
+        }));
+        assert!(
+            requirement.evidence.iter().any(|evidence| {
+                evidence.source == "crates/merman-ascii/REQUIREMENT_SUPPORT.md"
+            })
+        );
 
         let gantt = ascii_capability(&capabilities, "gantt");
         assert_eq!(gantt.support_level, "summary");

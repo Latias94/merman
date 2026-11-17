@@ -61,6 +61,8 @@ pub enum AsciiDiagram<'a> {
     Mindmap(merman_model::families::mindmap::MindmapTerminalView<'a>),
     #[cfg(feature = "diagram-packet")]
     Packet(&'a merman_model::families::packet::PacketDiagramModel),
+    #[cfg(feature = "diagram-requirement")]
+    Requirement(&'a merman_model::families::requirement::RequirementDiagramModel),
     #[cfg(feature = "diagram-sequence")]
     Sequence(&'a merman_model::families::sequence::SequenceDiagramModel),
     #[cfg(feature = "diagram-state")]
@@ -140,6 +142,8 @@ impl<'a> AsciiDiagram<'a> {
             ),
             #[cfg(feature = "diagram-packet")]
             SemanticDiagramModel::Packet(model) => Self::Packet(model),
+            #[cfg(feature = "diagram-requirement")]
+            SemanticDiagramModel::Requirement(model) => Self::Requirement(model),
             #[cfg(feature = "diagram-sequence")]
             SemanticDiagramModel::Sequence(model) => Self::Sequence(model),
             #[cfg(feature = "diagram-state")]
@@ -187,6 +191,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Mindmap(_) => "mindmap",
             #[cfg(feature = "diagram-packet")]
             Self::Packet(_) => "packet",
+            #[cfg(feature = "diagram-requirement")]
+            Self::Requirement(_) => "requirement",
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(_) => "sequence",
             #[cfg(feature = "diagram-state")]
@@ -254,6 +260,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Mindmap(model) => model.complexity(),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-requirement")]
+            Self::Requirement(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(model) => {
                 merman_model::resources::SequenceComplexity::from_model(model).as_model_complexity()
@@ -322,6 +330,8 @@ impl Serialize for AsciiDiagram<'_> {
             Self::Mindmap(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-requirement")]
+            Self::Requirement(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(model) => {
                 #[derive(Serialize)]

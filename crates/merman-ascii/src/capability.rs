@@ -158,7 +158,7 @@ impl AsciiCapability {
         };
         let graph_presentations = match definition.diagram_type {
             _ if !supported => &[],
-            "agentflow" | "flowchart" | "swimlane" | "state" if supported => {
+            "agentflow" | "flowchart" | "requirement" | "swimlane" | "state" if supported => {
                 CORE_GRAPH_PRESENTATIONS
             }
             _ => STRICT_GRAPH_PRESENTATIONS,
@@ -722,6 +722,42 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
     },
     AsciiCapabilityDefinition {
+        diagram_type: "requirement",
+        display_name: "Requirement",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "one shared endpoint graph with R requirement and N element reading keys",
+            "all six requirement types with id, text, risk, and verifyMethod records",
+            "element type and docRef records",
+            "full contains, copies, derives, satisfies, verifies, refines, and traces labels",
+            "solid contains relationships with a source circle and no target arrow",
+            "dotted non-contains relationships with a target arrow",
+            "top-down, bottom-up, left-right, and right-left directions",
+            "complete keyed declarations and source/target relationship records following topology",
+            "classes, styles, accessibility, source title, and source configuration in records",
+        ],
+        limits: &[
+            "ambiguous or duplicate names, unresolved endpoints, and unknown relation kinds or directions use StructuredText primaries",
+            "terminal geometry approximates browser nodes and does not paint CSS or resolve document references",
+            "dense spatial planning failures remain diagnostics; Adaptive can select complete Plain records",
+            "reading primaries use a natural width of 80; narrow fallback reflows complete keyed records without truncation",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/requirement_model.rs",
+                note: "parser-backed shared endpoints, typed relations, complete fields, record primaries, viewports, and resource coverage",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "crates/merman-ascii/REQUIREMENT_SUPPORT.md",
+                note: "family-owned spatial admission and complete keyed Requirement reading records",
+            },
+        ],
+    },
+    AsciiCapabilityDefinition {
         diagram_type: "sequence",
         display_name: "Sequence",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
@@ -1035,6 +1071,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
         "kanban" => cfg!(feature = "diagram-kanban"),
         "mindmap" => cfg!(feature = "diagram-mindmap"),
         "packet" => cfg!(feature = "diagram-packet"),
+        "requirement" => cfg!(feature = "diagram-requirement"),
         "sequence" => cfg!(feature = "diagram-sequence"),
         "state" => cfg!(feature = "diagram-state"),
         "swimlane" => cfg!(feature = "diagram-swimlane"),
@@ -1164,6 +1201,7 @@ mod tests {
                 "kanban",
                 "mindmap",
                 "packet",
+                "requirement",
                 "sequence",
                 "state",
                 "swimlane",
@@ -1182,6 +1220,7 @@ mod tests {
                 "er",
                 "flowchart",
                 "packet",
+                "requirement",
                 "sequence",
                 "state",
                 "swimlane",
@@ -1214,7 +1253,7 @@ mod tests {
             assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
         }
 
-        for diagram_type in ["state", "packet", "block", "usecase"] {
+        for diagram_type in ["state", "packet", "block", "usecase", "requirement"] {
             let capability = find(diagram_type);
             assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
             assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Compact));
@@ -1233,13 +1272,13 @@ mod tests {
     }
 
     #[test]
-    fn adaptive_graph_admission_is_limited_to_the_four_admitted_families() {
+    fn adaptive_graph_admission_is_limited_to_admitted_families() {
         for capability in ascii_capabilities() {
             if !capability.is_supported() {
                 assert!(capability.graph_presentations.is_empty());
             } else if matches!(
                 capability.diagram_type,
-                "agentflow" | "flowchart" | "swimlane" | "state"
+                "agentflow" | "flowchart" | "requirement" | "swimlane" | "state"
             ) {
                 assert_eq!(capability.graph_presentations, CORE_GRAPH_PRESENTATIONS);
                 assert!(capability.supports_graph_presentation(AsciiGraphPresentation::Adaptive));

@@ -42,6 +42,7 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "er",
     "flowchart",
     "packet",
+    "requirement",
     "sequence",
     "state",
     "swimlane",
@@ -169,7 +170,8 @@ def _expected_family_contract(family: str) -> dict[str, object]:
         "support_level": support_level,
         "layout_profiles": layouts,
         "graph_presentations": ["strict", "adaptive"]
-        if family in {"agentflow", "flowchart", "swimlane", "state"} else ["strict"],
+        if family in {"agentflow", "flowchart", "requirement", "swimlane", "state"}
+        else ["strict"],
         "width_profiles": ASCII_WIDTH_PROFILES,
         "encodings": ASCII_ENCODINGS,
         "fallback_encodings": ["plain"],

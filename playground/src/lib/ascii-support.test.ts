@@ -84,6 +84,29 @@ test("fallback uses the complete generated binding capability projection", () =>
   assert.deepEqual(state?.layout_profiles, ["canonical"]);
 });
 
+test("Requirement fallback metadata admits canonical spatial and adaptive records", () => {
+  const requirement = FALLBACK_ASCII_CAPABILITIES.find(
+    ({ diagram_type }) => diagram_type === "requirement"
+  );
+  assert.ok(requirement);
+  assert.equal(asciiSupportLabelKey(requirement), "asciiSupport.levels.partial");
+  assert.equal(requirement.semantic_coverage, "partial");
+  assert.equal(requirement.primary_projection, "diagrammatic");
+  assert.equal(requirement.structured_text_fallback, true);
+  assert.deepEqual(requirement.layout_profiles, ["canonical"]);
+  assert.deepEqual(requirement.graph_presentations, ["strict", "adaptive"]);
+  assert.deepEqual(requirement.width_profiles, ["unicode", "cjk"]);
+  assert.deepEqual(requirement.encodings, [
+    "plain",
+    "ansi16",
+    "ansi256",
+    "truecolor",
+    "html",
+  ]);
+  assert.deepEqual(requirement.fallback_encodings, ["plain"]);
+  assert.ok(FALLBACK_ASCII_SUPPORTED_TYPES.includes("requirement"));
+});
+
 test("support labels follow the generated projection kind", () => {
   const byType = new Map(
     FALLBACK_ASCII_CAPABILITIES.map((capability) => [

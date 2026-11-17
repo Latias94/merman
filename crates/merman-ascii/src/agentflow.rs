@@ -41,11 +41,12 @@ pub(crate) fn render(
     execution: AsciiExecution<'_>,
 ) -> Result<String> {
     if primary_projection(model, source, execution)? == AsciiProjection::StructuredText {
-        return crate::output::render_agentflow_primary(
+        return crate::output::render_reading_primary(
             &AsciiDiagram::Agentflow(model),
             source,
             options,
             execution,
+            None,
         );
     }
     let resources = execution.new_resource_context(OperationPhase::Semantic);

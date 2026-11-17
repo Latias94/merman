@@ -13,7 +13,7 @@ omitted.
 | `primary_projection` | `diagrammatic`, `structured_text`, or `none` | Whether the primary output is box-and-line terminal geometry, a readable report/outline, or unavailable. |
 | `structured_text_fallback` | Boolean | Whether the typed family has an admitted complete structured projection that can be selected when its primary result exceeds a bounded viewport. This applies to both diagrammatic and already-structured families. |
 | `layout_profiles` / `layoutProfiles` | Array | Layout profiles admitted for this family. The Flowchart projection, including Swimlane, and Sequence expose `canonical`, `compact`, and `auto`; every other supported family currently exposes `canonical` only. |
-| `graph_presentations` / `graphPresentations` | Array | Graph presentation policies admitted for this family. Agentflow, Flowchart, Swimlane, and State expose `strict` and `adaptive`; other supported families expose `strict` only. Adaptive additionally requires Plain encoding. Unsupported families expose an empty array. |
+| `graph_presentations` / `graphPresentations` | Array | Graph presentation policies admitted for this family. Agentflow, Flowchart, Requirement, Swimlane, and State expose `strict` and `adaptive`; other supported families expose `strict` only. Adaptive additionally requires Plain encoding. Unsupported families expose an empty array. |
 | `width_profiles` / `widthProfiles` | Array | Terminal display-width conventions admitted for this family: `unicode` and `cjk` for every supported output. |
 | `encodings` | Array | Primary result encodings admitted for this family: `plain`, `ansi16`, `ansi256`, `truecolor`, and `html` for every supported output. |
 | `fallback_encodings` / `fallbackEncodings` | Array | Encodings admitted with viewport `fallback`. This is currently `plain` only; styled fallback requests are rejected before rendering. |
@@ -67,7 +67,7 @@ Viewport Fallback and Adaptive graph presentation are both Plain-only; styled co
 rejected by capability preflight before routing, even when that particular input would fit.
 
 `AsciiGraphPresentation::Strict` is the default. Adaptive permits complete graph-document recovery
-only for Agentflow, Flowchart, Swimlane, and State after successful semantic construction and an admitted
+only for Agentflow, Flowchart, Requirement, Swimlane, and State after successful semantic construction and an admitted
 planning miss. It is independent of the width overflow policy:
 
 | Planning result | Graph presentation | Width policy | Result |
@@ -126,7 +126,7 @@ existing fallback projections.
 | --- | --- | --- | --- | --- | --- |
 | Flowchart, Swimlane | `canonical`, `compact`, `auto` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Sequence | `canonical`, `compact`, `auto` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
-| Agentflow, State | `canonical` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Agentflow, Requirement, State | `canonical` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Class, ER, Packet, XYChart, Usecase, Block, structured-text families | `canonical` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Unsupported families | none | none | none | none | none |
 
@@ -148,6 +148,7 @@ both retained and readable at ordinary terminal widths.
 | Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
 | State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, terminal colors, structural empty concurrency regions, and transverse routes through intermediate region separators. | State is canonical-only and does not inherit Flowchart compact policy. Direct typed-model Divider endpoints retain dedicated routing; some presentation metadata and future shape variants are approximated. Bounded fallback is a typed Plain compatibility projection. |
 | Agentflow | Partial | Diagrammatic | Yes | Family-owned task/tool/input/refdoc/action/decision/connector roles, sequence arrows, headless dotted references, failure cross markers, expanded flow frames and global ownership. Rich metadata, collapsed views and ambiguous containment have complete keyed StructuredText primaries. | Canonical only; Adaptive is Plain-only. Reading records disclose authored contents and original endpoints, including hidden children, rather than claiming collapsed browser geometry. See [Agentflow support](../../crates/merman-ascii/AGENTFLOW_SUPPORT.md). |
+| Requirement | Partial | Diagrammatic | Yes | One global keyed graph retains shared endpoints and all seven typed relationships. Contains has a source circle and no target arrow; other kinds have dotted target arrows. Complete records retain requirement type/id/text/risk/verification, element type/docRef, styles, accessibility, and source metadata. | Canonical only; Adaptive is Plain-only. Ambiguous names, unresolved references, unknown kinds/directions, and empty models use complete StructuredText primaries. The source circle approximates Mermaid's circled plus. See [Requirement support](../../crates/merman-ascii/REQUIREMENT_SUPPORT.md). |
 | Usecase | Partial | Diagrammatic | Yes | Family-owned actor/use-case roles, boundaries/packages, membership, notes, ordered JSON tables with indexed paths and literal typed values, four directions, association/include/extend/generalization identity, independent endpoint markers, and dotted relationships through the shared graph planner. | Canonical and Strict only. Actor/ellipse rendering is a terminal approximation; JSON tables use terminal columns and explicit indexed paths. Required routing failures remain diagnostics; complete keyed Plain records serve width fallback. See [Usecase support](../../crates/merman-ascii/USECASE_SUPPORT.md). |
 | Block | Partial | Diagrammatic | Yes | Family-owned grid packing preserves declared columns, spans, spacers, row order and nested frames; shared occupancy routing preserves edge labels, strokes and independent markers. | Canonical and Strict only. Non-spatial numeric settings and unsupported shape variants have explicit diagnostics. Dense fixed-grid routing remains bounded; complete hierarchy and edge records serve Plain width fallback. See [Block support](../../crates/merman-ascii/BLOCK_SUPPORT.md). |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, directed component ranks, private channels for bounded cycles and DAG diamonds, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | Bounded channel search does not guarantee arbitrary dense routing. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
@@ -208,10 +209,13 @@ as its own product policy, but neither is the renderer's complete structured fal
 ## Unsupported Families
 
 These families may parse or render to SVG elsewhere in `merman`, but they are not currently exposed
-as ASCII/Unicode render targets. Railroad, Requirement, Ishikawa, and Quadrant have completed the
+as ASCII/Unicode render targets. Railroad, Ishikawa, and Quadrant have completed the
 R34 evaluation rather than merely waiting in an unclassified backlog; the tracked
 [Phase 0-3 and admission report](ASCII_PHASE_GATE_REPORT.md) records their representative tasks,
 fixtures, spatial facts, StructuredText comparison, and 80/100/120-column rejection matrices.
+Requirement has since reopened admission with shared-endpoint geometry and complete records;
+the [new evidence](ASCII_PHASE_GATE_REPORT.md#requirement-spatial-admission) supersedes its
+historical tree-expansion rejection.
 
 | Mermaid family | ASCII status | Notes |
 | --- | --- | --- |
@@ -225,7 +229,6 @@ fixtures, spatial facts, StructuredText comparison, and 80/100/120-column reject
 | Quadrant | Unsupported | [R34 evaluation rejected the current collision prototype](ASCII_PHASE_GATE_REPORT.md#quadrant-r34); small/typical cases add spatial value, but dense relative order collapses at all required widths. |
 | Radar | Unsupported | No terminal radar approximation yet. |
 | Railroad | Unsupported | [R34 evaluation rejected the current route-expansion prototype](ASCII_PHASE_GATE_REPORT.md#railroad-r34); choice paths are visible, but repetition loops and dense shared prefixes are not. |
-| Requirement | Unsupported | [R34 evaluation rejected the current tree-expansion prototype](ASCII_PHASE_GATE_REPORT.md#requirement-r34); single relations are exact, but dense convergences lose shared endpoint ownership. |
 | Sankey | Unsupported | Flow widths are SVG-specific. |
 | Treemap | Unsupported | Rectangle packing is SVG-specific. |
 | Venn | Unsupported | No terminal set-overlap projection has been admitted. |
@@ -247,7 +250,7 @@ in their typed models, but require a complete terminal slice before their capabi
 Compare small, typical, and dense cases against the existing complete text representation at
 80, 100, and 120 columns. More spatial output must help recover relationships or quantities while
 preserving identity, labels, and the existing width, encoding, cancellation, and resource contracts.
-For Railroad, Requirement, Ishikawa, and Quadrant, reopening the earlier decision additionally
+For Railroad, Ishikawa, and Quadrant, reopening the earlier decision additionally
 requires resolving the concrete ownership or quantization failure recorded in the linked admission
 report. A new outline or table remains StructuredText.
 

@@ -924,25 +924,59 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "requirement",
-    "display_name": "requirement",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Requirement",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "one shared endpoint graph with R requirement and N element reading keys",
+      "all six requirement types with id, text, risk, and verifyMethod records",
+      "element type and docRef records",
+      "full contains, copies, derives, satisfies, verifies, refines, and traces labels",
+      "solid contains relationships with a source circle and no target arrow",
+      "dotted non-contains relationships with a target arrow",
+      "top-down, bottom-up, left-right, and right-left directions",
+      "complete keyed declarations and source/target relationship records following topology",
+      "classes, styles, accessibility, source title, and source configuration in records"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "ambiguous or duplicate names, unresolved endpoints, and unknown relation kinds or directions use StructuredText primaries",
+      "terminal geometry approximates browser nodes and does not paint CSS or resolve document references",
+      "dense spatial planning failures remain diagnostics; Adaptive can select complete Plain records",
+      "reading primaries use a natural width of 80; narrow fallback reflows complete keyed records without truncation"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/requirement_model.rs",
+        "note": "parser-backed shared endpoints, typed relations, complete fields, record primaries, viewports, and resource coverage"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "crates/merman-ascii/REQUIREMENT_SUPPORT.md",
+        "note": "family-owned spatial admission and complete keyed Requirement reading records"
       }
     ]
   },
