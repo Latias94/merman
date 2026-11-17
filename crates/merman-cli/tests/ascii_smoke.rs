@@ -292,6 +292,96 @@ bar [2, 8]
 }
 
 #[test]
+fn usecase_and_block_reports_keep_family_geometry_and_complete_width_fallback() {
+    for (family, source, fields) in [
+        (
+            "usecase",
+            "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n",
+            &["Customer", "Place order"][..],
+        ),
+        (
+            "block",
+            "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B\n",
+            &["Request", "Result"][..],
+        ),
+    ] {
+        for width in [10, 80] {
+            let max_width = width.to_string();
+            let output = run_with_stdin(
+                &[
+                    "render",
+                    "-",
+                    "--format",
+                    "unicode",
+                    "--ascii-report",
+                    "--ascii-color",
+                    "plain",
+                    "--ascii-max-width",
+                    &max_width,
+                    "--ascii-overflow",
+                    "fallback",
+                ],
+                source,
+            );
+            assert!(
+                output.status.success(),
+                "{family}/{width}: {:?}",
+                output.stderr
+            );
+            let report = assert_plain_ascii_report(&output.stdout);
+            assert_eq!(report["family"], family);
+            assert_eq!(report["layout_profile"], "canonical");
+            assert_eq!(report["requested_graph_presentation"], "strict");
+            assert_eq!(report["compact_attempted"], false);
+            assert_eq!(report["emitted_overflowed"], false);
+            assert!(report["emitted_width"].as_u64().unwrap() <= width);
+            assert_eq!(
+                report["projection"],
+                if width == 10 {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert_eq!(
+                report["outcome"],
+                if width == 10 { "fallback" } else { "primary" }
+            );
+            let compact: String = report["text"]
+                .as_str()
+                .unwrap()
+                .split_whitespace()
+                .collect();
+            for field in fields {
+                let expected: String = field.split_whitespace().collect();
+                assert!(compact.contains(&expected), "{family}/{width}: {report}");
+            }
+            if width == 10 {
+                let relationships: &[&str] = if family == "usecase" {
+                    &[
+                        "E1:N1[open]--solidassociation--N2[point]",
+                        "id=\"Checkout\"",
+                    ]
+                } else {
+                    &[
+                        "start=\"A\"",
+                        "end=\"B\"",
+                        "end-marker=\"arrow_point\"",
+                        "columns=3",
+                        "span=2",
+                        "type=\"space\"",
+                        "children=[",
+                    ]
+                };
+                for expected in relationships {
+                    assert!(compact.contains(expected), "missing {expected:?}: {report}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn cli_renders_plain_ascii_output_to_file() {
     let tmp = tempfile::tempdir().expect("tempdir");
     let out = tmp.path().join("diagram.txt");

@@ -232,6 +232,7 @@ pub(crate) struct AsciiLayoutPolicies {
     pub profile: AsciiLayoutProfile,
     pub flowchart: FlowchartLayoutPolicy,
     pub state: GraphLayoutPolicy,
+    pub usecase: GraphLayoutPolicy,
     pub sequence: SequenceLayoutPolicy,
     pub xychart: XyChartLayoutPolicy,
 }
@@ -423,6 +424,7 @@ impl AsciiRenderOptions {
                     terminal_width_profile: host.terminal_width_profile,
                 },
                 state: state_layout_policy(self, host),
+                usecase: usecase_layout_policy(self, host),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
                     participant_spacing: self.resolved_sequence_participant_spacing(),
@@ -595,6 +597,21 @@ fn state_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> Gr
     }
 }
 
+fn usecase_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
+    GraphLayoutPolicy {
+        node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
+        node_padding_y: options.resolved_graph_node_padding_y(),
+        rank_gap_x: options.graph_padding_x,
+        rank_gap_y: options.resolved_graph_rank_gap_y(),
+        group_padding_x: 2,
+        group_padding_y: 2,
+        group_title_clearance: 3,
+        edge_label_lane_radius: GraphLayoutPolicy::DEFAULT_EDGE_LABEL_LANE_RADIUS,
+        structural_charset: host.structural_charset,
+        terminal_width_profile: host.terminal_width_profile,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -691,6 +708,7 @@ mod tests {
             .resolve_policies();
 
         assert_eq!(canonical.output, compact.output);
+        assert_eq!(canonical.layout.usecase, compact.layout.usecase);
         assert_eq!(canonical.options.flowchart_node_label_wrap_width, 40);
         assert_eq!(compact.options.flowchart_node_label_wrap_width, 40);
         assert_eq!(canonical.options.sequence_participant_spacing, 5);

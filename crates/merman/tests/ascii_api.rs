@@ -131,6 +131,63 @@ fn facade_ascii_keeps_source_label_entities_in_primary_and_narrow_fallback() {
     }
 }
 
+#[cfg(all(
+    feature = "presentation",
+    feature = "diagram-block",
+    feature = "diagram-usecase"
+))]
+#[test]
+fn family_ascii_uses_the_same_semantics_from_canonical_and_presentation_artifacts() {
+    let sources = [
+        "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
+        "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B",
+    ];
+    for source in sources {
+        for width in [10, 80, 100, 120] {
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let renderer = Renderer::new();
+            let semantic = renderer
+                .parse_semantic(source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let presentation = renderer
+                .prepare_presentation(source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation ASCII output");
+            };
+            assert_eq!(canonical.text, full.text, "width {width}: {source}");
+            assert_eq!(canonical.outcome, full.outcome);
+            assert_eq!(canonical.projection, full.projection);
+            assert_eq!(canonical.emitted_extent, full.emitted_extent);
+            assert!(full.emitted_extent.width <= width);
+            assert_eq!(
+                full.outcome,
+                if width == 10 {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+        }
+    }
+}
+
 #[cfg(feature = "diagram-packet")]
 #[test]
 fn packet_facade_retains_source_geometry_policy_and_actual_projection() {

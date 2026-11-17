@@ -36,6 +36,7 @@ ASCII_ENCODINGS = ["plain", "ansi16", "ansi256", "truecolor", "html"]
 ASCII_WIDTH_PROFILES = ["unicode", "cjk"]
 
 ASCII_DIAGRAMMATIC_FAMILIES = {
+    "block",
     "class",
     "er",
     "flowchart",
@@ -43,6 +44,7 @@ ASCII_DIAGRAMMATIC_FAMILIES = {
     "sequence",
     "state",
     "swimlane",
+    "usecase",
     "xychart",
 }
 ASCII_SUMMARY_FAMILIES = {

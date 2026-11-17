@@ -279,6 +279,38 @@ struct AsciiCapabilityDefinition {
 
 const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
     AsciiCapabilityDefinition {
+        diagram_type: "block",
+        display_name: "Block",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "family-owned terminal columns and authored column spans",
+            "ordered rows and explicit spacer cells",
+            "nested composite block frames",
+            "independent source and target markers, strokes, and edge labels",
+            "complete keyed hierarchy and relationship records for width fallback",
+        ],
+        limits: &[
+            "terminal geometry approximates browser shapes",
+            "non-spatial numeric columns and spans require explicit diagnostics",
+            "bounded routing may reject dense or colliding fixed-grid relationships",
+            "styling and accessibility metadata are retained by fallback rather than browser painting",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/block_model.rs",
+                note: "parser-backed terminal column, span, nesting, edge, and resource contracts",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "crates/merman-ascii/BLOCK_SUPPORT.md",
+                note: "family-owned fixed-grid support and diagnostic boundaries",
+            },
+        ],
+    },
+    AsciiCapabilityDefinition {
         diagram_type: "class",
         display_name: "Class",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
@@ -796,6 +828,39 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
     },
     AsciiCapabilityDefinition {
+        diagram_type: "usecase",
+        display_name: "Usecase",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "distinct actor, use-case, boundary, package, and note roles",
+            "association, include, extend, and generalization relationship identity",
+            "independent endpoint markers and dotted relationships",
+            "top-down, bottom-up, left-right, and right-left directions",
+            "boundary membership and note attachment",
+            "complete keyed entity and relationship records for width fallback",
+        ],
+        limits: &[
+            "terminal role presentation approximates browser actor and ellipse geometry",
+            "JSON table nodes require a separate terminal projection and are unsupported",
+            "bounded routing may reject dense or colliding compound relationships",
+            "styling, animation, and accessibility metadata are retained by fallback rather than browser painting",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/usecase_model.rs",
+                note: "parser-backed family roles, relationship identity, scopes, viewports, and resources",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "crates/merman-ascii/USECASE_SUPPORT.md",
+                note: "family-owned role projection and bounded route admission",
+            },
+        ],
+    },
+    AsciiCapabilityDefinition {
         diagram_type: "xychart",
         display_name: "XYChart",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
@@ -924,6 +989,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
         other => merman_model::family::diagram_type_family_kind(other).unwrap_or(other),
     };
     match family {
+        "block" => cfg!(feature = "diagram-block"),
         "class" => cfg!(feature = "diagram-class"),
         "er" => cfg!(feature = "diagram-er"),
         "flowchart" => cfg!(feature = "diagram-flowchart"),
@@ -938,6 +1004,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
         "swimlane" => cfg!(feature = "diagram-swimlane"),
         "timeline" => cfg!(feature = "diagram-timeline"),
         "treeView" => cfg!(feature = "diagram-tree-view"),
+        "usecase" => cfg!(feature = "diagram-usecase"),
         "xychart" => cfg!(feature = "diagram-xychart"),
         _ => false,
     }
@@ -1050,6 +1117,7 @@ mod tests {
         assert_eq!(
             ascii_supported_diagram_types(),
             &[
+                "block",
                 "class",
                 "er",
                 "flowchart",
@@ -1064,12 +1132,14 @@ mod tests {
                 "swimlane",
                 "timeline",
                 "treeView",
+                "usecase",
                 "xychart",
             ]
         );
         assert_eq!(
             ascii_diagrammatic_diagram_types(),
             &[
+                "block",
                 "class",
                 "er",
                 "flowchart",
@@ -1077,6 +1147,7 @@ mod tests {
                 "sequence",
                 "state",
                 "swimlane",
+                "usecase",
                 "xychart",
             ]
         );
@@ -1105,7 +1176,7 @@ mod tests {
             assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
         }
 
-        for diagram_type in ["state", "packet"] {
+        for diagram_type in ["state", "packet", "block", "usecase"] {
             let capability = find(diagram_type);
             assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
             assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Compact));

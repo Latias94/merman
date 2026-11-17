@@ -123,7 +123,7 @@ existing fallback projections.
 | Flowchart, Swimlane | `canonical`, `compact`, `auto` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Sequence | `canonical`, `compact`, `auto` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | State | `canonical` | `strict`, `adaptive` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
-| Class, ER, Packet, XYChart, structured-text families | `canonical` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
+| Class, ER, Packet, XYChart, Usecase, Block, structured-text families | `canonical` | `strict` | `unicode`, `cjk` | `plain`, `ansi16`, `ansi256`, `truecolor`, `html` | `plain` |
 | Unsupported families | none | none | none | none | none |
 
 The primary encoding list applies to Strict requests. Adaptive is Plain-only even with Allow or
@@ -143,6 +143,8 @@ both retained and readable at ordinary terminal widths.
 | Swimlane | Partial | Diagrammatic | Yes | Uses the same terminal projection and admitted profiles as Flowchart while retaining its separate language and feature identity. | Shares Flowchart's geometry and presentation limits; terminal layout is independent of the SVG lane renderer. |
 | Sequence | Partial | Diagrammatic | Yes | Mermaid-valid spaced/Unicode participant IDs, typed headless/filled/cross/point/bidirectional/half-arrow messages, central decorations, notes, lifecycles, boxes, participant-bounded nested control frames, and a family-owned compact participant-spacing policy. | Actor presentation metadata and links are accepted but omitted from the primary scene; bounded fallback discloses typed fields as Plain structured text. |
 | State | Partial | Diagrammatic | Yes | States, transitions, notes, graph-like pseudostates, groups, terminal colors, structural empty concurrency regions, and transverse routes through intermediate region separators. | State is canonical-only and does not inherit Flowchart compact policy. Direct typed-model Divider endpoints retain dedicated routing; some presentation metadata and future shape variants are approximated. Bounded fallback is a typed Plain compatibility projection. |
+| Usecase | Partial | Diagrammatic | Yes | Family-owned actor/use-case roles, boundaries/packages, membership, notes, four directions, association/include/extend/generalization identity, independent endpoint markers, and dotted relationships through the shared graph planner. | Canonical and Strict only. Actor/ellipse rendering is a terminal approximation. JSON tables require a separate projection. Required routing failures remain diagnostics; complete keyed Plain records serve width fallback. See [Usecase support](../../crates/merman-ascii/USECASE_SUPPORT.md). |
+| Block | Partial | Diagrammatic | Yes | Family-owned grid packing preserves declared columns, spans, spacers, row order and nested frames; shared occupancy routing preserves edge labels, strokes and independent markers. | Canonical and Strict only. Non-spatial numeric settings and unsupported shape variants have explicit diagnostics. Dense fixed-grid routing remains bounded; complete hierarchy and edge records serve Plain width fallback. See [Block support](../../crates/merman-ascii/BLOCK_SUPPORT.md). |
 | Class | Partial | Diagrammatic | Yes | Class structure, notes, namespaces, four directions, independent source/target relation markers, directed component ranks, private channels for bounded cycles and DAG diamonds, simple sibling-namespace / namespace-to-root / nested-sibling facade routing with length-framed leaf identity, and explicit relation summaries. | Bounded channel search does not guarantee arbitrary dense routing. Dense or colliding namespace-crossing scenes, port-incompatible lanes, and other collision-prone relationships can use lossless `relations:` output. |
 | ER | Partial | Diagrammatic | Yes | Entities, attributes, key tokens, attribute comments, four directions, relationship labels/cardinalities including the parent diamond, nested group frames and typed group endpoints, actual member identity on facade routes, directed component ranks, private channels for bounded cycles and DAG diamonds, and explicit relation summaries. | Ancestor/member edges use typed summaries alongside group geometry; unspecified group directions use TB. Duplicate groups, ambiguous ownership/route IDs, and hidden shadow-entity endpoints remain unsupported. Port-incompatible and dense/collision-prone topology can use lossless `relations:` output; bounded search is best effort. Accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted. |
 | Packet | Partial | Diagrammatic | Yes | Fixed two-cell bit positions and widths, gaps, physical row splitting, ascending/descending bit order, optional bit numbers, and complete authored labels plus raw numeric DB records after the plot. | Spatial admission requires integer `bitsPerRow` in `1..=64`. Labels never widen fields; narrow labels may use `*` with a legend and exact details. Non-spatial numeric values, overlaps, or out-of-order fields retain complete StructuredText records. Canonical-only; Plain width fallback uses bounded record reflow. |
@@ -210,7 +212,6 @@ fixtures, spatial facts, StructuredText comparison, and 80/100/120-column reject
 | --- | --- | --- |
 | Agentflow | Unsupported | A family-owned adapter could reuse graph routing, but must retain node roles, reference/failure connectors, container ownership, and collapse semantics. |
 | Architecture | Unsupported | Rich grouped architecture geometry is SVG-focused. |
-| Block | Unsupported | Discrete columns and spans are candidates for terminal geometry; nested spans and routed connections still need joint occupancy planning. |
 | C4 | Unsupported | C4 views remain SVG/headless-render output. |
 | Cynefin | Unsupported | No terminal projection has been admitted. |
 | Event Modeling | Unsupported | No terminal projection has been admitted. |
@@ -223,7 +224,6 @@ fixtures, spatial facts, StructuredText comparison, and 80/100/120-column reject
 | Requirement | Unsupported | [R34 evaluation rejected the current tree-expansion prototype](ASCII_PHASE_GATE_REPORT.md#requirement-r34); single relations are exact, but dense convergences lose shared endpoint ownership. |
 | Sankey | Unsupported | Flow widths are SVG-specific. |
 | Treemap | Unsupported | Rectangle packing is SVG-specific. |
-| Usecase | Unsupported | Actors, use cases, boundaries, and typed relationships need a family-owned terminal adapter; a generic box-and-edge conversion would lose semantics. |
 | Venn | Unsupported | No terminal set-overlap projection has been admitted. |
 | Wardley | Unsupported | No terminal map projection has been admitted. |
 | ZenUML | Unsupported | The family has a dedicated typed semantic model and SVG renderer, but no family-owned terminal projection has been admitted. It must not be translated through Sequence as an ASCII shortcut. |
@@ -238,7 +238,7 @@ in their typed models, but require a complete terminal slice before their capabi
 | Pie | Categories on one shared percentage-bar scale. | Exact value disclosure, proportional lengths, zero totals, tiny categories, and complete long labels. Name the bar projection explicitly. |
 | GitGraph | Commit lanes with a branch and merge. | Each commit appears once; every parent edge remains traceable, including merges with custom display types and cherry-picks. |
 | Gantt | Task bars on a common resolved time scale. | Preserve task identity, dependency facts, milestones, excluded dates, and distinctions lost through cell quantization. |
-| Agentflow / Block | A family-owned adapter over shared graph or grid mechanisms. | Preserve role/connector semantics or column/span constraints before admitting dense containers and routes. |
+| Agentflow | A family-owned adapter over shared graph mechanisms. | Preserve role/connector semantics and expanded/collapsed container ownership before admitting dense routes. |
 
 Compare small, typical, and dense cases against the existing complete text representation at
 80, 100, and 120 columns. More spatial output must help recover relationships or quantities while

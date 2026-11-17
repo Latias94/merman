@@ -12,6 +12,8 @@ extern crate self as merman_ascii;
 #[path = "../tests/support/full_model.rs"]
 mod full_test_support;
 
+#[cfg(feature = "diagram-block")]
+mod block;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -34,8 +36,22 @@ mod git_graph;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-swimlane",
-    feature = "diagram-state"
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-block"
 ))]
+#[cfg_attr(
+    not(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-state",
+        feature = "diagram-usecase"
+    )),
+    allow(
+        dead_code,
+        reason = "Block uses fixed geometry; ranked layout remains shared by the other graph families"
+    )
+)]
 mod graph;
 #[cfg(feature = "diagram-journey")]
 mod journey;
@@ -123,6 +139,8 @@ mod text;
 mod timeline;
 #[cfg(feature = "diagram-tree-view")]
 mod tree_view;
+#[cfg(feature = "diagram-usecase")]
+mod usecase;
 #[cfg(feature = "diagram-xychart")]
 mod xychart;
 
@@ -512,6 +530,10 @@ fn render_model_with_execution(
     )?;
 
     let rendered = match model {
+        #[cfg(feature = "diagram-block")]
+        AsciiDiagram::Block(model) => {
+            block::render_block_diagram_with_execution(model, options, execution)
+        }
         #[cfg(feature = "diagram-class")]
         AsciiDiagram::Class(model) => render_class_model(model, options, &execution),
         #[cfg(feature = "diagram-er")]
@@ -556,6 +578,13 @@ fn render_model_with_execution(
         ),
         #[cfg(feature = "diagram-tree-view")]
         AsciiDiagram::TreeView(model) => render_tree_view_model(model, options, &execution),
+        #[cfg(feature = "diagram-usecase")]
+        AsciiDiagram::Usecase(model) => usecase::render_usecase_diagram_with_execution(
+            model,
+            options,
+            policies.layout.usecase,
+            execution,
+        ),
         _ => Err(AsciiError::UnsupportedDiagram {
             diagram_type: model.kind().to_string(),
         }),

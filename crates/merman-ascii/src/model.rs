@@ -39,6 +39,8 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum AsciiDiagram<'a> {
+    #[cfg(feature = "diagram-block")]
+    Block(&'a merman_model::families::block::BlockDiagramModel),
     #[cfg(feature = "diagram-class")]
     Class(Box<merman_model::families::class::ClassTopologyView<'a>>),
     #[cfg(feature = "diagram-er")]
@@ -65,6 +67,8 @@ pub enum AsciiDiagram<'a> {
     Timeline(&'a merman_model::families::timeline::TimelineDiagramModel),
     #[cfg(feature = "diagram-tree-view")]
     TreeView(&'a merman_model::families::tree_view::TreeViewDiagramModel),
+    #[cfg(feature = "diagram-usecase")]
+    Usecase(&'a merman_model::families::usecase::UsecaseDiagramModel),
     #[cfg(feature = "diagram-xychart")]
     XyChart {
         model: &'a merman_model::families::xy_chart::XyChartDiagramModel,
@@ -82,6 +86,8 @@ impl<'a> AsciiDiagram<'a> {
     ) -> Result<Self> {
         execution.checkpoint(merman_model::OperationPhase::Semantic)?;
         Ok(match model {
+            #[cfg(feature = "diagram-block")]
+            SemanticDiagramModel::Block(model) => Self::Block(model),
             #[cfg(feature = "diagram-class")]
             SemanticDiagramModel::Class(model) => {
                 crate::validate_model_identity("class", source.diagram_type)?;
@@ -140,6 +146,8 @@ impl<'a> AsciiDiagram<'a> {
             SemanticDiagramModel::Timeline(model) => Self::Timeline(model),
             #[cfg(feature = "diagram-tree-view")]
             SemanticDiagramModel::TreeView(model) => Self::TreeView(model),
+            #[cfg(feature = "diagram-usecase")]
+            SemanticDiagramModel::Usecase(model) => Self::Usecase(model),
             #[cfg(feature = "diagram-xychart")]
             SemanticDiagramModel::XyChart(model) => Self::XyChart {
                 model,
@@ -153,6 +161,8 @@ impl<'a> AsciiDiagram<'a> {
 
     pub fn kind(&self) -> &str {
         match self {
+            #[cfg(feature = "diagram-block")]
+            Self::Block(_) => "block",
             #[cfg(feature = "diagram-class")]
             Self::Class(_) => "class",
             #[cfg(feature = "diagram-er")]
@@ -179,6 +189,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Timeline(_) => "timeline",
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(_) => "treeView",
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(_) => "usecase",
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { .. } => "xychart",
             Self::Unsupported(kind) => kind,
@@ -187,6 +199,8 @@ impl<'a> AsciiDiagram<'a> {
 
     pub(crate) fn complexity(&self) -> ModelComplexity {
         match self {
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-class")]
             Self::Class(model) => merman_model::families::class::class_topology_complexity(model),
             #[cfg(feature = "diagram-er")]
@@ -242,6 +256,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Timeline(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { model, .. } => ModelComplexity::from_serializable(model),
             Self::Unsupported(_) => ModelComplexity::default(),
@@ -252,6 +268,8 @@ impl<'a> AsciiDiagram<'a> {
 impl Serialize for AsciiDiagram<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         match self {
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-class")]
             Self::Class(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-er")]
@@ -316,6 +334,8 @@ impl Serialize for AsciiDiagram<'_> {
             Self::Timeline(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { model, display } => {
                 #[derive(Serialize)]

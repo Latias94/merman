@@ -48,6 +48,25 @@ tests, but the public product boundary is Mermaid semantic compatibility plus st
   `repo-ref` references must not enter the shipped crate.
 - License and fixture provenance become part of the workstream evidence, not an afterthought.
 
+## Family-owned terminal geometry amendment
+
+Usecase owns the projection of actors, use cases, boundaries, notes, and relationship roles into
+the shared graph scene. It resolves its own layout policy; admitting the family does not admit
+Flowchart's wrapping, Compact/Auto selection, or adaptive presentation policy.
+
+Block owns integer terminal packing from the flat semantic hierarchy. Columns, spans, source
+order, expanded spacers, and nested frames determine positions. A private positioned-graph seam
+measures contours and labels and submits this fixed geometry directly to the existing scene
+router and painter. It does not run Dagre, reuse SVG coordinates, or reflow authored blocks to
+repair congestion. Relationships still require complete validated routing, with the existing
+resource ledger, endpoint markers, label ownership, viewport admission, and operation control.
+
+Both families admit Canonical and Strict only. A valid primary that exceeds a Plain viewport can
+select complete family-owned keyed records under the existing Fallback policy. Unsupported
+semantics and failed routing remain diagnostics. Capability records expose partial semantic
+coverage and the actual diagrammatic or structured projection; they do not imply unrestricted
+family support.
+
 ## Non-Goals
 
 - Do not implement a second Mermaid parser for ASCII output.

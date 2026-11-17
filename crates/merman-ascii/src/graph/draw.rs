@@ -230,6 +230,77 @@ fn prepare_graph_render_controlled(
         layout: graph_layout,
         routes: route_scene_plan,
     } = super::planning::plan_graph(graph, layout_policy, &charset, resources, execution)?;
+    prepare_routed_graph_render(
+        graph,
+        graph_layout,
+        route_scene_plan,
+        layout_policy,
+        resources,
+        execution,
+    )
+}
+
+/// Uses the same route, viewport, resource, and painting contract for family-owned positions.
+#[cfg(feature = "diagram-block")]
+pub(super) fn render_positioned_graph(
+    graph: &AsciiGraph,
+    graph_layout: GraphLayout,
+    options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            options.validate()?;
+            execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
+            let charset = GraphCharset::for_policy(layout_policy);
+            let input =
+                routing::SceneRoutingInput::try_new(graph, &graph.edges, &charset, resources)?;
+            let routes = routing::route_scene_with_input(
+                graph,
+                &graph_layout,
+                &input,
+                &charset,
+                layout_policy,
+                resources,
+                execution,
+            )?;
+            let prepared = prepare_routed_graph_render(
+                graph,
+                graph_layout,
+                routes,
+                layout_policy,
+                resources,
+                execution,
+            )?;
+            let mut emit_resources =
+                execution.resource_context(resources, merman_model::OperationPhase::Emit);
+            paint_graph_render_controlled(prepared, options, &mut emit_resources, execution)
+        });
+        match result {
+            Err(error)
+                if execution.preserves_graph_work_on_error(&error, options.graph_presentation) =>
+            {
+                Ok(Err(error))
+            }
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
+}
+
+fn prepare_routed_graph_render(
+    graph: &AsciiGraph,
+    graph_layout: GraphLayout,
+    route_scene_plan: routing::RouteScenePlan<'_>,
+    layout_policy: &GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<PreparedGraphRender> {
+    let charset = GraphCharset::for_policy(layout_policy);
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let (edge_width, edge_height) = route_scene_plan.canvas_extent();
     let extent = graph_canvas_extent(

@@ -82,7 +82,7 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart, Usecase, Block | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
 | Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
 
 Mindmap puts labels and hierarchy first. Distinct authored IDs, shapes, icons, and custom sections

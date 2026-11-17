@@ -146,8 +146,8 @@ Those simplifications do not establish complete-information parity for Merman. F
 approximations should preserve the authored type, label, endpoint identity, and direction, with
 their visible cues or keyed details measured before routing.
 
-The first wave repairs typed admission within already supported families. Additional families
-remain proposals requiring their own spatial admission:
+Typed admission repairs and family-owned terminal projections have separate evidence. Shared
+graph mechanisms do not establish another family's semantics:
 
 | Area | Owner | Current boundary or next acceptance condition |
 | --- | --- | --- |
@@ -156,8 +156,8 @@ remain proposals requiring their own spatial admission:
 | ER group endpoints | `er/render/group.rs`, `output/relation.rs` | Nested and empty group frames distinguish authored membership keys from generated entity-route IDs. Entity/group endpoints, both cardinalities, stroke, and role survive. Deep-member facades name actual endpoints; ancestor/member relations use complete summaries. Primary geometry and structured width fallback report their actual projections. |
 | Repeated Kanban card IDs | Ordered occurrence-based card records | Every occurrence retains its authored ID, order, column, label, and metadata. Duplicate group IDs remain an ownership diagnostic; group/card spelling collisions do not discard cards. |
 | State concurrent regions | Shared graph capacity planning and geometry-local label classification | Cyclic compound-scope return demand is measured before route search. Root returns and self loops keep existing exterior envelopes; recovery remains available. Exact labels, actual cross-region endpoints, operation accounting, and finite search diagnostics are preserved. |
-| Usecase | Typed actors, cases, boundaries, notes, and relationship kinds already exist. | Add a family-owned adapter over shared graph geometry. Retain actor/case roles and association/include/extend/generalization distinctions, direction, and membership; ordinary flow arrows alone are insufficient. |
-| Block | The canonical flat records retain child indices, columns, spans, spacers, and edge facts. | Use a family-owned grid packer with joint routing clearance. Preserve columns, spans, empty cells, nesting, and markers; unconstrained Dagre placement would discard the defining layout semantics. |
+| Usecase | `usecase/adapter.rs`, `usecase/validation.rs`, `output/usecase.rs` | Family-owned role labels and contours distinguish actors, cases, flat boundaries/packages, and attached notes. Include, extend, and generalization retain explicit kinds, labels, independent endpoint markers, and direction. JSON tables and nested direct-model boundaries receive explicit diagnostics. See `USECASE_SUPPORT.md`. |
+| Block | `block/pack.rs`, `block/validate.rs`, `graph/positioned.rs`, `output/block.rs` | Family-owned integer packing preserves columns, spans, source order, spaces, and nested frames. The positioned graph seam shares routing and painting without invoking Dagre or moving authored blocks. Dense routing misses remain diagnostics; unsupported numeric geometry and ambiguous bindings are rejected. See `BLOCK_SUPPORT.md`. |
 | Agentflow | Typed node roles, edge meanings, containers, and family presentation data already exist. | Define expanded/collapsed view behavior and connector ownership before adapting shared graph geometry. Preserve sequence/reference/failure distinctions and actual endpoint roles; a semantic-only metadata export cannot recover every authored presentation choice. |
 
 The exact three-region Trident State source is retained as a parser-backed Trusted Native
@@ -175,13 +175,15 @@ its exact public work threshold falls from 586,045 to 172,600. Conservative spac
 widen layouts whose original route cannot be proved within the finite trial. These are bounded
 tradeoffs, not universal compactness or reference superiority claims.
 
-Usecase and Block next need independent complete vertical slices, each
-checked on small, typical, and dense inputs at 80/100/120 cells against a complete record baseline.
+Usecase and Block have parser-backed small, typical, CJK, and dense controls at 80/100/120 cells,
+with both structural character sets and Unicode/CJK width profiles. Complete keyed reading records
+are selected only after a valid spatial primary exceeds an explicit Plain viewport using Fallback.
 Existing reading-floor and resource/cancellation tests remain acceptance controls. Width compliance,
 complete facts, recoverable relationships, and correct projection reporting matter more than a
-successful exit or a smaller rectangle. The support matrix changes only after implementation and
-family-local admission evidence; unsupported-family or resource errors must not become generic
-successful fallbacks.
+successful exit or a smaller rectangle. Neither family gains Compact, Auto, or adaptive graph
+presentation admission. Unsupported semantics, fixed-grid routing misses, and resource errors do
+not become generic successful fallbacks. These are independent Merman implementations: neither
+reference supplies a Usecase or Block renderer to port or a family-quality oracle to match.
 
 The reference is MIT-licensed. Substantial copied code or fixtures require its copyright and
 permission notice; researching the mechanisms does not change Merman's copied-fixture pin.

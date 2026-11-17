@@ -816,6 +816,22 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
 }
 
 impl PreparedGraphNodeText {
+    /// Transfers a single prepared source and its replay plan without rescanning or copying it.
+    #[cfg(feature = "diagram-block")]
+    pub(super) fn into_single_label_plan(mut self) -> crate::Result<(String, GraphNodeLabelPlan)> {
+        if self.compartments.is_some() || self.plans.len() != 1 {
+            return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
+        }
+        let plan = self
+            .plans
+            .pop()
+            .ok_or_else(|| invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE))?;
+        if plan.kind != GraphNodeLabelPlanKind::Single {
+            return Err(invalid_graph_label_plan(plan.diagram_type));
+        }
+        Ok((self.label, plan))
+    }
+
     pub(super) fn label(&self) -> &str {
         &self.label
     }
@@ -975,15 +991,7 @@ impl GraphNodeLabelPlan {
         self.admit_materialization(resources)?;
         match (self.kind, node.compartments()) {
             (GraphNodeLabelPlanKind::Single, None) => {
-                let (lines, width) = self
-                    .primary
-                    .materialize_after_admission(node.label(), resources)?;
-                Ok(GraphLabel {
-                    lines,
-                    width,
-                    width_profile: self.width_profile,
-                    compartment_break_after: None,
-                })
+                self.materialize_single_after_admission(node.label(), resources)
             }
             (GraphNodeLabelPlanKind::Compartmented, Some(compartments)) => {
                 let Some(body) = self.secondary.as_ref() else {
@@ -1010,6 +1018,38 @@ impl GraphNodeLabelPlan {
             }
             _ => Err(invalid_graph_label_plan(self.diagram_type)),
         }
+    }
+
+    /// Replays a prepared group title after the family has finished its source-copy batch.
+    #[cfg(feature = "diagram-block")]
+    pub(super) fn materialize_single_label(
+        &self,
+        source: &str,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabel> {
+        if self.kind != GraphNodeLabelPlanKind::Single {
+            return Err(invalid_graph_label_plan(self.diagram_type));
+        }
+        resources.transaction(|resources| {
+            self.admit_materialization(resources)?;
+            self.materialize_single_after_admission(source, resources)
+        })
+    }
+
+    fn materialize_single_after_admission(
+        &self,
+        source: &str,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabel> {
+        let (lines, width) = self
+            .primary
+            .materialize_after_admission(source, resources)?;
+        Ok(GraphLabel {
+            lines,
+            width,
+            width_profile: self.width_profile,
+            compartment_break_after: None,
+        })
     }
 
     fn admit_materialization(&self, resources: &ResourceContext) -> crate::Result<()> {

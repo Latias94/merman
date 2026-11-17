@@ -123,6 +123,16 @@ duplicate endpoint identities, group/member semantics, repair sharing, and reflo
 
 ## Graph Scene Planning
 
+Usecase projects family roles and relationship kinds before entering this shared planner, using
+deferred labels and aggregate text admission. Its policy is independent of Flowchart. Block
+instead owns source-order integer packing of authored columns, spans, expanded spacers, and nested
+frames. Its positioned-graph path bypasses ranking and layout recovery, while sharing validated
+routing, viewport extent admission, materialization, and painting. Neither family changes existing
+planning ceilings or admits adaptive graph recovery. Complete keyed width fallback remains a
+separate candidate after a valid primary; it cannot recover semantic, routing, resource, or
+cancellation errors. See `USECASE_SUPPORT.md` and `BLOCK_SUPPORT.md` in `crates/merman-ascii` for
+family-local validation and resource controls.
+
 `graph::planning` prepares stable semantic demand and route identities once for each admitted
 layout profile. It measures initial geometry, reserves cyclic compound-scope return demand before
 route search, and permits at most two subsequent recovery rebuilds. Root returns and real self

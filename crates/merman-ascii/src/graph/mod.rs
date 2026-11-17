@@ -24,8 +24,15 @@ mod markup;
 )]
 mod model;
 mod planning;
+#[cfg(feature = "diagram-block")]
+pub(crate) mod positioned;
 mod routing;
 mod shape;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state"
+))]
 pub(crate) mod style;
 mod surface;
 mod topology;
@@ -34,17 +41,30 @@ mod topology;
 pub(crate) use adapter::from_flowchart_model_with_execution;
 #[cfg(test)]
 pub(crate) use draw::render_graph_with_execution;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state",
+    feature = "diagram-usecase"
+))]
 pub(crate) use draw::render_graph_with_resolved_policy_and_execution;
-#[cfg(feature = "diagram-state")]
+#[cfg(any(
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-block"
+))]
 pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphNodeSemantics, GraphNodeSide, GraphNodeSideConstraint,
 };
 
+#[cfg(feature = "diagram-usecase")]
+pub(crate) use model::GraphEdgeStroke;
 #[cfg(feature = "diagram-state")]
+pub(crate) use model::GraphGroupKind;
+#[cfg(any(feature = "diagram-state", feature = "diagram-usecase"))]
 pub(crate) use model::{
-    GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle, GraphNodeShape,
-    GraphNodeStyle,
+    GraphEdgeAttrs, GraphEdgeMarker, GraphGroupStyle, GraphNodeShape, GraphNodeStyle,
 };
 
 #[cfg(test)]

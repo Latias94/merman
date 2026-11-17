@@ -12,6 +12,8 @@ use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
+#[cfg(feature = "diagram-block")]
+mod block;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
@@ -25,11 +27,15 @@ mod packet;
     feature = "diagram-state",
     feature = "diagram-swimlane",
     feature = "diagram-class",
-    feature = "diagram-er"
+    feature = "diagram-er",
+    feature = "diagram-usecase",
+    feature = "diagram-block"
 ))]
 mod record;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 mod relation;
+#[cfg(feature = "diagram-usecase")]
+mod usecase;
 
 pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 4;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
@@ -936,7 +942,20 @@ fn build_semantic_document(
     let packet_document = packet::write_if_packet(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-packet"))]
     let packet_document = false;
-    if !graph_document && !relation_document && !packet_document {
+    #[cfg(feature = "diagram-usecase")]
+    let usecase_document = usecase::write_if_usecase(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-usecase"))]
+    let usecase_document = false;
+    #[cfg(feature = "diagram-block")]
+    let block_document = block::write_if_block(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-block"))]
+    let block_document = false;
+    if !graph_document
+        && !relation_document
+        && !packet_document
+        && !usecase_document
+        && !block_document
+    {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
     let candidate = fallback.finish();

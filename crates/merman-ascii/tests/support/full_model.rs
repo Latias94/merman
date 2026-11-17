@@ -3,6 +3,8 @@ use merman_model::presentation::{PresentationMetadata, RenderSemanticModel};
 
 pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
     match model {
+        #[cfg(feature = "diagram-block")]
+        RenderSemanticModel::Block(model) => AsciiDiagram::Block(&model.semantic),
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => AsciiDiagram::Class(Box::new(model.topology_view())),
         #[cfg(feature = "diagram-er")]
@@ -37,6 +39,8 @@ pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
         RenderSemanticModel::Timeline(model) => AsciiDiagram::Timeline(model),
         #[cfg(feature = "diagram-tree-view")]
         RenderSemanticModel::TreeView(model) => AsciiDiagram::TreeView(model),
+        #[cfg(feature = "diagram-usecase")]
+        RenderSemanticModel::Usecase(model) => AsciiDiagram::Usecase(model),
         #[cfg(feature = "diagram-xychart")]
         RenderSemanticModel::XyChart(model) => AsciiDiagram::XyChart {
             model: &model.semantic,

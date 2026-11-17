@@ -648,6 +648,76 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(feature = "diagram-usecase", feature = "diagram-block"))]
+    fn usecase_and_block_binding_results_expose_the_selected_primary_and_fallback() {
+        for (family, source) in [
+            (
+                "usecase",
+                "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n",
+            ),
+            (
+                "block",
+                "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B\n",
+            ),
+        ] {
+            for width in [10, 80] {
+                let options = format!(
+                    r#"{{"ascii":{{"maxWidth":{width},"overflow":"fallback","colorMode":"plain"}}}}"#
+                );
+                let result =
+                    crate::render_ascii_result(source.as_bytes(), options.as_bytes()).unwrap();
+                let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+                else {
+                    panic!("ASCII result must retain its canonical plan");
+                };
+                assert_eq!(plan.family(), family);
+                assert_eq!(plan.schema_version(), 4);
+                assert_eq!(plan.encoding(), "plain");
+                assert_eq!(plan.layout_profile(), Some("canonical"));
+                assert_eq!(plan.requested_graph_presentation(), "strict");
+                assert_eq!(plan.fallback_attempted(), width == 10);
+                assert!(!plan.emitted_overflowed());
+                assert_eq!(
+                    plan.projection(),
+                    if width == 10 {
+                        "structured_text"
+                    } else {
+                        "diagrammatic"
+                    }
+                );
+                assert!(plan.emitted_width() <= width);
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(result.metadata_json()).unwrap();
+                assert_eq!(metadata["output_plan"]["family"], family);
+                assert_eq!(metadata["output_plan"]["schema_version"], 4);
+                if width == 10 {
+                    let text = std::str::from_utf8(result.data()).unwrap();
+                    let compact: String = text.split_whitespace().collect();
+                    let relationships: &[&str] = if family == "usecase" {
+                        &[
+                            "E1:N1[open]--solidassociation--N2[point]",
+                            "id=\"Checkout\"",
+                        ]
+                    } else {
+                        &[
+                            "start=\"A\"",
+                            "end=\"B\"",
+                            "end-marker=\"arrow_point\"",
+                            "columns=3",
+                            "span=2",
+                            "type=\"space\"",
+                            "children=[",
+                        ]
+                    };
+                    for expected in relationships {
+                        assert!(compact.contains(expected), "missing {expected:?}: {text}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn styled_ascii_results_identify_their_exact_encoding() {
         for (color_mode, expected_encoding, required_bytes) in [
             ("ansi16", "ansi16", "\u{1b}["),

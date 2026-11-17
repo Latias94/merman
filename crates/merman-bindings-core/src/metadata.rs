@@ -2072,6 +2072,7 @@ mod tests {
             assert_eq!(
                 ascii_supported_diagrams(),
                 &[
+                    "block",
                     "class",
                     "er",
                     "flowchart",
@@ -2086,6 +2087,7 @@ mod tests {
                     "swimlane",
                     "timeline",
                     "treeView",
+                    "usecase",
                     "xychart",
                 ]
             );
