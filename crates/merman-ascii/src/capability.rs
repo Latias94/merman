@@ -350,6 +350,8 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "relationship labels",
             "cardinality markers",
             "parent diamond cardinality markers",
+            "nested ER group frames and typed group endpoints",
+            "actual member identity disclosure for group facade routes",
             "identifying relationships",
             "top-down, bottom-up, left-right, and right-left directions",
             "self-relationship loops",
@@ -365,6 +367,8 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "bounded private-channel search does not guarantee a route for every topology",
             "unknown cardinality markers are unsupported",
             "unknown relationship identity kinds are unsupported",
+            "ancestor/member relationships use typed summaries alongside group geometry",
+            "duplicate groups, ambiguous ownership, and shadowed forward-reference endpoints are unsupported",
             "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output",
         ],
         evidence: &[
@@ -404,6 +408,8 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         supported_semantics: &[
             "root directions",
             "boxed nodes and common shapes",
+            "explicit type compartments for admitted uncommon shapes",
+            "icon and image metadata as complete terminal text",
             "terminal-cell wrapped node labels",
             "edge labels",
             "open dotted and thick edges",
@@ -412,7 +418,8 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "terminal color roles",
         ],
         limits: &[
-            "icons and images are omitted",
+            "icon glyphs and image pixels are not rendered; asset metadata is disclosed as text",
+            "fixed control shapes reject asset metadata rather than hiding it",
             "callbacks and links are not terminal output",
             "some uncommon route shapes are approximate",
         ],
@@ -548,6 +555,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
             "columns",
             "cards",
             "stable card and group ids",
+            "independent repeated card occurrences",
             "assignments",
             "metadata",
             "deterministic Unassigned grouping",
@@ -557,7 +565,7 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         limits: &[
             "drag and board presentation metadata are not terminal output",
             "group parent ownership is disclosed without nested board geometry",
-            "duplicate or empty ids are rejected",
+            "duplicate group ids and empty ids are rejected",
         ],
         evidence: &[
             AsciiCapabilityEvidence {

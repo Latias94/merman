@@ -39,9 +39,21 @@ the authored edge index. Fixed-presentation marker capacity failures use
 `AsciiError::PortCapacityExceeded`. These are separate from unsupported state semantics and do not
 trigger width fallback; see the [graph presentation boundary](README.md#graph-presentation-boundary).
 
+The shared planner measures cyclic compound-scope return-lane demand before searching routes. Label
+widths, overlapping returns, local directions, and container margins participate in the same
+request used by measured recovery. A bounded initial route trial keeps a complete incumbent when
+the original spacing already works; otherwise the remaining preparation credit can enlarge the
+measured geometry. Endpoint/container label classification is reused only within one immutable
+geometry generation. These steps charge the existing operation ledger and preserve cancellation, deadlines,
+public resource ceilings, and bounded search diagnostics.
+Root returns and self loops retain their existing exterior-envelope rules, with additional
+space requested only after a measured routing miss.
+
 ## Known Limitations
 
 - State rendering is a terminal graph approximation, not SVG layout parity.
+- Conservative return spacing can widen a scene whose original geometry did not complete within
+  the bounded initial trial. It improves capacity rather than guaranteeing the smallest diagram.
 - Start/end, fork/join, and choice pseudo states are terminal approximations of Mermaid's SVG
   shapes. They preserve topology and avoid leaking implementation ids, but they are not pixel
   parity with browser rendering.

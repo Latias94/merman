@@ -25,8 +25,11 @@ mod labels;
 mod marker;
 mod protected;
 mod rebuild;
+mod regions;
 
 pub(super) use protected::ProtectedScene;
+use regions::LabelContainerRelation;
+pub(super) use regions::LabelRegionCache;
 
 const OCCUPANCY_SCAN_CHECKPOINT_INTERVAL: usize = 64;
 type RouteLabelPlacements = Vec<(RoutedLabelPlacement, LabelAnchor)>;
@@ -425,6 +428,7 @@ pub(super) struct SceneOccupancy<'layout> {
     label_owners: Vec<LabelOccupant>,
     blockers: RefCell<Option<BlockerWitnesses>>,
     pub(super) protected: Rc<ProtectedScene<'layout>>,
+    label_regions: Rc<LabelRegionCache<'layout>>,
     pub(super) label_lane_radius: usize,
     control: OperationControl,
     occupied_extent: CanvasCoord,
@@ -494,8 +498,9 @@ impl<'layout> SceneOccupancy<'layout> {
         let resources = execution.resource_context(resources, OperationPhase::Layout);
         let resources = &resources;
         let protected = Self::try_prepare_protection(graph_layout, resources)?;
+        let label_regions = LabelRegionCache::try_new(graph_layout, 0, resources)?;
         Self::try_new_with_protection(
-            graph_layout,
+            label_regions,
             route_capacity,
             label_lane_radius,
             protected,
@@ -512,7 +517,7 @@ impl<'layout> SceneOccupancy<'layout> {
     }
 
     pub(super) fn try_new_with_protection(
-        graph_layout: &'layout GraphLayout,
+        label_regions: Rc<LabelRegionCache<'layout>>,
         route_capacity: usize,
         label_lane_radius: usize,
         protected: Rc<ProtectedScene<'layout>>,
@@ -523,7 +528,7 @@ impl<'layout> SceneOccupancy<'layout> {
         let marker_capacity = resources.checked_work_mul(route_capacity, 2)?;
         let occupied_extent = protected.extent;
         let mut scene = Self {
-            graph_layout,
+            graph_layout: label_regions.layout(),
             route_capacity,
             route_cells: HashMap::default(),
             route_bounds: Vec::new(),
@@ -535,6 +540,7 @@ impl<'layout> SceneOccupancy<'layout> {
             label_owners: Vec::new(),
             blockers: RefCell::new(None),
             protected,
+            label_regions,
             label_lane_radius,
             control: execution.cloned_control(),
             occupied_extent,
@@ -2257,38 +2263,16 @@ impl<'layout> SceneOccupancy<'layout> {
         candidate: OccupiedRect,
         resources: &ResourceContext,
     ) -> Result<bool> {
-        for group in &self.graph_layout.groups {
+        for (group_index, group) in self.graph_layout.groups.iter().enumerate() {
             self.checkpoint_layout()?;
             resources.charge_layout_work(1)?;
             if group.kind != GraphGroupKind::Container {
                 continue;
             }
-            let endpoint_inside =
-                |id: &str| -> Result<bool> {
-                    resources.charge_layout_work(resources.checked_work_add(
-                        self.graph_layout.nodes.len(),
-                        self.graph_layout.groups.len(),
-                    )?)?;
-                    Ok(self.graph_layout.nodes.iter().any(|node| {
-                        node.id == id && super::geometry::group_contains_node(group, node)
-                    }) || self.graph_layout.groups.iter().any(|child| {
-                        child.id == id
-                            && group.x < child.x
-                            && child.right() < group.right()
-                            && group.y < child.y
-                            && child.bottom() < group.bottom()
-                    }))
-                };
-            let from_inside = endpoint_inside(&owner.from)?;
-            let to_inside = endpoint_inside(&owner.to)?;
-            let interior = if group.id == owner.from {
-                to_inside
-            } else if group.id == owner.to {
-                from_inside
-            } else {
-                from_inside && to_inside
-            };
-            if interior {
+            let relation = self
+                .label_regions
+                .classify(owner, group_index, group, resources)?;
+            if relation == LabelContainerRelation::Interior {
                 if candidate.x <= group.x
                     || candidate.right > group.right()
                     || candidate.y <= group.y
@@ -2297,9 +2281,7 @@ impl<'layout> SceneOccupancy<'layout> {
                     self.record_static_restriction(resources)?;
                     return Ok(false);
                 }
-            } else if (group.id == owner.from
-                || group.id == owner.to
-                || (!from_inside && !to_inside))
+            } else if relation == LabelContainerRelation::Exterior
                 && candidate.x <= group.right()
                 && group.x < candidate.right
                 && candidate.y <= group.bottom()

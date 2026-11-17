@@ -96,6 +96,44 @@ and cumulative computation; they are not measured bytes, but removing the reserv
 replacement that covers derived storage and failed operations too. No concurrency improvement
 or operating-system memory guarantee is claimed.
 
+## ASCII Planning Work And Operation Deadlines
+
+ASCII uses the separate `max_ascii_layout_work_units` budget. It counts deterministic units of
+text traversal, geometry preparation, and route/label search, including charged bounds for batch
+operations. One unit is not a CPU instruction, millisecond, terminal cell, token, or node. Long
+conditions, reciprocal edges, and containers can require many attempts even in a small diagram.
+The counter is an implementation policy and may change when an algorithm changes.
+
+| Profile | ASCII work ceiling |
+| --- | ---: |
+| `constrained` | 1,000,000 |
+| `interactive` | 2,000,000 |
+| `trusted-native` (CLI default) | 8,000,000 |
+| `unbounded-for-trusted-input` | No policy ceiling |
+
+A work ceiling provides a deterministic stop for counted computation. A deadline instead limits
+elapsed time at cooperative checkpoints, including the rest of the command operation. They are
+independent controls; neither number measures the other. No operation deadline is set by default.
+Private finite search allowances, overflow checks, and other hard guards still apply with an
+unbounded profile. A work-limit error does not prove that an input has no valid terminal layout.
+
+Increase only the ASCII work budget while keeping the profile's other ceilings:
+
+```console
+merman-cli render diagram.mmd --format unicode --resource-limit max_ascii_layout_work_units=64000000 --operation-timeout-ms 30000
+```
+
+For explicitly trusted local input, remove all policy budgets and set a separate deadline:
+
+```console
+merman-cli render diagram.mmd --format unicode --resource-profile unbounded-for-trusted-input --operation-timeout-ms 30000
+```
+
+The latter also removes policy ceilings for input size, grid/document size, output bytes, and
+other resources; it is broader than disabling just the work counter. Numeric overrides accept
+positive values; a zero override does not mean unlimited. A higher budget or longer deadline
+does not guarantee successful routing.
+
 ## Evidence And Margins
 
 The initial policy was reviewed on 2026-07-27 against the checked-in corpus:

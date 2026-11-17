@@ -1,7 +1,7 @@
 # ASCII Reference Comparison
 
 Status: living comparison note
-Last updated: 2026-11-16
+Last updated: 2026-11-17
 
 This note records comparison evidence for the pinned upstream revisions used by `merman-ascii` and
 notes what may be visible in the optional local reference checkouts:
@@ -16,7 +16,7 @@ product boundary.
 ## Short Read
 
 - The pinned `mermaid-ascii` source is the narrow copied-fixture oracle for graph and sequence text
-  output. The ignored local checkout inspected at `b1b35f67d6a5dd0699ccfc968c00a763db573076`
+  output. The ignored local checkout inspected at `5a9df1560871e1ef8037c052b3b5d87de503bc9e`
   also contains a newer ER renderer, but that post-snapshot code is discovery evidence only.
 - `beautiful-mermaid` is the broad reference. It covers more families and more terminal styling
   ideas, but it is not always semantically faithful to Mermaid.
@@ -120,6 +120,70 @@ dominates every reference graph, or that finite terminal artwork can represent a
 The [support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md) owns policy admission and the
 [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning)
 owns the scheduling and accounting boundary.
+
+## Extending Family Coverage
+
+The research checkout at `5a9df1560871e1ef8037c052b3b5d87de503bc9e` has three explicit renderer
+adapters: Graph, Sequence, and ER. Its
+[`DiagramFactory`](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/render/diagram.go#L13)
+routes other inputs to the graph parser, which requires a `graph` or `flowchart` declaration;
+this is not support for State, Kanban, Block, Usecase, or Agentflow. The moving ER parser
+explicitly [rejects subgraphs](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/er/parser.go#L181).
+These omissions distinguish transferable layout techniques from solved family semantics.
+
+Two reference mechanisms remain useful. The ER layout
+[measures boxes, endpoint degree, and label width before placing entities](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/er/layout.go#L100),
+then reserves private relationship lanes. Reserving that capacity early is useful; globally
+allocating one lane per relationship to every gutter is not a compactness target. The Graph
+[fan-out pass](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/graph/fanout.go#L9)
+coordinates branch placement and label clearance, but only for a restricted TD, ungrouped,
+compatible-arrow case. It is evidence for jointly measured channels, not a general compound
+router. Merman's existing scene planner already owns the broader routing contract.
+
+The reference graph parser extracts labels from several delimiter forms without retaining their
+shape kind. It also [maps RL to LR and BT to TD](https://github.com/AlexanderGrooff/mermaid-ascii/blob/5a9df1560871e1ef8037c052b3b5d87de503bc9e/pkg/graph/parse.go#L609).
+Those simplifications do not establish complete-information parity for Merman. Future terminal
+approximations should preserve the authored type, label, endpoint identity, and direction, with
+their visible cues or keyed details measured before routing.
+
+The first wave repairs typed admission within already supported families. Additional families
+remain proposals requiring their own spatial admission:
+
+| Area | Owner | Current boundary or next acceptance condition |
+| --- | --- | --- |
+| Uncommon Flowchart shapes | `graph/shape.rs`, `graph/adapter.rs` | Admitted known aliases use a visible type compartment measured before contour sizing and routing. Unknown, cross-family, and remaining BPMN shapes retain precise diagnostics. |
+| Flowchart icon/image nodes | Family-owned measured node presentation | Complete labels, asset identities, form, position, constraint, and numeric dimensions are retained as terminal-safe text. Quoted whitespace survives wrapping and mirroring. Assets are not fetched; fixed-label control shapes reject metadata they cannot display. Aggregate temporary text counts against output admission. |
+| ER group endpoints | `er/render/group.rs`, `output/relation.rs` | Nested and empty group frames distinguish authored membership keys from generated entity-route IDs. Entity/group endpoints, both cardinalities, stroke, and role survive. Deep-member facades name actual endpoints; ancestor/member relations use complete summaries. Primary geometry and structured width fallback report their actual projections. |
+| Repeated Kanban card IDs | Ordered occurrence-based card records | Every occurrence retains its authored ID, order, column, label, and metadata. Duplicate group IDs remain an ownership diagnostic; group/card spelling collisions do not discard cards. |
+| State concurrent regions | Shared graph capacity planning and geometry-local label classification | Cyclic compound-scope return demand is measured before route search. Root returns and self loops keep existing exterior envelopes; recovery remains available. Exact labels, actual cross-region endpoints, operation accounting, and finite search diagnostics are preserved. |
+| Usecase | Typed actors, cases, boundaries, notes, and relationship kinds already exist. | Add a family-owned adapter over shared graph geometry. Retain actor/case roles and association/include/extend/generalization distinctions, direction, and membership; ordinary flow arrows alone are insufficient. |
+| Block | The canonical flat records retain child indices, columns, spans, spacers, and edge facts. | Use a family-owned grid packer with joint routing clearance. Preserve columns, spans, empty cells, nesting, and markers; unconstrained Dagre placement would discard the defining layout semantics. |
+| Agentflow | Typed node roles, edge meanings, containers, and family presentation data already exist. | Define expanded/collapsed view behavior and connector ownership before adapting shared graph geometry. Preserve sequence/reference/failure distinctions and actual endpoint roles; a semantic-only metadata export cannot recover every authored presentation choice. |
+
+The exact three-region Trident State source is retained as a parser-backed Trusted Native
+regression with all six full condition occurrences, six state labels, four starts, and ten heads.
+Attribution identified exhaustive searches in two insufficient layout generations before measured
+return-space recovery made the final generation easy to route. Preparing compound return capacity
+before searching avoids those generations. This is a deterministic work/admission improvement;
+it does not establish a calibrated latency improvement or arbitrary-graph success. No default
+ceiling is raised and no authored condition is shortened.
+The exact native CLI control admits 887,856 work units instead of 21,764,888 and emits 71×79
+instead of 71×81. Early spacing is conservative: a single-region control widens from 20×32 to
+56×32, even though both retain a 60-column primary diagram. These are bounded tradeoffs, not
+universal compactness or reference superiority claims.
+
+Usecase and Block next need independent complete vertical slices, each
+checked on small, typical, and dense inputs at 80/100/120 cells against a complete record baseline.
+Existing reading-floor and resource/cancellation tests remain acceptance controls. Width compliance,
+complete facts, recoverable relationships, and correct projection reporting matter more than a
+successful exit or a smaller rectangle. The support matrix changes only after implementation and
+family-local admission evidence; unsupported-family or resource errors must not become generic
+successful fallbacks.
+
+The reference is MIT-licensed. Substantial copied code or fixtures require its copyright and
+permission notice; researching the mechanisms does not change Merman's copied-fixture pin.
+Grok's first-party terminal implementation remains Apache-2.0 presentation research, not source
+to copy or translate in this work.
 
 ## Terminal Visual Direction
 
@@ -517,7 +581,7 @@ evidence, but they are not admitted as byte-level fixtures: `merman-ascii` prese
 readably while intentionally not copying the upstream LR label spacing byte-for-byte.
 
 The ignored `repo-ref/mermaid-ascii` checkout inspected at
-`b1b35f67d6a5dd0699ccfc968c00a763db573076` has added ER parsing, attribute tables, cardinalities,
+`5a9df1560871e1ef8037c052b3b5d87de503bc9e` has added ER parsing, attribute tables, cardinalities,
 and routed relationships since the pinned copied-source revision. No ER fixture from that moving
 checkout is part of the tracked copied inventory, so those additions do not silently change Merman's
 support or evidence boundary.
@@ -579,7 +643,7 @@ expected output.
 | Flowchart / graph | Exact copied-fixture parity for the narrow graph corpus, with LR/TD/TB routing and a small parser surface. | Broader graph ASCII ideas, ampersand fan-in/fan-out examples, richer shape handling, disconnected subgraph non-overlap checks, and more styling hooks, but `RL` is approximated as `LR`. | Merman preserves a broader typed surface: true `BT`/`RL`, Dagre-compatible ranking, first-parent compound ownership, boundary-aware subgraphs, scene-level occupancy, independent point/circle/cross/open endpoint markers, invisible constraints, explicit dispositions for every pinned Mermaid 11.17.2 shape name, distinct common decorated shapes, multiline labels, color roles, and terminal resource/text safety. It remains Partial for browser-only metadata, unimplemented uncommon geometry, arbitrary dense-route candidates, and non-transverse mixed-stroke junctions. | Keep `mermaid-ascii` for compact routing evidence and `beautiful-mermaid` for UI ideas, but use pinned Mermaid semantics and executable terminal recovery gates as the product oracle. |
 | Sequence | Exact copied-fixture parity for a compact sequence corpus. | Much broader parser/layout coverage, including notes, blocks, theming, and ASCII/Unicode variants. | Typed sequence support is already beyond the narrow reference: activations, create/destroy, boxes with inner padding, control blocks, mirror actors, and color roles all exist. | Remaining work is mostly layout polish and boundary tightening, not parser rescue. |
 | Class | Not part of the pinned reference scope. | Full class parser/layout/ASCII, with compartments, annotations, multiline labels, and arrow-direction handling. | The shared `relation_graph` seam preserves four directions, independent markers, endpoint labels, namespaces, annotations, methods, self-relations, typed colors, and independent components. Directed component ranks and bounded private channels handle admitted rings and DAG diamonds, with complete summaries when route or overlay admission fails. | Extend from typed relation facts and verify traceable contacts and labels. Bounded channel search does not guarantee arbitrary dense routing. |
-| ER | The pinned copied-source revision has no ER renderer. The moving ignored checkout at `b1b35f67` has entity tables, crow's-foot cardinalities, aliases, self-relations, and routed labels; it is not an admitted byte oracle. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | The same relation planner preserves four directions, entities and attributes, keys and comments, independent cardinalities including the parent diamond, multiline labels, identifying strokes, and self-relations. Directed ranks and private channels retain admitted rings and diamonds; unsafe scenes use complete summaries. | Relation geometry is shared; cardinality and relationship identity stay family-owned. Moving reference code remains discovery evidence until explicitly pinned and inventoried. |
+| ER | The pinned copied-source revision has no ER renderer. The moving ignored checkout at `5a9df156` has entity tables, crow's-foot cardinalities, aliases, self-relations, and routed labels, but rejects subgraphs; it is not an admitted byte oracle. | Full ER parser/layout/ASCII, including crow's foot notation, multiline relationship labels, and attribute sections. | The same relation planner preserves four directions, entities and attributes, keys and comments, independent cardinalities including the parent diamond, multiline labels, identifying strokes, and self-relations. Directed ranks and private channels retain admitted rings and diamonds; unsafe scenes use complete summaries. | Relation geometry is shared; cardinality and relationship identity stay family-owned. Moving reference code remains discovery evidence until explicitly pinned and inventoried. |
 | State | Not part of the reference scope. | State diagram support rides the broader ASCII pipeline and gives useful layout ideas. | Supported subset with start/end, fork/join/choice, notes, composite states, divider regions, and role colors. | Keep state honest to the typed model; do not try to copy browser shapes literally. |
 | XYChart | Not part of the reference scope. | Full xychart ASCII/SVG family, including legends, tooltips, and CSS-variable-driven palette behavior. | One typed terminal plan preserves model-owned coordinates, grouped bars, missing-sample gaps, joint line topology, distinct series markers, shared sample cells, scale-aware ticks, and exact record-oriented disclosure after the plot. Measurement, painting, encodings, and resource admission consume the same plans. | Terminal quantization, marker reuse after six lines, dense bar/line overlap, and long individual fields still require exact records or viewport fallback. |
 | Mindmap / TreeView | Not part of the reference scope. | Broader mindmap/tree examples can suggest readable outline shapes. | Compact structured-text hierarchy outlines with preserved order and wrapped labels. | Keep the output readable and compact; do not imitate browser geometry. |

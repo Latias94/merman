@@ -17,6 +17,10 @@ Scene planning extension: 2026-11-16. Conflict-directed repair, measured reflow,
 adaptive presentation use the same public operation ledger and resource ceilings. The scene
 planning section below supplements the historical receipt.
 
+Label classification and return-capacity extension: 2026-11-17. Geometry-local reuse and early
+cyclic-scope demand supplement the same receipt; public ceilings and private work allowances
+remain unchanged.
+
 This audit records the input-amplification and panic-path boundary reviewed for the ASCII
 semantic-depth closeout. It is not a claim that every Rust allocation is fallible or that the crate
 contains no invariant assertions. It identifies where authored-size work is admitted, where large
@@ -101,13 +105,63 @@ constant adjacency work, exact/N-1 limits, cancellation, and state storage size.
 separately. Existing compressed/unit-grid oracle tests retain path quality and segment semantics,
 including markers, labels, compound frames, long gaps, and winner materialization.
 
+## Geometry-Local Label Classification
+
+`LabelRegionCache` retains the exact geometric endpoint/container classification for reached
+canonical edge/container pairs. Feasibility, quality, and repair trials share it within one
+immutable layout generation; reflow creates a new cache. Detached callers without stable edge
+identities use the uncached predicate. Node/group ID collisions retain existential matching,
+container endpoints retain their prior rules, and open concurrency dividers are not containers.
+
+For `V` nodes and groups, `E` canonical edges, `C` containers, and `Q` classification calls, the
+previous bound is `O(Q * V)`. With `K` reached pairs, the new bound is
+`O(K * V + Q)` under expected integer-hash lookup cost, with `K <= E * C`. This does not improve
+every occupancy or group traversal. The lazy table retains `O(K)` entries rather than eagerly
+allocating `E * C` cells. Lookups, fills, and growth charge work and observe cancellation.
+`graph::routing::occupancy::regions::tests` covers exact/N-1 admission, cache hits, cancellation,
+duplicate endpoint identities, group/member semantics, repair sharing, and reflow invalidation.
+
 ## Graph Scene Planning
 
 `graph::planning` prepares stable semantic demand and route identities once for each admitted
-layout profile. It owns the initial geometry and at most two measured capacity rebuilds. Every
-generation recreates coordinate-dependent contacts, channels, and occupancy; immutable protection
-is shared only between trials within one generation. Retired geometry is dropped before the next
-generation is built.
+layout profile. It measures initial geometry, reserves cyclic compound-scope return demand before
+route search, and permits at most two subsequent recovery rebuilds. Root returns and real self
+loops keep their existing exterior envelopes until an actual routing miss requests more space.
+Early capacity analysis and any resulting rebuild share the existing reflow-work allowance with
+recovery. The initial geometry
+remains available until this optional preparation completes; private allowance exhaustion discards
+the preparation, while public resource and operation errors propagate. Every routed generation
+recreates coordinate-dependent contacts, channels, and occupancy; immutable protection is shared
+only between trials within one generation. After a routing miss, retired geometry is dropped
+before the next generation is built.
+
+Capacity requests are conservative, so a nonempty request first tries the original geometry with
+at most half the remaining preparation credit. A complete validated result is retained and
+submitted directly; no second feasibility pass spends its repair allowances again. Otherwise the
+remaining credit can build the requested geometry. This preserves already readable scenes such
+as a 38-column grouped two-node reciprocal graph. If optional quality reaches this private work
+boundary after feasibility completed, the validated incumbent survives; public resource exhaustion
+and cancellation still propagate. The probe, discarded trials, analysis, and rebuild all consume
+the same existing 1,000,000-unit reflow allowance and public ledger.
+
+The return analysis itself uses one iterative scope-projected SCC pass and a sorted interval sweep.
+For `V` scoped endpoints, `E` semantic edges, nesting depth `D`, and traversed ID/label text `T`,
+the bound is `O((V + E) * (D + 1) + E log(E + 1) + T)` with expected ID-hash lookup cost and
+`O(V + E)` auxiliary storage. All scope margins are measured in one pass; unrelated SCCs merge
+requests by scope and axis using the same
+maximum rule as recovery. This is an early capacity measurement, not an arbitrary-graph routing
+bound. The original three-region State regression keeps all six full conditions, all ten heads,
+and all start/state identities under the unchanged Trusted Native work ceiling.
+
+The 2026-11-17 source-through-CLI debug control uses the exact 520-byte CRLF source retained in
+`state_original_concurrent_conditions_keep_every_label_and_transition`, Unicode Plain output,
+Canonical geometry, and identical Flowchart/State/ER/Kanban feature closures. The minimum admitted
+ASCII work ceiling changes from 21,764,888 to 887,856; each exact value succeeds and one less
+rejects with the same value as `actual`. The three-region extent changes from 71×81 to 71×79;
+the two-region control changes from an 8,000,000-unit failure to a 65×56 diagram. This measures
+deterministic counted work, not elapsed-time speedup. Conservative spacing is a tradeoff: the
+single-region control widens from 20×32 to 56×32, while both fit a 60-column viewport. An original
+layout that cannot be proved within the bounded probe may still be widened.
 
 Feasibility, displaced-route replacement, prospective allocation, complete-scene quality, and
 reflow have separate finite algorithmic allowances. They all charge the cumulative public work
@@ -132,9 +186,12 @@ work boundary checked before each charge; public resource errors in all dimensio
 take precedence over that boundary. Discarded reflow geometry restores speculative document cells
 while retaining the work spent to build it.
 
-The unchanged two-node Binding Core fixture now needs 954 work units (953 rejects with actual
-954), following the earlier static-protection checkpoint of 950. The structured resource-boundary
-fixture and exact/N-1 transport tests own this count; no profile ceiling changed. Core tests cover
+The unchanged two-node Binding Core fixture now needs 958 work units (957 rejects with actual
+958), following the scene-planning checkpoint of 954 and static-protection checkpoint of 950.
+The four added units admit two node-presentation entries and the classification-cache owners
+used by planning and final route validation. Graphs without compound groups skip initial return
+analysis. The structured resource-boundary fixture and exact/N-1 transport tests own this count;
+no profile ceiling changed. Core tests cover
 private-boundary precedence, failed transactions, useful replacement credit for wide contacts,
 four-contributor repair, and a 97-marker capacity deficit corrected through reflow.
 

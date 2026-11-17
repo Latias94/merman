@@ -31,7 +31,7 @@ impl<'layout> SceneOccupancy<'layout> {
         // and an initial label slot per route. Immutable protection is shared with the trial.
         resources.charge_layout_work_product(self.route_capacity, 8)?;
         let mut rebuilt = Self::try_new_with_protection(
-            self.graph_layout,
+            std::rc::Rc::clone(&self.label_regions),
             self.route_capacity,
             self.label_lane_radius,
             std::rc::Rc::clone(&self.protected),

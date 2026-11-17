@@ -204,24 +204,215 @@ fn flowchart_typed_model_internal_shape_aliases_render() {
 }
 
 #[test]
-fn flowchart_typed_model_rejects_icon_and_image_metadata() {
+fn flowchart_typed_model_discloses_icon_and_image_metadata() {
     let mut icon = single_node_flowchart_model("rect", "Icon");
     icon.nodes[0].icon = Some("fa:circle".to_string());
+    icon.nodes[0].form = Some("circle".to_string());
+    icon.nodes[0].pos = Some("b".to_string());
     let mut image = single_node_flowchart_model("rect", "Image");
-    image.nodes[0].img = Some("data:image/png;base64,AA==".to_string());
+    image.nodes[0].img = Some("asset.png".to_string());
+    image.nodes[0].constraint = Some("on".to_string());
+    image.nodes[0].asset_width = Some(128.0);
+    image.nodes[0].asset_height = Some(64.0);
 
-    for model in [icon, image] {
-        let error = render_model(
+    for (model, expected) in [
+        (
+            icon,
+            vec![
+                "Icon",
+                "icon: \"fa:circle\"",
+                "form: \"circle\"",
+                "label position: \"b\"",
+            ],
+        ),
+        (
+            image,
+            vec![
+                "Image",
+                "image: \"asset.png\"",
+                "constraint: \"on\"",
+                "asset width: 128",
+                "asset height: 64",
+            ],
+        ),
+    ] {
+        let rendered = render_model(
             &RenderSemanticModel::Flowchart(model),
             &AsciiRenderOptions::ascii(),
         )
-        .expect_err("icon and image metadata must not silently render as a plain node");
-        assert_eq!(
-            error,
-            AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "flowchart icon and image node metadata",
+        .expect("asset metadata should have a complete textual terminal projection");
+        for expected in expected {
+            assert!(
+                rendered.contains(expected),
+                "missing {expected:?}:\n{rendered}"
+            );
+        }
+        assert_rectangular_terminal_grid(&rendered);
+    }
+}
+
+#[test]
+fn flowchart_parser_asset_projection_preserves_authored_identity_and_relations() {
+    let rendered = render_flowchart(
+        r#"flowchart LR
+        A@{ icon: "fa:user", form: "square", label: "Account" }
+        A -->|upload| B@{ img: "photo.png", label: "Portrait", w: 80, h: 60, constraint: "on" }
+        B --> A"#,
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("parsed assets should remain connected using their actual node IDs");
+    for expected in [
+        "Account",
+        "fa:user",
+        "Portrait",
+        "photo.png",
+        "upload",
+        "asset width: 80",
+        "asset height: 60",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+    assert!(!rendered.contains("A@"));
+    assert_rectangular_terminal_grid(&rendered);
+}
+
+#[test]
+fn flowchart_asset_details_keep_controls_literal_and_wide_cells_aligned() {
+    let mut model = single_node_flowchart_model("iconSquare", "图标");
+    model.nodes[0].icon = Some("mdi:用户·\\n\u{1b}[31m".to_string());
+    let model = RenderSemanticModel::Flowchart(model);
+    for profile in [
+        merman_ascii::TerminalWidthProfile::Unicode,
+        merman_ascii::TerminalWidthProfile::Cjk,
+    ] {
+        let mut options = AsciiRenderOptions::unicode().with_terminal_width_profile(profile);
+        options.flowchart_node_label_wrap_width = 80;
+        let rendered = render_model(&model, &options)
+            .expect("asset details must use terminal-safe literal text");
+        assert!(rendered.contains("图标"));
+        assert!(rendered.contains("mdi:用户·\\\\n"));
+        assert!(rendered.contains("\\u{1B}"), "{rendered}");
+        assert!(!rendered.contains('\u{1b}'));
+        support::assert_rectangular_terminal_grid_with_profile(&rendered, profile);
+    }
+}
+
+#[test]
+fn flowchart_asset_details_preserve_spaces_in_image_paths() {
+    let rendered = render_flowchart(
+        "flowchart LR\nA@{ img: \"a  b.png\", label: \"Portrait\" }",
+        &AsciiRenderOptions::unicode().with_flowchart_node_label_wrap_width(80),
+    )
+    .expect("quoted asset paths must retain authored spaces");
+
+    assert!(rendered.contains("image: \"a  b.png\""), "{rendered}");
+    assert_rectangular_terminal_grid(&rendered);
+}
+
+#[test]
+fn flowchart_wrapped_asset_compartments_survive_mirrored_layouts_and_width_profiles() {
+    use merman_ascii::TerminalWidthProfile;
+
+    for direction in ["BT", "RL"] {
+        let mut model = single_node_flowchart_model("imageSquare", "Alpha Beta 超·");
+        model.direction = Some(direction.to_string());
+        model.nodes[0].icon = Some("图·".to_string());
+        model.nodes[0].img = Some("a  b".to_string());
+        let model = RenderSemanticModel::Flowchart(model);
+        for layout in [AsciiLayoutProfile::Canonical, AsciiLayoutProfile::Compact] {
+            for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+                let options = AsciiRenderOptions::unicode()
+                    .with_layout_profile(layout)
+                    .with_terminal_width_profile(profile)
+                    .with_flowchart_node_label_wrap_width(8);
+                let rendered = render_model(&model, &options)
+                    .unwrap_or_else(|error| panic!("{direction}/{layout:?}/{profile:?}: {error}"));
+                let rows: Vec<_> = rendered.lines().collect();
+                let alpha = first_line_index_containing(&rendered, "Alpha");
+                let beta = first_line_index_containing(&rendered, "Beta");
+                let last_title = first_line_index_containing(&rendered, "超·");
+                let details = first_line_index_containing(&rendered, "shape:");
+                let title_rows = if profile == TerminalWidthProfile::Cjk {
+                    3
+                } else {
+                    2
+                };
+                assert_eq!(
+                    beta,
+                    alpha + 2,
+                    "{direction}/{layout:?}/{profile:?}:\n{rendered}"
+                );
+                assert_eq!(
+                    last_title,
+                    alpha + 2 * (title_rows - 1),
+                    "title wrapping must follow the selected width profile:\n{rendered}"
+                );
+                assert_eq!(
+                    details,
+                    last_title + 2,
+                    "details must follow the complete title and its divider:\n{rendered}"
+                );
+                let (left, right, horizontal) = if profile == TerminalWidthProfile::Cjk {
+                    ('+', '+', '-')
+                } else {
+                    ('├', '┤', '─')
+                };
+                let divider = rows[last_title + 1]
+                    .trim()
+                    .strip_prefix(left)
+                    .and_then(|row| row.strip_suffix(right))
+                    .unwrap_or_else(|| panic!("missing title/detail divider:\n{rendered}"));
+                assert!(
+                    !divider.is_empty() && divider.chars().all(|ch| ch == horizontal),
+                    "the divider must span the compartment:\n{rendered}"
+                );
+                for field in ["\"图·\"", "\"a  b\""] {
+                    assert!(
+                        first_line_index_containing(&rendered, field) > details,
+                        "quoted asset values must remain in the details compartment:\n{rendered}"
+                    );
+                }
+                support::assert_rectangular_terminal_grid_with_profile(&rendered, profile);
             }
+        }
+    }
+}
+
+#[test]
+fn flowchart_fixed_control_shapes_reject_asset_metadata() {
+    let diagnostic = AsciiError::UnsupportedFeature {
+        diagram_type: "flowchart",
+        feature: "metadata on fixed control node shapes",
+    };
+    assert_eq!(
+        render_flowchart(
+            "flowchart LR\nA@{ shape: sm-circ, w: 80, pos: b }",
+            &AsciiRenderOptions::ascii(),
+        )
+        .expect_err("fixed control shapes must diagnose metadata they cannot display"),
+        diagnostic
+    );
+    for (shape, direction) in [
+        ("sm-circ", "LR"),
+        ("fr-circ", "LR"),
+        ("choice", "TD"),
+        ("fork", "LR"),
+        ("join", "TD"),
+    ] {
+        let mut model = single_node_flowchart_model(shape, "Hidden");
+        model.direction = Some(direction.to_string());
+        model.nodes[0].icon = Some("fa:user".to_string());
+        assert_eq!(
+            render_model(
+                &RenderSemanticModel::Flowchart(model),
+                &AsciiRenderOptions::ascii(),
+            )
+            .expect_err("fixed control shapes must not silently drop icon metadata"),
+            diagnostic,
+            "{shape}/{direction}"
         );
     }
 }
@@ -618,18 +809,127 @@ fn flowchart_parser_shape_data_pipeline_example_renders_readable_ascii_shapes() 
 }
 
 #[test]
-fn flowchart_parser_rejects_remaining_uncommon_shapes() {
-    let shape = "icon";
-    let input = format!("flowchart LR\nA@{{ shape: {shape}, label: \"X\" }}");
-    let err = render_flowchart(&input, &AsciiRenderOptions::ascii())
-        .expect_err("unsupported shape should be rejected");
-    assert!(matches!(
-        err,
-        merman_ascii::AsciiError::UnsupportedFeature {
-            diagram_type: "flowchart",
-            feature: "unsupported flowchart node shape projections",
+fn flowchart_parser_uncommon_shape_aliases_have_explicit_terminal_roles() {
+    let mut options = AsciiRenderOptions::ascii();
+    options.flowchart_node_label_wrap_width = 80;
+    for (aliases, role) in [
+        (
+            &["notch-rect", "card", "notched-rectangle"][..],
+            "shape: card",
+        ),
+        (&["hourglass", "collate"][..], "shape: hourglass"),
+        (
+            &["bolt", "com-link", "lightning-bolt"][..],
+            "shape: communication link",
+        ),
+        (&["brace", "brace-l", "comment"][..], "shape: left comment"),
+        (&["brace-r"][..], "shape: right comment"),
+        (&["braces"][..], "shape: paired comment"),
+        (&["delay", "half-rounded-rectangle"][..], "shape: delay"),
+        (
+            &["lin-cyl", "disk", "lined-cylinder"][..],
+            "shape: disk storage",
+        ),
+        (
+            &["curv-trap", "curved-trapezoid", "display"][..],
+            "shape: display",
+        ),
+        (
+            &[
+                "div-rect",
+                "div-proc",
+                "divided-rectangle",
+                "divided-process",
+            ][..],
+            "shape: divided process",
+        ),
+        (&["tri", "triangle", "extract"][..], "shape: extract"),
+        (
+            &["notch-pent", "notched-pentagon", "loop-limit"][..],
+            "shape: loop limit",
+        ),
+        (
+            &["flip-tri", "flipped-triangle", "manual-file"][..],
+            "shape: manual file",
+        ),
+        (
+            &["cross-circ", "crossed-circle", "summary"][..],
+            "shape: summary",
+        ),
+        (
+            &["win-pane", "window-pane", "internal-storage"][..],
+            "shape: internal storage",
+        ),
+        (
+            &["h-cyl", "horizontal-cylinder", "das"][..],
+            "shape: direct access storage",
+        ),
+        (&["cloud"][..], "shape: cloud"),
+        (&["icon"][..], "shape: icon"),
+    ] {
+        let mut previous = None;
+        for alias in aliases {
+            let input = format!("flowchart LR\nA@{{ shape: {alias}, label: \"Payload\" }}");
+            let rendered = render_flowchart(&input, &options).expect("known role should render");
+            assert!(rendered.contains("Payload"), "{alias}:\n{rendered}");
+            assert!(rendered.contains(role), "{alias}:\n{rendered}");
+            assert_rectangular_terminal_grid(&rendered);
+            if let Some(previous) = &previous {
+                assert_eq!(&rendered, previous, "aliases must share a terminal role");
+            }
+            previous = Some(rendered);
         }
-    ));
+    }
+}
+
+#[test]
+fn flowchart_annotated_shape_ports_and_labels_are_planned_together() {
+    let rendered = render_flowchart(
+        "flowchart LR\nA[Request] -->|wait| B@{ shape: delay, label: \"Queued\" } --> C[Result]\nB -->|retry| A",
+        &AsciiRenderOptions::unicode(),
+    ).expect("role-bearing boxes must participate in ordinary route planning");
+    for expected in [
+        "Request",
+        "wait",
+        "Queued",
+        "shape: delay",
+        "Result",
+        "retry",
+    ] {
+        assert!(
+            rendered.contains(expected),
+            "missing {expected:?}:\n{rendered}"
+        );
+    }
+    assert!(
+        rendered.contains('├'),
+        "type details should have a measured compartment:\n{rendered}"
+    );
+    assert_rectangular_terminal_grid(&rendered);
+}
+
+#[test]
+fn flowchart_typed_model_unknown_and_cross_family_shapes_remain_diagnostic() {
+    for (shape, feature) in [
+        ("future-shape", "unknown flowchart node shapes"),
+        ("classBox", "unsupported flowchart node shape projections"),
+        (
+            "bpmn-activity",
+            "unsupported flowchart node shape projections",
+        ),
+    ] {
+        assert_eq!(
+            render_model(
+                &RenderSemanticModel::Flowchart(single_node_flowchart_model(shape, "Payload")),
+                &AsciiRenderOptions::ascii(),
+            )
+            .unwrap_err(),
+            AsciiError::UnsupportedFeature {
+                diagram_type: "flowchart",
+                feature
+            }
+        );
+    }
 }
 
 #[test]

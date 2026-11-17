@@ -240,64 +240,280 @@ fn scoped_overlapping_returns_reserve_independent_lanes_in_every_direction() {
     let policy = AsciiRenderOptions::ascii()
         .flowchart_layout()
         .graph_policy();
-    for direction in [
+    let directions = [
         GraphDirection::LeftRight,
         GraphDirection::RightLeft,
         GraphDirection::TopDown,
         GraphDirection::BottomTop,
-    ] {
-        let mut graph = AsciiGraph::new(direction);
-        for id in ["a", "b", "c", "outside"] {
-            graph.add_node(id, id);
-        }
-        for (from, to) in [("a", "b"), ("b", "c"), ("c", "a"), ("c", "a")] {
-            graph.add_edge(from, to);
-        }
-        graph.add_edge("outside", "outside");
-        graph.add_group_with_style(
-            "scope",
-            "Scope",
-            Some(direction),
-            vec!["a".into(), "b".into(), "c".into()],
-            GraphGroupStyle::default(),
-        );
-        let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
-        let mut initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
-        let horizontal = direction.canonical() == GraphDirection::LeftRight;
-        // Independently prescribed intervals: both c -> a returns cover [10,50].
-        // The unrelated root loop belongs to a different scope and cannot add a lane here.
-        for (index, node) in initial.layout.nodes[..3].iter_mut().enumerate() {
-            node.x = if horizontal { 10 + index * 20 } else { 10 };
-            node.y = if horizontal { 10 } else { 10 + index * 20 };
-        }
-        let request = scoped_return_demand(&graph, &policy, &initial, 2, &resources)
-            .unwrap()
-            .unwrap();
-        assert_eq!(request.scope, Some(0));
-        assert_eq!(request.cross_x, !horizontal);
-        assert_eq!(request.cells, 8);
-        let mut feedback = LayoutFeedback::default();
-        let miss = AsciiError::RoutingSearchExhausted {
-            diagram_type: "flowchart",
-            edge_index: 2,
-        };
-        assert!(
-            feedback
-                .record_return_failure(&graph, &policy, &initial, &miss, &resources)
+    ];
+    for root_direction in directions {
+        for direction in directions {
+            let horizontal = direction.canonical() == GraphDirection::LeftRight;
+            let mut graph = AsciiGraph::new(root_direction);
+            for id in ["a", "b", "c", "outside"] {
+                graph.add_node(id, id);
+            }
+            for (index, (from, to)) in [("a", "b"), ("b", "c"), ("c", "a"), ("c", "a")]
+                .into_iter()
+                .enumerate()
+            {
+                let label = if index < 2 {
+                    "s"
+                } else if horizontal {
+                    "r\nx\ny\nz"
+                } else {
+                    "longreturn"
+                };
+                graph.add_edge_with_attrs(
+                    from,
+                    to,
+                    GraphEdgeAttrs {
+                        label: Some(label.into()),
+                        ..Default::default()
+                    },
+                );
+            }
+            graph.add_edge("outside", "outside");
+            graph.add_group_with_style(
+                "scope",
+                "Scope",
+                Some(direction),
+                vec!["a".into(), "b".into(), "c".into()],
+                GraphGroupStyle::default(),
+            );
+            let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+            let mut initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
+            // Independently prescribed intervals: either two c -> a returns cover [10,50],
+            // or the opposite direction makes a -> b and b -> c overlap at their turn rank.
+            // The unrelated root loop belongs to a different scope and cannot add a lane here.
+            for (index, node) in initial.layout.nodes[..3].iter_mut().enumerate() {
+                node.x = if horizontal { 10 + index * 20 } else { 10 };
+                node.y = if horizontal { 10 } else { 10 + index * 20 };
+            }
+            let request = scoped_return_demand(&graph, &policy, &initial, 2, &resources)
                 .unwrap()
-        );
-        let rebuilt = measured(&graph, &feedback, &mut resources);
-        let scope = &rebuilt.layout.groups[0];
-        for node in &rebuilt.layout.nodes[..3] {
-            assert!(scope.x < node.x && node.right() < scope.right());
-            assert!(scope.y < node.y && node.bottom() < scope.bottom());
-            let margin = if horizontal {
-                (node.y - scope.y - 1).min(scope.bottom() - node.bottom() - 1)
-            } else {
-                (node.x - scope.x - 1).min(scope.right() - node.right() - 1)
+                .unwrap();
+            assert_eq!(request.scope, Some(0));
+            assert_eq!(request.cross_x, !horizontal);
+            // The root mirror reverses only its own axis. Distinct forward/return label
+            // pitches make an incorrect sign choose a different measured requirement.
+            let reversed = match direction {
+                GraphDirection::LeftRight => root_direction == GraphDirection::RightLeft,
+                GraphDirection::RightLeft => root_direction != GraphDirection::RightLeft,
+                GraphDirection::TopDown => root_direction == GraphDirection::BottomTop,
+                GraphDirection::BottomTop => root_direction != GraphDirection::BottomTop,
             };
-            assert!(margin >= 8);
+            let expected = if reversed {
+                8
+            } else if horizontal {
+                14
+            } else {
+                26
+            };
+            assert_eq!(request.cells, expected, "{root_direction:?}/{direction:?}");
+            let input = LayoutInput::prepare(&graph, &policy, &mut resources.clone()).unwrap();
+            let mut initial_feedback = LayoutFeedback::default();
+            assert!(
+                initial_feedback
+                    .record_initial_returns_with_input(&input, &initial, &resources)
+                    .unwrap()
+            );
+            let initial_request = initial_feedback
+                .returns
+                .iter()
+                .find(|request| request.scope == Some(0))
+                .unwrap();
+            assert_eq!(initial_request.cross_x, request.cross_x);
+            assert_eq!(initial_request.cells, request.cells);
+            let mut feedback = LayoutFeedback::default();
+            let miss = AsciiError::RoutingSearchExhausted {
+                diagram_type: "flowchart",
+                edge_index: 2,
+            };
+            assert!(
+                feedback
+                    .record_return_failure(&graph, &policy, &initial, &miss, &resources)
+                    .unwrap()
+            );
+            let rebuilt = measured(&graph, &feedback, &mut resources);
+            let scope = &rebuilt.layout.groups[0];
+            for node in &rebuilt.layout.nodes[..3] {
+                assert!(scope.x < node.x && node.right() < scope.right());
+                assert!(scope.y < node.y && node.bottom() < scope.bottom());
+                let margin = if horizontal {
+                    (node.y - scope.y - 1).min(scope.bottom() - node.bottom() - 1)
+                } else {
+                    (node.x - scope.x - 1).min(scope.right() - node.right() - 1)
+                };
+                assert!(margin >= expected);
+            }
         }
+    }
+}
+
+#[test]
+fn initial_return_analysis_merges_components_without_mixing_scopes() {
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    for id in ["a", "b", "c", "d", "e", "f"] {
+        graph.add_node(id, id);
+    }
+    for (from, to, label) in [
+        ("a", "b", "f"),
+        ("b", "a", "bbbb"),
+        ("c", "d", "f"),
+        ("d", "c", "dddd"),
+        ("d", "c", "dddd"),
+        ("e", "f", "f"),
+        ("f", "e", "back\nmore\nlast"),
+    ] {
+        graph.add_edge_with_attrs(
+            from,
+            to,
+            GraphEdgeAttrs {
+                label: Some(label.into()),
+                ..Default::default()
+            },
+        );
+    }
+    graph.add_group_with_style(
+        "outer",
+        "Outer",
+        Some(GraphDirection::TopDown),
+        vec![
+            "a".into(),
+            "b".into(),
+            "c".into(),
+            "d".into(),
+            "inner".into(),
+        ],
+        Default::default(),
+    );
+    graph.add_group_with_style(
+        "inner",
+        "Inner",
+        Some(GraphDirection::LeftRight),
+        vec!["e".into(), "f".into()],
+        Default::default(),
+    );
+    let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let mut initial = measured(&graph, &LayoutFeedback::default(), &mut resources);
+    for (node, (x, y)) in initial.layout.nodes.iter_mut().zip([
+        (2, 10),
+        (2, 30),
+        (20, 10),
+        (20, 30),
+        (52, 12),
+        (62, 12),
+    ]) {
+        node.x = x;
+        node.y = y;
+    }
+    for (group, (x, y, width, height)) in initial
+        .layout
+        .groups
+        .iter_mut()
+        .zip([(0, 0, 100, 80), (50, 10, 35, 40)])
+    {
+        group.x = x;
+        group.y = y;
+        group.width = width;
+        group.height = height;
+    }
+    let input = LayoutInput::prepare(&graph, &policy, &mut resources).unwrap();
+    let mut feedback = LayoutFeedback::default();
+    assert!(
+        feedback
+            .record_initial_returns_with_input(&input, &initial, &resources)
+            .unwrap()
+    );
+    assert_eq!(feedback.returns.len(), 2);
+    for request in &feedback.returns {
+        match request.scope {
+            // Outer SCCs independently need 1*(4+2)+2=8 and 2*(4+2)+2=14.
+            Some(0) => {
+                assert!(request.cross_x);
+                assert_eq!(request.cells, 14);
+            }
+            // The inner LR return has three rows: 1*(3+2)+2=7.
+            Some(1) => {
+                assert!(!request.cross_x);
+                assert_eq!(request.cells, 7);
+            }
+            scope => panic!("unexpected request scope {scope:?}"),
+        }
+    }
+}
+
+#[test]
+fn initial_return_analysis_has_exact_admission_and_cancellation() {
+    let policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    graph.add_edge_with_attrs(
+        "b",
+        "a",
+        GraphEdgeAttrs {
+            label: Some("a complete return condition".into()),
+            ..Default::default()
+        },
+    );
+    graph.add_group_with_style(
+        "scope",
+        "Scope",
+        Some(GraphDirection::TopDown),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    let mut preparation = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    let initial = measured(&graph, &LayoutFeedback::default(), &mut preparation);
+    let input = LayoutInput::prepare(&graph, &policy, &mut preparation).unwrap();
+    let resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+    assert!(
+        LayoutFeedback::default()
+            .record_initial_returns_with_input(&input, &initial, &resources)
+            .unwrap()
+    );
+    let work = resources.layout_work_used();
+    for (limit, admitted) in [(work, true), (work - 1, false)] {
+        let resources = ResourceContext::new(
+            AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap(),
+        );
+        let mut feedback = LayoutFeedback::default();
+        let result = feedback.record_initial_returns_with_input(&input, &initial, &resources);
+        assert_eq!(result.is_ok(), admitted);
+        if !admitted {
+            assert!(matches!(result, Err(AsciiError::ResourceLimitExceeded(_))));
+            assert!(
+                feedback.returns.is_empty(),
+                "incomplete analysis must not commit requests"
+            );
+        }
+    }
+    for during in [false, true] {
+        let control = OperationControl::new();
+        if during {
+            control.cancel_after_checkpoints(10);
+        } else {
+            control.cancel();
+        }
+        let resources = ResourceContext::new(AsciiResourcePolicy::unbounded())
+            .controlled(control, OperationPhase::Layout);
+        let mut feedback = LayoutFeedback::default();
+        assert!(matches!(
+            feedback.record_initial_returns_with_input(&input, &initial, &resources),
+            Err(AsciiError::Cancelled(_))
+        ));
+        assert!(feedback.returns.is_empty());
+        assert_eq!(resources.layout_work_used() > 0, during);
     }
 }
 

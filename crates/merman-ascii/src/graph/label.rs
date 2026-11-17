@@ -713,6 +713,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
     pub(crate) fn compartmented(
         primary: DeferredGraphLabelSectionPlan<'a>,
         secondary: DeferredGraphLabelSectionPlan<'a>,
+        wrap_width: Option<usize>,
         diagram_type: &'static str,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
@@ -753,7 +754,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
             secondary: Some(secondary),
             width_profile,
             diagram_type,
-            wrap_width: None,
+            wrap_width,
         })
     }
 

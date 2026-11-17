@@ -1377,7 +1377,10 @@ fn redraw_transformed_node_compartments(
     let mut surface = CooperativeSurface::new(canvas, execution);
     for layout in layouts {
         execution.checkpoint(merman_model::OperationPhase::Emit)?;
-        if layout.shape != GraphNodeShape::StateWithTitle {
+        if !matches!(
+            layout.shape,
+            GraphNodeShape::Rect | GraphNodeShape::StateWithTitle
+        ) {
             continue;
         }
         let Some(title_line_count) = layout.label.compartment_break_after() else {

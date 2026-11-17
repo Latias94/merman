@@ -118,6 +118,7 @@ struct PreparedSceneRouting<'layout> {
     graph_layout: &'layout GraphLayout,
     branch_allocation: allocation::BranchAllocation,
     protected: Rc<occupancy::ProtectedScene<'layout>>,
+    label_regions: Rc<occupancy::LabelRegionCache<'layout>>,
     route_order: Vec<usize>,
     route_scan_width: usize,
 }
@@ -160,11 +161,14 @@ impl<'layout> PreparedSceneRouting<'layout> {
                     .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
             })?;
         let protected = SceneOccupancy::try_prepare_protection(graph_layout, resources)?;
+        let label_regions =
+            occupancy::LabelRegionCache::try_new(graph_layout, canonical_edges.len(), resources)?;
         let route_order = plan_route_order(graph, graph_layout, canonical_edges, resources)?;
         Ok(Self {
             graph_layout,
             branch_allocation,
             protected,
+            label_regions,
             route_order,
             route_scan_width,
         })
@@ -567,6 +571,9 @@ pub(super) fn route_scene_with_input<'a>(
         graph, &prepared, input, charset, policy, true, resources, execution,
     ) {
         Ok(improved) => Ok(improved),
+        // Optional quality cannot discard a complete scene when a caller's private
+        // preparation slice ends. Public resource and cancellation errors still propagate.
+        Err(AsciiError::PlanningWorkAllowanceExhausted) => Ok(incumbent),
         Err(error) if error.graph_planning_fallback_reason().is_some() => Ok(incumbent),
         Err(error) => Err(error),
     }
@@ -607,7 +614,7 @@ fn route_scene_kernel<'a>(
             .try_reserve(canonical_edges.len())
             .map_err(|_| layout_allocation_failed())?;
         let mut occupancy = SceneOccupancy::try_new_with_protection(
-            graph_layout,
+            Rc::clone(&prepared.label_regions),
             canonical_edges.len(),
             policy.edge_label_lane_radius,
             Rc::clone(&prepared.protected),

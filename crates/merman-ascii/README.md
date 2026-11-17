@@ -353,6 +353,14 @@ Resource limits are hard errors. They never select a relation summary or another
 projection. Plain, ANSI16, ANSI256, TrueColor, and HTML use the same logical document accounting,
 while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
 
+Layout work counts deterministic text, geometry, and search operations, including conservative
+batch bounds. It is not elapsed time, memory, token count, or a diagram-size limit. The shared
+Interactive profile permits 2,000,000 units; the CLI's Trusted Native profile permits 8,000,000.
+An operation deadline is an independent host control. See the
+[CLI work/deadline guide](../../docs/security/CLI_RESOURCE_POLICY.md#ascii-planning-work-and-operation-deadlines)
+for scoped budget overrides and trusted unbounded commands. The unbounded profile removes all
+policy budgets, while private finite search allowances and hard guards remain.
+
 ## Terminal Visual Style
 
 Merman's terminal diagrams use compact, readable structure before decoration. The graph renderer
