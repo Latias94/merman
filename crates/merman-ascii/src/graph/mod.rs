@@ -24,7 +24,7 @@ mod markup;
 )]
 mod model;
 mod planning;
-#[cfg(feature = "diagram-block")]
+#[cfg(any(feature = "diagram-block", feature = "diagram-c4"))]
 pub(crate) mod positioned;
 mod routing;
 mod shape;
@@ -55,7 +55,8 @@ pub(crate) use draw::render_graph_with_resolved_policy_and_execution;
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
     feature = "diagram-requirement",
-    feature = "diagram-block"
+    feature = "diagram-block",
+    feature = "diagram-c4"
 ))]
 pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 pub(crate) use model::{

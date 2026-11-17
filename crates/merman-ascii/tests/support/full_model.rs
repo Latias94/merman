@@ -7,6 +7,8 @@ pub(crate) fn view(model: &RenderSemanticModel) -> AsciiDiagram<'_> {
         RenderSemanticModel::Agentflow(model) => AsciiDiagram::Agentflow(model),
         #[cfg(feature = "diagram-block")]
         RenderSemanticModel::Block(model) => AsciiDiagram::Block(&model.semantic),
+        #[cfg(feature = "diagram-c4")]
+        RenderSemanticModel::C4(model) => AsciiDiagram::C4(model),
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(model) => AsciiDiagram::Class(Box::new(model.topology_view())),
         #[cfg(feature = "diagram-er")]

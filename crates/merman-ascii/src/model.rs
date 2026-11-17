@@ -43,6 +43,8 @@ pub enum AsciiDiagram<'a> {
     Agentflow(&'a merman_model::families::agentflow::AgentflowDiagramModel),
     #[cfg(feature = "diagram-block")]
     Block(&'a merman_model::families::block::BlockDiagramModel),
+    #[cfg(feature = "diagram-c4")]
+    C4(&'a merman_model::families::c4::C4DiagramModel),
     #[cfg(feature = "diagram-class")]
     Class(Box<merman_model::families::class::ClassTopologyView<'a>>),
     #[cfg(feature = "diagram-er")]
@@ -96,6 +98,8 @@ impl<'a> AsciiDiagram<'a> {
             SemanticDiagramModel::Agentflow(model) => Self::Agentflow(model),
             #[cfg(feature = "diagram-block")]
             SemanticDiagramModel::Block(model) => Self::Block(model),
+            #[cfg(feature = "diagram-c4")]
+            SemanticDiagramModel::C4(model) => Self::C4(model),
             #[cfg(feature = "diagram-class")]
             SemanticDiagramModel::Class(model) => {
                 crate::validate_model_identity("class", source.diagram_type)?;
@@ -177,6 +181,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Agentflow(_) => "agentflow",
             #[cfg(feature = "diagram-block")]
             Self::Block(_) => "block",
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(_) => "c4",
             #[cfg(feature = "diagram-class")]
             Self::Class(_) => "class",
             #[cfg(feature = "diagram-er")]
@@ -221,6 +227,8 @@ impl<'a> AsciiDiagram<'a> {
             Self::Agentflow(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-class")]
             Self::Class(model) => merman_model::families::class::class_topology_complexity(model),
             #[cfg(feature = "diagram-er")]
@@ -296,6 +304,8 @@ impl Serialize for AsciiDiagram<'_> {
             Self::Agentflow(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-block")]
             Self::Block(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-class")]
             Self::Class(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-er")]

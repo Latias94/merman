@@ -56,7 +56,7 @@ all-diagrams = [
 ]
 diagram-architecture = ["merman-model/diagram-architecture", "merman-core/diagram-architecture"]
 diagram-block = ["merman-model/diagram-block", "merman-core/diagram-block", "dep:dugong", "dep:rustc-hash"]
-diagram-c4 = ["merman-model/diagram-c4", "merman-core/diagram-c4"]
+diagram-c4 = ["merman-model/diagram-c4", "merman-core/diagram-c4", "dep:dugong", "dep:rustc-hash"]
 diagram-class = ["merman-model/diagram-class", "merman-core/diagram-class"]
 diagram-cynefin = ["merman-model/diagram-cynefin", "merman-core/diagram-cynefin"]
 diagram-er = ["merman-model/diagram-er", "merman-core/diagram-er"]
@@ -194,3 +194,7 @@ required-features = ["all-diagrams"]
 [[test]]
 name = "viewport_characterization"
 required-features = ["all-diagrams"]
+
+[[test]]
+name = "c4_model"
+required-features = ["diagram-c4"]

@@ -11,6 +11,7 @@ terminal themes, and public options.
 | --- | --- |
 | Agentflow | [Roles, expanded flows, and complete reading records](AGENTFLOW_SUPPORT.md) |
 | Block | [Columns, spans, nested grids, and fixed-position relationships](BLOCK_SUPPORT.md) |
+| C4 | [Five views, declaration-order frames, and complete reading records](C4_SUPPORT.md) |
 | Flowchart and Swimlane | [Graph semantics, shapes, labels, and routing](FLOWCHART_SUPPORT.md) |
 | Pie | [Shared-scale percentage bars and complete values](PIE_SUPPORT.md) |
 | Requirement | [Shared-endpoint traceability and keyed fields](REQUIREMENT_SUPPORT.md) |

@@ -292,7 +292,7 @@ bar [2, 8]
 }
 
 #[test]
-fn usecase_and_block_reports_keep_family_geometry_and_complete_width_fallback() {
+fn family_reports_keep_geometry_and_complete_width_fallback() {
     for (family, source, fields) in [
         (
             "usecase",
@@ -303,6 +303,19 @@ fn usecase_and_block_reports_keep_family_geometry_and_complete_width_fallback() 
             "block",
             "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B\n",
             &["Request", "Result"][..],
+        ),
+        (
+            "c4",
+            "C4Container\nPerson(user, \"Customer\")\nBoundary(zone, \"Services\") {\nContainer(api, \"API\", \"Rust\", \"Serves requests\")\n}\nRel_Back(api, user, \"Replies\", \"HTTPS\")\n",
+            &[
+                "Customer",
+                "Services",
+                "API",
+                "Rust",
+                "Serves requests",
+                "Replies",
+                "HTTPS",
+            ][..],
         ),
     ] {
         for width in [10, 80] {
@@ -362,7 +375,7 @@ fn usecase_and_block_reports_keep_family_geometry_and_complete_width_fallback() 
                         "E1:N1[open]--solidassociation--N2[point]",
                         "id=\"Checkout\"",
                     ]
-                } else {
+                } else if family == "block" {
                     &[
                         "start=\"A\"",
                         "end=\"B\"",
@@ -371,6 +384,12 @@ fn usecase_and_block_reports_keep_family_geometry_and_complete_width_fallback() 
                         "span=2",
                         "type=\"space\"",
                         "children=[",
+                    ]
+                } else {
+                    &[
+                        "E1[relationship]type=\"rel_b\"source=[S2]alias=\"api\"target=[S1]alias=\"user\"heads=source",
+                        "S2techn={text:\"Rust\"}",
+                        "parentBoundary=[B2]alias=\"zone\"",
                     ]
                 };
                 for expected in relationships {

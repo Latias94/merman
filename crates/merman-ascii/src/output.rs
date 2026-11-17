@@ -16,6 +16,8 @@ use unicode_segmentation::UnicodeSegmentation;
 mod agentflow;
 #[cfg(feature = "diagram-block")]
 mod block;
+#[cfg(feature = "diagram-c4")]
+mod c4;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
@@ -36,7 +38,8 @@ mod pie;
     feature = "diagram-agentflow",
     feature = "diagram-pie",
     feature = "diagram-requirement",
-    feature = "diagram-block"
+    feature = "diagram-block",
+    feature = "diagram-c4"
 ))]
 mod record;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
@@ -835,7 +838,7 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
 /// This path is intentionally model-only: it never reparses Mermaid source and never truncates
 /// authored values. Graph families use keyed entities and relationships; other families retain
 /// their field projection. Both use the same grapheme-safe writer and operation ledger.
-#[cfg(test)]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-sequence")))]
 pub(crate) fn build_semantic_fallback(
     model: &AsciiDiagram<'_>,
     metadata: AsciiSourceContext<'_>,
@@ -972,6 +975,10 @@ fn build_semantic_document(
         requirement::write_if_requirement(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-requirement"))]
     let requirement_document = false;
+    #[cfg(feature = "diagram-c4")]
+    let c4_document = c4::write_if_c4(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-c4"))]
+    let c4_document = false;
     if !graph_document
         && !relation_document
         && !packet_document
@@ -980,6 +987,7 @@ fn build_semantic_document(
         && !block_document
         && !agentflow_document
         && !requirement_document
+        && !c4_document
     {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
@@ -1003,6 +1011,7 @@ fn build_semantic_document(
 /// Encodes complete family-owned records, optionally following an admitted plain topology.
 #[cfg(any(
     feature = "diagram-agentflow",
+    feature = "diagram-c4",
     feature = "diagram-requirement",
     feature = "diagram-pie"
 ))]
@@ -1029,6 +1038,11 @@ pub(crate) fn render_reading_primary(
         AsciiDiagram::Agentflow(_) => {
             records.push("Agent workflow records".to_string())?;
             agentflow::write_if_agentflow(model, &projection, &mut records)?;
+        }
+        #[cfg(feature = "diagram-c4")]
+        AsciiDiagram::C4(_) => {
+            records.push("C4 records".to_string())?;
+            c4::write_if_c4(model, &projection, &mut records)?;
         }
         #[cfg(feature = "diagram-requirement")]
         AsciiDiagram::Requirement(_) => {
@@ -1750,6 +1764,7 @@ pub(crate) fn projection_for(capability: Option<crate::AsciiCapability>) -> Asci
 mod tests {
     use super::*;
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-sequence"))]
     fn build_semantic_fallback(
         model: &merman_model::presentation::RenderSemanticModel,
         metadata: &merman_model::presentation::PresentationMetadata,
@@ -1764,6 +1779,11 @@ mod tests {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence"
+    ))]
     fn preflight_semantic_model(
         model: &merman_model::presentation::RenderSemanticModel,
         execution: AsciiExecution<'_>,
@@ -1781,6 +1801,7 @@ mod tests {
         )
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-sequence"))]
     fn semantic_fallback_projection(
         model: &merman_model::presentation::RenderSemanticModel,
         metadata: &merman_model::presentation::PresentationMetadata,

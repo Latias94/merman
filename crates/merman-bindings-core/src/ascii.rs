@@ -651,6 +651,7 @@ mod tests {
     #[cfg(all(
         feature = "diagram-usecase",
         feature = "diagram-block",
+        feature = "diagram-c4",
         feature = "diagram-agentflow"
     ))]
     fn family_binding_results_expose_the_selected_primary_and_fallback() {
@@ -663,6 +664,10 @@ mod tests {
             (
                 "block",
                 "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B\n",
+            ),
+            (
+                "c4",
+                "C4Container\nPerson(user, \"Customer\")\nBoundary(zone, \"Services\") {\nContainer(api, \"API\", \"Rust\", \"Serves requests\")\n}\nRel_Back(api, user, \"Replies\", \"HTTPS\")\n",
             ),
         ] {
             for width in [10, 80] {
@@ -712,6 +717,12 @@ mod tests {
                             "span=2",
                             "type=\"space\"",
                             "children=[",
+                        ]
+                    } else if family == "c4" {
+                        &[
+                            "E1[relationship]type=\"rel_b\"source=[S2]alias=\"api\"target=[S1]alias=\"user\"heads=source",
+                            "S2techn={text:\"Rust\"}",
+                            "parentBoundary=[B2]alias=\"zone\"",
                         ]
                     } else {
                         &[

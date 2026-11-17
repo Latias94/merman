@@ -532,6 +532,24 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Option<Self>> {
+        Self::try_joined_with_wrap(
+            fragments,
+            fallback,
+            None,
+            diagram_type,
+            width_profile,
+            resources,
+        )
+    }
+
+    pub(crate) fn try_joined_with_wrap(
+        fragments: impl IntoIterator<Item = &'a str>,
+        fallback: Option<&'a str>,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Option<Self>> {
         let mut parts = Vec::new();
         for raw in fragments {
             resources.checkpoint()?;
@@ -539,7 +557,7 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
                 raw,
                 width_profile,
                 true,
-                None,
+                wrap_width,
                 LabelBreakPolicy::MermaidLabelBreaks,
                 resources,
             )?
@@ -555,7 +573,7 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
             let Some(fallback) = fallback else {
                 return Ok(None);
             };
-            return Self::try_single(fallback, None, diagram_type, width_profile, resources)
+            return Self::try_single(fallback, wrap_width, diagram_type, width_profile, resources)
                 .map(Some);
         }
         Self::from_parts(parts, resources).map(Some)
@@ -869,7 +887,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
 
 impl PreparedGraphNodeText {
     /// Transfers a single prepared source and its replay plan without rescanning or copying it.
-    #[cfg(feature = "diagram-block")]
+    #[cfg(any(feature = "diagram-block", feature = "diagram-c4"))]
     pub(super) fn into_single_label_plan(mut self) -> crate::Result<(String, GraphNodeLabelPlan)> {
         if self.compartments.is_some() || self.plans.len() != 1 {
             return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
@@ -1075,7 +1093,7 @@ impl GraphNodeLabelPlan {
     }
 
     /// Replays a prepared group title after the family has finished its source-copy batch.
-    #[cfg(feature = "diagram-block")]
+    #[cfg(any(feature = "diagram-block", feature = "diagram-c4"))]
     pub(super) fn materialize_single_label(
         &self,
         source: &str,

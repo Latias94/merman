@@ -38,6 +38,7 @@ ASCII_WIDTH_PROFILES = ["unicode", "cjk"]
 ASCII_DIAGRAMMATIC_FAMILIES = {
     "agentflow",
     "block",
+    "c4",
     "class",
     "er",
     "flowchart",

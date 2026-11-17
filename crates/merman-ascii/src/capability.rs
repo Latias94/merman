@@ -345,6 +345,41 @@ const ASCII_CAPABILITY_DEFINITIONS: &[AsciiCapabilityDefinition] = &[
         ],
     },
     AsciiCapabilityDefinition {
+        diagram_type: "c4",
+        display_name: "C4",
+        semantic_coverage: Some(AsciiSemanticCoverage::Partial),
+        primary_projection: AsciiPrimaryProjection::Diagrammatic,
+        structured_text_fallback: true,
+        supported_semantics: &[
+            "Context, Container, Component, Dynamic, and Deployment views",
+            "declaration-order rows with family-owned shape and boundary column counts",
+            "distinct shape aliases, role-labelled rectangles, and nested boundary frames",
+            "shape-first alias resolution and explicit boundary relationship endpoints",
+            "independent source and target arrowheads and final-order Dynamic numbering",
+            "short spatial relationship keys with complete labels, technologies, and descriptions in records",
+            "complete keyed shape, boundary, relationship, layout, accessibility, style, and source metadata",
+        ],
+        limits: &[
+            "terminal role rectangles approximate browser C4 shapes; icons and authored styles remain records",
+            "synthetic global boundaries are hidden spatially and retained in the reading inventory",
+            "ambiguous, unresolved, cyclic, or non-spatial detached models use complete StructuredText primaries",
+            "direction-suffixed relation names do not force cardinal ports in the pinned C4 renderer",
+            "bounded strict routing can reject dense fixed-row scenes; Plain width fallback retains complete records",
+        ],
+        evidence: &[
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::LocalSemanticProbe,
+                source: "crates/merman-ascii/tests/c4_model.rs",
+                note: "parser-backed views, identity, row layout, nesting, markers, reading records, resources and cancellation",
+            },
+            AsciiCapabilityEvidence {
+                kind: AsciiEvidenceKind::SupportMatrix,
+                source: "docs/rendering/ascii/C4_SUPPORT.md",
+                note: "family-owned spatial admission and complete keyed C4 reading records",
+            },
+        ],
+    },
+    AsciiCapabilityDefinition {
         diagram_type: "class",
         display_name: "Class",
         semantic_coverage: Some(AsciiSemanticCoverage::Partial),
@@ -1098,6 +1133,7 @@ pub(crate) fn local_handler_available(diagram_type: &str) -> bool {
     match family {
         "agentflow" => cfg!(feature = "diagram-agentflow"),
         "block" => cfg!(feature = "diagram-block"),
+        "c4" => cfg!(feature = "diagram-c4"),
         "class" => cfg!(feature = "diagram-class"),
         "er" => cfg!(feature = "diagram-er"),
         "flowchart" => cfg!(feature = "diagram-flowchart"),
@@ -1229,6 +1265,7 @@ mod tests {
             &[
                 "agentflow",
                 "block",
+                "c4",
                 "class",
                 "er",
                 "flowchart",
@@ -1254,6 +1291,7 @@ mod tests {
             &[
                 "agentflow",
                 "block",
+                "c4",
                 "class",
                 "er",
                 "flowchart",
@@ -1292,7 +1330,15 @@ mod tests {
             assert!(!capability.supports_fallback_encoding(AsciiOutputEncoding::Ansi16));
         }
 
-        for diagram_type in ["state", "packet", "pie", "block", "usecase", "requirement"] {
+        for diagram_type in [
+            "state",
+            "packet",
+            "pie",
+            "block",
+            "c4",
+            "usecase",
+            "requirement",
+        ] {
             let capability = find(diagram_type);
             assert_eq!(capability.layout_profiles, &[AsciiLayoutProfile::Canonical]);
             assert!(!capability.supports_layout_profile(AsciiLayoutProfile::Compact));

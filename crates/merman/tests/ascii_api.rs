@@ -299,6 +299,79 @@ fn pie_ascii_matches_canonical_and_presentation_records_and_projection() {
     }
 }
 
+#[cfg(all(feature = "presentation", feature = "diagram-c4"))]
+#[test]
+fn c4_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = concat!(
+        "C4Dynamic\n",
+        "Person(user, \"Customer\")\n",
+        "Boundary(zone, \"Services\") {\n",
+        "Container(api, \"API\", \"Rust\", \"Serves requests\")\n}\n",
+        "Rel_Back(api, user, \"Replies\", \"HTTPS\")\n",
+    );
+    let renderer = Renderer::new();
+    for width in [10, 80] {
+        let semantic = renderer
+            .parse_semantic(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let presentation = renderer
+            .prepare_presentation(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let request = AsciiRequest {
+            options: AsciiRenderOptions::unicode(),
+            viewport: AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Fallback),
+            ..Default::default()
+        };
+        let RenderOutput::Ascii(Some(canonical)) = semantic
+            .render(merman::RenderTarget::Ascii(request.clone()))
+            .unwrap()
+        else {
+            panic!("expected canonical C4 ASCII output");
+        };
+        let RenderOutput::Ascii(Some(full)) = presentation
+            .render(merman::RenderTarget::Ascii(request))
+            .unwrap()
+        else {
+            panic!("expected presentation C4 ASCII output");
+        };
+        assert_eq!(canonical.text, full.text, "width {width}");
+        assert_eq!(canonical.report(), full.report());
+        assert_eq!(full.family, "c4");
+        assert_eq!(full.encoding.as_str(), "plain");
+        assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+        assert!(!full.compact_attempted);
+        assert_eq!(full.fallback.attempted, width == 10);
+        assert_eq!(full.primary_overflowed, Some(width == 10));
+        assert_eq!(
+            full.projection.as_str(),
+            if width == 10 {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert!(!full.emitted_overflowed);
+        assert!(full.emitted_extent.width <= width);
+        let compact: String = full.text.split_whitespace().collect();
+        for expected in [
+            "E1[relationship]type=\"rel_b\"source=[S2]alias=\"api\"target=[S1]alias=\"user\"heads=sourcerender-number=1",
+            "S2techn={text:\"Rust\"}",
+            "parentBoundary=[B2]alias=\"zone\"",
+            "Servesrequests",
+            "Replies",
+            "HTTPS",
+        ] {
+            assert!(
+                compact.contains(expected),
+                "missing {expected:?}: {}",
+                full.text
+            );
+        }
+    }
+}
+
 #[cfg(all(feature = "presentation", feature = "diagram-requirement"))]
 #[test]
 fn requirement_ascii_matches_canonical_and_presentation_records_and_projection() {

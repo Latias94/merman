@@ -121,7 +121,7 @@ impl<'a> AsciiExecution<'a> {
     /// A canvas embedded in a reading document must admit its retained rows, rather than a
     /// padded rectangle that the document composer would immediately discard. This is local
     /// materialization policy, independent of the caller's final document trim request.
-    #[cfg(feature = "diagram-requirement")]
+    #[cfg(any(feature = "diagram-requirement", feature = "diagram-c4"))]
     pub(crate) const fn with_trimmed_canvas(mut self) -> Self {
         self.trim_canvas_padding = true;
         self

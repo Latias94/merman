@@ -8,7 +8,16 @@
 
 #[cfg(test)]
 extern crate self as merman_ascii;
-#[cfg(test)]
+#[cfg(all(
+    test,
+    any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence",
+        feature = "diagram-mindmap",
+        feature = "diagram-tree-view"
+    )
+))]
 #[path = "../tests/support/full_model.rs"]
 mod full_test_support;
 
@@ -16,6 +25,8 @@ mod full_test_support;
 mod agentflow;
 #[cfg(feature = "diagram-block")]
 mod block;
+#[cfg(feature = "diagram-c4")]
+mod c4;
 #[cfg_attr(
     not(feature = "all-diagrams"),
     allow(
@@ -42,7 +53,8 @@ mod git_graph;
     feature = "diagram-usecase",
     feature = "diagram-agentflow",
     feature = "diagram-requirement",
-    feature = "diagram-block"
+    feature = "diagram-block",
+    feature = "diagram-c4"
 ))]
 #[cfg_attr(
     not(any(
@@ -55,7 +67,7 @@ mod git_graph;
     )),
     allow(
         dead_code,
-        reason = "Block uses fixed geometry; ranked layout remains shared by the other graph families"
+        reason = "Block and C4 own their geometry; ranked layout remains shared by other graph families"
     )
 )]
 mod graph;
@@ -397,6 +409,8 @@ impl AsciiRenderer {
             AsciiDiagram::Packet(packet) => {
                 packet::primary_projection(packet, Some(metadata.semantic_config), execution)?
             }
+            #[cfg(feature = "diagram-c4")]
+            AsciiDiagram::C4(model) => c4::primary_projection(model, execution)?,
             #[cfg(feature = "diagram-pie")]
             AsciiDiagram::Pie(model) => pie::primary_projection(model, execution)?,
             _ => output::projection_for(capability),
@@ -409,6 +423,8 @@ impl AsciiRenderer {
             AsciiDiagram::Agentflow(_) => projection == AsciiProjection::StructuredText,
             #[cfg(feature = "diagram-requirement")]
             AsciiDiagram::Requirement(_) => true,
+            #[cfg(feature = "diagram-c4")]
+            AsciiDiagram::C4(_) => true,
             #[cfg(feature = "diagram-pie")]
             AsciiDiagram::Pie(_) => true,
             _ => false,
@@ -582,6 +598,8 @@ fn render_model_with_execution(
             _source,
             execution,
         ),
+        #[cfg(feature = "diagram-c4")]
+        AsciiDiagram::C4(model) => c4::render(model, options, _source, execution),
         #[cfg(feature = "diagram-block")]
         AsciiDiagram::Block(model) => {
             block::render_block_diagram_with_execution(model, options, execution)
@@ -998,6 +1016,11 @@ mod tests {
     use merman_model::families::mindmap::{MindmapDiagramRenderModel, MindmapDiagramRenderNode};
     #[cfg(feature = "diagram-tree-view")]
     use merman_model::families::tree_view::{TreeViewDiagramModel, TreeViewNode};
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-mindmap",
+        feature = "diagram-tree-view"
+    ))]
     use merman_model::presentation::RenderSemanticModel;
 
     #[cfg(any(

@@ -137,25 +137,57 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "c4",
-    "display_name": "c4",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "C4",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "Context, Container, Component, Dynamic, and Deployment views",
+      "declaration-order rows with family-owned shape and boundary column counts",
+      "distinct shape aliases, role-labelled rectangles, and nested boundary frames",
+      "shape-first alias resolution and explicit boundary relationship endpoints",
+      "independent source and target arrowheads and final-order Dynamic numbering",
+      "short spatial relationship keys with complete labels, technologies, and descriptions in records",
+      "complete keyed shape, boundary, relationship, layout, accessibility, style, and source metadata"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "terminal role rectangles approximate browser C4 shapes; icons and authored styles remain records",
+      "synthetic global boundaries are hidden spatially and retained in the reading inventory",
+      "ambiguous, unresolved, cyclic, or non-spatial detached models use complete StructuredText primaries",
+      "direction-suffixed relation names do not force cardinal ports in the pinned C4 renderer",
+      "bounded strict routing can reject dense fixed-row scenes; Plain width fallback retains complete records"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/c4_model.rs",
+        "note": "parser-backed views, identity, row layout, nesting, markers, reading records, resources and cancellation"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/C4_SUPPORT.md",
+        "note": "family-owned spatial admission and complete keyed C4 reading records"
       }
     ]
   },
