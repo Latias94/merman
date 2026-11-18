@@ -1,8 +1,22 @@
 use super::*;
 use merman_model::families::gantt::GanttTask;
 
+fn unwrapped_records(rendered: &str) -> Vec<String> {
+    let mut records: Vec<String> = Vec::new();
+    for line in rendered.lines() {
+        if let Some(continuation) = line.strip_prefix("  ")
+            && let Some(record) = records.last_mut()
+        {
+            record.push_str(continuation);
+        } else {
+            records.push(line.to_string());
+        }
+    }
+    records
+}
+
 #[test]
-fn gantt_render_model_renders_sections_tasks_and_flags() {
+fn gantt_render_model_retains_sections_task_fields_and_flags() {
     let mut model = GanttDiagramRenderModel::default();
     model.title = Some("Gantt".to_string());
     model.acc_title = Some("Gantt title".to_string());
@@ -20,12 +34,13 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
             task: "Implement".to_string(),
             section: "Build".to_string(),
             task_type: "Build".to_string(),
-            classes: Vec::new(),
+            classes: vec!["delivery".to_string()],
             active: true,
             done: true,
             crit: true,
             milestone: true,
             vert: true,
+            manual_end_time: true,
             order: 0,
             start_ms: 9_223_372_036_854_775_000,
             end_ms: 9_223_372_036_854_775_001,
@@ -35,24 +50,41 @@ fn gantt_render_model_renders_sections_tasks_and_flags() {
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
-
+    let records = unwrapped_records(&rendered);
+    let identity = records
+        .iter()
+        .find(|record| record.starts_with("T1 [task]"))
+        .expect("source-indexed task record");
     assert_eq!(
-        rendered,
-        concat!(
-            "title(bytes=5)=\"Gantt\"\n",
-            "accTitle(bytes=11)=\"Gantt title\"\n",
-            "accDescr(bytes=17)=\"Gantt description\"\n",
-            "dateFormat(bytes=10)=\"YYYY-MM-DD\"\n",
-            "axisFormat(bytes=2)=\"%d\"\n",
-            "section(bytes=5)=\"Empty\"\n",
-            "section(bytes=5)=\"Empty\"\n",
-            "section(bytes=5)=\"Build\"\n",
-            "  - task(bytes=9)=\"Implement\" [id(bytes=6)=\"task-1\", order=0,\n",
-            "    range=+292278994-08-17T07:12:55.000 -> +292278994-08-17T07:12:55.001,\n",
-            "    renderEnd=+292278994-08-17T07:12:55.002, flags=milestone, active, done,\n",
-            "    crit, vert]",
-        )
+        identity,
+        "T1 [task] id=\"task-1\" label=\"Implement\" section=\"Build\" sectionIndex=null order=0"
     );
+    let details = records.join("\n");
+    for value in [
+        "title:\"Gantt\"",
+        "accTitle:\"Gantt title\"",
+        "accDescr:\"Gantt description\"",
+        "dateFormat:\"YYYY-MM-DD\"",
+        "axisFormat:\"%d\"",
+        "sections:[\"Empty\",\"Empty\",\"Build\"]",
+        "type:\"Build\"",
+        "classes:[\"delivery\"]",
+        "active:true",
+        "done:true",
+        "crit:true",
+        "milestone:true",
+        "vert:true",
+        "manualEndTime:true",
+        "processed:false",
+        "startTime:9223372036854775000",
+        "endTime:9223372036854775001",
+        "renderEndTime:9223372036854775002",
+        "+292278994-08-17T07:12:55.000 -> +292278994-08-17T07:12:55.001",
+        "renderEnd=+292278994-08-17T07:12:55.002",
+        "interval (UTC):",
+    ] {
+        assert!(details.contains(value), "missing {value}:\n{rendered}");
+    }
 }
 
 #[test]
@@ -68,21 +100,26 @@ fn gantt_repeated_section_names_preserve_authored_task_occurrences() {
         "Last: last, 2026-01-03, 1d\n",
     ));
 
-    let structure = rendered
-        .lines()
-        .filter(|line| line.starts_with("section(") || line.starts_with("  - task("))
+    let records = unwrapped_records(&rendered);
+    let structure = records
+        .iter()
+        .filter(|record| record.contains(" [task] "))
         .collect::<Vec<_>>();
     assert_eq!(
         structure.len(),
-        6,
+        3,
         "unexpected Gantt structure:\n{rendered}"
     );
-    assert_eq!(structure[0], "section(bytes=1)=\"A\"");
-    assert!(structure[1].contains("task(bytes=5)=\"First\""));
-    assert_eq!(structure[2], "section(bytes=1)=\"B\"");
-    assert!(structure[3].contains("task(bytes=6)=\"Middle\""));
-    assert_eq!(structure[4], "section(bytes=1)=\"A\"");
-    assert!(structure[5].contains("task(bytes=4)=\"Last\""));
+    for (record, key, label, section, occurrence) in [
+        (structure[0], "T1", "First", "A", 0),
+        (structure[1], "T2", "Middle", "B", 1),
+        (structure[2], "T3", "Last", "A", 2),
+    ] {
+        assert!(record.starts_with(&format!("{key} [task] ")));
+        assert!(record.contains(&format!("label=\"{label}\"")));
+        assert!(record.contains(&format!("section=\"{section}\" sectionIndex={occurrence}")));
+    }
+    assert!(records.join("\n").contains("sections:[\"A\",\"B\",\"A\"]"));
 }
 
 #[test]
@@ -110,13 +147,77 @@ fn gantt_direct_model_discloses_task_order() {
     ];
 
     let rendered = render(RenderSemanticModel::Gantt(model.clone()));
-    assert!(rendered.contains("task(bytes=5)=\"First\" [id(bytes=5)=\"first\", order=7,"));
-    assert!(rendered.contains("task(bytes=6)=\"Second\" [id(bytes=6)=\"second\", order=3,"));
+    let identities = unwrapped_records(&rendered)
+        .into_iter()
+        .filter(|record| record.contains(" [task] "))
+        .collect::<Vec<_>>();
+    assert_eq!(identities.len(), 2);
+    assert!(identities[0].starts_with("T1 [task] id=\"first\" label=\"First\""));
+    assert!(identities[0].ends_with("order=7"));
+    assert!(identities[1].starts_with("T2 [task] id=\"second\" label=\"Second\""));
+    assert!(identities[1].ends_with("order=3"));
 
     model.tasks[0].order = 3;
     model.tasks[1].order = 7;
     let reordered = render(RenderSemanticModel::Gantt(model));
+    let reordered_identities = unwrapped_records(&reordered)
+        .into_iter()
+        .filter(|record| record.contains(" [task] "))
+        .collect::<Vec<_>>();
+    assert!(reordered_identities[0].starts_with("T1 [task] id=\"first\""));
+    assert!(reordered_identities[0].ends_with("order=3"));
+    assert!(reordered_identities[1].starts_with("T2 [task] id=\"second\""));
+    assert!(reordered_identities[1].ends_with("order=7"));
     assert_ne!(rendered, reordered, "task order must remain recoverable");
+}
+
+#[test]
+fn gantt_task_keys_do_not_alias_literal_ids_or_normalize_dependencies() {
+    let mut model = GanttDiagramRenderModel::default();
+    model.tasks = ["T2", "a-b", "a_b"]
+        .into_iter()
+        .map(|id| GanttRenderTask {
+            semantic: GanttTask {
+                id: id.to_string(),
+                task: "Same label".to_string(),
+                start_constraint: GanttTaskStartConstraint::After {
+                    dependency_ids: vec![
+                        "T2".to_string(),
+                        "a-b".to_string(),
+                        "a_b".to_string(),
+                        "a b".to_string(),
+                    ],
+                },
+                ..GanttTask::default()
+            },
+            ..GanttRenderTask::default()
+        })
+        .collect();
+
+    let rendered = render(RenderSemanticModel::Gantt(model));
+    let records = unwrapped_records(&rendered);
+    let identities = records
+        .iter()
+        .filter(|record| record.contains(" [task] "))
+        .collect::<Vec<_>>();
+    assert_eq!(identities.len(), 3);
+    for (record, expected) in identities.iter().zip([
+        "T1 [task] id=\"T2\"",
+        "T2 [task] id=\"a-b\"",
+        "T3 [task] id=\"a_b\"",
+    ]) {
+        assert!(record.starts_with(expected));
+    }
+    let task_details = records
+        .iter()
+        .filter(|record| record.starts_with('T') && record.contains(" details:"))
+        .collect::<Vec<_>>();
+    assert_eq!(task_details.len(), 3);
+    for record in task_details {
+        assert!(record.contains(
+            "startConstraint:{\"kind\":\"after\",\"dependencyIds\":[\"T2\",\"a-b\",\"a_b\",\"a b\"]}",
+        ));
+    }
 }
 
 #[test]
@@ -147,22 +248,24 @@ fn gantt_structured_text_discloses_dependency_source_expressions() {
         "Release: release, 2026-01-05, 2026-01-06\n",
     ));
 
-    assert!(
-        rendered.contains("after=[bytes=6 \"design\", bytes=6 \"review\"]"),
-        "structured Gantt output should disclose the dependency source expression:\n{rendered}"
-    );
-    assert!(rendered.contains("until=[bytes=6 \"design\", bytes=6 \"review\"]"));
-    assert!(rendered.contains("start(bytes=10)=\"2026-01-01\""));
-    assert!(rendered.contains("duration(bytes=2)=\"1d\""));
-    assert!(rendered.contains("end(bytes=10)=\"2026-01-06\""));
-    assert!(rendered.contains("id(bytes=6)=\"design\""));
-    assert!(rendered.contains("id(bytes=6)=\"review\""));
-    assert!(rendered.contains("id(bytes=14)=\"implementation\""));
-    assert!(rendered.contains("id(bytes=7)=\"release\""));
+    let records = unwrapped_records(&rendered).join("\n");
+    for value in [
+        "startConstraint:{\"kind\":\"after\",\"dependencyIds\":[\"design\",\"review\"]}",
+        "endConstraint:{\"kind\":\"until\",\"dependencyIds\":[\"design\",\"review\"]}",
+        "startConstraint:{\"kind\":\"fixed\",\"value\":\"2026-01-01\"}",
+        "endConstraint:{\"kind\":\"duration\",\"value\":\"1d\"}",
+        "endConstraint:{\"kind\":\"fixed\",\"value\":\"2026-01-06\"}",
+        "T1 [task] id=\"design\"",
+        "T2 [task] id=\"review\"",
+        "T3 [task] id=\"implementation\"",
+        "T4 [task] id=\"release\"",
+    ] {
+        assert!(records.contains(value), "missing {value}:\n{rendered}");
+    }
 }
 
 #[test]
-fn gantt_direct_model_renders_only_typed_constraints() {
+fn gantt_direct_model_preserves_typed_constraints_and_separate_legacy_raw_data() {
     let mut model = GanttDiagramRenderModel::default();
     model.sections = vec!["Build".to_string()];
     model.tasks = vec![GanttRenderTask {
@@ -192,12 +295,28 @@ fn gantt_direct_model_renders_only_typed_constraints() {
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
-    assert!(rendered.contains("after=[bytes=6 \"design\", bytes=6 \"review\"]"));
-    assert!(rendered.contains("until=[bytes=7 \"release\"]"));
+    let records = unwrapped_records(&rendered);
+    let details = records
+        .iter()
+        .find(|record| record.starts_with("T1 details:"))
+        .expect("complete task details");
+    for value in [
+        "startConstraint:{\"kind\":\"after\",\"dependencyIds\":[\"design\",\"review\"]}",
+        "endConstraint:{\"kind\":\"until\",\"dependencyIds\":[\"release\"]}",
+        "prevTaskId:\"legacy-previous\"",
+        "raw:{\"data\":\"implementation,after raw-start,until raw-end\"",
+        "\"startTime\":{\"type\":\"getStartDate\",\"startData\":\"after raw-start\"}",
+        "\"endTime\":{\"data\":\"until raw-end\"}",
+    ] {
+        assert!(details.contains(value), "missing {value}:\n{rendered}");
+    }
     for legacy in ["raw-start", "raw-end", "legacy-previous"] {
         assert!(
-            !rendered.contains(legacy),
-            "ASCII must not recover constraints from legacy raw fields:\n{rendered}"
+            records
+                .iter()
+                .filter(|record| !record.starts_with("T1 details:"))
+                .all(|record| !record.contains(legacy)),
+            "legacy data must not generate task identities, intervals, or dependencies:\n{rendered}"
         );
     }
 }
@@ -237,10 +356,15 @@ fn gantt_direct_model_distinguishes_fixed_and_relative_end_constraints() {
     ];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
-    assert!(rendered.contains("start(bytes=16)=\"2026-01-01 08:30\""));
-    assert!(rendered.contains("end(bytes=16)=\"2026-01-01 10:45\""));
-    assert!(rendered.contains("after(bytes=5)=\"fixed\""));
-    assert!(rendered.contains("duration(bytes=4)=\"2.5h\""));
+    let records = unwrapped_records(&rendered).join("\n");
+    for value in [
+        "startConstraint:{\"kind\":\"fixed\",\"value\":\"2026-01-01 08:30\"}",
+        "endConstraint:{\"kind\":\"fixed\",\"value\":\"2026-01-01 10:45\"}",
+        "startConstraint:{\"kind\":\"previousTaskEnd\",\"dependencyId\":\"fixed\"}",
+        "endConstraint:{\"kind\":\"duration\",\"value\":\"2.5h\"}",
+    ] {
+        assert!(records.contains(value), "missing {value}:\n{rendered}");
+    }
 }
 
 #[test]
@@ -260,13 +384,17 @@ fn gantt_structured_text_preserves_time_precision_and_render_end() {
     }];
 
     let rendered = render(RenderSemanticModel::Gantt(model));
-
-    assert!(rendered.contains("id(bytes=5)=\"timed\""));
-    assert!(
-        rendered.contains("T"),
-        "time-of-day precision must be visible:\n{rendered}"
-    );
-    assert!(rendered.contains("renderEnd="));
+    let records = unwrapped_records(&rendered).join("\n");
+    for value in [
+        "T1 [task] id=\"timed\"",
+        "T1 interval (UTC): 1970-01-01T00:00:00.001 -> 1970-01-01T00:00:00.002",
+        "renderEnd=1970-01-01T00:00:00.003",
+        "startTime:1",
+        "endTime:2",
+        "renderEndTime:3",
+    ] {
+        assert!(records.contains(value), "missing {value}:\n{rendered}");
+    }
 }
 
 #[test]

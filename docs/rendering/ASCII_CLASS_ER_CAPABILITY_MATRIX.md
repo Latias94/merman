@@ -29,6 +29,15 @@ least one cell between separated features; the compacted scene is validated agai
 This improves canonical geometry without admitting a separate Compact layout profile or changing
 the authored direction. Dense topology can still select a complete summary.
 
+Private-channel endpoints keep markers adjacent to their frames and place cardinality text beside
+continuous vertical stems. Multiline endpoint text uses one left edge; measurement, collision
+checks, compaction, and painting share that anchor. Endpoint text cannot replace its own stem or
+another object's cells. Class route profiles retain each endpoint's measured text extent so port
+selection excludes contacts whose labels already overlap a frame or occupied area. Unsafe
+placement retains the complete `relations:` summary. Parser-backed Class controls cover all four
+directions, both structural charsets, independent markers, headless
+ends, and literal cardinality ownership; shared port tests retain the ER marker widths.
+
 Viewport overflow has a separate Plain reading document: keyed declarations retain full names,
 namespace/group ownership, members/attributes, interfaces/notes, and individual relationships.
 Class marker types and endpoint labels remain independent. Qualified aliases retain their authored
@@ -69,6 +78,7 @@ The bounded serializer and reading-record writer are shared with other semantic 
 | Relationship labels and multiline labels, including CJK/emoji summary labels | `beautiful-mermaid` ER integration tests plus local wide-text coverage | Supported | Routed-grid, structured-summary, and local semantic fixtures |
 | Same-endpoint lanes, reverse lanes, bounded cycles, spanning routes | `beautiful-mermaid` ER ASCII tests | Supported | Routed-grid fixtures |
 | Directed rings and DAG diamonds | Local topology policy | Shared directed ranks and private channels; independent cardinalities and labels remain family-owned | `er_directed_cycles_share_topology_across_directions_and_declaration_order`, `er_diamond_uses_directed_ranks_and_private_relationship_labels`, and shared topology/route tests |
+| ER groups, nested membership, and group endpoints | Pinned Mermaid ER database and parser semantics; moving `mermaid-ascii` rejects groups | ER-owned nested frames, including empty groups, preserve typed entity/group endpoints. Connections through an ancestor frame disclose the actual member and facade; ancestor/member edges use complete typed summaries beside the group geometry. | Group endpoint, facade, nesting, cardinality, viewport/report, cancellation, and resource tests in `er_model.rs`, `relation_reading_fallback.rs`, and `output_report.rs` |
 | Other dense, crossing, or collision-prone layouts | `beautiful-mermaid` ER ASCII tests plus local fallback policy | Lossless `relations:` output remains available when bounded routing is unsafe | Structured summary fixtures and shared exact/N−1 resource/fallback tests |
 | Tight `max_ascii_grid_cells` budgets | Local policy | Supported hard error | Structured resource-error fixture with exact details |
 | Disconnected components / isolated entities | `beautiful-mermaid` disconnected-layout patterns plus local component-separation coverage | Supported | Local semantic fixtures with component-separation assertions |
@@ -87,5 +97,11 @@ The bounded serializer and reading-record writer are shared with other semantic 
 
 - Private-channel search is bounded and can miss a readable arrangement. Dense Class/ER scenes
   continue to use the lossless `relations:` fallback when contact, route, or overlay admission fails.
+- ER group scopes without an authored direction use TB; the parent scope places the completed
+  frame. Deep member connections use explicitly named group facades rather than direct contacts
+  to the inner entity. Duplicate group IDs, multiple ownership, cyclic membership, ambiguous
+  routing IDs, and relationships to hidden shadow entities remain precise diagnostics. Forward
+  references are not silently retargeted to a later group. Reading records resolve memberships
+  by authored names and relationships by stored route IDs.
 - New SVG-only affordances should still be treated as new capabilities, not inferred from the
   current ASCII contract.

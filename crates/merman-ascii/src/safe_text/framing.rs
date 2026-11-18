@@ -154,14 +154,6 @@ pub(crate) fn push_optional_document_field(
     push_document_field(document, key, value)
 }
 
-pub(crate) fn push_document_list<'a>(
-    document: &mut BudgetedTextDocument,
-    key: &str,
-    values: impl IntoIterator<Item = &'a str>,
-) -> Result<()> {
-    document.push_line_with(|line| push_line_list(line, "", key, values))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

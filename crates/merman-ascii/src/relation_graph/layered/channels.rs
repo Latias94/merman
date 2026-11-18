@@ -326,9 +326,9 @@ fn ports(
         } else {
             (node.x(), node.width())
         };
-        // Lateral endpoint text sits below its terminal; it must never push
-        // that marker away from the box along the relation's main axis.
-        let gap = if horizontal {
+        // Endpoint labels may reserve a straight runway beyond the terminal,
+        // but the terminal itself always touches its box.
+        let label_runway = if horizontal {
             0
         } else {
             profile.endpoint_label_gap
@@ -339,7 +339,7 @@ fn ports(
             profile.target_marker_widths
         }[usize::from(horizontal)];
         let marker_offset = resources.checked_grid_add(
-            resources.checked_grid_add(gap, 1)?,
+            1,
             if side == PhysicalPortSide::Right {
                 marker_width / 2
             } else {
@@ -348,7 +348,7 @@ fn ports(
         )?;
         let mut path_offset = resources
             .checked_grid_add(
-                gap,
+                label_runway,
                 if source {
                     profile.source_path_start_offset
                 } else {
@@ -415,6 +415,32 @@ fn ports(
                 path_x,
                 path_y,
             };
+            if let Some((label_width, label_height)) =
+                profile.endpoint_label_sizes[usize::from(!source)]
+            {
+                let (anchor, top) = port.private_endpoint_label_anchor(label_height, resources)?;
+                let Some(left) = anchor.left(label_width) else {
+                    continue;
+                };
+                let right = resources.checked_grid_add(left, label_width)?;
+                let bottom = resources.checked_grid_add(top, label_height)?;
+                // Select a usable contact before searching its path. Moving a central
+                // caption cannot repair endpoint text that already overlaps a box.
+                if right > width
+                    || bottom > height
+                    || !rect_clear(
+                        occupied,
+                        width,
+                        left.saturating_sub(1),
+                        top,
+                        right.saturating_add(1).min(width),
+                        bottom,
+                        resources,
+                    )?
+                {
+                    continue;
+                }
+            }
             if !occupied[path_y * width + path_x]
                 && rect_clear(
                     occupied,
@@ -916,11 +942,11 @@ fn labels_avoid_turns_and_terminals(
             if x < bounds.left || x >= bounds.right || y < bounds.top || y >= bounds.bottom {
                 continue;
             }
+            if *endpoint {
+                return Ok(false);
+            }
             if index == 0 || index + 1 == path.len() {
-                if !endpoint {
-                    return Ok(false);
-                }
-                continue;
+                return Ok(false);
             }
             let previous = path[index - 1];
             let next = path[index + 1];
@@ -1133,6 +1159,10 @@ fn route_collision() -> LayeredRouteBatchError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::color::AsciiColorRole;
+    use crate::options::TerminalWidthProfile;
+    use crate::relation_graph::{RelationGraphBox, RelationGraphLabel};
+    use crate::safe_text::{ComposedTextPlan, DeferredTextRegistry};
     use crate::{AsciiError, AsciiResourceLimitId, AsciiResourcePolicy};
 
     fn port(x: usize, y: usize, side: PhysicalPortSide) -> LayeredRelationPhysicalPort {
@@ -1143,6 +1173,149 @@ mod tests {
             path_x: x,
             path_y: y,
         }
+    }
+
+    #[test]
+    fn endpoint_label_runways_keep_class_and_er_markers_at_frame_contacts() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let relation_box = RelationGraphBox::new(
+            "node".to_string(),
+            vec![
+                "+-----+".to_string(),
+                "| Box |".to_string(),
+                "+-----+".to_string(),
+            ],
+            7,
+        );
+        let node = PlacedRelationGraphBox::for_test("node", &relation_box, 8, 8);
+        let occupied = vec![false; 32 * 24];
+        for profile in [
+            LayeredRelationRouteProfile::class_with_endpoint_labels(3)
+                .with_marker_widths([1, 1], [1, 2]),
+            LayeredRelationRouteProfile::er(),
+        ] {
+            for source in [true, false] {
+                let ports = ports(
+                    &node,
+                    source,
+                    profile,
+                    PhysicalPortSide::Bottom,
+                    ChannelGrid {
+                        width: 32,
+                        height: 24,
+                        occupied: &occupied,
+                        retained: 0,
+                    },
+                    &resources,
+                )
+                .expect("port enumeration should fit");
+                for side in PhysicalPortSide::ALL {
+                    let matching = ports
+                        .iter()
+                        .filter(|port| port.side == side)
+                        .collect::<Vec<_>>();
+                    assert!(!matching.is_empty(), "every frame side should offer a port");
+                    for port in matching {
+                        assert!(port.fits_box(&node));
+                        let horizontal =
+                            matches!(side, PhysicalPortSide::Left | PhysicalPortSide::Right);
+                        let width = if source {
+                            profile.source_marker_widths
+                        } else {
+                            profile.target_marker_widths
+                        }[usize::from(horizontal)];
+                        let left = port.marker_x - width / 2;
+                        match side {
+                            PhysicalPortSide::Top => assert_eq!(port.marker_y + 1, node.y()),
+                            PhysicalPortSide::Bottom => {
+                                assert_eq!(port.marker_y, node.bottom() + 1)
+                            }
+                            PhysicalPortSide::Left => assert_eq!(left + width, node.x()),
+                            PhysicalPortSide::Right => assert_eq!(left, node.right() + 1),
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn endpoint_labels_cannot_replace_their_own_stem_or_borrow_occupied_cells() {
+        let resources = ResourceContext::new(AsciiResourcePolicy::default());
+        let mut deferred = DeferredTextRegistry::new();
+        let lines = ["1", "0..*"]
+            .into_iter()
+            .map(|text| {
+                deferred.try_register(
+                    ComposedTextPlan::try_new(&resources, 1, |push| push(text))?,
+                    TerminalWidthProfile::Unicode,
+                    &resources,
+                )
+            })
+            .collect::<Result<Vec<_>>>()
+            .unwrap();
+        let label =
+            RelationGraphLabel::try_from_lines(lines, TerminalWidthProfile::Unicode, &resources)
+                .unwrap();
+        let path = (2..=10).map(|y| (5, y)).collect::<Vec<_>>();
+        let geometry = LayeredRelationRouteGeometry::from_channel_path(
+            port(5, 2, PhysicalPortSide::Bottom),
+            port(5, 10, PhysicalPortSide::Top),
+            &path,
+            (5, 6),
+            &resources,
+        )
+        .unwrap();
+        let (anchor, y) = geometry
+            .endpoint_label_anchor(false, label.line_count(), &resources)
+            .unwrap();
+        let beside =
+            RelationOverlay::endpoint_label(anchor, y, label.clone(), AsciiColorRole::EdgeLabel);
+        let bounds = beside.bounds().unwrap();
+        assert_eq!(
+            (bounds.left, bounds.top, bounds.right, bounds.bottom),
+            (7, 9, 11, 11)
+        );
+        assert!(
+            labels_avoid_turns_and_terminals(std::slice::from_ref(&beside), &path, &resources)
+                .unwrap()
+        );
+
+        let plan = LayeredRelationRoutePlan::new(
+            geometry,
+            '|',
+            '-',
+            super::super::draw::RelationLineChars::new(['-', '|', '.', ':'], '+'),
+            vec![beside.clone()],
+        );
+        let mut canvas = crate::canvas::Canvas::new(14, 14);
+        plan.draw_route_at(&mut canvas, &resources).unwrap();
+        plan.draw_overlays_at(&mut canvas, &resources).unwrap();
+        for y in [9, 10] {
+            assert_eq!(canvas.get(5, y), Some('|'));
+            assert_eq!(
+                canvas.get_color(7, y),
+                Some(crate::canvas::CanvasColor::Role(AsciiColorRole::EdgeLabel)),
+                "different label widths must share the same left edge"
+            );
+        }
+
+        let mut on_stem = RelationOverlay::label(5, 6, label, AsciiColorRole::EdgeLabel);
+        assert!(labels_avoid_turns_and_terminals(&[on_stem.clone()], &path, &resources).unwrap());
+        if let RelationOverlay::Label { endpoint, .. } = &mut on_stem {
+            *endpoint = true;
+        }
+        assert!(!labels_avoid_turns_and_terminals(&[on_stem], &path, &resources).unwrap());
+
+        let mut occupied = vec![false; 14 * 14];
+        assert!(
+            overlays_clear(std::slice::from_ref(&beside), 14, 14, &occupied, &resources).unwrap()
+        );
+        occupied[10 * 14 + 8] = true;
+        assert!(
+            !overlays_clear(std::slice::from_ref(&beside), 14, 14, &occupied, &resources).unwrap()
+        );
+        assert!(!overlays_clear(&[beside], 10, 14, &[false; 10 * 14], &resources).unwrap());
     }
 
     #[test]

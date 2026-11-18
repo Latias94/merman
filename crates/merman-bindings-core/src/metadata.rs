@@ -2072,6 +2072,10 @@ mod tests {
             assert_eq!(
                 ascii_supported_diagrams(),
                 &[
+                    "agentflow",
+                    "architecture",
+                    "block",
+                    "c4",
                     "class",
                     "er",
                     "flowchart",
@@ -2081,12 +2085,16 @@ mod tests {
                     "kanban",
                     "mindmap",
                     "packet",
+                    "pie",
+                    "requirement",
                     "sequence",
                     "state",
                     "swimlane",
                     "timeline",
                     "treeView",
+                    "usecase",
                     "xychart",
+                    "zenuml",
                 ]
             );
         } else {
@@ -2106,7 +2114,7 @@ mod tests {
                 .collect();
 
             assert_eq!(ascii_supported_diagrams(), supported.as_slice());
-            assert!(!supported.contains(&"zenuml"));
+            assert!(supported.contains(&"zenuml"));
         } else {
             assert!(capabilities.is_empty());
             assert!(ascii_supported_diagrams().is_empty());
@@ -2149,17 +2157,66 @@ mod tests {
         assert!(class.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
                 && evidence.source
-                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
+                    == "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         let er = ascii_capability(&capabilities, "er");
         assert_eq!(er.support_level, "partial");
         assert!(er.structured_text_fallback);
 
+        let pie = ascii_capability(&capabilities, "pie");
+        assert_eq!(pie.semantic_coverage, Some("partial"));
+        assert_eq!(pie.primary_projection, "diagrammatic");
+        assert_eq!(pie.support_level, "partial");
+        assert!(pie.structured_text_fallback);
+        assert_eq!(pie.layout_profiles, ["canonical"]);
+        assert_eq!(pie.graph_presentations, ["strict"]);
+        assert_eq!(pie.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            pie.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(pie.fallback_encodings, ["plain"]);
+        assert!(pie.evidence.iter().any(|evidence| {
+            evidence.kind == "local_semantic_probe"
+                && evidence.source == "crates/merman-ascii/tests/pie_model.rs"
+        }));
+        assert!(
+            pie.evidence
+                .iter()
+                .any(|evidence| { evidence.source == "docs/rendering/ascii/PIE_SUPPORT.md" })
+        );
+
+        let requirement = ascii_capability(&capabilities, "requirement");
+        assert_eq!(requirement.semantic_coverage, Some("partial"));
+        assert_eq!(requirement.primary_projection, "diagrammatic");
+        assert_eq!(requirement.support_level, "partial");
+        assert!(requirement.structured_text_fallback);
+        assert_eq!(requirement.layout_profiles, ["canonical"]);
+        assert_eq!(requirement.graph_presentations, ["strict", "adaptive"]);
+        assert_eq!(requirement.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            requirement.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(requirement.fallback_encodings, ["plain"]);
+        assert!(requirement.limits.iter().any(|limit| {
+            limit.contains("unresolved endpoints") && limit.contains("StructuredText primaries")
+        }));
+        assert!(requirement.evidence.iter().any(|evidence| {
+            evidence.kind == "local_semantic_probe"
+                && evidence.source == "crates/merman-ascii/tests/requirement_model.rs"
+        }));
+        assert!(
+            requirement.evidence.iter().any(|evidence| {
+                evidence.source == "docs/rendering/ascii/REQUIREMENT_SUPPORT.md"
+            })
+        );
+
         let gantt = ascii_capability(&capabilities, "gantt");
-        assert_eq!(gantt.support_level, "summary");
+        assert_eq!(gantt.support_level, "partial");
         assert_eq!(gantt.semantic_coverage, Some("partial"));
-        assert_eq!(gantt.primary_projection, "structured_text");
+        assert_eq!(gantt.primary_projection, "diagrammatic");
         assert!(!gantt.supported_semantics.contains(&"dependencies"));
 
         let sequence = ascii_capability(&capabilities, "sequence");
@@ -2173,24 +2230,38 @@ mod tests {
         assert_eq!(sequence.graph_presentations, ["strict"]);
 
         let zenuml = ascii_capability(&capabilities, "zenuml");
-        assert!(zenuml.layout_profiles.is_empty());
-        assert!(zenuml.width_profiles.is_empty());
-        assert!(zenuml.encodings.is_empty());
-        assert!(zenuml.fallback_encodings.is_empty());
+        assert_eq!(zenuml.semantic_coverage, Some("partial"));
+        assert_eq!(zenuml.primary_projection, "diagrammatic");
+        assert_eq!(zenuml.support_level, "partial");
+        assert!(zenuml.structured_text_fallback);
+        assert_eq!(zenuml.layout_profiles, ["canonical"]);
+        assert_eq!(zenuml.graph_presentations, ["strict"]);
+        assert_eq!(zenuml.width_profiles, ["unicode", "cjk"]);
+        assert_eq!(
+            zenuml.encodings,
+            ["plain", "ansi16", "ansi256", "truecolor", "html"]
+        );
+        assert_eq!(zenuml.fallback_encodings, ["plain"]);
+        assert!(zenuml.evidence.iter().any(|evidence| {
+            evidence.kind == "local_semantic_probe"
+                && evidence.source == "crates/merman-ascii/tests/zenuml_model.rs"
+        }));
+        assert!(
+            zenuml
+                .evidence
+                .iter()
+                .any(|evidence| { evidence.source == "docs/rendering/ascii/ZENUML_SUPPORT.md" })
+        );
 
         let xychart = ascii_capability(&capabilities, "xychart");
         assert_eq!(xychart.support_level, "partial");
         assert!(xychart.evidence.iter().any(|evidence| {
             evidence.kind == "beautiful_mermaid_prior_art"
                 && evidence.source
-                    == "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
+                    == "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison"
         }));
 
         assert_eq!(capabilities.len(), 34);
-        let zenuml = ascii_capability(&capabilities, "zenuml");
-        assert_eq!(zenuml.semantic_coverage, None);
-        assert_eq!(zenuml.primary_projection, "none");
-        assert_eq!(zenuml.support_level, "unsupported");
 
         let json: Value = serde_json::from_slice(&ascii_capabilities_json().unwrap()).unwrap();
         let first = &json.as_array().unwrap()[0];

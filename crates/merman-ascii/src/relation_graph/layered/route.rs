@@ -12,6 +12,28 @@ use crate::options::TerminalWidthProfile;
 use crate::resource::ResourceContext;
 use crate::text::display_width_with_profile;
 
+/// Retain label alignment until the family supplies its measured text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RelationLabelAnchor {
+    Centered(usize),
+    LeftAligned(usize),
+}
+
+impl RelationLabelAnchor {
+    pub(super) fn left(self, width: usize) -> Option<usize> {
+        match self {
+            Self::Centered(center) => center.checked_sub(width / 2),
+            Self::LeftAligned(left) => Some(left),
+        }
+    }
+
+    fn x_mut(&mut self) -> &mut usize {
+        match self {
+            Self::Centered(x) | Self::LeftAligned(x) => x,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum RelationOverlay {
     Glyph {
@@ -28,7 +50,7 @@ pub(crate) enum RelationOverlay {
         width_profile: TerminalWidthProfile,
     },
     Label {
-        center_x: usize,
+        anchor: RelationLabelAnchor,
         y: usize,
         label: RelationGraphLabel,
         role: AsciiColorRole,
@@ -64,7 +86,7 @@ impl RelationOverlay {
         role: AsciiColorRole,
     ) -> Self {
         Self::Label {
-            center_x,
+            anchor: RelationLabelAnchor::Centered(center_x),
             y,
             label,
             role,
@@ -73,13 +95,13 @@ impl RelationOverlay {
     }
 
     pub(crate) fn endpoint_label(
-        center_x: usize,
+        anchor: RelationLabelAnchor,
         y: usize,
         label: RelationGraphLabel,
         role: AsciiColorRole,
     ) -> Self {
         Self::Label {
-            center_x,
+            anchor,
             y,
             label,
             role,
@@ -98,12 +120,25 @@ impl RelationOverlay {
                 width_profile,
             } => write_centered_relation_text(canvas, *center_x, *y, text, *role, *width_profile),
             RelationOverlay::Label {
-                center_x,
+                anchor,
                 y,
                 label,
                 role,
                 ..
-            } => write_centered_relation_label(canvas, *center_x, *y, label, *role),
+            } => {
+                if let RelationLabelAnchor::Centered(center_x) = anchor {
+                    return write_centered_relation_label(canvas, *center_x, *y, label, *role);
+                }
+                for (offset, line) in label.lines().iter().enumerate() {
+                    let Some(row) = y.checked_add(offset) else {
+                        return Ok(());
+                    };
+                    if let Some(left) = anchor.left(line.width()) {
+                        canvas.write_deferred_text_role(left, row, line, *role)?;
+                    }
+                }
+                Ok(())
+            }
         }
     }
 
@@ -125,15 +160,15 @@ impl RelationOverlay {
                 height,
             ),
             Self::Label {
-                center_x, y, label, ..
-            } => centered_text_fits(
-                *center_x,
-                *y,
-                label.width(),
-                label.line_count(),
-                width,
-                height,
-            ),
+                anchor, y, label, ..
+            } => {
+                anchor
+                    .left(label.width())
+                    .and_then(|left| left.checked_add(label.width()))
+                    .is_some_and(|right| right <= width)
+                    && y.checked_add(label.line_count())
+                        .is_some_and(|end| end <= height)
+            }
         }
     }
 
@@ -153,8 +188,15 @@ impl RelationOverlay {
                 1,
             ),
             Self::Label {
-                center_x, y, label, ..
-            } => (*center_x, *y, label.width(), label.line_count()),
+                anchor, y, label, ..
+            } => {
+                return RelationOverlayBounds::new(
+                    anchor.left(label.width())?,
+                    *y,
+                    label.width(),
+                    label.line_count(),
+                );
+            }
         };
         let left = center_x.checked_sub(width / 2)?;
         RelationOverlayBounds::new(left, y, width, height)
@@ -224,6 +266,27 @@ impl LayeredRelationPhysicalPort {
 
     pub(crate) fn marker_y(self) -> usize {
         self.marker_y
+    }
+
+    pub(super) fn private_endpoint_label_anchor(
+        self,
+        line_count: usize,
+        resources: &ResourceContext,
+    ) -> Result<(RelationLabelAnchor, usize)> {
+        match self.side {
+            PhysicalPortSide::Top | PhysicalPortSide::Bottom => Ok((
+                RelationLabelAnchor::LeftAligned(resources.checked_grid_add(self.marker_x, 2)?),
+                if self.side == PhysicalPortSide::Top {
+                    self.marker_y.saturating_sub(line_count.saturating_sub(1))
+                } else {
+                    self.marker_y
+                },
+            )),
+            PhysicalPortSide::Left | PhysicalPortSide::Right => Ok((
+                RelationLabelAnchor::Centered(self.marker_x),
+                resources.checked_grid_add(self.marker_y, 2)?,
+            )),
+        }
     }
 
     pub(crate) fn fits_box(self, relation_box: &PlacedRelationGraphBox<'_>) -> bool {
@@ -580,8 +643,14 @@ impl LayeredRelationRouteGeometry {
         source: bool,
         line_count: usize,
         resources: &ResourceContext,
-    ) -> Result<(usize, usize)> {
+    ) -> Result<(RelationLabelAnchor, usize)> {
         let port = if source { self.source } else { self.target };
+        if matches!(
+            self.label_placement,
+            LayeredRelationLabelPlacement::Private { .. }
+        ) {
+            return port.private_endpoint_label_anchor(line_count, resources);
+        }
         let y = match port.side {
             PhysicalPortSide::Top => resources.checked_grid_add(port.marker_y, 1)?,
             PhysicalPortSide::Bottom => port
@@ -589,10 +658,10 @@ impl LayeredRelationRouteGeometry {
                 .checked_sub(line_count)
                 .ok_or_else(|| grid_overflow(resources))?,
             PhysicalPortSide::Left | PhysicalPortSide::Right => {
-                resources.checked_grid_add(port.marker_y, 1)?
+                resources.checked_grid_add(port.marker_y, 2)?
             }
         };
-        Ok((port.marker_x, y))
+        Ok((RelationLabelAnchor::Centered(port.marker_x), y))
     }
 
     fn segments(&self) -> impl Iterator<Item = LayeredRelationRouteSegment> + '_ {
@@ -750,11 +819,13 @@ impl LayeredRelationRoutePlan {
                 }
                 RelationOverlay::Text {
                     center_x, y: row, ..
-                }
-                | RelationOverlay::Label {
-                    center_x, y: row, ..
                 } => {
                     *center_x = x.map(*center_x);
+                    *row = y.map(*row);
+                }
+                RelationOverlay::Label { anchor, y: row, .. } => {
+                    let col = anchor.x_mut();
+                    *col = x.map(*col);
                     *row = y.map(*row);
                 }
             }
@@ -838,9 +909,12 @@ impl LayeredRelationRoutePlan {
                     *x -= left;
                     *y -= top;
                 }
-                RelationOverlay::Text { center_x, y, .. }
-                | RelationOverlay::Label { center_x, y, .. } => {
+                RelationOverlay::Text { center_x, y, .. } => {
                     *center_x -= left;
+                    *y -= top;
+                }
+                RelationOverlay::Label { anchor, y, .. } => {
+                    *anchor.x_mut() -= left;
                     *y -= top;
                 }
             }
@@ -980,6 +1054,7 @@ pub(crate) struct LayeredRelationRouteProfile {
     pub(super) endpoint_label_gap: usize,
     pub(super) source_marker_widths: [usize; 2],
     pub(super) target_marker_widths: [usize; 2],
+    pub(super) endpoint_label_sizes: [Option<(usize, usize)>; 2],
 }
 
 impl LayeredRelationRouteProfile {
@@ -998,6 +1073,7 @@ impl LayeredRelationRouteProfile {
             endpoint_label_gap,
             source_marker_widths: [1, 2],
             target_marker_widths: [1, 2],
+            endpoint_label_sizes: [None; 2],
         }
     }
 
@@ -1020,6 +1096,15 @@ impl LayeredRelationRouteProfile {
     ) -> Self {
         self.source_marker_widths = source;
         self.target_marker_widths = target;
+        self
+    }
+
+    #[cfg(feature = "diagram-class")]
+    pub(crate) const fn with_endpoint_label_sizes(
+        mut self,
+        sizes: [Option<(usize, usize)>; 2],
+    ) -> Self {
+        self.endpoint_label_sizes = sizes;
         self
     }
 }

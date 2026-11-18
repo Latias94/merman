@@ -114,6 +114,80 @@ fn assert_viewports(
 
 #[cfg(feature = "diagram-state")]
 #[test]
+fn single_region_state_keeps_its_compact_canonical_scene() {
+    let source = concat!(
+        "stateDiagram-v2\n[*] --> Active\nstate Active {\n[*] --> NumLockOff\n",
+        "NumLockOff --> NumLockOn: EvNumLockPressed\n",
+        "NumLockOn --> NumLockOff: EvNumLockPressed\n}\n",
+    );
+    let parsed = SemanticParser::new().parse_diagram_sync(source).unwrap();
+    let operation = RuntimePolicy::deterministic().begin_operation().unwrap();
+    for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+        for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+            for width in [20, 60, 80, 100, 120] {
+                let report = AsciiRenderer::new(options.with_terminal_width_profile(profile))
+                    .unwrap()
+                    .render_parsed_report(
+                        &parsed,
+                        AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Error),
+                        &OperationControl::new(),
+                        &operation,
+                        AsciiResourcePolicy::for_profile(ResourceProfile::Interactive),
+                    )
+                    .expect("the validated original scene must not be expanded");
+                assert_eq!(report.projection, AsciiProjection::Diagrammatic);
+                assert_eq!(report.outcome, AsciiOutputOutcome::Primary);
+                assert_eq!(report.layout_profile, Some(AsciiLayoutProfile::Canonical));
+                assert!(!report.compact_attempted && !report.fallback.attempted);
+                assert_eq!(report.lossiness, Lossiness::None);
+                assert_eq!(report.primary_extent, Some(report.emitted_extent));
+                assert!(report.emitted_extent.width <= 20, "{}", report.text);
+                assert!(report.emitted_extent.height <= 32, "{}", report.text);
+                assert_eq!(report.emitted_extent.height, report.text.lines().count());
+                let measured = report
+                    .text
+                    .lines()
+                    .map(|line| match profile {
+                        TerminalWidthProfile::Unicode => UnicodeWidthStr::width(line),
+                        TerminalWidthProfile::Cjk => UnicodeWidthStr::width_cjk(line),
+                        _ => unreachable!(),
+                    })
+                    .max()
+                    .unwrap();
+                assert_eq!(report.emitted_extent.width, measured);
+                let mut wires = report.text.clone();
+                for (field, count) in [
+                    ("Active", 1),
+                    ("NumLockOff", 1),
+                    ("NumLockOn", 1),
+                    ("EvNumLockPressed", 2),
+                ] {
+                    assert_eq!(wires.matches(field).count(), count, "{}", report.text);
+                    wires = wires.replace(field, "");
+                }
+                assert_eq!(
+                    wires
+                        .chars()
+                        .filter(|ch| matches!(ch, '>' | '<' | '^' | 'v' | '►' | '◄' | '▲' | '▼'))
+                        .count(),
+                    4,
+                    "{}",
+                    report.text,
+                );
+                assert_eq!(
+                    wires.chars().filter(|ch| matches!(ch, '*' | '●')).count(),
+                    2
+                );
+                assert!(
+                    !report.text.contains("root_start") && !report.text.contains("Active_start")
+                );
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-state")]
+#[test]
 fn nested_state_selects_canonical_or_complete_fallback_without_compact() {
     let source = concat!(
         "stateDiagram-v2\ndirection LR\nstate Session {\nstate Worker {\n",

@@ -24,8 +24,19 @@ mod markup;
 )]
 mod model;
 mod planning;
+#[cfg(any(
+    feature = "diagram-architecture",
+    feature = "diagram-block",
+    feature = "diagram-c4"
+))]
+pub(crate) mod positioned;
 mod routing;
 mod shape;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state"
+))]
 pub(crate) mod style;
 mod surface;
 mod topology;
@@ -34,18 +45,50 @@ mod topology;
 pub(crate) use adapter::from_flowchart_model_with_execution;
 #[cfg(test)]
 pub(crate) use draw::render_graph_with_execution;
+#[cfg(any(
+    feature = "diagram-flowchart",
+    feature = "diagram-swimlane",
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement"
+))]
 pub(crate) use draw::render_graph_with_resolved_policy_and_execution;
-#[cfg(feature = "diagram-state")]
+#[cfg(any(
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement",
+    feature = "diagram-block",
+    feature = "diagram-architecture",
+    feature = "diagram-c4"
+))]
 pub(crate) use label::{DeferredGraphLabelSectionPlan, DeferredGraphNodeLabelPlan};
 pub(crate) use model::{
     AsciiGraph, GraphDirection, GraphNodeSemantics, GraphNodeSide, GraphNodeSideConstraint,
 };
 
+#[cfg(any(
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement"
+))]
+pub(crate) use model::GraphEdgeStroke;
 #[cfg(feature = "diagram-state")]
-pub(crate) use model::{
-    GraphEdgeAttrs, GraphEdgeMarker, GraphGroupKind, GraphGroupStyle, GraphNodeShape,
-    GraphNodeStyle,
-};
+pub(crate) use model::GraphGroupKind;
+#[cfg(any(
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow"
+))]
+pub(crate) use model::GraphGroupStyle;
+#[cfg(any(
+    feature = "diagram-state",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-requirement"
+))]
+pub(crate) use model::{GraphEdgeAttrs, GraphEdgeMarker, GraphNodeShape, GraphNodeStyle};
 
 #[cfg(test)]
 mod graph_golden {

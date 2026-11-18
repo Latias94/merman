@@ -42,10 +42,9 @@ pub(in crate::graph::routing) fn plan_self_loop_candidates(
     }
     // A container loop belongs to its exterior. Its own frame cannot be an interior
     // endpoint, although an enclosing parent must still contain the complete channel.
-    let geometry = EndpointGeometry {
-        interior: false,
-        ..EndpointGeometry::for_route(request.from, request.to, request.graph_layout, resources)?
-    };
+    let mut geometry =
+        EndpointGeometry::for_route(request.from, request.to, request.graph_layout, resources)?;
+    geometry.interior = false;
     let (envelope, parallel_index) = loop_envelope(request, label, resources, execution)?;
     let ports = terminal_ports(geometry, request, resources, execution)?;
     let private_source = request.edge.start_marker != GraphEdgeMarker::Open;

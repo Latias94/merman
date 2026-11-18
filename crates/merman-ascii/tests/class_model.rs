@@ -2437,6 +2437,155 @@ fn class_parser_endpoint_labels_render_near_relation_endpoints() {
 }
 
 #[test]
+fn class_branched_cardinalities_keep_their_contacts_and_continuous_stems() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        for (options, vertical, horizontal, aggregation, composition) in [
+            (AsciiRenderOptions::ascii(), '|', '-', 'o', '*'),
+            (AsciiRenderOptions::unicode(), '│', '─', '◇', '◆'),
+        ] {
+            for target_marked in [false, true] {
+                let connector = if target_marked { "o--*" } else { "o--" };
+                let input = format!(
+                    "classDiagram\ndirection {direction}\n\
+                     class Animal {{\n<<abstract>>\n+String name\n-int age\n+eat()\n+speak()* String\n}}\n\
+                     class Dog {{\n+String breed\n+speak() String\n+fetch()\n}}\n\
+                     class Cat {{\n+bool indoor\n+speak() String\n}}\n\
+                     class Owner {{\n+String name\n+adopt(Animal a)\n}}\n\
+                     Animal <|-- Dog\nAnimal <|-- Cat\nOwner \"1\" {connector} \"0..*\" Animal : owns"
+                );
+                let rendered = render_class(&input, &options)
+                    .expect("a bounded ownership tree should stay readable");
+                assert!(!rendered.contains("relations:"), "{direction}:\n{rendered}");
+                for text in [
+                    "<<abstract>>",
+                    "+String name",
+                    "-int age",
+                    "+eat()",
+                    "+speak() : String*",
+                    "+String breed",
+                    "+fetch()",
+                    "+bool indoor",
+                    "+adopt(Animal a)",
+                    "0..*",
+                    "owns",
+                ] {
+                    assert!(rendered.contains(text), "missing {text:?}:\n{rendered}");
+                }
+                assert_eq!(rendered.matches("0..*").count(), 1, "{rendered}");
+                assert_eq!(rendered.matches("owns").count(), 1, "{rendered}");
+
+                let rows = rendered
+                    .lines()
+                    .map(|line| line.chars().collect::<Vec<_>>())
+                    .collect::<Vec<_>>();
+                let position = |needle: &str| {
+                    rendered
+                        .lines()
+                        .enumerate()
+                        .find_map(|(y, line)| {
+                            line.find(needle)
+                                .map(|byte| (line[..byte].chars().count(), y))
+                        })
+                        .unwrap_or_else(|| panic!("missing {needle:?}:\n{rendered}"))
+                };
+                let cell = |(x, y): (usize, usize)| rows.get(y).and_then(|row| row.get(x)).copied();
+                let (source_x, source_y) = position("1");
+                let (target_x, target_y) = position("0..*");
+                let frame_bounds = |name: &str| {
+                    let (left, row) = position(&format!("{vertical} {name} "));
+                    let right = left
+                        + 1
+                        + rows[row][left + 1..]
+                            .iter()
+                            .position(|&ch| ch == vertical)
+                            .unwrap();
+                    let on_frame = |y| {
+                        cell((left, y))
+                            .is_some_and(|ch| ch == vertical || matches!(ch, '+' | '┌' | '├' | '└'))
+                            && cell((right, y)).is_some_and(|ch| {
+                                ch == vertical || matches!(ch, '+' | '┐' | '┤' | '┘')
+                            })
+                    };
+                    let top = (0..row).rev().take_while(|&y| on_frame(y)).last().unwrap();
+                    let bottom = (row + 1..rows.len())
+                        .take_while(|&y| on_frame(y))
+                        .last()
+                        .unwrap();
+                    (left, top, right, bottom)
+                };
+                for (name, (label_x, label_y), label_width, marked) in [
+                    ("Owner", (source_x, source_y), 1, Some(aggregation)),
+                    (
+                        "Animal",
+                        (target_x, target_y),
+                        4,
+                        target_marked.then_some(composition),
+                    ),
+                ] {
+                    let (left, top, right, bottom) = frame_bounds(name);
+                    // The layout direction is a preference; obstacle avoidance may choose
+                    // any frame side. Infer the terminal from its adjacent cardinality.
+                    let candidates = [
+                        label_x.checked_sub(2).map(|x| (x, label_y)),
+                        label_y
+                            .checked_sub(2)
+                            .map(|y| (label_x + label_width / 2, y)),
+                    ];
+                    let contacts = candidates
+                        .into_iter()
+                        .flatten()
+                        .filter_map(|(x, y)| {
+                            let normal = if x > left && x < right && y.checked_add(1) == Some(top) {
+                                (0, -1)
+                            } else if x > left && x < right && y == bottom + 1 {
+                                (0, 1)
+                            } else if y > top && y < bottom && x.checked_add(1) == Some(left) {
+                                (-1, 0)
+                            } else if y > top && y < bottom && x == right + 1 {
+                                (1, 0)
+                            } else {
+                                return None;
+                            };
+                            let line = if normal.0 == 0 { vertical } else { horizontal };
+                            if cell((x, y)) != Some(marked.unwrap_or(line)) {
+                                return None;
+                            }
+                            Some(((x, y), normal))
+                        })
+                        .collect::<Vec<_>>();
+                    assert_eq!(
+                        contacts.len(),
+                        1,
+                        "{direction}: {name} contact:\n{rendered}"
+                    );
+                    let ((x, y), (dx, dy)) = contacts[0];
+                    let line = if dx == 0 { vertical } else { horizontal };
+                    assert_eq!(cell((x, y)), Some(marked.unwrap_or(line)), "{rendered}");
+                    let frame = (
+                        x.checked_add_signed(-dx).unwrap(),
+                        y.checked_add_signed(-dy).unwrap(),
+                    );
+                    assert_eq!(
+                        cell(frame),
+                        Some(if dx == 0 { horizontal } else { vertical }),
+                        "terminal must touch its own {name} frame:\n{rendered}"
+                    );
+                    let stem = (
+                        x.checked_add_signed(dx).unwrap(),
+                        y.checked_add_signed(dy).unwrap(),
+                    );
+                    assert_eq!(
+                        cell(stem),
+                        Some(line),
+                        "cardinality text must leave a continuous {name} stem:\n{rendered}"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn class_parser_authored_none_endpoint_labels_are_not_absence_sentinels() {
     let rendered = render_class(
         "classDiagram\nclass A\nclass B\nA \"none\" --> \"NONE\" B",

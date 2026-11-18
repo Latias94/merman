@@ -1,5 +1,4 @@
 use super::charset::GraphCharset;
-use super::label::GRAPH_LABEL_LINE_GAP;
 #[cfg(test)]
 use super::layout::layout_graph_with_resources;
 use super::layout::{GraphLayout, GroupLayout, NodeLayout, graph_canvas_extent};
@@ -230,6 +229,81 @@ fn prepare_graph_render_controlled(
         layout: graph_layout,
         routes: route_scene_plan,
     } = super::planning::plan_graph(graph, layout_policy, &charset, resources, execution)?;
+    prepare_routed_graph_render(
+        graph,
+        graph_layout,
+        route_scene_plan,
+        layout_policy,
+        resources,
+        execution,
+    )
+}
+
+/// Uses the same route, viewport, resource, and painting contract for family-owned positions.
+#[cfg(any(
+    feature = "diagram-architecture",
+    feature = "diagram-block",
+    feature = "diagram-c4"
+))]
+pub(super) fn render_positioned_graph(
+    graph: &AsciiGraph,
+    graph_layout: GraphLayout,
+    options: &AsciiRenderOptions,
+    layout_policy: &GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<String> {
+    let transaction = resources.clone();
+    transaction.transaction(|_| {
+        let result = transaction.transaction_preserving_layout_work(|_| {
+            options.validate()?;
+            execution.rebind_resource_context(resources, merman_model::OperationPhase::Layout);
+            execution.checkpoint(merman_model::OperationPhase::Layout)?;
+            let charset = GraphCharset::for_policy(layout_policy);
+            let input =
+                routing::SceneRoutingInput::try_new(graph, &graph.edges, &charset, resources)?;
+            let routes = routing::route_scene_with_input(
+                graph,
+                &graph_layout,
+                &input,
+                &charset,
+                layout_policy,
+                resources,
+                execution,
+            )?;
+            let prepared = prepare_routed_graph_render(
+                graph,
+                graph_layout,
+                routes,
+                layout_policy,
+                resources,
+                execution,
+            )?;
+            let mut emit_resources =
+                execution.resource_context(resources, merman_model::OperationPhase::Emit);
+            paint_graph_render_controlled(prepared, options, &mut emit_resources, execution)
+        });
+        match result {
+            Err(error)
+                if execution.preserves_graph_work_on_error(&error, options.graph_presentation) =>
+            {
+                Ok(Err(error))
+            }
+            Ok(rendered) => Ok(Ok(rendered)),
+            Err(error) => Err(error),
+        }
+    })?
+}
+
+fn prepare_routed_graph_render(
+    graph: &AsciiGraph,
+    graph_layout: GraphLayout,
+    route_scene_plan: routing::RouteScenePlan<'_>,
+    layout_policy: &GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<PreparedGraphRender> {
+    let charset = GraphCharset::for_policy(layout_policy);
     execution.checkpoint(merman_model::OperationPhase::Layout)?;
     let (edge_width, edge_height) = route_scene_plan.canvas_extent();
     let extent = graph_canvas_extent(
@@ -1377,7 +1451,10 @@ fn redraw_transformed_node_compartments(
     let mut surface = CooperativeSurface::new(canvas, execution);
     for layout in layouts {
         execution.checkpoint(merman_model::OperationPhase::Emit)?;
-        if layout.shape != GraphNodeShape::StateWithTitle {
+        if !matches!(
+            layout.shape,
+            GraphNodeShape::Rect | GraphNodeShape::StateWithTitle
+        ) {
             continue;
         }
         let Some(title_line_count) = layout.label.compartment_break_after() else {
@@ -1390,8 +1467,9 @@ fn redraw_transformed_node_compartments(
         };
         let node_right = node_left.saturating_add(layout.width.saturating_sub(1));
         let node_bottom = node_top.saturating_add(layout.height.saturating_sub(1));
-        let divider_offset = title_line_count
-            .saturating_mul(GRAPH_LABEL_LINE_GAP + 1)
+        let divider_offset = layout
+            .label
+            .line_y_offset(title_line_count)
             .saturating_sub(1);
         let divider_y =
             transformed_label_content_y(layout, transform, height).saturating_add(divider_offset);
@@ -1458,16 +1536,27 @@ fn redraw_transformed_node_label(
     height: usize,
 ) -> Result<()> {
     let content_y = label_content_y(layout);
-    let line_step = GRAPH_LABEL_LINE_GAP + 1;
     let transformed_content_y = transformed_label_content_y(layout, transform, height);
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
         let text_width = layout.label.line_width(line);
-        let text_y = content_y + line_index * line_step;
-        let text_x = node_label_x(layout, text_y, text_width);
+        let text_y = if layout.label.is_tabular() {
+            transform.text_y(
+                transformed_content_y + layout.label.line_y_offset(line_index),
+                height,
+            )
+        } else {
+            content_y + layout.label.line_y_offset(line_index)
+        };
+        let block_width = if layout.label.is_tabular_body(line_index) {
+            layout.label.width()
+        } else {
+            text_width
+        };
+        let text_x = node_label_x(layout, text_y, block_width);
         clear_text_span(
             canvas,
-            transform.text_x(text_x, text_width, width),
+            transform.text_x(text_x, block_width, width),
             transform.text_y(text_y, height),
             text_width,
         )?;
@@ -1475,10 +1564,15 @@ fn redraw_transformed_node_label(
 
     for (line_index, line) in layout.label.lines().iter().enumerate() {
         let text_width = layout.label.line_width(line);
-        let transformed_y = transformed_content_y + line_index * line_step;
+        let transformed_y = transformed_content_y + layout.label.line_y_offset(line_index);
         let contour_y = transform.text_y(transformed_y, height);
-        let text_x = node_label_x(layout, contour_y, text_width);
-        let transformed_x = transform.text_x(text_x, text_width, width);
+        let block_width = if layout.label.is_tabular_body(line_index) {
+            layout.label.width()
+        } else {
+            text_width
+        };
+        let text_x = node_label_x(layout, contour_y, block_width);
+        let transformed_x = transform.text_x(text_x, block_width, width);
         write_node_text(canvas, transformed_x, transformed_y, line, layout.style)?;
     }
     Ok(())
@@ -1506,14 +1600,10 @@ fn transformed_label_content_y(
     height: usize,
 ) -> usize {
     let content_y = label_content_y(layout);
-    let line_step = GRAPH_LABEL_LINE_GAP + 1;
     let last_line_y = content_y
         + layout
             .label
-            .lines()
-            .len()
-            .saturating_sub(1)
-            .saturating_mul(line_step);
+            .line_y_offset(layout.label.lines().len().saturating_sub(1));
     match transform {
         OutputTransform::VerticalMirror => height.saturating_sub(1).saturating_sub(last_line_y),
         OutputTransform::Identity | OutputTransform::HorizontalMirror => content_y,

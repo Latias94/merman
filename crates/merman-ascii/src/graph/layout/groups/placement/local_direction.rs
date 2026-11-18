@@ -185,6 +185,8 @@ fn build_group_override_graph(
             end_marker: GraphEdgeMarker::Point,
             length: edge.length,
             style: GraphEdgeStyle::default(),
+            source_port: None,
+            target_port: None,
         });
     }
 

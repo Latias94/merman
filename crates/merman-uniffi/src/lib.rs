@@ -3795,9 +3795,9 @@ mod tests {
                 .iter()
                 .find(|capability| capability.diagram_type == "gantt")
                 .expect("expected UniFFI ASCII capabilities to include gantt");
-            assert_eq!(gantt.support_level, "summary");
+            assert_eq!(gantt.support_level, "partial");
             assert_eq!(gantt.semantic_coverage.as_deref(), Some("partial"));
-            assert_eq!(gantt.primary_projection, "structured_text");
+            assert_eq!(gantt.primary_projection, "diagrammatic");
             assert!(gantt.structured_text_fallback);
 
             let class = ascii_capabilities
@@ -3834,14 +3834,17 @@ mod tests {
                 .iter()
                 .find(|capability| capability.diagram_type == "zenuml")
                 .expect("expected UniFFI ASCII capabilities to include ZenUML");
-            assert_eq!(zenuml.semantic_coverage, None);
-            assert_eq!(zenuml.primary_projection, "none");
-            assert_eq!(zenuml.support_level, "unsupported");
-            assert!(zenuml.layout_profiles.is_empty());
-            assert!(zenuml.graph_presentations.is_empty());
-            assert!(zenuml.width_profiles.is_empty());
-            assert!(zenuml.encodings.is_empty());
-            assert!(zenuml.fallback_encodings.is_empty());
+            assert_eq!(zenuml.semantic_coverage.as_deref(), Some("partial"));
+            assert_eq!(zenuml.primary_projection, "diagrammatic");
+            assert_eq!(zenuml.support_level, "partial");
+            assert_eq!(zenuml.layout_profiles, ["canonical"]);
+            assert_eq!(zenuml.graph_presentations, ["strict"]);
+            assert_eq!(zenuml.width_profiles, ["unicode", "cjk"]);
+            assert_eq!(
+                zenuml.encodings,
+                ["plain", "ansi16", "ansi256", "truecolor", "html"]
+            );
+            assert_eq!(zenuml.fallback_encodings, ["plain"]);
         } else {
             assert!(ascii_capabilities.is_empty());
         }

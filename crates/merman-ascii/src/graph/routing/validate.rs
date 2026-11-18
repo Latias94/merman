@@ -406,18 +406,14 @@ fn route_geometry_is_valid(
         return Ok(false);
     };
     let mut terminals = [None; 2];
-    for (index, (endpoint, node, other, attachment, expected_marker)) in [
+    for (index, (endpoint, attachment, expected_marker)) in [
         (
             MarkerEndpoint::Start,
-            request.from,
-            request.to,
             attachments.start,
             request.edge.start_marker,
         ),
         (
             MarkerEndpoint::End,
-            request.to,
-            request.from,
             attachments.end,
             request.edge.end_marker,
         ),
@@ -437,7 +433,7 @@ fn route_geometry_is_valid(
             || plan.is_cell_suppressed(candidate.cell)
             || (marker != GraphEdgeMarker::Open
                 && (cell.kind != PlannedRouteCellKind::EdgeArrow || cell.ch != glyph))
-            || EndpointGeometry::for_route(node, other, request.graph_layout, resources)?.resolve(
+            || EndpointGeometry::for_request(request, endpoint, resources)?.resolve(
                 candidate.coord,
                 candidate.point_direction,
                 request.charset,

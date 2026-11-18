@@ -1,3 +1,5 @@
+#![cfg(feature = "diagram-flowchart")]
+
 mod support;
 
 use merman_ascii::{AsciiLayoutProfile, AsciiRenderOptions};

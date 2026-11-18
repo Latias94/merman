@@ -90,25 +90,16 @@ pub(super) fn set_route_cell_with_paint(
         } else {
             0
         };
-    // Keep both axes in the state, but show only the horizontal overpass. A later parallel
-    // contributor must not turn the underpass into a junction; an actual branch or turn does.
+    // A crossing must show both continuing axes. Unicode distinguishes the horizontal
+    // overpass from a joined junction; ASCII shares the conventional '+' crossing glyph.
+    // A later parallel contributor keeps the crossing; an actual branch or turn joins it.
     let crossing = existing_route.is_some_and(|state| {
         is_transverse_crossing(state.directions, incoming_directions)
             || (state.crossing && matches!(incoming_directions, DIR_HORIZONTAL | DIR_VERTICAL))
     });
     let was_routed = existing_route.is_some();
     let merged = if crossing {
-        let horizontal_stroke = [
-            (GraphEdgeStroke::Normal, normal_directions),
-            (GraphEdgeStroke::Dotted, dotted_directions),
-            (GraphEdgeStroke::Thick, heavy_directions),
-        ]
-        .into_iter()
-        .find_map(|(stroke, directions)| {
-            (directions & DIR_HORIZONTAL == DIR_HORIZONTAL).then_some(stroke)
-        })
-        .unwrap_or(paint.stroke);
-        stroke_route_char(horizontal_stroke, DIR_HORIZONTAL, paint.unicode)
+        if paint.unicode { '╪' } else { '+' }
     } else if was_routed {
         stroke_route_char(paint.stroke, merged_directions, paint.unicode)
     } else {
@@ -198,7 +189,7 @@ pub(super) fn route_char_directions(ch: char) -> u8 {
         '┤' | '┥' | '┫' => DIR_UP | DIR_DOWN | DIR_LEFT,
         '┬' | '┰' | '┳' => DIR_RIGHT | DIR_DOWN | DIR_LEFT,
         '┴' | '┸' | '┻' => DIR_UP | DIR_RIGHT | DIR_LEFT,
-        '+' | '·' | '┼' | '╋' | '┿' | '╂' => DIR_ALL,
+        '+' | '·' | '┼' | '╪' | '╋' | '┿' | '╂' => DIR_ALL,
         _ => 0,
     }
 }
@@ -414,13 +405,13 @@ mod tests {
     }
 
     #[test]
-    fn transverse_routes_preserve_horizontal_stroke_and_color_in_any_paint_order() {
+    fn transverse_routes_show_both_axes_and_preserve_horizontal_color_in_any_paint_order() {
         let horizontal_color = CanvasColor::Direct(AsciiRgb::new(220, 30, 40));
         let vertical_color = CanvasColor::Direct(AsciiRgb::new(20, 60, 210));
-        for (horizontal, ascii, unicode_glyph) in [
-            (GraphEdgeStroke::Normal, '-', '─'),
-            (GraphEdgeStroke::Dotted, '.', '┄'),
-            (GraphEdgeStroke::Thick, '=', '━'),
+        for horizontal in [
+            GraphEdgeStroke::Normal,
+            GraphEdgeStroke::Dotted,
+            GraphEdgeStroke::Thick,
         ] {
             for vertical in [
                 GraphEdgeStroke::Normal,
@@ -450,10 +441,7 @@ mod tests {
                             )
                             .expect("pure transverse strokes should cross without joining");
                         }
-                        assert_eq!(
-                            canvas.get(0, 0),
-                            Some(if unicode { unicode_glyph } else { ascii })
-                        );
+                        assert_eq!(canvas.get(0, 0), Some(if unicode { '╪' } else { '+' }));
                         assert_eq!(canvas.get_color(0, 0), Some(horizontal_color));
                         let state = route_cells[&(0, 0)];
                         assert!(state.crossing);
@@ -531,10 +519,7 @@ mod tests {
                         )
                         .expect("parallel contributors should preserve an existing crossing");
                     }
-                    assert_eq!(
-                        canvas.get(0, 0),
-                        Some(stroke_route_char(horizontal, DIR_HORIZONTAL, unicode))
-                    );
+                    assert_eq!(canvas.get(0, 0), Some(if unicode { '╪' } else { '+' }));
                     assert_eq!(canvas.get_color(0, 0), Some(horizontal_color));
                     let state = route_cells[&(0, 0)];
                     assert!(state.crossing);
@@ -546,7 +531,7 @@ mod tests {
     }
 
     #[test]
-    fn horizontal_overpass_leaves_vertical_neighbors_and_terminals_intact() {
+    fn crossing_keeps_visible_continuations_strokes_and_terminals_on_both_axes() {
         let mut canvas = RawCanvas::with_width_profile(5, 5, TerminalWidthProfile::Unicode);
         let mut route_cells = RouteCells::default();
         for (directions, stroke) in [
@@ -589,7 +574,7 @@ mod tests {
         let rows: Vec<String> = (0..5)
             .map(|y| (0..5).map(|x| canvas.get(x, y).unwrap()).collect())
             .collect();
-        assert_eq!(rows, ["  ▲  ", "  ┆  ", "◄━━━►", "  ┆  ", "  ▼  "]);
+        assert_eq!(rows, ["  ▲  ", "  ┆  ", "◄━╪━►", "  ┆  ", "  ▼  "]);
     }
 
     #[test]
@@ -669,7 +654,7 @@ mod tests {
             )
             .expect_err("incompatible strokes and encodings must remain rejected");
             assert!(matches!(error, AsciiError::UnsupportedFeature { .. }));
-            assert_eq!(canvas.get(0, 0), Some('─'));
+            assert_eq!(canvas.get(0, 0), Some('╪'));
             assert_eq!(canvas.get_color(0, 0), Some(horizontal_color));
             assert_eq!(route_cells[&(0, 0)], original_state);
         }

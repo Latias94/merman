@@ -297,6 +297,24 @@ pub(super) struct AsciiGraphEdge {
     pub(super) end_marker: GraphEdgeMarker,
     pub(super) length: usize,
     pub(super) style: GraphEdgeStyle,
+    pub(super) source_port: Option<GraphEndpointPort>,
+    pub(super) target_port: Option<GraphEndpointPort>,
+}
+
+/// A hard authored endpoint constraint, independent of graph ranking or arrow ownership.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct GraphEndpointPort {
+    pub(crate) side: GraphPortSide,
+    /// For a group contact, retain the service whose center fixes the boundary intercept.
+    pub(crate) anchor: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) enum GraphPortSide {
+    Left,
+    Right,
+    Top,
+    Bottom,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -309,6 +327,8 @@ pub(crate) struct GraphEdgeAttrs {
     pub(crate) end_marker: GraphEdgeMarker,
     pub(crate) length: usize,
     pub(crate) style: GraphEdgeStyle,
+    pub(crate) source_port: Option<GraphEndpointPort>,
+    pub(crate) target_port: Option<GraphEndpointPort>,
 }
 
 impl Default for GraphEdgeAttrs {
@@ -322,6 +342,8 @@ impl Default for GraphEdgeAttrs {
             end_marker: GraphEdgeMarker::Point,
             length: 1,
             style: GraphEdgeStyle::default(),
+            source_port: None,
+            target_port: None,
         }
     }
 }
@@ -525,6 +547,8 @@ impl AsciiGraph {
             end_marker: attrs.end_marker,
             length: attrs.length.max(1),
             style: attrs.style,
+            source_port: attrs.source_port,
+            target_port: attrs.target_port,
         });
     }
 

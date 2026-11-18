@@ -95,12 +95,12 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
             )? && let Some(reservation) =
                 label_reservation(anchor, candidate_rect, lane_radius, resources)?
             {
-                selected = Some((candidate, reservation));
+                selected = Some((candidate, candidate_rect, reservation));
                 break;
             }
         }
 
-        let Some((placement, footprint)) = selected else {
+        let Some((placement, text, footprint)) = selected else {
             return Err(AsciiError::RoutingSearchExhausted {
                 diagram_type,
                 edge_index: routes[route_index].owner.source_edge_index,
@@ -108,6 +108,7 @@ pub(in crate::graph::routing) fn allocate_committed_route_labels(
         };
         routes[route_index].plan.labels[label_index].placement = placement;
         occupancy.occupy_label(
+            text,
             footprint,
             routes[route_index].owner.canonical_edge_index,
             resources,
@@ -572,6 +573,93 @@ mod tests {
                 .unwrap()
                 .is_some()
         );
+    }
+
+    #[test]
+    fn independent_vertical_stems_and_captions_keep_reading_space_in_both_orders() {
+        use crate::color::AsciiColorRole;
+        use crate::graph::layout::layout_graph;
+        use crate::graph::model::{AsciiGraph, GraphDirection, GraphEdgeStroke};
+        use crate::graph::routing::RouteOwner;
+        use crate::graph::routing::cell::{DIR_DOWN, DIR_LEFT, DIR_RIGHT, DIR_UP};
+        use crate::graph::routing::plan::{
+            PlannedRouteCell, PlannedRouteCellKind, PlannedRoutePaint,
+        };
+
+        let layout = layout_graph(
+            &AsciiGraph::new(GraphDirection::LeftRight),
+            &crate::AsciiRenderOptions::ascii(),
+        );
+        let mut resources = ResourceContext::new(AsciiResourcePolicy::unbounded());
+        let route = PreparedRoute::for_test(
+            RoutePlan::new_without_markers_for_test(
+                (2..=4)
+                    .map(|y| PlannedRouteCell {
+                        coord: CanvasCoord { x: 3, y },
+                        ch: '|',
+                        kind: PlannedRouteCellKind::EdgeLine,
+                        segment: PlannedRouteSegment::Direct,
+                        stroke: GraphEdgeStroke::Normal,
+                        directions: DIR_UP | DIR_DOWN,
+                        unicode: false,
+                        paint: PlannedRoutePaint::role(AsciiColorRole::EdgeLine),
+                    })
+                    .collect(),
+                Vec::new(),
+            ),
+            0,
+        );
+        let routes = [route];
+        let occupancy =
+            SceneOccupancy::try_new(&routes, &layout, &mut resources, "flowchart").unwrap();
+        let touching = OccupiedRect::try_new(4, 3, 3, 1, &resources).unwrap();
+        let spaced = OccupiedRect::try_new(5, 3, 3, 1, &resources).unwrap();
+        assert!(
+            !occupancy
+                .label_reading_clearance_is_clear(&routes, None, touching, &resources)
+                .unwrap()
+        );
+        assert!(
+            occupancy
+                .label_reading_clearance_is_clear(&routes, Some(0), touching, &resources)
+                .unwrap(),
+            "a label may retain its own vertical host"
+        );
+        assert!(
+            occupancy
+                .label_reading_clearance_is_clear(&routes, None, spaced, &resources)
+                .unwrap()
+        );
+
+        let mut label_first =
+            SceneOccupancy::try_new(&[], &layout, &mut resources, "flowchart").unwrap();
+        let reservation = OccupiedRect::try_new(4, 3, 3, 2, &resources).unwrap();
+        label_first
+            .occupy_label(touching, reservation, 0, &mut resources)
+            .unwrap();
+        let owner = RouteOwner::for_test(1, "other-source", "other-target");
+        for ((x, y), directions, expected) in [
+            ((3, 3), DIR_UP | DIR_DOWN, false),
+            ((3, 3), DIR_LEFT | DIR_RIGHT, true),
+            ((2, 3), DIR_UP | DIR_DOWN, true),
+            ((3, 4), DIR_UP | DIR_DOWN, true),
+            ((4, 4), DIR_UP | DIR_DOWN, false),
+        ] {
+            assert_eq!(
+                label_first
+                    .route_cell_is_clear(
+                        &[],
+                        &owner,
+                        None,
+                        CanvasCoord { x, y },
+                        directions,
+                        &mut resources,
+                    )
+                    .unwrap(),
+                expected,
+                "inline horizontal ink stays available; independent vertical ink needs a gap"
+            );
+        }
     }
 
     #[test]

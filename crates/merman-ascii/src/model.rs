@@ -39,6 +39,14 @@ impl<'a> From<&'a SemanticMetadata> for AsciiSourceContext<'a> {
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum AsciiDiagram<'a> {
+    #[cfg(feature = "diagram-agentflow")]
+    Agentflow(&'a merman_model::families::agentflow::AgentflowDiagramModel),
+    #[cfg(feature = "diagram-architecture")]
+    Architecture(&'a merman_model::families::architecture::ArchitectureDiagramModel),
+    #[cfg(feature = "diagram-block")]
+    Block(&'a merman_model::families::block::BlockDiagramModel),
+    #[cfg(feature = "diagram-c4")]
+    C4(&'a merman_model::families::c4::C4DiagramModel),
     #[cfg(feature = "diagram-class")]
     Class(Box<merman_model::families::class::ClassTopologyView<'a>>),
     #[cfg(feature = "diagram-er")]
@@ -57,6 +65,10 @@ pub enum AsciiDiagram<'a> {
     Mindmap(merman_model::families::mindmap::MindmapTerminalView<'a>),
     #[cfg(feature = "diagram-packet")]
     Packet(&'a merman_model::families::packet::PacketDiagramModel),
+    #[cfg(feature = "diagram-pie")]
+    Pie(&'a merman_model::families::pie::PieDiagramModel),
+    #[cfg(feature = "diagram-requirement")]
+    Requirement(&'a merman_model::families::requirement::RequirementDiagramModel),
     #[cfg(feature = "diagram-sequence")]
     Sequence(&'a merman_model::families::sequence::SequenceDiagramModel),
     #[cfg(feature = "diagram-state")]
@@ -65,11 +77,15 @@ pub enum AsciiDiagram<'a> {
     Timeline(&'a merman_model::families::timeline::TimelineDiagramModel),
     #[cfg(feature = "diagram-tree-view")]
     TreeView(&'a merman_model::families::tree_view::TreeViewDiagramModel),
+    #[cfg(feature = "diagram-usecase")]
+    Usecase(&'a merman_model::families::usecase::UsecaseDiagramModel),
     #[cfg(feature = "diagram-xychart")]
     XyChart {
         model: &'a merman_model::families::xy_chart::XyChartDiagramModel,
         display: merman_model::families::xy_chart::XyChartDisplayPolicy,
     },
+    #[cfg(feature = "diagram-zenuml")]
+    Zenuml(&'a merman_model::families::zenuml::ZenumlDiagramModel),
     /// Retains an unsupported host family's identity for normal capability admission.
     Unsupported(&'a str),
 }
@@ -82,6 +98,14 @@ impl<'a> AsciiDiagram<'a> {
     ) -> Result<Self> {
         execution.checkpoint(merman_model::OperationPhase::Semantic)?;
         Ok(match model {
+            #[cfg(feature = "diagram-agentflow")]
+            SemanticDiagramModel::Agentflow(model) => Self::Agentflow(model),
+            #[cfg(feature = "diagram-architecture")]
+            SemanticDiagramModel::Architecture(model) => Self::Architecture(model),
+            #[cfg(feature = "diagram-block")]
+            SemanticDiagramModel::Block(model) => Self::Block(model),
+            #[cfg(feature = "diagram-c4")]
+            SemanticDiagramModel::C4(model) => Self::C4(model),
             #[cfg(feature = "diagram-class")]
             SemanticDiagramModel::Class(model) => {
                 crate::validate_model_identity("class", source.diagram_type)?;
@@ -130,6 +154,10 @@ impl<'a> AsciiDiagram<'a> {
             ),
             #[cfg(feature = "diagram-packet")]
             SemanticDiagramModel::Packet(model) => Self::Packet(model),
+            #[cfg(feature = "diagram-pie")]
+            SemanticDiagramModel::Pie(model) => Self::Pie(model),
+            #[cfg(feature = "diagram-requirement")]
+            SemanticDiagramModel::Requirement(model) => Self::Requirement(model),
             #[cfg(feature = "diagram-sequence")]
             SemanticDiagramModel::Sequence(model) => Self::Sequence(model),
             #[cfg(feature = "diagram-state")]
@@ -140,6 +168,8 @@ impl<'a> AsciiDiagram<'a> {
             SemanticDiagramModel::Timeline(model) => Self::Timeline(model),
             #[cfg(feature = "diagram-tree-view")]
             SemanticDiagramModel::TreeView(model) => Self::TreeView(model),
+            #[cfg(feature = "diagram-usecase")]
+            SemanticDiagramModel::Usecase(model) => Self::Usecase(model),
             #[cfg(feature = "diagram-xychart")]
             SemanticDiagramModel::XyChart(model) => Self::XyChart {
                 model,
@@ -147,12 +177,22 @@ impl<'a> AsciiDiagram<'a> {
                     source.semantic_config,
                 ),
             },
+            #[cfg(feature = "diagram-zenuml")]
+            SemanticDiagramModel::Zenuml(model) => Self::Zenuml(model),
             _ => Self::Unsupported(source.diagram_type),
         })
     }
 
     pub fn kind(&self) -> &str {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(_) => "agentflow",
+            #[cfg(feature = "diagram-architecture")]
+            Self::Architecture(_) => "architecture",
+            #[cfg(feature = "diagram-block")]
+            Self::Block(_) => "block",
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(_) => "c4",
             #[cfg(feature = "diagram-class")]
             Self::Class(_) => "class",
             #[cfg(feature = "diagram-er")]
@@ -171,6 +211,10 @@ impl<'a> AsciiDiagram<'a> {
             Self::Mindmap(_) => "mindmap",
             #[cfg(feature = "diagram-packet")]
             Self::Packet(_) => "packet",
+            #[cfg(feature = "diagram-pie")]
+            Self::Pie(_) => "pie",
+            #[cfg(feature = "diagram-requirement")]
+            Self::Requirement(_) => "requirement",
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(_) => "sequence",
             #[cfg(feature = "diagram-state")]
@@ -179,14 +223,30 @@ impl<'a> AsciiDiagram<'a> {
             Self::Timeline(_) => "timeline",
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(_) => "treeView",
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(_) => "usecase",
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { .. } => "xychart",
+            #[cfg(feature = "diagram-zenuml")]
+            Self::Zenuml(_) => "zenuml",
             Self::Unsupported(kind) => kind,
         }
     }
 
-    pub(crate) fn complexity(&self) -> ModelComplexity {
-        match self {
+    pub(crate) fn complexity(
+        &self,
+        resources: &crate::resource::ResourceContext,
+    ) -> Result<ModelComplexity> {
+        let _ = resources;
+        Ok(match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-architecture")]
+            Self::Architecture(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-class")]
             Self::Class(model) => merman_model::families::class::class_topology_complexity(model),
             #[cfg(feature = "diagram-er")]
@@ -223,7 +283,7 @@ impl<'a> AsciiDiagram<'a> {
             #[cfg(feature = "diagram-gantt")]
             Self::Gantt(model) => model.complexity(),
             #[cfg(feature = "diagram-git-graph")]
-            Self::GitGraph(model) => ModelComplexity::from_serializable(model),
+            Self::GitGraph(model) => return crate::git_graph::complexity(model, resources),
             #[cfg(feature = "diagram-journey")]
             Self::Journey(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-kanban")]
@@ -232,6 +292,10 @@ impl<'a> AsciiDiagram<'a> {
             Self::Mindmap(model) => model.complexity(),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-pie")]
+            Self::Pie(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-requirement")]
+            Self::Requirement(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(model) => {
                 merman_model::resources::SequenceComplexity::from_model(model).as_model_complexity()
@@ -242,16 +306,28 @@ impl<'a> AsciiDiagram<'a> {
             Self::Timeline(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(model) => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(model) => ModelComplexity::from_serializable(model),
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { model, .. } => ModelComplexity::from_serializable(model),
+            #[cfg(feature = "diagram-zenuml")]
+            Self::Zenuml(model) => return crate::output::zenuml::complexity(model, resources),
             Self::Unsupported(_) => ModelComplexity::default(),
-        }
+        })
     }
 }
 
 impl Serialize for AsciiDiagram<'_> {
     fn serialize<S: Serializer>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error> {
         match self {
+            #[cfg(feature = "diagram-agentflow")]
+            Self::Agentflow(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-architecture")]
+            Self::Architecture(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-block")]
+            Self::Block(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-c4")]
+            Self::C4(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-class")]
             Self::Class(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-er")]
@@ -294,6 +370,10 @@ impl Serialize for AsciiDiagram<'_> {
             Self::Mindmap(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-packet")]
             Self::Packet(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-pie")]
+            Self::Pie(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-requirement")]
+            Self::Requirement(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-sequence")]
             Self::Sequence(model) => {
                 #[derive(Serialize)]
@@ -316,6 +396,8 @@ impl Serialize for AsciiDiagram<'_> {
             Self::Timeline(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-tree-view")]
             Self::TreeView(model) => model.serialize(serializer),
+            #[cfg(feature = "diagram-usecase")]
+            Self::Usecase(model) => model.serialize(serializer),
             #[cfg(feature = "diagram-xychart")]
             Self::XyChart { model, display } => {
                 #[derive(Serialize)]
@@ -326,6 +408,8 @@ impl Serialize for AsciiDiagram<'_> {
                 }
                 Projection { model, display }.serialize(serializer)
             }
+            #[cfg(feature = "diagram-zenuml")]
+            Self::Zenuml(model) => crate::output::zenuml::Projection(model).serialize(serializer),
             Self::Unsupported(kind) => {
                 let _ = serializer;
                 Err(serde::ser::Error::custom(format_args!(

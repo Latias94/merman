@@ -16,6 +16,7 @@ use crate::resource::ResourceContext;
 enum GraphNodeShapeProjection {
     Fixed(GraphNodeShape),
     Approximate(GraphNodeShape),
+    Annotated(&'static str),
     PerpendicularForkJoin,
     Unsupported,
 }
@@ -46,11 +47,16 @@ impl GraphNodeShapeDefinition {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct ResolvedGraphNodeShape {
     pub(super) shape: GraphNodeShape,
+    pub(super) annotation: Option<&'static str>,
     label_policy: GraphNodeLabelPolicy,
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl ResolvedGraphNodeShape {
+    pub(super) const fn suppresses_label(self) -> bool {
+        matches!(self.label_policy, GraphNodeLabelPolicy::Suppress)
+    }
+
     pub(super) fn projected_label(self, label: &str) -> &str {
         match self.label_policy {
             GraphNodeLabelPolicy::Preserve => label,
@@ -261,27 +267,116 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
         GraphNodeLabelPolicy::Preserve
     ),
     shape_definition!(
+        &["notch-rect", "card", "notched-rectangle"],
+        GraphNodeShapeProjection::Annotated("shape: card"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["hourglass", "collate"],
+        GraphNodeShapeProjection::Annotated("shape: hourglass"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["bolt", "com-link", "lightning-bolt"],
+        GraphNodeShapeProjection::Annotated("shape: communication link"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["brace", "brace-l", "comment"],
+        GraphNodeShapeProjection::Annotated("shape: left comment"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["brace-r"],
+        GraphNodeShapeProjection::Annotated("shape: right comment"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["braces"],
+        GraphNodeShapeProjection::Annotated("shape: paired comment"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["delay", "half-rounded-rectangle"],
+        GraphNodeShapeProjection::Annotated("shape: delay"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["lin-cyl", "disk", "lined-cylinder"],
+        GraphNodeShapeProjection::Annotated("shape: disk storage"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["curv-trap", "curved-trapezoid", "display"],
+        GraphNodeShapeProjection::Annotated("shape: display"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &[
+            "div-rect",
+            "div-proc",
+            "divided-rectangle",
+            "divided-process"
+        ],
+        GraphNodeShapeProjection::Annotated("shape: divided process"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["tri", "triangle", "extract"],
+        GraphNodeShapeProjection::Annotated("shape: extract"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["notch-pent", "notched-pentagon", "loop-limit"],
+        GraphNodeShapeProjection::Annotated("shape: loop limit"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["flip-tri", "flipped-triangle", "manual-file"],
+        GraphNodeShapeProjection::Annotated("shape: manual file"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["cross-circ", "crossed-circle", "summary"],
+        GraphNodeShapeProjection::Annotated("shape: summary"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["win-pane", "window-pane", "internal-storage"],
+        GraphNodeShapeProjection::Annotated("shape: internal storage"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["h-cyl", "horizontal-cylinder", "das"],
+        GraphNodeShapeProjection::Annotated("shape: direct access storage"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["cloud"],
+        GraphNodeShapeProjection::Annotated("shape: cloud"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["icon", "iconSquare", "iconCircle", "iconRounded"],
+        GraphNodeShapeProjection::Annotated("shape: icon"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
+        &["imageSquare"],
+        GraphNodeShapeProjection::Annotated("shape: image"),
+        GraphNodeLabelPolicy::Preserve
+    ),
+    shape_definition!(
         &[
             "anchor",
             "bang",
             "block_arrow",
-            "bolt",
-            "brace",
-            "brace-l",
-            "brace-r",
-            "braces",
             "browser",
             "bucket",
-            "card",
             "classBox",
-            "cloud",
             "collapsedGroup",
-            "collate",
             "composite",
-            "com-link",
-            "comment",
             "console",
-            "cross-circ",
             "bpmn-activity",
             "bpmn-annotation",
             "bpmn-boundary",
@@ -291,52 +386,16 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
             "bpmn-gateway",
             "bpmn-intermediate",
             "bpmn-start",
-            "crossed-circle",
-            "curv-trap",
-            "curved-trapezoid",
-            "das",
             "defaultMindmapNode",
-            "delay",
-            "disk",
             "directory",
-            "display",
-            "div-proc",
-            "div-rect",
-            "divided-process",
-            "divided-rectangle",
             "erBox",
-            "extract",
-            "flip-tri",
-            "flipped-triangle",
             "folder",
-            "h-cyl",
-            "half-rounded-rectangle",
-            "horizontal-cylinder",
-            "hourglass",
-            "icon",
-            "iconCircle",
-            "iconRounded",
-            "iconSquare",
-            "imageSquare",
-            "internal-storage",
             "kanbanItem",
-            "lightning-bolt",
-            "lin-cyl",
-            "lined-cylinder",
-            "loop-limit",
-            "manual-file",
             "mindmapCircle",
-            "notch-pent",
-            "notch-rect",
-            "notched-pentagon",
-            "notched-rectangle",
             "note",
             "person",
             "rectWithTitle",
             "requirementBox",
-            "summary",
-            "tri",
-            "triangle",
             "usecaseActor",
             "usecaseActorAwesome",
             "usecaseActorHollow",
@@ -344,8 +403,6 @@ const GRAPH_NODE_SHAPE_DEFINITIONS: &[GraphNodeShapeDefinition] = &[
             "usecaseBusiness",
             "usecaseEllipse",
             "usecaseJsonTable",
-            "win-pane",
-            "window-pane",
         ],
         GraphNodeShapeProjection::Unsupported,
         GraphNodeLabelPolicy::Preserve
@@ -368,9 +425,14 @@ pub(super) fn resolve_flowchart_node_shape(
             feature: "unknown flowchart node shapes",
         });
     };
+    let mut annotation = None;
     let shape = match definition.projection {
         GraphNodeShapeProjection::Fixed(shape) | GraphNodeShapeProjection::Approximate(shape) => {
             shape
+        }
+        GraphNodeShapeProjection::Annotated(cue) => {
+            annotation = Some(cue);
+            GraphNodeShape::Rect
         }
         GraphNodeShapeProjection::PerpendicularForkJoin => match direction.canonical() {
             GraphDirection::LeftRight => GraphNodeShape::ForkJoinVertical,
@@ -386,6 +448,7 @@ pub(super) fn resolve_flowchart_node_shape(
     };
     Ok(ResolvedGraphNodeShape {
         shape,
+        annotation,
         label_policy: definition.label_policy,
     })
 }

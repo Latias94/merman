@@ -12,6 +12,18 @@ use std::collections::BTreeMap;
 use std::io::{self, Write as IoWrite};
 use unicode_segmentation::UnicodeSegmentation;
 
+#[cfg(feature = "diagram-agentflow")]
+mod agentflow;
+#[cfg(feature = "diagram-architecture")]
+mod architecture;
+#[cfg(feature = "diagram-block")]
+mod block;
+#[cfg(feature = "diagram-c4")]
+mod c4;
+#[cfg(feature = "diagram-gantt")]
+pub(crate) mod gantt;
+#[cfg(feature = "diagram-git-graph")]
+pub(crate) mod git_graph;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
@@ -20,16 +32,45 @@ use unicode_segmentation::UnicodeSegmentation;
 mod graph;
 #[cfg(feature = "diagram-packet")]
 mod packet;
+#[cfg(feature = "diagram-pie")]
+mod pie;
 #[cfg(any(
     feature = "diagram-flowchart",
     feature = "diagram-state",
     feature = "diagram-swimlane",
     feature = "diagram-class",
-    feature = "diagram-er"
+    feature = "diagram-er",
+    feature = "diagram-usecase",
+    feature = "diagram-agentflow",
+    feature = "diagram-architecture",
+    feature = "diagram-pie",
+    feature = "diagram-requirement",
+    feature = "diagram-block",
+    feature = "diagram-c4",
+    feature = "diagram-gantt",
+    feature = "diagram-git-graph",
+    feature = "diagram-zenuml"
 ))]
 mod record;
 #[cfg(any(feature = "diagram-class", feature = "diagram-er"))]
 mod relation;
+#[cfg(feature = "diagram-requirement")]
+mod requirement;
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-architecture",
+    feature = "diagram-c4",
+    feature = "diagram-requirement",
+    feature = "diagram-pie",
+    feature = "diagram-zenuml",
+    feature = "diagram-gantt",
+    feature = "diagram-git-graph"
+))]
+mod retained;
+#[cfg(feature = "diagram-usecase")]
+mod usecase;
+#[cfg(feature = "diagram-zenuml")]
+pub(crate) mod zenuml;
 
 pub const ASCII_OUTPUT_SCHEMA_VERSION: u16 = 4;
 const EXTENT_CHECKPOINT_INTERVAL: usize = 64;
@@ -354,6 +395,59 @@ pub(crate) struct OutputMetrics {
     pub encoded_bytes: usize,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct RenderedPrimary {
+    pub text: String,
+    pub facts: PrimaryOutputFacts,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PrimaryDocument {
+    /// The renderer has admitted its document through the shared ledger.
+    Admitted,
+    /// A complete reading document preserves authored whitespace and commits on selection.
+    CompleteRecords,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PrimaryOutputFacts {
+    pub projection: AsciiProjection,
+    pub document: PrimaryDocument,
+}
+
+impl RenderedPrimary {
+    pub(crate) fn new(text: String, projection: AsciiProjection) -> Self {
+        Self {
+            text,
+            facts: PrimaryOutputFacts {
+                projection,
+                document: PrimaryDocument::Admitted,
+            },
+        }
+    }
+
+    #[cfg(any(
+        test,
+        feature = "diagram-agentflow",
+        feature = "diagram-architecture",
+        feature = "diagram-c4",
+        feature = "diagram-requirement",
+        feature = "diagram-pie",
+        feature = "diagram-zenuml",
+        feature = "diagram-gantt",
+        feature = "diagram-git-graph"
+    ))]
+    pub(crate) fn records(text: String, projection: AsciiProjection) -> Self {
+        Self {
+            text,
+            facts: PrimaryOutputFacts {
+                projection,
+                document: PrimaryDocument::CompleteRecords,
+            },
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct MeasuredOutput {
     text: String,
@@ -414,7 +508,7 @@ impl MeasuredOutput {
         ))
     }
 
-    pub(crate) fn admit_fallback(&self, execution: AsciiExecution<'_>) -> Result<()> {
+    pub(crate) fn admit_document(&self, execution: AsciiExecution<'_>) -> Result<()> {
         let resources = execution.new_resource_context(OperationPhase::Emit);
         resources.transaction(|resources| {
             resources.charge_document_cells(self.metrics.document_cells)?;
@@ -737,7 +831,7 @@ fn finalize_fallback(
             OverflowPolicy::Allow => {}
         }
     }
-    emitted.admit_fallback(execution)?;
+    emitted.admit_document(execution)?;
     execution.checkpoint(OperationPhase::Emit)?;
     Ok(assemble_output(
         OutputAssembly {
@@ -820,7 +914,7 @@ fn assemble_output(assembly: OutputAssembly<'_>, context: OutputBuildContext<'_>
 /// This path is intentionally model-only: it never reparses Mermaid source and never truncates
 /// authored values. Graph families use keyed entities and relationships; other families retain
 /// their field projection. Both use the same grapheme-safe writer and operation ledger.
-#[cfg(test)]
+#[cfg(all(test, any(feature = "diagram-flowchart", feature = "diagram-sequence")))]
 pub(crate) fn build_semantic_fallback(
     model: &AsciiDiagram<'_>,
     metadata: AsciiSourceContext<'_>,
@@ -915,6 +1009,31 @@ fn build_semantic_document(
             },
         })?;
     let mut fallback = SemanticFallbackWriter::new(execution, max_width, profile);
+    let retains_projection = match model {
+        #[cfg(feature = "diagram-agentflow")]
+        AsciiDiagram::Agentflow(_) => true,
+        #[cfg(feature = "diagram-architecture")]
+        AsciiDiagram::Architecture(_) => true,
+        #[cfg(feature = "diagram-requirement")]
+        AsciiDiagram::Requirement(_) => true,
+        #[cfg(feature = "diagram-c4")]
+        AsciiDiagram::C4(_) => true,
+        #[cfg(feature = "diagram-pie")]
+        AsciiDiagram::Pie(_) => true,
+        #[cfg(feature = "diagram-zenuml")]
+        AsciiDiagram::Zenuml(_) => true,
+        #[cfg(feature = "diagram-gantt")]
+        AsciiDiagram::Gantt(_) => true,
+        #[cfg(feature = "diagram-git-graph")]
+        AsciiDiagram::GitGraph(_) => true,
+        _ => false,
+    };
+    if retains_projection {
+        fallback.candidate_resources = fallback
+            .candidate_resources
+            .clone()
+            .with_additional_retained_output(projection.len())?;
+    }
     fallback.push(format!("family: {family}"))?;
     #[cfg(any(
         feature = "diagram-flowchart",
@@ -936,10 +1055,66 @@ fn build_semantic_document(
     let packet_document = packet::write_if_packet(model, &projection, &mut fallback)?;
     #[cfg(not(feature = "diagram-packet"))]
     let packet_document = false;
-    if !graph_document && !relation_document && !packet_document {
+    #[cfg(feature = "diagram-pie")]
+    let pie_document = pie::write_if_pie(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-pie"))]
+    let pie_document = false;
+    #[cfg(feature = "diagram-usecase")]
+    let usecase_document = usecase::write_if_usecase(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-usecase"))]
+    let usecase_document = false;
+    #[cfg(feature = "diagram-block")]
+    let block_document = block::write_if_block(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-block"))]
+    let block_document = false;
+    #[cfg(feature = "diagram-agentflow")]
+    let agentflow_document = agentflow::write_if_agentflow(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-agentflow"))]
+    let agentflow_document = false;
+    #[cfg(feature = "diagram-architecture")]
+    let architecture_document =
+        architecture::write_if_architecture(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-architecture"))]
+    let architecture_document = false;
+    #[cfg(feature = "diagram-requirement")]
+    let requirement_document =
+        requirement::write_if_requirement(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-requirement"))]
+    let requirement_document = false;
+    #[cfg(feature = "diagram-c4")]
+    let c4_document = c4::write_if_c4(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-c4"))]
+    let c4_document = false;
+    #[cfg(feature = "diagram-zenuml")]
+    let zenuml_document = zenuml::write_if_zenuml(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-zenuml"))]
+    let zenuml_document = false;
+    #[cfg(feature = "diagram-gantt")]
+    let gantt_document = gantt::write_if_gantt(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-gantt"))]
+    let gantt_document = false;
+    #[cfg(feature = "diagram-git-graph")]
+    let git_graph_document = git_graph::write_if_git_graph(model, &projection, &mut fallback)?;
+    #[cfg(not(feature = "diagram-git-graph"))]
+    let git_graph_document = false;
+    if !graph_document
+        && !relation_document
+        && !packet_document
+        && !pie_document
+        && !usecase_document
+        && !block_document
+        && !agentflow_document
+        && !architecture_document
+        && !requirement_document
+        && !c4_document
+        && !zenuml_document
+        && !gantt_document
+        && !git_graph_document
+    {
         flatten_serialized_json("model", &projection, &mut fallback)?;
     }
     let candidate = fallback.finish();
+    drop(projection);
     // Semantic records have no trailing canvas padding. Row suffixes can contain authored
     // whitespace in a wrapped field, so trimming them would make the projection lossy.
     let context = OutputBuildContext {
@@ -956,16 +1131,29 @@ fn build_semantic_document(
     )
 }
 
+/// Composes complete family-owned records and an optional indivisible spatial overview.
+#[cfg(any(
+    feature = "diagram-agentflow",
+    feature = "diagram-architecture",
+    feature = "diagram-c4",
+    feature = "diagram-requirement",
+    feature = "diagram-pie",
+    feature = "diagram-zenuml",
+    feature = "diagram-gantt",
+    feature = "diagram-git-graph"
+))]
+pub(crate) use retained::render_primary as render_reading_primary;
+
 /// Admits authored model and source-config depth before streaming their borrowed fields.
-fn preflight_semantic_model(
+pub(crate) fn preflight_semantic_model(
     model: &AsciiDiagram<'_>,
     source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
 ) -> Result<()> {
     execution.checkpoint(OperationPhase::Semantic)?;
-    let complexity = model.complexity();
-    let config = merman_model::resources::ModelComplexity::from_json(source.config.as_value());
     let resources = execution.new_resource_context(OperationPhase::Semantic);
+    let complexity = model.complexity(&resources)?;
+    let config = merman_model::resources::ModelComplexity::from_json(source.config.as_value());
     resources.check_nesting_depth(complexity.nesting_depth)?;
     resources.check_nesting_depth(config.nesting_depth)?;
     resources.check(AsciiResourceLimitId::MaxOutputBytes, complexity.text_bytes)?;
@@ -1004,6 +1192,35 @@ fn semantic_fallback_projection(
     metadata: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
 ) -> std::result::Result<Vec<u8>, SemanticFallbackError> {
+    #[cfg(feature = "diagram-zenuml")]
+    if let AsciiDiagram::Zenuml(model) = model {
+        #[derive(Serialize)]
+        struct Envelope<'a, 'model> {
+            #[serde(flatten)]
+            model: &'a zenuml::ControlledProjection<'model, 'a>,
+            #[serde(rename = "type")]
+            diagram_type: &'a str,
+            #[serde(rename = "sourceConfig")]
+            source_config: &'a Value,
+            #[serde(rename = "sourceTitle")]
+            source_title: Option<&'a str>,
+        }
+        let resources = execution.new_resource_context(OperationPhase::Semantic);
+        let projection = zenuml::ControlledProjection::new(model, &resources);
+        let result = serialize_bounded_json(
+            &Envelope {
+                model: &projection,
+                diagram_type: metadata.diagram_type,
+                source_config: metadata.config.as_value(),
+                source_title: metadata.title,
+            },
+            execution,
+        );
+        if let Some(error) = projection.take_error() {
+            return Err(map_semantic_fallback_error(error));
+        }
+        return result;
+    }
     let tag = match model {
         #[cfg(feature = "diagram-class")]
         AsciiDiagram::Class(_) => None,
@@ -1148,12 +1365,12 @@ impl<'a> SemanticFallbackWriter<'a> {
         }
     }
 
-    fn push(&mut self, line: String) -> Result<()> {
+    fn push(&mut self, line: impl AsRef<str>) -> Result<()> {
         let (mut width, mut has_content) = self.begin_line()?;
         let mut emit_resources = self.emit_resources.clone();
         crate::safe_text::visit_safe_line_fragments(
             &mut emit_resources,
-            &line,
+            line.as_ref(),
             self.profile,
             |fragment, fragment_width, fragment_grapheme_bytes| {
                 self.push_wrapped_fragment(
@@ -1638,6 +1855,7 @@ pub(crate) fn projection_for(capability: Option<crate::AsciiCapability>) -> Asci
 mod tests {
     use super::*;
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-sequence"))]
     fn build_semantic_fallback(
         model: &merman_model::presentation::RenderSemanticModel,
         metadata: &merman_model::presentation::PresentationMetadata,
@@ -1652,6 +1870,11 @@ mod tests {
         )
     }
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-sequence"
+    ))]
     fn preflight_semantic_model(
         model: &merman_model::presentation::RenderSemanticModel,
         execution: AsciiExecution<'_>,
@@ -1669,6 +1892,7 @@ mod tests {
         )
     }
 
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-sequence"))]
     fn semantic_fallback_projection(
         model: &merman_model::presentation::RenderSemanticModel,
         metadata: &merman_model::presentation::PresentationMetadata,
@@ -1878,7 +2102,7 @@ mod tests {
         assert_eq!(capability.diagram_type, "gitgraph");
         assert_eq!(
             projection_for(Some(capability)),
-            AsciiProjection::StructuredText
+            AsciiProjection::Diagrammatic
         );
         assert!(capability.structured_text_fallback);
     }
@@ -1978,7 +2202,7 @@ mod tests {
             SemanticFallbackWriter::new(exact_execution, 80, TerminalWidthProfile::Unicode);
 
         exact
-            .push(authored.to_string())
+            .push(authored)
             .expect("the exact normalized output-byte boundary should succeed");
         assert_eq!(exact.finish().into_text(), expected);
 
@@ -1990,7 +2214,7 @@ mod tests {
             SemanticFallbackWriter::new(below_execution, 80, TerminalWidthProfile::Unicode);
 
         let error = below
-            .push(authored.to_string())
+            .push(authored)
             .expect_err("the N-1 normalized output-byte boundary should fail");
         assert!(matches!(
             error,
@@ -2008,7 +2232,7 @@ mod tests {
         let mut fallback = SemanticFallbackWriter::new(execution, 8, TerminalWidthProfile::Unicode);
 
         fallback
-            .push("a\u{202e}b".to_string())
+            .push("a\u{202e}b")
             .expect("terminal-safe fallback should render");
 
         assert_eq!(fallback.finish().into_text(), "a\n\\u{202E}\nb");
@@ -2315,7 +2539,9 @@ mod tests {
             nested = Value::Array(vec![nested]);
         }
         let model = flowchart_model_with_subgraph_metadata(nested);
-        let complexity = crate::full_test_support::view(&model).complexity();
+        let complexity = crate::full_test_support::view(&model)
+            .complexity(&ResourceContext::new(crate::AsciiResourcePolicy::default()))
+            .unwrap();
         assert!(complexity.nesting_depth >= 299);
 
         let exact_policy = crate::AsciiResourcePolicy::unbounded()
