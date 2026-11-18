@@ -196,6 +196,7 @@ fn sanitize_style_elements_with_admission<E>(
         if let Some(logical_css) =
             decode_xml_style_text_with_checkpoints(&svg[content_start..close.start()], checkpoint)?
         {
+            let logical_css = normalize_stylesheet_line_endings(&logical_css, checkpoint)?;
             let sanitized = sanitize_css_with_checkpoints(&logical_css, checkpoint)?;
             let mut encoded_len = 0usize;
             for (index, character) in sanitized.chars().enumerate() {
@@ -235,6 +236,35 @@ fn sanitize_style_elements_with_admission<E>(
     out.push_str(&svg[cursor..]);
     checkpoint()?;
     Ok(out)
+}
+
+fn normalize_stylesheet_line_endings<'a, E>(
+    css: &'a str,
+    checkpoint: &mut impl FnMut() -> std::result::Result<(), E>,
+) -> std::result::Result<Cow<'a, str>, E> {
+    let mut normalized = None;
+    let mut retained_start = 0;
+    for (index, byte) in css.bytes().enumerate() {
+        checkpoint_loop(index, checkpoint)?;
+        if byte != b'\r' {
+            continue;
+        }
+
+        let output = normalized.get_or_insert_with(|| String::with_capacity(css.len()));
+        output.push_str(&css[retained_start..index]);
+        output.push('\n');
+        retained_start = index + 1;
+        if css.as_bytes().get(retained_start) == Some(&b'\n') {
+            retained_start += 1;
+        }
+    }
+    checkpoint()?;
+
+    let Some(mut normalized) = normalized else {
+        return Ok(Cow::Borrowed(css));
+    };
+    normalized.push_str(&css[retained_start..]);
+    Ok(Cow::Owned(normalized))
 }
 
 #[cfg(test)]

@@ -1888,6 +1888,27 @@ mod tests {
     }
 
     #[test]
+    fn resvg_safe_finalization_normalizes_stylesheet_line_endings_once() {
+        let session = render_session();
+        for line_ending in ["&#13;", "&#xD;&#10;", "\r", "\r\n"] {
+            let svg = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg"><style>.outer{line_ending}.inner{{font-family:"A&amp;B";fill:red;}}</style></svg>"#
+            );
+            let once = super::finalize_resvg_svg(&svg, &session).unwrap();
+            let twice = super::finalize_resvg_svg(once.as_str(), &session).unwrap();
+
+            assert_eq!(twice.as_str(), once.as_str(), "line ending {line_ending:?}");
+            assert!(!once.as_str().contains('\r'), "line ending {line_ending:?}");
+            let document = crate::xml_dom::Document::parse(once.as_str()).unwrap();
+            let css = document
+                .descendants()
+                .find(|node| node.has_tag_name("style"))
+                .and_then(|node| node.text());
+            assert_eq!(css, Some(".outer\n.inner{font-family:\"A&B\";fill:red;}"));
+        }
+    }
+
+    #[test]
     fn resvg_safe_pipeline_bounds_css_nesting_on_a_small_thread_stack() {
         const CSS_NESTING_LIMIT: usize = 64;
 
