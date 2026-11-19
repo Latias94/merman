@@ -181,10 +181,10 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
     )
 }
 
-fn projected_flowchart_edges(
-    model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderContext,
-) -> Vec<(usize, FlowEdge)> {
+fn projected_flowchart_edges<'a>(
+    model: &'a FlowchartModel,
+    render_label_sources: &'a FlowchartRenderContext,
+) -> Vec<(usize, super::ProjectedFlowchartEdge<'a>)> {
     model
         .edges
         .iter()
@@ -222,14 +222,14 @@ fn bind_flowchart_elk_transport_ids(
         projected_edges.iter().map(|(semantic_index, edge)| {
             (
                 crate::flowchart::FlowchartEdgeKey::new(*semantic_index),
-                edge,
+                edge.semantic,
             )
         }),
     );
     for (transport, (semantic_index, projected)) in
         graph.edges.iter_mut().zip(projected_edges.iter())
     {
-        if transport.id != projected.id
+        if transport.id != projected.semantic.id
             || transport.source != projected.from
             || transport.target != projected.to
         {
@@ -568,10 +568,10 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
         });
         out_edges.push(LayoutEdge {
             id: semantic_edge.id.clone(),
-            from: projected_edge.from.clone(),
-            to: projected_edge.to.clone(),
-            from_cluster: endpoint_cluster(projected_edge.from.as_str(), &layout_node_by_id),
-            to_cluster: endpoint_cluster(projected_edge.to.as_str(), &layout_node_by_id),
+            from: projected_edge.from.to_owned(),
+            to: projected_edge.to.to_owned(),
+            from_cluster: endpoint_cluster(projected_edge.from, &layout_node_by_id),
+            to_cluster: endpoint_cluster(projected_edge.to, &layout_node_by_id),
             points,
             label,
             start_label_left: None,
@@ -1090,8 +1090,9 @@ fn project_collapsed_flowchart_model(
         .iter()
         .enumerate()
         .filter_map(|(owner_index, edge)| {
-            super::project_flowchart_edge(edge, render_label_sources).inspect(|_| {
+            super::project_flowchart_edge(edge, render_label_sources).map(|projected| {
                 edge_owner_indices.push(owner_index);
+                projected.into_render_edge().into_owned()
             })
         })
         .collect();
@@ -2291,6 +2292,7 @@ A --> B
 end
 Hidden@{ view: collapsed }
 C["$$x$$"] -->|"$$x$$"| D
+A -->|boundary| D
 "#,
                 merman_core::ParseOptions::default(),
             )
@@ -2307,6 +2309,24 @@ C["$$x$$"] -->|"$$x$$"| D
             .iter()
             .position(|edge| edge.from == "C" && edge.to == "D")
             .unwrap();
+        let render_context = parsed.render_context().flowchart_render_context().unwrap();
+        let mut projected_edges = projected_flowchart_edges(model, render_context).into_iter();
+        let (owner_index, unchanged) = projected_edges.next().expect("unchanged edge");
+        assert_eq!(owner_index, edge_index);
+        assert!(matches!(
+            unchanged.into_render_edge(),
+            std::borrow::Cow::Borrowed(edge) if std::ptr::eq(edge, &model.edges[owner_index])
+        ));
+        let (owner_index, boundary) = projected_edges.next().expect("boundary edge");
+        let semantic = &model.edges[owner_index];
+        assert_eq!((semantic.from.as_str(), semantic.to.as_str()), ("A", "D"));
+        assert!(std::ptr::eq(boundary.semantic, semantic));
+        assert_eq!((boundary.from, boundary.to), ("Hidden", "D"));
+        assert!(matches!(
+            boundary.into_render_edge(),
+            std::borrow::Cow::Owned(edge) if edge.from == "Hidden" && edge.to == "D"
+        ));
+        assert!(projected_edges.next().is_none());
         let config = crate::test_support::presentation_config(
             json!({"htmlLabels":true, "flowchart":{"htmlLabels":true}}),
         );
@@ -2328,7 +2348,7 @@ C["$$x$$"] -->|"$$x$$"| D
         .unwrap();
         let graph = build_flowchart_elk_graph_with_render_labels_and_work_control(
             model,
-            parsed.render_context().flowchart_render_context().unwrap(),
+            render_context,
             &config,
             &measurer,
             None,
@@ -2342,6 +2362,13 @@ C["$$x$$"] -->|"$$x$$"| D
                 .nodes
                 .iter()
                 .any(|node| node.id == "A" || node.id == "B")
+        );
+        assert_eq!(graph.edges.len(), 2);
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|edge| edge.source == "Hidden" && edge.target == "D")
         );
         assert_eq!(
             graph
