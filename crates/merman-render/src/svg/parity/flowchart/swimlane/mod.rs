@@ -305,7 +305,9 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     work_meter: &crate::resources::OperationWorkMeter,
     uses_elk_adapter_dom: bool,
 ) -> Result<()> {
-    use crate::svg::parity::line_hops::{LineHopConfig, LineHopEdge, LineHopStyle};
+    use crate::svg::parity::line_hops::{
+        LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops, line_hop_overrides,
+    };
 
     let line_hops_value = effective_config
         .as_value()
@@ -324,16 +326,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
         LineHopStyle::Arc
     };
 
-    struct OwnedLineHopEdge<'a> {
-        key: crate::flowchart::FlowchartEdgeKey,
-        adapter_id: String,
-        semantic: &'a crate::flowchart::FlowEdge,
-        points: Vec<crate::model::LayoutPoint>,
-        arrow_type_start: Option<&'static str>,
-        arrow_type_end: Option<&'static str>,
-    }
-
-    let clone_work_units = render_edges
+    let preparation_work = render_edges
         .iter()
         .filter_map(|edge| {
             edge_path_cache
@@ -341,78 +334,53 @@ pub(super) fn apply_line_hops_to_edge_geometries(
                 .map(|entry| entry.geom.data_points.len().saturating_add(1))
         })
         .fold(0usize, usize::saturating_add);
-    work_meter.charge(clone_work_units)?;
+    work_meter.charge(preparation_work)?;
 
     let transport_plan = crate::flowchart::FlowchartEdgeTransportPlan::for_keyed_edges(
         render_edges
             .iter()
             .map(|edge| (edge.key, edge.edge.as_ref())),
     );
-    let owned_edges: Vec<_> = render_edges
+    let (edge_keys, edges): (Vec<_>, Vec<_>) = render_edges
         .iter()
         .filter_map(|edge| {
             let semantic = edge.edge.as_ref();
             let cache_entry = edge_path_cache.get(&edge.key)?;
-            let adapter_id = transport_plan.id(edge.key)?.to_string();
+            let id = transport_plan.id(edge.key)?;
             let (arrow_type_start, arrow_type_end) =
                 super::edge_geom::arrow_types_for_edge(semantic.edge_type.as_deref());
-            Some(OwnedLineHopEdge {
-                key: edge.key,
-                adapter_id,
-                semantic,
-                points: cache_entry.geom.data_points.clone(),
-                arrow_type_start,
-                arrow_type_end,
-            })
+            Some((
+                edge.key,
+                LineHopEdge {
+                    id,
+                    points: &cache_entry.geom.data_points,
+                    curve: if uses_elk_adapter_dom {
+                        Some("rounded")
+                    } else {
+                        semantic.interpolate.as_deref()
+                    },
+                    arrow_type_start,
+                    arrow_type_end,
+                },
+            ))
         })
-        .collect();
-    let edge_key_by_id: FxHashMap<&str, crate::flowchart::FlowchartEdgeKey> = owned_edges
-        .iter()
-        .map(|edge| (edge.adapter_id.as_str(), edge.key))
-        .collect();
-    let edges: Vec<_> = owned_edges
-        .iter()
-        .map(|edge| LineHopEdge {
-            id: edge.adapter_id.as_str(),
-            points: &edge.points,
-            curve: if uses_elk_adapter_dom {
-                Some("rounded")
-            } else {
-                edge.semantic.interpolate.as_deref()
-            },
-            arrow_type_start: edge.arrow_type_start,
-            arrow_type_end: edge.arrow_type_end,
-        })
-        .collect();
+        .unzip();
 
-    let paths = crate::svg::parity::line_hops::process_edges_with_line_hops(
+    let paths = line_hop_overrides(
         &edges,
         LineHopConfig {
-            enabled: true,
             jump_radius: 6.0,
             jump_style,
         },
+        curve_supports_line_hops,
         work_meter,
     )?;
 
-    for path in paths {
-        if !path.was_rewritten
-            || !edges
-                .iter()
-                .find(|edge| edge.id == path.edge_id)
-                .is_some_and(|edge| {
-                    crate::svg::parity::line_hops::curve_supports_line_hops(edge.curve)
-                })
-        {
-            continue;
-        }
-        let Some(key) = edge_key_by_id.get(path.edge_id).copied() else {
+    for (index, path) in paths {
+        let Some(cache_entry) = edge_path_cache.get_mut(&edge_keys[index]) else {
             continue;
         };
-        let Some(cache_entry) = edge_path_cache.get_mut(&key) else {
-            continue;
-        };
-        cache_entry.geom.d = path.path;
+        cache_entry.geom.d = path;
         cache_entry.geom.pb = svg_path_bounds_from_d(&cache_entry.geom.d);
         cache_entry.geom.path_length = svg_path_length_from_d(&cache_entry.geom.d);
         cache_entry.geom.line_hop_applied = true;
