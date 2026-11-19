@@ -16,7 +16,7 @@ categories = ["parser-implementations", "visualization"]
 artifact-profile-required = true
 
 [features]
-presentation = ["merman-markup/color", "merman-model/presentation-data"]
+presentation = ["merman-markup/color", "merman-model/presentation-data", "serde_json/raw_value"]
 editor-facts = ["granit-parser/comments"]
 compat-json = ["presentation", "merman-model/compat-json"]
 terminal-text = ["merman-model/terminal-text"]
