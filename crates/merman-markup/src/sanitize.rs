@@ -2,7 +2,6 @@ use crate::generated::dompurify_defaults;
 use merman_model::config::MermaidConfig;
 mod fragment;
 use std::collections::HashSet;
-use std::sync::OnceLock;
 
 /// Failure produced by the shared sanitizer pipeline.
 ///
@@ -250,46 +249,6 @@ fn owned_output<S: SanitizeOutputSink>(
     Ok(out)
 }
 
-fn default_allowed_tags() -> &'static HashSet<&'static str> {
-    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
-    SET.get_or_init(|| {
-        dompurify_defaults::DEFAULT_ALLOWED_TAGS
-            .iter()
-            .copied()
-            .collect()
-    })
-}
-
-fn default_allowed_attr() -> &'static HashSet<&'static str> {
-    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
-    SET.get_or_init(|| {
-        dompurify_defaults::DEFAULT_ALLOWED_ATTR
-            .iter()
-            .copied()
-            .collect()
-    })
-}
-
-fn default_uri_safe_attr() -> &'static HashSet<&'static str> {
-    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
-    SET.get_or_init(|| {
-        dompurify_defaults::DEFAULT_URI_SAFE_ATTRIBUTES
-            .iter()
-            .copied()
-            .collect()
-    })
-}
-
-fn default_data_uri_tags() -> &'static HashSet<&'static str> {
-    static SET: OnceLock<HashSet<&'static str>> = OnceLock::new();
-    SET.get_or_init(|| {
-        dompurify_defaults::DEFAULT_DATA_URI_TAGS
-            .iter()
-            .copied()
-            .collect()
-    })
-}
-
 fn is_dompurify_data_attr_name(name: &str) -> bool {
     let Some(rest) = name.strip_prefix("data-") else {
         return false;
@@ -481,20 +440,55 @@ fn is_js_regex_word_byte(byte: u8) -> bool {
     byte.is_ascii_alphanumeric() || byte == b'_'
 }
 
+/// Generated default vocabularies are sorted and immutable; only explicit configuration owns names.
+#[derive(Debug, Clone)]
+enum DompurifyNames {
+    Static(&'static [&'static str]),
+    Configured(HashSet<String>),
+}
+
+impl DompurifyNames {
+    fn contains(&self, name: &str) -> bool {
+        match self {
+            Self::Static(names) => names.binary_search(&name).is_ok(),
+            Self::Configured(names) => names.contains(name),
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 struct DompurifyEffectiveConfig {
-    allowed_tags: HashSet<String>,
-    allowed_attr: HashSet<String>,
-    uri_safe_attr: HashSet<String>,
-    data_uri_tags: HashSet<String>,
-    forbid_tags: HashSet<String>,
-    forbid_attr: HashSet<String>,
-    forbid_contents: HashSet<String>,
+    allowed_tags: DompurifyNames,
+    allowed_attr: DompurifyNames,
+    uri_safe_attr: DompurifyNames,
+    data_uri_tags: DompurifyNames,
+    forbid_tags: DompurifyNames,
+    forbid_attr: DompurifyNames,
+    forbid_contents: DompurifyNames,
     allow_aria_attr: bool,
     allow_data_attr: bool,
     allow_unknown_protocols: bool,
     keep_content: bool,
     safe_for_xml: bool,
+}
+
+impl DompurifyEffectiveConfig {
+    fn unconfigured(forbid_style: bool) -> Self {
+        Self {
+            allowed_tags: DompurifyNames::Static(dompurify_defaults::DEFAULT_ALLOWED_TAGS),
+            allowed_attr: DompurifyNames::Static(dompurify_defaults::DEFAULT_ALLOWED_ATTR),
+            uri_safe_attr: DompurifyNames::Static(dompurify_defaults::DEFAULT_URI_SAFE_ATTRIBUTES),
+            data_uri_tags: DompurifyNames::Static(dompurify_defaults::DEFAULT_DATA_URI_TAGS),
+            forbid_tags: DompurifyNames::Static(if forbid_style { &["style"] } else { &[] }),
+            forbid_attr: DompurifyNames::Static(&[]),
+            forbid_contents: DompurifyNames::Static(dompurify_defaults::DEFAULT_FORBID_CONTENTS),
+            allow_aria_attr: true,
+            allow_data_attr: true,
+            allow_unknown_protocols: false,
+            keep_content: true,
+            safe_for_xml: true,
+        }
+    }
 }
 
 fn dompurify_config_object(
@@ -528,6 +522,9 @@ fn dompurify_effective_config(
     forbid_style_when_unconfigured: bool,
 ) -> DompurifyEffectiveConfig {
     let dompurify_cfg = dompurify_config_object(config);
+    if dompurify_cfg.is_none() {
+        return DompurifyEffectiveConfig::unconfigured(forbid_style_when_unconfigured);
+    }
 
     let allow_aria_attr = dompurify_cfg
         .and_then(|o| o.get("ALLOW_ARIA_ATTR"))
@@ -558,7 +555,7 @@ fn dompurify_effective_config(
             .into_iter()
             .collect()
     } else {
-        default_allowed_tags()
+        dompurify_defaults::DEFAULT_ALLOWED_TAGS
             .iter()
             .map(|s| s.to_string())
             .collect()
@@ -581,7 +578,7 @@ fn dompurify_effective_config(
             .into_iter()
             .collect()
     } else {
-        default_allowed_attr()
+        dompurify_defaults::DEFAULT_ALLOWED_ATTR
             .iter()
             .map(|s| s.to_string())
             .collect()
@@ -591,7 +588,7 @@ fn dompurify_effective_config(
         allowed_attr.insert(a);
     }
 
-    let mut uri_safe_attr: HashSet<String> = default_uri_safe_attr()
+    let mut uri_safe_attr: HashSet<String> = dompurify_defaults::DEFAULT_URI_SAFE_ATTRIBUTES
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -599,7 +596,7 @@ fn dompurify_effective_config(
         uri_safe_attr.insert(a);
     }
 
-    let mut data_uri_tags: HashSet<String> = default_data_uri_tags()
+    let mut data_uri_tags: HashSet<String> = dompurify_defaults::DEFAULT_DATA_URI_TAGS
         .iter()
         .map(|s| s.to_string())
         .collect();
@@ -611,10 +608,6 @@ fn dompurify_effective_config(
         dompurify_extract_string_list(dompurify_cfg, "FORBID_TAGS")
             .into_iter()
             .collect();
-
-    if forbid_style_when_unconfigured && dompurify_cfg.is_none() {
-        forbid_tags.insert("style".to_string());
-    }
 
     // DOMPurify inserts the HTML5 parser's implicit `tbody` whenever tables are
     // allowed and removes `tbody` from FORBID_TAGS at the same time. Keeping the
@@ -650,13 +643,13 @@ fn dompurify_effective_config(
     ));
 
     DompurifyEffectiveConfig {
-        allowed_tags,
-        allowed_attr,
-        uri_safe_attr,
-        data_uri_tags,
-        forbid_tags,
-        forbid_attr,
-        forbid_contents,
+        allowed_tags: DompurifyNames::Configured(allowed_tags),
+        allowed_attr: DompurifyNames::Configured(allowed_attr),
+        uri_safe_attr: DompurifyNames::Configured(uri_safe_attr),
+        data_uri_tags: DompurifyNames::Configured(data_uri_tags),
+        forbid_tags: DompurifyNames::Configured(forbid_tags),
+        forbid_attr: DompurifyNames::Configured(forbid_attr),
+        forbid_contents: DompurifyNames::Configured(forbid_contents),
         allow_aria_attr,
         allow_data_attr,
         allow_unknown_protocols,
@@ -785,10 +778,7 @@ fn try_remove_script<S: SanitizeOutputSink>(
     if text.is_empty() || !text.contains('<') {
         return owned_output(text, sink);
     }
-    let cfg = dompurify_effective_config(
-        &MermaidConfig::from_value(serde_json::Value::Object(serde_json::Map::new())),
-        false,
-    );
+    let cfg = DompurifyEffectiveConfig::unconfigured(false);
     dompurify_like_sanitize_html(text, &cfg, sink)
 }
 
@@ -1022,6 +1012,88 @@ mod tests {
             "securityLevel": "strict",
             "flowchart": { "htmlLabels": true }
         }))
+    }
+
+    #[test]
+    fn default_policy_vocabulary_is_sorted_and_keeps_implicit_tbody() {
+        for names in [
+            dompurify_defaults::DEFAULT_ALLOWED_TAGS,
+            dompurify_defaults::DEFAULT_ALLOWED_ATTR,
+            dompurify_defaults::DEFAULT_URI_SAFE_ATTRIBUTES,
+            dompurify_defaults::DEFAULT_DATA_URI_TAGS,
+            dompurify_defaults::DEFAULT_FORBID_CONTENTS,
+        ] {
+            assert!(names.windows(2).all(|pair| pair[0] < pair[1]));
+        }
+        let cfg = DompurifyEffectiveConfig::unconfigured(false);
+        assert!(!cfg.allowed_tags.contains("table") || cfg.allowed_tags.contains("tbody"));
+    }
+
+    #[test]
+    fn default_policy_preserves_the_config_object_and_style_stage_boundaries() {
+        for value in [
+            json!({}),
+            json!({"dompurifyConfig": null}),
+            json!({"dompurifyConfig": false}),
+            json!({"dompurifyConfig": 1}),
+            json!({"dompurifyConfig": "default"}),
+            json!({"dompurifyConfig": []}),
+            json!({"dompurifyConfig": {}}),
+        ] {
+            let configured = value["dompurifyConfig"].is_object();
+            let config = MermaidConfig::from_value(value);
+            for forbid_style in [false, true] {
+                let cfg = dompurify_effective_config(&config, forbid_style);
+                assert_eq!(
+                    cfg.forbid_tags.contains("style"),
+                    forbid_style && !configured
+                );
+                assert!(cfg.allowed_tags.contains("style"));
+                assert!(cfg.allowed_tags.contains("tbody"));
+                assert!(cfg.allowed_attr.contains("style"));
+                assert!(cfg.uri_safe_attr.contains("style"));
+                assert!(cfg.data_uri_tags.contains("img"));
+                assert!(cfg.forbid_contents.contains("script"));
+                assert!(!cfg.forbid_attr.contains("style"));
+                assert!(cfg.allow_aria_attr && cfg.allow_data_attr);
+                assert!(!cfg.allow_unknown_protocols);
+                assert!(cfg.keep_content && cfg.safe_for_xml);
+            }
+        }
+    }
+
+    #[test]
+    fn borrowed_default_policy_matches_explicit_owned_policy_at_both_stages() {
+        for forbid_style in [false, true] {
+            let configured = MermaidConfig::from_value(json!({
+                "dompurifyConfig": {
+                    "FORBID_TAGS": if forbid_style { vec!["style"] } else { vec![] }
+                }
+            }));
+            let borrowed = DompurifyEffectiveConfig::unconfigured(forbid_style);
+            let owned = dompurify_effective_config(&configured, true);
+            for input in [
+                "<p>Is it?</p>",
+                "<style>p{color:red}</style><p style='color:red'>two<br>lines</p>",
+                "<table><tr><td>one",
+                "<b><i>one</b>two</i>",
+                "<template><img src=x onerror=alert(1)></template>",
+                "<svg><a xlink:href='javascript:alert(1)'>x</a></svg>",
+                "<a href='https://example.test' target='_blank'>ok</a>",
+                "<img src='data:image/png;base64,AAA' data-x='ok' aria-label='ok'>",
+                "<span data-merman-math-native='v1' title='--&gt;'>x</span>",
+                "<math><mi>中文 &#x1f600; &amp;</mi></math>",
+                "<custom><script>bad</script>content</custom>",
+            ] {
+                for output in [fragment::Output::Html, fragment::Output::Xhtml] {
+                    assert_eq!(
+                        fragment::sanitize(input, &borrowed, &StringOutputSink, output),
+                        fragment::sanitize(input, &owned, &StringOutputSink, output),
+                        "forbid_style={forbid_style}, input={input}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]
