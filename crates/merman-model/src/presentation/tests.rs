@@ -555,6 +555,77 @@ fn bounded_construction_rejects_wide_values_before_traversing_their_children() {
 }
 
 #[test]
+fn shared_construction_count_preserves_first_failure_with_a_tighter_budget() {
+    let json = json!({"early": "太长", "middle": [{"nested": [1]}], "later": [0, 1, 2, 3]});
+    let config = MermaidConfig::from_value(json.clone());
+    let rule = recipe(json!({"theme": "base", "themeVariables": {"fontSize": "16px"}}));
+    let trusted = InputResourcePolicy::default();
+    let freeze = |values, policy: &InputResourcePolicy| {
+        PresentationConfig::try_from_frozen_parts_controlled(
+            FrozenPresentationConfigParts::new(values)
+                .with_theme_compatibility(Some(rule.clone()), Arc::from([])),
+            policy,
+            &OperationControl::new(),
+        )
+        .unwrap()
+    };
+    assert!(freeze(config.clone(), &trusted).is_ok());
+    assert!(config.construction_complexity().get().is_some());
+    assert!(
+        rule.compatibility_config()
+            .construction_complexity()
+            .get()
+            .is_some()
+    );
+
+    for (limit, boundaries) in [
+        (InputResourceLimitId::MaxModelItems, [3, 13]),
+        (InputResourceLimitId::MaxModelTextBytes, [6, 40]),
+        (InputResourceLimitId::MaxModelNestingDepth, [1, 2]),
+    ] {
+        for value in boundaries {
+            let policy = trusted.with_limit(limit, value).unwrap();
+            let cold = freeze(MermaidConfig::from_value(json.clone()), &policy);
+            let warm = freeze(config.clone(), &policy);
+            assert_eq!(warm.unwrap_err(), cold.unwrap_err());
+        }
+    }
+}
+
+#[test]
+fn cached_construction_count_is_invalidated_by_value_mutation() {
+    let mut original = MermaidConfig::from_value(json!({"a": "b"}));
+    let policy = InputResourcePolicy::default()
+        .with_limit(InputResourceLimitId::MaxModelTextBytes, 3)
+        .unwrap();
+    let freeze = |values, control: &OperationControl| {
+        PresentationConfig::try_from_frozen_parts_controlled(
+            FrozenPresentationConfigParts::new(values),
+            &policy,
+            control,
+        )
+    };
+    assert!(
+        freeze(original.clone(), &OperationControl::new())
+            .unwrap()
+            .is_ok()
+    );
+    let control = OperationControl::new();
+    control.cancel();
+    assert!(freeze(original.clone(), &control).is_err());
+
+    let mut updated = original.clone();
+    updated.set_value("a", json!("long"));
+    assert!(updated.construction_complexity().get().is_none());
+    assert!(original.construction_complexity().get().is_some());
+    assert!(freeze(updated, &OperationControl::new()).unwrap().is_err());
+
+    original.as_value_mut()["a"] = json!("long");
+    assert!(original.construction_complexity().get().is_none());
+    assert!(freeze(original, &OperationControl::new()).unwrap().is_err());
+}
+
+#[test]
 fn bounded_construction_checks_cancellation_and_all_retained_declarations() {
     let cancelled = OperationControl::new();
     cancelled.cancel();

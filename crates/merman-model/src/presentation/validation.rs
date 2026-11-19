@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::resources::{InputResourcePolicy, ModelComplexity};
-use crate::{OperationControl, OperationControlResult};
+use crate::{MermaidConfig, OperationControl, OperationControlResult};
 
 use super::PresentationConfigError;
 
@@ -52,13 +52,50 @@ impl<'a> ConfigConstructionBudget<'a> {
             .map_err(PresentationConfigError::from))
     }
 
-    pub(super) fn charge_json(
+    /// Reuses a successful count for the immutable value. Walk values that exceed the current
+    /// budget in encounter order to report the first offending charge.
+    pub(super) fn charge_config(
+        &mut self,
+        config: &MermaidConfig,
+    ) -> OperationControlResult<Result<(), PresentationConfigError>> {
+        let cached = config.construction_complexity();
+        if let Some(count) = cached.get()
+            && let Some(items) = self.work.items.checked_add(count.items)
+            && let Some(bytes) = self.work.text_bytes.checked_add(count.text_bytes)
+        {
+            let combined = ModelComplexity::new(
+                items,
+                bytes,
+                self.work.nesting_depth.max(count.nesting_depth),
+            );
+            if self.policy.check_model_complexity(combined).is_ok() {
+                self.control.checkpoint()?;
+                self.work = combined;
+                return Ok(Ok(()));
+            }
+        }
+        let before = self.work;
+        let depth = match self.charge_json(config.as_value())? {
+            Ok(depth) => depth,
+            Err(error) => return Ok(Err(error)),
+        };
+        let count = ModelComplexity::new(
+            self.work.items - before.items,
+            self.work.text_bytes - before.text_bytes,
+            depth,
+        );
+        let _ = cached.set(count);
+        Ok(Ok(()))
+    }
+
+    fn charge_json(
         &mut self,
         root: &Value,
-    ) -> OperationControlResult<Result<(), PresentationConfigError>> {
+    ) -> OperationControlResult<Result<usize, PresentationConfigError>> {
         if let Err(error) = self.charge(1, 0, 0)? {
             return Ok(Err(error));
         }
+        let mut max_depth = 0;
         let mut pending = vec![JsonFrame::Value(root, 0)];
         while let Some(frame) = pending.pop() {
             self.control.checkpoint()?;
@@ -66,6 +103,7 @@ impl<'a> ConfigConstructionBudget<'a> {
                 JsonFrame::Value(value, depth) => match value {
                     Value::String(value) => self.charge(0, value.len(), 0)?,
                     Value::Array(values) => {
+                        max_depth = max_depth.max(depth);
                         let charged = self.charge(values.len(), 0, depth)?;
                         if charged.is_ok() {
                             let Some(child_depth) = depth.checked_add(1) else {
@@ -76,6 +114,7 @@ impl<'a> ConfigConstructionBudget<'a> {
                         charged
                     }
                     Value::Object(values) => {
+                        max_depth = max_depth.max(depth);
                         let charged = self.charge(values.len(), 0, depth)?;
                         if charged.is_ok() {
                             let Some(child_depth) = depth.checked_add(1) else {
@@ -111,7 +150,7 @@ impl<'a> ConfigConstructionBudget<'a> {
                 return Ok(Err(error));
             }
         }
-        Ok(Ok(()))
+        Ok(Ok(max_depth))
     }
 }
 
