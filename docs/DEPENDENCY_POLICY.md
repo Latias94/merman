@@ -14,6 +14,7 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 | --- | --- | --- |
 | `libm` | Exact 0.2.16 | Iterative layout uses reproducible math instead of host-dependent transcendental results. [The introducing change](https://github.com/Latias94/merman/commit/f5e557f85cfa03992ba367cd970605258e060ea6) ties this choice to deterministic geometry. A change requires source-backed layout and parity evidence. |
 | `pulldown-cmark` | Compatible 0.13.6 minimum | Includes the [RUSTSEC-2026-0433 repair](https://rustsec.org/advisories/RUSTSEC-2026-0433.html). Merman selects explicit Markdown options without Wikilinks; keep the patched minimum for fresh source consumers and update each governed lockfile. |
+| `jiff` | Compatible 1.0.1 minimum, defaults disabled | Optional system time-zone rules only, enabled by `merman-model/system-timezone`. Keep project-owned wide civil dates and explicit clock/time-zone capabilities; deterministic profiles must not acquire Jiff. |
 | NAPI runtime / derive / build | Exact 3.16.1 / 3.7.0 / 2.6.0 group | Generated native Node binding code, build integration, and runtime must be admitted together; review package loading and platform artifacts as one group. |
 | Tree-sitter CLI / Rust and Web runtime | Exact 0.27.1 group | Parser generation and the selected runtimes are admitted together. Grammar candidate 0.3.3 remains independent; generated language ABI stays 15. Native Node's separate 0.25.x runtime contract remains explicit. |
 | `tree-sitter-language` | Compatible 0.1.9 requirement | `LanguageFn` is a public function-pointer adapter, not the generated language ABI. Its API and representation are unchanged from 0.1.8; upstream Tree-sitter uses the compatible requirement too. `Cargo.lock` fixes the audited build at 0.1.9 without forcing other grammars to accept an exact shared adapter version. |
@@ -24,6 +25,13 @@ Stable coupled workspace crates use ordinary compatible requirements such as `0.
 The [published krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1/source/Cargo.toml) requires resvg/usvg 0.47 and fontdb 0.23. The current [`NativeFontContext` implementation](../crates/merman-export/src/fonts.rs) carries that database and exposes `apply_to_usvg_options`. The compatible resvg/usvg line is not an exact equality requirement. The 2026-11-06 audit observed resvg/usvg 0.49.0, but krilla-svg 0.8.1 is still the latest stable PDF adapter. Freshness alone is insufficient evidence to replace the shared font/export contract. The release audit must retain the upstream versions, manifests, public type boundary, and owner results behind this exception.
 
 An incompatible `usvg::Tree` handoff prevents mixing the 0.49 renderer with the 0.47 PDF adapter. Keep CSS color acceleration local to the ZenUML renderer and TOML writing local to test tooling; parser-only and production read-only consumers should not inherit unused features.
+
+The 2026-11-19 dependency review selected Jiff 1.0.1, following the existing removal of Chrono.
+Jiff's [1.0 changelog](https://docs.rs/crate/jiff/1.0.1/source/CHANGELOG.md) commits to the stable
+1.x API and requires Rust 1.85, below Merman's MSRV. Merman does not expose Jiff types in its public
+API or use the renamed `ZonedDateTime` API. Admission retains the existing system time-zone feature
+set and verifies compatible DST gap/fold resolution, wide-year projection, and time-zone provenance
+through the model and render runtime contracts.
 
 The [upstream language adapter](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/crates/language/src/lib.rs) wraps the generated entry point with `#[repr(transparent)]`. The [upstream runtime manifest](https://github.com/tree-sitter/tree-sitter/blob/v0.27.1/lib/Cargo.toml) uses a compatible language requirement. Keep generator identity, generated ABI, and public adapter compatibility as separate checks.
 
