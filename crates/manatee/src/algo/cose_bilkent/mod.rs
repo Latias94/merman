@@ -924,7 +924,7 @@ impl SimGraph {
     }
 
     /// Port of `layout-base` `Layout.findCenterOfTree(nodes)`.
-    /// Note: this intentionally preserves the upstream loop's in-place removal behavior.
+    /// Note: this intentionally preserves the upstream loop's delete-and-increment order.
     fn find_center_of_tree<W: WorkControl + ?Sized>(
         &self,
         nodes: &[usize],
@@ -969,27 +969,31 @@ impl SimGraph {
         }
 
         while !found_center {
-            // Upstream bug-for-bug parity:
-            // `Layout.findCenterOfTree()` creates `tempList2 = [...tempList]` but then iterates
-            // over `list` (not `tempList2`) while removing from `list` in-place:
-            //
-            //   for (i=0; i<list.length; i++) { node=list[i]; list.splice(indexOf(node), 1); ... }
-            //
-            // This has the side-effect of skipping every other element. We replicate the exact
-            // "remove then i++" semantics by using a `while` loop and `Vec::remove(i)`.
+            // Upstream deletes from the list it traverses, then increments the index. Visit
+            // original even positions in order and compact original odd survivors in place.
+            // The write cursor stays behind unread entries; no suffix needs to be shifted.
             temp_list.clear();
-            let mut i = 0usize;
-            while i < list.len() {
-                let node = list[i];
-                let removal_work = list
-                    .len()
-                    .checked_sub(i)
+            let round_len = list.len();
+            let mut survivors = 0;
+            for original in (0..round_len).step_by(2) {
+                let node = list[original];
+                // Preserve the former list.len() - i tranche, including its checked arithmetic.
+                let removal_work = round_len
+                    .checked_sub(original)
                     .and_then(|units| units.checked_add(self.nodes[node].edges.len()))
                     .ok_or(WorkFailure::ArithmeticOverflow)?;
                 admit_dynamic_work(work_control, removal_work)?;
-                list.remove(i);
+                #[cfg(test)]
+                tests::record_center_removal(node);
 
                 self.for_each_active_neighbor(node, |neighbour| {
+                    #[cfg(test)]
+                    tests::record_center_neighbor(
+                        node,
+                        neighbour,
+                        removed[neighbour],
+                        remaining_degrees[neighbour],
+                    );
                     if removed[neighbour] {
                         return;
                     }
@@ -1001,8 +1005,14 @@ impl SimGraph {
                     remaining_degrees[neighbour] = new_degree;
                 });
 
-                i += 1;
+                if let Some(&survivor) = list.get(original + 1) {
+                    list[survivors] = survivor;
+                    #[cfg(test)]
+                    tests::record_center_survivor_write();
+                    survivors += 1;
+                }
             }
+            list.truncate(survivors);
 
             admit_dynamic_work(work_control, temp_list.len())?;
             for &v in &temp_list {
@@ -2373,6 +2383,13 @@ mod tests {
         layout_with_work_control,
     };
     use crate::{BoundsExtras, Compound, Edge, Error, Graph, Node, WorkControl, WorkFailure};
+    use std::cell::RefCell;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum WorkCall {
+        Check(usize),
+        Charge(usize),
+    }
 
     #[derive(Debug, Default)]
     struct RecordingWorkControl {
@@ -2380,6 +2397,8 @@ mod tests {
         used: usize,
         checks: usize,
         charges: usize,
+        calls: Option<Vec<WorkCall>>,
+        failure_at: Option<(usize, WorkFailure)>,
     }
 
     impl RecordingWorkControl {
@@ -2404,19 +2423,76 @@ mod tests {
             }
             Ok(next)
         }
+
+        fn record_call(&mut self, call: WorkCall) -> std::result::Result<(), WorkFailure> {
+            if let Some(calls) = &mut self.calls {
+                let index = calls.len();
+                calls.push(call);
+                if let Some((failure_index, failure)) = self.failure_at
+                    && index == failure_index
+                {
+                    return Err(failure);
+                }
+            }
+            Ok(())
+        }
     }
 
     impl WorkControl for RecordingWorkControl {
         fn check(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
             self.checks += 1;
+            self.record_call(WorkCall::Check(units))?;
             self.admit(units).map(|_| ())
         }
 
         fn charge(&mut self, units: usize) -> std::result::Result<(), WorkFailure> {
             self.charges += 1;
+            self.record_call(WorkCall::Charge(units))?;
             self.used = self.admit(units)?;
             Ok(())
         }
+    }
+
+    #[derive(Debug, Default)]
+    struct CenterTrace {
+        removals: Vec<usize>,
+        // (removed node, active neighbor, already removed, degree before the update)
+        neighbors: Vec<(usize, usize, bool, usize)>,
+        tail_slot_moves: usize,
+        survivor_writes: usize,
+    }
+
+    std::thread_local! {
+        static CENTER_TRACE: RefCell<Option<CenterTrace>> = const { RefCell::new(None) };
+    }
+
+    pub(super) fn record_center_removal(node: usize) {
+        CENTER_TRACE.with_borrow_mut(|trace| {
+            if let Some(trace) = trace {
+                trace.removals.push(node);
+            }
+        });
+    }
+
+    pub(super) fn record_center_neighbor(
+        node: usize,
+        neighbor: usize,
+        removed: bool,
+        degree: usize,
+    ) {
+        CENTER_TRACE.with_borrow_mut(|trace| {
+            if let Some(trace) = trace {
+                trace.neighbors.push((node, neighbor, removed, degree));
+            }
+        });
+    }
+
+    pub(super) fn record_center_survivor_write() {
+        CENTER_TRACE.with_borrow_mut(|trace| {
+            if let Some(trace) = trace {
+                trace.survivor_writes += 1;
+            }
+        });
     }
 
     fn basic_nodes_and_edges() -> (Vec<IndexedNode>, Vec<IndexedEdge>) {
@@ -3070,5 +3146,309 @@ mod tests {
                 .expect("unbounded center search"),
             7
         );
+    }
+
+    fn center_test_tree(n: usize, branching: usize, reverse_edges: bool) -> SimGraph {
+        let nodes = vec![
+            IndexedNode {
+                width: 10.0,
+                height: 10.0,
+                x: 0.0,
+                y: 0.0,
+            };
+            n
+        ];
+        let mut edges: Vec<_> = (1..n)
+            .map(|node| {
+                let parent = (node - 1) / branching;
+                if reverse_edges {
+                    IndexedEdge { a: node, b: parent }
+                } else {
+                    IndexedEdge { a: parent, b: node }
+                }
+            })
+            .collect();
+        if reverse_edges {
+            edges.reverse();
+        }
+        SimGraph::from_indexed(&nodes, &edges)
+    }
+
+    // Keep the former Vec::remove loop independent of the compaction implementation. Count the
+    // exact suffix length immediately before each actual remove, including interrupted prefixes.
+    fn remove_center_oracle(
+        sim: &SimGraph,
+        nodes: &[usize],
+        work_control: &mut RecordingWorkControl,
+        trace: &mut CenterTrace,
+    ) -> std::result::Result<usize, WorkFailure> {
+        use crate::work::admit_dynamic_work;
+
+        let setup_work = nodes
+            .len()
+            .checked_mul(2)
+            .and_then(|units| {
+                sim.nodes
+                    .len()
+                    .checked_mul(2)
+                    .and_then(|scratch| units.checked_add(scratch))
+            })
+            .ok_or(WorkFailure::ArithmeticOverflow)?;
+        admit_dynamic_work(work_control, setup_work)?;
+        let mut list = nodes.to_vec();
+        let mut removed = vec![false; sim.nodes.len()];
+        let mut remaining_degrees = vec![0usize; sim.nodes.len()];
+        let mut found_center = list.len() == 1 || list.len() == 2;
+        let mut center_node = list[0];
+
+        let degree_scan_work = list.iter().try_fold(0usize, |work, &node| {
+            work.checked_add(sim.nodes[node].edges.len())
+                .and_then(|work| work.checked_add(1))
+                .ok_or(WorkFailure::ArithmeticOverflow)
+        })?;
+        admit_dynamic_work(work_control, degree_scan_work)?;
+        for &node in &list {
+            let degree = if sim.nodes[node].active {
+                sim.nodes[node]
+                    .edges
+                    .iter()
+                    .filter(|&&edge_index| {
+                        let edge = sim.edges[edge_index];
+                        let neighbor = if edge.a == node { edge.b } else { edge.a };
+                        edge.active && sim.nodes[neighbor].active
+                    })
+                    .count()
+            } else {
+                0
+            };
+            remaining_degrees[node] = degree;
+            if degree == 1 {
+                removed[node] = true;
+            }
+        }
+
+        let mut temp_list = Vec::new();
+        for &node in &list {
+            if remaining_degrees[node] == 1 {
+                temp_list.push(node);
+            }
+        }
+        while !found_center {
+            temp_list.clear();
+            let mut i = 0;
+            while i < list.len() {
+                let node = list[i];
+                let removal_work = list
+                    .len()
+                    .checked_sub(i)
+                    .and_then(|units| units.checked_add(sim.nodes[node].edges.len()))
+                    .ok_or(WorkFailure::ArithmeticOverflow)?;
+                admit_dynamic_work(work_control, removal_work)?;
+                trace.tail_slot_moves += list.len() - i - 1;
+                list.remove(i);
+                trace.removals.push(node);
+
+                // Replay adjacency directly, without the production neighbor iterator.
+                for &edge_index in &sim.nodes[node].edges {
+                    let edge = sim.edges[edge_index];
+                    if !edge.active {
+                        continue;
+                    }
+                    let neighbor = if edge.a == node { edge.b } else { edge.a };
+                    if !sim.nodes[neighbor].active {
+                        continue;
+                    }
+                    trace.neighbors.push((
+                        node,
+                        neighbor,
+                        removed[neighbor],
+                        remaining_degrees[neighbor],
+                    ));
+                    if removed[neighbor] {
+                        continue;
+                    }
+                    let new_degree = remaining_degrees[neighbor].saturating_sub(1);
+                    if new_degree == 1 {
+                        temp_list.push(neighbor);
+                    }
+                    remaining_degrees[neighbor] = new_degree;
+                }
+                i += 1;
+            }
+
+            admit_dynamic_work(work_control, temp_list.len())?;
+            for &node in &temp_list {
+                removed[node] = true;
+            }
+            if list.len() == 1 || list.len() == 2 {
+                found_center = true;
+                center_node = list[0];
+            }
+        }
+        Ok(center_node)
+    }
+
+    fn compare_center_with_remove_oracle(
+        sim: &SimGraph,
+        nodes: &[usize],
+        limit: Option<usize>,
+        failure_at: Option<(usize, WorkFailure)>,
+    ) -> (
+        std::result::Result<usize, WorkFailure>,
+        RecordingWorkControl,
+    ) {
+        let control = || RecordingWorkControl {
+            limit,
+            calls: Some(Vec::new()),
+            failure_at,
+            ..RecordingWorkControl::default()
+        };
+        let mut expected_work = control();
+        let mut expected_trace = CenterTrace::default();
+        let expected = remove_center_oracle(sim, nodes, &mut expected_work, &mut expected_trace);
+
+        CENTER_TRACE.with_borrow_mut(|trace| {
+            assert!(trace.is_none());
+            *trace = Some(CenterTrace::default());
+        });
+        let mut actual_work = control();
+        let actual = sim.find_center_of_tree(nodes, &mut actual_work);
+        let actual_trace =
+            CENTER_TRACE.with_borrow_mut(|trace| trace.take().expect("center trace"));
+
+        assert_eq!(actual, expected, "tree order: {nodes:?}");
+        assert_eq!(actual_work.calls, expected_work.calls);
+        assert_eq!(actual_work.used, expected_work.used);
+        assert_eq!(actual_work.checks, expected_work.checks);
+        assert_eq!(actual_work.charges, expected_work.charges);
+        assert_eq!(actual_trace.removals, expected_trace.removals);
+        assert_eq!(actual_trace.neighbors, expected_trace.neighbors);
+
+        if actual.is_ok() {
+            let mut round_len = nodes.len();
+            let mut tail_slot_moves = 0;
+            let mut survivor_writes = 0;
+            while round_len > 2 {
+                tail_slot_moves += round_len * round_len / 4;
+                round_len /= 2;
+                survivor_writes += round_len;
+            }
+            assert_eq!(expected_trace.tail_slot_moves, tail_slot_moves);
+            assert_eq!(actual_trace.survivor_writes, survivor_writes);
+            assert!(survivor_writes < nodes.len());
+        }
+        (actual, actual_work)
+    }
+
+    #[test]
+    fn tree_center_compaction_matches_remove_oracle_for_shapes_and_orders() {
+        // Branching 1 is a path, 2 is a multilayer tree, and n is a star. Exercise both
+        // endpoint orientations and edge insertion orders, plus caller and BFS list orders.
+        // Actual counters must match the bound, including 16 nodes (84 moves / 14 writes)
+        // and 201 nodes (13,428 moves / 197 writes); no duplicate compaction loop is used.
+        for n in [1, 2, 3, 4, 7, 8, 15, 16, 17, 31, 32, 33, 65, 201] {
+            for branching in [1, 2, n] {
+                for reverse_edges in [false, true] {
+                    let sim = center_test_tree(n, branching, reverse_edges);
+                    let forward: Vec<_> = (0..n).collect();
+                    let backward: Vec<_> = (0..n).rev().collect();
+                    let interleaved: Vec<_> = (1..n).step_by(2).chain((0..n).step_by(2)).collect();
+                    let mut forest = sim.get_flat_forest(&mut NoopWorkControl).expect("tree");
+                    assert_eq!(forest.len(), 1);
+                    let bfs = forest.pop().expect("one component");
+                    for order in [forward, backward, interleaved, bfs] {
+                        let (center, _) =
+                            compare_center_with_remove_oracle(&sim, &order, None, None);
+                        assert!(center.is_ok());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tree_center_compaction_keeps_the_sixteen_node_star_center() {
+        let sim = center_test_tree(16, 16, false);
+        let order: Vec<_> = (0..16).collect();
+        let (center, _) = compare_center_with_remove_oracle(&sim, &order, None, None);
+        assert_eq!(center, Ok(7));
+    }
+
+    #[test]
+    fn tree_center_compaction_preserves_inactive_neighbor_filtering() {
+        let mut sim = center_test_tree(17, 2, false);
+        // Keep a 15-node active component, an inactive incident edge to node 15, and an
+        // active incident edge to inactive node 16. Both still count toward work tranches.
+        sim.edges[14].active = false;
+        sim.nodes[16].active = false;
+        let mut forest = sim.get_flat_forest(&mut NoopWorkControl).expect("forest");
+        assert_eq!(forest.len(), 2);
+        let mut order = forest.remove(0);
+        assert_eq!(order.len(), 15);
+        for _ in 0..2 {
+            let (center, _) = compare_center_with_remove_oracle(&sim, &order, None, None);
+            assert!(center.is_ok());
+            order.reverse();
+        }
+    }
+
+    #[test]
+    fn tree_center_compaction_preserves_budget_and_interruption_prefixes() {
+        for (n, branching) in [(1, 1), (2, 1), (16, 16), (17, 1), (31, 2)] {
+            let sim = center_test_tree(n, branching, true);
+            let order: Vec<_> = (0..n).rev().collect();
+            let (center, baseline) = compare_center_with_remove_oracle(&sim, &order, None, None);
+            assert!(center.is_ok());
+            let calls = baseline.calls.as_ref().expect("ordered work calls");
+            let (zero, zero_work) = compare_center_with_remove_oracle(&sim, &order, Some(0), None);
+            assert_eq!(zero, Err(WorkFailure::Interrupted));
+            assert_eq!(zero_work.used, 0);
+            assert_eq!(
+                zero_work.calls.as_deref().expect("zero budget"),
+                &calls[..1]
+            );
+
+            // At and one below every tranche boundary, retain the failing check and every
+            // previously committed charge. This includes setup, removals and round-end work.
+            let mut admitted = 0;
+            for &call in calls {
+                if let WorkCall::Charge(units) = call {
+                    admitted += units;
+                    for limit in [admitted - 1, admitted] {
+                        let (result, limited) =
+                            compare_center_with_remove_oracle(&sim, &order, Some(limit), None);
+                        assert_eq!(result.is_ok(), limit == baseline.used);
+                        assert!(limited.used <= limit);
+                        assert!(calls.starts_with(limited.calls.as_ref().expect("budget prefix")));
+                    }
+                }
+            }
+
+            // Inject at every check AND charge, including the first setup call. Both caller
+            // failure variants must propagate unchanged without charging the rejected tranche.
+            for failure in [WorkFailure::Interrupted, WorkFailure::ArithmeticOverflow] {
+                for index in 0..calls.len() {
+                    let (result, interrupted) = compare_center_with_remove_oracle(
+                        &sim,
+                        &order,
+                        None,
+                        Some((index, failure)),
+                    );
+                    assert_eq!(result, Err(failure));
+                    assert_eq!(
+                        interrupted.calls.as_deref().expect("interrupted prefix"),
+                        &calls[..=index]
+                    );
+                    let used: usize = calls[..index]
+                        .iter()
+                        .filter_map(|call| match call {
+                            WorkCall::Charge(units) => Some(*units),
+                            WorkCall::Check(_) => None,
+                        })
+                        .sum();
+                    assert_eq!(interrupted.used, used);
+                }
+            }
+        }
     }
 }
