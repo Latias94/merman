@@ -51,15 +51,18 @@ impl<'a> AppearanceDecision<'a> {
         }
     }
 
+    pub(crate) fn selected_theme(&self) -> Option<&str> {
+        self.winners[0]
+            .as_ref()
+            .and_then(|winner| winner.value.as_str())
+    }
+
     pub(crate) fn materialization_plan(
         &self,
         current_theme: Option<&str>,
         site_theme: Option<&str>,
     ) -> MaterializationPlan {
-        let resolved_theme = self.winners[0]
-            .as_ref()
-            .and_then(|winner| winner.value.as_str())
-            .or(current_theme);
+        let resolved_theme = self.selected_theme().or(current_theme);
         // Mermaid evaluates root directive truthiness independently of appearance precedence.
         // A scoped same-value source winner still owns appearance without forcing recalculation.
         if resolved_theme == Some("null")
