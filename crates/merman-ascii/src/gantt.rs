@@ -2,130 +2,62 @@ use crate::Result;
 use crate::operation::AsciiExecution;
 use crate::options::AsciiRenderOptions;
 use crate::resource::ResourceContext;
-use crate::safe_text::{
-    BudgetedTextDocument, charge_text_layout, push_document_field, push_document_list,
-    push_optional_document_field, push_wrapped_field, push_wrapped_list,
-};
-use merman_model::families::gantt::{
-    GanttTask, GanttTaskEndConstraint, GanttTaskStartConstraint, GanttTerminalTaskView,
-    GanttTerminalView,
-};
+use crate::safe_text::{BudgetedTextDocument, charge_text_layout};
+use crate::{AsciiColorMode, AsciiDiagram, AsciiProjection, AsciiSourceContext};
+#[cfg(test)]
+use merman_model::families::gantt::GanttTask;
+use merman_model::families::gantt::GanttTerminalView;
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 
-const SUMMARY_WRAP_WIDTH: usize = 80;
+mod timeline;
 
 pub(super) fn render_gantt_diagram(
     model: GanttTerminalView<'_>,
     options: &AsciiRenderOptions,
     local_time_zone: &merman_model::time::LocalTimeZone,
+    source: AsciiSourceContext<'_>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
-    let metadata = model.metadata();
+) -> Result<crate::output::RenderedPrimary> {
+    crate::output::preflight_semantic_model(&AsciiDiagram::Gantt(model), source, execution)?;
     let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
-    let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let task_index = admit_then_materialize_gantt_structure(
         model,
-        document.resources_mut(),
+        &layout_resources,
         |admission, resources| GanttTaskIndex::materialize(model, admission, resources),
     )?;
-    execution.rebind_resource_context(document.resources_mut(), merman_model::OperationPhase::Emit);
-
-    push_optional_document_field(&mut document, "title", metadata.title.as_deref())?;
-    push_optional_document_field(&mut document, "accTitle", metadata.acc_title.as_deref())?;
-    push_optional_document_field(&mut document, "accDescr", metadata.acc_descr.as_deref())?;
-    if !metadata.date_format.is_empty() {
-        push_document_field(&mut document, "dateFormat", metadata.date_format)?;
-    }
-    if !metadata.axis_format.is_empty() {
-        push_document_field(&mut document, "axisFormat", metadata.axis_format)?;
-    }
-
-    if let Some(tick_interval) = metadata.tick_interval.as_deref() {
-        push_document_field(&mut document, "tickInterval", tick_interval)?;
-    }
-    if !metadata.today_marker.is_empty() {
-        push_document_field(&mut document, "todayMarker", metadata.today_marker)?;
-    }
-    if !metadata.includes.is_empty() {
-        push_document_list(
-            &mut document,
-            "includes",
-            metadata.includes.iter().map(String::as_str),
-        )?;
-    }
-    if !metadata.excludes.is_empty() {
-        push_document_list(
-            &mut document,
-            "excludes",
-            metadata.excludes.iter().map(String::as_str),
-        )?;
-    }
-    if metadata.inclusive_end_dates {
-        document.push_line("inclusiveEndDates: true")?;
-    }
-    if !metadata.display_mode.is_empty() {
-        push_document_field(&mut document, "displayMode", metadata.display_mode)?;
-    }
-    if metadata.top_axis {
-        document.push_line("topAxis: true")?;
-    }
-    if !metadata.weekday.is_empty() && metadata.weekday != "sunday" {
-        push_document_field(&mut document, "weekday", metadata.weekday)?;
-    }
-    if !metadata.weekend.is_empty() && metadata.weekend != "saturday" {
-        push_document_field(&mut document, "weekend", metadata.weekend)?;
-    }
-
-    if let Some(task_index) = task_index {
-        let GanttTaskIndex {
-            orphan_section_order,
-            tasks_by_section,
-        } = task_index;
-        for (section_index, section) in metadata.sections.iter().enumerate() {
-            document.resources_mut().checkpoint()?;
-            push_section(&mut document, section)?;
-            if let Some(tasks) = tasks_by_section.get(&GanttSectionKey::Declared(section_index)) {
-                for task in tasks {
-                    push_task(
-                        &mut document,
-                        indexed_task(model, *task)?,
-                        local_time_zone,
-                        execution,
-                    )?;
-                }
-            }
-        }
-
-        // Direct typed models may contain a task whose section is absent from the declaration
-        // list. Preserve it under its authored section instead of dropping the task.
-        for section in orphan_section_order {
-            document.resources_mut().checkpoint()?;
-            push_section(&mut document, section)?;
-            if let Some(tasks) = tasks_by_section.get(&GanttSectionKey::Orphan(section)) {
-                for task in tasks {
-                    push_task(
-                        &mut document,
-                        indexed_task(model, *task)?,
-                        local_time_zone,
-                        execution,
-                    )?;
-                }
-            }
-        }
+    let topology =
+        if let Some(domain) = timeline::domain(model, task_index.as_ref(), &layout_resources)? {
+            let mut document = BudgetedTextDocument::from_resources(
+                layout_resources.scoped(),
+                &options.with_color_mode(AsciiColorMode::Plain),
+            );
+            timeline::write(
+                model,
+                task_index.as_ref(),
+                domain,
+                local_time_zone,
+                options,
+                &mut document,
+                execution,
+            )?;
+            Some(document.finish()?)
+        } else {
+            None
+        };
+    let projection = if topology.is_some() {
+        AsciiProjection::Diagrammatic
     } else {
-        let mut current_section: Option<&str> = None;
-        for task in model.tasks() {
-            let semantic = task.semantic;
-            if current_section != Some(semantic.section.as_str()) {
-                current_section = Some(semantic.section.as_str());
-                push_section(&mut document, &semantic.section)?;
-            }
-            push_task(&mut document, task, local_time_zone, execution)?;
-        }
-    }
-
-    document.finish_with_execution(execution)
+        AsciiProjection::StructuredText
+    };
+    crate::output::render_reading_primary(
+        &AsciiDiagram::Gantt(model),
+        source,
+        options,
+        execution,
+        topology.as_deref(),
+    )
+    .map(|text| crate::output::RenderedPrimary::records(text, projection))
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -332,139 +264,7 @@ fn admit_then_materialize_gantt_structure<T>(
     })
 }
 
-fn push_section(document: &mut BudgetedTextDocument, section: &str) -> Result<()> {
-    push_document_field(document, "section", section)
-}
-
-fn indexed_task<'a>(
-    model: GanttTerminalView<'a>,
-    index: usize,
-) -> Result<GanttTerminalTaskView<'a>> {
-    model
-        .task(index)
-        .ok_or_else(invalid_task_section_occurrence)
-}
-
-fn push_task(
-    document: &mut BudgetedTextDocument,
-    task: GanttTerminalTaskView<'_>,
-    local_time_zone: &merman_model::time::LocalTimeZone,
-    execution: AsciiExecution<'_>,
-) -> Result<()> {
-    execution.checkpoint(merman_model::OperationPhase::Emit)?;
-    document.resources_mut().charge_layout_work(1)?;
-    let render_end = task
-        .render_end_ms
-        .filter(|render_end| *render_end != task.semantic.end_ms)
-        .map(|render_end| format_date(render_end, local_time_zone));
-    let task = task.semantic;
-    let start = format_date(task.start_ms, local_time_zone);
-    let end = format_date(task.end_ms, local_time_zone);
-    document.push_wrapped_prefixed_line_with("  - ", "    ", SUMMARY_WRAP_WIDTH, |line| {
-        push_wrapped_field(line, "", "task", &task.task)?;
-        push_wrapped_field(line, " [", "id", &task.id)?;
-        line.write_fmt(format_args!(", order={}", task.order))?;
-        line.push_str(", range=")?;
-        line.push_str(&start)?;
-        line.push_str(" -> ")?;
-        line.push_str(&end)?;
-        if let Some(render_end) = render_end.as_deref() {
-            line.push_str(", renderEnd=")?;
-            line.push_str(render_end)?;
-        }
-
-        push_start_constraint(line, task)?;
-        push_end_constraint(line, task)?;
-
-        if !task.classes.is_empty() {
-            push_wrapped_list(
-                line,
-                ", ",
-                "classes",
-                task.classes.iter().map(String::as_str),
-            )?;
-        }
-        if task.manual_end_time {
-            line.push_str(", manualEnd=true")?;
-        }
-        if task.task_type != task.section && !task.task_type.is_empty() {
-            push_wrapped_field(line, ", ", "type", &task.task_type)?;
-        }
-
-        let flags = [
-            (task.milestone, "milestone"),
-            (task.active, "active"),
-            (task.done, "done"),
-            (task.crit, "crit"),
-            (task.vert, "vert"),
-        ];
-        let mut emitted_flag = false;
-        for flag in flags
-            .into_iter()
-            .filter_map(|(enabled, flag)| enabled.then_some(flag))
-        {
-            line.push_str(if emitted_flag { ", " } else { ", flags=" })?;
-            line.push_str(flag)?;
-            emitted_flag = true;
-        }
-        line.push_str("]")?;
-        Ok(())
-    })
-}
-
-fn push_start_constraint(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
-    task: &GanttTask,
-) -> Result<()> {
-    match &task.start_constraint {
-        GanttTaskStartConstraint::PreviousTaskEnd { dependency_id } => {
-            if let Some(id) = dependency_id {
-                push_constraint_value(line, "after", id)?;
-            }
-        }
-        GanttTaskStartConstraint::Fixed { value } => {
-            push_constraint_value(line, "start", value)?;
-        }
-        GanttTaskStartConstraint::After { dependency_ids } => {
-            push_dependency_constraint(line, "after", dependency_ids)?;
-        }
-    }
-    Ok(())
-}
-
-fn push_end_constraint(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
-    task: &GanttTask,
-) -> Result<()> {
-    match &task.end_constraint {
-        GanttTaskEndConstraint::Unspecified => Ok(()),
-        GanttTaskEndConstraint::Fixed { value } => push_constraint_value(line, "end", value),
-        GanttTaskEndConstraint::Duration { value } => {
-            push_constraint_value(line, "duration", value)
-        }
-        GanttTaskEndConstraint::Until { dependency_ids } => {
-            push_dependency_constraint(line, "until", dependency_ids)
-        }
-    }
-}
-
-fn push_constraint_value(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
-    key: &str,
-    value: &str,
-) -> Result<()> {
-    push_wrapped_field(line, ", ", key, value)
-}
-
-fn push_dependency_constraint(
-    line: &mut crate::safe_text::BudgetedWrappedText<'_>,
-    key: &str,
-    dependency_ids: &[String],
-) -> Result<()> {
-    push_wrapped_list(line, ", ", key, dependency_ids.iter().map(String::as_str))
-}
-
-fn format_date(ms: i64, local_time_zone: &merman_model::time::LocalTimeZone) -> String {
+pub(crate) fn format_date(ms: i64, local_time_zone: &merman_model::time::LocalTimeZone) -> String {
     local_time_zone
         .at_instant(ms)
         .map(|local| {
@@ -548,7 +348,7 @@ mod tests {
 
         let runtime = merman_model::runtime::RuntimePolicy::deterministic()
             .with_local_time_zone(merman_model::time::LocalTimeZone::utc());
-        let config = serde_json::json!({"gantt": {"displayMode": "compact"}});
+        let config = serde_json::json!({});
         let parser = SemanticParser::new()
             .with_runtime_policy(runtime.clone())
             .with_site_config(MermaidConfig::from_value(config.clone()));
@@ -561,6 +361,8 @@ mod tests {
             "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends\nsection Delivery\nTask: task,2019-02-01,1d\nsection Delivery\nNext: next,after task,2d\n",
             "gantt\ndateFormat YYYY-MM-DD\nexcludes weekends\nincludes 2019-02-02\nsection Delivery\nTask: task,2019-02-01,1d\nFixed: fixed,2019-02-02,2019-02-04\n",
             "gantt\nsection Empty\nsection Empty\n",
+            "---\nconfig:\n  gantt:\n    displayMode: compact\n---\ngantt\ndateFormat YYYY-MM-DD\nTask: a,2026-01-01,1d\n",
+            "gantt\ndateFormat YYYY-MM-DD\nTask: a,2026-01-01,1d\nNext: b,after a,1d\nLast: c,after b,1d\nclick c href \"https://example.com/c\"\nclick a href \"https://example.com/a\"\nclick b href \"https://example.com/b\"\n",
         ] {
             let canonical = parser
                 .parse_diagram_sync(source)
@@ -583,6 +385,7 @@ mod tests {
                 GanttTerminalView::from_model(model, &canonical.metadata.semantic_config),
                 &options,
                 &merman_model::time::LocalTimeZone::utc(),
+                AsciiSourceContext::from(&canonical.metadata),
                 AsciiExecution::for_test(&policy),
             )
             .expect("canonical Gantt terminal output");
@@ -590,6 +393,7 @@ mod tests {
                 GanttTerminalView::from_render(full),
                 &options,
                 &merman_model::time::LocalTimeZone::utc(),
+                AsciiSourceContext::from(&canonical.metadata),
                 AsciiExecution::for_test(&policy),
             )
             .expect("full Gantt terminal output");
@@ -615,6 +419,69 @@ mod tests {
             format_resolved_date(later_ms, later, Some(earlier)),
             "2026-11-01T01:30:00.000-05:00"
         );
+    }
+
+    #[test]
+    fn timeline_and_records_keep_exact_resource_boundaries_and_mid_render_cancellation() {
+        use merman_core::SemanticParser;
+        use merman_model::SemanticDiagramModel;
+
+        let parsed = SemanticParser::new()
+            .parse_diagram_sync("gantt\ndateFormat YYYY-MM-DD\nsection Build\n设计 👩‍💻: a,2026-01-01,1d\nShip: b,after a,1d\n")
+            .unwrap();
+        let SemanticDiagramModel::Gantt(model) = &parsed.model else {
+            panic!("Gantt model")
+        };
+        let policy = AsciiResourcePolicy::unbounded();
+        let ledger = ResourceContext::new(policy);
+        let render = |execution: AsciiExecution<'_>| {
+            let render_ledger = execution.new_resource_context(OperationPhase::Semantic);
+            render_gantt_diagram(
+                GanttTerminalView::from_model(model, &parsed.metadata.semantic_config),
+                &AsciiRenderOptions::unicode(),
+                &merman_model::time::LocalTimeZone::utc(),
+                AsciiSourceContext::from(&parsed.metadata),
+                execution.with_render_ledger(&render_ledger),
+            )
+        };
+        let text = render(AsciiExecution::for_test(&policy).with_render_ledger(&ledger)).unwrap();
+        for (limit, exact) in [
+            (
+                AsciiResourceLimitId::MaxLayoutWorkUnits,
+                ledger.layout_work_used(),
+            ),
+            (
+                AsciiResourceLimitId::MaxDocumentCells,
+                text.text
+                    .lines()
+                    .map(|line| {
+                        crate::text::display_width_with_profile(
+                            line,
+                            crate::TerminalWidthProfile::Unicode,
+                        )
+                    })
+                    .sum(),
+            ),
+            (AsciiResourceLimitId::MaxGridCells, 80 * 3),
+            (AsciiResourceLimitId::MaxGraphemeBytes, "👩‍💻".len()),
+        ] {
+            let exact_policy = policy.with_limit(limit, exact).unwrap();
+            render(AsciiExecution::for_test(&exact_policy)).unwrap();
+            let short = policy.with_limit(limit, exact - 1).unwrap();
+            let result = render(AsciiExecution::for_test(&short));
+            assert!(
+                matches!(&result, Err(AsciiError::ResourceLimitExceeded(details)) if details.limit == limit),
+                "{limit:?} at {exact}-1: {result:?}"
+            );
+        }
+        for after in [20, 80, 500] {
+            let control = OperationControl::new();
+            control.cancel_after_checkpoints(after);
+            assert!(matches!(
+                render(AsciiExecution::new(&control, &policy)),
+                Err(AsciiError::Cancelled(_))
+            ));
+        }
     }
 
     #[test]

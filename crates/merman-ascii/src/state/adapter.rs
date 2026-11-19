@@ -511,6 +511,7 @@ fn state_node_text_plan<'a>(
         return DeferredGraphNodeLabelPlan::compartmented(
             title,
             body,
+            None,
             STATE_DIAGRAM_TYPE,
             width_profile,
             resources,

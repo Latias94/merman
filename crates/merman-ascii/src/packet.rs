@@ -37,27 +37,12 @@ impl PacketSettings {
     }
 }
 
-pub(super) fn primary_projection(
-    model: &PacketDiagramModel,
-    config: Option<&MermaidConfig>,
-    execution: AsciiExecution<'_>,
-) -> Result<AsciiProjection> {
-    let resources = execution.new_resource_context(OperationPhase::Layout);
-    Ok(
-        if grid::last_bit(model, PacketSettings::resolve(config)?, &resources)?.is_some() {
-            AsciiProjection::Diagrammatic
-        } else {
-            AsciiProjection::StructuredText
-        },
-    )
-}
-
 pub(super) fn render_packet_diagram(
     model: &PacketDiagramModel,
     options: &AsciiRenderOptions,
     config: Option<&MermaidConfig>,
     execution: AsciiExecution<'_>,
-) -> Result<String> {
+) -> Result<crate::output::RenderedPrimary> {
     let settings = PacketSettings::resolve(config)?;
     let layout_resources = execution.new_resource_context(OperationPhase::Layout);
     let last_bit = grid::last_bit(model, settings, &layout_resources)?;
@@ -70,7 +55,14 @@ pub(super) fn render_packet_diagram(
     }
     execution.rebind_resource_context(document.resources_mut(), OperationPhase::Emit);
     write_records(model, &mut document, wrap_width, execution)?;
-    document.finish_with_execution(execution)
+    let projection = if last_bit.is_some() {
+        AsciiProjection::Diagrammatic
+    } else {
+        AsciiProjection::StructuredText
+    };
+    document
+        .finish_with_execution(execution)
+        .map(|text| crate::output::RenderedPrimary::new(text, projection))
 }
 
 fn write_metadata(

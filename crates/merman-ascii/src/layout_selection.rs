@@ -1,14 +1,17 @@
 //! Bounded family-layout selection before applying the final viewport overflow policy.
 
 use crate::operation::AsciiExecution;
-use crate::output::MeasuredOutput;
+use crate::output::{MeasuredOutput, PrimaryOutputFacts, RenderedPrimary};
 use crate::{
     AsciiError, AsciiExtent, AsciiGraphPresentation, AsciiLayoutProfile, AsciiRenderOptions,
     AsciiViewportPolicy, OverflowPolicy, Result,
 };
 
 pub(crate) enum LayoutCandidate {
-    Measured(MeasuredOutput),
+    Measured {
+        output: MeasuredOutput,
+        facts: PrimaryOutputFacts,
+    },
     Overflow(AsciiExtent),
     /// Only an admitted routing-search or port-capacity error, never measured geometry.
     PlanningMiss(AsciiError),
@@ -17,7 +20,7 @@ pub(crate) enum LayoutCandidate {
 impl LayoutCandidate {
     fn extent(&self) -> Option<AsciiExtent> {
         match self {
-            Self::Measured(output) => Some(output.metrics().extent),
+            Self::Measured { output, .. } => Some(output.metrics().extent),
             Self::Overflow(extent) => Some(*extent),
             Self::PlanningMiss(_) => None,
         }
@@ -47,7 +50,7 @@ pub(crate) fn select(
     options: AsciiRenderOptions,
     viewport: AsciiViewportPolicy,
     execution: AsciiExecution<'_>,
-    mut render: impl FnMut(AsciiRenderOptions, AsciiExecution<'_>) -> Result<String>,
+    mut render: impl FnMut(AsciiRenderOptions, AsciiExecution<'_>) -> Result<RenderedPrimary>,
 ) -> Result<SelectedLayout> {
     let automatic = options.layout_profile == AsciiLayoutProfile::Auto;
     let first_profile = if automatic {
@@ -93,7 +96,9 @@ pub(crate) fn select(
         candidate_viewport
     };
     let (retained_bytes, retained_cells) = match &selected.candidate {
-        LayoutCandidate::Measured(candidate) => (
+        LayoutCandidate::Measured {
+            output: candidate, ..
+        } => (
             candidate.metrics().encoded_bytes,
             candidate.metrics().document_cells,
         ),
@@ -140,16 +145,16 @@ pub(crate) fn select(
 fn render_candidate(
     options: AsciiRenderOptions,
     execution: AsciiExecution<'_>,
-    render: &mut impl FnMut(AsciiRenderOptions, AsciiExecution<'_>) -> Result<String>,
+    render: &mut impl FnMut(AsciiRenderOptions, AsciiExecution<'_>) -> Result<RenderedPrimary>,
 ) -> Result<LayoutCandidate> {
     match render(options, execution) {
-        Ok(text) => MeasuredOutput::measure(
+        Ok(RenderedPrimary { text, facts }) => MeasuredOutput::measure(
             text,
             options.color_mode,
             options.terminal_width_profile,
             execution,
         )
-        .map(LayoutCandidate::Measured),
+        .map(|output| LayoutCandidate::Measured { output, facts }),
         Err(AsciiError::PrimaryViewportOverflow {
             actual_width,
             height,
@@ -174,6 +179,51 @@ mod tests {
     use crate::resource::ResourceContext;
     use crate::{AsciiResourceLimitId, AsciiResourcePolicy, TerminalWidthProfile};
     use merman_model::{OperationControl, OperationPhase};
+
+    fn rendered(text: impl Into<String>) -> RenderedPrimary {
+        RenderedPrimary::new(text.into(), crate::AsciiProjection::Diagrammatic)
+    }
+
+    #[test]
+    fn selection_keeps_the_winning_text_and_its_output_facts_together() {
+        use crate::AsciiProjection;
+        use crate::output::PrimaryDocument;
+
+        let resources = AsciiResourcePolicy::unbounded();
+        let control = OperationControl::new();
+        for compact_wins in [false, true] {
+            let selected = select(
+                AsciiRenderOptions::ascii().with_layout_profile(AsciiLayoutProfile::Auto),
+                AsciiViewportPolicy::with_max_width(6),
+                AsciiExecution::new(&control, &resources),
+                |options, _| {
+                    if options.layout_profile == AsciiLayoutProfile::Canonical {
+                        Ok(RenderedPrimary::records(
+                            "0123456789".into(),
+                            AsciiProjection::StructuredText,
+                        ))
+                    } else if compact_wins {
+                        Ok(rendered("fits"))
+                    } else {
+                        Err(planning_miss())
+                    }
+                },
+            )
+            .unwrap();
+            let LayoutCandidate::Measured { output, facts } = selected.candidate else {
+                panic!("expected a measured incumbent")
+            };
+            if compact_wins {
+                assert_eq!(output.text(), "fits");
+                assert_eq!(facts.projection, AsciiProjection::Diagrammatic);
+                assert_eq!(facts.document, PrimaryDocument::Admitted);
+            } else {
+                assert_eq!(output.text(), "0123456789");
+                assert_eq!(facts.projection, AsciiProjection::StructuredText);
+                assert_eq!(facts.document, PrimaryDocument::CompleteRecords);
+            }
+        }
+    }
 
     fn over_width() -> AsciiError {
         AsciiError::PrimaryViewportOverflow {
@@ -256,7 +306,7 @@ mod tests {
                             feature: "test route conflict",
                         })
                     } else {
-                        Ok("0123456789".to_string())
+                        Ok(rendered("0123456789"))
                     }
                 },
             );
@@ -284,11 +334,13 @@ mod tests {
                 AsciiViewportPolicy::with_max_width(6),
                 AsciiExecution::new(&control, &resources),
                 |options, _| {
-                    Ok(if options.layout_profile == AsciiLayoutProfile::Canonical {
-                        "0123456789".to_string()
-                    } else {
-                        "0123".to_string()
-                    })
+                    Ok(rendered(
+                        if options.layout_profile == AsciiLayoutProfile::Canonical {
+                            "0123456789".to_string()
+                        } else {
+                            "0123".to_string()
+                        },
+                    ))
                 },
             );
             if limit == 13 {
@@ -327,7 +379,7 @@ mod tests {
                     if calls == 1 {
                         Err(planning_miss())
                     } else {
-                        Ok("fits".into())
+                        Ok(rendered("fits"))
                     }
                 },
             )
@@ -372,7 +424,7 @@ mod tests {
                 AsciiExecution::new(&control, &resources),
                 |options, _| {
                     if options.layout_profile == AsciiLayoutProfile::Canonical {
-                        Ok("0123456789".into())
+                        Ok(rendered("0123456789"))
                     } else {
                         Err(miss.clone())
                     }
@@ -381,7 +433,10 @@ mod tests {
             .unwrap();
             assert!(selected.compact_attempted);
             assert_eq!(selected.profile, AsciiLayoutProfile::Canonical);
-            assert!(matches!(selected.candidate, LayoutCandidate::Measured(_)));
+            assert!(matches!(
+                selected.candidate,
+                LayoutCandidate::Measured { .. }
+            ));
         }
     }
 
@@ -408,7 +463,7 @@ mod tests {
                         if fail_first || options.layout_profile == AsciiLayoutProfile::Compact {
                             Err(error.clone())
                         } else {
-                            Ok("0123456789".into())
+                            Ok(rendered("0123456789"))
                         }
                     },
                 );

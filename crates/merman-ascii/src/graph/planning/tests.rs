@@ -4,6 +4,365 @@ use crate::graph::model::{GraphDirection, GraphEdgeMarker, GraphNodeShape};
 use crate::resource::AsciiResourcePolicy;
 
 #[test]
+#[cfg(feature = "diagram-state")]
+fn compound_probe_routes_without_displacing_valid_edges() {
+    use merman_model::families::state::StateTerminalView;
+    let source = "stateDiagram-v2\n[*] --> Active\nstate Active {\n[*] --> NumLockOff\nNumLockOff --> NumLockOn: EvNumLockPressed\nNumLockOn --> NumLockOff: EvNumLockPressed\n}\n";
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(source)
+        .unwrap();
+    let merman_model::SemanticDiagramModel::State(model) = &parsed.model else {
+        panic!("State");
+    };
+    let limits = AsciiResourcePolicy::unbounded();
+    let options = AsciiRenderOptions::unicode();
+    let policy = options.resolve_policies().layout.state;
+    let charset = GraphCharset::for_options(&options);
+    let mut resources = ResourceContext::new(limits);
+    let budget = GraphPlanningBudget::default();
+    let execution = AsciiExecution::for_test(&limits).with_graph_planning(&budget);
+    let graph = crate::state::from_state_view_with_context_and_execution(
+        StateTerminalView::from_semantic(model),
+        options.terminal_width_profile,
+        &mut resources,
+        execution,
+    )
+    .unwrap();
+    let input = LayoutInput::try_new(&graph, &policy, &mut resources, execution).unwrap();
+    let initial = input
+        .generate(&LayoutFeedback::default(), &mut resources, execution)
+        .unwrap();
+    let replacement = budget.replacement.remaining();
+    let attempts = budget.repair_attempts.get();
+    let prepared =
+        initial_layout(&graph, &input, &charset, &policy, &mut resources, execution).unwrap();
+    assert_eq!(prepared.measured.layout, initial.layout);
+    assert!(
+        prepared.incumbent.is_some(),
+        "retain the complete compact scene"
+    );
+    assert_eq!(budget.replacement.remaining(), replacement);
+    assert_eq!(budget.repair_attempts.get(), attempts);
+}
+
+#[test]
+fn compound_return_preparation_keeps_an_already_routable_viewport() {
+    use crate::graph::layout::graph_canvas_extent;
+    use crate::{AsciiViewportPolicy, OverflowPolicy};
+
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A wide rectangular source node");
+    graph.add_node("b", "A wide rectangular target node");
+    graph.add_edge("a", "b");
+    graph.add_edge("b", "a");
+    graph.add_group_with_style(
+        "scope",
+        "Scope",
+        Some(GraphDirection::TopDown),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    let options = AsciiRenderOptions::ascii();
+    let policy = options.flowchart_layout().graph_policy();
+    let charset = GraphCharset::for_options(&options);
+    let limits = AsciiResourcePolicy::unbounded();
+    let execution = AsciiExecution::for_test(&limits);
+    let mut resources = ResourceContext::new(limits);
+    let initial = layout_graph_with_feedback(
+        &graph,
+        &policy,
+        &LayoutFeedback::default(),
+        &mut resources,
+        execution,
+    )
+    .unwrap();
+    let routes = routing::prepare_route_scene_with_execution(
+        &graph,
+        &initial.layout,
+        &graph.edges,
+        &charset,
+        &policy,
+        &mut resources,
+        execution,
+    )
+    .unwrap();
+    let (edge_width, edge_height) = routes.canvas_extent();
+    let extent = graph_canvas_extent(
+        &initial.layout.nodes,
+        &initial.layout.groups,
+        edge_width,
+        edge_height,
+        &resources,
+    )
+    .unwrap();
+    assert_eq!(extent.width(), 38);
+    let rendered = crate::graph::draw::render_graph_with_execution(
+        &graph,
+        &options,
+        execution.with_viewport(
+            AsciiViewportPolicy::with_max_width(extent.width()).overflow(OverflowPolicy::Error),
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        rendered.matches("A wide rectangular source node").count(),
+        1
+    );
+    assert_eq!(
+        rendered.matches("A wide rectangular target node").count(),
+        1
+    );
+}
+
+#[test]
+fn existing_exterior_envelopes_keep_self_loops_within_their_original_viewport() {
+    use crate::graph::model::GraphEdgeAttrs;
+    use crate::{AsciiViewportPolicy, OverflowPolicy};
+
+    for direction in [
+        GraphDirection::TopDown,
+        GraphDirection::BottomTop,
+        GraphDirection::LeftRight,
+        GraphDirection::RightLeft,
+    ] {
+        for grouped in [false, true] {
+            let mut graph = AsciiGraph::new(direction);
+            graph.add_node("a", "Node");
+            graph.add_edge_with_attrs(
+                "a",
+                "a",
+                GraphEdgeAttrs {
+                    label: Some("1234567890123456789012345678901234567890".into()),
+                    ..Default::default()
+                },
+            );
+            if grouped {
+                graph.add_group_with_style(
+                    "scope",
+                    "Scope",
+                    Some(direction),
+                    vec!["a".into()],
+                    Default::default(),
+                );
+            }
+            let options = AsciiRenderOptions::ascii();
+            let policy = options.flowchart_layout().graph_policy();
+            let charset = GraphCharset::for_options(&options);
+            let limits = AsciiResourcePolicy::default();
+            let execution = AsciiExecution::for_test(&limits);
+            let mut resources = ResourceContext::new(limits);
+            let initial = layout_graph_with_feedback(
+                &graph,
+                &policy,
+                &LayoutFeedback::default(),
+                &mut resources,
+                execution,
+            )
+            .unwrap();
+            routing::prepare_route_scene_with_execution(
+                &graph,
+                &initial.layout,
+                &graph.edges,
+                &charset,
+                &policy,
+                &mut resources,
+                execution,
+            )
+            .expect("the existing self-loop envelope must already be routable");
+            let planned = plan_graph(&graph, &policy, &charset, &mut resources, execution).unwrap();
+            assert_eq!(planned.layout, initial.layout, "{direction:?}/{grouped}");
+            let unbounded =
+                crate::graph::draw::render_graph_with_execution(&graph, &options, execution)
+                    .unwrap();
+            let original_width = unbounded.lines().map(str::len).max().unwrap();
+            if direction == GraphDirection::TopDown && !grouped {
+                assert!(
+                    original_width <= 64,
+                    "the reported 64-column regression must stay admitted"
+                );
+            }
+            let rendered = crate::graph::draw::render_graph_with_execution(
+                &graph,
+                &options,
+                execution.with_viewport(
+                    AsciiViewportPolicy::with_max_width(original_width)
+                        .overflow(OverflowPolicy::Error),
+                ),
+            )
+            .unwrap();
+            assert_eq!(rendered, unbounded);
+            assert_eq!(
+                rendered
+                    .matches("1234567890123456789012345678901234567890")
+                    .count(),
+                1
+            );
+            assert!(
+                rendered.lines().all(|row| row.len() <= original_width),
+                "{rendered}"
+            );
+        }
+    }
+}
+
+#[test]
+fn exhausted_initial_capacity_analysis_keeps_the_unmodified_feasible_layout() {
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    graph.add_group_with_style(
+        "scope",
+        "Scope",
+        Some(GraphDirection::TopDown),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    let options = AsciiRenderOptions::ascii();
+    let policy = options.flowchart_layout().graph_policy();
+    let charset = GraphCharset::for_options(&options);
+    let limits = AsciiResourcePolicy::default();
+    let mut resources = ResourceContext::new(limits);
+    let budget = GraphPlanningBudget::default();
+    budget.reflow_work.set(1);
+    let execution = AsciiExecution::for_test(&limits).with_graph_planning(&budget);
+    let input = LayoutInput::try_new(&graph, &policy, &mut resources, execution).unwrap();
+    let initial = input
+        .generate(&LayoutFeedback::default(), &mut resources, execution)
+        .unwrap();
+    let before = resources.layout_work_used();
+    let InitialGraph { measured, .. } =
+        initial_layout(&graph, &input, &charset, &policy, &mut resources, execution).unwrap();
+    assert_eq!(measured.layout, initial.layout);
+    assert_eq!(budget.reflow_work.get(), 0);
+    assert!(
+        resources.layout_work_used() > before,
+        "discarded analysis still consumes work"
+    );
+    let routes = routing::prepare_route_scene_with_execution(
+        &graph,
+        &measured.layout,
+        &graph.edges,
+        &charset,
+        &policy,
+        &mut resources,
+        execution,
+    );
+    assert!(
+        routes.is_ok(),
+        "the unchanged directly routable geometry remains available"
+    );
+}
+
+#[test]
+fn initial_capacity_preparation_stays_within_its_allowance_and_preserves_hard_errors() {
+    use crate::graph::model::GraphEdgeAttrs;
+    use crate::resource::AsciiResourceLimitId;
+
+    let mut graph = AsciiGraph::new(GraphDirection::TopDown);
+    graph.add_node("a", "A");
+    graph.add_node("b", "B");
+    graph.add_edge("a", "b");
+    graph.add_edge_with_attrs(
+        "b",
+        "a",
+        GraphEdgeAttrs {
+            label: Some("a complete return condition".into()),
+            ..Default::default()
+        },
+    );
+    graph.add_group_with_style(
+        "scope",
+        "Scope",
+        Some(GraphDirection::TopDown),
+        vec!["a".into(), "b".into()],
+        Default::default(),
+    );
+    // This control starts with enough room for the return caption and its
+    // independent-stem reading margin; infeasible layouts exercise reflow elsewhere.
+    let mut policy = AsciiRenderOptions::ascii()
+        .flowchart_layout()
+        .graph_policy();
+    policy.group_padding_x = graph.edges[1].label.as_ref().unwrap().len();
+    let charset = GraphCharset::for_options(&AsciiRenderOptions::ascii());
+    let limits = AsciiResourcePolicy::unbounded();
+    let mut preparation = ResourceContext::new(limits);
+    let execution = AsciiExecution::for_test(&limits);
+    let input = LayoutInput::try_new(&graph, &policy, &mut preparation, execution).unwrap();
+    let mut original_resources = ResourceContext::new(limits);
+    let original = input
+        .generate(
+            &LayoutFeedback::default(),
+            &mut original_resources,
+            execution,
+        )
+        .unwrap();
+    let initial_work = original_resources.layout_work_used();
+    let budget = GraphPlanningBudget::default();
+    let mut resources = ResourceContext::new(limits);
+    let prepared = initial_layout(
+        &graph,
+        &input,
+        &charset,
+        &policy,
+        &mut resources,
+        execution.with_graph_planning(&budget),
+    )
+    .unwrap();
+    let required = GraphPlanningBudget::default().reflow_work.get() - budget.reflow_work.get();
+    assert_eq!(prepared.measured.layout, original.layout);
+    assert!(
+        prepared.incumbent.is_some(),
+        "a complete original scene must be retained"
+    );
+    for allowance in [1, required / 2, required] {
+        let budget = GraphPlanningBudget::default();
+        budget.reflow_work.set(allowance);
+        let mut resources = ResourceContext::new(limits);
+        let candidate = initial_layout(
+            &graph,
+            &input,
+            &charset,
+            &policy,
+            &mut resources,
+            execution.with_graph_planning(&budget),
+        )
+        .unwrap();
+        let spent = allowance - budget.reflow_work.get();
+        assert!(spent <= allowance);
+        assert!(resources.layout_work_used() >= initial_work + spent);
+        if allowance == 1 {
+            assert_eq!(candidate.measured.layout, original.layout);
+            assert_eq!(budget.reflow_work.get(), 0);
+            assert!(
+                resources.layout_work_used() > initial_work,
+                "discarded rebuild work must remain charged"
+            );
+        }
+    }
+    let hard_limits = limits
+        .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, initial_work)
+        .unwrap();
+    let mut resources = ResourceContext::new(hard_limits);
+    let budget = GraphPlanningBudget::default();
+    budget.reflow_work.set(1);
+    assert!(
+        matches!(
+            initial_layout(
+                &graph,
+                &input,
+                &charset,
+                &policy,
+                &mut resources,
+                AsciiExecution::for_test(&hard_limits).with_graph_planning(&budget)
+            ),
+            Err(AsciiError::ResourceLimitExceeded(_))
+        ),
+        "public work exhaustion must not be swallowed by optional preflight"
+    );
+}
+
+#[test]
 #[cfg(feature = "diagram-flowchart")]
 fn large_compound_chains_keep_the_existing_strict_benchmark_admission() {
     use std::fmt::Write as _;

@@ -648,6 +648,521 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(
+        feature = "diagram-architecture",
+        feature = "diagram-usecase",
+        feature = "diagram-block",
+        feature = "diagram-c4",
+        feature = "diagram-agentflow"
+    ))]
+    fn family_binding_results_expose_the_selected_primary_and_fallback() {
+        for (family, source) in [
+            ("agentflow", "agentflow-beta\nA[Request] --> B[Result]\n"),
+            (
+                "architecture",
+                "architecture-beta\nservice api(server)[API]\nservice db(database)[Database]\napi:R --> L:db\n",
+            ),
+            (
+                "usecase",
+                "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout\n",
+            ),
+            (
+                "block",
+                "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B\n",
+            ),
+            (
+                "c4",
+                "C4Container\nPerson(user, \"Customer\")\nBoundary(zone, \"Services\") {\nContainer(api, \"API\", \"Rust\", \"Serves requests\")\n}\nRel_Back(api, user, \"Replies\", \"HTTPS\")\n",
+            ),
+        ] {
+            for width in [10, 80] {
+                let options = format!(
+                    r#"{{"ascii":{{"maxWidth":{width},"overflow":"fallback","colorMode":"plain"}}}}"#
+                );
+                let result =
+                    crate::render_ascii_result(source.as_bytes(), options.as_bytes()).unwrap();
+                let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+                else {
+                    panic!("ASCII result must retain its canonical plan");
+                };
+                assert_eq!(plan.family(), family);
+                assert_eq!(plan.schema_version(), 4);
+                assert_eq!(plan.encoding(), "plain");
+                assert_eq!(plan.layout_profile(), Some("canonical"));
+                assert_eq!(plan.requested_graph_presentation(), "strict");
+                assert_eq!(plan.fallback_attempted(), width == 10);
+                assert!(!plan.emitted_overflowed());
+                assert_eq!(
+                    plan.projection(),
+                    if width == 10 {
+                        "structured_text"
+                    } else {
+                        "diagrammatic"
+                    }
+                );
+                assert!(plan.emitted_width() <= width);
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(result.metadata_json()).unwrap();
+                assert_eq!(metadata["output_plan"]["family"], family);
+                assert_eq!(metadata["output_plan"]["schema_version"], 4);
+                if width == 10 {
+                    let text = std::str::from_utf8(result.data()).unwrap();
+                    let compact: String = text.split_whitespace().collect();
+                    let relationships: &[&str] = if family == "usecase" {
+                        &[
+                            "E1:N1[open]--solidassociation--N2[point]",
+                            "id=\"Checkout\"",
+                        ]
+                    } else if family == "block" {
+                        &[
+                            "start=\"A\"",
+                            "end=\"B\"",
+                            "end-marker=\"arrow_point\"",
+                            "columns=3",
+                            "span=2",
+                            "type=\"space\"",
+                            "children=[",
+                        ]
+                    } else if family == "c4" {
+                        &[
+                            "E1[relationship]type=\"rel_b\"source=[S2]alias=\"api\"target=[S1]alias=\"user\"heads=source",
+                            "S2techn={text:\"Rust\"}",
+                            "parentBoundary=[B2]alias=\"zone\"",
+                        ]
+                    } else if family == "architecture" {
+                        &[
+                            "N1[service]id=\"api\"title=\"API\"",
+                            "N2[service]id=\"db\"title=\"Database\"",
+                            "E1lhs=[N1]id=\"api\"lhsDir=\"R\"lhsInto=null",
+                            "E1rhs=[N2]id=\"db\"rhsDir=\"L\"rhsInto=true",
+                        ]
+                    } else {
+                        &[
+                            "E1[sequence-->]source=[N1]id=\"A\"target=[N2]id=\"B\"",
+                            "explicit-id=false",
+                        ]
+                    };
+                    for expected in relationships {
+                        assert!(compact.contains(expected), "missing {expected:?}: {text}");
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-gantt")]
+    fn gantt_binding_results_distinguish_timeline_compact_records_and_width_fallback() {
+        for (compact_mode, width, width_profile) in [
+            (false, 60, "unicode"),
+            (false, 59, "cjk"),
+            (true, 59, "unicode"),
+        ] {
+            let prefix = if compact_mode {
+                "---\nconfig:\n  gantt:\n    displayMode: compact\n---\n"
+            } else {
+                ""
+            };
+            let source = format!(
+                "{prefix}gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\nBuild phase: done, build, 2026-01-01, 2d\nReview phase: crit, active, review, after build, 1d\n"
+            );
+            let options = serde_json::to_vec(&serde_json::json!({
+                "ascii": {
+                    "maxWidth": width,
+                    "widthProfile": width_profile,
+                    "layoutProfile": "canonical",
+                    "graphPresentation": "strict",
+                    "colorMode": "plain",
+                    "overflow": "fallback",
+                },
+            }))
+            .unwrap();
+            let result = crate::render_ascii_result(source.as_bytes(), &options).unwrap();
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+            else {
+                panic!("Gantt ASCII result must retain its canonical plan");
+            };
+            let fallback = !compact_mode && width < 60;
+            assert_eq!(
+                result.data(),
+                render_ascii(source.as_bytes(), &options).unwrap()
+            );
+            assert_eq!(plan.family(), "gantt");
+            assert_eq!(plan.schema_version(), 4);
+            assert_eq!(plan.encoding(), "plain");
+            assert_eq!(plan.width_profile(), width_profile);
+            assert_eq!(plan.layout_profile(), Some("canonical"));
+            assert_eq!(plan.requested_graph_presentation(), "strict");
+            assert_eq!(plan.requested_max_width(), Some(width));
+            assert!(!plan.compact_attempted());
+            assert_eq!(plan.fallback_capability(), "available");
+            assert_eq!(plan.fallback_attempted(), fallback);
+            assert_eq!(plan.primary_overflowed(), Some(fallback));
+            assert_eq!(
+                plan.fallback_reason(),
+                if fallback {
+                    Some("primary_overflow")
+                } else {
+                    None
+                }
+            );
+            assert_eq!(
+                plan.outcome(),
+                if fallback { "fallback" } else { "primary" }
+            );
+            assert_eq!(
+                plan.projection(),
+                if compact_mode || fallback {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert!(!plan.emitted_overflowed());
+            assert!(plan.emitted_width() <= width);
+            let metadata: serde_json::Value =
+                serde_json::from_slice(result.metadata_json()).unwrap();
+            assert_eq!(metadata["output_plan"]["family"], "gantt");
+            assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+            assert_eq!(metadata["output_plan"]["outcome"], plan.outcome());
+            assert_eq!(
+                metadata["output_plan"]["emitted_width"],
+                plan.emitted_width()
+            );
+            let text = std::str::from_utf8(result.data()).unwrap();
+            assert!(!text.contains('\u{1b}'));
+            assert_eq!(
+                text.contains("Gantt timeline (elapsed time)"),
+                !compact_mode && !fallback
+            );
+            let compact: String = text.split_whitespace().collect();
+            for expected in [
+                "T1[task]id=\"build\"",
+                "T2[task]id=\"review\"",
+                "T1details:{",
+                "T2details:{",
+                "ganttdetails:{",
+            ] {
+                assert!(compact.contains(expected), "missing {expected:?}: {text}");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-gantt")]
+    fn gantt_binding_rejects_unadmitted_output_combinations() {
+        for ascii in [
+            serde_json::json!({"layoutProfile": "compact"}),
+            serde_json::json!({"layoutProfile": "auto", "maxWidth": 59}),
+            serde_json::json!({"graphPresentation": "adaptive"}),
+            serde_json::json!({"colorMode": "ansi16", "maxWidth": 59, "overflow": "fallback"}),
+            serde_json::json!({"colorMode": "ansi256", "maxWidth": 59, "overflow": "fallback"}),
+            serde_json::json!({"colorMode": "truecolor", "maxWidth": 59, "overflow": "fallback"}),
+            serde_json::json!({"colorMode": "html", "maxWidth": 59, "overflow": "fallback"}),
+        ] {
+            let options = serde_json::to_vec(&serde_json::json!({"ascii": ascii})).unwrap();
+            let error = render_ascii(
+                b"gantt\ndateFormat YYYY-MM-DD\nBuild: build, 2026-01-01, 2d\n",
+                &options,
+            )
+            .expect_err("Gantt admits only Canonical, Strict, and Plain viewport fallback");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument, "{error:?}");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-zenuml")]
+    fn zenuml_binding_results_keep_the_basic_scene_and_complete_width_fallback() {
+        let source = b"zenuml\nAlice->Bob: Hello\nBob-->Alice: Reply\n";
+        for width in [None, Some(10)] {
+            let mut options = serde_json::json!({
+                "ascii": {"colorMode": "plain", "overflow": "fallback"},
+            });
+            if let Some(width) = width {
+                options["ascii"]["maxWidth"] = serde_json::json!(width);
+            }
+            let options = serde_json::to_vec(&options).unwrap();
+            let result = crate::render_ascii_result(source, &options).unwrap();
+            let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+            else {
+                panic!("ZenUML ASCII result must retain its canonical plan");
+            };
+            assert_eq!(result.data(), render_ascii(source, &options).unwrap());
+            assert_eq!(plan.family(), "zenuml");
+            assert_eq!(plan.schema_version(), 4);
+            assert_eq!(plan.encoding(), "plain");
+            assert_eq!(plan.layout_profile(), Some("canonical"));
+            assert_eq!(plan.requested_graph_presentation(), "strict");
+            assert_eq!(plan.requested_max_width(), width);
+            assert!(!plan.compact_attempted());
+            assert_eq!(plan.fallback_capability(), "available");
+            assert_eq!(plan.fallback_attempted(), width.is_some());
+            assert_eq!(plan.primary_overflowed(), Some(width.is_some()));
+            assert_eq!(
+                plan.fallback_reason(),
+                if width.is_some() {
+                    Some("primary_overflow")
+                } else {
+                    None
+                }
+            );
+            assert_eq!(
+                plan.outcome(),
+                if width.is_some() {
+                    "fallback"
+                } else {
+                    "primary"
+                }
+            );
+            assert_eq!(
+                plan.projection(),
+                if width.is_some() {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert!(!plan.emitted_overflowed());
+            if let Some(width) = width {
+                assert!(plan.emitted_width() <= width);
+            }
+            let metadata: serde_json::Value =
+                serde_json::from_slice(result.metadata_json()).unwrap();
+            assert_eq!(metadata["output_plan"]["family"], "zenuml");
+            assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+            assert_eq!(metadata["output_plan"]["outcome"], plan.outcome());
+            assert_eq!(
+                metadata["output_plan"]["emitted_width"],
+                plan.emitted_width()
+            );
+            let text = std::str::from_utf8(result.data()).unwrap();
+            assert!(!text.contains('\u{1b}'));
+            let compact: String = text.split_whitespace().collect();
+            for expected in [
+                "P1[participant]name=\"Alice\"",
+                "P2[participant]name=\"Bob\"",
+                "S1[message]id=\"zenuml-statement-0\"parent=nullsection=nullfrom=[P1]name=\"Alice\"to=[P2]name=\"Bob\"style=asynchronousassignment=nulllabel=\"Hello\"bodyCount=0",
+                "S2[return]id=\"zenuml-statement-1\"parent=nullsection=nullfrom=[P2]name=\"Bob\"to=[P1]name=\"Alice\"label=\"Reply\"",
+                "S1details:{",
+                "S2details:{",
+                "explicit_from:\"Alice\"",
+                "explicit_to:\"Alice\"",
+                "span:{",
+                "occurrences:[",
+            ] {
+                assert!(compact.contains(expected), "missing {expected:?}: {text}");
+            }
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-zenuml")]
+    fn zenuml_binding_rejects_unadmitted_output_combinations() {
+        for ascii in [
+            serde_json::json!({"layoutProfile": "compact"}),
+            serde_json::json!({"layoutProfile": "auto"}),
+            serde_json::json!({"graphPresentation": "adaptive"}),
+            serde_json::json!({"colorMode": "ansi16", "maxWidth": 10, "overflow": "fallback"}),
+        ] {
+            let options = serde_json::to_vec(&serde_json::json!({"ascii": ascii})).unwrap();
+            let error = render_ascii(b"zenuml\nAlice->Bob: Hello\n", &options)
+                .expect_err("ZenUML admits only Canonical, Strict, and Plain viewport fallback");
+            assert_eq!(error.status(), BindingStatus::InvalidArgument, "{error:?}");
+        }
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-pie")]
+    fn pie_binding_reports_keep_actual_projection_and_complete_keyed_records() {
+        for (dogs, cats, primary_projection) in
+            [(386, 85, "diagrammatic"), (0, 0, "structured_text")]
+        {
+            let source = format!("pie showData\ntitle Pets\n\"Dogs\": {dogs}\n\"Cats\": {cats}\n");
+            for width in [10, 20, 80] {
+                let options = serde_json::json!({
+                    "ascii": {
+                        "maxWidth": width,
+                        "overflow": "fallback",
+                        "colorMode": "plain",
+                        "graphPresentation": "strict",
+                    },
+                });
+                let result = crate::render_ascii_result(
+                    source.as_bytes(),
+                    &serde_json::to_vec(&options).unwrap(),
+                )
+                .unwrap();
+                let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+                else {
+                    panic!("Pie ASCII result must retain its canonical plan");
+                };
+                assert_eq!(plan.family(), "pie");
+                assert_eq!(plan.schema_version(), 4);
+                assert_eq!(plan.encoding(), "plain");
+                assert_eq!(plan.layout_profile(), Some("canonical"));
+                assert_eq!(plan.requested_graph_presentation(), "strict");
+                assert_eq!(plan.requested_max_width(), Some(width));
+                assert!(!plan.compact_attempted());
+                assert_eq!(plan.fallback_capability(), "available");
+                assert_eq!(plan.fallback_attempted(), width < 80);
+                assert_eq!(
+                    plan.fallback_reason(),
+                    if width < 80 {
+                        Some("primary_overflow")
+                    } else {
+                        None
+                    }
+                );
+                assert_eq!(plan.primary_overflowed(), Some(width < 80));
+                assert_eq!(
+                    plan.outcome(),
+                    if width < 80 { "fallback" } else { "primary" }
+                );
+                assert_eq!(
+                    plan.projection(),
+                    if width < 80 {
+                        "structured_text"
+                    } else {
+                        primary_projection
+                    }
+                );
+                assert!(!plan.emitted_overflowed());
+                assert!(plan.emitted_width() <= width);
+                assert_eq!(
+                    plan.lossiness(),
+                    if width < 80 && primary_projection == "diagrammatic" {
+                        "presentation_only"
+                    } else {
+                        "none"
+                    }
+                );
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(result.metadata_json()).unwrap();
+                assert_eq!(metadata["output_plan"]["family"], "pie");
+                assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+                assert_eq!(metadata["output_plan"]["outcome"], plan.outcome());
+                let text = std::str::from_utf8(result.data()).unwrap();
+                assert!(!text.contains('\u{1b}'));
+                let compact: String = text.split_whitespace().collect();
+                for expected in [
+                    format!("P1label=\"Dogs\"value={dogs}"),
+                    format!("P2label=\"Cats\"value={cats}"),
+                    "Pets".to_string(),
+                ] {
+                    assert!(compact.contains(&expected), "missing {expected:?}: {text}");
+                }
+                assert!(compact.find("P1label=").unwrap() < compact.find("P2label=").unwrap());
+            }
+        }
+
+        let error = render_ascii(
+            b"pie\ntitle Pets\n\"Dogs\": 386\n\"Cats\": 85\n",
+            br#"{"ascii":{"graphPresentation":"adaptive","colorMode":"plain"}}"#,
+        )
+        .expect_err("Pie admits only Strict graph presentation");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("graph_presentation"), "{error:?}");
+    }
+
+    #[test]
+    #[cfg(feature = "diagram-requirement")]
+    fn requirement_binding_reports_keep_primary_records_and_complete_width_fallback() {
+        let source = concat!(
+            "requirementDiagram\n",
+            "requirement req {\nid: R-1\ntext: Login required\nrisk: high\nverifymethod: test\n}\n",
+            "element sys {\ntype: service\ndocref: spec.md\n}\n",
+            "sys - satisfies -> req\n",
+        );
+        for (source, primary_projection) in [
+            (source.to_string(), "diagrammatic"),
+            (
+                source.replace("sys - satisfies", "missing - satisfies"),
+                "structured_text",
+            ),
+        ] {
+            for (width, presentation) in [
+                (4, "strict"),
+                (10, "strict"),
+                (80, "strict"),
+                (80, "adaptive"),
+            ] {
+                let options = serde_json::json!({
+                    "ascii": {
+                        "maxWidth": width,
+                        "overflow": "fallback",
+                        "colorMode": "plain",
+                        "graphPresentation": presentation,
+                    },
+                });
+                let result = crate::render_ascii_result(
+                    source.as_bytes(),
+                    &serde_json::to_vec(&options).unwrap(),
+                )
+                .unwrap();
+                let Some(crate::BindingOutputPlan::Ascii(plan)) = result.metadata().output_plan()
+                else {
+                    panic!("Requirement ASCII result must retain its canonical plan");
+                };
+                assert_eq!(plan.family(), "requirement");
+                assert_eq!(plan.schema_version(), 4);
+                assert_eq!(plan.encoding(), "plain");
+                assert_eq!(plan.layout_profile(), Some("canonical"));
+                assert_eq!(plan.requested_graph_presentation(), presentation);
+                assert_eq!(plan.requested_max_width(), Some(width));
+                let fallback_expected = width == 4 && primary_projection == "diagrammatic";
+                assert_eq!(plan.fallback_attempted(), fallback_expected);
+                assert_eq!(
+                    plan.outcome(),
+                    if fallback_expected {
+                        "fallback"
+                    } else {
+                        "primary"
+                    }
+                );
+                assert_eq!(
+                    plan.projection(),
+                    if fallback_expected {
+                        "structured_text"
+                    } else {
+                        primary_projection
+                    }
+                );
+                assert!(!plan.emitted_overflowed());
+                assert!(plan.emitted_width() <= width);
+                let metadata: serde_json::Value =
+                    serde_json::from_slice(result.metadata_json()).unwrap();
+                assert_eq!(metadata["output_plan"]["family"], "requirement");
+                assert_eq!(metadata["output_plan"]["projection"], plan.projection());
+                let text = std::str::from_utf8(result.data()).unwrap();
+                assert!(!text.contains('\u{1b}'));
+                let compact: String = text.split_whitespace().collect();
+                for expected in [
+                    "name=\"req\"id=\"R-1\"",
+                    "text=\"Loginrequired\"risk=\"High\"verifyMethod=\"Test\"",
+                    "N1[element]name=\"sys\"type=\"service\"docRef=\"spec.md\"",
+                    "E1[\"satisfies\"]",
+                ] {
+                    assert!(compact.contains(expected), "missing {expected:?}: {text}");
+                }
+                let endpoints = if primary_projection == "structured_text" {
+                    "source=[](unresolved)name=\"missing\"target=[R1]name=\"req\""
+                } else {
+                    "source=[N1]name=\"sys\"target=[R1]name=\"req\""
+                };
+                assert!(compact.contains(endpoints), "missing {endpoints:?}: {text}");
+            }
+        }
+
+        let error = render_ascii(
+            source.as_bytes(),
+            br#"{"ascii":{"graphPresentation":"adaptive","colorMode":"ansi16"}}"#,
+        )
+        .expect_err("Requirement adaptive records require Plain encoding");
+        assert_eq!(error.status(), BindingStatus::InvalidArgument);
+        assert!(error.message().contains("graph_presentation"), "{error:?}");
+    }
+
+    #[test]
     fn styled_ascii_results_identify_their_exact_encoding() {
         for (color_mode, expected_encoding, required_bytes) in [
             ("ansi16", "ansi16", "\u{1b}["),

@@ -14,7 +14,7 @@ This extension changes neither the historical family-admission decisions below n
 Sequence, quantitative, or StructuredText family ownership. Policy and schema 4 migration belong
 to the [support matrix](ASCII_SUPPORT_MATRIX.md), scheduling admission to the
 [resource audit](ASCII_RESOURCE_AND_PANIC_AUDIT.md#graph-scene-planning), and qualified reference
-comparisons to the [comparison note](../../crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#scene-planning-and-explicit-recovery).
+comparisons to the [comparison note](ascii/ASCII_REFERENCE_COMPARISON.md#scene-planning-and-explicit-recovery).
 These current owners supersede older strict-only planning descriptions without changing the
 source identity of historical receipts.
 
@@ -29,8 +29,9 @@ Baseline: pinned Mermaid `11.16.1`
 Last updated: 2026-08-15
 
 This report is the tracked gate artifact required by U16 and U17 of the ASCII semantic-depth plan.
-It records why common-family depth remains the priority and why Railroad, Requirement, Ishikawa,
-and Quadrant remain Unsupported. It does not promote any existing Partial family to Full.
+It records the historical rejection of Railroad, Requirement, Ishikawa, and Quadrant. The later
+[Requirement admission](#requirement-spatial-admission) supersedes that family's disposition;
+the other three remain Unsupported. No existing Partial family is promoted to Full.
 
 The report distinguishes two decisions:
 
@@ -43,20 +44,23 @@ The second decision is a conservative release disposition, not a claim that thes
 never be useful in a terminal. A future proposal can reopen one family by supplying the complete
 spatial vertical slice and executable width evidence described below.
 
-The later [bounded Packet spatial admission](#packet-bounded-spatial-admission) reopens one
-existing StructuredText family. Its contract and pending verification are separate from the
-historical R34 decisions and measurements below.
+The later [bounded Packet spatial admission](#packet-bounded-spatial-admission) and
+[Gantt timeline admission contract](#gantt-timeline-admission) revisit existing StructuredText
+families. Their contracts and verification are separate from the historical R34 decisions and
+measurements below.
 
 ## Authority and Reproduction
 
 The evidence boundary is:
 
-- Mermaid `11.16.1`, pinned by `tools/upstreams/REPOS.lock.json`, for syntax and typed semantics;
+- Mermaid `11.16.1` for the historical syntax and typed-semantic baseline; later family sections
+  name their selected baseline (Gantt uses Mermaid `12.3.0`, currently pinned by
+  `tools/upstreams/REPOS.lock.json`);
 - `mermaid-ascii` commit `6fffb8e2714acab2c4cb41c78894fabbc62cee56` for the immutable copied
   graph and sequence byte oracle;
 - local moving-reference inspection at
   `b1b35f67d6a5dd0699ccfc968c00a763db573076`, classified in
-  `crates/merman-ascii/ASCII_MOVING_REFERENCE_MANIFEST.md` rather than used as a release oracle;
+  `docs/rendering/ascii/ASCII_MOVING_REFERENCE_MANIFEST.md` rather than used as a release oracle;
 - `beautiful-mermaid` commit `2ac8bbbb060ca0a65a6a21f3200bd99b1587b488` for capability prior art
   only; and
 - tracked local parser/model, semantic, resource, capability, and fixture-inventory tests for the
@@ -95,21 +99,22 @@ non-authoritative and are not substitutes for that receipt.
 The moving-reference lane records each uniquely identified path with validity, admission, semantic
 feature, and evidence dispositions. The TSV authority owns the row set and derived counts. The
 copied oracle remains immutable. The complete comparison policy and exact copied-oracle counts live
-in `crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md` and
-`crates/merman-ascii/V1_MERMAID_ASCII_COVERAGE.md`.
+in `docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md` and
+`docs/rendering/ascii/V1_MERMAID_ASCII_COVERAGE.md`.
 
 ## Original StructuredText Dispositions
 
 The original Phase 3 decision retained Gantt, GitGraph, Journey, Kanban, Mindmap, Packet, Timeline,
-and TreeView as StructuredText. Those reports preserve typed facts useful in logs and review but
-do not claim timeline, lane, board, map, packet-width, spine, or two-dimensional tree geometry.
-These are deliberate projection boundaries, not fallbacks selected by resource pressure. Packet's
-later bounded contract is documented below; the other dispositions remain unchanged.
+and TreeView as StructuredText. Those original reports preserved typed facts useful in logs and
+review without claiming timeline, lane, board, map, packet-width, spine, or two-dimensional tree
+geometry. These were deliberate projection boundaries, not fallbacks selected by resource pressure.
+The later Packet, Gantt, and GitGraph contracts below revisit those dispositions; the others remain
+StructuredText.
 
 | Family | Representative terminal task | Diagrammatic decision |
 | --- | --- | --- |
-| Gantt | Inspect task identity, constraints, sections, flags, and resolved times. | Retain StructuredText; no aligned date-scale timeline was admitted. |
-| GitGraph | Trace commit order, branches, merges, tags, and parent identities. | Retain StructuredText; no lane graph was admitted. |
+| Gantt | Inspect task identity, constraints, sections, flags, and resolved times. | Originally StructuredText; no aligned date-scale timeline was admitted at this gate. See the [later timeline admission contract](#gantt-timeline-admission). |
+| GitGraph | Trace commit order, branches, merges, tags, and parent identities. | Originally StructuredText; the branch-track admission below adds fixed spatial tracks and complete records. |
 | Journey | Review ordered tasks, actors, sections, and scores. | Retain StructuredText intentionally; a browser-shaped journey adds insufficient terminal value. |
 | Kanban | Audit column/card identity, assignment, and metadata, including orphan handling. | Retain StructuredText; no spatial board was admitted. |
 | Mindmap | Recover hierarchy, identity, cycles, and disconnected components. | Retain StructuredText; the outline is useful, but it is not counted as two-dimensional geometry. |
@@ -117,11 +122,11 @@ later bounded contract is documented below; the other dispositions remain unchan
 | Timeline | Inspect direction, sections, and ordered events. | Retain StructuredText; no spatial time spine was admitted. |
 | TreeView | Inspect file/directory hierarchy and disclosed node metadata. | Retain StructuredText; charset-aware tree prefixes are an outline, not a two-dimensional diagram. |
 
-GitGraph now adds bounded branch lanes to its newest-first history report, with explicit parent
+GitGraph previously added bounded branch lanes to its newest-first history report, with explicit parent
 records whenever a lane would collide, exceed capacity, or misrepresent caller-authored history.
-Mindmap now puts labels and hierarchy before referenced metadata. Both remain StructuredText:
-these readability improvements do not admit Mermaid's two-dimensional Git or node-shape layouts.
-The [support matrix](ASCII_SUPPORT_MATRIX.md#structured-text-outputs) owns their current limits.
+Mindmap puts labels and hierarchy before referenced metadata. Those improvements alone did not
+admit two-dimensional geometry. The later GitGraph admission replaces that report; Mindmap
+remains StructuredText. The [support matrix](ASCII_SUPPORT_MATRIX.md) owns their current limits.
 
 ## Packet Bounded Spatial Admission
 
@@ -175,6 +180,120 @@ text primary, and viewport fallback. Capability tests, the CLI archive contract,
 Playground capability projection use the promoted descriptor. No Packet byte-parity oracle or
 claim of reference superiority is adopted: the inspected terminal references do not supply a
 Packet oracle.
+
+## Gantt Timeline Admission
+
+The later Gantt contract uses pinned Mermaid `12.3.0` semantics. Semantic coverage stays Partial;
+the primary family projection becomes Diagrammatic and the derived support level moves from
+Summary to Partial. The original Phase 3 disposition remains historical. An individual
+non-spatial model still reports a complete StructuredText primary.
+
+The timeline shares the global minimum start and maximum scheduled end on a continuous epoch-ms
+axis. Ordinary bars use visible-end overrides; milestones use the exact scheduled midpoint,
+including half milliseconds before cell rounding. Independent D/A/! badges, milestone `o`, and
+collapsed-interval `*` markers retain their meanings. Source-index T keys link every row to complete
+records of exact UTC dates, raw endpoints, literal typed dependencies, flags, classes, raw/source
+metadata, and repeated section occurrences. The renderer neither reschedules nor compresses
+excluded days or reads the current clock for a today marker.
+
+Spatial admission requires processed non-vertical tasks, empty `displayMode`, source-index order,
+valid start/visible/scheduled bounds, and a nonempty positive global span. Other domains retain
+complete records; existing identity/section errors and resource/allocation/cancellation/deadline
+failures remain errors. Canonical/Strict, Unicode/CJK, five primary encodings, and Plain-only
+complete width fallback keep the existing schemas, dependencies, and public limits.
+
+The presentation envelope is 60–120 cells, naturally 80, with a 26-cell key/status/label column.
+Records reflow to the viewport; below 60 cells, requested Plain width fallback selects the same
+complete keyed records. The [Gantt support note](ascii/GANTT_SUPPORT.md) owns the detailed contract.
+Admission verified: 2026-11-17. The parser-backed `gantt_timeline` tests compare small, typical,
+and dense schedules at 80/100/120 columns in ASCII, Unicode, and CJK, retaining each task row and
+record. The same target covers quantization, exact intervals, flags, metadata, excluded dates,
+inclusive ends, viewport/encoding policy, and operation failures. Family unit tests add
+canonical/full equality and exact/N-1 resource and simultaneous-buffer boundaries.
+
+Measured ASCII dimensions include the complete records, not only the timeline:
+
+| Sample | Previous summary at 80 | Complete records alone at 80 | 80 columns | 100 columns | 120 columns | Spatial reading task |
+| --- | --- | --- | --- | --- | --- | --- |
+| Small: sequential Design/Build | 78 × 6 | 80 × 27 | 80 × 37 | 100 × 34 | 120 × 30 | Recover the shared endpoint and relative duration. |
+| Typical: Design/Build/Review/Release | 80 × 14 | 80 × 47 | 80 × 60 | 100 × 52 | 120 × 49 | See parallel Build/Review, independent statuses, and the release milestone. |
+| Dense: 24 tasks in three sections | 77 × 53 | 80 × 226 | 80 × 261 | 100 × 212 | 120 × 187 | Recover every independently aligned interval on one global scale. |
+
+The timeline portions occupy 9, 12, and 34 rows respectively at these widths. The previous summary
+omitted some raw compatibility and interaction facts; it is not a completeness-equivalent
+baseline. Full records increase vertical extent, and the timeline adds another reading aid rather
+than claiming a shorter total result. Sample construction is retained in `gantt_timeline.rs`.
+
+An unchanged-source local Trident diagnostic returns output for all 16 distinct Gantt sources.
+Its original DaveBench checker classifies 30 of 32 accepted weighted occurrences as
+`fallback render: source header shown: gantt`, because complete metadata records include the
+family name. The two remaining occurrences pass. This is a checker/output-contract discrepancy,
+not an official score improvement; metadata and checker rules are preserved. The unchanged
+Drawing replay remains 123/127 correct with no previously correct result regressing.
+
+`repo-ref/mermaid-ascii` has no Gantt oracle; no Grok or Codex renderer code was consulted.
+This contract does not claim SVG styling/tick parity or dependency-arrow geometry.
+
+## GitGraph Branch Track Admission
+
+The later GitGraph contract replaces the newest-first history summary with fixed branch tracks
+over pinned Mermaid `12.3.0` facts. Semantic coverage stays Partial; the family projection is
+Diagrammatic. An individual output reports StructuredText when its history is outside the
+spatial domain, independently of that family capability. The
+[GitGraph support note](ascii/GITGRAPH_SUPPORT.md) owns the detailed contract.
+
+Tracks follow canonical branch order and a uniform chronological event axis in LR, TB, and BT.
+Every commit carries a source-index C key. Real ancestry is retained independently of custom
+commit appearance. Shared sources may fork; incoming paths meet at the actual child marker,
+with endpoint arrows pointing to that child. Unrelated crossings use `x`/`╳`. Cherry-pick sources
+remain explicit keyed records rather than an additional ancestry line. Empty branches retain B
+keys without guessed heads or branch-creation instants.
+
+The parser-backed `git_graph_tracks` tests read the emitted characters and follow connections
+backwards, obeying the endpoint arrows and keeping crossing routes separate. They compare the
+reachable parent occurrences against the model rather than merely checking that IDs appear.
+The frozen generator uses 16 histories in LR/TB/BT: 48/48 admit spatial output, and all 192
+Allow/Fallback attempts return complete records at 80/100/120 columns. This is a bounded local
+property corpus, not a claim about arbitrary graphs or an official Trident score.
+
+Further probes cover custom merge types, cherry-pick source/parent equality, declared branch
+order, delayed forks, independent crossings, aliases of inherited old heads, duplicate IDs and
+overwrite warnings, missing/external/forward identities, nonconsecutive sequence, all primary
+encodings, Unicode/CJK profiles, canonical/full-model equality, and explicit width policy.
+TB/BT with one commit and 999/1000 branches checks header bounds. Resource tests admit retained
+tracks, JSON facts, and records cumulatively, and interrupt complexity counting inside large
+tag arrays. Unknown real commit types, resource failures, and operation cancellation remain
+errors under unchanged defaults.
+
+Parallel commit positioning, old non-tip parent routes, and ambiguous detached histories use
+complete record primaries with a reason. Spatial tracks are never reflowed or rotated to make
+them fit; Plain width fallback uses the same family records. Complete metadata increases total
+height over the old summary, while the track overview exposes branch and merge structure.
+The frozen admission sources use two linear commits, the four-commit branch/merge from
+`git_graph_tracks`, and a twelve-commit/four-branch history that repeatedly merges one source.
+The actual CLI comparison against `f9dcd0919` measures complete ASCII output, including records:
+
+| Sample | Previous 80-column report | New 80-column output | New 100-column output | New 120-column output |
+| --- | --- | --- | --- | --- |
+| Small linear | 38 × 8, StructuredText | 80 × 21, tracks + records | 99 × 18, tracks + records | 119 × 18, tracks + records |
+| Branch and merge | 71 × 15, StructuredText | 80 × 31, tracks + records | 99 × 27, tracks + records | 119 × 26, tracks + records |
+| Repeated-source merges | 79 × 36, StructuredText | 80 × 39, complete width fallback | 100 × 54, tracks + records | 119 × 50, tracks + records |
+
+The four-commit 80-column track overview is six rows before its legend and records. The dense
+80-column spatial candidate measures 85 columns, so Fallback selects complete records rather
+than wrapping connections. ASCII and Unicode both return complete output at all three widths.
+
+An unchanged-source local probe also replays the three frozen project GitGraph sources with
+Trident's unchanged DaveBench validity checker. The two previously rendered inputs now have
+Diagrammatic primaries with complete records, but the checker rejects both for
+`fallback render: source header shown: gitGraph`: the complete metadata scope includes the
+family name as a word. The third input keeps the same parser error in both builds
+(`invalid gitGraph reference: 主线`). The three synthetic admission samples pass that checker
+before and after because their headers include `LR:`. These are local diagnostic results,
+not an official benchmark improvement; source, metadata, and checker rules are preserved.
+
+`repo-ref/mermaid-ascii` provides no GitGraph implementation or byte oracle. No Grok or Codex
+renderer code was consulted, and no universal superiority claim is made.
 
 ## U30 Structural Closeout Disposition
 
@@ -380,6 +499,78 @@ Disposition: **Unsupported**. The prototype preserves relation records but does 
 global node-owned graph, so it adds no traceability advantage over the lossless edge list. Reopen
 with shared endpoints, direction-aware layout, and Requirement-owned relation labels/markers.
 
+## Requirement Spatial Admission
+
+Reopened: 2026-11-17, against the current canonical model and selected Mermaid `12.3.0` semantics.
+Requirement now has Partial Diagrammatic output for unambiguous declared endpoints. The historical
+tree prototype above remains rejected; the production adapter uses one global graph and does not
+copy shared nodes into independent branches.
+
+Each declaration has an R requirement or N element key. Geometry shows that key and the wrapped
+name, while complete field records follow the graph. Each relationship keeps its kind and source/
+target identities. Contains uses a solid line with a source circle and no target arrow; other
+kinds use dotted target arrows. The circle approximates Mermaid's circled plus. Unknown directions
+or kinds, ambiguous names, unresolved endpoints, and empty models select honest StructuredText
+primaries. Bounded routing failures remain Strict diagnostics or Plain Adaptive record recovery.
+
+`crates/merman-ascii/tests/requirement_model.rs` requires small, typical, and dense sources to remain Diagrammatic
+Primary at 80, 100, and 120 columns, in ASCII and Unicode. The small verification pair keeps node
+fields inspectable; the typical three-node view shows containment and a shared verified target;
+the dense source is the same upstream larger example used by R34. Its two convergences are now
+visible, every node appears once, and all eight typed relations remain attached to their endpoints.
+Complete attributes in the records are the same facts available in the record-only baseline.
+The independent route oracle separately checks every contact, marker, label, path contribution,
+and final paint in both canonical axes and structural charsets.
+
+The real CLI replay measures complete output, including records, rather than only its grid:
+
+| Source and reading task | Complete record baseline | 80 columns | 100 columns | 120 columns |
+| --- | --- | --- | --- | --- |
+| Small: one requirement verified by a test-suite element | 79 × 13 | 79 × 28 | 79 × 28 | 79 × 28 |
+| Typical: containment and a second contributor to the same requirement | 79 × 17 | 79 × 32 | 79 × 32 | 79 × 32 |
+| Dense: six requirements, three elements, eight typed relations | 79 × 40 | 79 × 91 | 79 × 91 | 79 × 91 |
+
+All nine width cases and both structural charsets are Diagrammatic Primary without fallback.
+The dense graph retains all seven kinds and both shared targets; the small graph alone offers
+little scan advantage, while its records remain the shorter single-relation view. The larger
+graph resolves R34's concrete shared-identity failure. The 11 distinct Requirement sources in
+the frozen Trident DaveBench extraction also complete in both charsets at 80 columns. This is a
+local completion diagnostic, not an official Trident ranking or a family-quality oracle.
+
+The map adds spatial traceability and vertical reading cost; the records remain the shorter audit
+view. Admission does not claim arbitrary dense-graph readability or a browser-shaped requirement
+box. The [Requirement support note](ascii/REQUIREMENT_SUPPORT.md) owns the current
+field, identity, encoding, viewport, and resource boundary. Existing defaults and graph planning
+allowances are unchanged. Neither accepted terminal reference supplies a Requirement quality oracle.
+
+## Pie Proportion Admission
+
+Admitted: 2026-11-17, against canonical Pie sections and selected Mermaid `12.3.0` semantics.
+The explicitly named **Pie proportions** view uses independent bars on one 0–100% scale instead
+of circular geometry. Source order, zero and tiny sections, and the denominator of all values
+remain intact. Complete keyed labels, exact numeric values, and metadata follow the chart.
+
+The parser-backed small, typical, and dense cases in
+`crates/merman-ascii/tests/pie_model.rs` remain Diagrammatic Primary in both structural charsets
+at every required width. Actual CLI output includes the complete records in these measurements:
+
+| Source and reading task | Complete record baseline | 80 columns | 100 columns | 120 columns |
+| --- | --- | --- | --- | --- |
+| Small: compare Dogs and Cats | 75 × 6 | 75 × 14 | 75 × 14 | 75 × 14 |
+| Typical: compare Read/Write/Delete with `showData` | 75 × 7 | 75 × 16 | 75 × 16 | 75 × 16 |
+| Dense: eleven categories including tiny and zero values | 75 × 15 | 75 × 33 | 75 × 33 | 75 × 33 |
+
+The fixed scale makes relative magnitudes visible while the record baseline remains shorter.
+Independent filled-cell checks bound quantization error to half a cell and require common bar
+origins. Exact integer threshold comparisons cover ties and their adjacent binary64 values,
+subnormals, accumulator carry, and totals that would overflow f64. Empty, all-zero, negative, or
+non-finite borrowed models use complete StructuredText primaries with an explicit reason.
+
+The [Pie support note](ascii/PIE_SUPPORT.md) owns label, numeric, metadata, encoding, viewport,
+and resource details. Existing budgets remain unchanged. The inspected `mermaid-ascii` references
+provide no Pie output oracle. Trident label/completion replays do not independently prove this
+bar-and-record view's proportional fidelity; executable geometry checks own that claim.
+
 <a id="ishikawa-r34"></a>
 ## Ishikawa R34 Disposition
 
@@ -540,7 +731,7 @@ that preserves relative order without relying on the point table for the missing
 
 ## Binding Decision
 
-Railroad, Requirement, Ishikawa, and Quadrant remain present in the exhaustive 31-family runtime
+Railroad, Ishikawa, and Quadrant remain present in the exhaustive runtime
 capability metadata with `semantic_coverage = null`, `primary_projection = none`, and derived
 `support_level = unsupported`. They remain absent from both supported-output and diagrammatic lists.
 The typed dispatch returns `UnsupportedDiagram`; there is no dispatcher stub, summary-only shortcut,
@@ -550,3 +741,5 @@ The test `crates/merman-ascii/tests/candidate_admission.rs` binds the current ru
 catalog, representative tracked fixtures, and explicit unsupported dispatch. The historical
 80/100/120 prototype measurements above remain an auditable decision record, but are intentionally
 not re-executed as part of the standing test suite.
+Requirement's later production admission is covered by its family tests and complete host
+capability integration; the historical unsupported dispatcher assertion no longer applies to it.

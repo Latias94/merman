@@ -5,7 +5,7 @@ Status: discovery evidence, not a byte oracle
 Last updated: 2026-08-15
 
 The machine-readable authority for moving-reference fixture dispositions is
-`tests/testdata/mermaid-ascii/MOVING_REFERENCE_DISPOSITIONS.tsv`. This document intentionally does
+`crates/merman-ascii/tests/testdata/mermaid-ascii/MOVING_REFERENCE_DISPOSITIONS.tsv`. This document intentionally does
 not duplicate its rows or derived counts.
 
 ## Scope

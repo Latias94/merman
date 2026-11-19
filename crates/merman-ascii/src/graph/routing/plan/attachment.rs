@@ -1,6 +1,6 @@
 use super::super::super::charset::GraphCharset;
 use super::super::super::layout::{CanvasCoord, GraphLayout, NodeLayout};
-use super::super::super::model::GraphGroupKind;
+use super::super::super::model::{GraphGroupKind, GraphPortSide};
 use super::super::super::shape::{GraphNodeShapeSemantics, GraphNodeSide};
 use super::super::path::StepDirection;
 use crate::error::Result;
@@ -11,15 +11,17 @@ pub(in crate::graph::routing) struct EndpointGeometry<'a> {
     pub(in crate::graph::routing) layout: &'a NodeLayout,
     pub(in crate::graph::routing) interior: bool,
     pub(in crate::graph::routing) group: bool,
+    constraint: Option<(GraphPortSide, Option<usize>)>,
 }
 
 impl<'a> EndpointGeometry<'a> {
     #[cfg(test)]
-    pub(super) fn node(layout: &'a NodeLayout) -> Self {
+    pub(in crate::graph::routing) fn node(layout: &'a NodeLayout) -> Self {
         Self {
             layout,
             interior: false,
             group: false,
+            constraint: None,
         }
     }
 
@@ -41,7 +43,46 @@ impl<'a> EndpointGeometry<'a> {
             layout,
             interior,
             group: group.is_some(),
+            constraint: None,
         })
+    }
+
+    pub(in crate::graph::routing) fn for_request(
+        request: super::EdgeRouteRequest<'a>,
+        endpoint: super::MarkerEndpoint,
+        resources: &ResourceContext,
+    ) -> Result<Self> {
+        let (layout, other, port) = match endpoint {
+            super::MarkerEndpoint::Start => {
+                (request.from, request.to, request.edge.source_port.as_ref())
+            }
+            super::MarkerEndpoint::End => {
+                (request.to, request.from, request.edge.target_port.as_ref())
+            }
+        };
+        let mut geometry = Self::for_route(layout, other, request.graph_layout, resources)?;
+        if let Some(port) = port {
+            let intercept = if let Some(anchor) = &port.anchor {
+                resources.charge_layout_work(request.graph_layout.nodes.len())?;
+                let node = request
+                    .graph_layout
+                    .nodes
+                    .iter()
+                    .find(|node| node.id == *anchor)
+                    .ok_or(crate::AsciiError::UnsupportedFeature {
+                        diagram_type: request.graph.diagram_type(),
+                        feature: "missing authored group-contact anchor",
+                    })?;
+                Some(match port.side {
+                    GraphPortSide::Left | GraphPortSide::Right => node.center_y(),
+                    GraphPortSide::Top | GraphPortSide::Bottom => node.center_x(),
+                })
+            } else {
+                None
+            };
+            geometry.constraint = Some((port.side, intercept));
+        }
+        Ok(geometry)
     }
 
     pub(in crate::graph::routing) fn resolve(
@@ -53,6 +94,22 @@ impl<'a> EndpointGeometry<'a> {
         let attachment =
             NodeAttachment::resolve_in_region(self.layout, berth, inward, self.interior, charset)?;
         let contact = attachment.contact;
+        if let Some((side, intercept)) = self.constraint {
+            let boundary_direction = if self.interior {
+                attachment.outward.opposite()
+            } else {
+                attachment.outward
+            };
+            let (on_side, actual) = match side {
+                GraphPortSide::Left => (boundary_direction == StepDirection::Left, contact.y),
+                GraphPortSide::Right => (boundary_direction == StepDirection::Right, contact.y),
+                GraphPortSide::Top => (boundary_direction == StepDirection::Up, contact.x),
+                GraphPortSide::Bottom => (boundary_direction == StepDirection::Down, contact.x),
+            };
+            if !on_side || intercept.is_some_and(|expected| expected != actual) {
+                return None;
+            }
+        }
         if self.group
             && (contact.x == self.layout.x || contact.x == self.layout.right())
             && (contact.y == self.layout.y || contact.y == self.layout.bottom())

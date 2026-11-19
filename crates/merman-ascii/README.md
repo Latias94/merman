@@ -82,8 +82,46 @@ ASCII support describes the quality of the terminal projection, not whether Merm
 
 | Semantic coverage | Primary projection | Families | Output contract |
 | --- | --- | --- | --- |
-| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Packet, XYChart | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
-| Partial | Structured text | Gantt, GitGraph, Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+| Partial | Diagrammatic | Flowchart, Swimlane, Sequence, State, Class, ER, Gantt, GitGraph, Packet, Pie, XYChart, Usecase, Block, C4, Architecture, Agentflow, Requirement, ZenUML | Core semantics render with documented limits; every admitted family can opt into one complete typed structured fallback for a bounded viewport. |
+| Partial | Structured text | Journey, Kanban, Mindmap, Timeline, TreeView | Ordered, readable reports or outlines instead of browser-oriented chart geometry; the same projection can be reflowed under an explicit viewport fallback policy. |
+
+Agentflow uses role-labelled spatial nodes and expanded flow frames for its admitted subset.
+Rich metadata, collapsed views, and ambiguous containment use complete keyed reading records as
+an explicitly reported StructuredText primary. Sequence, headless reference, and failure relationships
+remain distinct. See [Agentflow support](../../docs/rendering/ascii/AGENTFLOW_SUPPORT.md) for the semantic boundary.
+
+Requirement combines a shared-endpoint traceability graph with complete keyed node and relation
+records. Contains marks the source; other relation kinds retain dotted target arrows. Ambiguous
+names and unresolved references use explicit StructuredText primaries. See
+[Requirement support](../../docs/rendering/ascii/REQUIREMENT_SUPPORT.md) for the field and presentation boundary.
+
+C4 renders all five views with declaration-order rows, role-labelled rectangles, nested frames,
+and short relationship keys linked to complete records. The overview shows shape roles/names and
+boundary keys/names; technology, environment type, descriptions, and browser styles remain in
+records. Invalid detached models use honest StructuredText primaries. Canonical and Strict are
+the admitted profiles; routing failures remain errors, and width fallback is Plain-only. See
+[C4 support](../../docs/rendering/ascii/C4_SUPPORT.md) for identity, arrows, and resource boundaries.
+
+Architecture borrows its canonical services, junctions, groups, edges, and layout hints directly.
+Spatial output preserves declared endpoint sides, arrow ownership, service-anchored group
+contacts, and Row/Column member order. Invalid or conflicting detached geometry uses complete
+StructuredText primaries. Canonical and Strict are admitted; routing and operation failures remain
+errors, and width fallback is Plain-only. See
+[Architecture support](../../docs/rendering/ascii/ARCHITECTURE_SUPPORT.md) for the semantic boundary.
+
+Pie presents proportions as independent bars on one shared 0–100% scale, with complete keyed
+labels and exact values. Tiny positive categories retain an explicit marker; undefined
+distributions use StructuredText primaries. See [Pie support](../../docs/rendering/ascii/PIE_SUPPORT.md)
+for the rounding, numeric, and presentation boundary.
+
+Gantt uses one continuous elapsed-time axis over resolved task facts, with visible-end bars,
+scheduled-midpoint milestones, and independent done/active/critical badges. Source-index T keys
+link rows to complete UTC dates, raw endpoints, literal typed dependencies, and metadata records.
+The timeline uses a 60–120-cell envelope (naturally 80) with a 26-cell key/status/label column;
+records reflow to the viewport. Non-spatial domains, including compact/unknown display modes,
+have StructuredText primaries. Canonical/Strict and Plain-only complete width fallback retain
+existing limits and errors. See [Gantt support](../../docs/rendering/ascii/GANTT_SUPPORT.md) for
+admission, exact midpoint rounding, and the SVG styling/tick and dependency-arrow limits.
 
 Mindmap puts labels and hierarchy first. Distinct authored IDs, shapes, icons, and custom sections
 appear in a separate `Details:` block, referenced from the corresponding node. The standard
@@ -97,12 +135,12 @@ root
 \-- right
 ```
 
-GitGraph presents newest-first history with a bounded set of branch lanes and explicit parent
-IDs. Cherry-picks identify the picked source separately from the first parent. Histories whose
-lanes would collide or exceed capacity use complete parent records in model order, as do
-repeated IDs, external/forward references, and nonchronological sequences. Messages, tags, and
-identities remain quoted; unusual sequence/type/ID metadata stays in a separate details block.
-These family presentations remain StructuredText and do not change capability admission.
+GitGraph has fixed branch tracks in LR/TB/BT with child-pointing arrows and explicit independent
+crossings. Source-index C and B keys link the overview to complete commit, branch, and metadata
+records. Cherry-picks disclose their picked source separately from ancestry. Parallel commits,
+ambiguous/non-tip histories, and unsafe overlaps retain StructuredText primaries; Plain width
+fallback uses the same complete records. See
+[GitGraph support](../../docs/rendering/ascii/GITGRAPH_SUPPORT.md) for admission and tradeoffs.
 
 Every selected logical model family has one capability record, including unsupported terminal
 projections. These records describe this crate's local adapters even when another dependency selects
@@ -115,9 +153,9 @@ layout selection are currently admitted only for Flowchart, Swimlane, and Sequen
 canonical layout only. All supported families admit Plain, ANSI16, ANSI256, TrueColor, and HTML
 primary output with Strict graph presentation, while structured viewport fallback is Plain-only.
 `AsciiGraphPresentation::Strict` is the default. Adaptive is Plain-only and admitted only for
-Flowchart, Swimlane, and State; other supported families expose Strict only. Styled Adaptive requests
+Agentflow, Flowchart, Requirement, Swimlane, and State; other supported families expose Strict only. Styled Adaptive requests
 are rejected before routing, even if the input would fit. Other Mermaid families return
-`AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. Family-specific engineering detail lives in [Flowchart](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/FLOWCHART_SUPPORT.md), [Sequence](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/SEQUENCE_SUPPORT.md), and [State](https://github.com/Latias94/merman/blob/main/crates/merman-ascii/STATE_SUPPORT.md) support notes.
+`AsciiError::UnsupportedDiagram` through the typed model path. The tracked [ASCII/Unicode support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md) is the user-facing source of truth for exact limits. The [ASCII documentation index](../../docs/rendering/ascii/README.md) links family support notes, design comparisons, and maintained evidence.
 
 Packet uses two cells per bit for integer `packet.bitsPerRow` in `1..=64`, with full field records
 after the grid. Source rendering honors `bitsPerRow`, `bitOrder`, and `showBits`; detached models
@@ -238,12 +276,16 @@ coordinates. The [resource audit](../../docs/rendering/ASCII_RESOURCE_AND_PANIC_
 defines this adjacency-work bound separately from complete routing cost.
 
 Opposite authored edges retain separate transit paths. Mixed normal/dotted/thick edges can cross
-transversely, with Unicode heavy-axis crossing glyphs where appropriate; incompatible overlapping
-segments try another lane. Committed routes reserve their label footprints before subsequent
+transversely. Unicode uses `╪` for an independent crossing and `┼` for a joined four-way channel;
+ASCII and CJK structure use `+` for both. Both continuing axes remain visible. The crossing cell
+is neutral to stroke weight; adjacent cells retain each route's solid, dotted, or thick stroke,
+and the crossing keeps the horizontal route's color. Incompatible overlapping segments try
+another lane. Committed routes reserve their label footprints before subsequent
 edges are planned. Parallel node self-loops reserve nested lane space before node projection and
 assign their labels as one route batch before unrelated edges or a searched loop are planned.
-Searched-loop labels are committed immediately. Vertical markers keep one column of reading
-clearance from neighboring labels, preventing an ASCII `v` from merging with label text.
+Searched-loop labels are committed immediately. Independent vertical stems and markers keep one
+column of reading clearance from neighboring labels, preventing an ASCII `v` from merging with
+label text or a caption from appearing attached to another relationship.
 A graph with no safe route, label placement, or independent marker berth still returns a structured
 diagnostic rather than a partial drawing. Boundary routes with no vertical transit segment
 retain their labels on an available inline segment. Label candidates respect container ownership
@@ -282,12 +324,23 @@ and label reservations identify actual blockers for repair. A trial includes the
 shared-channel membership and replaces their contacts, paths, markers, and labels atomically. A
 failed trial restores the incumbent without refunding spent work; a fatal error propagates.
 
-Within each attempted layout profile, the planner permits at most two capacity-driven rebuilds
-after the initial geometry: first for new measured endpoint/corridor demand, then for scoped
-feedback-lane demand. An unchanged request does not justify a rebuild. Each new generation rebuilds
+Within each attempted layout profile, the planner permits at most two measured rebuilds
+after the initial geometry: first for endpoint/corridor demand, then for scoped feedback-lane
+demand. Only when neither capacity request grows may the final recovery phase select a cyclic
+rank candidate. An unchanged request does not justify a rebuild. Each new generation rebuilds
 coordinate-dependent allocations, contacts, protection, and search axes while retaining semantic
 identities, authored directions, and group ownership. These private allowances bound a best-effort
 search; they are neither new public resource limits nor a proof of complete or optimal routing.
+
+After a routing miss, a flat Flowchart with visible edges and no authored side constraints may
+use strongly connected components to generate another rank assignment. The condensation DAG
+determines the main-axis levels, including cross-component relationship lengths; every member
+remains a separate node in a transverse lane and every original relationship is routed normally.
+This avoids stretching a chain of small cycles into one long column. It is an internal geometric
+candidate within the same profile and operation budget, not a collapsed semantic summary or a new
+layout option. Complete initial and capacity-recovered scenes retain their existing geometry.
+Compound graphs and invisible rank constraints keep their existing planning rules, and arbitrary
+cyclic graphs can still exhaust bounded search.
 
 Static node, frame, and title protection is compiled into one spatial hierarchy per geometry
 generation and shared by fixed-layout congestion trials. Cell, marker, and label queries prune
@@ -299,7 +352,7 @@ The [presentation corpus](tests/testdata/local-semantic/flowchart/presentation/R
 small-graph oracle, compound tests, and family tests define finite acceptance cases. Current-source
 recovery checks live in [adaptive_graph.rs](tests/adaptive_graph.rs) and the fixed dense-input owner
 [scene_planning_corpus.rs](tests/scene_planning_corpus.rs); these are separate from the historical
-[reference comparison](ASCII_REFERENCE_COMPARISON.md).
+[reference comparison](../../docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md).
 The public parsed-report matrix in [graph_family_viewports.rs](tests/graph_family_viewports.rs)
 also checks State/Swimlane selection, logical identity, complete fields and measured extents across
 60/80/100/120 columns in both character sets and width profiles.
@@ -352,6 +405,14 @@ so copying options cannot implicitly copy or replace an operation's resource bud
 Resource limits are hard errors. They never select a relation summary or another lower-fidelity
 projection. Plain, ANSI16, ANSI256, TrueColor, and HTML use the same logical document accounting,
 while `max_ascii_output_bytes` counts the actual bytes produced by each encoder.
+
+Layout work counts deterministic text, geometry, and search operations, including conservative
+batch bounds. It is not elapsed time, memory, token count, or a diagram-size limit. The shared
+Interactive profile permits 2,000,000 units; the CLI's Trusted Native profile permits 8,000,000.
+An operation deadline is an independent host control. See the
+[CLI work/deadline guide](../../docs/security/CLI_RESOURCE_POLICY.md#ascii-planning-work-and-operation-deadlines)
+for scoped budget overrides and trusted unbounded commands. The unbounded profile removes all
+policy budgets, while private finite search allowances and hard guards remain.
 
 ## Terminal Visual Style
 
@@ -491,6 +552,13 @@ This applies to canonical Class/ER geometry and does not add Compact or Auto pro
 Private Unicode route bends use rounded corners and the edge-line color role. A bend does not
 claim a branch or crossing; ASCII and CJK structure keep single-cell `+` turns. Endpoint markers,
 cardinalities, and labels retain their family-owned meanings.
+
+Private-channel endpoint markers touch their class/entity frames. Cardinality text sits beside
+vertical stems, with multiline values sharing one left edge, so text does not interrupt the
+connection or separate its marker from the owner. The same label anchor is used for collision
+checks, scene compaction, and drawing. Measured endpoint text filters unusable contacts before
+path search, including wide multiline values beside horizontal chains. Unsafe endpoint text
+uses the existing complete summary.
 
 Class and ER diagrams fall back to readable `relations:` summary sections when bounded planning cannot produce a complete terminal grid, contacts do not fit, or route/overlay checks would damage another object. Simple relationships between sibling namespaces, a namespace and a root class, or nested sibling namespaces route through the nearest namespace facades; byte-length-framed fields disclose the authored member identity. Dense or colliding namespace scenes retain the complete summary. Default output hides the planning reason. Enable `AsciiRenderOptions::with_relation_summary_diagnostics(true)` to add `reason: route_collision` or `reason: overlay_collision` under `relations:`; contact and exhausted-channel failures use `route_collision`. Resource limits return `AsciiError::ResourceLimitExceeded` instead of selecting a summary.
 

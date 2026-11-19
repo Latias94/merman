@@ -16,6 +16,7 @@ pub(crate) struct EdgeLabel<'a> {
     pub(super) text: &'a RoutedLabelText,
     pub(super) placement: RoutedLabelPlacement,
     pub(super) color: CanvasColor,
+    pub(super) mirrored_horizontally: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -327,10 +328,16 @@ impl RoutedLabelText {
 pub(crate) fn draw_routed_label(canvas: &mut Canvas, label: &EdgeLabel<'_>) -> Result<()> {
     for (line_index, line) in label.text.lines().iter().enumerate() {
         let line_width = label.text.line_width(line);
-        let x = label
-            .placement
-            .x
-            .saturating_add(label.text.width().saturating_sub(line_width) / 2);
+        // The integer host column is width / 2, including for an even-width block.
+        // Centre each row on that same column; flooring the padding difference can
+        // move an odd-width row one whole cell away. Mirror the padding with RL geometry.
+        let offset = label.text.width() / 2 - line_width / 2;
+        let offset = if label.mirrored_horizontally {
+            label.text.width() - line_width - offset
+        } else {
+            offset
+        };
+        let x = label.placement.x.saturating_add(offset);
         write_label_overlay(
             canvas,
             x,
@@ -467,6 +474,8 @@ mod tests {
             end_marker: GraphEdgeMarker::Point,
             length: 1,
             style: GraphEdgeStyle::default(),
+            source_port: None,
+            target_port: None,
         }
     }
 
@@ -521,6 +530,7 @@ mod tests {
                 placement: RoutedLabelPlacement::new(0, 0, text.width()),
                 text: &text,
                 color: CanvasColor::Role(crate::color::AsciiColorRole::EdgeLabel),
+                mirrored_horizontally: false,
             },
         )
         .expect("test routed label should fit the unbounded resource policy");
@@ -539,6 +549,49 @@ mod tests {
             canvas.get_text(5, 0),
             Some(TerminalCellText::Grapheme("\u{1f1fa}\u{1f1f8}"))
         );
+    }
+
+    #[test]
+    fn mixed_parity_label_rows_share_the_host_column_and_mirror_their_padding() {
+        for profile in [TerminalWidthProfile::Unicode, TerminalWidthProfile::Cjk] {
+            for raw in [
+                "First<br>Second",
+                "客户A<br>客户AB",
+                "e\u{301}A<br>e\u{301}AB",
+            ] {
+                let text = RoutedLabelText::new_with_profile(raw, profile).unwrap();
+                for mirrored_horizontally in [false, true] {
+                    let mut canvas = Canvas::with_width_profile(text.width(), 2, profile);
+                    draw_routed_label(
+                        &mut canvas,
+                        &EdgeLabel {
+                            text: &text,
+                            placement: RoutedLabelPlacement::new(0, 0, text.width()),
+                            color: CanvasColor::Role(crate::color::AsciiColorRole::EdgeLabel),
+                            mirrored_horizontally,
+                        },
+                    )
+                    .unwrap();
+                    let host = if mirrored_horizontally {
+                        text.width() - 1 - text.width() / 2
+                    } else {
+                        text.width() / 2
+                    };
+                    for (row, line) in text.lines().iter().enumerate() {
+                        let width = display_width_with_profile(line, profile);
+                        let first = (0..text.width())
+                            .find(|&x| {
+                                canvas
+                                    .get_text(x, row)
+                                    .is_some_and(|cell| cell != TerminalCellText::Scalar(' '))
+                            })
+                            .unwrap();
+                        let centre_twice = first * 2 + width - 1;
+                        assert!(centre_twice.abs_diff(host * 2) <= 1, "{raw}: row {row}");
+                    }
+                }
+            }
+        }
     }
 
     #[test]

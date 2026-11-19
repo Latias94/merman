@@ -19,6 +19,7 @@ use std::hash::Hash;
 mod order;
 mod rank;
 
+pub(in crate::graph::layout) use rank::GRID_UNITS_PER_RANK;
 pub(super) use rank::rank_leaf_group_levels;
 
 const MINIMUM_NODE_GRID_WIDTH: usize = 3;
@@ -287,7 +288,8 @@ fn layout_left_right_grid_nodes(
     let topology = input.topology.as_ref();
     let label_plans = &input.labels;
     let demand = &input.demand;
-    let ranked = place_left_right_grid_nodes(graph, topology, policy, resources, execution)?;
+    let ranked =
+        place_left_right_grid_nodes(graph, topology, policy, feedback, resources, execution)?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
@@ -431,6 +433,7 @@ fn place_left_right_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
     policy: &GraphLayoutPolicy,
+    feedback: &LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
@@ -438,6 +441,7 @@ fn place_left_right_grid_nodes(
         graph,
         topology,
         GraphDirection::LeftRight,
+        feedback.component_ranks(),
         resources,
         execution,
     )?;
@@ -462,17 +466,33 @@ pub(super) fn place_ranked_grid_nodes_without_group_adjustments(
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<Vec<GridCoord>> {
-    Ok(place_ranked_grid_nodes(graph, None, direction.canonical(), resources, execution)?.nodes)
+    Ok(place_ranked_grid_nodes(
+        graph,
+        None,
+        direction.canonical(),
+        None,
+        resources,
+        execution,
+    )?
+    .nodes)
 }
 
 fn place_ranked_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
     direction: GraphDirection,
+    component_ranks: Option<&[usize]>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
-    let rank_levels = rank::rank_levels(graph, topology, direction, resources, execution)?;
+    let rank_levels = rank::rank_levels(
+        graph,
+        topology,
+        direction,
+        component_ranks,
+        resources,
+        execution,
+    )?;
     let nodes = order::place(&rank_levels, direction, resources, execution)?;
     Ok(RankedGridPlacements {
         nodes,
@@ -500,7 +520,8 @@ fn layout_top_down_grid_nodes(
     let topology = input.topology.as_ref();
     let label_plans = &input.labels;
     let demand = &input.demand;
-    let ranked = place_top_down_grid_nodes(graph, topology, policy, resources, execution)?;
+    let ranked =
+        place_top_down_grid_nodes(graph, topology, policy, feedback, resources, execution)?;
     let placements = ranked.nodes;
     let node_padding = groups::NodePaddingIndex::try_new(graph, &placements, topology, resources)?;
     let axis_entity_count = resources.checked_grid_add(graph.nodes.len(), graph.groups.len())?;
@@ -925,6 +946,7 @@ fn place_top_down_grid_nodes(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
     policy: &GraphLayoutPolicy,
+    feedback: &LayoutFeedback,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankedGridPlacements> {
@@ -932,6 +954,7 @@ fn place_top_down_grid_nodes(
         graph,
         topology,
         GraphDirection::TopDown,
+        feedback.component_ranks(),
         resources,
         execution,
     )?;

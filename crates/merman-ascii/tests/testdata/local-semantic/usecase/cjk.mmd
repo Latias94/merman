@@ -1,0 +1,10 @@
+usecase-beta
+direction TB
+actor User(客户)
+systemBoundary Service(订单系统)
+Order(提交订单)
+Confirm[确认付款]
+end
+User --> Order
+Order ..>:include Confirm
+note for Confirm "核对金额👩‍💻"

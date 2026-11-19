@@ -37,11 +37,28 @@ These features return `AsciiError::UnsupportedFeature` instead of silently dropp
 Required shared-planner search exhaustion returns `AsciiError::RoutingSearchExhausted`, including
 the authored edge index. Fixed-presentation marker capacity failures use
 `AsciiError::PortCapacityExceeded`. These are separate from unsupported state semantics and do not
-trigger width fallback; see the [graph presentation boundary](README.md#graph-presentation-boundary).
+trigger width fallback; see the [graph presentation boundary](../../../crates/merman-ascii/README.md#graph-presentation-boundary).
+
+The shared planner measures cyclic compound-scope return-lane demand before searching routes. Label
+widths, overlapping returns, local directions, and container margins participate in the same
+request used by measured recovery. A bounded initial route trial keeps a complete incumbent when
+the original spacing already works; otherwise the remaining preparation credit can enlarge the
+measured geometry. When a direct route is blocked by an existing edge, a bounded detour trial
+first searches without displacing the existing routes. It uses half the smaller of the remaining
+allocation work and private preparation work, leaving credit for conflict repair. A failed private
+trial keeps its work charged; public resource and operation errors still propagate. This preserves
+the single-region labeled return at 20 columns and 32 rows without changing the Canonical profile.
+Endpoint/container label classification is reused only within one immutable geometry generation.
+These steps charge the existing operation ledger and preserve cancellation, deadlines, public
+resource ceilings, and bounded search diagnostics.
+Root returns and self loops retain their existing exterior-envelope rules, with additional
+space requested only after a measured routing miss.
 
 ## Known Limitations
 
 - State rendering is a terminal graph approximation, not SVG layout parity.
+- Conservative return spacing can widen a scene whose original geometry did not complete within
+  the bounded initial trial. It improves capacity rather than guaranteeing the smallest diagram.
 - Start/end, fork/join, and choice pseudo states are terminal approximations of Mermaid's SVG
   shapes. They preserve topology and avoid leaking implementation ids, but they are not pixel
   parity with browser rendering.
@@ -76,13 +93,16 @@ The support boundary is covered by:
 - `cargo nextest run -p merman-ascii --features diagram-state --test state_model -j 2`
 - `cargo nextest run -p merman-ascii --all-features -j 2`
 
-The parser-backed state tests live in `tests/state_model.rs` and exercise the public `render_model`
+The parser-backed state tests live in `crates/merman-ascii/tests/state_model.rs` and exercise the public `render_model`
 path from Mermaid text through `merman-core` into `merman-ascii`. Region coverage includes empty
 sections, intermediate-region skip edges, feedback, independent merge heads, and nested concurrency
 with distinct start/end pseudo states.
 Canonical density coverage checks short forward/reverse lifecycles, explicit legacy spacing and
 the CJK compound lifecycle across both character sets and width conventions, retaining all nine
 transition heads and the ordered internal states.
-`tests/graph_family_viewports.rs` additionally checks Canonical-only State viewport selection,
+`crates/merman-ascii/tests/graph_family_viewports.rs` additionally checks Canonical-only State viewport selection,
 complete note/condition fields, logical family identity and independent display-cell measurements
-at 60/80/100/120 columns through the public parsed-report entrypoint.
+at 60/80/100/120 columns through the public parsed-report entrypoint. The single-region return
+also remains a complete primary diagram at 20 columns, with no profile switch, fallback, lost
+transition heads, or additional rows. The original three-region conditions retain a 71-by-79
+extent ceiling under Trusted Native limits.

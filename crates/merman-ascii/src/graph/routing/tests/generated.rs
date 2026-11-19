@@ -282,7 +282,7 @@ fn shape_contains(node: &NodeLayout, coord: CanvasCoord) -> bool {
     let (left, right) = match node.shape {
         GraphNodeShape::LeanRight => (node.x + shift, right - slant + shift),
         GraphNodeShape::LeanLeft => (node.x + slant - shift, right - shift),
-        GraphNodeShape::Rect | GraphNodeShape::Diamond => (node.x, right),
+        GraphNodeShape::Rect | GraphNodeShape::Rounded | GraphNodeShape::Diamond => (node.x, right),
         _ => panic!("generator introduced a shape without an independent contour oracle"),
     };
     (left..=right).contains(&coord.x)
@@ -347,10 +347,14 @@ fn straight_stroke(stroke: GraphEdgeStroke, axis: u8, unicode: bool) -> Option<c
 fn axes(cell: &PlannedRouteCell, cells: &CellIndex<'_>) -> u8 {
     match cell.ch {
         '-' | '.' | '=' | '─' | '┄' | '━' | '<' | '>' | '◄' | '►' => 1,
-        '|' | ':' | '#' | '│' | '┆' | '┃' | '^' | 'v' | '▲' | '▼' => 2,
-        '┌' | '┐' | '└' | '┘' | '┏' | '┓' | '┗' | '┛' | '├' | '┤' | '┬' | '┴' | '┣' | '┫' | '┳'
-        | '┻' | '┝' | '┥' | '┰' | '┸' | '┼' | '╋' => 3,
-        '+' | 'o' | 'x' | '○' | '×' => {
+        '|' | '│' | '┆' | '┃' | '^' | 'v' | '▲' | '▼' => 2,
+        '┌' | '┐' | '└' | '┘' | '╭' | '╮' | '╰' | '╯' | '┏' | '┓' | '┗' | '┛' | '├' | '┤' | '┬'
+        | '┴' | '┣' | '┫' | '┳' | '┻' | '┝' | '┥' | '┰' | '┸' | '┼' | '╋' => {
+            3
+        }
+        // ASCII dotted/thick bends share their vertical glyph; infer their axes
+        // from this route's coordinates instead of treating every ':'/'#' as straight.
+        '+' | ':' | '#' | '·' | 'o' | 'x' | '○' | '×' => {
             let mut axes = 0;
             for direction in [
                 StepDirection::Up,
@@ -723,6 +727,7 @@ fn information_oracle(
             .all(|(index, edge)| seen[index] == (edge.stroke != GraphEdgeStroke::Invisible)),
         "edge: missing canonical multiplicity"
     );
+    let mut crossings = BTreeSet::new();
     for (a_index, a) in scene.routes.iter().enumerate() {
         for (b_index, b) in scene.routes.iter().enumerate().skip(a_index + 1) {
             let (ea, eb) = (
@@ -738,6 +743,9 @@ fn information_oracle(
                         ),
                         (1, 2) | (2, 1)
                     );
+                    if transverse {
+                        crossings.insert(*coord);
+                    }
                     require!(
                         (transverse
                             && cell_a.kind != PlannedRouteCellKind::EdgeArrow
@@ -781,20 +789,65 @@ fn information_oracle(
             "marker: final painting erased {glyph:?} at {coord:?}"
         );
     }
+    for (x, y) in crossings {
+        let glyph = canvas.get(x, y);
+        require!(
+            if unicode {
+                matches!(glyph, Some('╪' | '┼' | '╋' | '┿' | '╂'))
+            } else {
+                glyph == Some('+')
+            },
+            "paint: crossing erased a continuing axis at ({x}, {y}): {glyph:?}"
+        );
+    }
     for route in &scene.routes {
         for label in &route.plan.labels {
             let text = scene
                 .labels
                 .get(label.descriptor)
                 .map_err(|error| format!("label: {error}"))?;
-            for (row, line) in text.lines().iter().enumerate() {
-                let x = label.placement.x() + (label.placement.width() - line.len()) / 2;
-                for (column, glyph) in line.chars().enumerate() {
-                    require!(
-                        canvas.get(x + column, label.placement.y() + row) == Some(glyph),
-                        "label: final painting truncated text"
-                    );
+            for y in label.placement.y()..label.placement.y() + text.line_count() {
+                for x in [
+                    label.placement.x().checked_sub(1),
+                    Some(label.placement.x() + label.placement.width()),
+                ]
+                .into_iter()
+                .flatten()
+                {
+                    for (other_index, other) in scene.routes.iter().enumerate() {
+                        if other.owner.canonical_edge_index == route.owner.canonical_edge_index {
+                            continue;
+                        }
+                        let cells = &indices[other_index];
+                        if let Some(cell) = cells.get(&(x, y)) {
+                            require!(
+                                axes(cell, cells) & 2 == 0,
+                                "label: an unrelated vertical stem touches the caption"
+                            );
+                        }
+                    }
                 }
+            }
+            for (row, line) in text.lines().iter().enumerate() {
+                // A hard-break row retains its reserved geometry and line count,
+                // but has no painted text centre to observe.
+                if line.is_empty() {
+                    continue;
+                }
+                let painted: String = (label.placement.x()
+                    ..label.placement.x() + label.placement.width())
+                    .map(|x| canvas.get(x, label.placement.y() + row).unwrap_or(' '))
+                    .collect();
+                let Some(byte_offset) = painted.find(line) else {
+                    return Err("label: final painting truncated text".into());
+                };
+                let offset = painted[..byte_offset].chars().count();
+                let centre_twice = 2 * offset + line.len().saturating_sub(1);
+                let host_twice = 2 * (label.placement.width() / 2);
+                require!(
+                    centre_twice.abs_diff(host_twice) <= 1,
+                    "label: painted row left its shared host column"
+                );
             }
         }
     }
@@ -956,5 +1009,277 @@ fn generated_information_oracle_rejects_corrupted_successes() {
         let error = information_oracle(&graph, &layout, &scene, &options)
             .expect_err("independent oracle must reject corrupted information");
         assert!(error.starts_with(class), "expected {class}, got {error}");
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+fn assert_planned_flowchart_preserves_information(
+    fixture: &str,
+    source: &str,
+    node_count: usize,
+    edge_count: usize,
+    directions: &[GraphDirection],
+) {
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(source)
+        .unwrap_or_else(|error| panic!("{fixture}: typed parse failed: {error}"));
+    let merman_model::SemanticDiagramModel::Flowchart(model) = &parsed.model else {
+        panic!("{fixture}: expected a typed flowchart model");
+    };
+    assert_eq!(
+        (model.nodes.len(), model.edges.len()),
+        (node_count, edge_count),
+        "{fixture}: frozen authored node and edge counts"
+    );
+    for &direction in directions {
+        for mode in ["ascii", "unicode"] {
+            let case = format!("{fixture}/{direction:?}/{mode}");
+            let options = options(mode);
+            let policy = options.flowchart_layout().graph_policy();
+            let charset = GraphCharset::for_options(&options);
+            let limits = AsciiResourcePolicy::unbounded();
+            let mut resources = ResourceContext::new(limits);
+            let mut graph =
+                crate::graph::adapter::from_flowchart_model(model, &options, &mut resources)
+                    .unwrap_or_else(|error| panic!("{case}: projection failed: {error}"));
+            graph.direction = direction;
+            assert_eq!(
+                (graph.nodes.len(), graph.edges.len()),
+                (node_count, edge_count),
+                "{case}: projection must retain every authored node and edge"
+            );
+            // Exercise recovery with the default internal work and repair allowances.
+            let planned = crate::graph::planning::plan_graph(
+                &graph,
+                &policy,
+                &charset,
+                &mut resources,
+                AsciiExecution::for_test(&limits),
+            )
+            .unwrap_or_else(|error| panic!("{case}: graph planning failed: {error}"));
+            let scene = planned
+                .routes
+                .materialize(&resources)
+                .unwrap_or_else(|error| panic!("{case}: route materialization failed: {error}"));
+            assert_eq!(
+                (planned.layout.nodes.len(), scene.routes.len()),
+                (node_count, edge_count),
+                "{case}: the scene must contain every authored node and edge without summaries"
+            );
+            information_oracle(&graph, &planned.layout, &scene, &options)
+                .unwrap_or_else(|error| panic!("{case}: {error}"));
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn multiline_labels_crossed_branches_and_parallel_self_loops_keep_complete_painted_routes() {
+    use std::fmt::Write;
+    let mut loops = String::from("flowchart TD\nStart --> Queue\nQueue --> Done\n");
+    for index in 1..=8 {
+        writeln!(loops, "Queue -->|retry {index}| Queue").unwrap();
+    }
+    for (name, source, nodes, edges, directions) in [
+        (
+            "mixed-parity-label",
+            "graph TD\nA -->|First<br>Second| B\n",
+            2,
+            1,
+            &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
+        ),
+        (
+            "mixed-parity-with-blank-row",
+            "graph TD\nA -->|First<br><br>Second| B\n",
+            2,
+            1,
+            &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
+        ),
+        // The authored TD case is admitted. This source's additional LR variant
+        // already has a bounded planning miss at the baseline, before paint changes.
+        (
+            "crossed-branches",
+            "graph TD\nA & B --> C & D\nC --> E\nD --> E\n",
+            5,
+            6,
+            &[GraphDirection::TopDown][..],
+        ),
+        (
+            "independent-caption-clearance",
+            "flowchart TD\nMermaid[Mermaid.js] -->|derivative| Beautiful[Beautiful Mermaid]\nASCII[Mermaid ASCII] -.->|ASCII component port| Beautiful\n",
+            3,
+            2,
+            &[GraphDirection::TopDown][..],
+        ),
+        (
+            "parallel-self-loops",
+            loops.as_str(),
+            3,
+            10,
+            &[GraphDirection::TopDown, GraphDirection::LeftRight][..],
+        ),
+    ] {
+        assert_planned_flowchart_preserves_information(name, source, nodes, edges, directions);
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn dense_minimized_planning_preserves_information() {
+    assert_planned_flowchart_preserves_information(
+        "dense-minimized",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/testdata/local-semantic/flowchart/scene_planning/dense-minimized.mmd"
+        )),
+        20,
+        33,
+        &[GraphDirection::TopDown, GraphDirection::LeftRight],
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn dense_work_budget_component_rank_reflow_preserves_information() {
+    assert_planned_flowchart_preserves_information(
+        "dense-work-budget",
+        include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/testdata/local-semantic/flowchart/scene_planning/dense-work-budget.mmd"
+        )),
+        100,
+        195,
+        &[GraphDirection::TopDown, GraphDirection::LeftRight],
+    );
+}
+
+#[test]
+#[cfg(feature = "diagram-flowchart")]
+fn capacity_recovery_keeps_every_edge_of_previously_readable_cycles() {
+    for (fixture, source, edges) in [
+        (
+            "labelled-cycle-capacity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/testdata/local-semantic/flowchart/scene_planning/labelled-cycle-capacity.mmd"
+            )),
+            12,
+        ),
+        (
+            "narrow-cycle-capacity",
+            include_str!(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/tests/testdata/local-semantic/flowchart/scene_planning/narrow-cycle-capacity.mmd"
+            )),
+            15,
+        ),
+    ] {
+        assert_planned_flowchart_preserves_information(
+            fixture,
+            source,
+            8,
+            edges,
+            &[GraphDirection::TopDown],
+        );
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-agentflow")]
+fn agentflow_operators_preserve_independent_contacts_markers_and_paint() {
+    let parsed = merman_core::SemanticParser::new().parse_diagram_sync(
+            "agentflow-beta\nstart[Start] --> next[Next]\nnext -.- docs[Guide]\nnext --x fail[Failure]\n",
+    ).unwrap();
+    let merman_model::SemanticDiagramModel::Agentflow(model) = &parsed.model else {
+        panic!("expected canonical Agentflow");
+    };
+    for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+        for mode in ["ascii", "unicode"] {
+            let options = options(mode);
+            let limits = AsciiResourcePolicy::unbounded();
+            let mut resources = ResourceContext::new(limits);
+            let mut graph =
+                crate::agentflow::project(model, options.terminal_width_profile, &resources)
+                    .unwrap();
+            graph.direction = direction;
+            assert_eq!((graph.nodes.len(), graph.edges.len()), (4, 3));
+            assert_eq!(graph.edges[0].end_marker, GraphEdgeMarker::Point);
+            assert_eq!(
+                (graph.edges[1].stroke, graph.edges[1].end_marker),
+                (GraphEdgeStroke::Dotted, GraphEdgeMarker::Open)
+            );
+            assert_eq!(graph.edges[2].end_marker, GraphEdgeMarker::Cross);
+            let planned = crate::graph::planning::plan_graph(
+                &graph,
+                &options.flowchart_layout().graph_policy(),
+                &GraphCharset::for_options(&options),
+                &mut resources,
+                AsciiExecution::for_test(&limits),
+            )
+            .unwrap();
+            let scene = planned.routes.materialize(&resources).unwrap();
+            information_oracle(&graph, &planned.layout, &scene, &options).unwrap();
+        }
+    }
+}
+
+#[test]
+#[cfg(feature = "diagram-requirement")]
+fn requirement_shared_endpoints_and_typed_markers_pass_the_independent_oracle() {
+    let parsed = merman_core::SemanticParser::new()
+        .parse_diagram_sync(include_str!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../fixtures/requirement/upstream_docs_requirementdiagram_larger_example_010.mmd"
+        )))
+        .unwrap();
+    let merman_model::SemanticDiagramModel::Requirement(model) = &parsed.model else {
+        panic!("expected Requirement");
+    };
+    for direction in [GraphDirection::TopDown, GraphDirection::LeftRight] {
+        for mode in ["ascii", "unicode"] {
+            let options = options(mode);
+            let limits = AsciiResourcePolicy::default();
+            let mut resources = ResourceContext::new(limits);
+            let mut graph =
+                crate::requirement::project(model, options.terminal_width_profile, &resources)
+                    .unwrap();
+            graph.direction = direction;
+            assert_eq!((graph.nodes.len(), graph.edges.len()), (9, 8));
+            assert_eq!((&*graph.edges[7].from, &*graph.edges[7].to), ("N2", "R1"));
+            assert_eq!(graph.edges.iter().filter(|edge| edge.to == "R2").count(), 2);
+            assert_eq!(graph.edges.iter().filter(|edge| edge.to == "R5").count(), 2);
+            for (edge, authored) in graph.edges.iter().zip(&model.relationships) {
+                assert_eq!(edge.label.as_deref(), Some(authored.rel_type.as_str()));
+                if authored.rel_type == "contains" {
+                    assert_eq!(
+                        (edge.stroke, edge.start_marker, edge.end_marker),
+                        (
+                            GraphEdgeStroke::Normal,
+                            GraphEdgeMarker::Circle,
+                            GraphEdgeMarker::Open
+                        )
+                    );
+                } else {
+                    assert_eq!(
+                        (edge.stroke, edge.start_marker, edge.end_marker),
+                        (
+                            GraphEdgeStroke::Dotted,
+                            GraphEdgeMarker::Open,
+                            GraphEdgeMarker::Point
+                        )
+                    );
+                }
+            }
+            let planned = crate::graph::planning::plan_graph(
+                &graph,
+                &options.flowchart_layout().graph_policy(),
+                &GraphCharset::for_options(&options),
+                &mut resources,
+                AsciiExecution::for_test(&limits),
+            )
+            .unwrap();
+            let scene = planned.routes.materialize(&resources).unwrap();
+            information_oracle(&graph, &planned.layout, &scene, &options).unwrap();
+        }
     }
 }

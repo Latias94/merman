@@ -192,31 +192,36 @@ fn cancelled_edge_admission_precedes_work_limit_without_ledger_pollution() {
 }
 
 #[test]
-fn render_layered_relation_component_uses_summary_when_overlay_overlaps_box() {
+fn render_layered_relation_component_uses_summary_for_unsafe_overlays() {
     let boxes = vec![
         RelationGraphBox::new("a".to_string(), vec!["A".to_string()], 1),
         RelationGraphBox::new("b".to_string(), vec!["B".to_string()], 1),
         RelationGraphBox::new("c".to_string(), vec!["C".to_string()], 1),
     ];
     let relations = vec![("a", "b"), ("a", "c")];
-    let adapter = TestRelationAdapter {
-        summary_reason: Cell::new(None),
-        overlap: TestRelationOverlap::Overlay,
-    };
+    for overlap in [
+        TestRelationOverlap::Overlay,
+        TestRelationOverlap::EndpointOnStem,
+    ] {
+        let adapter = TestRelationAdapter {
+            summary_reason: Cell::new(None),
+            overlap,
+        };
 
-    let rendered = render_test_relation_components(
-        &boxes,
-        &relations,
-        AsciiResourcePolicy::default(),
-        &adapter,
-    )
-    .expect("overlay-overlapping layered relation should render as a summary");
+        let rendered = render_test_relation_components(
+            &boxes,
+            &relations,
+            AsciiResourcePolicy::default(),
+            &adapter,
+        )
+        .expect("an unsafe overlay should render as a summary");
 
-    assert_eq!(
-        adapter.summary_reason.get(),
-        Some(LayeredRelationSummaryReason::OverlayCollision)
-    );
-    assert!(rendered.contains("relations:\nA --> B\nA --> B\n"));
+        assert_eq!(
+            adapter.summary_reason.get(),
+            Some(LayeredRelationSummaryReason::OverlayCollision)
+        );
+        assert!(rendered.contains("relations:\nA --> B\nA --> B\n"));
+    }
 }
 
 #[test]

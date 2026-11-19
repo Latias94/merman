@@ -408,14 +408,19 @@ fn structured_text_resource_admission_observes_cancellation_before_layout_work_f
             resources,
         )
         .expect_err("scheduled cancellation must precede structured-text work exhaustion");
+        let expected_phase = if diagram_type == "gantt" {
+            OperationPhase::Semantic
+        } else {
+            OperationPhase::Layout
+        };
         assert!(
             matches!(
                 cancelled,
                 AsciiError::Cancelled(details)
-                    if details.phase == OperationPhase::Layout
+                    if details.phase == expected_phase
                         && details.reason == merman_model::CancelReason::Requested
             ),
-            "{diagram_type} should report layout cancellation before the resource ceiling: {cancelled:?}",
+            "{diagram_type} should report {expected_phase:?} cancellation before the resource ceiling: {cancelled:?}",
         );
     }
 }

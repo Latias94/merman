@@ -17,6 +17,15 @@ Scene planning extension: 2026-11-16. Conflict-directed repair, measured reflow,
 adaptive presentation use the same public operation ledger and resource ceilings. The scene
 planning section below supplements the historical receipt.
 
+Label classification and return-capacity extension: 2026-11-17. Geometry-local reuse and early
+cyclic-scope demand supplement the same receipt; public ceilings and private work allowances
+remain unchanged.
+
+Output candidate ownership extension: 2026-11-18. A family returns its actual projection and
+document-admission policy with the rendered text. Final reporting does not reconstruct family
+indexes, geometry, or admission decisions. Complete-record families share the staged retained
+composer described below; public ceilings remain unchanged.
+
 This audit records the input-amplification and panic-path boundary reviewed for the ASCII
 semantic-depth closeout. It is not a claim that every Rust allocation is fallible or that the crate
 contains no invariant assertions. It identifies where authored-size work is admitted, where large
@@ -33,8 +42,36 @@ document does not replace the exact package and Clippy gates recorded in `ASCII_
 | Class and ER | Family adapters measure boxes and relation descriptors first. `RelationStackPlan`, `RelationParallelPlan`, `RelationSelfLoopPlan`, and the document plan check aggregate extents before invoking row materializers. | Entity/class boxes, relation components, lane descriptors, summaries, and final rows use `try_reserve`; materializer-closure tests prove N-1 rejection occurs before painting. | Relation stack/parallel/self-loop/document exact and N-1 tests, `horizontal_class_strip_checks_grid_and_layout_work_before_allocating_rows`, and the ER counterpart. |
 | XYChart | Axis/series planning derives a complete plot/document extent before allocating topology cells or final rows; final document grid and encoded output limits are checked independently. | Plot samples, labels, cells, rows, and disclosures use fallible reserves tied to checked counts. | Complete vertical/horizontal grid exact-minus-one tests, output-byte exact-minus-one tests, and `xychart_layout_work_budget_covers_series_values_categories_and_paint`. |
 | Packet | Numeric admission precedes coordinate-to-count conversion. Complete physical row grid/work bounds are checked before the row plan; exact labels and metadata use shared budgeted document writers. Spatially ineligible values remain records, while resource/cancellation errors propagate. | The complete row plan, per-row spans, and label descriptors reserve fallibly. Field geometry is independent of label length; numeric records use bounded number spelling. | `packet_grid`, `packet_numeric_parity_test`, `packet_grid_work_and_document_usage_accept_exact_and_reject_one_below`, and Packet field-framing compatibility tests. |
-| StructuredText families | Family validators charge authored records and text before section/group indices and output rows; shared encoders enforce document/output limits. | Gantt, sectioned Journey/Timeline, Mindmap, Kanban, TreeView, and GitGraph use fallible reserves for authored-size indexes and rows on their audited paths. | `new_family_models`, `sectioned_structured_text`, terminal safety, and per-family resource boundary tests in the ASCII package gate. |
+| Gantt | Model, ID/section, and resolved-domain admission precede the aligned timeline. Grid/work bounds precede row construction; complete records admit simultaneously retained timeline, JSON, and reading buffers. Non-spatial models retain records; operation failures remain errors. | Section/task indexes and shared document/record writers reserve fallibly after checked admission. Plain/ANSI transfer the completed safe buffer; HTML releases JSON before admitting encoded output alongside retained logical text. | `gantt_timeline`, canonical/full controls, exact/N-1 work/grid/document/grapheme tests, the complete 65,536-byte-label peak-output boundary, and mid-render cancellation. |
+| GitGraph tracks | Controlled shallow complexity counting admits collection lengths before walking; grid extents and each route step use the shared policy. Labels stay within admitted rows. | Fallible indexes/canvas allocation, typed occurrence keys, explicit crossing/arrow ownership, and cumulative tracks + JSON + records admission. The shared retained-record composer also admits logical text during HTML encoding. | `git_graph_tracks`, emitted-character parent tracing, 999/1000-branch headers, retained-output peak boundaries, nested-array pre-admission, and cancellation during complexity counting. |
+| StructuredText families | Family validators charge authored records and text before section/group indices and output rows; shared encoders enforce document/output limits. | Sectioned Journey/Timeline, Mindmap, Kanban, and TreeView use fallible reserves for authored-size indexes and rows on their audited paths. | `new_family_models`, `sectioned_structured_text`, terminal safety, and per-family resource boundary tests in the ASCII package gate. |
 | Facade and bindings | Source/model limits are applied before parse/model handoff; typed ASCII errors preserve the limit id, phase, actual, maximum, and profile through public adapters. | The facade does not replace a renderer resource error with an unbounded compatibility allocation. | Facade exact-boundary tests such as `ascii_request_honors_target_local_grid_policy_at_exact_and_minus_one`, binding metadata/resource tests, UniFFI/WASM tests, and CLI diagnostic tests. |
+
+## Complete Reading Documents
+
+Agentflow record primaries, Architecture, C4, Requirement, Pie, ZenUML, Gantt, and GitGraph use one
+composer. Spatial overview rows remain indivisible; reading records use the requested terminal
+width, or 80 cells when no width is supplied. The selected document owns its final cell admission
+and preserves authored whitespace. Canonical/Compact selection moves these facts with the text;
+an optional candidate cannot replace the incumbent's metadata independently of its bytes.
+
+The composer admits the overview during serialization, then admits serialized facts and overview
+alongside the growing record document. It releases serialization before HTML encoding. HTML
+escaping reads the existing safe logical document directly after encoded-length admission,
+without allocating another document-sized owned-line buffer. Spatial rows are borrowed into the
+controlled writer, so their complete copies are not allocated before admission. Work remains
+cumulative and cancellation-aware; records do not recover resource or operation errors.
+
+`reading_records`, `output_report`, the family suites, and retained-output exact/N-1 tests protect
+the classification, reflow, field framing, and simultaneous-buffer boundary. The safe HTML encoder
+has its own exact retained-byte and cancellation controls. These are deterministic accounting
+claims, not calibrated latency or universal density claims.
+
+The GitGraph refactor intentionally changes the frozen Binding Core Interactive document-cell
+fixture (`gitGraph` with one explicit `A` commit) from 108 to 780: it now accounts for the
+track overview and complete records through the shared cumulative document ledger. The exact
+780-cell request succeeds; 779 fails with actual 780. This refresh changes an observed test
+boundary, not a default resource ceiling or any other transport representative.
 
 The audit explicitly permits bounded or input-independent ordinary allocations. It rejects
 unchecked allocations whose size is directly amplified by authored nodes, edges, labels, rows, or
@@ -101,13 +138,86 @@ constant adjacency work, exact/N-1 limits, cancellation, and state storage size.
 separately. Existing compressed/unit-grid oracle tests retain path quality and segment semantics,
 including markers, labels, compound frames, long gaps, and winner materialization.
 
+## Geometry-Local Label Classification
+
+`LabelRegionCache` retains the exact geometric endpoint/container classification for reached
+canonical edge/container pairs. Feasibility, quality, and repair trials share it within one
+immutable layout generation; reflow creates a new cache. Detached callers without stable edge
+identities use the uncached predicate. Node/group ID collisions retain existential matching,
+container endpoints retain their prior rules, and open concurrency dividers are not containers.
+
+For `V` nodes and groups, `E` canonical edges, `C` containers, and `Q` classification calls, the
+previous bound is `O(Q * V)`. With `K` reached pairs, the new bound is
+`O(K * V + Q)` under expected integer-hash lookup cost, with `K <= E * C`. This does not improve
+every occupancy or group traversal. The lazy table retains `O(K)` entries rather than eagerly
+allocating `E * C` cells. Lookups, fills, and growth charge work and observe cancellation.
+`graph::routing::occupancy::regions::tests` covers exact/N-1 admission, cache hits, cancellation,
+duplicate endpoint identities, group/member semantics, repair sharing, and reflow invalidation.
+
 ## Graph Scene Planning
 
+Usecase projects family roles and relationship kinds before entering this shared planner, using
+deferred labels and aggregate text admission. Its policy is independent of Flowchart. Block
+instead owns source-order integer packing of authored columns, spans, expanded spacers, and nested
+frames. Its positioned-graph path bypasses ranking and layout recovery, while sharing validated
+routing, viewport extent admission, materialization, and painting. Neither family changes existing
+planning ceilings or admits adaptive graph recovery. Complete keyed width fallback remains a
+separate candidate after a valid primary; it cannot recover semantic, routing, resource, or
+cancellation errors. See `USECASE_SUPPORT.md` and `BLOCK_SUPPORT.md` in `crates/merman-ascii` for
+family-local validation and resource controls.
+
 `graph::planning` prepares stable semantic demand and route identities once for each admitted
-layout profile. It owns the initial geometry and at most two measured capacity rebuilds. Every
-generation recreates coordinate-dependent contacts, channels, and occupancy; immutable protection
-is shared only between trials within one generation. Retired geometry is dropped before the next
-generation is built.
+layout profile. It measures initial geometry, reserves cyclic compound-scope return demand before
+route search, and permits at most two subsequent recovery rebuilds. Root returns and real self
+loops keep their existing exterior envelopes until an actual routing miss requests more space.
+Early capacity analysis and any resulting rebuild share the existing reflow-work allowance with
+recovery. The initial geometry
+remains available until this optional preparation completes; private allowance exhaustion discards
+the preparation, while public resource and operation errors propagate. Every routed generation
+recreates coordinate-dependent contacts, channels, and occupancy; immutable protection is shared
+only between trials within one generation. After a routing miss, retired geometry is dropped
+before the next generation is built.
+
+Capacity requests are conservative, so a nonempty request first tries the original geometry with
+at most half the remaining preparation credit. A complete validated result is retained and
+submitted directly; no second feasibility pass spends its repair allowances again. Otherwise the
+remaining credit can build the requested geometry. This preserves already readable scenes such
+as a 38-column grouped two-node reciprocal graph. If optional quality reaches this private work
+boundary after feasibility completed, the validated incumbent survives; public resource exhaustion
+and cancellation still propagate. The probe, discarded trials, analysis, and rebuild all consume
+the same existing 1,000,000-unit reflow allowance and public ledger.
+
+Before conflict repair, a blocked direct route tries an unchanged-scene detour. Its private work
+slice is half the smaller of the remaining allocation credit and enclosing preparation credit;
+there is no enclosing cap during ordinary routing. The trial debits the existing allocation
+expansions and work, shares the public ledger, and does not consume replacement attempts. A
+private slice miss leaves room for repair and the later required search. Public limits,
+cancellation, deadlines, and allocation errors propagate even during this optional trial.
+Selected alternatives still pass the complete scene validator before becoming an incumbent.
+This adds no candidate pool or persistent storage and does not increase a search allowance.
+
+The return analysis itself uses one iterative scope-projected SCC pass and a sorted interval sweep.
+For `V` scoped endpoints, `E` semantic edges, nesting depth `D`, and traversed ID/label text `T`,
+the bound is `O((V + E) * (D + 1) + E log(E + 1) + T)` with expected ID-hash lookup cost and
+`O(V + E)` auxiliary storage. All scope margins are measured in one pass; unrelated SCCs merge
+requests by scope and axis using the same
+maximum rule as recovery. This is an early capacity measurement, not an arbitrary-graph routing
+bound. The original three-region State regression keeps all six full conditions, all ten heads,
+and all start/state identities under the unchanged Trusted Native work ceiling.
+
+The 2026-11-17 source-through-CLI debug control uses the exact 520-byte CRLF source retained in
+`state_original_concurrent_conditions_keep_every_label_and_transition`, Unicode Plain output,
+Canonical geometry, and identical Flowchart/State/ER/Kanban feature closures. The minimum admitted
+ASCII work ceiling changes from the pre-capacity-planning 21,764,888 to 700,138; each exact value
+succeeds and one less rejects with the same value as `actual`. The three-region extent changes
+from 71×81 to 71×79; the two-region control changes from an 8,000,000-unit failure to a 65×56 diagram. This measures
+deterministic counted work, not elapsed-time speedup. Against the previous repair-first planner,
+the single-region control changes from 56×32 and 586,045 work units to 20×32 and 172,600; the
+three-region control retains identical output while its work changes from 887,856 to 700,138.
+Each of these four public work thresholds is checked at the exact value and one less. Canonical
+State remains primary at 20/60/80/100/120 columns for the single-region case across both character
+sets and width profiles. Conservative spacing remains a limitation when the original layout
+cannot be proved within the bounded probe.
 
 Feasibility, displaced-route replacement, prospective allocation, complete-scene quality, and
 reflow have separate finite algorithmic allowances. They all charge the cumulative public work
@@ -132,9 +242,12 @@ work boundary checked before each charge; public resource errors in all dimensio
 take precedence over that boundary. Discarded reflow geometry restores speculative document cells
 while retaining the work spent to build it.
 
-The unchanged two-node Binding Core fixture now needs 954 work units (953 rejects with actual
-954), following the earlier static-protection checkpoint of 950. The structured resource-boundary
-fixture and exact/N-1 transport tests own this count; no profile ceiling changed. Core tests cover
+The unchanged two-node Binding Core fixture now needs 958 work units (957 rejects with actual
+958), following the scene-planning checkpoint of 954 and static-protection checkpoint of 950.
+The four added units admit two node-presentation entries and the classification-cache owners
+used by planning and final route validation. Graphs without compound groups skip initial return
+analysis. The structured resource-boundary fixture and exact/N-1 transport tests own this count;
+no profile ceiling changed. Core tests cover
 private-boundary precedence, failed transactions, useful replacement credit for wide contacts,
 four-contributor repair, and a 97-marker capacity deficit corrected through reflow.
 

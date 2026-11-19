@@ -17,14 +17,10 @@ pub(super) fn render_kanban_diagram(
     let layout_resources = execution.new_resource_context(merman_model::OperationPhase::Layout);
     let mut document = BudgetedTextDocument::from_resources(layout_resources, options);
     let mut group_ids = HashSet::new();
-    let mut node_ids = HashSet::new();
     let mut children_by_parent: HashMap<&str, Vec<usize>> = HashMap::new();
     document
         .resources_mut()
         .charge_layout_work(model.nodes().len())?;
-    node_ids
-        .try_reserve(model.nodes().len())
-        .map_err(|_| layout_allocation_error())?;
     for node in model.nodes() {
         execution.checkpoint(merman_model::OperationPhase::Layout)?;
         document.preflight_text_work(node.id)?;
@@ -32,12 +28,6 @@ pub(super) fn render_kanban_diagram(
             return Err(AsciiError::UnsupportedFeature {
                 diagram_type: "kanban",
                 feature: "empty node ids",
-            });
-        }
-        if !node_ids.insert(node.id) {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "kanban",
-                feature: "duplicate node ids",
             });
         }
     }
@@ -50,7 +40,14 @@ pub(super) fn render_kanban_diagram(
         if let Some(parent_id) = group.parent_id {
             document.preflight_text_work(parent_id)?;
         }
-        group_ids.insert(group.id);
+        // Mermaid's kanbanDb.ts addNode appends occurrences, including repeated card IDs.
+        // Only group IDs must be unique here: getData resolves children by parentId alone.
+        if !group_ids.insert(group.id) {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: "kanban",
+                feature: "duplicate group ids",
+            });
+        }
     }
 
     document
@@ -190,6 +187,8 @@ mod tests {
         let policy = AsciiResourcePolicy::default();
         for source in [
             "kanban\n  todo[Todo]\n    card[Caption]@{ ticket: MC-1, priority: high, assigned: owner, custom: [1, 2] }\n    ::icon(star)\n    :::highlight\n  done[Done]\n",
+            "kanban\n  id11[Done]\n    id3[Update DB function]@{ ticket: MC-2037, assigned: knsv, priority: 'High' }\n  id12[Can't reproduce]\n    id3[Weird flickering in Firefox]\n",
+            "kanban\n  todo[Todo]\n    card[First]@{ ticket: MC-1, custom: [1, 2] }\n    card[Second]@{ ticket: MC-2 }\n    todo[Card sharing its group ID]\n",
             "kanban\n  empty[Empty]\n",
             "kanban\n",
         ] {

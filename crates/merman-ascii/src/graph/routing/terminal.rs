@@ -1,7 +1,9 @@
 use super::geometry::{CompoundRouteGeometry, FrameSegment};
 use super::occupancy::RouteCandidateScore;
 use super::path::{RouteObstacles, StepDirection};
-use super::plan::{EdgeRouteRequest, EndpointGeometry, NodeAttachment, NodeAttachments, RoutePlan};
+use super::plan::{
+    EdgeRouteRequest, EndpointGeometry, MarkerEndpoint, NodeAttachment, NodeAttachments, RoutePlan,
+};
 use super::{admit_route_candidate, layout_allocation_failed};
 use crate::error::Result;
 use crate::graph::layout::{CanvasCoord, ROUTING_GRID_MARGIN};
@@ -354,10 +356,8 @@ fn plan_terminal_route_inner(
             return Ok(None);
         }
     }
-    let from =
-        EndpointGeometry::for_route(request.from, request.to, request.graph_layout, resources)?;
-    let to =
-        EndpointGeometry::for_route(request.to, request.from, request.graph_layout, resources)?;
+    let from = EndpointGeometry::for_request(request, MarkerEndpoint::Start, resources)?;
+    let to = EndpointGeometry::for_request(request, MarkerEndpoint::End, resources)?;
     let self_loop = request.from.id == request.to.id;
     let mut starts = terminal_ports(from, request, resources, execution)?;
     let mut ends = terminal_ports(to, request, resources, execution)?;

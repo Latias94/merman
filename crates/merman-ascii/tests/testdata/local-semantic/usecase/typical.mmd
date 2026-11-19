@@ -1,0 +1,10 @@
+usecase-beta
+direction TB
+actor User(Customer)@{type:hollow} <<Human>>
+systemBoundary Auth(Authentication)@{type:package}
+Login(Sign in)@{business:true}
+Verify[Check]
+end
+User request@--> Login
+Login ..>:include Verify
+note for Verify "Remember"
