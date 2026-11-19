@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { getEventListeners } from "node:events";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import test from "node:test";
@@ -2394,6 +2395,143 @@ test("direct transport execution failures normalize across async and sync calls"
   await assert.rejects(plainEngine.executeOperation(request), assertTransportError);
   assert.throws(() => plainEngine.executeOperationSync(request), assertTransportError);
   await plainEngine.dispose();
+});
+
+test("executor releases capacity before immediate and queued promises settle", async (context) => {
+  for (const admission of ["immediate", "queued"]) {
+    for (const outcome of ["success", "reject", "throw", "cancel"]) {
+      await context.test(`${admission} ${outcome}`, async () => {
+        const executor = new BoundedExecutor({ concurrency: 1, maxQueue: 1 });
+        const release = deferred();
+        const started = deferred();
+        const controller = new AbortController();
+        const expectedError = outcome === "success" ? null : outcome === "cancel"
+          ? new DOMException("Operation aborted", "AbortError")
+          : new Error("operation failed");
+        const blocker = admission === "queued"
+          ? executor.submit(() => release.promise)
+          : Promise.resolve();
+        const operation = executor.submit(() => {
+          started.resolve();
+          if (outcome === "success") return "result";
+          if (outcome === "throw") throw expectedError;
+          if (outcome === "reject") return Promise.reject(expectedError);
+          return new Promise((_resolve, reject) => {
+            controller.signal.addEventListener("abort", () => reject(expectedError), { once: true });
+          });
+        }, { signal: controller.signal });
+        const observe = (error, value) => {
+          assert.equal(error, expectedError);
+          if (!error) assert.equal(value, "result");
+          assert.equal(executor.snapshot.active, 0);
+          assert.equal(executor.snapshot.pending, 0);
+          executor.assertSyncAvailable();
+          assert.equal(getEventListeners(controller.signal, "abort").length, 0);
+          return Promise.all([
+            executor.submit(() => "next"),
+            executor.submit(() => "following"),
+          ]);
+        };
+        const observed = operation.then(
+          (value) => observe(null, value),
+          (error) => observe(error),
+        );
+        try {
+          release.resolve();
+          if (outcome === "cancel") {
+            await started.promise;
+            controller.abort();
+          }
+          const [, values] = await Promise.all([blocker, observed]);
+          assert.deepEqual(values, ["next", "following"]);
+        } finally {
+          controller.abort();
+          await executor.dispose();
+        }
+      });
+    }
+  }
+});
+
+test("executor pumps FIFO before queued settlement observers submit more work", async () => {
+  const executor = new BoundedExecutor({ concurrency: 1, maxQueue: 2 });
+  const releaseFirst = deferred();
+  const releaseNext = deferred();
+  const events = [];
+  const first = executor.submit(() => {
+    events.push("first");
+    return releaseFirst.promise;
+  });
+  const queued = executor.submit(() => events.push("queued"));
+  const next = executor.submit(() => {
+    events.push("next");
+    return releaseNext.promise;
+  });
+  const observed = queued.then(() => {
+    assert.deepEqual(events, ["first", "queued", "next"]);
+    assert.equal(executor.snapshot.active, 1);
+    assert.equal(executor.snapshot.pending, 0);
+    return executor.submit(() => events.push("observer"));
+  });
+  try {
+    releaseFirst.resolve();
+    await first;
+    // Flush the caller's first reaction before releasing the FIFO successor.
+    await queued;
+    releaseNext.resolve();
+    await Promise.all([next, observed]);
+    assert.deepEqual(events, ["first", "queued", "next", "observer"]);
+  } finally {
+    releaseFirst.resolve();
+    releaseNext.resolve();
+    await executor.dispose();
+  }
+});
+
+test("executor completes dispose before a running queued rejection is observed", async () => {
+  const executor = new BoundedExecutor({ concurrency: 1, maxQueue: 1 });
+  const releaseFirst = deferred();
+  const releaseQueued = deferred();
+  const started = deferred();
+  const runningSignal = new AbortController().signal;
+  const pendingSignal = new AbortController().signal;
+  const expectedError = new Error("queued operation failed during dispose");
+  const first = executor.submit(() => releaseFirst.promise);
+  const queued = executor.submit(() => {
+    started.resolve();
+    return releaseQueued.promise;
+  }, { signal: runningSignal });
+  const observed = queued.then(
+    () => assert.fail("the queued operation must reject"),
+    (error) => {
+      assert.equal(error, expectedError);
+      assert.equal(executor.snapshot.active, 0);
+      assert.equal(executor.snapshot.pending, 0);
+      assert.equal(executor.snapshot.state, "disposed");
+    },
+  );
+  try {
+    releaseFirst.resolve();
+    await started.promise;
+    assert.equal(getEventListeners(runningSignal, "abort").length, 0);
+    const pending = executor.submit(() => assert.fail("disposed work must not start"), {
+      signal: pendingSignal,
+    });
+    const pendingRejected = assert.rejects(pending, MermanDisposedError);
+    assert.equal(getEventListeners(pendingSignal, "abort").length, 1);
+    const disposing = executor.dispose();
+    assert.equal(executor.dispose(), disposing);
+    await pendingRejected;
+    assert.equal(getEventListeners(pendingSignal, "abort").length, 0);
+    assert.equal(executor.snapshot.active, 1);
+    assert.equal(executor.snapshot.state, "disposing");
+    releaseQueued.reject(expectedError);
+    await Promise.all([first, observed, disposing]);
+  } finally {
+    releaseFirst.resolve();
+    releaseQueued.resolve();
+    await executor.dispose();
+  }
 });
 
 test("queue admission is bounded and dispose drains only executing work", async () => {
