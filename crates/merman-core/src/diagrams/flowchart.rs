@@ -549,9 +549,12 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
 
     let mut build = FlowchartBuildState::new(subgraph_ids);
     build.add_statements(&ast, control)?;
-    let FlowchartBuildState { nodes, edges, .. } = build;
-    let mut nodes = nodes;
-    let mut edges = edges;
+    let FlowchartBuildState {
+        mut nodes,
+        mut node_index,
+        mut edges,
+        ..
+    } = build;
 
     let mut class_defs: IndexMap<String, Vec<String>> = IndexMap::new();
     let mut subgraph_vertex_styles = FlowchartSubgraphStyles::default();
@@ -565,12 +568,9 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
         interpolate: None,
     };
 
-    let mut node_index: HashMap<String, usize> = HashMap::new();
-    for (idx, n) in nodes.iter().enumerate() {
-        if idx % 128 == 0 {
-            control.checkpoint()?;
-        }
-        node_index.insert(n.id.clone(), idx);
+    // Preserve the checkpoint cadence of the former index-rebuild pass.
+    for _ in (0..nodes.len()).step_by(128) {
+        control.checkpoint()?;
     }
     let security_level_loose = meta.diagram_config().get_str("securityLevel") == Some("loose");
     {
