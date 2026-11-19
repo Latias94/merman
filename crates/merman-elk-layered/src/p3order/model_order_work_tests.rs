@@ -299,8 +299,20 @@ fn port_comparison_rejects_before_resolving_an_unadmitted_reference() {
         assert_eq!(work.remaining, 0);
         assert_eq!(work.charges[0], 3);
         assert_eq!(work.charges[1..], vec![1; admitted_prefix]);
-        assert!(comparator.bigger_than.values().all(HashSet::is_empty));
-        assert!(comparator.smaller_than.values().all(HashSet::is_empty));
+        assert!(
+            comparator
+                .relations
+                .bigger_than
+                .values()
+                .all(HashSet::is_empty)
+        );
+        assert!(
+            comparator
+                .relations
+                .smaller_than
+                .values()
+                .all(HashSet::is_empty)
+        );
     }
 }
 
@@ -330,6 +342,88 @@ fn cached_port_comparison_does_not_charge_a_second_reference_scan() {
     );
     assert_eq!(cached.remaining, 0);
     assert_eq!(cached.charges, vec![1]);
+}
+
+#[test]
+fn port_comparison_precharges_both_directions_at_the_exact_limit_then_uses_cache() {
+    for port_orders in [[0, 1], [1, 0]] {
+        let mut graph = LGraph::new("snapshot-port-max", LayeredOptions::default());
+        graph
+            .layerless_nodes
+            .push(LNode::new("owner", 10.0, 10.0, None));
+        for order in port_orders {
+            let port = graph
+                .add_port(0, PortType::Output, PortSide::East, LPoint::default())
+                .unwrap();
+            graph.layerless_nodes[0].ports[port.port].model_order = Some(order);
+        }
+        let before = graph.clone();
+        let orders = HashMap::new();
+        for (first, second) in [(0, 1), (1, 0)] {
+            let mut comparator = ModelOrderPortComparator::new(
+                &graph,
+                0,
+                &[],
+                OrderingStrategy::NodesAndEdges,
+                &orders,
+                false,
+            );
+            comparator.relations.bigger_than = HashMap::from([(1, HashSet::from([2, 3]))]);
+            comparator.relations.smaller_than = HashMap::from([(0, HashSet::from([4, 5, 6]))]);
+            let bigger_before = comparator.relations.bigger_than.clone();
+            let smaller_before = comparator.relations.smaller_than.clone();
+            assert_eq!(
+                model_order_relation_update_work(0, 1, &bigger_before, &smaller_before),
+                Ok(29),
+            );
+            assert_eq!(
+                model_order_relation_update_work(1, 0, &bigger_before, &smaller_before),
+                Ok(2),
+            );
+            assert_eq!(
+                model_order_relation_work(first, second, &bigger_before, &smaller_before),
+                Ok(30),
+            );
+
+            let mut limited = ScoringWork::new(29);
+            assert_eq!(
+                comparator.compare_with_work(first, second, &mut limited),
+                Err(WorkError::Interrupted),
+            );
+            assert!(limited.charges.is_empty());
+            assert_eq!(limited.remaining, 29);
+            assert_eq!(comparator.relations.bigger_than, bigger_before);
+            assert_eq!(comparator.relations.smaller_than, smaller_before);
+
+            let expected = port_orders[first].cmp(&port_orders[second]);
+            let mut exact = ScoringWork::new(30);
+            assert_eq!(
+                comparator.compare_with_work(first, second, &mut exact),
+                Ok(expected),
+            );
+            assert_eq!(exact.charges, [30]);
+            assert_eq!(exact.remaining, 0);
+            let bigger_after = comparator.relations.bigger_than.clone();
+            let smaller_after = comparator.relations.smaller_than.clone();
+
+            let mut cached_limited = ScoringWork::new(0);
+            assert_eq!(
+                comparator.compare_with_work(second, first, &mut cached_limited),
+                Err(WorkError::Interrupted),
+            );
+            assert!(cached_limited.charges.is_empty());
+            let mut cached = ScoringWork::new(1);
+            assert_eq!(
+                comparator.compare_with_work(second, first, &mut cached),
+                Ok(expected.reverse()),
+            );
+            assert_eq!(cached.charges, [1]);
+            assert_eq!(cached.remaining, 0);
+            assert_eq!(comparator.relations.bigger_than, bigger_after);
+            assert_eq!(comparator.relations.smaller_than, smaller_after);
+        }
+        assert_eq!(graph, before);
+    }
 }
 
 #[test]

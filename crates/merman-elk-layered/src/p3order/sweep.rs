@@ -31,9 +31,9 @@ use crate::work::{
 };
 
 use super::{
-    GraphInfoHolder, SweepCopy, count_model_order_node_changes, count_model_order_port_changes,
-    initialize_crossing_minimization_port_ids, initialize_crossing_minimization_port_ids_hierarchy,
-    update_bigger_and_smaller_associations,
+    GraphInfoHolder, ModelOrderRelations, SweepCopy, count_model_order_node_changes,
+    count_model_order_port_changes, initialize_crossing_minimization_port_ids,
+    initialize_crossing_minimization_port_ids_hierarchy,
 };
 
 #[cfg(test)]
@@ -1767,8 +1767,7 @@ struct BarycenterHeuristic {
     random: JavaRandom,
     port_distributor: BarycenterPortDistributor,
     force_node_model_order: bool,
-    bigger_than: HashMap<usize, HashSet<usize>>,
-    smaller_than: HashMap<usize, HashSet<usize>>,
+    relations: ModelOrderRelations,
 }
 
 impl BarycenterHeuristic {
@@ -1790,8 +1789,7 @@ impl BarycenterHeuristic {
             random,
             port_distributor,
             force_node_model_order: graph.options.force_node_model_order,
-            bigger_than: HashMap::new(),
-            smaller_than: HashMap::new(),
+            relations: ModelOrderRelations::default(),
         }
     }
 
@@ -1876,8 +1874,7 @@ impl BarycenterHeuristic {
             }
             layer[insert_at] = node;
         }
-        self.bigger_than.clear();
-        self.smaller_than.clear();
+        self.relations.clear();
     }
 
     fn compare_model_order_nodes(
@@ -1918,16 +1915,17 @@ impl BarycenterHeuristic {
     }
 
     fn transitive_ordering(&mut self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
-        self.bigger_than.entry(first).or_default();
-        self.bigger_than.entry(second).or_default();
-        self.smaller_than.entry(first).or_default();
-        self.smaller_than.entry(second).or_default();
+        self.relations.bigger_than.entry(first).or_default();
+        self.relations.bigger_than.entry(second).or_default();
+        self.relations.smaller_than.entry(first).or_default();
+        self.relations.smaller_than.entry(second).or_default();
 
-        if self.bigger_than[&first].contains(&second) || self.smaller_than[&second].contains(&first)
+        if self.relations.bigger_than[&first].contains(&second)
+            || self.relations.smaller_than[&second].contains(&first)
         {
             Some(std::cmp::Ordering::Greater)
-        } else if self.bigger_than[&second].contains(&first)
-            || self.smaller_than[&first].contains(&second)
+        } else if self.relations.bigger_than[&second].contains(&first)
+            || self.relations.smaller_than[&first].contains(&second)
         {
             Some(std::cmp::Ordering::Less)
         } else {
@@ -1942,18 +1940,8 @@ impl BarycenterHeuristic {
         ordering: std::cmp::Ordering,
     ) {
         match ordering {
-            std::cmp::Ordering::Less => update_bigger_and_smaller_associations(
-                first,
-                second,
-                &mut self.bigger_than,
-                &mut self.smaller_than,
-            ),
-            std::cmp::Ordering::Greater => update_bigger_and_smaller_associations(
-                second,
-                first,
-                &mut self.bigger_than,
-                &mut self.smaller_than,
-            ),
+            std::cmp::Ordering::Less => self.relations.update(first, second),
+            std::cmp::Ordering::Greater => self.relations.update(second, first),
             std::cmp::Ordering::Equal => {}
         }
     }
@@ -4882,6 +4870,86 @@ mod tests {
         heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
 
         assert_eq!(order[1], vec![right, left]);
+    }
+
+    #[test]
+    fn barycenter_cache_keeps_both_greater_facts_ahead_of_less_facts() {
+        use std::cmp::Ordering::{Greater, Less};
+        let graph = LGraph::new("relation-priority", LayeredOptions::default());
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &[]);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+        let expected = [
+            None,
+            Some(Greater),
+            Some(Less),
+            Some(Greater),
+            Some(Less),
+            Some(Greater),
+            Some(Less),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+        ];
+        for (mask, expected) in expected.into_iter().enumerate() {
+            heuristic.relations.clear();
+            for (bit, key, member) in [(0, 11, 23), (1, 23, 11)] {
+                if mask & (1 << bit) != 0 {
+                    heuristic
+                        .relations
+                        .bigger_than
+                        .entry(key)
+                        .or_default()
+                        .insert(member);
+                }
+            }
+            for (bit, key, member) in [(2, 11, 23), (3, 23, 11)] {
+                if mask & (1 << bit) != 0 {
+                    heuristic
+                        .relations
+                        .smaller_than
+                        .entry(key)
+                        .or_default()
+                        .insert(member);
+                }
+            }
+            assert_eq!(
+                heuristic.transitive_ordering(11, 23),
+                expected,
+                "mask {mask}"
+            );
+            if [0b1010, 0b1100, 0b1110].contains(&mask) {
+                assert_eq!(heuristic.relations.cached_ordering(11, 23), Some(Less));
+            }
+        }
+    }
+
+    #[test]
+    fn forced_model_order_clears_relations_after_each_insertion_sort() {
+        let mut graph = LGraph::new("relation-lifetime", LayeredOptions::default());
+        graph.layerless_nodes = vec![
+            LNode::new("first", 10.0, 10.0, Some(0)),
+            LNode::new("second", 10.0, 10.0, Some(1)),
+        ];
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 0);
+        let order = vec![vec![0, 1]];
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+        for _ in 0..2 {
+            let mut layer = vec![0, 1];
+            heuristic.insertion_sort_by_model_order(&graph, &mut layer);
+            assert_eq!(layer, [0, 1]);
+            assert!(heuristic.relations.bigger_than.is_empty());
+            assert!(heuristic.relations.smaller_than.is_empty());
+        }
     }
 
     #[test]

@@ -93,27 +93,33 @@ fn before_ports_feedback_stops_before_unadmitted_reverse_update() {
     let mut comparator =
         ModelOrderNodeComparator::new(&graph, previous, OrderingStrategy::NodesAndEdges);
     comparator.before_ports = true;
-    let mut work = FeedbackWorkBudget::new(30);
+    let mut work = FeedbackWorkBudget::new(20);
 
     assert_eq!(
         comparator.compare_with_work(first, second, &mut work),
         Err(WorkError::Interrupted)
     );
     assert_eq!(work.charges, vec![9, 2]);
-    assert_eq!(work.rejected, Some(20));
-    assert_eq!(work.remaining, 19);
-    assert_eq!(comparator.bigger_than[&second], HashSet::from([first]));
-    assert_eq!(comparator.smaller_than[&first], HashSet::from([second]));
-    assert!(comparator.bigger_than[&first].is_empty());
-    assert!(comparator.smaller_than[&second].is_empty());
+    assert_eq!(work.rejected, Some(10));
+    assert_eq!(work.remaining, 9);
+    assert_eq!(
+        comparator.relations.bigger_than[&second],
+        HashSet::from([first])
+    );
+    assert_eq!(
+        comparator.relations.smaller_than[&first],
+        HashSet::from([second])
+    );
+    assert!(comparator.relations.bigger_than[&first].is_empty());
+    assert!(comparator.relations.smaller_than[&second].is_empty());
     assert_eq!(graph, before);
 }
 
 #[test]
-fn before_ports_feedback_sort_admits_conservative_reverse_work() {
+fn before_ports_feedback_sort_admits_snapshot_reverse_work() {
     let (graph, first, second) = feedback_graph();
     let before = graph.clone();
-    let mut work = FeedbackWorkBudget::new(31);
+    let mut work = FeedbackWorkBudget::new(21);
 
     assert_eq!(
         sorted_nodes_by_model_order(
@@ -125,7 +131,7 @@ fn before_ports_feedback_sort_admits_conservative_reverse_work() {
         ),
         Ok(vec![second, first])
     );
-    assert_eq!(work.charges, vec![9, 2, 20]);
+    assert_eq!(work.charges, vec![9, 2, 10]);
     assert_eq!(work.rejected, None);
     assert_eq!(work.remaining, 0);
     assert_eq!(graph, before);
@@ -133,28 +139,39 @@ fn before_ports_feedback_sort_admits_conservative_reverse_work() {
 
 #[test]
 fn model_order_work_admits_new_crossing_closure() {
-    let mut bigger = HashMap::new();
-    let mut smaller = HashMap::new();
+    let mut relations = ModelOrderRelations::default();
     for owner in [0, 1, 3, 4] {
-        update_bigger_and_smaller_associations(owner, owner + 1, &mut bigger, &mut smaller);
+        relations.update(owner, owner + 1);
     }
     for large in 0..3 {
         for small in 3..6 {
-            assert!(!bigger[&large].contains(&small));
-            assert!(!smaller[&small].contains(&large));
+            assert!(!relations.bigger_than[&large].contains(&small));
+            assert!(!relations.smaller_than[&small].contains(&large));
         }
     }
     assert_eq!(
-        model_order_relation_update_work(2, 3, &bigger, &smaller),
-        Ok(30)
+        model_order_relation_update_work(2, 3, &relations.bigger_than, &relations.smaller_than),
+        Ok(22)
     );
-    assert_eq!(model_order_relation_work(2, 3, &bigger, &smaller), Ok(31));
+    assert_eq!(
+        model_order_relation_work(2, 3, &relations.bigger_than, &relations.smaller_than),
+        Ok(23)
+    );
 
-    update_bigger_and_smaller_associations(2, 3, &mut bigger, &mut smaller);
+    relations.update(2, 3);
 
     for owner in 0..6 {
-        assert_eq!(bigger[&owner], (owner + 1..6).collect::<HashSet<_>>());
-        assert_eq!(smaller[&owner], (0..owner).collect::<HashSet<_>>());
+        assert_eq!(
+            relations.bigger_than[&owner],
+            (owner + 1..6).collect::<HashSet<_>>()
+        );
+        assert_eq!(
+            relations.smaller_than[&owner],
+            (0..owner).collect::<HashSet<_>>()
+        );
     }
-    assert_eq!(model_order_relation_work(2, 3, &bigger, &smaller), Ok(1));
+    assert_eq!(
+        model_order_relation_work(2, 3, &relations.bigger_than, &relations.smaller_than),
+        Ok(1)
+    );
 }
