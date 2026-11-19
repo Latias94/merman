@@ -77,6 +77,7 @@ pub(super) struct SequenceDb {
     actors: FxHashMap<String, Actor>,
     actor_order: Vec<String>,
     messages: Vec<Message>,
+    activation_depths: FxHashMap<String, i64>,
     notes: Vec<Note>,
     boxes: Vec<SeqBox>,
     current_box: Option<usize>,
@@ -244,6 +245,25 @@ impl SequenceDb {
         });
         let wrap = msg_text.wrap.unwrap_or(self.auto_wrap());
 
+        // Count activation records by raw ID, independently of actor declarations and display data.
+        // A Vec<Message> reaches its byte-capacity limit before a signed 64-bit depth can overflow.
+        if matches!(
+            signal.message_type,
+            LINETYPE_ACTIVE_START | LINETYPE_ACTIVE_END
+        ) && let Some(actor) = signal.from.as_deref().filter(|id| !id.is_empty())
+        {
+            let change = if signal.message_type == LINETYPE_ACTIVE_START {
+                1
+            } else {
+                -1
+            };
+            if let Some(depth) = self.activation_depths.get_mut(actor) {
+                *depth += change;
+            } else {
+                self.activation_depths.insert(actor.to_string(), change);
+            }
+        }
+
         self.messages.push(Message {
             id: self.messages.len().to_string(),
             from: signal.from,
@@ -257,24 +277,8 @@ impl SequenceDb {
         });
     }
 
-    fn activation_count(&self, actor: &str) -> i32 {
-        if actor.is_empty() {
-            return 0;
-        }
-        let mut count = 0;
-        for msg in &self.messages {
-            if msg.message_type == LINETYPE_ACTIVE_START
-                && msg.from.as_deref().is_some_and(|a| a == actor)
-            {
-                count += 1;
-            }
-            if msg.message_type == LINETYPE_ACTIVE_END
-                && msg.from.as_deref().is_some_and(|a| a == actor)
-            {
-                count -= 1;
-            }
-        }
-        count
+    fn activation_count(&self, actor: &str) -> i64 {
+        self.activation_depths.get(actor).copied().unwrap_or(0)
     }
 
     fn add_autonumber(&mut self, start: Option<f64>, step: Option<f64>, visible: bool) {
@@ -805,6 +809,9 @@ fn is_css_color_value(input: &str) -> bool {
     }
     cssparser::color::parse_named_color(&lower).is_ok()
 }
+
+#[cfg(test)]
+mod activation_tests;
 
 #[cfg(test)]
 mod tests {
