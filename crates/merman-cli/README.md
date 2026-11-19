@@ -450,6 +450,21 @@ merman-cli batch docs/guide.md --output-dir generated --format pdf
 
 All charts render into staging before publication. The rewritten document is published last, stale files are removed only when named by the prior validated manifest, and an interrupted commit is recovered under the output lock before new work starts. Switching among supported output formats migrates the same managed generation and removes its prior-format artifacts. A document with no eligible charts is a valid generation.
 
+The output lock serializes cooperating Merman commands. Each entry is checked against its
+retained identity, prior contents and permissions before publication; complete target checks
+also run at transaction boundaries, before the final document or receipt, and before the
+committed marker. Other programs can still change files during publication. An unrelated
+conflict may be detected after more entries have been published, and a transient change that
+is restored between checks may go unseen. Publication does not provide an atomic multi-file
+snapshot or continuous conflict detection. If a conflict prevents safe recovery, the command
+retains transaction evidence and reports the failure instead of overwriting unknown contents.
+
+On Unix, recovery of an interrupted publishing or rollback phase compares target contents before
+treating changed permissions as a mode-only conflict. If permissions prevent reading a target,
+that recovery retains the target and transaction evidence instead of replacing unverified
+contents. Restore the intended read access and rerun the command to let recovery inspect the
+retained generation. A transaction already marked committed or rolled back only finishes cleanup.
+
 Stdin requires an explicit logical name and output directory:
 
 ```sh

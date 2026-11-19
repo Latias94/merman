@@ -1007,32 +1007,57 @@ fn recovery_restores_the_mode_of_a_deleted_artifact() {
 
 #[cfg(unix)]
 #[test]
-fn recovery_restores_mode_when_old_bytes_survive_with_changed_permissions() {
+fn recovery_restores_readable_mode_changes_and_retains_unreadable_evidence() {
     use std::os::unix::fs::PermissionsExt;
 
-    let temp = tempfile::tempdir().unwrap();
-    let manifest_path = temp.path().join(".merman-manifest.json");
-    std::fs::write(&manifest_path, b"old-manifest").unwrap();
-    std::fs::set_permissions(&manifest_path, std::fs::Permissions::from_mode(0o640)).unwrap();
-    let manifest = relative(temp.path(), ".merman-manifest.json");
-    let mut staging = LockedRecoveredRoot::acquire(temp.path())
-        .unwrap()
-        .begin(
-            TransactionPlan::new([TransactionEntryPlan::write(
-                TransactionRole::Manifest,
-                manifest.clone(),
-            )])
-            .unwrap(),
+    for changed_mode in [0o600, 0o000] {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest_path = temp.path().join(".merman-manifest.json");
+        std::fs::write(&manifest_path, b"old-manifest").unwrap();
+        std::fs::set_permissions(&manifest_path, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let manifest = relative(temp.path(), ".merman-manifest.json");
+        let mut staging = LockedRecoveredRoot::acquire(temp.path())
+            .unwrap()
+            .begin(
+                TransactionPlan::new([TransactionEntryPlan::write(
+                    TransactionRole::Manifest,
+                    manifest.clone(),
+                )])
+                .unwrap(),
+            )
+            .unwrap();
+        staging.stage_bytes(&manifest, b"new-manifest").unwrap();
+        let ready = staging.ready().unwrap();
+        std::fs::set_permissions(
+            &manifest_path,
+            std::fs::Permissions::from_mode(changed_mode),
         )
         .unwrap();
-    staging.stage_bytes(&manifest, b"new-manifest").unwrap();
-    let ready = staging.ready().unwrap();
-    std::fs::set_permissions(&manifest_path, std::fs::Permissions::from_mode(0o000)).unwrap();
-    drop(ready);
+        let readable = match File::open(&manifest_path) {
+            Ok(_) => true,
+            Err(error) => {
+                assert_eq!(error.kind(), std::io::ErrorKind::PermissionDenied);
+                false
+            }
+        };
+        drop(ready);
 
-    drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
-    assert_eq!(read(&manifest_path), b"old-manifest");
-    assert_eq!(ordinary_mode(&manifest_path), 0o640);
+        let recovered = LockedRecoveredRoot::acquire(temp.path());
+        if readable {
+            drop(recovered.unwrap());
+        } else {
+            assert!(recovered.is_err());
+            assert_eq!(ordinary_mode(&manifest_path), changed_mode);
+            assert!(temp.path().join(TRANSACTION_DIR_NAME).is_dir());
+            std::fs::set_permissions(&manifest_path, std::fs::Permissions::from_mode(0o640))
+                .unwrap();
+            assert_eq!(read(&manifest_path), b"old-manifest");
+            drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+        }
+        assert_eq!(read(&manifest_path), b"old-manifest");
+        assert_eq!(ordinary_mode(&manifest_path), 0o640);
+        assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+    }
 }
 
 #[test]
@@ -1252,7 +1277,7 @@ fn lock_rejects_non_regular_objects() {
 
 #[cfg(unix)]
 #[test]
-fn targets_cannot_alias_the_lock_or_each_other_through_hard_links() {
+fn targets_cannot_alias_the_lock_through_hard_links() {
     let temp = tempfile::tempdir().unwrap();
     let locked = LockedRecoveredRoot::acquire(temp.path()).unwrap();
     std::fs::hard_link(
@@ -1273,26 +1298,146 @@ fn targets_cannot_alias_the_lock_or_each_other_through_hard_links() {
         .err()
         .unwrap();
     assert!(matches!(error, TransactionError::InvalidState { .. }));
+}
 
+#[test]
+fn hard_linked_targets_report_the_first_alias_in_publication_order() {
     let temp = tempfile::tempdir().unwrap();
-    std::fs::write(temp.path().join("a.svg"), b"same inode").unwrap();
-    std::fs::hard_link(temp.path().join("a.svg"), temp.path().join("b.svg")).unwrap();
+    std::fs::write(
+        temp.path().join("a.svg"),
+        b"same bytes, distinct identities",
+    )
+    .unwrap();
+    std::fs::write(
+        temp.path().join("b.svg"),
+        b"same bytes, distinct identities",
+    )
+    .unwrap();
+    std::fs::hard_link(temp.path().join("a.svg"), temp.path().join("c.svg")).unwrap();
+    std::fs::hard_link(temp.path().join("b.svg"), temp.path().join("d.svg")).unwrap();
+    std::fs::create_dir(temp.path().join("z.svg")).unwrap();
     let a = relative(temp.path(), "a.svg");
     let b = relative(temp.path(), "b.svg");
+    let c = relative(temp.path(), "c.svg");
+    let d = relative(temp.path(), "d.svg");
+    let z = relative(temp.path(), "z.svg");
     let manifest = relative(temp.path(), ".merman-manifest.json");
+    let root = temp.path().canonicalize().unwrap();
+    let first_alias = c.to_path(&root).unwrap();
     let error = LockedRecoveredRoot::acquire(temp.path())
         .unwrap()
         .begin(
             TransactionPlan::new([
-                TransactionEntryPlan::write(TransactionRole::Artifact, a),
+                TransactionEntryPlan::write(TransactionRole::Artifact, z),
+                TransactionEntryPlan::write(TransactionRole::Artifact, d),
+                TransactionEntryPlan::write(TransactionRole::Artifact, c),
                 TransactionEntryPlan::write(TransactionRole::Artifact, b),
+                TransactionEntryPlan::write(TransactionRole::Artifact, a),
                 TransactionEntryPlan::write(TransactionRole::Manifest, manifest),
             ])
             .unwrap(),
         )
         .err()
         .unwrap();
+    match error {
+        TransactionError::InvalidState { evidence, reason } => {
+            assert_eq!(evidence, root.join(TRANSACTION_DIR_NAME));
+            assert_eq!(
+                reason,
+                format!("transaction targets resolve to the same file: {first_alias:?}")
+            );
+        }
+        other => panic!("expected the first target alias, got {other}"),
+    }
+    for name in ["a.svg", "b.svg", "c.svg", "d.svg"] {
+        assert_eq!(read(root.join(name)), b"same bytes, distinct identities");
+    }
+    assert!(!root.join(TRANSACTION_DIR_NAME).join(STATE_A_NAME).exists());
+}
+
+#[test]
+fn replacement_rejects_changed_owner_before_missing_source() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    std::fs::write(&manifest_path, b"old manifest").unwrap();
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest,
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    let source = staging.working.stage_path(0);
+    let target = staging.working.target_path(0).unwrap();
+    assert!(matches!(
+        staging.working.verify_internal_regular(&source),
+        Err(TransactionError::Operational {
+            operation: "inspect transaction-owned file",
+            ..
+        })
+    ));
+    let original_identity = Arc::clone(&staging.working.transaction_identity);
+    staging.working.transaction_identity =
+        Arc::new(same_file::Handle::from_path(temp.path()).unwrap());
+    let expected = staging.working.verify_owned_state().unwrap_err();
+    let actual = deterministic_replace_from(
+        &staging.working,
+        0,
+        &source,
+        &target,
+        None,
+        "publish replacement",
+    )
+    .unwrap_err();
+    assert!(matches!(actual, TransactionError::InvalidState { .. }));
+    assert_eq!(actual.to_string(), expected.to_string());
+    assert_eq!(read(&manifest_path), b"old manifest");
+    assert!(!source.exists());
+    staging.working.transaction_identity = original_identity;
+    staging.abort().unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn unknown_bytes_with_changed_permissions_are_not_restored_over() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let temp = tempfile::tempdir().unwrap();
+    let manifest_path = temp.path().join(".merman-manifest.json");
+    std::fs::write(&manifest_path, b"old manifest").unwrap();
+    std::fs::set_permissions(&manifest_path, std::fs::Permissions::from_mode(0o640)).unwrap();
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"new manifest").unwrap();
+    let ready = staging.ready().unwrap();
+    std::fs::write(&manifest_path, b"external contents").unwrap();
+    std::fs::set_permissions(&manifest_path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    assert_eq!(
+        ready.working.classify_entry(0).unwrap(),
+        GenerationMatch::Unknown
+    );
+
+    let error = ready.commit().unwrap_err();
     assert!(matches!(error, TransactionError::InvalidState { .. }));
+    assert_eq!(read(&manifest_path), b"external contents");
+    assert_eq!(ordinary_mode(&manifest_path), 0o600);
+    assert!(temp.path().join(TRANSACTION_DIR_NAME).is_dir());
+    assert!(LockedRecoveredRoot::acquire(temp.path()).is_err());
+    assert_eq!(read(&manifest_path), b"external contents");
+    assert_eq!(ordinary_mode(&manifest_path), 0o600);
 }
 
 #[test]
@@ -1554,6 +1699,602 @@ fn final_generation_is_rechecked_before_the_committed_marker() {
     assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
     assert_standard_old_generation(temp.path());
     assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+}
+
+#[test]
+fn stable_publication_checks_the_full_frontier_once_before_the_final_entry() {
+    for artifact_count in [0, 3] {
+        for with_document in [false, true] {
+            for identical in [false, true] {
+                let temp = tempfile::tempdir().unwrap();
+                let mut entries = Vec::new();
+                for index in 0..artifact_count {
+                    entries.push(TransactionEntryPlan::write(
+                        TransactionRole::Artifact,
+                        relative(temp.path(), format!("{index}.svg")),
+                    ));
+                }
+                entries.push(TransactionEntryPlan::write(
+                    TransactionRole::Manifest,
+                    relative(temp.path(), ".merman-manifest.json"),
+                ));
+                if with_document {
+                    entries.push(TransactionEntryPlan::write(
+                        TransactionRole::Document,
+                        relative(temp.path(), "document.md"),
+                    ));
+                }
+                for entry in &entries {
+                    std::fs::write(entry.target.to_path(temp.path()).unwrap(), b"old").unwrap();
+                }
+                let final_index = entries.len() - 1;
+                let frontiers = Arc::new(std::sync::Mutex::new(Vec::new()));
+                let captured = Arc::clone(&frontiers);
+                let hook = CheckpointHook::new(move |checkpoint| {
+                    if let Checkpoint::PublicationFrontier { next_index } = checkpoint {
+                        captured.lock().unwrap().push(next_index);
+                    }
+                    Ok(())
+                });
+                let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+                    .unwrap()
+                    .begin(TransactionPlan::new(entries.clone()).unwrap())
+                    .unwrap();
+                let bytes = if identical { b"old" } else { b"new" };
+                for entry in &entries {
+                    staging.stage_bytes(&entry.target, bytes).unwrap();
+                }
+                staging.ready().unwrap().commit().unwrap();
+
+                assert_eq!(*frontiers.lock().unwrap(), vec![final_index]);
+                for entry in &entries {
+                    assert_eq!(read(entry.target.to_path(temp.path()).unwrap()), bytes);
+                }
+                assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+            }
+        }
+    }
+}
+
+#[test]
+fn persistent_prefix_conflicts_withhold_the_document_and_preserve_unknown_targets() {
+    for unknown in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        seed_standard_old_generation(temp.path());
+        let artifact = temp.path().join("a.svg");
+        let document = temp.path().join("document.md");
+        let document_identity = same_file::Handle::from_path(&document).unwrap();
+        let entered = Arc::new(AtomicU8::new(0));
+        let hook_entered = Arc::clone(&entered);
+        let document_attempted = Arc::new(AtomicBool::new(false));
+        let hook_document_attempted = Arc::clone(&document_attempted);
+        let hook_artifact = artifact.clone();
+        let hook = CheckpointHook::new(move |checkpoint| {
+            if let Checkpoint::CommitBefore { index } = checkpoint {
+                hook_entered.fetch_or(1 << index, AtomicOrdering::SeqCst);
+            }
+            if checkpoint == (Checkpoint::CommitAfter { index: 0 }) {
+                std::fs::write(&hook_artifact, if unknown { b"alien" } else { b"old-a" })?;
+            }
+            if checkpoint == (Checkpoint::ReplaceBefore { index: 3 }) {
+                hook_document_attempted.store(true, AtomicOrdering::SeqCst);
+            }
+            Ok(())
+        });
+        let targets = Targets::under(temp.path());
+        let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+            .unwrap()
+            .begin(targets.standard_plan())
+            .unwrap();
+        stage_standard_new_generation(&mut staging, &targets);
+        let error = staging.ready().unwrap().commit().unwrap_err();
+
+        // Detection is deliberately deferred; the final document must still never be attempted.
+        assert_eq!(entered.load(AtomicOrdering::SeqCst), 0b1111);
+        assert!(!document_attempted.load(AtomicOrdering::SeqCst));
+        assert_eq!(read(&document), b"old-document");
+        assert_eq!(
+            same_file::Handle::from_path(&document).unwrap(),
+            document_identity
+        );
+        let transaction = temp.path().join(TRANSACTION_DIR_NAME);
+        if unknown {
+            assert!(error.is_partial_publication(), "{error}");
+            assert_eq!(read(&artifact), b"alien");
+            assert_eq!(read(temp.path().join("z.svg")), b"new-z");
+            assert_eq!(read(transaction.join(backup_name(0))), b"old-a");
+            assert_eq!(read(transaction.join(stage_name(0))), b"new-a");
+            assert!(LockedRecoveredRoot::acquire(temp.path()).is_err());
+            assert_eq!(read(&artifact), b"alien");
+            assert!(transaction.is_dir());
+        } else {
+            assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+            assert_standard_old_generation(temp.path());
+            assert!(!transaction.exists());
+        }
+    }
+}
+
+#[test]
+fn final_callback_prefix_changes_are_checked_before_document_or_manifest_publication() {
+    for with_document in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        seed_standard_old_generation(temp.path());
+        let targets = Targets::under(temp.path());
+        let mut entries = vec![
+            TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_a.clone()),
+            TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_z.clone()),
+            TransactionEntryPlan::write(TransactionRole::Manifest, targets.manifest.clone()),
+        ];
+        if with_document {
+            entries.push(TransactionEntryPlan::write(
+                TransactionRole::Document,
+                targets.document.clone(),
+            ));
+        }
+        let final_index = entries.len() - 1;
+        let final_target = entries[final_index].target.to_path(temp.path()).unwrap();
+        let final_identity = same_file::Handle::from_path(&final_target).unwrap();
+        let final_attempted = Arc::new(AtomicBool::new(false));
+        let hook_final_attempted = Arc::clone(&final_attempted);
+        let hook = CheckpointHook::new(move |checkpoint| {
+            if checkpoint == (Checkpoint::ReplaceBefore { index: final_index }) {
+                hook_final_attempted.store(true, AtomicOrdering::SeqCst);
+            }
+            Ok(())
+        });
+        let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+            .unwrap()
+            .begin(TransactionPlan::new(entries).unwrap())
+            .unwrap();
+        staging.stage_bytes(&targets.artifact_a, b"new-a").unwrap();
+        staging.stage_bytes(&targets.artifact_z, b"new-z").unwrap();
+        staging
+            .stage_bytes(&targets.manifest, b"new-manifest")
+            .unwrap();
+        if with_document {
+            staging
+                .stage_bytes(&targets.document, b"new-document")
+                .unwrap();
+        }
+        let mut callback_count = 0;
+        let mut validate = || {
+            callback_count += 1;
+            assert_eq!(read(temp.path().join("a.svg")), b"new-a");
+            std::fs::write(temp.path().join("a.svg"), b"old-a").map_err(|error| error.to_string())
+        };
+        let error = staging
+            .ready()
+            .unwrap()
+            .commit_with_precommit_validation(&mut validate)
+            .unwrap_err();
+
+        assert_eq!(callback_count, 1);
+        assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+        assert!(!final_attempted.load(AtomicOrdering::SeqCst));
+        assert_eq!(
+            same_file::Handle::from_path(&final_target).unwrap(),
+            final_identity
+        );
+        assert_standard_old_generation(temp.path());
+        assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+    }
+}
+
+#[test]
+fn a_transient_prefix_conflict_repaired_before_the_final_observation_can_commit() {
+    let temp = tempfile::tempdir().unwrap();
+    seed_standard_old_generation(temp.path());
+    let artifact = temp.path().join("a.svg");
+    let passed_intermediate = Arc::new(AtomicBool::new(false));
+    let hook_passed_intermediate = Arc::clone(&passed_intermediate);
+    let hook = CheckpointHook::new(move |checkpoint| {
+        match checkpoint {
+            Checkpoint::CommitAfter { index: 0 } => std::fs::write(&artifact, b"alien")?,
+            Checkpoint::CommitAfter { index: 1 } => {
+                assert_eq!(read(&artifact), b"alien");
+                hook_passed_intermediate.store(true, AtomicOrdering::SeqCst);
+            }
+            Checkpoint::CommitBefore { index: 2 } => std::fs::write(&artifact, b"new-a")?,
+            _ => {}
+        }
+        Ok(())
+    });
+    let targets = Targets::under(temp.path());
+    let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+        .unwrap()
+        .begin(targets.standard_plan())
+        .unwrap();
+    stage_standard_new_generation(&mut staging, &targets);
+    staging.ready().unwrap().commit().unwrap();
+
+    // This is the bounded observation policy, not arbitrary-writer equivalence.
+    assert!(passed_intermediate.load(AtomicOrdering::SeqCst));
+    assert_eq!(read(temp.path().join("document.md")), b"new-document");
+    assert_eq!(read(temp.path().join("a.svg")), b"new-a");
+    assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+}
+
+#[test]
+fn future_and_current_same_inode_writes_fail_when_the_entry_is_processed() {
+    for mutation_index in [0, 1] {
+        for unknown in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            seed_standard_old_generation(temp.path());
+            let target = temp.path().join("z.svg");
+            let identity = same_file::Handle::from_path(&target).unwrap();
+            let entered = Arc::new(AtomicU8::new(0));
+            let hook_entered = Arc::clone(&entered);
+            let hook_target = target.clone();
+            let hook = CheckpointHook::new(move |checkpoint| {
+                if let Checkpoint::CommitBefore { index } = checkpoint {
+                    hook_entered.fetch_or(1 << index, AtomicOrdering::SeqCst);
+                    if index == mutation_index {
+                        std::fs::write(&hook_target, if unknown { b"alien" } else { b"new-z" })?;
+                        assert_eq!(
+                            same_file::Handle::from_path(&hook_target).unwrap(),
+                            identity
+                        );
+                    }
+                }
+                Ok(())
+            });
+            let targets = Targets::under(temp.path());
+            let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+                .unwrap()
+                .begin(targets.standard_plan())
+                .unwrap();
+            stage_standard_new_generation(&mut staging, &targets);
+            let error = staging.ready().unwrap().commit().unwrap_err();
+
+            assert_eq!(entered.load(AtomicOrdering::SeqCst), 0b0011);
+            assert_eq!(read(temp.path().join("document.md")), b"old-document");
+            if unknown {
+                assert!(error.is_partial_publication(), "{error}");
+                assert_eq!(read(&target), b"alien");
+                assert_eq!(
+                    read(temp.path().join(TRANSACTION_DIR_NAME).join(backup_name(1))),
+                    b"old-z"
+                );
+            } else {
+                // Matching only the new generation is insufficient permission to publish.
+                assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+                assert_standard_old_generation(temp.path());
+            }
+        }
+    }
+}
+
+#[test]
+fn forward_replace_and_delete_recheck_old_bytes_after_the_boundary_hook() {
+    for (deleting, conflict) in [
+        (false, &b"alien"[..]),
+        (false, &b"new-a"[..]),
+        (true, &b"alien"[..]),
+    ] {
+        let temp = tempfile::tempdir().unwrap();
+        seed_standard_old_generation(temp.path());
+        let artifact = temp.path().join("a.svg");
+        let identity = same_file::Handle::from_path(&artifact).unwrap();
+        let changed = Arc::new(AtomicBool::new(false));
+        let hook_changed = Arc::clone(&changed);
+        let hook_artifact = artifact.clone();
+        let hook = CheckpointHook::new(move |checkpoint| {
+            let boundary = if deleting {
+                Checkpoint::DeleteBefore { index: 0 }
+            } else {
+                Checkpoint::ReplaceBefore { index: 0 }
+            };
+            if checkpoint == boundary && !hook_changed.swap(true, AtomicOrdering::SeqCst) {
+                std::fs::write(&hook_artifact, conflict)?;
+            }
+            Ok(())
+        });
+        let targets = Targets::under(temp.path());
+        let artifact_entry = if deleting {
+            TransactionEntryPlan::delete_artifact(targets.artifact_a.clone())
+        } else {
+            TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_a.clone())
+        };
+        let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+            .unwrap()
+            .begin(
+                TransactionPlan::new([
+                    artifact_entry,
+                    TransactionEntryPlan::write(
+                        TransactionRole::Manifest,
+                        targets.manifest.clone(),
+                    ),
+                    TransactionEntryPlan::write(
+                        TransactionRole::Document,
+                        targets.document.clone(),
+                    ),
+                ])
+                .unwrap(),
+            )
+            .unwrap();
+        if !deleting {
+            staging.stage_bytes(&targets.artifact_a, b"new-a").unwrap();
+        }
+        staging
+            .stage_bytes(&targets.manifest, b"new-manifest")
+            .unwrap();
+        staging
+            .stage_bytes(&targets.document, b"new-document")
+            .unwrap();
+        let error = staging.ready().unwrap().commit().unwrap_err();
+
+        assert!(changed.load(AtomicOrdering::SeqCst));
+        assert_eq!(read(temp.path().join("document.md")), b"old-document");
+        if conflict == b"alien" {
+            assert!(error.is_partial_publication(), "{error}");
+            assert_eq!(read(&artifact), conflict);
+            assert_eq!(same_file::Handle::from_path(&artifact).unwrap(), identity);
+            assert_eq!(
+                read(temp.path().join(TRANSACTION_DIR_NAME).join(backup_name(0))),
+                b"old-a"
+            );
+            assert!(LockedRecoveredRoot::acquire(temp.path()).is_err());
+            assert_eq!(read(&artifact), conflict);
+        } else {
+            assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+            assert_standard_old_generation(temp.path());
+            assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+        }
+    }
+}
+
+#[test]
+fn byte_identical_inode_replacement_is_rejected_before_old_or_both_publication() {
+    for identical in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        seed_standard_old_generation(temp.path());
+        let artifact = temp.path().join("a.svg");
+        let replacement = temp.path().join("replacement");
+        std::fs::write(&replacement, b"old-a").unwrap();
+        let original_identity = same_file::Handle::from_path(&artifact).unwrap();
+        let replacement_identity = same_file::Handle::from_path(&replacement).unwrap();
+        assert_ne!(original_identity, replacement_identity);
+        let hook_artifact = artifact.clone();
+        let hook = CheckpointHook::new(move |checkpoint| {
+            if checkpoint == (Checkpoint::CommitBefore { index: 0 }) {
+                std::fs::rename(&replacement, &hook_artifact)?;
+            }
+            Ok(())
+        });
+        let targets = Targets::under(temp.path());
+        let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+            .unwrap()
+            .begin(targets.standard_plan())
+            .unwrap();
+        staging
+            .stage_bytes(
+                &targets.artifact_a,
+                if identical { b"old-a" } else { b"new-a" },
+            )
+            .unwrap();
+        staging.stage_bytes(&targets.artifact_z, b"new-z").unwrap();
+        staging
+            .stage_bytes(&targets.manifest, b"new-manifest")
+            .unwrap();
+        staging
+            .stage_bytes(&targets.document, b"new-document")
+            .unwrap();
+        let error = staging.ready().unwrap().commit().unwrap_err();
+
+        assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+        assert_standard_old_generation(temp.path());
+        assert_eq!(
+            same_file::Handle::from_path(&artifact).unwrap(),
+            replacement_identity
+        );
+        assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+    }
+}
+
+#[test]
+fn a_both_commit_point_rechecks_identity_after_the_final_callback() {
+    let temp = tempfile::tempdir().unwrap();
+    let manifest = relative(temp.path(), ".merman-manifest.json");
+    let manifest_path = manifest.to_path(temp.path()).unwrap();
+    let replacement = temp.path().join("replacement");
+    std::fs::write(&manifest_path, b"same").unwrap();
+    std::fs::write(&replacement, b"same").unwrap();
+    let old_identity = same_file::Handle::from_path(&manifest_path).unwrap();
+    let replacement_identity = same_file::Handle::from_path(&replacement).unwrap();
+    assert_ne!(old_identity, replacement_identity);
+    let mut staging = LockedRecoveredRoot::acquire(temp.path())
+        .unwrap()
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"same").unwrap();
+    let mut callback_count = 0;
+    let mut validate = || {
+        callback_count += 1;
+        std::fs::rename(&replacement, &manifest_path).map_err(|error| error.to_string())
+    };
+    let error = staging
+        .ready()
+        .unwrap()
+        .commit_with_precommit_validation(&mut validate)
+        .unwrap_err();
+
+    assert_eq!(callback_count, 1);
+    assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+    assert_eq!(read(&manifest_path), b"same");
+    assert_eq!(
+        same_file::Handle::from_path(&manifest_path).unwrap(),
+        replacement_identity
+    );
+    assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+}
+
+#[test]
+fn current_stage_and_backup_are_validated_before_a_both_noop() {
+    for substitute_stage in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        seed_standard_old_generation(temp.path());
+        let transaction = temp.path().join(TRANSACTION_DIR_NAME);
+        let evidence = transaction.join(if substitute_stage {
+            stage_name(0)
+        } else {
+            backup_name(0)
+        });
+        let hook_evidence = evidence.clone();
+        let completed_first = Arc::new(AtomicBool::new(false));
+        let hook_completed_first = Arc::clone(&completed_first);
+        let hook = CheckpointHook::new(move |checkpoint| {
+            if checkpoint == (Checkpoint::CommitBefore { index: 0 }) {
+                std::fs::remove_file(&hook_evidence)?;
+                std::fs::create_dir(&hook_evidence)?;
+            }
+            if checkpoint == (Checkpoint::CommitAfter { index: 0 }) {
+                hook_completed_first.store(true, AtomicOrdering::SeqCst);
+            }
+            Ok(())
+        });
+        let targets = Targets::under(temp.path());
+        let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+            .unwrap()
+            .begin(targets.standard_plan())
+            .unwrap();
+        staging.stage_bytes(&targets.artifact_a, b"old-a").unwrap();
+        staging.stage_bytes(&targets.artifact_z, b"new-z").unwrap();
+        staging
+            .stage_bytes(&targets.manifest, b"new-manifest")
+            .unwrap();
+        staging
+            .stage_bytes(&targets.document, b"new-document")
+            .unwrap();
+        let error = staging.ready().unwrap().commit().unwrap_err();
+
+        assert!(error.is_partial_publication(), "{error}");
+        assert!(!completed_first.load(AtomicOrdering::SeqCst));
+        assert_standard_old_generation(temp.path());
+        assert!(evidence.is_dir());
+        assert!(transaction.is_dir());
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn private_source_modes_and_link_counts_are_checked_before_a_both_noop() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for substitute_stage in [false, true] {
+        for hard_link in [false, true] {
+            let temp = tempfile::tempdir().unwrap();
+            seed_standard_old_generation(temp.path());
+            let evidence = temp
+                .path()
+                .join(TRANSACTION_DIR_NAME)
+                .join(if substitute_stage {
+                    stage_name(0)
+                } else {
+                    backup_name(0)
+                });
+            let neighbor = temp.path().join("external-link");
+            let hook_evidence = evidence.clone();
+            let hook_neighbor = neighbor.clone();
+            let hook = CheckpointHook::new(move |checkpoint| {
+                if checkpoint == (Checkpoint::CommitBefore { index: 0 }) {
+                    if hard_link {
+                        std::fs::hard_link(&hook_evidence, &hook_neighbor)?;
+                    } else {
+                        std::fs::set_permissions(
+                            &hook_evidence,
+                            std::fs::Permissions::from_mode(0o644),
+                        )?;
+                    }
+                }
+                Ok(())
+            });
+            let targets = Targets::under(temp.path());
+            let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+                .unwrap()
+                .begin(targets.standard_plan())
+                .unwrap();
+            staging.stage_bytes(&targets.artifact_a, b"old-a").unwrap();
+            staging.stage_bytes(&targets.artifact_z, b"new-z").unwrap();
+            staging
+                .stage_bytes(&targets.manifest, b"new-manifest")
+                .unwrap();
+            staging
+                .stage_bytes(&targets.document, b"new-document")
+                .unwrap();
+            let error = staging.ready().unwrap().commit().unwrap_err();
+
+            assert!(error.is_partial_publication(), "{error}");
+            assert_standard_old_generation(temp.path());
+            assert_eq!(read(&evidence), b"old-a");
+            if hard_link {
+                assert_eq!(read(&neighbor), b"old-a");
+            }
+            assert!(temp.path().join(TRANSACTION_DIR_NAME).is_dir());
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn forward_boundaries_reject_changed_modes_and_rollback_keeps_its_original_acceptance() {
+    use std::os::unix::fs::PermissionsExt;
+
+    for deleting in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let artifact = temp.path().join("a.svg");
+        std::fs::write(&artifact, b"old-a").unwrap();
+        std::fs::set_permissions(&artifact, std::fs::Permissions::from_mode(0o640)).unwrap();
+        let changed = Arc::new(AtomicBool::new(false));
+        let hook_changed = Arc::clone(&changed);
+        let hook_artifact = artifact.clone();
+        let hook = CheckpointHook::new(move |checkpoint| {
+            let boundary = if deleting {
+                Checkpoint::DeleteBefore { index: 0 }
+            } else {
+                Checkpoint::ReplaceBefore { index: 0 }
+            };
+            if checkpoint == boundary && !hook_changed.swap(true, AtomicOrdering::SeqCst) {
+                std::fs::set_permissions(&hook_artifact, std::fs::Permissions::from_mode(0o600))?;
+            }
+            Ok(())
+        });
+        let artifact_target = relative(temp.path(), "a.svg");
+        let manifest = relative(temp.path(), ".merman-manifest.json");
+        let artifact_entry = if deleting {
+            TransactionEntryPlan::delete_artifact(artifact_target.clone())
+        } else {
+            TransactionEntryPlan::write(TransactionRole::Artifact, artifact_target.clone())
+        };
+        let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+            .unwrap()
+            .begin(
+                TransactionPlan::new([
+                    artifact_entry,
+                    TransactionEntryPlan::write(TransactionRole::Manifest, manifest.clone()),
+                ])
+                .unwrap(),
+            )
+            .unwrap();
+        if !deleting {
+            staging.stage_bytes(&artifact_target, b"new-a").unwrap();
+        }
+        staging.stage_bytes(&manifest, b"new-manifest").unwrap();
+        let error = staging.ready().unwrap().commit().unwrap_err();
+
+        assert!(matches!(error, TransactionError::CommitRolledBack { .. }));
+        assert!(changed.load(AtomicOrdering::SeqCst));
+        assert_eq!(read(&artifact), b"old-a");
+        assert_eq!(ordinary_mode(&artifact), 0o640);
+        assert!(!temp.path().join(".merman-manifest.json").exists());
+        assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+    }
 }
 
 #[test]
@@ -1834,6 +2575,329 @@ fn complete_pending_successor_is_promoted_before_recovery() {
     drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
     assert_eq!(read(temp.path().join(".merman-manifest.json")), b"old");
     assert!(!transaction.exists());
+}
+
+#[test]
+fn prepared_publishing_cursors_and_committed_marker_recover_mixed_operations() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    for with_document in [false, true] {
+        let entry_count = if with_document { 4 } else { 3 };
+        for pending_ordinal in 1..=entry_count + 1 {
+            let temp = tempfile::tempdir().unwrap();
+            seed_standard_old_generation(temp.path());
+            let targets = Targets::under(temp.path());
+            let mut entries = vec![
+                TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_a.clone()),
+                TransactionEntryPlan::delete_artifact(targets.artifact_z.clone()),
+                TransactionEntryPlan::write(TransactionRole::Manifest, targets.manifest.clone()),
+            ];
+            if with_document {
+                entries.push(TransactionEntryPlan::write(
+                    TransactionRole::Document,
+                    targets.document.clone(),
+                ));
+            }
+
+            let armed = Arc::new(AtomicBool::new(false));
+            let prepared_count = Arc::new(AtomicU8::new(0));
+            let hook_armed = Arc::clone(&armed);
+            let hook_count = Arc::clone(&prepared_count);
+            let hook = CheckpointHook::new(move |checkpoint| {
+                if matches!(checkpoint, Checkpoint::PersistPrepared { .. })
+                    && hook_armed.load(AtomicOrdering::SeqCst)
+                    && usize::from(hook_count.fetch_add(1, AtomicOrdering::SeqCst)) + 1
+                        == pending_ordinal
+                {
+                    panic!("abrupt publishing pending interruption");
+                }
+                Ok(())
+            });
+            let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+                .unwrap()
+                .begin(TransactionPlan::new(entries).unwrap())
+                .unwrap();
+            staging.stage_bytes(&targets.artifact_a, b"new-a").unwrap();
+            staging
+                .stage_bytes(&targets.manifest, b"new-manifest")
+                .unwrap();
+            if with_document {
+                staging
+                    .stage_bytes(&targets.document, b"new-document")
+                    .unwrap();
+            }
+            let ready = staging.ready().unwrap();
+            armed.store(true, AtomicOrdering::SeqCst);
+            let abrupt = catch_unwind(AssertUnwindSafe(|| ready.commit()))
+                .expect_err("commit must unwind without entering its error rollback path");
+            assert_eq!(
+                abrupt.downcast_ref::<&str>().copied(),
+                Some("abrupt publishing pending interruption")
+            );
+            assert_eq!(
+                usize::from(prepared_count.load(AtomicOrdering::SeqCst)),
+                pending_ordinal
+            );
+
+            let transaction = temp.path().join(TRANSACTION_DIR_NAME);
+            let pending_path = transaction.join(STATE_PENDING_NAME);
+            let pending = match load_journal_file(&pending_path, &transaction, false).unwrap() {
+                JournalRead::Valid(state) => state,
+                _ => panic!("expected a complete pending publication journal"),
+            };
+            let marker_pending = pending_ordinal == entry_count + 1;
+            let published_count = pending_ordinal.min(entry_count);
+            assert_eq!(
+                pending.phase,
+                if marker_pending {
+                    JournalPhase::Committed
+                } else {
+                    JournalPhase::Publishing
+                }
+            );
+            assert_eq!(pending.next_index, published_count);
+            assert_eq!(pending.entries.len(), entry_count);
+            let (current, active_slot) = load_journal_slots(&transaction).unwrap();
+            assert_eq!(current.phase, JournalPhase::Publishing);
+            assert_eq!(current.next_index, pending_ordinal - 1);
+            current.validate_successor(&pending, &transaction).unwrap();
+
+            assert_eq!(read(temp.path().join("a.svg")), b"new-a");
+            if published_count >= 2 {
+                assert!(!temp.path().join("z.svg").exists());
+            } else {
+                assert_eq!(read(temp.path().join("z.svg")), b"old-z");
+            }
+            assert_eq!(
+                read(temp.path().join(".merman-manifest.json")),
+                if published_count >= 3 {
+                    b"new-manifest"
+                } else {
+                    b"old-manifest"
+                }
+            );
+            assert_eq!(
+                read(temp.path().join("document.md")),
+                if with_document && published_count == 4 {
+                    b"new-document"
+                } else {
+                    b"old-document"
+                }
+            );
+
+            let expect_new = published_count == entry_count;
+            let commit_point = if with_document {
+                temp.path().join("document.md")
+            } else {
+                temp.path().join(".merman-manifest.json")
+            };
+            let commit_identity = same_file::Handle::from_path(&commit_point).unwrap();
+            let new_artifact_identity = expect_new
+                .then(|| same_file::Handle::from_path(temp.path().join("a.svg")).unwrap());
+            let pending_bytes = read(&pending_path);
+            let promoted_slot = active_slot.other();
+            let promotion_seen = Arc::new(AtomicBool::new(false));
+            let hook_seen = Arc::clone(&promotion_seen);
+            let recovery_directory = transaction.clone();
+            let recovery_hook = CheckpointHook::new(move |checkpoint| {
+                if matches!(
+                    checkpoint,
+                    Checkpoint::PersistBefore { .. } | Checkpoint::CleanupBefore
+                ) && !hook_seen.swap(true, AtomicOrdering::SeqCst)
+                {
+                    assert!(!recovery_directory.join(STATE_PENDING_NAME).exists());
+                    let (_, recovered_slot) = load_journal_slots(&recovery_directory).unwrap();
+                    assert_eq!(recovered_slot, promoted_slot);
+                    assert_eq!(
+                        read(recovery_directory.join(promoted_slot.file_name())),
+                        pending_bytes,
+                        "promote the complete pending successor before recovery writes or cleanup"
+                    );
+                }
+                Ok(())
+            });
+            drop(LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), recovery_hook).unwrap());
+            assert!(promotion_seen.load(AtomicOrdering::SeqCst));
+
+            if expect_new {
+                assert_eq!(read(temp.path().join("a.svg")), b"new-a");
+                assert!(!temp.path().join("z.svg").exists());
+                assert_eq!(
+                    read(temp.path().join(".merman-manifest.json")),
+                    b"new-manifest"
+                );
+                assert_eq!(
+                    read(temp.path().join("document.md")),
+                    if with_document {
+                        b"new-document"
+                    } else {
+                        b"old-document"
+                    }
+                );
+            } else {
+                assert_standard_old_generation(temp.path());
+            }
+            assert_eq!(
+                same_file::Handle::from_path(&commit_point).unwrap(),
+                commit_identity
+            );
+            if let Some(identity) = new_artifact_identity {
+                assert_eq!(
+                    same_file::Handle::from_path(temp.path().join("a.svg")).unwrap(),
+                    identity
+                );
+            }
+            assert!(!transaction.exists());
+        }
+    }
+}
+
+#[test]
+fn prepared_publishing_cursor_with_a_both_commit_point_uses_actual_generations() {
+    use std::panic::{AssertUnwindSafe, catch_unwind};
+
+    // Both cannot prove that the commit point ran. Existing recovery keeps all-new
+    // generations first, and rolls back an incomplete generation with a Both commit point.
+    for with_document in [false, true] {
+        let entry_count = if with_document { 4 } else { 3 };
+        for pending_ordinal in [1, entry_count - 1, entry_count] {
+            let temp = tempfile::tempdir().unwrap();
+            seed_standard_old_generation(temp.path());
+            let targets = Targets::under(temp.path());
+            let mut entries = vec![
+                TransactionEntryPlan::write(TransactionRole::Artifact, targets.artifact_a.clone()),
+                TransactionEntryPlan::delete_artifact(targets.artifact_z.clone()),
+                TransactionEntryPlan::write(TransactionRole::Manifest, targets.manifest.clone()),
+            ];
+            if with_document {
+                entries.push(TransactionEntryPlan::write(
+                    TransactionRole::Document,
+                    targets.document.clone(),
+                ));
+            }
+            let commit_point = if with_document {
+                temp.path().join("document.md")
+            } else {
+                temp.path().join(".merman-manifest.json")
+            };
+            let commit_identity = same_file::Handle::from_path(&commit_point).unwrap();
+            let commit_modified = std::fs::metadata(&commit_point)
+                .unwrap()
+                .modified()
+                .unwrap();
+            let armed = Arc::new(AtomicBool::new(false));
+            let prepared_count = Arc::new(AtomicU8::new(0));
+            let hook_armed = Arc::clone(&armed);
+            let hook_count = Arc::clone(&prepared_count);
+            let hook = CheckpointHook::new(move |checkpoint| {
+                if matches!(checkpoint, Checkpoint::PersistPrepared { .. })
+                    && hook_armed.load(AtomicOrdering::SeqCst)
+                    && usize::from(hook_count.fetch_add(1, AtomicOrdering::SeqCst)) + 1
+                        == pending_ordinal
+                {
+                    panic!("abrupt Both commit-point pending interruption");
+                }
+                Ok(())
+            });
+            let mut staging = LockedRecoveredRoot::acquire_with_checkpoint(temp.path(), hook)
+                .unwrap()
+                .begin(TransactionPlan::new(entries).unwrap())
+                .unwrap();
+            staging.stage_bytes(&targets.artifact_a, b"new-a").unwrap();
+            staging
+                .stage_bytes(
+                    &targets.manifest,
+                    if with_document {
+                        b"new-manifest"
+                    } else {
+                        b"old-manifest"
+                    },
+                )
+                .unwrap();
+            if with_document {
+                staging
+                    .stage_bytes(&targets.document, b"old-document")
+                    .unwrap();
+            }
+            let ready = staging.ready().unwrap();
+            assert_eq!(
+                ready.working.classify_entry(entry_count - 1).unwrap(),
+                GenerationMatch::Both
+            );
+            armed.store(true, AtomicOrdering::SeqCst);
+            let abrupt = catch_unwind(AssertUnwindSafe(|| ready.commit()))
+                .expect_err("commit must unwind without automatically rolling back");
+            assert_eq!(
+                abrupt.downcast_ref::<&str>().copied(),
+                Some("abrupt Both commit-point pending interruption")
+            );
+            assert_eq!(
+                usize::from(prepared_count.load(AtomicOrdering::SeqCst)),
+                pending_ordinal
+            );
+
+            let transaction = temp.path().join(TRANSACTION_DIR_NAME);
+            let pending_path = transaction.join(STATE_PENDING_NAME);
+            let pending = match load_journal_file(&pending_path, &transaction, false).unwrap() {
+                JournalRead::Valid(state) => state,
+                _ => panic!("expected a complete pending publication cursor"),
+            };
+            assert_eq!(pending.phase, JournalPhase::Publishing);
+            assert_eq!(pending.next_index, pending_ordinal);
+            assert_eq!(pending.entries.len(), entry_count);
+            let (current, _) = load_journal_slots(&transaction).unwrap();
+            assert_eq!(current.phase, JournalPhase::Publishing);
+            assert_eq!(current.next_index, pending_ordinal - 1);
+            current.validate_successor(&pending, &transaction).unwrap();
+
+            let expect_new = pending_ordinal >= entry_count - 1;
+            assert_eq!(read(temp.path().join("a.svg")), b"new-a");
+            if expect_new {
+                assert!(!temp.path().join("z.svg").exists());
+            } else {
+                assert_eq!(read(temp.path().join("z.svg")), b"old-z");
+            }
+            assert_eq!(
+                read(temp.path().join(".merman-manifest.json")),
+                if with_document && expect_new {
+                    b"new-manifest"
+                } else {
+                    b"old-manifest"
+                }
+            );
+            assert_eq!(read(temp.path().join("document.md")), b"old-document");
+
+            drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
+            if expect_new {
+                assert_eq!(read(temp.path().join("a.svg")), b"new-a");
+                assert!(!temp.path().join("z.svg").exists());
+                assert_eq!(
+                    read(temp.path().join(".merman-manifest.json")),
+                    if with_document {
+                        b"new-manifest"
+                    } else {
+                        b"old-manifest"
+                    }
+                );
+                assert_eq!(read(temp.path().join("document.md")), b"old-document");
+            } else {
+                assert_standard_old_generation(temp.path());
+            }
+            assert_eq!(
+                same_file::Handle::from_path(&commit_point).unwrap(),
+                commit_identity,
+                "recovery must not rewrite the Both commit point"
+            );
+            assert_eq!(
+                std::fs::metadata(&commit_point)
+                    .unwrap()
+                    .modified()
+                    .unwrap(),
+                commit_modified
+            );
+            assert!(!transaction.exists());
+        }
+    }
 }
 
 #[test]
