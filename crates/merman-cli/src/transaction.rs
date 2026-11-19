@@ -1,6 +1,7 @@
 mod format;
 
 use crate::error::CliError;
+use crate::output::PublicationGuards;
 
 pub(crate) use format::{
     ArtifactNamespace, GenerationDialect, GenerationManifest, GenerationOwner, RelativeTarget,
@@ -351,6 +352,7 @@ impl std::fmt::Debug for LockedRecoveredRoot {
 impl LockedRecoveredRoot {
     pub(crate) fn acquire_approved(
         approved: crate::output::ApprovedTransactionRoot,
+        publications: &mut PublicationGuards,
     ) -> Result<Self, TransactionError> {
         approved.verify().map_err(|error| {
             TransactionError::invalid_state(
@@ -360,7 +362,7 @@ impl LockedRecoveredRoot {
         })?;
         let root = approved.path().to_path_buf();
         let context = RootContext::acquire_approved(&root, approved, CheckpointHook::inactive())?;
-        let context = recover_existing_transaction(context)?;
+        let context = recover_existing_transaction(context, Some(publications))?;
         Ok(Self { context })
     }
 
@@ -375,7 +377,7 @@ impl LockedRecoveredRoot {
         checkpoint: CheckpointHook,
     ) -> Result<Self, TransactionError> {
         let context = RootContext::acquire(root.as_ref(), checkpoint)?;
-        let context = recover_existing_transaction(context)?;
+        let context = recover_existing_transaction(context, None)?;
         Ok(Self { context })
     }
 
@@ -775,6 +777,23 @@ pub(crate) struct ReadyTransaction {
 }
 
 impl ReadyTransaction {
+    #[cfg(test)]
+    pub(crate) fn interrupt_after_publish(mut self, index: usize) {
+        self.working.context.checkpoint = CheckpointHook::new(move |checkpoint| {
+            assert!(
+                checkpoint != (Checkpoint::CommitAfter { index }),
+                "interrupted after publishing an entry"
+            );
+            Ok(())
+        });
+        let interruption = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| self.commit()))
+            .expect_err("publication should reach the interruption point");
+        assert_eq!(
+            interruption.downcast_ref::<&str>().copied(),
+            Some("interrupted after publishing an entry")
+        );
+    }
+
     pub(crate) fn commit(self) -> Result<(), TransactionError> {
         self.commit_with_precommit_validation(&mut || Ok(()))
     }
@@ -835,11 +854,14 @@ impl ReadyTransaction {
         &mut self,
         validate: &mut dyn FnMut() -> std::result::Result<(), String>,
     ) -> Result<(), TransactionError> {
+        // Intermediate entries observe only their own live evidence and prior generation.
+        // Unrelated persistent conflicts can fail later, after more prefix writes; transient
+        // conflicts repaired before the next selected observation can go undetected.
+        // Success/error outcomes, first diagnostics and rollback extent can therefore
+        // differ from the previous schedule for arbitrary concurrent writers.
         for index in self.working.state.next_index..self.working.state.entries.len() {
-            self.working.verify_publication_frontier(index)?;
             self.working
                 .checkpoint(Checkpoint::CommitBefore { index })?;
-            self.verify_unpublished_generations(index)?;
             if index + 1 == self.working.state.entries.len() {
                 validate().map_err(|reason| {
                     TransactionError::invalid_state(
@@ -847,6 +869,9 @@ impl ReadyTransaction {
                         format!("commit-point precondition failed: {reason}"),
                     )
                 })?;
+                // Observe the complete prefix after the callback and before touching the
+                // final document (or manifest/receipt when there is no document).
+                self.working.verify_publication_frontier(index)?;
             }
             let prior_generation = self.prior_generations[index].clone();
             self.working.publish_entry(index, &prior_generation)?;
@@ -882,7 +907,7 @@ impl ReadyTransaction {
                 true,
             ));
         }
-        let rollback_errors = self.working.rollback_all_best_effort();
+        let rollback_errors = self.working.rollback_all_best_effort(None);
         let rollback_reason = if rollback_errors.is_empty() {
             format!("commit failed ({commit_error})")
         } else {
@@ -1395,6 +1420,28 @@ impl WorkingTransaction {
         Ok(())
     }
 
+    fn verify_rollback_change(
+        &self,
+        index: usize,
+        target: &Path,
+        expected: &TargetGeneration,
+    ) -> Result<(), TransactionError> {
+        if matches!(
+            self.classify_entry(index)?,
+            GenerationMatch::New | GenerationMatch::ModeMismatch
+        ) {
+            return self.verify_target_generation(
+                target,
+                expected,
+                "publication target generation changed at the rollback boundary",
+            );
+        }
+        Err(TransactionError::recovery(
+            &self.transaction_dir,
+            format!("publication target no longer matches a recoverable generation: {target:?}"),
+        ))
+    }
+
     fn inspect_target_identity(
         &self,
         target: &Path,
@@ -1417,7 +1464,7 @@ impl WorkingTransaction {
     fn validate_target_set(&self) -> Result<(), TransactionError> {
         validate_entries(&self.state.entries, &self.transaction_dir)?;
         self.verify_owned_state()?;
-        let mut existing_identities = Vec::new();
+        let mut existing_identities = HashSet::new();
         for index in 0..self.state.entries.len() {
             let target = self.target_path(index)?;
             self.verify_target_ancestors(&target)?;
@@ -1430,13 +1477,12 @@ impl WorkingTransaction {
             }
             if self.inspect_target(&target)? == TargetPresence::Regular {
                 let identity = publication_target_identity(&target)?;
-                if existing_identities.contains(&identity) {
+                if !existing_identities.insert(identity) {
                     return Err(TransactionError::invalid_state(
                         &self.transaction_dir,
                         format!("transaction targets resolve to the same file: {target:?}"),
                     ));
                 }
-                existing_identities.push(identity);
             }
         }
         Ok(())
@@ -1628,7 +1674,6 @@ impl WorkingTransaction {
     }
 
     fn classify_all(&self) -> Result<Vec<GenerationMatch>, TransactionError> {
-        self.verify_owned_state()?;
         self.validate_recovery_files(true)?;
         (0..self.state.entries.len())
             .map(|index| self.classify_entry(index))
@@ -1661,6 +1706,8 @@ impl WorkingTransaction {
     }
 
     fn verify_publication_frontier(&self, next_index: usize) -> Result<(), TransactionError> {
+        #[cfg(test)]
+        self.checkpoint(Checkpoint::PublicationFrontier { next_index })?;
         let generations = self.classify_all()?;
         let valid = generations.iter().enumerate().all(|(index, generation)| {
             if index < next_index {
@@ -1685,18 +1732,19 @@ impl WorkingTransaction {
         let entry = &self.state.entries[index];
         let target = self.target_path(index)?;
         let presence = self.inspect_target(&target)?;
-        if entry.prior == PriorState::Present && presence == TargetPresence::Regular {
-            let metadata = std::fs::symlink_metadata(&target).map_err(|source| {
-                TransactionError::operational(
-                    "inspect publication target permissions",
-                    &target,
-                    source,
-                )
-            })?;
-            if ordinary_file_mode(&target, &metadata)? != entry.prior_mode {
-                return Ok(GenerationMatch::ModeMismatch);
-            }
-        }
+        let mode_matches =
+            if entry.prior == PriorState::Present && presence == TargetPresence::Regular {
+                let metadata = std::fs::symlink_metadata(&target).map_err(|source| {
+                    TransactionError::operational(
+                        "inspect publication target permissions",
+                        &target,
+                        source,
+                    )
+                })?;
+                ordinary_file_mode(&target, &metadata)? == entry.prior_mode
+            } else {
+                true
+            };
         let matches_old_bytes = match entry.prior {
             PriorState::Unknown => {
                 return Err(TransactionError::invalid_state(
@@ -1717,12 +1765,18 @@ impl WorkingTransaction {
             }
             TransactionOperation::Delete => presence == TargetPresence::Missing,
         };
-        Ok(match (matches_old_bytes, matches_new_bytes) {
+        let generation = match (matches_old_bytes, matches_new_bytes) {
             (true, true) => GenerationMatch::Both,
             (true, false) => GenerationMatch::Old,
             (false, true) => GenerationMatch::New,
             (false, false) => GenerationMatch::Unknown,
-        })
+        };
+        // A permission change must not authorize restoring over unrecognized contents.
+        if generation == GenerationMatch::Unknown || mode_matches {
+            Ok(generation)
+        } else {
+            Ok(GenerationMatch::ModeMismatch)
+        }
     }
 
     fn publish_entry(
@@ -1731,8 +1785,24 @@ impl WorkingTransaction {
         prior_generation: &TargetGeneration,
     ) -> Result<(), TransactionError> {
         let target = self.target_path(index)?;
-        if self.classify_entry(index)? == GenerationMatch::Both {
-            return Ok(());
+        self.verify_owned_state()?;
+        self.validate_recovery_entry_files(index, true)?;
+        self.verify_target_generation(
+            &target,
+            prior_generation,
+            "publication target generation changed before commit",
+        )?;
+        match self.classify_entry(index)? {
+            GenerationMatch::Old => {}
+            GenerationMatch::Both => return Ok(()),
+            GenerationMatch::New | GenerationMatch::ModeMismatch | GenerationMatch::Unknown => {
+                return Err(TransactionError::recovery(
+                    &self.transaction_dir,
+                    format!(
+                        "publication target no longer matches its prior generation: {target:?}"
+                    ),
+                ));
+            }
         }
         match self.state.entries[index].operation {
             TransactionOperation::Write => {
@@ -1741,7 +1811,7 @@ impl WorkingTransaction {
                     index,
                     &self.stage_path(index),
                     &target,
-                    Some(prior_generation),
+                    TargetChange::Publish(prior_generation),
                     "publish transaction entry",
                 )?;
             }
@@ -1750,7 +1820,7 @@ impl WorkingTransaction {
                     self,
                     index,
                     &target,
-                    Some(prior_generation),
+                    TargetChange::Publish(prior_generation),
                     "publish artifact deletion",
                 )?;
             }
@@ -1765,27 +1835,33 @@ impl WorkingTransaction {
         Ok(())
     }
 
-    fn rollback_entry(&mut self, index: usize) -> Result<(), TransactionError> {
+    fn rollback_entry(
+        &mut self,
+        index: usize,
+        publications: Option<&mut PublicationGuards>,
+    ) -> Result<(), TransactionError> {
         let target = self.target_path(index)?;
-        match self.state.entries[index].prior {
-            PriorState::Present => {
-                deterministic_replace_from(
-                    self,
-                    index,
-                    &self.backup_path(index),
-                    &target,
-                    None,
-                    "restore transaction backup",
-                )?;
-            }
+        let before =
+            TargetGeneration::from_observed_identity(self.inspect_target_identity(&target)?);
+        let change = TargetChange::Restore(&before);
+        let restored = match self.state.entries[index].prior {
+            PriorState::Present => Some(deterministic_replace_from(
+                self,
+                index,
+                &self.backup_path(index),
+                &target,
+                change,
+                "restore transaction backup",
+            )?),
             PriorState::Missing => {
                 remove_regular_if_present(
                     self,
                     index,
                     &target,
-                    None,
+                    change,
                     "remove newly published target",
                 )?;
+                None
             }
             PriorState::Unknown => {
                 return Err(TransactionError::invalid_state(
@@ -1793,7 +1869,7 @@ impl WorkingTransaction {
                     "cannot roll back an entry without its prior state",
                 ));
             }
-        }
+        };
         let generation = self.classify_entry(index)?;
         if !generation.is_old() {
             return Err(TransactionError::recovery(
@@ -1801,10 +1877,26 @@ impl WorkingTransaction {
                 format!("rolled-back target does not match retained prior bytes: {target:?}"),
             ));
         }
+        if let Some(publications) = publications {
+            let restored = restored
+                .map(same_file::Handle::from_file)
+                .transpose()
+                .map_err(|source| {
+                    TransactionError::operational(
+                        "identify restored publication target",
+                        &target,
+                        source,
+                    )
+                })?;
+            publications.record_restored_transaction_target(&target, before.identity(), restored);
+        }
         Ok(())
     }
 
-    fn rollback_all_best_effort(&mut self) -> Vec<String> {
+    fn rollback_all_best_effort(
+        &mut self,
+        mut publications: Option<&mut PublicationGuards>,
+    ) -> Vec<String> {
         let generations = match self.classify_all() {
             Ok(generations) => generations,
             Err(source) => return vec![source.to_string()],
@@ -1823,14 +1915,14 @@ impl WorkingTransaction {
                 errors.push(source.to_string());
                 continue;
             }
-            if let Err(source) = self.rollback_entry(index) {
+            if let Err(source) = self.rollback_entry(index, publications.as_deref_mut()) {
                 errors.push(source.to_string());
                 continue;
             }
             if let Err(source) = self.checkpoint(Checkpoint::RollbackAfter { index }) {
                 errors.push(source.to_string());
             }
-            self.state.next_index = index;
+            self.state.next_index = self.state.next_index.min(index);
             if let Err(source) = self.persist() {
                 errors.push(source.to_string());
             }
@@ -1898,20 +1990,30 @@ impl WorkingTransaction {
                 verify_private_file_mode(&entry.path(), &metadata)?;
             }
         }
-        for (index, entry) in self.state.entries.iter().enumerate() {
-            let stage = self.stage_path(index);
-            let backup = self.backup_path(index);
-            if require_complete && entry.operation == TransactionOperation::Write {
-                self.verify_internal_regular(&stage)?;
-            }
-            if require_complete && entry.operation == TransactionOperation::Delete {
-                self.verify_internal_missing(&stage)?;
-            }
-            match entry.prior {
-                PriorState::Present if require_complete => self.verify_internal_regular(&backup)?,
-                PriorState::Missing if require_complete => self.verify_internal_missing(&backup)?,
-                _ => {}
-            }
+        for index in 0..self.state.entries.len() {
+            self.validate_recovery_entry_files(index, require_complete)?;
+        }
+        Ok(())
+    }
+
+    fn validate_recovery_entry_files(
+        &self,
+        index: usize,
+        require_complete: bool,
+    ) -> Result<(), TransactionError> {
+        let entry = &self.state.entries[index];
+        let stage = self.stage_path(index);
+        let backup = self.backup_path(index);
+        if require_complete && entry.operation == TransactionOperation::Write {
+            self.verify_internal_regular(&stage)?;
+        }
+        if require_complete && entry.operation == TransactionOperation::Delete {
+            self.verify_internal_missing(&stage)?;
+        }
+        match entry.prior {
+            PriorState::Present if require_complete => self.verify_internal_regular(&backup)?,
+            PriorState::Missing if require_complete => self.verify_internal_missing(&backup)?,
+            _ => {}
         }
         Ok(())
     }
@@ -1973,7 +2075,10 @@ impl WorkingTransaction {
     }
 }
 
-fn recover_existing_transaction(context: RootContext) -> Result<RootContext, TransactionError> {
+fn recover_existing_transaction(
+    context: RootContext,
+    publications: Option<&mut PublicationGuards>,
+) -> Result<RootContext, TransactionError> {
     context.verify_root_and_lock()?;
     let transaction_dir = context.root.join(TRANSACTION_DIR_NAME);
     match std::fs::symlink_metadata(&transaction_dir) {
@@ -2056,8 +2161,8 @@ fn recover_existing_transaction(context: RootContext) -> Result<RootContext, Tra
 
     let recovery_result = match working.state.phase {
         JournalPhase::Staging | JournalPhase::BackingUp => working.cleanup(),
-        JournalPhase::Publishing => recover_publishing(&mut working),
-        JournalPhase::RollingBack => recover_rolling_back(&mut working),
+        JournalPhase::Publishing => recover_publishing(&mut working, publications),
+        JournalPhase::RollingBack => recover_rolling_back(&mut working, publications),
         JournalPhase::RolledBack => recover_rolled_back(&mut working),
         JournalPhase::Committed => recover_committed(&mut working),
     };
@@ -2074,7 +2179,10 @@ fn recover_existing_transaction(context: RootContext) -> Result<RootContext, Tra
     Ok(working.context)
 }
 
-fn recover_publishing(working: &mut WorkingTransaction) -> Result<(), TransactionError> {
+fn recover_publishing(
+    working: &mut WorkingTransaction,
+    publications: Option<&mut PublicationGuards>,
+) -> Result<(), TransactionError> {
     let generations = working.classify_all()?;
     if generations.contains(&GenerationMatch::Unknown) {
         return Err(TransactionError::PartialPublication {
@@ -2100,12 +2208,15 @@ fn recover_publishing(working: &mut WorkingTransaction) -> Result<(), Transactio
     } else {
         working.state.phase = JournalPhase::RollingBack;
         working.persist()?;
-        recover_rolling_back(working)
+        recover_rolling_back(working, publications)
     }
 }
 
-fn recover_rolling_back(working: &mut WorkingTransaction) -> Result<(), TransactionError> {
-    let errors = working.rollback_all_best_effort();
+fn recover_rolling_back(
+    working: &mut WorkingTransaction,
+    publications: Option<&mut PublicationGuards>,
+) -> Result<(), TransactionError> {
+    let errors = working.rollback_all_best_effort(publications);
     let reason = if errors.is_empty() {
         "interrupted rollback did not restore a complete generation".to_owned()
     } else {
@@ -2800,15 +2911,30 @@ fn copy_content_pinned(
     ))
 }
 
+#[derive(Clone, Copy)]
+enum TargetChange<'a> {
+    Publish(&'a TargetGeneration),
+    Restore(&'a TargetGeneration),
+}
+
+impl TargetChange<'_> {
+    fn expects_existing(self) -> bool {
+        match self {
+            Self::Publish(generation) | Self::Restore(generation) => {
+                generation.identity().is_some()
+            }
+        }
+    }
+}
+
 fn deterministic_replace_from(
     working: &WorkingTransaction,
     index: usize,
     source: &Path,
     target: &Path,
-    expected_target: Option<&TargetGeneration>,
+    change: TargetChange<'_>,
     operation: &'static str,
-) -> Result<(), TransactionError> {
-    working.verify_owned_state()?;
+) -> Result<File, TransactionError> {
     working.verify_internal_regular(source)?;
     let _ = working.inspect_target(target)?;
     let mut source_file = open_verified_regular(source, &working.transaction_dir)?;
@@ -2852,46 +2978,68 @@ fn deterministic_replace_from(
             format!("retained publication source changed while it was copied: {source:?}"),
         ));
     }
-    working.context.verify_root_and_lock()?;
     working.verify_target_ancestors(target)?;
     working.checkpoint(Checkpoint::ReplaceBefore { index })?;
-    if let Some(expected) = expected_target {
-        working.verify_target_generation(
-            target,
-            expected,
-            "publication target generation changed at replace boundary",
-        )?;
-    } else {
-        let _ = working.inspect_target(target)?;
+    match change {
+        TargetChange::Publish(expected) => {
+            working.verify_target_generation(
+                target,
+                expected,
+                "publication target generation changed at replace boundary",
+            )?;
+            if !working.classify_entry(index)?.is_old() {
+                return Err(TransactionError::recovery(
+                    &working.transaction_dir,
+                    format!(
+                        "publication target no longer matches its prior generation at replace boundary: {target:?}"
+                    ),
+                ));
+            }
+        }
+        TargetChange::Restore(expected) => {
+            working.verify_rollback_change(index, target, expected)?
+        }
     }
     verify_open_put_identity(&put, &destination, working.state.entries[index].prior_mode)?;
     working.checkpoint(Checkpoint::ReplaceBoundary { index })?;
-    working.context.rename_within_root(&put, target, operation)
+    working
+        .context
+        .rename_within_root(&put, target, operation)?;
+    Ok(destination)
 }
 
 fn remove_regular_if_present(
     working: &WorkingTransaction,
     index: usize,
     path: &Path,
-    expected_target: Option<&TargetGeneration>,
+    change: TargetChange<'_>,
     operation: &'static str,
 ) -> Result<(), TransactionError> {
     working.context.verify_root_and_lock()?;
     working.checkpoint(Checkpoint::DeleteBefore { index })?;
-    if let Some(expected) = expected_target {
-        working.verify_target_generation(
-            path,
-            expected,
-            "publication target generation changed at delete boundary",
-        )?;
-    }
-    match working.inspect_target(path)? {
-        TargetPresence::Missing => Ok(()),
-        TargetPresence::Regular => {
-            working.checkpoint(Checkpoint::DeleteBoundary { index })?;
-            working.context.remove_within_root(path, operation)
+    match change {
+        TargetChange::Publish(expected) => {
+            working.verify_target_generation(
+                path,
+                expected,
+                "publication target generation changed at delete boundary",
+            )?;
+            if !working.classify_entry(index)?.is_old() {
+                return Err(TransactionError::recovery(
+                    &working.transaction_dir,
+                    format!(
+                        "publication target no longer matches its prior generation at delete boundary: {path:?}"
+                    ),
+                ));
+            }
         }
+        TargetChange::Restore(expected) => working.verify_rollback_change(index, path, expected)?,
     }
+    if change.expects_existing() {
+        working.checkpoint(Checkpoint::DeleteBoundary { index })?;
+        working.context.remove_within_root(path, operation)?;
+    }
+    Ok(())
 }
 
 fn remove_owned_regular_if_present(
@@ -3265,24 +3413,58 @@ fn sync_directory(_path: &Path) -> Result<(), TransactionError> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Checkpoint {
-    StageBefore { index: usize },
-    StageAfter { index: usize },
-    PersistBefore { slot: StateSlot },
-    PersistPrepared { slot: StateSlot },
-    PersistAfter { slot: StateSlot },
-    CommitBefore { index: usize },
-    ReplaceBefore { index: usize },
-    ReplaceBoundary { index: usize },
-    DeleteBefore { index: usize },
-    DeleteBoundary { index: usize },
-    CommitAfter { index: usize },
-    RollbackBefore { index: usize },
-    RollbackAfter { index: usize },
+    StageBefore {
+        index: usize,
+    },
+    StageAfter {
+        index: usize,
+    },
+    PersistBefore {
+        slot: StateSlot,
+    },
+    PersistPrepared {
+        slot: StateSlot,
+    },
+    PersistAfter {
+        slot: StateSlot,
+    },
+    CommitBefore {
+        index: usize,
+    },
+    #[cfg(test)]
+    PublicationFrontier {
+        next_index: usize,
+    },
+    ReplaceBefore {
+        index: usize,
+    },
+    ReplaceBoundary {
+        index: usize,
+    },
+    DeleteBefore {
+        index: usize,
+    },
+    DeleteBoundary {
+        index: usize,
+    },
+    CommitAfter {
+        index: usize,
+    },
+    RollbackBefore {
+        index: usize,
+    },
+    RollbackAfter {
+        index: usize,
+    },
     RecoveryBefore,
     RecoveryAfter,
     CleanupBefore,
-    CleanupFileBefore { ordinal: usize },
-    CleanupFileAfter { ordinal: usize },
+    CleanupFileBefore {
+        ordinal: usize,
+    },
+    CleanupFileAfter {
+        ordinal: usize,
+    },
     CleanupAfter,
 }
 

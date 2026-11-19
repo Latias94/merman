@@ -20,9 +20,11 @@ use crate::compound::{
     preprocess_source_ported_compound_graph, source_ported_cross_hierarchy_segment_count,
 };
 use crate::configurator::{configure_graph_properties, configured_options};
+#[cfg(test)]
+use crate::graph::ReorderNodePortsWorkContext;
 use crate::graph::{
     LGraph, LNode, LNodeKind, LPoint, LSize, LayeredEdge, PortRef, PortSide, PortType,
-    ReorderNodePortsWorkContext, collector_port_id_suffix,
+    collector_port_id_suffix,
 };
 #[cfg(test)]
 use crate::intermediate::edge_and_layer_constraint_reversal_may_mutate;
@@ -44,7 +46,7 @@ use crate::p1cycles::{
 };
 use crate::p2layers::{LayeringError, layer_network_simplex, layer_with_strategy};
 use crate::p3order::{
-    process_port_sides, sort_by_input_model, sort_port_lists,
+    process_port_sides, sort_by_input_model, sort_port_lists_with_work_control,
     sweep::{
         CrossMinType, HierarchySweepDebugTrace,
         debug_crossings_layer_sweep_hierarchical_with_work_control,
@@ -1432,7 +1434,7 @@ fn execute_processor_with_work_control(
         ProcessorKind::LongEdgeSplitter => split_long_edges(graph),
         ProcessorKind::PortSideProcessor => process_port_sides(graph),
         ProcessorKind::InvertedPortProcessor => process_inverted_ports(graph),
-        ProcessorKind::PortListSorter => sort_port_lists(graph),
+        ProcessorKind::PortListSorter => sort_port_lists_with_work_control(graph, work_control)?,
         ProcessorKind::SortByInputModelProcessor => sort_by_input_model(graph, work_control)?,
         ProcessorKind::LayerSweepCrossingMinimizerBarycenter => {
             minimize_crossings_layer_sweep_with_work_control(graph, work_control)?;
@@ -1748,8 +1750,7 @@ fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
     let mut port_scans = 0usize;
     let mut adjacency_scans = 0usize;
     let mut sort_work = 0usize;
-    let mut reference_rewrites = 0usize;
-    let mut reorder_context = None;
+    let mut local_permutations = 0usize;
 
     for layer in &graph.layers {
         for &node_index in &layer.nodes {
@@ -1758,28 +1759,20 @@ fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
             let port_count = node.ports.len();
             let constraints = node.port_constraints;
             if constraints.is_order_fixed() {
-                let reorder_work = prepared_reorder_node_ports_work_units(
-                    graph,
-                    node_index,
-                    &mut reorder_context,
-                )?;
+                let reorder_work = checked_mul(port_count, 4)?;
                 port_scans = checked_add(port_scans, port_count)?;
                 sort_work = checked_add(sort_work, checked_n_log_n(port_count)?)?;
-                reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+                local_permutations = checked_add(local_permutations, reorder_work)?;
             } else if constraints.is_side_fixed() {
-                let reorder_work = prepared_reorder_node_ports_work_units(
-                    graph,
-                    node_index,
-                    &mut reorder_context,
-                )?;
+                let reorder_work = checked_mul(port_count, 4)?;
                 // One side-key pass plus the two official South/West range probes.
                 port_scans = checked_add(port_scans, checked_mul(port_count, 5)?)?;
                 sort_work = checked_add(sort_work, checked_n_log_n(port_count)?)?;
-                reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
-                for side in [crate::graph::PortSide::South, crate::graph::PortSide::West] {
-                    if node.ports.iter().filter(|port| port.side == side).count() > 2 {
+                local_permutations = checked_add(local_permutations, reorder_work)?;
+                for _ in 0..2 {
+                    if port_count > 3 {
                         port_scans = checked_add(port_scans, port_count)?;
-                        reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+                        local_permutations = checked_add(local_permutations, reorder_work)?;
                     }
                 }
                 if graph.options.port_sorting_strategy
@@ -1787,7 +1780,7 @@ fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
                 {
                     port_scans = checked_add(port_scans, port_count)?;
                     sort_work = checked_add(sort_work, checked_n_log_n(port_count)?)?;
-                    reference_rewrites = checked_add(reference_rewrites, reorder_work)?;
+                    local_permutations = checked_add(local_permutations, reorder_work)?;
                     for port in &node.ports {
                         adjacency_scans = checked_add(
                             adjacency_scans,
@@ -1799,24 +1792,20 @@ fn port_list_sorter_work_units(graph: &LGraph) -> Result<usize, WorkError> {
         }
     }
 
-    // Mermaid enables this processor by default. Charge each official owner-local permutation and
-    // the exact reference domains it scans; unrelated descendant edges and labels are not work of
-    // the parent owner and must not be folded into a hierarchy-wide square.
     checked_sum([
         local_graph_work_units(graph)?,
         node_visits,
         port_scans,
         adjacency_scans,
         sort_work,
-        reference_rewrites,
+        local_permutations,
     ])
 }
 
 fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
     let mut layer_copy_work = 0usize;
     let mut preprocessing_work = 0usize;
-    let mut reference_rewrites = 0usize;
-    let mut reorder_context = None;
+    let mut local_permutations = 0usize;
 
     for (layer_index, layer) in graph.layers.iter().enumerate() {
         let previous_layer = if layer_index == 0 {
@@ -1848,39 +1837,16 @@ fn sort_by_input_model_work_units(graph: &LGraph) -> Result<usize, WorkError> {
 
             let port_count = node.ports.len();
             preprocessing_work = checked_add(preprocessing_work, checked_mul(port_count, 2)?)?;
-            reference_rewrites = checked_add(
-                reference_rewrites,
-                prepared_reorder_node_ports_work_units(graph, node_index, &mut reorder_context)?,
-            )?;
+            local_permutations = checked_add(local_permutations, checked_mul(port_count, 4)?)?;
         }
     }
 
-    // Admit the fixed scans and reference rewrites before mutating the graph. Long-edge target
-    // walks and stateful comparisons charge their actual visited chains and current relation
-    // sets inside the processor; whole-graph bounds charged ordinary sparse DAGs as dense sorts.
     checked_sum([
         local_graph_work_units(graph)?,
         layer_copy_work,
         preprocessing_work,
-        reference_rewrites,
+        local_permutations,
     ])
-}
-
-fn prepared_reorder_node_ports_work_units(
-    graph: &LGraph,
-    node_index: usize,
-    context: &mut Option<ReorderNodePortsWorkContext>,
-) -> Result<usize, WorkError> {
-    if context.is_none() {
-        // ELK reorders each owner independently, so every permutation still charges its global
-        // reference rewrite. Only the immutable reference-domain census is shared across owners;
-        // rebuilding that census per node made the resource estimator itself quadratic.
-        *context = Some(ReorderNodePortsWorkContext::new(graph)?);
-    }
-    context
-        .as_ref()
-        .expect("reorder work context was initialized above")
-        .node_work(graph, node_index)
 }
 
 #[cfg(test)]
@@ -3842,23 +3808,60 @@ mod tests {
 
         // Free ports make PortListSorter visit the owner node without sorting or rewriting it.
         assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1));
-        // SortByInputModel's initial tranche covers five layer copies, two port scans and
-        // the owner reference rewrite. Stateful comparisons are charged during the actual sort.
-        assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 5 + 4 + 15));
+        assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 5 + 4 + 8));
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::PortListSorter),
             Ok(5)
         );
         assert_eq!(
             processor_work_units(&graph, ProcessorKind::SortByInputModelProcessor),
-            Ok(28)
+            Ok(21)
         );
 
         graph.layerless_nodes[0].port_constraints = PortConstraints::FixedOrder;
-        // Fixed-order ports add one scan, one two-item sort, and one hierarchy-wide reference
-        // rewrite. SortByInputModel now skips the node after the layer-copy work.
-        assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1 + 2 + 2 + 15));
+        assert_eq!(port_list_sorter_work_units(&graph), Ok(4 + 1 + 2 + 2 + 8));
         assert_eq!(sort_by_input_model_work_units(&graph), Ok(4 + 5));
+    }
+
+    #[test]
+    fn fixed_side_identity_keeps_the_local_three_and_four_port_bounds() {
+        for (count, expected) in [(3, 39), (4, 91)] {
+            let mut graph = LGraph::new("root", LayeredOptions::default());
+            graph.options.port_sorting_strategy = crate::options::PortSortingStrategy::InputOrder;
+            let mut node = LNode::new("owner", 10.0, 10.0, Some(0));
+            node.port_constraints = PortConstraints::FixedSide;
+            for index in 0..count {
+                let mut port = LPort::new(format!("north-{index}"), 0, PortType::Output);
+                port.side = PortSide::North;
+                node.ports.push(port);
+            }
+            graph.layerless_nodes.push(node);
+            graph.layers.push(Layer {
+                nodes: vec![0],
+                ..Layer::default()
+            });
+            let before = graph.clone();
+            assert_eq!(port_list_sorter_work_units(&graph), Ok(expected));
+            let mut below = BudgetWorkControl::new(expected - 1);
+            assert_eq!(
+                execute_processor_with_work_control(
+                    &mut graph,
+                    ProcessorKind::PortListSorter,
+                    &mut below
+                ),
+                Err(PipelineError::Work(WorkError::Interrupted))
+            );
+            assert_eq!(graph, before);
+            let mut exact = BudgetWorkControl::new(expected);
+            execute_processor_with_work_control(
+                &mut graph,
+                ProcessorKind::PortListSorter,
+                &mut exact,
+            )
+            .unwrap();
+            assert_eq!(exact.charged, expected);
+            assert_eq!(graph, before);
+        }
     }
 
     #[test]

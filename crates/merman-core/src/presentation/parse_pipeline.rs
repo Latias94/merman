@@ -80,26 +80,28 @@ impl OperationConfigBuilder {
         overrides: &MermaidConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self>> {
-        let mut effective = match engine.default_effective_config() {
+        let effective = match engine.default_effective_config() {
             Ok(config) => config,
             Err(error) => return Ok(Err(error)),
         };
         let source = if overrides.is_empty_object() {
             overrides.clone()
         } else {
-            let source = crate::config::source_filtered_overrides(
-                effective.as_config(),
-                overrides,
-                control,
-            )?;
-            effective.deep_merge_explicit(source.as_value());
-            source
+            crate::config::source_filtered_overrides(effective.as_config(), overrides, control)?
         };
         Ok(Ok(Self {
             effective,
             source,
             detector_checkpoint: None,
         }))
+    }
+
+    fn effective_for_detection(&mut self) -> &mut SourcePresentationConfig {
+        if self.detector_checkpoint.is_none() {
+            self.effective.deep_merge_explicit(self.source.as_value());
+            self.detector_checkpoint = Some(DetectorConfigCheckpoint::new(&self.effective));
+        }
+        &mut self.effective
     }
 
     fn finalize(
@@ -113,6 +115,7 @@ impl OperationConfigBuilder {
             source,
             detector_checkpoint,
         } = self;
+        let mut source_merged = detector_checkpoint.is_some();
         let detector_changes = match detector_checkpoint {
             Some(checkpoint) => checkpoint.finish(&mut effective, control)?,
             None => None,
@@ -129,12 +132,19 @@ impl OperationConfigBuilder {
                 .map(SourcePresentationConfig::as_config),
             &defaults,
         );
+        if !source_merged && decision.selected_theme().is_none() {
+            effective.deep_merge_explicit(source.as_value());
+            source_merged = true;
+        }
         match decision.materialization_plan(
             effective.get_str("theme"),
             engine.site_config.get_str("theme"),
         ) {
             MaterializationPlan::InheritInitialized => {
-                decision.apply_to_presentation(&mut effective)
+                if !source_merged {
+                    effective.deep_merge_explicit(source.as_value());
+                }
+                decision.apply_to_presentation(&mut effective);
             }
             MaterializationPlan::Materialize { selected } => {
                 // Detection must observe initialized config. Keep that result only when its
@@ -1151,12 +1161,15 @@ impl<'a> ParsePipeline<'a> {
         let diagram_type = match known_type {
             Some(diagram_type) => diagram_type.to_string(),
             None => {
-                config.detector_checkpoint = Some(DetectorConfigCheckpoint::new(&config.effective));
-                match self.engine.registry.detect_type_precleaned_controlled(
-                    pre.code(),
-                    &mut config.effective,
-                    control,
-                )? {
+                match self
+                    .engine
+                    .registry
+                    .detect_type_precleaned_with_config_controlled(
+                        pre.code(),
+                        &mut config,
+                        OperationConfigBuilder::effective_for_detection,
+                        control,
+                    )? {
                     Ok(diagram_type) => diagram_type.to_owned(),
                     Err(error) => return Ok(Err(error)),
                 }
@@ -1642,6 +1655,38 @@ mod editor_parse_source_map_tests {
                 "{work:?}"
             );
         }
+    }
+
+    #[test]
+    fn read_only_detection_skips_the_discarded_source_merge() {
+        fn detector(_source: &str, config: &mut SourcePresentationConfig) -> bool {
+            assert_eq!(config.get_str("theme"), Some("default"));
+            assert_eq!(config.get_str("layout"), Some("dagre"));
+            true
+        }
+
+        let source = "---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA-->B";
+        let builtin = MermaidEngine::new();
+        let mut custom = builtin.clone();
+        *custom.registry_mut() = DetectorRegistry::new();
+        custom.registry_mut().add_fn("flowchart-v2", detector);
+        let (builtin_metadata, builtin_work) =
+            crate::config::measure_config_work(|| builtin.parse_metadata_sync(source).unwrap());
+        let (custom_metadata, custom_work) =
+            crate::config::measure_config_work(|| custom.parse_metadata_sync(source).unwrap());
+        let builtin_config = builtin_metadata.effective_config;
+        let custom_config = custom_metadata.effective_config;
+        assert_eq!(builtin_config.get_str("theme"), Some("redux-color"));
+        assert!(builtin_config.explicit_config_owns_path("layout"));
+        assert!(custom_config.explicit_config_owns_path("layout"));
+        assert_eq!(
+            serde_json::to_vec(builtin_config.as_value()).unwrap(),
+            serde_json::to_vec(custom_config.as_value()).unwrap()
+        );
+        assert_eq!(
+            builtin_work.json_cow_copies + 1,
+            custom_work.json_cow_copies
+        );
     }
 
     #[test]

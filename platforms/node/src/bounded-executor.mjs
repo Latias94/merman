@@ -98,14 +98,13 @@ export class BoundedExecutor {
     this.#removeAbortListener(job);
     this.#active += 1;
     const operation = Promise.resolve().then(job.run);
-    const observed = job.resolve || job.reject
-      ? operation.then(job.resolve, job.reject)
-      : operation;
-    return observed.finally(() => {
+    // Release capacity and admit FIFO successors before callers observe either outcome.
+    const finished = operation.finally(() => {
       this.#active -= 1;
       this.#pump();
       this.#completeDisposeIfIdle();
     });
+    return job.resolve || job.reject ? finished.then(job.resolve, job.reject) : finished;
   }
 
   #pump() {

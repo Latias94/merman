@@ -947,7 +947,12 @@ export function decodeWireResponse(
       "Merman transport executed an operation that its runtime catalog does not advertise.",
     );
   }
-  return validateSuccessResult(envelope.result, expectation, includeMetadata);
+  return validateSuccessResult(
+    envelope.result,
+    expectation,
+    includeMetadata,
+    Object.hasOwn(envelope, "result"),
+  );
 }
 
 function validateAllowedCancellationReasons(reasons) {
@@ -1003,7 +1008,7 @@ function validateEnvelopeHeader(envelope, label) {
   }
 }
 
-function validateSuccessResult(result, expectation, includeMetadata) {
+function validateSuccessResult(result, expectation, includeMetadata, hasOwnResult) {
   if (
     !isPlainJsonObject(result) ||
     typeof result.operation_id !== "string" ||
@@ -1025,11 +1030,22 @@ function validateSuccessResult(result, expectation, includeMetadata) {
     "response media_type",
     NODE_TRANSPORT_FIELD_LIMITS.media_type_utf8_bytes,
   );
-  const dataBytes = assertUtf8Field(
-    result.data,
-    "response data",
-    NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
-  );
+  // Own parsed data already passed the response scanner's decoded-string bound.
+  // Metadata and unscanned inherited values still need the exact field check.
+  let dataBytes;
+  if (
+    includeMetadata ||
+    !hasOwnResult ||
+    !Object.hasOwn(result, "data") ||
+    NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes <
+      NODE_TRANSPORT_LIMITS.response.max_string_utf8_bytes
+  ) {
+    dataBytes = assertUtf8Field(
+      result.data,
+      "response data",
+      NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
+    );
+  }
   if (
     !expectation ||
     result.operation_id !== expectation.operation_id ||

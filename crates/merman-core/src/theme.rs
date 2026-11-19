@@ -4,6 +4,7 @@ use crate::theme_color::{self, ColorAdjustment, ColorError};
 use merman_model::config::MermaidThemeId;
 use merman_model::presentation::ThemeEvaluationLimitExceeded;
 use serde::Deserialize;
+use serde_json::value::RawValue;
 use serde_json::{Map, Value};
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
@@ -33,30 +34,52 @@ const THEME_ORACLE_CASE_COUNT: usize = MermaidThemeId::ALL.len() * 5 + 12;
 const THEME_AUDIT_SCHEMA_VERSION: u32 = 2;
 
 // Generated from the content-pinned Mermaid runtime by `xtask gen-theme-snapshot`.
-static GENERATED_THEME_RUNTIME: OnceLock<GeneratedThemeRuntimeArtifact> = OnceLock::new();
+static GENERATED_THEME_RUNTIME: OnceLock<GeneratedThemeRuntime<'static>> = OnceLock::new();
 
 #[cfg(test)]
 static GENERATED_THEME_ORACLES: OnceLock<GeneratedThemeOracles> = OnceLock::new();
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-struct GeneratedThemeRuntimeStorage {
+struct GeneratedThemeRuntime<'a> {
     schema_version: u32,
     provenance: GeneratedThemeProvenance,
-    prepared_constructors: Map<String, Value>,
-    themes: Map<String, Value>,
-    dark_mode_true_overrides: Map<String, Value>,
+    #[serde(borrow)]
+    prepared_constructors: BTreeMap<String, GeneratedThemeMap<'a>>,
+    #[serde(borrow)]
+    themes: BTreeMap<String, GeneratedThemeMap<'a>>,
+    #[serde(borrow)]
+    dark_mode_true_overrides: BTreeMap<String, GeneratedThemeMap<'a>>,
     oracle_case_count: usize,
 }
 
-#[derive(Debug)]
-struct GeneratedThemeRuntimeArtifact {
-    #[cfg(test)]
-    provenance: GeneratedThemeProvenance,
-    prepared_constructors: Map<String, Value>,
-    themes: Map<String, Value>,
-    dark_mode_true: Map<String, Value>,
-    oracle_case_count: usize,
+#[derive(Debug, Deserialize)]
+#[serde(transparent)]
+struct GeneratedThemeMap<'a> {
+    #[serde(borrow)]
+    encoded: &'a RawValue,
+    #[serde(skip)]
+    decoded: OnceLock<Map<String, Value>>,
+}
+
+impl GeneratedThemeMap<'_> {
+    fn resolved(&self) -> &Map<String, Value> {
+        self.decoded.get_or_init(|| {
+            serde_json::from_str(self.encoded.get())
+                .expect("generated theme snapshot has an object")
+        })
+    }
+
+    fn resolved_with_base<'base>(
+        &self,
+        base: impl FnOnce() -> &'base Map<String, Value>,
+    ) -> &Map<String, Value> {
+        self.decoded.get_or_init(|| {
+            let changes = serde_json::from_str(self.encoded.get())
+                .expect("generated dark mode delta has an object");
+            restore_theme_overrides(base(), changes)
+        })
+    }
 }
 
 #[cfg(test)]
@@ -605,42 +628,16 @@ impl ThemeProgram {
     }
 
     fn prepared_constructor(self) -> &'static Map<String, Value> {
-        generated_theme_runtime()
-            .prepared_constructors
-            .get(self.id.as_str())
-            .and_then(Value::as_object)
-            .unwrap_or_else(|| {
-                panic!(
-                    "generated theme artifact is missing prepared constructor `{}`",
-                    self.id
-                )
-            })
+        generated_theme_runtime().prepared_constructors[self.id.as_str()].resolved()
     }
 
     fn resolved_without_overrides(self) -> &'static Map<String, Value> {
-        generated_theme_runtime()
-            .themes
-            .get(self.id.as_str())
-            .and_then(Value::as_object)
-            .unwrap_or_else(|| {
-                panic!(
-                    "generated theme artifact is missing resolved no-override `{}`",
-                    self.id
-                )
-            })
+        generated_theme_runtime().themes[self.id.as_str()].resolved()
     }
 
     fn resolved_dark_mode_true(self) -> &'static Map<String, Value> {
-        generated_theme_runtime()
-            .dark_mode_true
-            .get(self.id.as_str())
-            .and_then(Value::as_object)
-            .unwrap_or_else(|| {
-                panic!(
-                    "generated theme artifact is missing darkMode=true `{}`",
-                    self.id
-                )
-            })
+        generated_theme_runtime().dark_mode_true_overrides[self.id.as_str()]
+            .resolved_with_base(|| self.resolved_without_overrides())
     }
 
     fn calculation_snapshot(self, explicit: &Map<String, Value>) -> &'static Map<String, Value> {
@@ -940,54 +937,61 @@ fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
     }
 }
 
-fn generated_theme_runtime() -> &'static GeneratedThemeRuntimeArtifact {
-    GENERATED_THEME_RUNTIME.get_or_init(|| {
-        let storage: GeneratedThemeRuntimeStorage =
-            serde_json::from_str(include_str!("generated/theme_variables.json"))
-                .expect("generated Mermaid theme runtime JSON is valid");
-        assert_eq!(storage.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
-        assert_generated_theme_provenance(&storage.provenance);
-        let dark_mode_true = storage
-            .dark_mode_true_overrides
-            .into_iter()
-            .map(|(name, changes)| {
-                let base = storage.themes[&name]
-                    .as_object()
-                    .expect("generated theme base is an object");
-                (name, Value::Object(restore_theme_overrides(base, changes)))
-            })
-            .collect();
-        let artifact = GeneratedThemeRuntimeArtifact {
-            #[cfg(test)]
-            provenance: storage.provenance,
-            prepared_constructors: storage.prepared_constructors,
-            themes: storage.themes,
-            dark_mode_true,
-            oracle_case_count: storage.oracle_case_count,
-        };
-        assert_eq!(artifact.oracle_case_count, THEME_ORACLE_CASE_COUNT);
-        for program in THEME_PROGRAMS {
-            assert!(
-                artifact
-                    .prepared_constructors
-                    .get(program.id.as_str())
-                    .is_some_and(Value::is_object)
-            );
-            assert!(
-                artifact
-                    .themes
-                    .get(program.id.as_str())
-                    .is_some_and(Value::is_object)
-            );
-            assert!(
-                artifact
-                    .dark_mode_true
-                    .get(program.id.as_str())
-                    .is_some_and(Value::is_object)
-            );
+fn generated_theme_runtime() -> &'static GeneratedThemeRuntime<'static> {
+    GENERATED_THEME_RUNTIME.get_or_init(parse_generated_theme_runtime)
+}
+
+fn parse_generated_theme_runtime() -> GeneratedThemeRuntime<'static> {
+    let artifact: GeneratedThemeRuntime<'_> =
+        serde_json::from_str(include_str!("generated/theme_variables.json"))
+            .expect("generated Mermaid theme runtime JSON is valid");
+    assert_eq!(artifact.schema_version, THEME_RUNTIME_SCHEMA_VERSION);
+    assert_generated_theme_provenance(&artifact.provenance);
+    assert_eq!(artifact.oracle_case_count, THEME_ORACLE_CASE_COUNT);
+    for program in THEME_PROGRAMS {
+        for section in [
+            &artifact.prepared_constructors,
+            &artifact.themes,
+            &artifact.dark_mode_true_overrides,
+        ] {
+            assert!(section[program.id.as_str()].encoded.get().starts_with('{'));
         }
+    }
+    artifact
+}
+
+#[test]
+fn generated_theme_sections_decode_on_demand() {
+    let artifact = parse_generated_theme_runtime();
+    let name = MermaidThemeId::ReduxColor.as_str();
+    let light = &artifact.themes[name];
+    let dark = &artifact.dark_mode_true_overrides[name];
+    assert!(light.decoded.get().is_none());
+    assert!(dark.decoded.get().is_none());
+    assert!(std::ptr::eq(light.resolved(), light.resolved()));
+    let dark_values = dark.resolved_with_base(|| light.resolved());
+    assert!(std::ptr::eq(
+        dark_values,
+        dark.resolved_with_base(|| panic!("dark map was decoded already"))
+    ));
+    assert!(
         artifact
-    })
+            .themes
+            .iter()
+            .all(|(other, snapshot)| (other == name) == snapshot.decoded.get().is_some())
+    );
+    assert!(
+        artifact
+            .dark_mode_true_overrides
+            .iter()
+            .all(|(other, snapshot)| (other == name) == snapshot.decoded.get().is_some())
+    );
+    assert!(
+        artifact
+            .prepared_constructors
+            .values()
+            .all(|snapshot| snapshot.decoded.get().is_none())
+    );
 }
 
 // The runtime stores exact top-level set/remove deltas. Assigned nulls and objects replace

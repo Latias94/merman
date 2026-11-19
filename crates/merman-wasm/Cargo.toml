@@ -21,7 +21,8 @@ artifact-profile-required = true
 [package.metadata.wasm-pack.profile.custom]
 # Binaryen 133 can assert in constraint-analysis on complex control flow (Binaryen PR 9258).
 # Keep the remaining -O passes and validation; remove this bypass after upgrading Binaryen.
-wasm-opt = ["-O", "--skip-pass=constraint-analysis"]
+# Bound inlining growth in shared dispatchers to reduce browser first-execution compilation.
+wasm-opt = ["-O", "--skip-pass=constraint-analysis", "--inline-max-combined-binary-size=65536"]
 
 [package.metadata.wasm-pack.profile.custom.wasm-bindgen]
 omit-default-module-path = true

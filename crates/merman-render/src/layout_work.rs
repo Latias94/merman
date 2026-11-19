@@ -218,3 +218,211 @@ impl merman_layout_elk::WorkControl for OperationLayoutWorkControl {
         })
     }
 }
+
+#[cfg(all(test, feature = "layout-elk"))]
+mod tests {
+    use super::ElkOperationWorkControl;
+    use crate::Error;
+    use crate::resources::{
+        OperationWorkMeter, RenderResourcePolicy, RenderResourceProfile, ResourceLimitCause,
+        ResourceLimitExceeded, ResourceLimitId, ResourceLimitOverride, ResourceLimitPhase,
+    };
+    use merman_layout_elk::{
+        Error as ElkError, WorkControl as ElkWorkControl, WorkError as ElkWorkError,
+    };
+    use merman_model::{
+        CancelReason, OperationCancelled, OperationControl, OperationLedgerError, OperationPhase,
+        OperationResourceDomain, OperationResourceOverride, OperationResourceProvenance,
+    };
+    use std::sync::Arc;
+
+    #[test]
+    fn elk_adapter_cancellation_boundaries_preserve_usage_and_first_terminal() {
+        const PREFIX: usize = 3;
+        const NEXT: usize = 2;
+        let policy = RenderResourcePolicy::constrained()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, PREFIX + NEXT)
+            .unwrap();
+
+        for cancel_after_check in [true, false] {
+            let control = OperationControl::new();
+            let meter = Arc::new(OperationWorkMeter::new_with_control(
+                policy,
+                control.clone(),
+            ));
+            let mut work_control = ElkOperationWorkControl::new(Arc::clone(&meter));
+            ElkWorkControl::check(&mut work_control, PREFIX).unwrap();
+            ElkWorkControl::charge(&mut work_control, PREFIX).unwrap();
+            assert_eq!(meter.used(), PREFIX);
+
+            let interrupted = if cancel_after_check {
+                ElkWorkControl::check(&mut work_control, NEXT).unwrap();
+                assert_eq!(meter.used(), PREFIX);
+                control.cancel();
+                ElkWorkControl::charge(&mut work_control, NEXT).unwrap_err()
+            } else {
+                control.cancel();
+                ElkWorkControl::check(&mut work_control, NEXT).unwrap_err()
+            };
+            assert_eq!(interrupted, ElkWorkError::Interrupted);
+            assert_eq!(meter.used(), PREFIX);
+            let Error::Cancelled(first) = work_control.map_elk_error(ElkError::Work(interrupted))
+            else {
+                panic!("expected structured operation cancellation");
+            };
+            assert_eq!(
+                first,
+                OperationCancelled {
+                    phase: OperationPhase::Layout,
+                    reason: CancelReason::Requested,
+                }
+            );
+            assert!(work_control.rejection.borrow().is_none());
+
+            for replay_with_check in [true, false] {
+                let interrupted = if replay_with_check {
+                    ElkWorkControl::check(&mut work_control, NEXT).unwrap_err()
+                } else {
+                    ElkWorkControl::charge(&mut work_control, NEXT).unwrap_err()
+                };
+                assert_eq!(interrupted, ElkWorkError::Interrupted);
+                let Error::Cancelled(replayed) =
+                    work_control.map_elk_error(ElkError::Work(interrupted))
+                else {
+                    panic!("expected cancellation after consuming the adapter rejection");
+                };
+                assert_eq!(replayed, first);
+                assert!(work_control.rejection.borrow().is_none());
+                assert_eq!(meter.used(), PREFIX);
+            }
+
+            let Error::Cancelled(replayed) =
+                work_control.map_elk_error(ElkError::Work(ElkWorkError::ArithmeticOverflow))
+            else {
+                panic!("expected the latched cancellation to precede overflow");
+            };
+            assert_eq!(replayed, first);
+            assert_eq!(meter.used(), PREFIX);
+            assert_eq!(
+                control.terminal_checkpoint_at(OperationPhase::Emit),
+                Err(OperationLedgerError::Cancelled(first))
+            );
+
+            let fresh_control = OperationControl::new();
+            let fresh_meter = Arc::new(OperationWorkMeter::new_with_control(
+                policy,
+                fresh_control.clone(),
+            ));
+            let mut fresh = ElkOperationWorkControl::new(Arc::clone(&fresh_meter));
+            for units in [PREFIX, NEXT] {
+                ElkWorkControl::check(&mut fresh, units).unwrap();
+                ElkWorkControl::charge(&mut fresh, units).unwrap();
+            }
+            assert_eq!(fresh_meter.used(), PREFIX + NEXT);
+            assert_eq!(
+                fresh_control.terminal_checkpoint_at(OperationPhase::Layout),
+                Ok(())
+            );
+        }
+    }
+
+    #[test]
+    fn elk_adapter_overflow_mapping_preserves_full_first_terminal() {
+        const PREFIX: usize = 3;
+        let policy = RenderResourcePolicy::constrained()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 5)
+            .unwrap()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 17)
+            .unwrap();
+        let control = OperationControl::new();
+        let meter = Arc::new(OperationWorkMeter::new_with_control(
+            policy,
+            control.clone(),
+        ));
+        let mut work_control = ElkOperationWorkControl::new(Arc::clone(&meter));
+        ElkWorkControl::check(&mut work_control, PREFIX).unwrap();
+        ElkWorkControl::charge(&mut work_control, PREFIX).unwrap();
+
+        let Error::ResourceLimitExceeded(first) =
+            work_control.map_elk_error(ElkError::Work(ElkWorkError::ArithmeticOverflow))
+        else {
+            panic!("expected structured layout-work overflow");
+        };
+        assert_eq!(
+            first,
+            ResourceLimitExceeded {
+                cause: ResourceLimitCause::ArithmeticOverflow,
+                phase: ResourceLimitPhase::LayoutModel,
+                limit: "max_layout_work_units",
+                actual: usize::MAX,
+                max: 5,
+                profile: RenderResourceProfile::Constrained,
+                explicit_overrides: vec![
+                    ResourceLimitOverride {
+                        id: ResourceLimitId::MaxLayoutWorkUnits,
+                        value: 5,
+                    },
+                    ResourceLimitOverride {
+                        id: ResourceLimitId::MaxSvgBytes,
+                        value: 17,
+                    },
+                ],
+            }
+        );
+        let terminal = OperationLedgerError::ArithmeticOverflow {
+            id: "max_layout_work_units",
+            phase: OperationPhase::Layout,
+            resource_phase: "layout_model",
+            actual: usize::MAX as u64,
+            maximum: 5,
+            provenance: OperationResourceProvenance::new(
+                OperationResourceDomain::Render,
+                Some(RenderResourceProfile::Constrained),
+                [
+                    OperationResourceOverride {
+                        id: "max_layout_work_units",
+                        value: 5,
+                    },
+                    OperationResourceOverride {
+                        id: "max_svg_bytes",
+                        value: 17,
+                    },
+                ],
+            ),
+        };
+        assert_eq!(meter.used(), PREFIX);
+        assert_eq!(
+            control.terminal_checkpoint_at(OperationPhase::Layout),
+            Err(terminal.clone())
+        );
+
+        control.cancel();
+        for replay_with_check in [true, false] {
+            let interrupted = if replay_with_check {
+                ElkWorkControl::check(&mut work_control, 2).unwrap_err()
+            } else {
+                ElkWorkControl::charge(&mut work_control, 2).unwrap_err()
+            };
+            assert_eq!(interrupted, ElkWorkError::Interrupted);
+            let Error::ResourceLimitExceeded(replayed) =
+                work_control.map_elk_error(ElkError::Work(interrupted))
+            else {
+                panic!("expected overflow to remain the first terminal after cancellation");
+            };
+            assert_eq!(replayed, first);
+            assert!(work_control.rejection.borrow().is_none());
+            assert_eq!(meter.used(), PREFIX);
+        }
+        let Error::ResourceLimitExceeded(replayed) =
+            work_control.map_elk_error(ElkError::Work(ElkWorkError::ArithmeticOverflow))
+        else {
+            panic!("expected the exact overflow after consuming the adapter rejection");
+        };
+        assert_eq!(replayed, first);
+        assert_eq!(meter.used(), PREFIX);
+        assert_eq!(
+            control.terminal_checkpoint_at(OperationPhase::Emit),
+            Err(terminal)
+        );
+    }
+}

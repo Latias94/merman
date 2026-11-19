@@ -31,9 +31,9 @@ use crate::work::{
 };
 
 use super::{
-    GraphInfoHolder, SweepCopy, count_model_order_node_changes, count_model_order_port_changes,
-    initialize_crossing_minimization_port_ids, initialize_crossing_minimization_port_ids_hierarchy,
-    update_bigger_and_smaller_associations,
+    GraphInfoHolder, ModelOrderRelations, SweepCopy, count_model_order_node_changes,
+    count_model_order_port_changes, initialize_crossing_minimization_port_ids,
+    initialize_crossing_minimization_port_ids_hierarchy,
 };
 
 #[cfg(test)]
@@ -729,13 +729,38 @@ struct BarycenterSweepWork<'a> {
     control: &'a mut dyn WorkControl,
     snapshot: usize,
     count: usize,
-    first_layer: usize,
-    sweep: usize,
+    allowance: BarycenterSweepAllowance<'a>,
+}
+
+enum BarycenterSweepAllowance<'a> {
+    Prepaid,
+    Deferred {
+        scan: usize,
+        reorder: &'a ReorderNodePortsWorkContext,
+    },
+    Computed {
+        first_layer: usize,
+        sweep: usize,
+    },
 }
 
 impl BarycenterSweepWork<'_> {
     fn charge(&mut self, units: usize) -> Result<(), WorkError> {
         charge_barycenter_work(self.control, units)
+    }
+
+    /// Price the single graph before its first reordering. Its sweeps preserve layer
+    /// membership, constraints and reference counts, so later attempts reuse the price.
+    fn sweep_units(&mut self, root: &LGraph) -> Result<(usize, usize), WorkError> {
+        match self.allowance {
+            BarycenterSweepAllowance::Prepaid => Ok((0, 0)),
+            BarycenterSweepAllowance::Deferred { scan, reorder } => {
+                let (first_layer, sweep) = single_graph_barycenter_sweep_work(root, scan, reorder)?;
+                self.allowance = BarycenterSweepAllowance::Computed { first_layer, sweep };
+                Ok((first_layer, sweep))
+            }
+            BarycenterSweepAllowance::Computed { first_layer, sweep } => Ok((first_layer, sweep)),
+        }
     }
 }
 
@@ -896,8 +921,7 @@ impl HierarchySweep {
                     control: &mut *control,
                     snapshot: 0,
                     count: 0,
-                    first_layer: 0,
-                    sweep: 0,
+                    allowance: BarycenterSweepAllowance::Prepaid,
                 };
                 self.compare_different_randomized_layouts(root, info_index, &mut work)?;
             }
@@ -1072,13 +1096,14 @@ impl HierarchySweep {
             });
         }
 
+        let (first_layer_work, sweep_work) = work.sweep_units(root)?;
         let should_set_first_layer_order = {
             let graph = graph_at_path(root, &self.infos[info_index].path);
             !first_try_with_initial_order
                 || graph.options.consider_model_order_strategy == OrderingStrategy::None
         };
         if should_set_first_layer_order {
-            work.charge(work.first_layer)?;
+            work.charge(first_layer_work)?;
             self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
                 heuristic.set_first_layer_order(graph, order, is_forward_sweep);
             });
@@ -1086,7 +1111,7 @@ impl HierarchySweep {
             is_forward_sweep = first_try_with_initial_order;
         }
 
-        work.charge(work.sweep)?;
+        work.charge(sweep_work)?;
         self.sweep_reducing_crossings_barycenter(
             root,
             info_index,
@@ -1115,7 +1140,7 @@ impl HierarchySweep {
 
             is_forward_sweep = !is_forward_sweep;
             let old_number_of_crossings = crossings_in_graph;
-            work.charge(work.sweep)?;
+            work.charge(sweep_work)?;
             self.sweep_reducing_crossings_barycenter(
                 root,
                 info_index,
@@ -1767,8 +1792,7 @@ struct BarycenterHeuristic {
     random: JavaRandom,
     port_distributor: BarycenterPortDistributor,
     force_node_model_order: bool,
-    bigger_than: HashMap<usize, HashSet<usize>>,
-    smaller_than: HashMap<usize, HashSet<usize>>,
+    relations: ModelOrderRelations,
 }
 
 impl BarycenterHeuristic {
@@ -1790,8 +1814,7 @@ impl BarycenterHeuristic {
             random,
             port_distributor,
             force_node_model_order: graph.options.force_node_model_order,
-            bigger_than: HashMap::new(),
-            smaller_than: HashMap::new(),
+            relations: ModelOrderRelations::default(),
         }
     }
 
@@ -1876,8 +1899,7 @@ impl BarycenterHeuristic {
             }
             layer[insert_at] = node;
         }
-        self.bigger_than.clear();
-        self.smaller_than.clear();
+        self.relations.clear();
     }
 
     fn compare_model_order_nodes(
@@ -1918,16 +1940,17 @@ impl BarycenterHeuristic {
     }
 
     fn transitive_ordering(&mut self, first: usize, second: usize) -> Option<std::cmp::Ordering> {
-        self.bigger_than.entry(first).or_default();
-        self.bigger_than.entry(second).or_default();
-        self.smaller_than.entry(first).or_default();
-        self.smaller_than.entry(second).or_default();
+        self.relations.bigger_than.entry(first).or_default();
+        self.relations.bigger_than.entry(second).or_default();
+        self.relations.smaller_than.entry(first).or_default();
+        self.relations.smaller_than.entry(second).or_default();
 
-        if self.bigger_than[&first].contains(&second) || self.smaller_than[&second].contains(&first)
+        if self.relations.bigger_than[&first].contains(&second)
+            || self.relations.smaller_than[&second].contains(&first)
         {
             Some(std::cmp::Ordering::Greater)
-        } else if self.bigger_than[&second].contains(&first)
-            || self.smaller_than[&first].contains(&second)
+        } else if self.relations.bigger_than[&second].contains(&first)
+            || self.relations.smaller_than[&first].contains(&second)
         {
             Some(std::cmp::Ordering::Less)
         } else {
@@ -1942,18 +1965,8 @@ impl BarycenterHeuristic {
         ordering: std::cmp::Ordering,
     ) {
         match ordering {
-            std::cmp::Ordering::Less => update_bigger_and_smaller_associations(
-                first,
-                second,
-                &mut self.bigger_than,
-                &mut self.smaller_than,
-            ),
-            std::cmp::Ordering::Greater => update_bigger_and_smaller_associations(
-                second,
-                first,
-                &mut self.bigger_than,
-                &mut self.smaller_than,
-            ),
+            std::cmp::Ordering::Less => self.relations.update(first, second),
+            std::cmp::Ordering::Greater => self.relations.update(second, first),
             std::cmp::Ordering::Equal => {}
         }
     }
@@ -3351,37 +3364,14 @@ pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
     )?;
     charge_barycenter_work(control, snapshot)?;
     let reorder = ReorderNodePortsWorkContext::new(graph)?;
-    let mut layer_work = 0;
-    let mut first_layer = 0;
-    for layer in &graph.layers {
-        let units = barycenter_layer_work(graph, &layer.nodes)?;
-        layer_work = checked_add(layer_work, units)?;
-        first_layer = first_layer.max(units);
-    }
-    let mut port_work = 0;
-    for (index, node) in graph.layerless_nodes.iter().enumerate() {
-        if !node.port_constraints.is_order_fixed() {
-            port_work = checked_sum([
-                port_work,
-                node.ports.len(),
-                checked_n_log_n(node.ports.len())?,
-                reorder.node_work(graph, index)?,
-            ])?;
-        }
-    }
-    // A node participates at most twice per sweep: once in the free layer and once
-    // in the fixed layer. Each possible reorder includes its complete reference rewrite.
-    let sweep_work = checked_sum([
-        layer_work,
-        checked_mul(port_work, 2)?,
-        checked_mul(checked_add(scan, checked_mul(graph.edges.len(), 2)?)?, 2)?,
-    ])?;
     let mut work = BarycenterSweepWork {
         control,
         snapshot,
-        first_layer,
         count: barycenter_crossing_count_work(graph)?,
-        sweep: sweep_work,
+        allowance: BarycenterSweepAllowance::Deferred {
+            scan,
+            reorder: &reorder,
+        },
     };
     initialize_crossing_minimization_port_ids_hierarchy(graph);
     let mut sweep = HierarchySweep::new(graph, CrossMinType::Barycenter);
@@ -3545,6 +3535,39 @@ fn barycenter_crossing_count_work(graph: &LGraph) -> Result<usize, WorkError> {
             ceil_log2(checked_add(ports, 1)?),
         )?,
     ])
+}
+
+fn single_graph_barycenter_sweep_work(
+    graph: &LGraph,
+    scan: usize,
+    reorder: &ReorderNodePortsWorkContext,
+) -> Result<(usize, usize), WorkError> {
+    let mut layer_work = 0;
+    let mut first_layer = 0;
+    for layer in &graph.layers {
+        let units = barycenter_layer_work(graph, &layer.nodes)?;
+        layer_work = checked_add(layer_work, units)?;
+        first_layer = first_layer.max(units);
+    }
+    let mut port_work = 0;
+    for (index, node) in graph.layerless_nodes.iter().enumerate() {
+        if !node.port_constraints.is_order_fixed() {
+            port_work = checked_sum([
+                port_work,
+                node.ports.len(),
+                checked_n_log_n(node.ports.len())?,
+                reorder.node_work(graph, index)?,
+            ])?;
+        }
+    }
+    // A node participates at most twice per sweep: once in the free layer and once
+    // in the fixed layer. Each possible reorder includes its complete reference rewrite.
+    let sweep_work = checked_sum([
+        layer_work,
+        checked_mul(port_work, 2)?,
+        checked_mul(checked_add(scan, checked_mul(graph.edges.len(), 2)?)?, 2)?,
+    ])?;
+    Ok((first_layer, sweep_work))
 }
 
 fn barycenter_layer_work(graph: &LGraph, layer: &[usize]) -> Result<usize, WorkError> {
@@ -4882,6 +4905,86 @@ mod tests {
         heuristic.minimize_crossings(&graph, &mut order, 1, true, false);
 
         assert_eq!(order[1], vec![right, left]);
+    }
+
+    #[test]
+    fn barycenter_cache_keeps_both_greater_facts_ahead_of_less_facts() {
+        use std::cmp::Ordering::{Greater, Less};
+        let graph = LGraph::new("relation-priority", LayeredOptions::default());
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &[]);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+        let expected = [
+            None,
+            Some(Greater),
+            Some(Less),
+            Some(Greater),
+            Some(Less),
+            Some(Greater),
+            Some(Less),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+            Some(Greater),
+        ];
+        for (mask, expected) in expected.into_iter().enumerate() {
+            heuristic.relations.clear();
+            for (bit, key, member) in [(0, 11, 23), (1, 23, 11)] {
+                if mask & (1 << bit) != 0 {
+                    heuristic
+                        .relations
+                        .bigger_than
+                        .entry(key)
+                        .or_default()
+                        .insert(member);
+                }
+            }
+            for (bit, key, member) in [(2, 11, 23), (3, 23, 11)] {
+                if mask & (1 << bit) != 0 {
+                    heuristic
+                        .relations
+                        .smaller_than
+                        .entry(key)
+                        .or_default()
+                        .insert(member);
+                }
+            }
+            assert_eq!(
+                heuristic.transitive_ordering(11, 23),
+                expected,
+                "mask {mask}"
+            );
+            if [0b1010, 0b1100, 0b1110].contains(&mask) {
+                assert_eq!(heuristic.relations.cached_ordering(11, 23), Some(Less));
+            }
+        }
+    }
+
+    #[test]
+    fn forced_model_order_clears_relations_after_each_insertion_sort() {
+        let mut graph = LGraph::new("relation-lifetime", LayeredOptions::default());
+        graph.layerless_nodes = vec![
+            LNode::new("first", 10.0, 10.0, Some(0)),
+            LNode::new("second", 10.0, 10.0, Some(1)),
+        ];
+        graph.set_node_layer(0, 0);
+        graph.set_node_layer(1, 0);
+        let order = vec![vec![0, 1]];
+        let port_distributor =
+            BarycenterPortDistributor::new(PortDistributorKind::NodeRelative, &order);
+        let mut heuristic = BarycenterHeuristic::new(&graph, JavaRandom::new(1), port_distributor);
+        for _ in 0..2 {
+            let mut layer = vec![0, 1];
+            heuristic.insertion_sort_by_model_order(&graph, &mut layer);
+            assert_eq!(layer, [0, 1]);
+            assert!(heuristic.relations.bigger_than.is_empty());
+            assert!(heuristic.relations.smaller_than.is_empty());
+        }
     }
 
     #[test]

@@ -13,7 +13,7 @@ use super::options::{
 use crate::random::{
     GraphSeedScope, JavaRandom, RandomSeedAuthority, RandomSeedError, RandomSeedPhase,
 };
-use crate::work::{WorkError, checked_add, checked_mul, checked_sum};
+use crate::work::{NoopWorkControl, WorkControl, WorkError, checked_add, checked_mul, checked_sum};
 
 pub(crate) struct ReorderNodePortsWorkContext {
     shared_reference_work: usize,
@@ -23,17 +23,30 @@ pub(crate) struct ReorderNodePortsWorkContext {
 
 impl ReorderNodePortsWorkContext {
     pub(crate) fn new(graph: &LGraph) -> Result<Self, WorkError> {
+        Self::new_with_work_control(graph, &mut NoopWorkControl)
+    }
+
+    pub(crate) fn new_with_work_control(
+        graph: &LGraph,
+        work: &mut dyn WorkControl,
+    ) -> Result<Self, WorkError> {
+        let initial_work = checked_add(graph.layerless_nodes.len(), graph.self_loop_holders.len())?;
+        work.check(initial_work)?;
+        work.charge(initial_work)?;
         let mut self_loop_payload_by_node = vec![0usize; graph.layerless_nodes.len()];
         for holder in &graph.self_loop_holders {
             let Some(payload) = self_loop_payload_by_node.get_mut(holder.node) else {
                 continue;
             };
             for hyper_loop in &holder.hyper_loops {
-                *payload = checked_sum([
-                    *payload,
+                let loop_payload = checked_add(
                     hyper_loop.ports.len(),
                     checked_mul(hyper_loop.edges.len(), 2)?,
-                ])?;
+                )?;
+                let loop_work = checked_add(1, loop_payload)?;
+                work.check(loop_work)?;
+                work.charge(loop_work)?;
+                *payload = checked_add(*payload, loop_payload)?;
             }
         }
 
@@ -44,6 +57,9 @@ impl ReorderNodePortsWorkContext {
             .filter_map(|node| node.nested_graph.as_deref())
             .collect::<Vec<_>>();
         while let Some(current) = stack.pop() {
+            let scan_work = checked_add(1, current.layerless_nodes.len())?;
+            work.check(scan_work)?;
+            work.charge(scan_work)?;
             descendant_nodes = checked_add(descendant_nodes, current.layerless_nodes.len())?;
             stack.extend(
                 current
@@ -67,8 +83,14 @@ impl ReorderNodePortsWorkContext {
 
     pub(crate) fn node_work(&self, graph: &LGraph, node_index: usize) -> Result<usize, WorkError> {
         let port_count = graph.layerless_nodes[node_index].ports.len();
-        checked_sum([
+        checked_add(
             checked_mul(port_count, 4)?,
+            self.reference_work(node_index)?,
+        )
+    }
+
+    pub(crate) fn reference_work(&self, node_index: usize) -> Result<usize, WorkError> {
+        checked_sum([
             self.shared_reference_work,
             self.self_loop_holder_scan_work,
             self.self_loop_payload_by_node
@@ -1159,6 +1181,8 @@ impl LGraph {
             .is_some()
     }
 
+    /// Reorder ports and all references in a graph whose port references are well formed.
+    /// Local port-owner fields are normalized even when the permutation is the identity.
     pub fn reorder_node_ports_with_map(
         &mut self,
         node_index: usize,
@@ -1172,11 +1196,20 @@ impl LGraph {
         }
 
         let mut seen = vec![false; port_count];
-        for old_index in &new_order {
+        let mut identity = true;
+        for (new_index, old_index) in new_order.iter().enumerate() {
             if *old_index >= port_count || seen[*old_index] {
                 return None;
             }
             seen[*old_index] = true;
+            identity &= new_index == *old_index;
+        }
+
+        if identity {
+            for port in &mut self.layerless_nodes[node_index].ports {
+                port.node = node_index;
+            }
+            return Some(new_order);
         }
 
         let old_ports = std::mem::take(&mut self.layerless_nodes[node_index].ports);
@@ -1657,5 +1690,190 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec!["p2", "p0", "p1"]
         );
+    }
+
+    fn port_reorder_reference_graph() -> LGraph {
+        let mut graph = LGraph::new("root", LayeredOptions::default());
+        let mut owner = LNode::new("A", 10.0, 10.0, Some(0));
+        for index in 0..3 {
+            owner
+                .ports
+                .push(LPort::new(format!("p{index}"), 0, PortType::Output));
+        }
+        let mut nested = LGraph::new("child", LayeredOptions::default());
+        let mut external = LNode::new("external", 0.0, 0.0, None);
+        external.kind = LNodeKind::ExternalPort;
+        external.origin_port = Some(GraphPortRef {
+            graph_id: "root".to_string(),
+            port: PortRef { node: 0, port: 2 },
+        });
+        nested.layerless_nodes.push(external);
+        owner.nested_graph = Some(Box::new(nested));
+        graph.layerless_nodes.push(owner);
+
+        let mut target = LNode::new("B", 10.0, 10.0, Some(1));
+        target.ports.push(LPort::new("in", 1, PortType::Input));
+        target.origin_port = Some(GraphPortRef {
+            graph_id: "root".to_string(),
+            port: PortRef { node: 0, port: 1 },
+        });
+        target.long_edge_source = Some(PortRef { node: 0, port: 0 });
+        target.long_edge_target = Some(PortRef { node: 0, port: 2 });
+        graph.layerless_nodes.push(target);
+
+        for (id, source, target) in [
+            (
+                "edge",
+                PortRef { node: 0, port: 0 },
+                PortRef { node: 1, port: 0 },
+            ),
+            (
+                "loop",
+                PortRef { node: 0, port: 1 },
+                PortRef { node: 0, port: 2 },
+            ),
+        ] {
+            graph
+                .add_edge(LayeredEdge {
+                    id: id.to_string(),
+                    source,
+                    target,
+                    source_node_id: "A".to_string(),
+                    target_node_id: if id == "edge" { "B" } else { "A" }.to_string(),
+                    labels: Vec::new(),
+                    minlen: 1,
+                    reversed: false,
+                    bend_points: Vec::new(),
+                    model_order: None,
+                    priority_direction: 0,
+                    priority_shortness: 0,
+                    priority_straightness: 0,
+                    thickness: 0.0,
+                    original_opposite_port: Some(PortRef { node: 0, port: 1 }),
+                    compound_segment: None,
+                })
+                .expect("valid reference fixture edge");
+        }
+        graph.self_loop_holders.push(SelfLoopHolder {
+            node: 0,
+            hyper_loops: vec![SelfHyperLoop {
+                ports: vec![SelfLoopPort {
+                    port: 1,
+                    had_only_self_loops: true,
+                    hidden: false,
+                }],
+                edges: vec![SelfLoopEdge {
+                    edge: 1,
+                    source_port: 1,
+                    target_port: 2,
+                }],
+                labels: None,
+                self_loop_type: None,
+                leftmost_port: None,
+                rightmost_port: None,
+                occupied_sides: Vec::new(),
+                routing_slots: [0; 5],
+            }],
+            ports_hidden: false,
+            original_port_constraints: PortConstraints::Free,
+        });
+        graph
+    }
+
+    #[test]
+    fn identity_port_reorder_preserves_all_reference_payloads() {
+        let mut graph = port_reorder_reference_graph();
+        let before = graph.clone();
+
+        assert_eq!(
+            graph.reorder_node_ports_with_map(0, [0, 1, 2]),
+            Some(vec![0, 1, 2])
+        );
+        assert_eq!(graph, before);
+    }
+
+    #[test]
+    fn identity_port_reorder_normalizes_owners_for_empty_single_and_multiple_ports() {
+        for count in [0, 1, 3] {
+            let mut graph = LGraph::new("root", LayeredOptions::default());
+            graph
+                .layerless_nodes
+                .push(LNode::new("other", 0.0, 0.0, None));
+            let mut node = LNode::new("owner", 0.0, 0.0, None);
+            for index in 0..count {
+                node.ports
+                    .push(LPort::new(format!("p{index}"), 99, PortType::Output));
+            }
+            graph.layerless_nodes.push(node);
+            let mut expected = graph.clone();
+            for port in &mut expected.layerless_nodes[1].ports {
+                port.node = 1;
+            }
+
+            assert_eq!(
+                graph.reorder_node_ports_with_map(1, 0..count),
+                Some((0..count).collect())
+            );
+            assert_eq!(graph, expected);
+        }
+    }
+
+    #[test]
+    fn invalid_port_permutations_leave_graph_and_owners_unchanged() {
+        let mut graph = port_reorder_reference_graph();
+        graph.layerless_nodes[0].ports[0].node = 99;
+        let before = graph.clone();
+        for order in [
+            vec![],
+            vec![0, 1],
+            vec![0, 1, 2, 3],
+            vec![0, 0, 2],
+            vec![0, 1, 3],
+        ] {
+            assert_eq!(graph.reorder_node_ports_with_map(0, order), None);
+            assert_eq!(graph, before);
+        }
+        assert_eq!(graph.reorder_node_ports_with_map(99, []), None);
+        assert_eq!(graph, before);
+    }
+
+    #[test]
+    fn nonidentity_port_reorder_updates_all_reference_payloads() {
+        let mut graph = port_reorder_reference_graph();
+
+        assert_eq!(
+            graph.reorder_node_ports_with_map(0, [2, 0, 1]),
+            Some(vec![1, 2, 0])
+        );
+        assert_eq!(graph.edges[0].source, PortRef { node: 0, port: 1 });
+        assert_eq!(graph.edges[0].target, PortRef { node: 1, port: 0 });
+        assert_eq!(
+            graph.edges[0].original_opposite_port,
+            Some(PortRef { node: 0, port: 2 })
+        );
+        assert_eq!(graph.edges[1].source, PortRef { node: 0, port: 2 });
+        assert_eq!(graph.edges[1].target, PortRef { node: 0, port: 0 });
+        let reference = &graph.layerless_nodes[1];
+        assert_eq!(
+            reference.origin_port.as_ref().unwrap().port,
+            PortRef { node: 0, port: 2 }
+        );
+        assert_eq!(
+            reference.long_edge_source,
+            Some(PortRef { node: 0, port: 1 })
+        );
+        assert_eq!(
+            reference.long_edge_target,
+            Some(PortRef { node: 0, port: 0 })
+        );
+        let nested = graph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+        assert_eq!(
+            nested.layerless_nodes[0].origin_port.as_ref().unwrap().port,
+            PortRef { node: 0, port: 0 }
+        );
+        let saved = &graph.self_loop_holders[0].hyper_loops[0];
+        assert_eq!(saved.ports[0].port, 2);
+        assert_eq!(saved.edges[0].source_port, 2);
+        assert_eq!(saved.edges[0].target_port, 0);
     }
 }

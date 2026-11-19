@@ -93,7 +93,7 @@ Statement: StatementId = {
 
 Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
   <start:NodeGroup> <segs:EdgeSeg+> =>? {
-    let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
+    let mut node_groups: Vec<Vec<Node>> = Vec::with_capacity(1);
     let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
 
     let mut prev_group = start;
@@ -156,9 +156,10 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
         }
       }
       edge_groups.push(segment_edges);
-      node_groups.push(next_group.clone());
+      node_groups.push(prev_group);
       prev_group = next_group;
     }
+    node_groups.push(prev_group);
 
     Ok((node_groups, edge_groups))
   }

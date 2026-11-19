@@ -20,6 +20,7 @@ mod theme_evidence;
 pub(crate) use merman_model::families::flowchart::{
     FlowEdge, FlowNode, FlowSubgraph, FlowchartModel, FlowchartRenderContext,
 };
+use std::borrow::Cow;
 use std::ops::Deref;
 
 pub(crate) use class_style::{
@@ -125,39 +126,45 @@ impl<'a> FlowchartRenderModelRef<'a> {
     }
 }
 
-/// Projects a logical Flowchart edge through Mermaid's collapsed-subgraph view. The typed model
-/// remains lossless; render/layout callers use this helper to hide fully internal edges and route
-/// boundary edges to the visible collapsed node.
-pub(crate) fn project_flowchart_edge_endpoints<'a>(
+pub(crate) struct ProjectedFlowchartEdge<'a> {
+    pub(crate) semantic: &'a FlowEdge,
+    pub(crate) from: &'a str,
+    pub(crate) to: &'a str,
+}
+
+impl<'a> ProjectedFlowchartEdge<'a> {
+    pub(crate) fn into_render_edge(self) -> Cow<'a, FlowEdge> {
+        if self.from == self.semantic.from && self.to == self.semantic.to {
+            return Cow::Borrowed(self.semantic);
+        }
+
+        let mut edge = self.semantic.clone();
+        self.from.clone_into(&mut edge.from);
+        self.to.clone_into(&mut edge.to);
+        Cow::Owned(edge)
+    }
+}
+
+/// Keeps the semantic edge intact while redirecting boundary edges to visible collapsed nodes.
+/// Edges that collapse onto one endpoint are hidden, while unchanged self-loops survive.
+pub(crate) fn project_flowchart_edge<'a>(
     edge: &'a FlowEdge,
     render_context: &'a FlowchartRenderContext,
-) -> Option<(&'a str, &'a str)> {
+) -> Option<ProjectedFlowchartEdge<'a>> {
     let from = render_context
         .collapsed_replacement(edge.from.as_str())
         .unwrap_or(edge.from.as_str());
     let to = render_context
         .collapsed_replacement(edge.to.as_str())
         .unwrap_or(edge.to.as_str());
-    let changed = from != edge.from || to != edge.to;
-    if from == to && changed {
+    if from == to && (from != edge.from || to != edge.to) {
         return None;
     }
-    Some((from, to))
-}
-
-pub(crate) fn project_flowchart_edge(
-    edge: &FlowEdge,
-    render_context: &FlowchartRenderContext,
-) -> Option<FlowEdge> {
-    let (from, to) = project_flowchart_edge_endpoints(edge, render_context)?;
-    let changed = from != edge.from || to != edge.to;
-    if !changed {
-        return Some(edge.clone());
-    }
-    let mut projected = edge.clone();
-    projected.from = from.to_string();
-    projected.to = to.to_string();
-    Some(projected)
+    Some(ProjectedFlowchartEdge {
+        semantic: edge,
+        from,
+        to,
+    })
 }
 
 impl Deref for FlowchartRenderModelRef<'_> {

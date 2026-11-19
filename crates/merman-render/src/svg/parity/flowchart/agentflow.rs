@@ -1,6 +1,9 @@
 //! Flowchart container colors and Agentflow's separate kind-first palette.
 
 use super::*;
+use std::borrow::Cow;
+use std::fmt;
+use std::ops::Range;
 
 const KINDS: [&str; 7] = [
     "tool",
@@ -105,52 +108,74 @@ pub(super) fn write_flowchart_container_css(
     let look = &binding.palette_look;
     let backgrounds =
         (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
+    let mut prefix = String::new();
+    let mut fragments = String::new();
     for (slot, border) in borders.iter().enumerate() {
         out.checkpoint()?;
-        let border = border
-            .as_str()
-            .map(|value| value.trim().to_owned())
-            .unwrap_or_else(|| border.to_string());
-        let background = backgrounds.map(|values| {
-            let value = &values[slot % values.len()];
-            value
-                .as_str()
-                .map(|value| value.trim().to_owned())
-                .unwrap_or_else(|| value.to_string())
-        });
+        let border = container_palette_value(border);
+        let background =
+            backgrounds.map(|values| container_palette_value(&values[slot % values.len()]));
+        fragments.clear();
         let fill = background
             .as_ref()
-            .map(|value| format!("fill:{value};"))
+            .map(|value| append_container_fragment(&mut fragments, format_args!("fill:{value};")))
             .unwrap_or_default();
-        let prefix =
-            format!(r##"#{diagram_id} [data-look="{look}"][data-color-id="color-{slot}"]"##);
-        let collapsed =
-            |suffix: &str| format!("{prefix}.node {suffix},{prefix}.rough-node {suffix}");
-        let lane = |suffix: &str| {
-            format!(
-                "{prefix}.swimlane.cluster .swimlane-title{suffix},{prefix}.swimlane.cluster .swimlane-body{suffix}"
+        prefix.clear();
+        let _ = write!(
+            prefix,
+            r##"#{diagram_id} [data-look="{look}"][data-color-id="color-{slot}"]"##
+        );
+        let collapsed = |fragments: &mut String, suffix: &str| {
+            append_container_fragment(
+                fragments,
+                format_args!("{prefix}.node {suffix},{prefix}.rough-node {suffix}"),
             )
         };
+        let lane = |fragments: &mut String, suffix: &str| {
+            append_container_fragment(
+                fragments,
+                format_args!(
+                    "{prefix}.swimlane.cluster .swimlane-title{suffix},{prefix}.swimlane.cluster .swimlane-body{suffix}"
+                ),
+            )
+        };
+        let lane_outline = lane(&mut fragments, " path:nth-of-type(2)");
         let _ = write!(
             out,
             "{prefix}.cluster:not(.swimlane) rect{{stroke:{border};{fill}}}{prefix}.cluster:not(.swimlane) path{{stroke:{border};{fill}}}{prefix}.swimlane.cluster rect.swimlane-title,{prefix}.swimlane.cluster rect.swimlane-body{{stroke:{border};{fill}}}{}{{stroke:{border};}}",
-            lane(" path:nth-of-type(2)")
+            &fragments[lane_outline],
+            fill = &fragments[fill.clone()],
         );
         if let Some(background) = background {
-            let _ = write!(
-                out,
-                "{}{{stroke:{background};}}",
-                lane(" path:first-of-type")
-            );
+            let lane_fill = lane(&mut fragments, " path:first-of-type");
+            let _ = write!(out, "{}{{stroke:{background};}}", &fragments[lane_fill]);
         }
+        let group = collapsed(&mut fragments, ".collapsed-group");
+        let group_path = collapsed(&mut fragments, ".collapsed-group path");
+        let indicator = collapsed(&mut fragments, ".collapsed-indicator");
+        let separator = collapsed(&mut fragments, ".collapsed-separator");
         let _ = write!(
             out,
             "{},{}{{stroke:{border};{fill}}}{}{{fill:{border};}}{}{{stroke:{border};}}",
-            collapsed(".collapsed-group"),
-            collapsed(".collapsed-group path"),
-            collapsed(".collapsed-indicator"),
-            collapsed(".collapsed-separator")
+            &fragments[group],
+            &fragments[group_path],
+            &fragments[indicator],
+            &fragments[separator],
+            fill = &fragments[fill],
         );
     }
     out.checkpoint()
+}
+
+fn container_palette_value(value: &serde_json::Value) -> Cow<'_, str> {
+    value.as_str().map_or_else(
+        || Cow::Owned(value.to_string()),
+        |string| Cow::Borrowed(string.trim()),
+    )
+}
+
+fn append_container_fragment(buffer: &mut String, arguments: fmt::Arguments<'_>) -> Range<usize> {
+    let start = buffer.len();
+    let _ = buffer.write_fmt(arguments);
+    start..buffer.len()
 }

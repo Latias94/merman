@@ -800,7 +800,7 @@ mod tests {
         #[cfg(feature = "markdown")]
         fn acquire_transaction(
             &mut self,
-            _publications: &crate::output::PublicationGuards,
+            _publications: &mut crate::output::PublicationGuards,
         ) -> Result<crate::output::AcquiredTransaction, CliError> {
             self.calls.fetch_add(1, Ordering::SeqCst);
             Err(CliError::Io(io::Error::other(
@@ -831,16 +831,17 @@ mod tests {
 
         fn acquire_transaction(
             &mut self,
-            publications: &crate::output::PublicationGuards,
+            publications: &mut crate::output::PublicationGuards,
         ) -> Result<crate::output::AcquiredTransaction, CliError> {
             self.system.acquire_transaction(publications)
         }
 
         fn commit_transaction(
             &mut self,
-            _ready: crate::transaction::ReadyTransaction,
+            ready: crate::transaction::ReadyTransaction,
         ) -> Result<(), CliError> {
             self.commits.fetch_add(1, Ordering::SeqCst);
+            ready.interrupt_after_publish(0);
             Err(CliError::Io(io::Error::other(
                 "injected transaction commit failure",
             )))
@@ -1192,61 +1193,79 @@ mod tests {
 
     #[cfg(feature = "markdown")]
     #[test]
-    fn injected_batch_commit_failure_is_recovered_by_the_next_run() {
-        let directory = tempfile::tempdir().unwrap();
-        let commits = Arc::new(AtomicUsize::new(0));
-        let source = b"# Document\n\n```mermaid\nflowchart LR\nA-->B\n```\n".to_vec();
-        let args = [
-            "batch",
-            "-",
-            "--stdin-file-name",
-            "README.md",
-            "--output-dir",
-            "generated",
-        ];
-        let (stdout, stdout_bytes) = capture();
-        let (stderr, stderr_bytes) = capture();
-        let first = CliApp {
-            process: snapshot(&args, Ok(directory.path().to_path_buf()), false),
-            execution: execution_with_publication(
-                Cursor::new(source.clone()),
-                stdout,
-                stderr,
-                Box::new(RejectingCommitPublication {
-                    system: crate::output::SystemPublicationBackend,
-                    commits: Arc::clone(&commits),
-                }),
-            ),
-        };
+    fn interrupted_markdown_publication_recovers_and_publishes_on_the_first_retry() {
+        for (strict, replace) in [(false, false), (false, true), (true, false)] {
+            let directory = tempfile::tempdir().unwrap();
+            let root = directory.path();
+            let output = root.join("generated");
+            std::fs::create_dir(&output).unwrap();
+            let source = root.join("README.md");
+            let args: &[&str] = if strict {
+                &["mmdc", "-i", "README.md", "-o", "generated/README.svg"]
+            } else {
+                &["batch", "README.md", "--output-dir", "generated"]
+            };
+            let commits = Arc::new(AtomicUsize::new(0));
+            let run = |interrupt| {
+                let (stdout, stdout_bytes) = capture();
+                let (stderr, stderr_bytes) = capture();
+                let backend: Box<dyn crate::output::PublicationBackend> = if interrupt {
+                    Box::new(RejectingCommitPublication {
+                        system: crate::output::SystemPublicationBackend,
+                        commits: Arc::clone(&commits),
+                    })
+                } else {
+                    Box::new(crate::output::SystemPublicationBackend)
+                };
+                let app = CliApp {
+                    process: snapshot(args, Ok(root.to_path_buf()), false),
+                    execution: execution_with_publication(
+                        Cursor::new(Vec::<u8>::new()),
+                        stdout,
+                        stderr,
+                        backend,
+                    ),
+                };
+                let status = app.execute();
+                assert!(bytes(&stdout_bytes).is_empty());
+                (status, bytes(&stderr_bytes))
+            };
+            let artifact = output.join("README-1.svg");
+            let document = output.join("README.md");
+            let transaction = output.join(".merman.transaction");
+            if replace {
+                std::fs::write(&source, "# Old\n\n```mermaid\nflowchart LR\nA-->Old\n```\n")
+                    .unwrap();
+                let (status, stderr) = run(false);
+                assert_eq!(status, ExitCode::SUCCESS, "{stderr}");
+            }
+            let previous = std::fs::read(&artifact).ok();
+            std::fs::write(&source, "# New\n\n```mermaid\nflowchart LR\nA-->New\n```\n").unwrap();
 
-        assert_eq!(first.execute(), ExitCode::from(3));
-        assert_eq!(commits.load(Ordering::SeqCst), 1);
-        assert!(bytes(&stdout_bytes).is_empty());
-        assert!(bytes(&stderr_bytes).contains("injected transaction commit failure"));
-        assert!(!directory.path().join("generated/README.md").exists());
-        assert!(
-            directory
-                .path()
-                .join("generated/.merman.transaction")
-                .is_dir()
-        );
+            let (status, stderr) = run(true);
+            assert_eq!(status, ExitCode::from(3), "{stderr}");
+            assert!(
+                stderr.contains("injected transaction commit failure"),
+                "{stderr}"
+            );
+            assert_eq!(commits.load(Ordering::SeqCst), 1);
+            assert!(transaction.is_dir());
+            let new_bytes = std::fs::read(&artifact).unwrap();
+            assert_ne!(Some(&new_bytes), previous.as_ref());
+            assert_eq!(document.is_file(), replace);
 
-        let (stdout, stdout_bytes) = capture();
-        let (stderr, stderr_bytes) = capture();
-        let second = CliApp {
-            process: snapshot(&args, Ok(directory.path().to_path_buf()), false),
-            execution: execution(Cursor::new(source), stdout, stderr),
-        };
-
-        assert_eq!(second.execute(), ExitCode::SUCCESS);
-        assert!(bytes(&stdout_bytes).is_empty());
-        assert!(bytes(&stderr_bytes).contains("Found 1 mermaid charts"));
-        assert!(directory.path().join("generated/README.md").is_file());
-        assert!(
-            !directory
-                .path()
-                .join("generated/.merman.transaction")
-                .exists()
-        );
+            let (status, stderr) = run(false);
+            assert_eq!(status, ExitCode::SUCCESS, "{stderr}");
+            assert_eq!(std::fs::read(&artifact).unwrap(), new_bytes);
+            assert_eq!(document.is_file(), !strict);
+            if !strict {
+                assert!(
+                    std::fs::read_to_string(&document)
+                        .unwrap()
+                        .starts_with("# New")
+                );
+            }
+            assert!(!transaction.exists());
+        }
     }
 }

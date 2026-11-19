@@ -2667,7 +2667,8 @@ fn layout_er_diagram_elk_typed(
     let bounds = er_layout_bounds(&out_nodes, &out_edges);
     Ok(ErDiagramLayout {
         nodes: out_nodes,
-        render_edges: out_edges.clone(),
+        // ELK's canonical edges already form the SVG-facing projection.
+        render_edges: Vec::new(),
         swimlane: None,
         edges: out_edges,
         clusters,

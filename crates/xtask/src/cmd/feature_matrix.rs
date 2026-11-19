@@ -60,7 +60,11 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
     ("merman-bindings-core", &["native-runtime", "system-fonts"]),
     (
         "merman-cli",
-        &["system-fonts", "experimental-system-font-query"],
+        &[
+            "system-fonts",
+            "platform-system-font-query",
+            "experimental-system-font-query",
+        ],
     ),
     (
         "merman-core",

@@ -8,30 +8,51 @@ use crate::json::{
     ManagedJson, clone_value_nonrecursive, clone_value_nonrecursive_controlled,
     drop_value_nonrecursive,
 };
+#[cfg(feature = "presentation-data")]
+use crate::resources::ModelComplexity;
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::fmt;
 use std::sync::Arc;
+#[cfg(feature = "presentation-data")]
+use std::sync::OnceLock;
 
 #[derive(Clone)]
 pub struct MermaidConfig {
     #[cfg(test)]
     before_value_release: Option<tests::BeforeValueRelease>,
-    value: Arc<ManagedJson>,
+    value: Arc<ConfigValue>,
+}
+
+#[derive(Clone)]
+struct ConfigValue {
+    json: ManagedJson,
+    #[cfg(feature = "presentation-data")]
+    construction_complexity: OnceLock<ModelComplexity>,
+}
+
+impl From<ManagedJson> for ConfigValue {
+    fn from(json: ManagedJson) -> Self {
+        Self {
+            json,
+            #[cfg(feature = "presentation-data")]
+            construction_complexity: OnceLock::new(),
+        }
+    }
 }
 
 impl fmt::Debug for MermaidConfig {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_tuple("MermaidConfig")
-            .field(&self.value)
+            .field(&self.value.json)
             .finish()
     }
 }
 
 impl PartialEq for MermaidConfig {
     fn eq(&self, other: &Self) -> bool {
-        self.value == other.value
+        self.value.json == other.value.json
     }
 }
 
@@ -52,12 +73,17 @@ impl MermaidConfig {
         Self {
             #[cfg(test)]
             before_value_release: None,
-            value: Arc::new(ManagedJson::from_value(value)),
+            value: Arc::new(ManagedJson::from_value(value).into()),
         }
     }
 
     pub fn as_value(&self) -> &Value {
-        self.value.as_value()
+        self.value.json.as_value()
+    }
+
+    #[cfg(feature = "presentation-data")]
+    pub(crate) fn construction_complexity(&self) -> &OnceLock<ModelComplexity> {
+        &self.value.construction_complexity
     }
 
     /// Clones this config without recursion while enforcing a retained-size and nesting budget.
@@ -182,9 +208,12 @@ impl MermaidConfig {
         if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
             #[cfg(any(test, feature = "test-support"))]
             test_support::record_cow_copy();
-            self.value = Arc::new(self.value.as_ref().clone());
+            self.value = Arc::new(self.value.json.clone().into());
         }
-        Arc::make_mut(&mut self.value).as_value_mut()
+        let value = Arc::make_mut(&mut self.value);
+        #[cfg(feature = "presentation-data")]
+        value.construction_complexity.take();
+        value.json.as_value_mut()
     }
 }
 

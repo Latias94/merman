@@ -1,0 +1,354 @@
+use super::*;
+use crate::graph::{
+    GraphPortRef, LNode, LPort, PortType, SelfHyperLoop, SelfLoopHolder, SelfLoopPort,
+};
+use crate::options::LayeredOptions;
+
+struct Budget {
+    remaining: usize,
+    charges: Vec<usize>,
+}
+
+impl WorkControl for Budget {
+    fn check(&mut self, units: usize) -> Result<(), WorkError> {
+        if units <= self.remaining {
+            Ok(())
+        } else {
+            Err(WorkError::Interrupted)
+        }
+    }
+
+    fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+        self.remaining = self
+            .remaining
+            .checked_sub(units)
+            .ok_or(WorkError::Interrupted)?;
+        self.charges.push(units);
+        Ok(())
+    }
+}
+
+fn graph() -> LGraph {
+    let mut graph = LGraph::new("root", LayeredOptions::default());
+    let mut owner = LNode::new("owner", 10.0, 10.0, Some(0));
+    owner.ports.push(LPort::new("a", 0, PortType::Output));
+    owner.ports.push(LPort::new("b", 0, PortType::Output));
+    graph.layerless_nodes.push(owner);
+    graph
+        .layerless_nodes
+        .push(LNode::new("other", 10.0, 10.0, Some(1)));
+    graph
+}
+
+#[test]
+fn nonidentity_rewrite_admits_exact_reference_work_before_installing_the_map() {
+    for available in [1, 11, 12] {
+        let mut graph = graph();
+        let before = graph.clone();
+        let mut context = None;
+        let mut work = Budget {
+            remaining: available,
+            charges: Vec::new(),
+        };
+        let result = apply_port_order(&mut graph, 0, vec![1, 0], &mut work, &mut context);
+        if available == 1 {
+            assert_eq!(result, Err(WorkError::Interrupted));
+            assert_eq!(graph, before);
+            assert!(context.is_none());
+            assert!(work.charges.is_empty());
+            assert_eq!(work.remaining, 1);
+        } else if available == 11 {
+            assert_eq!(result, Err(WorkError::Interrupted));
+            assert_eq!(graph, before);
+            assert_eq!(work.charges, [2]);
+        } else {
+            result.unwrap();
+            assert_eq!(work.charges, [2, 10]);
+            assert_eq!(graph.layerless_nodes[0].ports[0].id, "b");
+            let mut second = Budget {
+                remaining: 10,
+                charges: Vec::new(),
+            };
+            apply_port_order(&mut graph, 0, vec![1, 0], &mut second, &mut context).unwrap();
+            assert_eq!(second.charges, [10]);
+            assert_eq!(graph, before);
+        }
+    }
+}
+
+#[test]
+fn identity_rewrite_needs_no_reference_census_and_still_repairs_owners() {
+    for count in [0, 1, 2] {
+        let mut graph = graph();
+        graph.layerless_nodes[0].ports.truncate(count);
+        for port in &mut graph.layerless_nodes[0].ports {
+            port.node = 99;
+        }
+        let mut work = Budget {
+            remaining: 0,
+            charges: Vec::new(),
+        };
+        let mut context = None;
+        apply_port_order(&mut graph, 0, (0..count).collect(), &mut work, &mut context).unwrap();
+        assert!(context.is_none());
+        assert!(work.charges.is_empty());
+        assert!(
+            graph.layerless_nodes[0]
+                .ports
+                .iter()
+                .all(|port| port.node == 0)
+        );
+    }
+}
+
+#[test]
+fn census_interrupts_before_unadmitted_descendants_and_before_graph_mutation() {
+    let mut graph = graph();
+    let mut child = LGraph::new("child", LayeredOptions::default());
+    child
+        .layerless_nodes
+        .push(LNode::new("leaf", 0.0, 0.0, None));
+    graph.layerless_nodes[0].nested_graph = Some(Box::new(child));
+    let before = graph.clone();
+    let mut work = Budget {
+        remaining: 2,
+        charges: Vec::new(),
+    };
+    let mut context = None;
+    assert_eq!(
+        apply_port_order(&mut graph, 0, vec![1, 0], &mut work, &mut context),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(graph, before);
+    assert!(context.is_none());
+    assert_eq!(work.charges, [2]);
+}
+
+struct RejectAtBoundary {
+    checks_fail: bool,
+    reject_charge: usize,
+    calls: usize,
+}
+
+impl WorkControl for RejectAtBoundary {
+    fn check(&mut self, _units: usize) -> Result<(), WorkError> {
+        if self.checks_fail {
+            Err(WorkError::Interrupted)
+        } else {
+            Ok(())
+        }
+    }
+
+    fn charge(&mut self, _units: usize) -> Result<(), WorkError> {
+        self.calls += 1;
+        if self.calls == self.reject_charge {
+            Err(WorkError::Interrupted)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn failed_charge_or_identity_cancellation_never_installs_a_permutation() {
+    for (identity, fail_check, reject_charge) in
+        [(true, true, 0), (false, false, 1), (false, false, 2)]
+    {
+        let mut graph = graph();
+        graph.layerless_nodes[0].ports[0].node = 99;
+        let before = graph.clone();
+        let mut context = None;
+        let mut work = RejectAtBoundary {
+            checks_fail: fail_check,
+            reject_charge,
+            calls: 0,
+        };
+        let order = if identity { vec![0, 1] } else { vec![1, 0] };
+        assert_eq!(
+            apply_port_order(&mut graph, 0, order, &mut work, &mut context),
+            Err(WorkError::Interrupted)
+        );
+        assert_eq!(graph, before);
+        assert_eq!(work.calls, reject_charge);
+    }
+}
+
+#[test]
+fn a_later_descendant_census_rejection_preserves_the_graph() {
+    let mut graph = graph();
+    let mut child = LGraph::new("child", LayeredOptions::default());
+    let mut parent = LNode::new("parent", 0.0, 0.0, None);
+    let mut grandchild = LGraph::new("grandchild", LayeredOptions::default());
+    grandchild
+        .layerless_nodes
+        .push(LNode::new("leaf", 0.0, 0.0, None));
+    parent.nested_graph = Some(Box::new(grandchild));
+    child.layerless_nodes.push(parent);
+    graph.layerless_nodes[0].nested_graph = Some(Box::new(child));
+    let before = graph.clone();
+    let mut work = Budget {
+        remaining: 4,
+        charges: Vec::new(),
+    };
+    let mut context = None;
+    assert_eq!(
+        apply_port_order(&mut graph, 0, vec![1, 0], &mut work, &mut context),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(graph, before);
+    assert!(context.is_none());
+    assert_eq!(work.charges, [2, 2]);
+    let mut charge_failure = RejectAtBoundary {
+        checks_fail: false,
+        reject_charge: 3,
+        calls: 0,
+    };
+    assert_eq!(
+        apply_port_order(&mut graph, 0, vec![1, 0], &mut charge_failure, &mut context),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(graph, before);
+    assert!(context.is_none());
+    assert_eq!(charge_failure.calls, 3);
+}
+
+#[test]
+fn side_range_interruption_keeps_the_admitted_south_permutation() {
+    let mut graph = graph();
+    graph.layerless_nodes[0].ports.clear();
+    for index in 0..6 {
+        let mut port = LPort::new(format!("p{index}"), 0, PortType::Output);
+        port.side = if index < 3 {
+            PortSide::South
+        } else {
+            PortSide::West
+        };
+        graph.layerless_nodes[0].ports.push(port);
+    }
+    let original = graph.clone();
+    let mut work = Budget {
+        remaining: 12,
+        charges: Vec::new(),
+    };
+    let mut context = None;
+    assert_eq!(
+        reverse_west_and_south_side(&mut graph, 0, &mut work, &mut context),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(work.charges, [2, 10]);
+    assert_eq!(
+        graph.layerless_nodes[0]
+            .ports
+            .iter()
+            .map(|port| port.id.as_str())
+            .collect::<Vec<_>>(),
+        ["p4", "p3", "p2", "p1", "p0", "p5"]
+    );
+    let mut retry = Budget {
+        remaining: 12,
+        charges: Vec::new(),
+    };
+    reverse_west_and_south_side(&mut graph, 0, &mut retry, &mut None).unwrap();
+    assert_eq!(graph, original);
+}
+
+#[test]
+fn reference_context_reuses_counts_across_owners_with_nested_and_long_edge_refs() {
+    let mut graph = graph();
+    graph.layerless_nodes[1].ports = vec![
+        LPort::new("other-a", 1, PortType::Input),
+        LPort::new("other-b", 1, PortType::Input),
+    ];
+    graph.layerless_nodes[0].long_edge_target = Some(PortRef { node: 1, port: 1 });
+    graph.layerless_nodes[1].long_edge_source = Some(PortRef { node: 0, port: 0 });
+    let mut child = LGraph::new("child", LayeredOptions::default());
+    for (node, port) in [(0, 0), (1, 1)] {
+        let mut external = LNode::new(format!("external-{node}"), 0.0, 0.0, None);
+        external.origin_port = Some(GraphPortRef {
+            graph_id: "root".to_string(),
+            port: PortRef { node, port },
+        });
+        child.layerless_nodes.push(external);
+    }
+    graph.layerless_nodes[0].nested_graph = Some(Box::new(child));
+    let mut context = None;
+    let mut first = Budget {
+        remaining: 17,
+        charges: Vec::new(),
+    };
+    apply_port_order(&mut graph, 0, vec![1, 0], &mut first, &mut context).unwrap();
+    assert_eq!(first.charges, [2, 3, 12]);
+    let mut second = Budget {
+        remaining: 12,
+        charges: Vec::new(),
+    };
+    apply_port_order(&mut graph, 1, vec![1, 0], &mut second, &mut context).unwrap();
+    assert_eq!(second.charges, [12]);
+    assert_eq!(
+        graph.layerless_nodes[0].long_edge_target,
+        Some(PortRef { node: 1, port: 0 })
+    );
+    assert_eq!(
+        graph.layerless_nodes[1].long_edge_source,
+        Some(PortRef { node: 0, port: 1 })
+    );
+    let nested = graph.layerless_nodes[0].nested_graph.as_ref().unwrap();
+    assert_eq!(
+        nested.layerless_nodes[0].origin_port.as_ref().unwrap().port,
+        PortRef { node: 0, port: 1 }
+    );
+    assert_eq!(
+        nested.layerless_nodes[1].origin_port.as_ref().unwrap().port,
+        PortRef { node: 1, port: 0 }
+    );
+}
+
+#[test]
+fn later_loop_census_check_and_charge_failures_preserve_the_graph() {
+    let mut graph = graph();
+    let hyper_loop = |port| SelfHyperLoop {
+        ports: vec![SelfLoopPort {
+            port,
+            had_only_self_loops: true,
+            hidden: false,
+        }],
+        edges: Vec::new(),
+        labels: None,
+        self_loop_type: None,
+        leftmost_port: None,
+        rightmost_port: None,
+        occupied_sides: Vec::new(),
+        routing_slots: [0; 5],
+    };
+    graph.self_loop_holders.push(SelfLoopHolder {
+        node: 0,
+        hyper_loops: vec![hyper_loop(0), hyper_loop(1)],
+        ports_hidden: false,
+        original_port_constraints: PortConstraints::Free,
+    });
+    let before = graph.clone();
+    let mut work = Budget {
+        remaining: 5,
+        charges: Vec::new(),
+    };
+    let mut context = None;
+    assert_eq!(
+        apply_port_order(&mut graph, 0, vec![1, 0], &mut work, &mut context),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(work.charges, [3, 2]);
+    assert_eq!(graph, before);
+    assert!(context.is_none());
+    let mut failure = RejectAtBoundary {
+        checks_fail: false,
+        reject_charge: 3,
+        calls: 0,
+    };
+    assert_eq!(
+        apply_port_order(&mut graph, 0, vec![1, 0], &mut failure, &mut context),
+        Err(WorkError::Interrupted)
+    );
+    assert_eq!(failure.calls, 3);
+    assert_eq!(graph, before);
+    assert!(context.is_none());
+}

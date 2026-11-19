@@ -1,8 +1,7 @@
 //! Pure Mermaid line-hop geometry.
 //!
-//! This is a DOM-free port of Mermaid's `lineJump.ts`. Callers retain ownership
-//! of curve/path eligibility and can consume the returned SVG `d` strings
-//! directly once the caller has applied the source-backed curve eligibility rule.
+//! This is a DOM-free port of Mermaid's `lineJump.ts`. Callers supply the curve
+//! eligibility rule and keep their original SVG paths wherever no override is emitted.
 
 use crate::model::LayoutPoint;
 use crate::resources::OperationWorkMeter;
@@ -26,7 +25,6 @@ pub(in crate::svg::parity) enum LineHopStyle {
 
 #[derive(Debug, Clone, Copy)]
 pub(in crate::svg::parity) struct LineHopConfig {
-    pub(in crate::svg::parity) enabled: bool,
     pub(in crate::svg::parity) jump_radius: f64,
     pub(in crate::svg::parity) jump_style: LineHopStyle,
 }
@@ -47,16 +45,6 @@ pub(in crate::svg::parity) struct LineHopCrossing<'a> {
     pub(in crate::svg::parity) segment_index: usize,
     pub(in crate::svg::parity) t: f64,
     pub(in crate::svg::parity) point: LayoutPoint,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(in crate::svg::parity) struct LineHopPath<'a> {
-    pub(in crate::svg::parity) edge_id: &'a str,
-    pub(in crate::svg::parity) path: String,
-    /// At least one arc or gap survived the available-radius checks.
-    pub(in crate::svg::parity) has_hops: bool,
-    /// A crossing triggered after-paint processing, even if all visible hops were suppressed.
-    pub(in crate::svg::parity) was_rewritten: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -294,26 +282,23 @@ pub(in crate::svg::parity) fn find_edge_intersections<'a>(
     Ok(crossings)
 }
 
-pub(in crate::svg::parity) fn process_edges_with_line_hops<'a>(
-    edges: &[LineHopEdge<'a>],
+/// Emit after-paint overrides in edge order, indexed into the supplied edges. A crossing
+/// still triggers an override when available-radius checks suppress every visible hop.
+pub(in crate::svg::parity) fn line_hop_overrides(
+    edges: &[LineHopEdge<'_>],
     config: LineHopConfig,
+    accepts_curve: impl Fn(Option<&str>) -> bool,
     work_meter: &OperationWorkMeter,
-) -> crate::Result<Vec<LineHopPath<'a>>> {
+) -> crate::Result<Vec<(usize, String)>> {
+    // Preserve the admission before intersection discovery, including on crossing-free graphs.
     work_meter.charge(path_emission_work_units(edges))?;
-    if !config.enabled {
-        return Ok(edges
-            .iter()
-            .map(|edge| LineHopPath {
-                edge_id: edge.id,
-                path: plain_path(edge.points),
-                has_hops: false,
-                was_rewritten: false,
-            })
-            .collect());
+    let crossings = find_edge_intersections(edges, work_meter)?;
+    if crossings.is_empty() {
+        return Ok(Vec::new());
     }
 
-    let mut jumps_by_edge: HashMap<&'a str, Vec<LineHopCrossing<'a>>> = HashMap::new();
-    for crossing in find_edge_intersections(edges, work_meter)? {
+    let mut jumps_by_edge: HashMap<&str, Vec<LineHopCrossing<'_>>> = HashMap::new();
+    for crossing in crossings {
         debug_assert_ne!(crossing.jump_edge_id, crossing.other_edge_id);
         jumps_by_edge
             .entry(crossing.jump_edge_id)
@@ -323,22 +308,11 @@ pub(in crate::svg::parity) fn process_edges_with_line_hops<'a>(
 
     Ok(edges
         .iter()
-        .map(|edge| {
-            let Some(jumps) = jumps_by_edge.get(edge.id) else {
-                return LineHopPath {
-                    edge_id: edge.id,
-                    path: plain_path(edge.points),
-                    has_hops: false,
-                    was_rewritten: false,
-                };
-            };
-            let (path, has_hops) = rewrite_edge_path(*edge, jumps, config);
-            LineHopPath {
-                edge_id: edge.id,
-                path,
-                has_hops,
-                was_rewritten: true,
-            }
+        .copied()
+        .enumerate()
+        .filter_map(|(index, edge)| {
+            let jumps = jumps_by_edge.get(edge.id)?;
+            accepts_curve(edge.curve).then(|| (index, rewrite_edge_path(edge, jumps, config)))
         })
         .collect())
 }
@@ -362,10 +336,9 @@ pub(in crate::svg::parity) fn elk_line_hop_paths<'a>(
         .copied()
         .filter(|edge| edge.points.len() >= 2)
         .collect();
-    let paths = process_edges_with_line_hops(
+    let paths = line_hop_overrides(
         &rendered_edges,
         LineHopConfig {
-            enabled: true,
             jump_radius: 6.0,
             jump_style: if line_hops.and_then(serde_json::Value::as_str) == Some("gap") {
                 LineHopStyle::Gap
@@ -373,13 +346,12 @@ pub(in crate::svg::parity) fn elk_line_hop_paths<'a>(
                 LineHopStyle::Arc
             },
         },
+        curve_supports_line_hops,
         work_meter,
     )?;
     Ok(paths
         .into_iter()
-        .zip(rendered_edges)
-        .filter(|(path, edge)| path.was_rewritten && curve_supports_line_hops(edge.curve))
-        .map(|(path, _)| (path.edge_id, path.path))
+        .map(|(index, path)| (rendered_edges[index].id, path))
         .collect())
 }
 
@@ -724,9 +696,9 @@ fn rewrite_edge_path(
     edge: LineHopEdge<'_>,
     jumps: &[LineHopCrossing<'_>],
     config: LineHopConfig,
-) -> (String, bool) {
+) -> String {
     if edge.points.len() < 2 {
-        return (String::new(), false);
+        return String::new();
     }
 
     let points = apply_marker_offsets(edge.points, edge);
@@ -751,7 +723,6 @@ fn rewrite_edge_path(
 
     let rounded = edge.curve == Some("rounded");
     let mut parts = vec![format!("M{}", point_to_string(&points[0]))];
-    let mut emitted_hop = false;
 
     for (segment_index, segment) in segments.iter().enumerate() {
         let segment_length =
@@ -823,7 +794,6 @@ fn rewrite_edge_path(
                 continue;
             }
             emit_jump(jump, unit_x, unit_y, sweep, config.jump_style, &mut parts);
-            emitted_hop = true;
         }
 
         if let Some(corner) = upcoming_corner {
@@ -844,20 +814,6 @@ fn rewrite_edge_path(
         }
     }
 
-    (parts.join(" "), emitted_hop)
-}
-
-fn plain_path(points: &[LayoutPoint]) -> String {
-    let Some(first) = points.first() else {
-        return String::new();
-    };
-    let mut parts = Vec::with_capacity(points.len());
-    parts.push(format!("M{}", point_to_string(first)));
-    parts.extend(
-        points[1..]
-            .iter()
-            .map(|point| format!("L{}", point_to_string(point))),
-    );
     parts.join(" ")
 }
 
@@ -870,13 +826,16 @@ mod tests {
         super::find_edge_intersections(edges, &meter).expect("unbounded line-hop intersection scan")
     }
 
-    fn process_edges_with_line_hops<'a>(
+    fn line_hop_overrides<'a>(
         edges: &[LineHopEdge<'a>],
         config: LineHopConfig,
-    ) -> Vec<LineHopPath<'a>> {
+    ) -> HashMap<&'a str, String> {
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
-        super::process_edges_with_line_hops(edges, config, &meter)
+        super::line_hop_overrides(edges, config, |_| true, &meter)
             .expect("unbounded line-hop processing")
+            .into_iter()
+            .map(|(index, path)| (edges[index].id, path))
+            .collect()
     }
 
     fn rewrite_style_after_line_hop<'a>(style: &'a str, path: &str) -> std::borrow::Cow<'a, str> {
@@ -967,7 +926,6 @@ mod tests {
 
     fn arc_config(radius: f64) -> LineHopConfig {
         LineHopConfig {
-            enabled: true,
             jump_radius: radius,
             jump_style: LineHopStyle::Arc,
         }
@@ -1176,14 +1134,6 @@ mod tests {
         assert_eq!(error.limit, "max_layout_work_units");
         assert_eq!(error.actual, 4);
         assert_eq!(meter.used(), 0);
-    }
-
-    fn path_for<'a>(paths: &'a [LineHopPath<'_>], id: &str) -> &'a str {
-        &paths
-            .iter()
-            .find(|path| path.edge_id == id)
-            .expect("edge path")
-            .path
     }
 
     #[test]
@@ -1400,23 +1350,19 @@ mod tests {
         let vertical = [point(5.0, 0.0), point(5.0, 10.0)];
         let edges = [edge("horizontal", &horizontal), edge("vertical", &vertical)];
 
-        let arc_paths = process_edges_with_line_hops(&edges, arc_config(1.0));
-        assert_eq!(
-            path_for(&arc_paths, "horizontal"),
-            "M0,5 L4,5 A1,1 0 0 1 6,5 L10,5"
-        );
-        assert_eq!(path_for(&arc_paths, "vertical"), "M5,0 L5,10");
-        assert!(arc_paths[0].has_hops);
-        assert!(!arc_paths[1].has_hops);
+        let arc_paths = line_hop_overrides(&edges, arc_config(1.0));
+        assert_eq!(arc_paths["horizontal"], "M0,5 L4,5 A1,1 0 0 1 6,5 L10,5");
+        assert!(!arc_paths.contains_key("vertical"));
 
-        let gap_paths = process_edges_with_line_hops(
+        let gap_paths = line_hop_overrides(
             &edges,
             LineHopConfig {
                 jump_style: LineHopStyle::Gap,
                 ..arc_config(1.0)
             },
         );
-        assert_eq!(path_for(&gap_paths, "horizontal"), "M0,5 L4,5 M6,5 L10,5");
+        assert_eq!(gap_paths["horizontal"], "M0,5 L4,5 M6,5 L10,5");
+        assert!(!gap_paths.contains_key("vertical"));
     }
 
     #[test]
@@ -1431,10 +1377,7 @@ mod tests {
         ];
 
         assert_eq!(
-            path_for(
-                &process_edges_with_line_hops(&edges, arc_config(1.0)),
-                "horizontal"
-            ),
+            line_hop_overrides(&edges, arc_config(1.0))["horizontal"],
             "M0,5 L3.4,5 A0.8,0.8 0 0 1 5,5 L5,5 A0.8,0.8 0 0 1 6.6,5 L10,5"
         );
     }
@@ -1448,10 +1391,7 @@ mod tests {
             edge("horizontal", &horizontal),
         ];
         assert_eq!(
-            path_for(
-                &process_edges_with_line_hops(&edges, arc_config(2.0)),
-                "horizontal"
-            ),
+            line_hop_overrides(&edges, arc_config(2.0))["horizontal"],
             "M0,0 L10,0"
         );
 
@@ -1460,11 +1400,9 @@ mod tests {
             edge("vertical", &almost_at_start),
             edge("horizontal", &horizontal),
         ];
-        let paths = process_edges_with_line_hops(&tiny_edges, arc_config(2.0));
-        assert_eq!(path_for(&paths, "horizontal"), "M0,0 L10,0");
-        assert!(!paths[1].has_hops);
-        assert!(paths[1].was_rewritten);
-        assert!(!paths[0].was_rewritten);
+        let paths = line_hop_overrides(&tiny_edges, arc_config(2.0));
+        assert_eq!(paths["horizontal"], "M0,0 L10,0");
+        assert!(!paths.contains_key("vertical"));
         let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
         let overrides = elk_line_hop_paths(&serde_json::json!({}), &tiny_edges, &meter).unwrap();
         assert_eq!(overrides["horizontal"], "M0,0 L10,0");
@@ -1478,10 +1416,9 @@ mod tests {
             curve: Some("rounded"),
             ..edge("rounded", &rounded_points)
         };
-        let paths =
-            process_edges_with_line_hops(&[edge("vertical", &vertical), rounded], arc_config(5.0));
+        let paths = line_hop_overrides(&[edge("vertical", &vertical), rounded], arc_config(5.0));
 
-        assert_eq!(path_for(&paths, "rounded"), "M0,5 L15,5 Q20,5 20,10 L20,15");
+        assert_eq!(paths["rounded"], "M0,5 L15,5 Q20,5 20,10 L20,15");
         assert_eq!(ROUNDED_CORNER_RADIUS, 5.0);
     }
 
@@ -1523,13 +1460,13 @@ mod tests {
                 };
                 for edges in [[other, hopping], [hopping, other]] {
                     let crossings = find_edge_intersections(&edges);
-                    let paths = process_edges_with_line_hops(&edges, arc_config(6.0));
+                    let paths = line_hop_overrides(&edges, arc_config(6.0));
                     if curve == Some("rounded") {
                         assert!(crossings.is_empty());
-                        assert!(!path_for(&paths, "edge5").contains('A'));
+                        assert!(paths.is_empty());
                     } else {
                         assert_eq!(crossings.len(), 1);
-                        assert!(path_for(&paths, "edge5").contains("A6,6"));
+                        assert!(paths["edge5"].contains("A6,6"));
                     }
                 }
             }
@@ -1544,13 +1481,7 @@ mod tests {
         };
         let edges = [clear, hopping];
         assert_eq!(find_edge_intersections(&edges).len(), 1);
-        assert!(
-            path_for(
-                &process_edges_with_line_hops(&edges, arc_config(6.0)),
-                "edge5"
-            )
-            .contains("A6,6")
-        );
+        assert!(line_hop_overrides(&edges, arc_config(6.0))["edge5"].contains("A6,6"));
     }
 
     #[test]
@@ -1575,11 +1506,8 @@ mod tests {
             curve: Some("rounded"),
             ..edge("rounded", &points)
         };
-        let paths =
-            process_edges_with_line_hops(&[rounded, edge("vertical", &vertical)], arc_config(6.0));
-        assert!(
-            path_for(&paths, "rounded").contains("L109.071,100 A3.929,3.929 0 0 1 116.929,100")
-        );
+        let paths = line_hop_overrides(&[rounded, edge("vertical", &vertical)], arc_config(6.0));
+        assert!(paths["rounded"].contains("L109.071,100 A3.929,3.929 0 0 1 116.929,100"));
     }
 
     #[test]
@@ -1597,8 +1525,8 @@ mod tests {
             edge("usable", &usable),
         ];
         assert_eq!(find_edge_intersections(&edges).len(), 2);
-        let paths = process_edges_with_line_hops(&edges, arc_config(6.0));
-        let path = path_for(&paths, "rounded");
+        let paths = line_hop_overrides(&edges, arc_config(6.0));
+        let path = &paths["rounded"];
         assert_eq!(path.matches('A').count(), 1);
         assert!(path.contains("L11,0 A6,6 0 0 1 23,0"));
     }
@@ -1614,9 +1542,8 @@ mod tests {
             edge("b", &second),
         ];
         assert_eq!(find_edge_intersections(&edges).len(), 2);
-        let paths = process_edges_with_line_hops(&edges, arc_config(1.0));
-        assert_eq!(path_for(&paths, "h"), "M0,5 L10,5");
-        assert!(!paths[0].has_hops);
+        let paths = line_hop_overrides(&edges, arc_config(1.0));
+        assert_eq!(paths["h"], "M0,5 L10,5");
     }
 
     #[test]
@@ -1642,14 +1569,8 @@ mod tests {
             ..edge("horizontal", &horizontal_points)
         };
         let vertical = [point(10.0, 0.0), point(10.0, 20.0)];
-        let paths = process_edges_with_line_hops(
-            &[horizontal, edge("vertical", &vertical)],
-            arc_config(1.0),
-        );
-        assert_eq!(
-            path_for(&paths, "horizontal"),
-            "M0,5 L9,5 A1,1 0 0 1 11,5 L16,5"
-        );
+        let paths = line_hop_overrides(&[horizontal, edge("vertical", &vertical)], arc_config(1.0));
+        assert_eq!(paths["horizontal"], "M0,5 L9,5 A1,1 0 0 1 11,5 L16,5");
 
         let long_horizontal_points = [point(0.0, 5.0), point(40.0, 5.0)];
         let both_markers = LineHopEdge {
@@ -1658,31 +1579,25 @@ mod tests {
             ..edge("both-markers", &long_horizontal_points)
         };
         let vertical = [point(20.0, 0.0), point(20.0, 20.0)];
-        let paths = process_edges_with_line_hops(
+        let paths = line_hop_overrides(
             &[both_markers, edge("vertical", &vertical)],
             arc_config(1.0),
         );
-        assert_eq!(
-            path_for(&paths, "both-markers"),
-            "M4,5 L19,5 A1,1 0 0 1 21,5 L34,5"
-        );
+        assert_eq!(paths["both-markers"], "M4,5 L19,5 A1,1 0 0 1 21,5 L34,5");
     }
 
     #[test]
     fn reverse_segments_use_the_upward_or_rightward_arc_sweep() {
         let descending_horizontal = [point(10.0, 5.0), point(0.0, 5.0)];
         let vertical = [point(5.0, 0.0), point(5.0, 10.0)];
-        let paths = process_edges_with_line_hops(
+        let paths = line_hop_overrides(
             &[
                 edge("horizontal", &descending_horizontal),
                 edge("vertical", &vertical),
             ],
             arc_config(1.0),
         );
-        assert_eq!(
-            path_for(&paths, "horizontal"),
-            "M10,5 L6,5 A1,1 0 0 0 4,5 L0,5"
-        );
+        assert_eq!(paths["horizontal"], "M10,5 L6,5 A1,1 0 0 0 4,5 L0,5");
 
         let down_start = point(5.0, 0.0);
         let down_end = point(5.0, 10.0);
@@ -1705,20 +1620,27 @@ mod tests {
     }
 
     #[test]
-    fn disabled_config_returns_plain_polylines() {
-        let horizontal = [point(0.0, 5.0), point(10.0, 5.0)];
-        let vertical = [point(5.0, 0.0), point(5.0, 10.0)];
-        let paths = process_edges_with_line_hops(
-            &[edge("horizontal", &horizontal), edge("vertical", &vertical)],
-            LineHopConfig {
-                enabled: false,
-                ..arc_config(1.0)
-            },
-        );
-
-        assert_eq!(path_for(&paths, "horizontal"), "M0,5 L10,5");
-        assert_eq!(path_for(&paths, "vertical"), "M5,0 L5,10");
-        assert!(paths.iter().all(|path| !path.has_hops));
+    fn crossing_free_edges_have_no_overrides_and_keep_their_work_admission() {
+        let left = [point(0.0, 5.0), point(10.0, 5.0)];
+        let right = [point(20.0, 5.0), point(30.0, 5.0)];
+        let edges = [edge("left", &left), edge("right", &right)];
+        for (limit, accepted_work, expected) in [(5, 0, 6), (9, 6, 10), (10, 10, 10)] {
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+                .with_limit(ResourceLimitId::MaxLayoutWorkUnits, limit)
+                .unwrap();
+            let meter = OperationWorkMeter::new(policy);
+            let result = super::line_hop_overrides(&edges, arc_config(1.0), |_| true, &meter);
+            if limit < expected {
+                let crate::Error::ResourceLimitExceeded(error) = result.unwrap_err() else {
+                    panic!("expected line-hop resource limit");
+                };
+                assert_eq!(error.limit, "max_layout_work_units");
+                assert_eq!(error.actual, expected);
+            } else {
+                assert!(result.unwrap().is_empty());
+            }
+            assert_eq!(meter.used(), accepted_work);
+        }
     }
 
     #[test]

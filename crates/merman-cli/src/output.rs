@@ -70,6 +70,8 @@ pub(crate) struct PublicationGuards {
     scopes: Vec<Arc<PublicationScope>>,
     #[cfg(feature = "markdown")]
     transaction_root: Option<Arc<DirectoryGuard>>,
+    #[cfg(feature = "markdown")]
+    recovered_generations: HashMap<PathBuf, RestoredTransactionTarget>,
 }
 
 #[cfg(feature = "markdown")]
@@ -84,6 +86,13 @@ pub(crate) struct ApprovedTransactionRoot {
 pub(crate) struct ApprovedTransactionTarget {
     path: PathBuf,
     generation: crate::transaction::TargetGeneration,
+}
+
+#[cfg(feature = "markdown")]
+#[derive(Debug, Clone)]
+struct RestoredTransactionTarget {
+    generation: crate::transaction::TargetGeneration,
+    replaces_preflight: bool,
 }
 
 #[cfg(feature = "markdown")]
@@ -154,7 +163,7 @@ struct GuardedInput {
 }
 
 impl PublicationGuards {
-    fn new(cwd: Option<&Path>) -> Self {
+    pub(crate) fn new(cwd: Option<&Path>) -> Self {
         #[cfg(not(any(feature = "fixes", feature = "svg", feature = "ascii")))]
         let _ = cwd;
         Self {
@@ -166,6 +175,8 @@ impl PublicationGuards {
             scopes: Vec::new(),
             #[cfg(feature = "markdown")]
             transaction_root: None,
+            #[cfg(feature = "markdown")]
+            recovered_generations: HashMap::new(),
         }
     }
 
@@ -361,12 +372,47 @@ impl PublicationGuards {
             })?;
         self.verify()?;
         scope.parent.verify_anchor()?;
-        Ok(ApprovedTransactionTarget {
-            path: scope.parent.expected.join(file_name),
-            generation: crate::transaction::TargetGeneration::from_preflight_identity(
-                scope.matcher.target_identity(file_name),
-            ),
-        })
+        let path = scope.parent.expected.join(file_name);
+        let generation = self
+            .recovered_generations
+            .get(&path)
+            .filter(|restored| restored.replaces_preflight)
+            .map(|restored| restored.generation.clone())
+            .unwrap_or_else(|| {
+                crate::transaction::TargetGeneration::from_preflight_identity(
+                    scope.matcher.target_identity(file_name),
+                )
+            });
+        Ok(ApprovedTransactionTarget { path, generation })
+    }
+
+    #[cfg(feature = "markdown")]
+    pub(crate) fn record_restored_transaction_target(
+        &mut self,
+        target: &Path,
+        before: Option<&same_file::Handle>,
+        restored: Option<same_file::Handle>,
+    ) {
+        let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+            return;
+        };
+        let replaces_preflight = self
+            .scopes
+            .iter()
+            .find(|scope| scope.parent.expected == parent && scope.matcher.contains_file_name(name))
+            .is_some_and(|scope| scope.matcher.target_identity(name).as_deref() == before)
+            && !self.protected.iter().any(|input| {
+                input.canonical == target || restored.as_ref() == Some(input.identity.as_ref())
+            });
+        self.recovered_generations.insert(
+            target.to_path_buf(),
+            RestoredTransactionTarget {
+                generation: crate::transaction::TargetGeneration::from_preflight_identity(
+                    restored.map(Arc::new),
+                ),
+                replaces_preflight,
+            },
+        );
     }
 
     #[cfg(feature = "markdown")]
@@ -2169,7 +2215,7 @@ pub(crate) trait PublicationBackend {
     #[cfg(feature = "markdown")]
     fn acquire_transaction(
         &mut self,
-        publications: &PublicationGuards,
+        publications: &mut PublicationGuards,
     ) -> Result<AcquiredTransaction, CliError>;
 
     #[cfg(feature = "markdown")]
@@ -2284,15 +2330,22 @@ impl AcquiredTransaction {
             }
         }
         publications.verify()?;
-
         let file_name = requested.file_name().ok_or_else(|| {
             CliError::InvalidOutput(format!(
                 "generation-owned stale artifact {} must name a file",
                 safe_path(&requested)
             ))
         })?;
+        let path = self.root.join(file_name);
+        if let Some(restored) = publications.recovered_generations.get(&path)
+            && !restored
+                .generation
+                .matches_identity(inspected.identity.as_deref())
+        {
+            return Err(publication_target_changed(&path));
+        }
         Ok(ApprovedTransactionTarget {
-            path: self.root.join(file_name),
+            path,
             generation: crate::transaction::TargetGeneration::from_preflight_identity(
                 inspected.identity,
             ),
@@ -2331,11 +2384,12 @@ impl PublicationBackend for SystemPublicationBackend {
     #[cfg(feature = "markdown")]
     fn acquire_transaction(
         &mut self,
-        publications: &PublicationGuards,
+        publications: &mut PublicationGuards,
     ) -> Result<AcquiredTransaction, CliError> {
         let approved = publications.prepare_transaction_root()?;
         let root = approved.path().to_path_buf();
-        let locked = crate::transaction::LockedRecoveredRoot::acquire_approved(approved)?;
+        let locked =
+            crate::transaction::LockedRecoveredRoot::acquire_approved(approved, publications)?;
         Ok(AcquiredTransaction { root, locked })
     }
 }
@@ -2762,6 +2816,54 @@ mod tests {
                 content: None,
             }
         );
+    }
+
+    #[cfg(feature = "markdown")]
+    #[test]
+    fn stale_artifact_approval_preserves_the_identity_installed_by_recovery() {
+        use crate::transaction::{
+            LockedRecoveredRoot, RelativeTarget, TransactionEntryPlan, TransactionPlan,
+            TransactionRole,
+        };
+
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path().canonicalize().unwrap();
+        let path = root.join("stale.svg");
+        std::fs::write(&path, b"retained").unwrap();
+        let artifact = RelativeTarget::from_absolute(&root, &path).unwrap();
+        let manifest =
+            RelativeTarget::from_absolute(&root, root.join(".merman-manifest.json")).unwrap();
+        let plan = TransactionPlan::new([
+            TransactionEntryPlan::write(TransactionRole::Artifact, artifact.clone()),
+            TransactionEntryPlan::write(TransactionRole::Manifest, manifest.clone()),
+        ])
+        .unwrap();
+        let mut staging = LockedRecoveredRoot::acquire(&root)
+            .unwrap()
+            .begin(plan)
+            .unwrap();
+        staging.stage_bytes(&artifact, b"interrupted").unwrap();
+        staging.stage_bytes(&manifest, b"new manifest").unwrap();
+        staging.ready().unwrap().interrupt_after_publish(0);
+
+        let mut guards = PublicationGuards::new(Some(&root));
+        guards
+            .approve_transaction_root(
+                prospective_directory(&root, &root, MissingParent::Reject).unwrap(),
+            )
+            .unwrap();
+        let acquired = SystemPublicationBackend
+            .acquire_transaction(&mut guards)
+            .unwrap();
+        assert_eq!(std::fs::read(&path).unwrap(), b"retained");
+        acquired.approve_stale_artifact(&guards, &artifact).unwrap();
+        let other_file = root.join("external.svg");
+        std::fs::write(&other_file, b"retained").unwrap();
+        std::fs::rename(other_file, &path).unwrap();
+        let error = acquired
+            .approve_stale_artifact(&guards, &artifact)
+            .unwrap_err();
+        assert!(error.to_string().contains("identity changed"), "{error}");
     }
 
     #[cfg(all(feature = "markdown", unix))]

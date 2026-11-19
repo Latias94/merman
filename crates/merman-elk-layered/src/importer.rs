@@ -1375,17 +1375,18 @@ fn needs_model_order_based_on_input_parent(index: &InputIndex<'_>, child: &ElkIn
     let Some(parent_id) = child.parent.as_deref() else {
         return needs_model_order_based_on_parent(&index.root_options);
     };
-    let Some(parent_options) = index.effective_options.get(parent_id) else {
+    let Some(parent_options) = index.container_options.get(parent_id) else {
         return false;
     };
     needs_model_order_based_on_parent(parent_options)
 }
 
 fn input_node_uses_include_children_layout(index: &InputIndex<'_>, node: &ElkInputNode) -> bool {
-    index
-        .effective_options
-        .get(node.id.as_str())
-        .is_some_and(|options| options.hierarchy_handling == HierarchyHandling::IncludeChildren)
+    // Leaves still participate in the edge-scope traversal through their own override or parent.
+    resolve_child_hierarchy_handling(
+        node.hierarchy_handling,
+        index.options_for_parent(node.parent.as_deref()),
+    ) == HierarchyHandling::IncludeChildren
 }
 
 fn input_edge_containing_parent<'a>(
@@ -2029,7 +2030,8 @@ struct InputIndex<'a> {
     edges_by_parent: HashMap<Option<&'a str>, Vec<&'a ElkInputEdge>>,
     inside_self_loop_nodes: HashSet<&'a str>,
     root_options: LayeredOptions,
-    effective_options: HashMap<&'a str, LayeredOptions>,
+    // Complete node-owned options are needed only for nodes that actually contain children.
+    container_options: HashMap<&'a str, LayeredOptions>,
     hierarchy_queries: HierarchyQueryIndex,
     container_depths: Vec<Option<usize>>,
     materialized_graph_depths: Vec<Option<usize>>,
@@ -2109,22 +2111,29 @@ impl<'a> InputIndex<'a> {
         root_options.direction = resolve_direction(root_options.direction);
         root_options.hierarchy_handling =
             resolve_root_hierarchy_handling(root_options.hierarchy_handling);
-        let mut effective_options = HashMap::with_capacity(input.nodes.len());
-        let mut option_search = root_children
+        let mut container_options = HashMap::with_capacity(children_by_parent.len());
+        let mut container_search = root_children
             .iter()
             .rev()
             .copied()
-            .map(|node| (node, root_options.clone()))
+            .filter(|node| children_by_parent.contains_key(node.id.as_str()))
             .collect::<Vec<_>>();
-        while let Some((node, parent_options)) = option_search.pop() {
-            let options = nested_graph_options(&parent_options, node);
-            effective_options.insert(node.id.as_str(), options.clone());
-            option_search.extend(
-                children_by_parent
-                    .get(node.id.as_str())
-                    .into_iter()
-                    .flat_map(|children| children.iter().rev().copied())
-                    .map(|child| (child, options.clone())),
+        while let Some(node) = container_search.pop() {
+            // Every non-root container has a container parent already visited by this traversal.
+            let parent_options = node
+                .parent
+                .as_deref()
+                .and_then(|parent| container_options.get(parent))
+                .unwrap_or(&root_options);
+            let options = nested_graph_options(parent_options, node);
+            container_options.insert(node.id.as_str(), options);
+            // Membership entries are created only when an actual child is appended.
+            container_search.extend(
+                children_by_parent[node.id.as_str()]
+                    .iter()
+                    .rev()
+                    .copied()
+                    .filter(|child| children_by_parent.contains_key(child.id.as_str())),
             );
         }
 
@@ -2144,7 +2153,7 @@ impl<'a> InputIndex<'a> {
             edges_by_parent: HashMap::new(),
             inside_self_loop_nodes,
             root_options,
-            effective_options,
+            container_options,
             hierarchy_queries,
             container_depths: vec![None; input.nodes.len()],
             materialized_graph_depths: vec![None; input.nodes.len()],
@@ -2207,7 +2216,7 @@ impl<'a> InputIndex<'a> {
 
     fn options_for_parent(&self, parent: Option<&str>) -> &LayeredOptions {
         parent
-            .and_then(|parent| self.effective_options.get(parent))
+            .and_then(|parent| self.container_options.get(parent))
             .unwrap_or(&self.root_options)
     }
 
@@ -2462,6 +2471,9 @@ fn detect_parent_cycles<'a>(
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod container_options_tests;
 
 #[cfg(test)]
 mod tests {

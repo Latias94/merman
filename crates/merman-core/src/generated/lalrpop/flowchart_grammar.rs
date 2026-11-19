@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: ddcc4c157eebe51ac6e1e9a304af8aa9cad045b7c158e909ee9fd9386816c320
+// sha3: f05d60ec081b57bdb42a1f731a18ee548715236cc8017484861404d0382f3987
 // features:
 use crate::diagrams::flowchart::{
   ArrowToken, ClassAssignStmt, ClassDefStmt, ClickStmt, DirectionStatementToken, Edge, FlowchartAst,
@@ -3166,7 +3166,7 @@ fn __action23<
 ) -> Result<(Vec<Vec<Node>>, Vec<Vec<Edge>>),__lalrpop_util::ParseError<usize,Tok,crate::diagrams::flowchart::LexError>>
 {
     {
-    let mut node_groups: Vec<Vec<Node>> = vec![start.clone()];
+    let mut node_groups: Vec<Vec<Node>> = Vec::with_capacity(1);
     let mut edge_groups: Vec<Vec<Edge>> = Vec::new();
 
     let mut prev_group = start;
@@ -3229,9 +3229,10 @@ fn __action23<
         }
       }
       edge_groups.push(segment_edges);
-      node_groups.push(next_group.clone());
+      node_groups.push(prev_group);
       prev_group = next_group;
     }
+    node_groups.push(prev_group);
 
     Ok((node_groups, edge_groups))
   }

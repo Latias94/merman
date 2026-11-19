@@ -619,6 +619,172 @@ test("data-only responses require operation identity and omit metadata", () => {
   );
 });
 
+test("data-only and metadata responses preserve literal and escaped Unicode", () => {
+  const data = 'é汉😀e\u0301א\u0000"\\\n';
+  for (const includeMetadata of [false, true]) {
+    const wire = successEnvelope(SVG_EXPECTATION, data, {
+      result: includeMetadata ? {} : { metadata_json: undefined },
+    });
+    const escapedWire = wire.replace(/[\u007f-\uffff]/g, (unit) =>
+      `\\u${unit.charCodeAt(0).toString(16).padStart(4, "0")}`,
+    );
+    for (const text of [wire, escapedWire]) {
+      const result = decodeWireResponse(text, SVG_EXPECTATION, { includeMetadata });
+      assert.equal(includeMetadata ? result.data : result, data);
+      if (includeMetadata) {
+        assert.equal(JSON.parse(result.metadata_json).byte_length, Buffer.byteLength(data));
+      }
+    }
+  }
+  assert.throws(
+    () => decodeWireResponse(successEnvelope(SVG_EXPECTATION, data, {
+      metadata: { byte_length: data.length },
+    }), SVG_EXPECTATION),
+    /operation metadata does not match/i,
+  );
+});
+
+test("data-only decoding handles duplicate, nested and escaped keys without selecting token facts", () => {
+  const prefix = '{"version":1,"ok":true,"result":{' +
+    '"operation_id":"svg","media_type":"image/svg+xml",';
+  for (const [members, expected] of [
+    ['"data":"first","future":{"data":"nested"},"d\\u0061ta":"\\u00e9\\ud83d\\ude00"', "é😀"],
+    ['"d\\u0061ta":"first","future":[{"data":"nested"}],"data":"last"', "last"],
+    ['"data":null,"data":17,"d\\u0061ta":"last"', "last"],
+  ]) {
+    assert.equal(
+      decodeWireResponse(`${prefix}${members}}}`, SVG_EXPECTATION, { includeMetadata: false }),
+      expected,
+    );
+  }
+  assert.throws(
+    () => decodeWireResponse(`${prefix}"data":"first","data":null}}`, SVG_EXPECTATION, {
+      includeMetadata: false,
+    }),
+    /invalid result envelope/i,
+  );
+});
+
+test("data-only responses reject invalid Unicode in every string token position", () => {
+  const prefix = '{"version":1,"ok":true,"result":{' +
+    '"operation_id":"svg","media_type":"image/svg+xml",';
+  for (const members of [
+    '"data":"\\ud800","data":"ok"',
+    '"data":"ok","d\\u0061ta":"\\udc00"',
+    '"data":"\\ud800\\u0041"',
+    '"data":"ok","future":{"data":"\\ud800"}',
+    '"data":"ok","future":["\\udc00"]',
+    '"data":"ok","\\ud800":0',
+  ]) {
+    assert.throws(
+      () => decodeWireResponse(`${prefix}${members}}}`, SVG_EXPECTATION, {
+        includeMetadata: false,
+      }),
+      { code: "MERMAN_INVALID_TRANSPORT", message: /isolated JSON surrogate escape/i },
+    );
+  }
+  for (const unit of [0xd800, 0xdc00]) {
+    assert.throws(
+      () => decodeWireResponse(`${prefix}"data":"${String.fromCharCode(unit)}"}}`, SVG_EXPECTATION, {
+        includeMetadata: false,
+      }),
+      { code: "MERMAN_INVALID_TRANSPORT", message: /isolated UTF-16 surrogate/i },
+    );
+  }
+});
+
+test("data-only responses preserve invalid-result, identity and metadata error order", () => {
+  for (const [result, message] of [
+    [{ data: null, operation_id: "semantic-json" }, /invalid result envelope/i],
+    [{ operation_id: "x".repeat(NODE_TRANSPORT_FIELD_LIMITS.operation_id_utf8_bytes + 1) },
+      /response operation_id exceeds.*field limit/i],
+    [{ media_type: "x".repeat(NODE_TRANSPORT_FIELD_LIMITS.media_type_utf8_bytes + 1) },
+      /response media_type exceeds.*field limit/i],
+    [{ operation_id: "semantic-json" }, /result identity/i],
+    [{ metadata_json: 0 }, /metadata for a data-only operation/i],
+  ]) {
+    assert.throws(
+      () => decodeWireResponse(successEnvelope(SVG_EXPECTATION, "ok", { result }), SVG_EXPECTATION, {
+        includeMetadata: false,
+      }),
+      { code: "MERMAN_INVALID_TRANSPORT", message },
+    );
+  }
+  const inexactVersion = successEnvelope(SVG_EXPECTATION, "ok", {
+    result: { operation_id: "semantic-json" },
+  }).replace('"version":1,', '"version":1.0000000000000001,');
+  assert.throws(
+    () => decodeWireResponse(inexactVersion, SVG_EXPECTATION, { includeMetadata: false }),
+    /exact JSON-safe integers/i,
+  );
+});
+
+test("inherited data retains exact validation before identity and metadata checks", { concurrency: false }, () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Object.prototype, "data");
+  const ownWire = successEnvelope(SVG_EXPECTATION, "own", {
+    result: { metadata_json: undefined },
+  });
+  for (const [data, message] of [
+    ["é😀", null],
+    [String.fromCharCode(0xd800), /response data contains an isolated UTF-16 surrogate/i],
+    [String.fromCharCode(0xdc00), /response data contains an isolated UTF-16 surrogate/i],
+    ["x".repeat(NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes + 1),
+      /response data exceeds.*field limit/i],
+  ]) {
+    for (const includeMetadata of [false, true]) {
+      const result = { data: undefined };
+      if (message) result.operation_id = "semantic-json";
+      else if (!includeMetadata) result.metadata_json = undefined;
+      const wire = successEnvelope(SVG_EXPECTATION, data, { result });
+      try {
+        Object.defineProperty(Object.prototype, "data", {
+          configurable: true, writable: true, value: data,
+        });
+        if (message) {
+          assert.throws(
+            () => decodeWireResponse(wire, SVG_EXPECTATION, { includeMetadata }),
+            { code: "MERMAN_INVALID_TRANSPORT", message },
+          );
+        } else {
+          const decoded = decodeWireResponse(wire, SVG_EXPECTATION, { includeMetadata });
+          assert.equal(includeMetadata ? decoded.data : decoded, data);
+        }
+        assert.equal(decodeWireResponse(ownWire, SVG_EXPECTATION, { includeMetadata: false }), "own");
+      } finally {
+        if (descriptor) Object.defineProperty(Object.prototype, "data", descriptor);
+        else Reflect.deleteProperty(Object.prototype, "data");
+      }
+    }
+  }
+});
+
+test("inherited result objects cannot bypass data Unicode or field validation", { concurrency: false }, () => {
+  const descriptor = Object.getOwnPropertyDescriptor(Object.prototype, "result");
+  for (const [data, message] of [
+    ["é😀", null],
+    [String.fromCharCode(0xd800), /response data contains an isolated UTF-16 surrogate/i],
+    ["x".repeat(NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes + 1),
+      /response data exceeds.*field limit/i],
+  ]) {
+    const result = JSON.parse(successEnvelope(SVG_EXPECTATION, data)).result;
+    delete result.metadata_json;
+    if (message) result.operation_id = "semantic-json";
+    try {
+      Object.defineProperty(Object.prototype, "result", {
+        configurable: true, writable: true, value: result,
+      });
+      const decode = () => decodeWireResponse('{"version":1,"ok":true}', SVG_EXPECTATION, {
+        includeMetadata: false,
+      });
+      if (message) assert.throws(decode, { code: "MERMAN_INVALID_TRANSPORT", message });
+      else assert.equal(decode(), data);
+    } finally {
+      if (descriptor) Object.defineProperty(Object.prototype, "result", descriptor);
+      else Reflect.deleteProperty(Object.prototype, "result");
+    }
+  }
+});
+
 test("success metadata integer tokens and deterministic policy remain exact", () => {
   const exactMetadata =
     '{"version":1e0,"operation_id":"svg","media_type":"image/svg+xml",' +
@@ -969,20 +1135,60 @@ test("error envelopes enforce discriminants, known relations, and capability ide
 });
 
 test("response data field accepts its exact UTF-8 ceiling and rejects plus one", () => {
-  const exactData = "x".repeat(NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes);
-  const result = decodeWireResponse(
-    successEnvelope(SVG_EXPECTATION, exactData),
-    SVG_EXPECTATION,
-  );
-  assert.equal(result.data.length, exactData.length);
-  assert.throws(
-    () =>
-      decodeWireResponse(
-        successEnvelope(SVG_EXPECTATION, `${exactData}x`),
+  const limit = NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes;
+  const exactData = "é😀".repeat(Math.floor(limit / 6)) + "x".repeat(limit % 6);
+  assert.equal(Buffer.byteLength(exactData), limit);
+  for (const includeMetadata of [false, true]) {
+    const result = includeMetadata ? {} : { metadata_json: undefined };
+    const decoded = decodeWireResponse(
+      successEnvelope(SVG_EXPECTATION, exactData, { result }),
+      SVG_EXPECTATION,
+      { includeMetadata },
+    );
+    assert.equal(includeMetadata ? decoded.data : decoded, exactData);
+    assert.throws(
+      () => decodeWireResponse(
+        successEnvelope(SVG_EXPECTATION, `${exactData}x`, { result }),
         SVG_EXPECTATION,
+        { includeMetadata },
       ),
-    /field limit/i,
-  );
+      /response contains a string exceeding.*field limit/i,
+    );
+  }
+  const oversizedToken = JSON.stringify(`${exactData}x`);
+  for (const members of [
+    `"data":${oversizedToken},"data":"ok"`,
+    `"data":"ok","future":[{"data":${oversizedToken}}]`,
+  ]) {
+    assert.throws(
+      () => decodeWireResponse(
+        '{"version":1,"ok":true,"result":{' +
+          `"operation_id":"svg","media_type":"image/svg+xml",${members}}}`,
+        SVG_EXPECTATION,
+        { includeMetadata: false },
+      ),
+      /response contains a string exceeding.*field limit/i,
+    );
+  }
+});
+
+test("data-only and metadata responses retain exact and plus-one wire limits", () => {
+  const limits = NODE_TRANSPORT_LIMITS.response;
+  const data = "é😀";
+  for (const includeMetadata of [false, true]) {
+    const future = ["x".repeat(limits.max_string_utf8_bytes), ""];
+    const result = includeMetadata ? { future } : { future, metadata_json: undefined };
+    const baseWire = successEnvelope(SVG_EXPECTATION, data, { result });
+    future[1] = "x".repeat(limits.max_utf8_bytes - Buffer.byteLength(baseWire));
+    const exactWire = successEnvelope(SVG_EXPECTATION, data, { result });
+    assert.equal(Buffer.byteLength(exactWire), limits.max_utf8_bytes);
+    const decoded = decodeWireResponse(exactWire, SVG_EXPECTATION, { includeMetadata });
+    assert.equal(includeMetadata ? decoded.data : decoded, data);
+    assert.throws(
+      () => decodeWireResponse(`${exactWire} `, SVG_EXPECTATION, { includeMetadata }),
+      /response exceeds.*wire limit/i,
+    );
+  }
 });
 
 test("binding option normalization rejects non-JSON host values without invoking accessors", () => {

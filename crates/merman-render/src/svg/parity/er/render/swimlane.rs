@@ -391,10 +391,9 @@ pub(super) fn line_hop_paths<'a>(
     edges: &[LineHopEdge<'a>],
     work_meter: &crate::resources::OperationWorkMeter,
 ) -> Result<HashMap<&'a str, String>> {
-    let paths = crate::svg::parity::line_hops::process_edges_with_line_hops(
+    let paths = crate::svg::parity::line_hops::line_hop_overrides(
         edges,
         LineHopConfig {
-            enabled: true,
             jump_radius: 6.0,
             jump_style: if config
                 .pointer("/swimlane/lineHops")
@@ -406,11 +405,11 @@ pub(super) fn line_hop_paths<'a>(
                 LineHopStyle::Arc
             },
         },
+        |_| true,
         work_meter,
     )?;
     Ok(paths
         .into_iter()
-        .filter(|path| path.was_rewritten)
-        .map(|path| (path.edge_id, path.path))
+        .map(|(index, path)| (edges[index].id, path))
         .collect())
 }

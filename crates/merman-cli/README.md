@@ -230,6 +230,13 @@ To explicitly use the fonts installed on the current machine instead:
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
+A build with the `platform-system-font-query` feature can query the operating
+system's font catalog with `--font-system platform`. This avoids reading the entire
+bounded catalog before layout. Platform font matching can change the selected
+faces and diagram geometry, and its metadata queries are outside Merman's scan
+budgets. The same selected font snapshots serve measurement and painting. See
+[Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
+
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.
 If the CLI reports `native_font_measurements`, simplify or split the diagram, or
@@ -442,6 +449,26 @@ merman-cli batch docs/guide.md --output-dir generated --format pdf
 ```
 
 All charts render into staging before publication. The rewritten document is published last, stale files are removed only when named by the prior validated manifest, and an interrupted commit is recovered under the output lock before new work starts. Switching among supported output formats migrates the same managed generation and removes its prior-format artifacts. A document with no eligible charts is a valid generation.
+
+The output lock serializes cooperating Merman commands. Each entry is checked against its
+retained identity, prior contents and permissions before publication; complete target checks
+also run at transaction boundaries, before the final document or receipt, and before the
+committed marker. Other programs can still change files during publication. An unrelated
+conflict may be detected after more entries have been published, and a transient change that
+is restored between checks may go unseen. Publication does not provide an atomic multi-file
+snapshot or continuous conflict detection. If a conflict prevents safe recovery, the command
+retains transaction evidence and reports the failure instead of overwriting unknown contents.
+
+On Unix, recovery of an interrupted publishing or rollback phase compares target contents before
+treating changed permissions as a mode-only conflict. If permissions prevent reading a target,
+that recovery retains the target and transaction evidence instead of replacing unverified
+contents. Restore the intended read access and rerun the command to let recovery inspect the
+retained generation. A transaction already marked committed or rolled back only finishes cleanup.
+
+If files are temporarily unavailable during rollback, release them and rerun the command.
+Recovery inspects each target against the retained generation, including when an older journal
+recorded a higher rollback cursor on a retry. Once recovery succeeds, the same invocation can
+publish the requested generation using the identities of files restored under the lock.
 
 Stdin requires an explicit logical name and output directory:
 
