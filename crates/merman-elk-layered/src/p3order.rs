@@ -718,6 +718,68 @@ fn sorted_nodes_by_model_order(
     before_ports: bool,
     work: &mut dyn WorkControl,
 ) -> Result<Vec<usize>, WorkError> {
+    let scalar_order = nodes.len() > 1
+        && matches!(
+            graph.options.consider_model_order_strategy,
+            OrderingStrategy::NodesAndEdges | OrderingStrategy::PreferNodes
+        )
+        && {
+            let mut seen = HashSet::with_capacity(nodes.len());
+            nodes
+                .iter()
+                .all(|&node| graph.layerless_nodes[node].model_order.is_some() && seen.insert(node))
+        };
+    if scalar_order {
+        return sorted_scalar_model_order_nodes(graph, nodes, previous_layer, work);
+    }
+    sorted_nodes_with_relation_state(graph, nodes, previous_layer, before_ports, work)
+}
+
+fn sorted_scalar_model_order_nodes(
+    graph: &LGraph,
+    nodes: &[usize],
+    previous_layer: &[usize],
+    work: &mut dyn WorkControl,
+) -> Result<Vec<usize>, WorkError> {
+    let key = |node: usize| {
+        graph.layerless_nodes[node]
+            .model_order
+            .expect("scalar model order was checked before sorting") as i64
+    };
+    let mut order = nodes.to_vec();
+    for index in 1..order.len() {
+        let node = order[index];
+        let key_to_insert = key(node);
+        let mut cursor = index;
+        while cursor > 0 {
+            let previous = order[cursor - 1];
+            admit_node_comparison(graph, previous_layer, previous, node, work)?;
+            let shift = key(previous) > key_to_insert;
+            // The sorted prefix already has a complete, stable order. Only the shifted
+            // suffix is known to exceed the inserted node. On a shift it has no known
+            // predecessors; on a stop the comparison node has cursor - 1 predecessors.
+            let smaller = if shift { 0 } else { cursor - 1 };
+            let units = model_order_relation_update_work_from_counts(smaller, index - cursor)?;
+            work.check(units)?;
+            work.charge(units)?;
+            if !shift {
+                break;
+            }
+            order[cursor] = previous;
+            cursor -= 1;
+        }
+        order[cursor] = node;
+    }
+    Ok(order)
+}
+
+fn sorted_nodes_with_relation_state(
+    graph: &LGraph,
+    nodes: &[usize],
+    previous_layer: &[usize],
+    before_ports: bool,
+    work: &mut dyn WorkControl,
+) -> Result<Vec<usize>, WorkError> {
     let mut order = nodes.to_vec();
     // See sorted_ports_by_model_order: comparison order and shared comparator state are semantic.
     let mut comparator = ModelOrderNodeComparator::new(
@@ -1007,6 +1069,29 @@ struct ModelOrderNodeComparator<'a> {
     relations: ModelOrderRelations,
 }
 
+fn admit_node_comparison(
+    graph: &LGraph,
+    previous_layer: &[usize],
+    first: usize,
+    second: usize,
+    work: &mut dyn WorkControl,
+) -> Result<(), WorkError> {
+    let units = checked_sum([
+        previous_layer.len(),
+        graph.layerless_nodes[first].ports.len(),
+        graph.layerless_nodes[second].ports.len(),
+        first_previous_layer_source_port(graph, first)
+            .map_or(0, |port| graph.layerless_nodes[port.node].ports.len()),
+        first_incoming_source_port(graph, first)
+            .map_or(0, |port| graph.layerless_nodes[port.node].ports.len()),
+        first_incoming_source_port(graph, second)
+            .map_or(0, |port| graph.layerless_nodes[port.node].ports.len()),
+        1,
+    ])?;
+    work.check(units)?;
+    work.charge(units)
+}
+
 impl<'a> ModelOrderNodeComparator<'a> {
     fn new(
         graph: &'a LGraph,
@@ -1031,20 +1116,7 @@ impl<'a> ModelOrderNodeComparator<'a> {
     ) -> Result<Ordering, WorkError> {
         let mut pending = Vec::new();
         let result = loop {
-            let units = checked_sum([
-                self.previous_layer.len(),
-                self.graph.layerless_nodes[n1].ports.len(),
-                self.graph.layerless_nodes[n2].ports.len(),
-                first_previous_layer_source_port(self.graph, n1)
-                    .map_or(0, |port| self.graph.layerless_nodes[port.node].ports.len()),
-                first_incoming_source_port(self.graph, n1)
-                    .map_or(0, |port| self.graph.layerless_nodes[port.node].ports.len()),
-                first_incoming_source_port(self.graph, n2)
-                    .map_or(0, |port| self.graph.layerless_nodes[port.node].ports.len()),
-                1,
-            ])?;
-            work.check(units)?;
-            work.charge(units)?;
+            admit_node_comparison(self.graph, self.previous_layer, n1, n2, work)?;
             if n1 == n2 {
                 break Ordering::Equal;
             }
@@ -2329,6 +2401,138 @@ mod tests {
         sort_by_input_model(&mut graph, &mut crate::work::NoopWorkControl).unwrap();
 
         assert_eq!(graph.layers[target_layer].nodes, vec![left, right]);
+    }
+
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    enum SortAdmission {
+        Check(usize),
+        Charge(usize),
+    }
+
+    #[derive(Default)]
+    struct SortWork {
+        admissions: Vec<SortAdmission>,
+        interrupt_at: Option<usize>,
+    }
+
+    impl SortWork {
+        fn record(&mut self, admission: SortAdmission) -> Result<(), WorkError> {
+            self.admissions.push(admission);
+            if self.interrupt_at == Some(self.admissions.len()) {
+                return Err(WorkError::Interrupted);
+            }
+            Ok(())
+        }
+    }
+
+    impl WorkControl for SortWork {
+        fn check(&mut self, units: usize) -> Result<(), WorkError> {
+            self.record(SortAdmission::Check(units))
+        }
+
+        fn charge(&mut self, units: usize) -> Result<(), WorkError> {
+            self.record(SortAdmission::Charge(units))
+        }
+    }
+
+    fn assert_node_sort_matches_relations(
+        graph: &LGraph,
+        nodes: &[usize],
+        before_ports: bool,
+        check_interruptions: bool,
+    ) {
+        let previous_layer = &graph.layers[0].nodes;
+        let run = |reference, interrupt_at| {
+            let mut work = SortWork {
+                interrupt_at,
+                ..Default::default()
+            };
+            let sort = if reference {
+                sorted_nodes_with_relation_state
+            } else {
+                sorted_nodes_by_model_order
+            };
+            let result = sort(graph, nodes, previous_layer, before_ports, &mut work);
+            (result, work.admissions)
+        };
+        let expected = run(true, None);
+        assert!(expected.0.is_ok());
+        assert_eq!(run(false, None), expected);
+        if check_interruptions {
+            for index in 1..=expected.1.len() {
+                assert_eq!(run(false, Some(index)), run(true, Some(index)));
+            }
+        }
+    }
+
+    #[test]
+    fn scalar_node_sort_matches_stable_relations_and_work_admissions() {
+        let mut graph = graph(
+            ["S0", "S1", "A", "B", "C", "D", "E"].map(node).to_vec(),
+            vec![edge("e0", "S1", "A"), edge("e1", "S0", "B")],
+        );
+        for index in 0..graph.layerless_nodes.len() {
+            graph.set_node_layer(index, usize::from(index >= 2));
+        }
+        let keys = [0, 2, usize::MAX];
+        for strategy in [
+            OrderingStrategy::NodesAndEdges,
+            OrderingStrategy::PreferNodes,
+        ] {
+            graph.options.consider_model_order_strategy = strategy;
+            for combination in 0..keys.len().pow(5) {
+                let mut digits = combination;
+                for node in &mut graph.layerless_nodes[2..] {
+                    node.model_order = Some(keys[digits % keys.len()]);
+                    digits /= keys.len();
+                }
+                for before_ports in [true, false] {
+                    assert_node_sort_matches_relations(
+                        &graph,
+                        &[2, 5, 4, 6, 3],
+                        before_ports,
+                        combination % 12 == 0,
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn node_sort_keeps_relation_fallback_for_edge_orders_and_non_scalar_layers() {
+        let mut graph = graph(
+            ["S0", "S1", "A", "B", "C"].map(node).to_vec(),
+            vec![edge("e0", "S1", "A"), edge("e1", "S0", "B")],
+        );
+        for index in 0..graph.layerless_nodes.len() {
+            graph.set_node_layer(index, usize::from(index >= 2));
+        }
+        graph.layerless_nodes[4].model_order = None;
+        for strategy in [
+            OrderingStrategy::NodesAndEdges,
+            OrderingStrategy::PreferNodes,
+            OrderingStrategy::PreferEdges,
+            OrderingStrategy::None,
+        ] {
+            graph.options.consider_model_order_strategy = strategy;
+            for nodes in [&[2, 2, 3][..], &[2, 4, 3], &[2, 3], &[2], &[]] {
+                for before_ports in [true, false] {
+                    assert_node_sort_matches_relations(&graph, nodes, before_ports, true);
+                }
+            }
+        }
+        graph.options.consider_model_order_strategy = OrderingStrategy::PreferEdges;
+        assert_eq!(
+            sorted_nodes_by_model_order(
+                &graph,
+                &[2, 3],
+                &[0, 1],
+                false,
+                &mut crate::work::NoopWorkControl,
+            ),
+            Ok(vec![3, 2]),
+            "the source order should override the scalar keys for PreferEdges"
+        );
     }
 
     #[test]
