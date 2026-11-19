@@ -1385,12 +1385,13 @@ fn replacement_rejects_changed_owner_before_missing_source() {
     staging.working.transaction_identity =
         Arc::new(same_file::Handle::from_path(temp.path()).unwrap());
     let expected = staging.working.verify_owned_state().unwrap_err();
+    let generation = existing_generation(&manifest_path);
     let actual = deterministic_replace_from(
         &staging.working,
         0,
         &source,
         &target,
-        None,
+        TargetChange::Publish(&generation),
         "publish replacement",
     )
     .unwrap_err();
