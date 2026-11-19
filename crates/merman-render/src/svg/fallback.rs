@@ -133,6 +133,7 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
     let mut source_stack: Vec<SourceElement> = Vec::new();
     let mut source_stack_overflow_depth = 0usize;
     let mut cascade_index = None;
+    let mut switch_search_from = 0usize;
     let mut i = 0usize;
     let mut iteration = 0usize;
     while let Some(lt_rel) = find_with_checkpoints(&svg[i..], "<", checkpoint)? {
@@ -187,8 +188,13 @@ fn foreign_object_label_fallback_svg_text_with_checkpoints<E>(
 
             out.push_str(&svg[lt..i_next]);
 
-            let from_switch =
-                is_foreign_object_switch_native_fallback(svg, lt, i_next, checkpoint)?;
+            let from_switch = is_foreign_object_switch_native_fallback(
+                svg,
+                lt,
+                i_next,
+                &mut switch_search_from,
+                checkpoint,
+            )?;
 
             let width = parse_attr_f64(tag, "width", checkpoint)?.unwrap_or(0.0);
             let height = parse_attr_f64(tag, "height", checkpoint)?.unwrap_or(0.0);
@@ -1032,9 +1038,11 @@ fn is_foreign_object_switch_native_fallback<E>(
     svg: &str,
     foreign_object_start: usize,
     foreign_object_end: usize,
+    switch_search_from: &mut usize,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<bool, E> {
-    let Some(switch_start) = find_wrapping_switch_start(svg, foreign_object_start, checkpoint)?
+    let Some(switch_start) =
+        find_wrapping_switch_start(svg, foreign_object_start, switch_search_from, checkpoint)?
     else {
         return Ok(false);
     };
@@ -1062,13 +1070,23 @@ fn is_foreign_object_switch_native_fallback<E>(
 fn find_wrapping_switch_start<E>(
     svg: &str,
     before: usize,
+    search_from: &mut usize,
     checkpoint: &mut impl FnMut() -> Result<(), E>,
 ) -> Result<Option<usize>, E> {
+    const PREFIX: &str = "<switch";
     let mut search_end = before;
-    while search_end > 0 {
-        let Some(start) = rfind_with_checkpoints(&svg[..search_end], "<switch", checkpoint)? else {
+    while search_end > *search_from {
+        let Some(relative) =
+            rfind_with_checkpoints(&svg[*search_from..search_end], PREFIX, checkpoint)?
+        else {
+            if search_end == before {
+                // Later labels have increasing offsets. A miss proves the earlier prefix empty;
+                // keep enough overlap for an incomplete literal, rounded to a UTF-8 boundary.
+                *search_from = svg.floor_char_boundary(before.saturating_sub(PREFIX.len() - 1));
+            }
             return Ok(None);
         };
+        let start = *search_from + relative;
         let Some(open_end) = find_tag_end_with_checkpoints(svg, start, checkpoint)? else {
             return Ok(None);
         };
@@ -1079,6 +1097,9 @@ fn find_wrapping_switch_start<E>(
 
         let tag = &svg[start..=open_end];
         if is_start_switch_tag(tag) {
+            // Keep the last accepted opening: later lookups must still apply the existing
+            // intervening-close and native-text checks, including malformed markup behavior.
+            *search_from = start;
             return Ok(Some(start));
         }
 
@@ -1095,6 +1116,10 @@ fn is_start_switch_tag(tag: &str) -> bool {
             .is_some_and(|b| b.is_ascii_whitespace() || *b == b'>' || *b == b'/')
         && !tag.trim_end().ends_with("/>")
 }
+
+#[cfg(test)]
+#[path = "fallback/switch_search_tests.rs"]
+mod switch_search_tests;
 
 #[cfg(test)]
 mod tests {
