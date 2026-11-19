@@ -165,18 +165,29 @@ capability and the CLI runtime policy separately. If a selected native route can
 load usable fonts, it fails instead of silently succeeding with deterministic
 estimates.
 
-The opt-in `experimental-system-font-query` feature selects Fontique-backed,
-on-demand system discovery in CLI builds. It is not part of the default or
-official release recipe. System metadata queries are managed by the platform
-and may map font files outside Merman's scan budgets; actual selected bytes
-still use bounded immutable snapshots shared by measurement and painting.
-Explicit-only requests stay closed. Library callers must explicitly choose
-`NativeFontOptions::load_platform`; ordinary `load` retains bounded discovery.
-In CLI discovery, the encoded defaults report
-`font_source: "platform-managed-system-query"` and
-`system_discovery: "platform-initialization-then-on-demand-families"`. Release
-verification rejects those experimental values and requires bounded discovery
-before layout.
+The optional CLI feature `platform-system-font-query` adds an explicit system
+font policy. Use `--font-system platform` to query the operating system's font
+catalog through Fontique. `--font-system bounded` explicitly selects bounded
+discovery in builds with platform query support. `--font-system on` selects the
+build's default system provider. Automatic Mermaid encoded output uses the same
+provider when no explicit fonts or font policy are supplied. The official
+release recipe currently provides bounded discovery.
+
+Platform queries and metadata mappings run outside Merman's scan budgets.
+Selected font bytes still use bounded immutable snapshots shared by measurement
+and painting. A context identity includes the policy and initial font bytes.
+Platform fallback can choose different faces and change diagram geometry. For
+fixed font selection, supply explicit font files with `--font-system off`.
+In builds with platform queries, `on`, `bounded`, and `platform` all allow system
+fallback for explicit font sources. `capabilities --json` lists those values in
+`native_fonts.platform_system_query`. `system_resources_bounded` describes the default.
+
+Build with `experimental-system-font-query` to retain the experimental CLI
+default that uses the platform catalog for automatic and `--font-system on`
+requests. Its capability document reports platform queries in
+`encoded_output_defaults`. Rust callers select platform queries through
+`NativeFontOptions::load_platform` with the library's
+`experimental-system-font-query` feature. Ordinary `load` uses bounded discovery.
 
 `--font-file` and `--font-dir` are repeatable and preserve argument order.
 Selected directory roots, including system font roots such as `~/.fonts`, resolve

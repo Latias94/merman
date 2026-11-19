@@ -688,6 +688,7 @@ fn prepare_font_context(
     use merman::svg::export::NativeFontOptions;
 
     let explicit = !args.sources.is_empty();
+    let requested_system = args.system.filter(|kind| *kind != FontSystemKind::Off);
     let native_requested = args.measurement == Some(FontMeasurementKind::Native)
         || (!raw_svg
             && !svg_output
@@ -700,7 +701,7 @@ fn prepare_font_context(
             ));
         }
         if args.measurement == Some(FontMeasurementKind::Deterministic)
-            || !(explicit || native_requested || args.system == Some(FontSystemKind::On))
+            || !(explicit || native_requested || requested_system.is_some())
         {
             return Err(CliError::InvalidInput(
                 "--font-max-measurements requires native text measurement; provide --font-file or --font-dir, or select --font-measurement native".to_owned(),
@@ -724,10 +725,11 @@ fn prepare_font_context(
         ));
     }
     if args.measurement == Some(FontMeasurementKind::Deterministic) {
-        if args.system == Some(FontSystemKind::On) {
-            return Err(CliError::InvalidInput(
-                "--font-system on conflicts with --font-measurement deterministic; omit --font-system to retain the compatibility measurement path".to_string(),
-            ));
+        if let Some(kind) = requested_system {
+            return Err(CliError::InvalidInput(format!(
+                "--font-system {} conflicts with --font-measurement deterministic; omit --font-system to retain the compatibility measurement path",
+                kind.name(),
+            )));
         }
         if !svg_output && args.system == Some(FontSystemKind::Off) {
             return Err(CliError::InvalidInput(
@@ -736,7 +738,7 @@ fn prepare_font_context(
         }
         return Ok(None);
     }
-    let use_system = args.system == Some(FontSystemKind::On)
+    let use_system = requested_system.is_some()
         || (!raw_svg
             && !explicit
             && native_requested
@@ -779,13 +781,13 @@ fn prepare_font_context(
             FontSource::Directory(path) => options.with_font_dir(resolve(path)),
         };
     }
-    #[cfg(feature = "experimental-system-font-query")]
-    let result = if use_system {
+    #[cfg(feature = "platform-system-font-query")]
+    let result = if use_system && FontSystemKind::platform_selected(args.system) {
         options.load_platform(control)
     } else {
         options.load(control)
     };
-    #[cfg(not(feature = "experimental-system-font-query"))]
+    #[cfg(not(feature = "platform-system-font-query"))]
     let result = options.load(control);
     crate::operation::checkpoint(control, merman::OperationPhase::Admission)?;
     result.map(Some).map_err(native_font_error)
@@ -923,6 +925,21 @@ fn render_input_limit(raw_svg: bool, resources: &ResolvedResourcePolicy) -> Inpu
 mod font_policy_tests {
     use super::prepare_font_context;
     use crate::cli::{FontCliArgs, FontMeasurementKind, FontSystemKind};
+
+    #[cfg(feature = "platform-system-font-query")]
+    #[test]
+    fn explicit_provider_takes_precedence_over_the_compiled_default() {
+        let selects_platform = FontSystemKind::platform_selected;
+        assert!(selects_platform(Some(FontSystemKind::Platform)));
+        assert!(!selects_platform(Some(FontSystemKind::Bounded)));
+        assert!(!selects_platform(Some(FontSystemKind::Off)));
+        let experimental_default = cfg!(feature = "experimental-system-font-query");
+        assert_eq!(
+            selects_platform(Some(FontSystemKind::On)),
+            experimental_default
+        );
+        assert_eq!(selects_platform(None), experimental_default);
+    }
 
     #[test]
     fn deterministic_svg_policies_do_not_prepare_a_font_context() {

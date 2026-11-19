@@ -985,6 +985,24 @@ fn contradictory_or_unavailable_font_modes_fail_without_output() {
             vec!["--font-system", "on"],
         ]);
     }
+    if cfg!(feature = "platform-system-font-query") {
+        failures.extend([
+            vec![
+                "--font-measurement",
+                "deterministic",
+                "--font-system",
+                "platform",
+            ],
+            vec![
+                "--font-measurement",
+                "deterministic",
+                "--font-system",
+                "bounded",
+            ],
+        ]);
+    } else {
+        failures.push(vec!["--font-system", "platform"]);
+    }
     for extra in failures {
         let mut args = vec!["mmdc", "-i", "-", "-o", "-"];
         args.extend(extra);
@@ -992,6 +1010,47 @@ fn contradictory_or_unavailable_font_modes_fail_without_output() {
         assert!(!output.status.success());
         assert!(output.stdout.is_empty());
     }
+}
+
+#[cfg(feature = "platform-system-font-query")]
+#[test]
+fn explicit_platform_query_uses_shared_context_and_respects_explicit_fonts() {
+    let font = font();
+    let control = merman::OperationControl::new();
+    let context = merman::svg::export::NativeFontOptions::default()
+        .with_font_file(&font)
+        .with_system_fonts(true)
+        .load_platform(&control)
+        .unwrap();
+    let source = "---\nconfig:\n  fontFamily: Cousine\n  htmlLabels: false\n---\nflowchart LR\nA[Native measurement]\n";
+    let render = |system| {
+        run_with_stdin(
+            &[
+                "render",
+                "-",
+                "--output=-",
+                "--svg-id=platform-font-test",
+                "--font-file",
+                &font,
+                "--font-system",
+                system,
+            ],
+            source,
+        )
+    };
+    let platform = render("platform");
+    let closed = render("off");
+    let stderr = String::from_utf8_lossy(&platform.stderr);
+    assert!(platform.status.success(), "{stderr}");
+    assert!(closed.status.success(), "{:?}", closed.stderr);
+    assert!(!platform.stdout.is_empty());
+    assert_eq!(platform.stdout, closed.stdout);
+    let expected = format!(
+        "native measurement faces: Cousine-Regular#0; context {}",
+        context.identity()
+    );
+    assert_eq!(measurement_notices(&stderr), [expected.as_str()]);
+    assert!(!String::from_utf8_lossy(&closed.stderr).contains(context.identity()));
 }
 
 #[test]
@@ -1044,6 +1103,20 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
         })
     };
     assert_eq!(native["encoded_output_defaults"], expected_encoded);
+    if cfg!(feature = "platform-system-font-query") {
+        assert_eq!(
+            native["platform_system_query"],
+            serde_json::json!({
+                "cli_option": "--font-system platform",
+                "system_discovery": "platform-initialization-then-on-demand-families",
+                "metadata_resources_bounded": false,
+                "context_identity": "policy-and-initial-font-bytes",
+                "system_fallback_values": ["on", "bounded", "platform"],
+            })
+        );
+    } else {
+        assert!(native.get("platform_system_query").is_none());
+    }
     assert_eq!(native["selected_font_bytes_bounded"], true);
     assert_eq!(
         native["system_resources_bounded"],
@@ -1051,7 +1124,11 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     );
     assert_eq!(
         native["explicit_font_sources"],
-        "closed-set-unless-font-system-on"
+        if cfg!(feature = "platform-system-font-query") {
+            "closed-set-unless-system-fallback-requested"
+        } else {
+            "closed-set-unless-font-system-on"
+        }
     );
     assert_eq!(native["embeds_fonts_in_svg"], false);
     assert_eq!(

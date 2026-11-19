@@ -109,7 +109,7 @@ class CliProcessMatrixTests(unittest.TestCase):
             feature for feature in public_features if feature.startswith("diagram-")
         }
         expected_defaults = public_features - diagram_selectors - {
-            "experimental-system-font-query", "math"
+            "experimental-system-font-query", "platform-system-font-query", "math"
         }
         self.assertSetEqual(
             set(features["default"]),

@@ -900,6 +900,35 @@ pub(crate) enum FontMeasurementKind {
 pub(crate) enum FontSystemKind {
     Off,
     On,
+    /// Use Merman's bounded system font discovery.
+    #[cfg(feature = "platform-system-font-query")]
+    Bounded,
+    /// Query the platform's font catalog. Platform metadata access is outside Merman's scan limits.
+    #[cfg(feature = "platform-system-font-query")]
+    Platform,
+}
+
+#[cfg(feature = "native-fonts")]
+impl FontSystemKind {
+    pub(crate) fn name(self) -> &'static str {
+        match self {
+            Self::Off => "off",
+            Self::On => "on",
+            #[cfg(feature = "platform-system-font-query")]
+            Self::Bounded => "bounded",
+            #[cfg(feature = "platform-system-font-query")]
+            Self::Platform => "platform",
+        }
+    }
+
+    #[cfg(feature = "platform-system-font-query")]
+    pub(crate) fn platform_selected(selection: Option<Self>) -> bool {
+        match selection {
+            Some(Self::Bounded | Self::Off) => false,
+            Some(Self::Platform) => true,
+            Some(Self::On) | None => cfg!(feature = "experimental-system-font-query"),
+        }
+    }
 }
 
 #[cfg(feature = "native-fonts")]
@@ -931,6 +960,13 @@ struct FontArgumentDefinitions {
     #[arg(long = "font-measurement", value_enum, help_heading = "Native fonts")]
     font_measurement: Option<FontMeasurementKind>,
     /// Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected.
+    #[cfg_attr(
+        feature = "platform-system-font-query",
+        arg(help = concat!(
+            "Control system font discovery. Native encoded output enables it by default. ",
+            "The values on, bounded, and platform enable system fallback for explicit fonts."
+        ))
+    )]
     #[arg(long = "font-system", value_enum, help_heading = "Native fonts")]
     font_system: Option<FontSystemKind>,
     /// Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile.

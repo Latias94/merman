@@ -230,6 +230,13 @@ To explicitly use the fonts installed on the current machine instead:
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
+A build with the `platform-system-font-query` feature can query the operating
+system's font catalog with `--font-system platform`. This avoids reading the entire
+bounded catalog before layout. Platform font matching can change the selected
+faces and diagram geometry, and its metadata queries are outside Merman's scan
+budgets. The same selected font snapshots serve measurement and painting. See
+[Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
+
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.
 If the CLI reports `native_font_measurements`, simplify or split the diagram, or

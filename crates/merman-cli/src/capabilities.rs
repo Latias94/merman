@@ -57,6 +57,8 @@ struct NativeFontsView {
     default_system_discovery: &'static str,
     encoded_output_defaults: EncodedFontDefaultsView,
     system_resources_bounded: bool,
+    #[cfg(feature = "platform-system-font-query")]
+    platform_system_query: PlatformSystemQueryView,
     selected_font_bytes_bounded: bool,
     legacy_export_paths: &'static str,
     explicit_font_sources: &'static str,
@@ -77,6 +79,16 @@ struct EncodedFontDefaultsView {
     measurement: &'static str,
     font_source: &'static str,
     system_discovery: &'static str,
+}
+
+#[cfg(feature = "platform-system-font-query")]
+#[derive(Serialize)]
+struct PlatformSystemQueryView {
+    cli_option: &'static str,
+    system_discovery: &'static str,
+    metadata_resources_bounded: bool,
+    context_identity: &'static str,
+    system_fallback_values: &'static [&'static str],
 }
 
 #[derive(Serialize)]
@@ -220,9 +232,21 @@ pub(crate) fn write_compiled_capabilities(
             },
             system_resources_bounded: cfg!(feature = "system-fonts")
                 && !cfg!(feature = "experimental-system-font-query"),
+            #[cfg(feature = "platform-system-font-query")]
+            platform_system_query: PlatformSystemQueryView {
+                cli_option: "--font-system platform",
+                system_discovery: "platform-initialization-then-on-demand-families",
+                metadata_resources_bounded: false,
+                context_identity: "policy-and-initial-font-bytes",
+                system_fallback_values: &["on", "bounded", "platform"],
+            },
             selected_font_bytes_bounded: true,
             legacy_export_paths: "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract",
-            explicit_font_sources: "closed-set-unless-font-system-on",
+            explicit_font_sources: if cfg!(feature = "platform-system-font-query") {
+                "closed-set-unless-system-fallback-requested"
+            } else {
+                "closed-set-unless-font-system-on"
+            },
             measurement_operations: merman::svg::TextMeasurementOperation::ALL
                 .into_iter()
                 .map(merman::svg::TextMeasurementOperation::external_name)
