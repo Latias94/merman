@@ -729,13 +729,38 @@ struct BarycenterSweepWork<'a> {
     control: &'a mut dyn WorkControl,
     snapshot: usize,
     count: usize,
-    first_layer: usize,
-    sweep: usize,
+    allowance: BarycenterSweepAllowance<'a>,
+}
+
+enum BarycenterSweepAllowance<'a> {
+    Prepaid,
+    Deferred {
+        scan: usize,
+        reorder: &'a ReorderNodePortsWorkContext,
+    },
+    Computed {
+        first_layer: usize,
+        sweep: usize,
+    },
 }
 
 impl BarycenterSweepWork<'_> {
     fn charge(&mut self, units: usize) -> Result<(), WorkError> {
         charge_barycenter_work(self.control, units)
+    }
+
+    /// Price the single graph before its first reordering. Its sweeps preserve layer
+    /// membership, constraints and reference counts, so later attempts reuse the price.
+    fn sweep_units(&mut self, root: &LGraph) -> Result<(usize, usize), WorkError> {
+        match self.allowance {
+            BarycenterSweepAllowance::Prepaid => Ok((0, 0)),
+            BarycenterSweepAllowance::Deferred { scan, reorder } => {
+                let (first_layer, sweep) = single_graph_barycenter_sweep_work(root, scan, reorder)?;
+                self.allowance = BarycenterSweepAllowance::Computed { first_layer, sweep };
+                Ok((first_layer, sweep))
+            }
+            BarycenterSweepAllowance::Computed { first_layer, sweep } => Ok((first_layer, sweep)),
+        }
     }
 }
 
@@ -896,8 +921,7 @@ impl HierarchySweep {
                     control: &mut *control,
                     snapshot: 0,
                     count: 0,
-                    first_layer: 0,
-                    sweep: 0,
+                    allowance: BarycenterSweepAllowance::Prepaid,
                 };
                 self.compare_different_randomized_layouts(root, info_index, &mut work)?;
             }
@@ -1072,13 +1096,14 @@ impl HierarchySweep {
             });
         }
 
+        let (first_layer_work, sweep_work) = work.sweep_units(root)?;
         let should_set_first_layer_order = {
             let graph = graph_at_path(root, &self.infos[info_index].path);
             !first_try_with_initial_order
                 || graph.options.consider_model_order_strategy == OrderingStrategy::None
         };
         if should_set_first_layer_order {
-            work.charge(work.first_layer)?;
+            work.charge(first_layer_work)?;
             self.with_barycenter_heuristic(root, info_index, |heuristic, graph, order| {
                 heuristic.set_first_layer_order(graph, order, is_forward_sweep);
             });
@@ -1086,7 +1111,7 @@ impl HierarchySweep {
             is_forward_sweep = first_try_with_initial_order;
         }
 
-        work.charge(work.sweep)?;
+        work.charge(sweep_work)?;
         self.sweep_reducing_crossings_barycenter(
             root,
             info_index,
@@ -1115,7 +1140,7 @@ impl HierarchySweep {
 
             is_forward_sweep = !is_forward_sweep;
             let old_number_of_crossings = crossings_in_graph;
-            work.charge(work.sweep)?;
+            work.charge(sweep_work)?;
             self.sweep_reducing_crossings_barycenter(
                 root,
                 info_index,
@@ -3339,37 +3364,14 @@ pub(crate) fn minimize_single_graph_hierarchical_barycenter_with_work_control(
     )?;
     charge_barycenter_work(control, snapshot)?;
     let reorder = ReorderNodePortsWorkContext::new(graph)?;
-    let mut layer_work = 0;
-    let mut first_layer = 0;
-    for layer in &graph.layers {
-        let units = barycenter_layer_work(graph, &layer.nodes)?;
-        layer_work = checked_add(layer_work, units)?;
-        first_layer = first_layer.max(units);
-    }
-    let mut port_work = 0;
-    for (index, node) in graph.layerless_nodes.iter().enumerate() {
-        if !node.port_constraints.is_order_fixed() {
-            port_work = checked_sum([
-                port_work,
-                node.ports.len(),
-                checked_n_log_n(node.ports.len())?,
-                reorder.node_work(graph, index)?,
-            ])?;
-        }
-    }
-    // A node participates at most twice per sweep: once in the free layer and once
-    // in the fixed layer. Each possible reorder includes its complete reference rewrite.
-    let sweep_work = checked_sum([
-        layer_work,
-        checked_mul(port_work, 2)?,
-        checked_mul(checked_add(scan, checked_mul(graph.edges.len(), 2)?)?, 2)?,
-    ])?;
     let mut work = BarycenterSweepWork {
         control,
         snapshot,
-        first_layer,
         count: barycenter_crossing_count_work(graph)?,
-        sweep: sweep_work,
+        allowance: BarycenterSweepAllowance::Deferred {
+            scan,
+            reorder: &reorder,
+        },
     };
     initialize_crossing_minimization_port_ids_hierarchy(graph);
     let mut sweep = HierarchySweep::new(graph, CrossMinType::Barycenter);
@@ -3533,6 +3535,39 @@ fn barycenter_crossing_count_work(graph: &LGraph) -> Result<usize, WorkError> {
             ceil_log2(checked_add(ports, 1)?),
         )?,
     ])
+}
+
+fn single_graph_barycenter_sweep_work(
+    graph: &LGraph,
+    scan: usize,
+    reorder: &ReorderNodePortsWorkContext,
+) -> Result<(usize, usize), WorkError> {
+    let mut layer_work = 0;
+    let mut first_layer = 0;
+    for layer in &graph.layers {
+        let units = barycenter_layer_work(graph, &layer.nodes)?;
+        layer_work = checked_add(layer_work, units)?;
+        first_layer = first_layer.max(units);
+    }
+    let mut port_work = 0;
+    for (index, node) in graph.layerless_nodes.iter().enumerate() {
+        if !node.port_constraints.is_order_fixed() {
+            port_work = checked_sum([
+                port_work,
+                node.ports.len(),
+                checked_n_log_n(node.ports.len())?,
+                reorder.node_work(graph, index)?,
+            ])?;
+        }
+    }
+    // A node participates at most twice per sweep: once in the free layer and once
+    // in the fixed layer. Each possible reorder includes its complete reference rewrite.
+    let sweep_work = checked_sum([
+        layer_work,
+        checked_mul(port_work, 2)?,
+        checked_mul(checked_add(scan, checked_mul(graph.edges.len(), 2)?)?, 2)?,
+    ])?;
+    Ok((first_layer, sweep_work))
 }
 
 fn barycenter_layer_work(graph: &LGraph, layer: &[usize]) -> Result<usize, WorkError> {

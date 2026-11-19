@@ -1130,6 +1130,40 @@ User Testing    :c2, after c1, 5d`;
   assert.match(svg, /<svg/);
   assert.match(svg, /Hello/);
 
+  if (hasCapability("layout-elk")) {
+    const forcedElkFanOut = (leaves, crossed = false) => {
+      const edges = Array.from({ length: leaves }, (_, index) => `S --> n${index}`).join("\n");
+      return `---
+config:
+  layout: elk
+  elk:
+    mergeEdges: true
+    forceNodeModelOrder: true
+---
+flowchart LR
+S
+${crossed ? "T\n" : ""}${edges}
+${crossed ? "T --> n0\n" : ""}`;
+    };
+
+    const fanOutSvg = api.renderSvg(forcedElkFanOut(181));
+    assert.match(fanOutSvg, /<svg\b/);
+    assert.equal(fanOutSvg.match(/\bclass="node(?:\s|")/g)?.length, 182);
+
+    assert.throws(
+      () => api.renderSvg(forcedElkFanOut(44, true)),
+      (error) => {
+        assert.equal(error.code_name, "MERMAN_RESOURCE_LIMIT_EXCEEDED");
+        const resource = error.details.resource;
+        assert.equal(resource.limit_id, "max_layout_work_units");
+        assert.equal(resource.phase, "layout_model");
+        assert.equal(resource.cause, "ceiling");
+        assert.equal(resource.max, 14_100_000);
+        return true;
+      },
+    );
+  }
+
   let measureCallCount = 0;
   const measurementPhases = new Set();
   const measurementOperations = new Set();
