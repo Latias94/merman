@@ -130,7 +130,7 @@ pub(crate) fn execute(
         output_path,
         transaction_root,
         artefacts,
-        publications,
+        mut publications,
         control,
         #[cfg(feature = "parallel-markdown")]
         jobs,
@@ -174,7 +174,7 @@ pub(crate) fn execute(
     // acquisition, scanning, renderer preparation, target expansion, and
     // strict containment have already completed.
     crate::operation::checkpoint(&control, merman::OperationPhase::Emit)?;
-    let acquired = context.publication.acquire_transaction(&publications)?;
+    let acquired = context.publication.acquire_transaction(&mut publications)?;
     let approved_root_path = acquired.root().to_path_buf();
 
     if charts.is_empty() && !requested.writes_document && !dialect.is_native() {

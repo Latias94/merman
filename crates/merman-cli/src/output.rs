@@ -70,6 +70,8 @@ pub(crate) struct PublicationGuards {
     scopes: Vec<Arc<PublicationScope>>,
     #[cfg(feature = "markdown")]
     transaction_root: Option<Arc<DirectoryGuard>>,
+    #[cfg(feature = "markdown")]
+    recovered_generations: HashMap<PathBuf, crate::transaction::TargetGeneration>,
 }
 
 #[cfg(feature = "markdown")]
@@ -154,7 +156,7 @@ struct GuardedInput {
 }
 
 impl PublicationGuards {
-    fn new(cwd: Option<&Path>) -> Self {
+    pub(crate) fn new(cwd: Option<&Path>) -> Self {
         #[cfg(not(any(feature = "fixes", feature = "svg", feature = "ascii")))]
         let _ = cwd;
         Self {
@@ -166,6 +168,8 @@ impl PublicationGuards {
             scopes: Vec::new(),
             #[cfg(feature = "markdown")]
             transaction_root: None,
+            #[cfg(feature = "markdown")]
+            recovered_generations: HashMap::new(),
         }
     }
 
@@ -361,12 +365,45 @@ impl PublicationGuards {
             })?;
         self.verify()?;
         scope.parent.verify_anchor()?;
-        Ok(ApprovedTransactionTarget {
-            path: scope.parent.expected.join(file_name),
-            generation: crate::transaction::TargetGeneration::from_preflight_identity(
-                scope.matcher.target_identity(file_name),
-            ),
-        })
+        let path = scope.parent.expected.join(file_name);
+        let generation = self
+            .recovered_generations
+            .get(&path)
+            .cloned()
+            .unwrap_or_else(|| {
+                crate::transaction::TargetGeneration::from_preflight_identity(
+                    scope.matcher.target_identity(file_name),
+                )
+            });
+        Ok(ApprovedTransactionTarget { path, generation })
+    }
+
+    #[cfg(feature = "markdown")]
+    pub(crate) fn record_restored_transaction_target(
+        &mut self,
+        target: &Path,
+        before: Option<&same_file::Handle>,
+        restored: Option<same_file::Handle>,
+    ) {
+        let (Some(parent), Some(name)) = (target.parent(), target.file_name()) else {
+            return;
+        };
+        let Some(scope) = self.scopes.iter().find(|scope| {
+            scope.parent.expected == parent && scope.matcher.contains_file_name(name)
+        }) else {
+            return;
+        };
+        if scope.matcher.target_identity(name).as_deref() != before
+            || self.protected.iter().any(|input| {
+                input.canonical == target || restored.as_ref() == Some(input.identity.as_ref())
+            })
+        {
+            return;
+        }
+        self.recovered_generations.insert(
+            target.to_path_buf(),
+            crate::transaction::TargetGeneration::from_preflight_identity(restored.map(Arc::new)),
+        );
     }
 
     #[cfg(feature = "markdown")]
@@ -2169,7 +2206,7 @@ pub(crate) trait PublicationBackend {
     #[cfg(feature = "markdown")]
     fn acquire_transaction(
         &mut self,
-        publications: &PublicationGuards,
+        publications: &mut PublicationGuards,
     ) -> Result<AcquiredTransaction, CliError>;
 
     #[cfg(feature = "markdown")]
@@ -2331,11 +2368,12 @@ impl PublicationBackend for SystemPublicationBackend {
     #[cfg(feature = "markdown")]
     fn acquire_transaction(
         &mut self,
-        publications: &PublicationGuards,
+        publications: &mut PublicationGuards,
     ) -> Result<AcquiredTransaction, CliError> {
         let approved = publications.prepare_transaction_root()?;
         let root = approved.path().to_path_buf();
-        let locked = crate::transaction::LockedRecoveredRoot::acquire_approved(approved)?;
+        let locked =
+            crate::transaction::LockedRecoveredRoot::acquire_approved(approved, publications)?;
         Ok(AcquiredTransaction { root, locked })
     }
 }
