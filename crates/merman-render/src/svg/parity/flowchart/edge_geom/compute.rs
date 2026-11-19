@@ -382,14 +382,13 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         line_with_offset_for_edge_type(&line_data, edge.edge_type.as_deref())
     };
 
-    let (d, raw_pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
+    let (d, pb, skipped_bounds_for_viewbox) = curve_path_d_and_bounds(
         &line_data,
         interpolate,
         ctx.edge_corner_radius,
         ctx.compact_edge_corners,
         rounded_corner_mask.as_deref(),
     );
-    let pb = svg_path_bounds_from_d(&d).or(raw_pb);
     let path_length = svg_path_length_from_d(&d);
 
     if trace_enabled {
