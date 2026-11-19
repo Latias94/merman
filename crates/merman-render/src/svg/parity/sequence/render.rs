@@ -42,21 +42,16 @@ fn write_scoped_sequence_defs_fragment(
     fragment: &str,
     diagram_id: impl Copy + std::fmt::Display,
 ) -> Result<()> {
-    let mut cursor = 0usize;
-    while cursor < fragment.len() {
-        let next = SEQUENCE_SCOPED_DEF_IDS
+    let mut written = 0;
+    for (offset, _) in fragment.match_indices("id=\"") {
+        let Some((needle, local_id)) = SEQUENCE_SCOPED_DEF_IDS
             .iter()
-            .filter_map(|&(needle, local_id)| {
-                fragment[cursor..]
-                    .find(needle)
-                    .map(|offset| (cursor + offset, needle, local_id))
-            })
-            .min_by_key(|&(offset, _, _)| offset);
-        let Some((offset, needle, local_id)) = next else {
-            out.push_str(&fragment[cursor..]);
-            return out.checkpoint();
+            .copied()
+            .find(|(needle, _)| fragment[offset..].starts_with(needle))
+        else {
+            continue;
         };
-        out.push_str(&fragment[cursor..offset]);
+        out.push_str(&fragment[written..offset]);
         let _ = write!(
             out,
             r#"id="{}-{}""#,
@@ -64,7 +59,11 @@ fn write_scoped_sequence_defs_fragment(
             local_id
         );
         out.checkpoint()?;
-        cursor = offset + needle.len();
+        written = offset + needle.len();
+    }
+    if written < fragment.len() {
+        out.push_str(&fragment[written..]);
+        return out.checkpoint();
     }
     Ok(())
 }
