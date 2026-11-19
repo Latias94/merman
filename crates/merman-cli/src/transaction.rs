@@ -1420,6 +1420,28 @@ impl WorkingTransaction {
         Ok(())
     }
 
+    fn verify_rollback_change(
+        &self,
+        index: usize,
+        target: &Path,
+        expected: &TargetGeneration,
+    ) -> Result<(), TransactionError> {
+        if matches!(
+            self.classify_entry(index)?,
+            GenerationMatch::New | GenerationMatch::ModeMismatch
+        ) {
+            return self.verify_target_generation(
+                target,
+                expected,
+                "publication target generation changed at the rollback boundary",
+            );
+        }
+        Err(TransactionError::recovery(
+            &self.transaction_dir,
+            format!("publication target no longer matches a recoverable generation: {target:?}"),
+        ))
+    }
+
     fn inspect_target_identity(
         &self,
         target: &Path,
@@ -1789,7 +1811,7 @@ impl WorkingTransaction {
                     index,
                     &self.stage_path(index),
                     &target,
-                    Some(prior_generation),
+                    TargetChange::Publish(prior_generation),
                     "publish transaction entry",
                 )?;
             }
@@ -1798,7 +1820,7 @@ impl WorkingTransaction {
                     self,
                     index,
                     &target,
-                    Some(prior_generation),
+                    TargetChange::Publish(prior_generation),
                     "publish artifact deletion",
                 )?;
             }
@@ -1819,18 +1841,16 @@ impl WorkingTransaction {
         publications: Option<&mut PublicationGuards>,
     ) -> Result<(), TransactionError> {
         let target = self.target_path(index)?;
-        let before = if publications.is_some() {
-            self.inspect_target_identity(&target)?
-        } else {
-            None
-        };
+        let before =
+            TargetGeneration::from_observed_identity(self.inspect_target_identity(&target)?);
+        let change = TargetChange::Restore(&before);
         let restored = match self.state.entries[index].prior {
             PriorState::Present => Some(deterministic_replace_from(
                 self,
                 index,
                 &self.backup_path(index),
                 &target,
-                None,
+                change,
                 "restore transaction backup",
             )?),
             PriorState::Missing => {
@@ -1838,7 +1858,7 @@ impl WorkingTransaction {
                     self,
                     index,
                     &target,
-                    None,
+                    change,
                     "remove newly published target",
                 )?;
                 None
@@ -1868,7 +1888,7 @@ impl WorkingTransaction {
                         source,
                     )
                 })?;
-            publications.record_restored_transaction_target(&target, before.as_ref(), restored);
+            publications.record_restored_transaction_target(&target, before.identity(), restored);
         }
         Ok(())
     }
@@ -2891,12 +2911,28 @@ fn copy_content_pinned(
     ))
 }
 
+#[derive(Clone, Copy)]
+enum TargetChange<'a> {
+    Publish(&'a TargetGeneration),
+    Restore(&'a TargetGeneration),
+}
+
+impl TargetChange<'_> {
+    fn expects_existing(self) -> bool {
+        match self {
+            Self::Publish(generation) | Self::Restore(generation) => {
+                generation.identity().is_some()
+            }
+        }
+    }
+}
+
 fn deterministic_replace_from(
     working: &WorkingTransaction,
     index: usize,
     source: &Path,
     target: &Path,
-    expected_target: Option<&TargetGeneration>,
+    change: TargetChange<'_>,
     operation: &'static str,
 ) -> Result<File, TransactionError> {
     working.verify_internal_regular(source)?;
@@ -2944,22 +2980,25 @@ fn deterministic_replace_from(
     }
     working.verify_target_ancestors(target)?;
     working.checkpoint(Checkpoint::ReplaceBefore { index })?;
-    if let Some(expected) = expected_target {
-        working.verify_target_generation(
-            target,
-            expected,
-            "publication target generation changed at replace boundary",
-        )?;
-        if !working.classify_entry(index)?.is_old() {
-            return Err(TransactionError::recovery(
-                &working.transaction_dir,
-                format!(
-                    "publication target no longer matches its prior generation at replace boundary: {target:?}"
-                ),
-            ));
+    match change {
+        TargetChange::Publish(expected) => {
+            working.verify_target_generation(
+                target,
+                expected,
+                "publication target generation changed at replace boundary",
+            )?;
+            if !working.classify_entry(index)?.is_old() {
+                return Err(TransactionError::recovery(
+                    &working.transaction_dir,
+                    format!(
+                        "publication target no longer matches its prior generation at replace boundary: {target:?}"
+                    ),
+                ));
+            }
         }
-    } else {
-        let _ = working.inspect_target(target)?;
+        TargetChange::Restore(expected) => {
+            working.verify_rollback_change(index, target, expected)?
+        }
     }
     verify_open_put_identity(&put, &destination, working.state.entries[index].prior_mode)?;
     working.checkpoint(Checkpoint::ReplaceBoundary { index })?;
@@ -2973,33 +3012,34 @@ fn remove_regular_if_present(
     working: &WorkingTransaction,
     index: usize,
     path: &Path,
-    expected_target: Option<&TargetGeneration>,
+    change: TargetChange<'_>,
     operation: &'static str,
 ) -> Result<(), TransactionError> {
     working.context.verify_root_and_lock()?;
     working.checkpoint(Checkpoint::DeleteBefore { index })?;
-    if let Some(expected) = expected_target {
-        working.verify_target_generation(
-            path,
-            expected,
-            "publication target generation changed at delete boundary",
-        )?;
-        if !working.classify_entry(index)?.is_old() {
-            return Err(TransactionError::recovery(
-                &working.transaction_dir,
-                format!(
-                    "publication target no longer matches its prior generation at delete boundary: {path:?}"
-                ),
-            ));
+    match change {
+        TargetChange::Publish(expected) => {
+            working.verify_target_generation(
+                path,
+                expected,
+                "publication target generation changed at delete boundary",
+            )?;
+            if !working.classify_entry(index)?.is_old() {
+                return Err(TransactionError::recovery(
+                    &working.transaction_dir,
+                    format!(
+                        "publication target no longer matches its prior generation at delete boundary: {path:?}"
+                    ),
+                ));
+            }
         }
+        TargetChange::Restore(expected) => working.verify_rollback_change(index, path, expected)?,
     }
-    match working.inspect_target(path)? {
-        TargetPresence::Missing => Ok(()),
-        TargetPresence::Regular => {
-            working.checkpoint(Checkpoint::DeleteBoundary { index })?;
-            working.context.remove_within_root(path, operation)
-        }
+    if change.expects_existing() {
+        working.checkpoint(Checkpoint::DeleteBoundary { index })?;
+        working.context.remove_within_root(path, operation)?;
     }
+    Ok(())
 }
 
 fn remove_owned_regular_if_present(

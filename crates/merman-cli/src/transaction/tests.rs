@@ -2459,6 +2459,49 @@ fn recovery_accepts_a_legacy_rollback_cursor_in_a_pending_or_promoted_slot() {
 }
 
 #[test]
+fn rollback_rejects_same_byte_file_replacements_at_its_mutation_boundary() {
+    for replacing in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let targets = Targets::under(root);
+        let artifact = targets.artifact_a.to_path(root).unwrap();
+        if replacing {
+            std::fs::write(&artifact, b"old-a").unwrap();
+        }
+        let mut staging = LockedRecoveredRoot::acquire(root)
+            .unwrap()
+            .begin(targets.standard_plan())
+            .unwrap();
+        stage_standard_new_generation(&mut staging, &targets);
+        staging.ready().unwrap().interrupt_after_publish(0);
+
+        let replacement = root.join("external.svg");
+        std::fs::write(&replacement, b"new-a").unwrap();
+        let replacement_identity = same_file::Handle::from_path(&replacement).unwrap();
+        let hook_target = artifact.clone();
+        let hook = CheckpointHook::new(move |checkpoint| {
+            let boundary = if replacing {
+                Checkpoint::ReplaceBefore { index: 0 }
+            } else {
+                Checkpoint::DeleteBefore { index: 0 }
+            };
+            if checkpoint == boundary {
+                std::fs::rename(&replacement, &hook_target)?;
+            }
+            Ok(())
+        });
+        let error = LockedRecoveredRoot::acquire_with_checkpoint(root, hook).unwrap_err();
+        assert!(error.to_string().contains("rollback boundary"), "{error}");
+        assert!(root.join(TRANSACTION_DIR_NAME).is_dir());
+        assert_eq!(read(&artifact), b"new-a");
+        assert_eq!(
+            same_file::Handle::from_path(&artifact).unwrap(),
+            replacement_identity
+        );
+    }
+}
+
+#[test]
 fn acquire_recovers_staging_backing_up_publishing_and_committed_states() {
     recover_staging_state();
     recover_staging_from_a_truncated_pending_write();
