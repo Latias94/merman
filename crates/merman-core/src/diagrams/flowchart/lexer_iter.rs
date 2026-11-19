@@ -206,6 +206,35 @@ mod tests {
     }
 
     #[test]
+    fn leading_dot_identifiers_tokenize_without_consuming_dotted_links() {
+        let source = "...\n.a\nA --> ...\nB.->C\n";
+        let tokens = Lexer::new(source)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Mermaid NODE_STRING accepts a leading dot");
+        let ids = tokens
+            .iter()
+            .filter_map(|(start, token, end)| match token {
+                Tok::Id(id) => {
+                    assert_eq!(&source[*start..*end], id);
+                    Some((id.as_str(), (*start, *end)))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            [
+                ("...", (0, 3)),
+                (".a", (4, 6)),
+                ("A", (7, 8)),
+                ("...", (13, 16)),
+                ("B", (17, 18)),
+                ("C", (21, 22)),
+            ]
+        );
+    }
+
+    #[test]
     fn unsupported_unicode_recovery_keeps_character_boundaries() {
         let mut lexer = Lexer::new("😀A");
         assert!(lexer.next().unwrap().is_err());

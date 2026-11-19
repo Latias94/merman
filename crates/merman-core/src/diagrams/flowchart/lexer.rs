@@ -1048,7 +1048,10 @@ impl<'input> Lexer<'input> {
         // Ordinary comments are removed by preprocessing. Mermaid's NODE_STRING includes `%`,
         // so remaining markers belong to identifiers and must reach the grammar unchanged.
         // Its idStringToken also includes COMMA, even at the start of a literal vertex ID.
-        if first.is_ascii_alphanumeric() || matches!(first, b'_' | b'%' | b',') {
+        if first.is_ascii_alphanumeric()
+            || matches!(first, b'_' | b'%' | b',')
+            || (first == b'.' && bytes.get(start + 1).is_none_or(|&c| c != b'-'))
+        {
             self.pos += 1;
         } else {
             self.pos += non_ascii_id_char_len(self.input, start)?;

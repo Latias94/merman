@@ -14,6 +14,23 @@ fn parse(source: &str) -> FlowchartModel {
     parse_flowchart_model_for_render(source, &metadata()).expect("valid Flowchart source")
 }
 
+#[test]
+fn leading_dot_node_ids_parse_as_vertices() {
+    let model = parse("flowchart TB\n    .a --> ...\n");
+    let nodes = model
+        .nodes
+        .iter()
+        .map(|node| node.id.as_str())
+        .collect::<Vec<_>>();
+    assert_eq!(nodes, [".a", "..."]);
+    let edges = model
+        .edges
+        .iter()
+        .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+        .collect::<Vec<_>>();
+    assert_eq!(edges, [(".a", "...")]);
+}
+
 #[cfg(feature = "editor-facts")]
 #[test]
 fn unclosed_label_recovery_reuses_quote_frames_without_losing_later_valid_labels() {
