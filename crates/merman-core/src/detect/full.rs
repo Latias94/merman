@@ -30,7 +30,12 @@ impl DetectorEntry {
         }
     }
 
-    fn matches(&self, text: &str, config: &mut SourcePresentationConfig) -> bool {
+    fn matches<State>(
+        &self,
+        text: &str,
+        state: &mut State,
+        config: impl FnOnce(&mut State) -> &mut SourcePresentationConfig,
+    ) -> bool {
         match self {
             Self::Builtin(fact) => {
                 if !(fact.detector)(text) {
@@ -39,11 +44,11 @@ impl DetectorEntry {
                 if let Some((path, value)) = fact.config_effect.assignment() {
                     // Public assignment records the detector's ownership even when the value
                     // was already `elk`; overlay replay relies on that provenance.
-                    config.set_value(path, serde_json::Value::String(value.to_string()));
+                    config(state).set_value(path, serde_json::Value::String(value.to_string()));
                 }
                 true
             }
-            Self::Custom(detector) => (detector.detector)(text, config),
+            Self::Custom(detector) => (detector.detector)(text, config(state)),
         }
     }
 }
@@ -93,7 +98,7 @@ impl DetectorRegistry {
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         let cleaned = clean_detection_input_controlled(text, control)?;
-        self.detect_type_cleaned_controlled(cleaned.as_ref(), config, control)
+        self.detect_type_cleaned_controlled(cleaned.as_ref(), config, |config| config, control)
     }
 
     /// Detects a diagram type assuming the input is already pre-cleaned:
@@ -114,20 +119,31 @@ impl DetectorRegistry {
         config: &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
-        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
-        self.detect_type_cleaned_controlled(text, config, control)
+        self.detect_type_precleaned_with_config_controlled(text, config, |config| config, control)
     }
 
-    fn detect_type_cleaned_controlled(
+    pub(crate) fn detect_type_precleaned_with_config_controlled<State>(
         &self,
         text: &str,
-        config: &mut SourcePresentationConfig,
+        state: &mut State,
+        config: impl FnMut(&mut State) -> &mut SourcePresentationConfig,
+        control: &OperationControl,
+    ) -> OperationControlResult<Result<&'static str>> {
+        let text = text.strip_prefix('\u{feff}').unwrap_or(text);
+        self.detect_type_cleaned_controlled(text, state, config, control)
+    }
+
+    fn detect_type_cleaned_controlled<State>(
+        &self,
+        text: &str,
+        state: &mut State,
+        mut config: impl FnMut(&mut State) -> &mut SourcePresentationConfig,
         control: &OperationControl,
     ) -> OperationControlResult<Result<&'static str>> {
         Ok(detect_precleaned_controlled(
             text,
             self.detectors.as_slice(),
-            |detector, text| detector.matches(text, config),
+            |detector, text| detector.matches(text, state, &mut config),
             control,
         )?
         .map(DetectorEntry::id))
