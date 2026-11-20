@@ -41,11 +41,14 @@ test('Flowchart and Swimlane lexical boundaries keep their portable highlight sp
   const query = new Query(language, highlights);
 
   const cases = [
+    ['A --> B', [['variable', 'A'], ['operator', '-->'], ['variable', 'B']]],
+    ['A ...- B', [['variable', 'A'], ['operator', '...-'], ['variable', 'B']]],
     ['1.->B', [['variable', '1'], ['operator', '.->'], ['variable', 'B']]],
     ['1.5-.->B', [['variable', '1.5'], ['operator', '-.->'], ['variable', 'B']]],
     ['A...-B', [['variable', 'A...-B']]],
     ['A&B', [['variable', 'A&B']]],
     ['A & B', [['variable', 'A'], ['variable', 'B']]],
+    ['A\u00a0&\u2003B', [['variable', 'A'], ['variable', 'B']]],
     ['A--No-->B', [['variable', 'A'], ['operator', '--'], ['string', 'N'], ['operator', 'o-->'], ['variable', 'B']]],
     ['A--Nox-->B', [['variable', 'A'], ['operator', '--'], ['string', 'No'], ['operator', 'x-->'], ['variable', 'B']]],
     ['A--No -->B', [['variable', 'A'], ['operator', '--'], ['string', 'No '], ['operator', '-->'], ['variable', 'B']]],

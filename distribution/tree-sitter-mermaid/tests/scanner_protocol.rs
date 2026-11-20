@@ -1,6 +1,6 @@
 use std::ffi::{c_char, c_void};
 
-const TOKEN_COUNT: usize = 23;
+const TOKEN_COUNT: usize = 24;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
 const MAX_INDENTATION: usize = 65_534;
@@ -28,6 +28,7 @@ const KANBAN_OVERFLOW: u16 = 19;
 const END_OF_INPUT: u16 = 20;
 const DIRECTIVE_BODY: u16 = 21;
 const CLASS_COMPACT_IDENTIFIER: u16 = 22;
+const FLOWCHART_GROUP_SEPARATOR: u16 = 23;
 
 #[derive(Clone, Copy)]
 struct TokenGroup {
@@ -360,6 +361,26 @@ fn class_compact_name_token_preserves_relation_boundaries_and_is_stateless() {
         assert!(scanner.serialize().is_empty());
     }
     assert!(!scanner.scan(b"Foo--B", &[true; TOKEN_COUNT]).matched);
+}
+
+#[test]
+fn flowchart_group_separator_requires_space_on_both_sides() {
+    let mut scanner = Scanner::new();
+    let symbols = token_mask(FLOWCHART_GROUP_SEPARATOR);
+    for (source, prefix) in [(" & X", " & "), ("\u{a0}&\u{2003}X", "\u{a0}&\u{2003}")] {
+        let matched = scanner.scan(source.as_bytes(), &symbols);
+        assert!(matched.matched, "{source:?}");
+        assert_eq!(matched.symbol, FLOWCHART_GROUP_SEPARATOR);
+        assert_eq!(matched.marked_end, prefix.len());
+    }
+    for source in ["& X", " &X", " &\nX", " --> B", " ...- B"] {
+        assert!(
+            !scanner.scan(source.as_bytes(), &symbols).matched,
+            "{source:?}"
+        );
+    }
+    assert!(!scanner.scan(b" & X", &[true; TOKEN_COUNT]).matched);
+    assert!(scanner.serialize().is_empty());
 }
 
 #[test]

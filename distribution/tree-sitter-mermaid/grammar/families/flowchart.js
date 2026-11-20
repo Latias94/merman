@@ -26,11 +26,6 @@ const statementKeyword = ($, prefix, keyword) => field(
 
 const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
 
-const groupedNodeSeparator = () => alias(
-  token.immediate(/[^\S\r\n]+&[^\S\r\n]+/),
-  '&',
-);
-
 const identifier = (flowchartLexing) => {
   const unicode = String.raw`\u00c0-\uffff`;
   const head = flowchartLexing ? 'A-Za-z_./&' : 'A-Za-z0-9_.';
@@ -267,7 +262,7 @@ const createFlowFamilyRules = ({
   [familyRule(prefix, 'node')]: ($) => seq(
     field('vertex', ref($, prefix, 'vertex')),
     repeat(seq(
-      field('separator', flowchartLexing ? groupedNodeSeparator() : '&'),
+      field('separator', flowchartLexing ? alias($._flowchart_group_separator, '&') : '&'),
       field('vertex', ref($, prefix, 'vertex')),
     )),
   ),

@@ -34071,11 +34071,8 @@
                 "content": {
                   "type": "ALIAS",
                   "content": {
-                    "type": "IMMEDIATE_TOKEN",
-                    "content": {
-                      "type": "PATTERN",
-                      "value": "[^\\S\\r\\n]+&[^\\S\\r\\n]+"
-                    }
+                    "type": "SYMBOL",
+                    "name": "_flowchart_group_separator"
                   },
                   "named": false,
                   "value": "&"
@@ -50566,11 +50563,8 @@
                 "content": {
                   "type": "ALIAS",
                   "content": {
-                    "type": "IMMEDIATE_TOKEN",
-                    "content": {
-                      "type": "PATTERN",
-                      "value": "[^\\S\\r\\n]+&[^\\S\\r\\n]+"
-                    }
+                    "type": "SYMBOL",
+                    "name": "_flowchart_group_separator"
                   },
                   "named": false,
                   "value": "&"
@@ -77922,6 +77916,10 @@
     {
       "type": "SYMBOL",
       "name": "_class_compact_identifier"
+    },
+    {
+      "type": "SYMBOL",
+      "name": "_flowchart_group_separator"
     }
   ],
   "inline": [],
