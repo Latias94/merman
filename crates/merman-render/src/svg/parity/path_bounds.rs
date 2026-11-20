@@ -11,11 +11,29 @@ pub(super) struct SvgPathBounds {
 }
 
 impl SvgPathBounds {
+    fn at(x: f64, y: f64) -> Self {
+        Self {
+            min_x: x,
+            min_y: y,
+            max_x: x,
+            max_y: y,
+        }
+    }
+
     fn include_point(&mut self, x: f64, y: f64) {
         self.min_x = self.min_x.min(x);
         self.min_y = self.min_y.min(y);
         self.max_x = self.max_x.max(x);
         self.max_y = self.max_y.max(y);
+    }
+
+    pub(super) fn union(self, other: Self) -> Self {
+        Self {
+            min_x: self.min_x.min(other.min_x),
+            min_y: self.min_y.min(other.min_y),
+            max_x: self.max_x.max(other.max_x),
+            max_y: self.max_y.max(other.max_y),
+        }
     }
 }
 
@@ -88,6 +106,46 @@ pub(super) fn svg_path_bounds_include_cubic(b: &mut SvgPathBounds, c: CubicBezie
 
     include_extrema(b, [c.x0, c.x1, c.x2, c.x3], [c.y0, c.y1, c.y2, c.y3], true);
     include_extrema(b, [c.y0, c.y1, c.y2, c.y3], [c.x0, c.x1, c.x2, c.x3], false);
+}
+
+pub(super) fn svg_path_bounds_from_rough_ops(
+    opset: &roughr::core::OpSet<f64>,
+) -> Option<SvgPathBounds> {
+    use roughr::core::OpType;
+
+    let mut bounds = None;
+    let (mut x, mut y) = (0.0, 0.0);
+    for op in &opset.ops {
+        if op.data.iter().any(|coordinate| !coordinate.is_finite()) {
+            return None;
+        }
+        match (&op.op, op.data.as_slice()) {
+            (OpType::Move | OpType::LineTo, &[nx, ny]) => {
+                bounds
+                    .get_or_insert_with(|| SvgPathBounds::at(nx, ny))
+                    .include_point(nx, ny);
+                (x, y) = (nx, ny);
+            }
+            (OpType::BCurveTo, &[x1, y1, x2, y2, x3, y3]) => {
+                svg_path_bounds_include_cubic(
+                    bounds.get_or_insert_with(|| SvgPathBounds::at(x, y)),
+                    CubicBezier {
+                        x0: x,
+                        y0: y,
+                        x1,
+                        y1,
+                        x2,
+                        y2,
+                        x3,
+                        y3,
+                    },
+                );
+                (x, y) = (x3, y3);
+            }
+            _ => return None,
+        }
+    }
+    bounds
 }
 
 pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
@@ -371,12 +429,7 @@ pub(super) fn svg_path_bounds_from_d(d: &str) -> Option<SvgPathBounds> {
         let ucmd = cmd.to_ascii_uppercase();
 
         fn ensure_bounds(b: &mut Option<SvgPathBounds>, x: f64, y: f64) -> &mut SvgPathBounds {
-            b.get_or_insert(SvgPathBounds {
-                min_x: x,
-                min_y: y,
-                max_x: x,
-                max_y: y,
-            })
+            b.get_or_insert_with(|| SvgPathBounds::at(x, y))
         }
 
         match ucmd {
@@ -737,7 +790,44 @@ pub(super) fn svg_path_length_from_d(d: &str) -> Option<f64> {
 
 #[cfg(test)]
 mod tests {
-    use super::svg_path_length_from_d;
+    use super::{svg_path_bounds_from_d, svg_path_bounds_from_rough_ops, svg_path_length_from_d};
+
+    #[test]
+    fn rough_operation_bounds_match_serialized_path_bounds() {
+        use roughr::core::{Op, OpSet, OpSetType, OpType};
+
+        let opset = OpSet {
+            op_set_type: OpSetType::Path,
+            ops: vec![
+                Op {
+                    op: OpType::Move,
+                    data: vec![-0.0, 0.1],
+                },
+                Op {
+                    op: OpType::BCurveTo,
+                    data: vec![0.6, 19.0, 3.0, -15.0, 1.1, 2.0],
+                },
+                Op {
+                    op: OpType::Move,
+                    data: vec![1.2, 2.2250738585072014e-308],
+                },
+                Op {
+                    op: OpType::LineTo,
+                    data: vec![2.1, 0.5],
+                },
+            ],
+            size: None,
+            path: None,
+        };
+        let expected =
+            svg_path_bounds_from_d(&super::super::roughjs_common::ops_to_svg_path_d(&opset))
+                .unwrap();
+        let actual = svg_path_bounds_from_rough_ops(&opset).unwrap();
+        let coordinates = |bounds: super::SvgPathBounds| {
+            [bounds.min_x, bounds.min_y, bounds.max_x, bounds.max_y].map(f64::to_bits)
+        };
+        assert_eq!(coordinates(actual), coordinates(expected));
+    }
 
     #[test]
     fn total_length_uses_svg_dom_float_precision() {

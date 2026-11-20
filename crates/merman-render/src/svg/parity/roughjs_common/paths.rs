@@ -43,6 +43,23 @@ impl RoughPathPair {
         }
     }
 
+    #[cfg(any(
+        feature = "diagram-flowchart",
+        feature = "diagram-swimlane",
+        feature = "diagram-agentflow"
+    ))]
+    pub(in crate::svg::parity) fn query_bounds(
+        &self,
+    ) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
+        use crate::svg::parity::path_bounds::{SvgPathBounds, svg_path_bounds_from_rough_ops};
+
+        debug_assert!(self.reservation.is_none());
+        [&self.fill, &self.stroke]
+            .into_iter()
+            .filter_map(svg_path_bounds_from_rough_ops)
+            .reduce(SvgPathBounds::union)
+    }
+
     pub(in crate::svg::parity) fn into_svg_paths(
         self,
         work_meter: &OperationWorkMeter,

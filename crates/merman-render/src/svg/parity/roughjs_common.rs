@@ -57,7 +57,9 @@ pub(in crate::svg::parity) fn ops_to_svg_path_d(opset: &roughr::core::OpSet<f64>
             }
         }
     }
-    out.trim_end().to_string()
+    // Each operation appends one trailing ASCII space.
+    out.pop();
+    out
 }
 
 pub(in crate::svg::parity) fn closed_path_d_from_points(points: &[(f64, f64)]) -> String {
