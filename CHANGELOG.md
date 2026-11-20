@@ -4,19 +4,43 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.10.1] - Unreleased
+
+### Upgrading
+
+- Migrate CLI `--ascii-report` and binding `output_plan` readers to ASCII schema `4`. Replace `overflowed` with nullable `primary_overflowed` and required `emitted_overflowed`. The primary dimensions, layout profile, and overflow status are null together when no primary layout was produced. Preserve zero dimensions for a measured empty diagram. [ASCII report migration](docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4), [#323](https://github.com/Latias94/merman/pull/323)
+- Use matching Web wrappers and WASM for transport API `11`. Upgrade Swift and Python wrappers together with their native libraries for UniFFI binding API `8`. [Binding migration](docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+
+### Added
+
+- Render Agentflow, Architecture, Block, C4, Pie, Requirement, Usecase, and ZenUML as terminal diagrams. Gantt gains timelines, GitGraph gains branch tracks, and Packet gains bit grids. Improved routing makes edges easier to trace in dense graphs, and complete records reflow to the requested width. [Terminal support matrix](docs/rendering/ASCII_SUPPORT_MATRIX.md), [#314](https://github.com/Latias94/merman/pull/314), [#317](https://github.com/Latias94/merman/pull/317), [#324](https://github.com/Latias94/merman/pull/324), [#326](https://github.com/Latias94/merman/pull/326)
+- Opt in to Plain `adaptive` terminal output for Flowchart, Swimlane, State, Agentflow, and Requirement. When routing exhausts its search or runs out of ports, the renderer can emit complete node and relationship records. Use `--ascii-graph-presentation adaptive --ascii-color plain` in the CLI or `ascii.graph_presentation` in binding options. [Graph presentation and viewport](docs/rendering/ASCII_SUPPORT_MATRIX.md#viewport-and-report-contract), [#323](https://github.com/Latias94/merman/pull/323), [#324](https://github.com/Latias94/merman/pull/324)
+- Show the Gantt Today Marker at the browser's current time in Playground and carry that instant into exports. Replay a captured instant with `--fixed-unix-millis` in the CLI or `fixed_unix_millis` in binding options, together with the local offset. [#311](https://github.com/Latias94/merman/issues/311), [#312](https://github.com/Latias94/merman/pull/312)
 
 ### Changed
 
-- Select Rust 1.100.0 for repository development, CI and release builders while retaining library MSRV 1.95. Update layout code for the stricter Clippy checks and remove unused workspace dependency aliases and redundant Cargo package metadata.
+- The official Windows CLI queries the system font catalog on demand by default for PNG, JPEG, and PDF exports. Layout and painting share the selected fonts, and the bundled exporter retries mixed-script and symbol fallback when a partial match changes glyph clustering. Default Cargo builds use bounded discovery. Select `--font-system platform` or `--font-system bounded` explicitly in release builds. Font selection and wrapping can differ by provider. [CLI font and installation contract](docs/releasing/CLI.md#cli-contract-migration)
+- Reduce first-render compilation work in browser WebAssembly and repeated parsing, layout, and painting work in Flowchart, ER, Sequence, and Mindmap. [#328](https://github.com/Latias94/merman/pull/328)
+- Reuse host theme calculations when a renderer repeatedly draws the same diagram family without source overrides. Compute Flowchart SVG path lengths only when edge painting uses them.
+- Return SVG strings directly from the native Node addon for `renderSvg()` and `renderSvgSync()`.
+- Use Rust `1.100.0` for repository development, CI, and release builds. The library minimum is Rust `1.95`. [#308](https://github.com/Latias94/merman/pull/308)
+- Reduce the workspace Typst plugin's WASM size by sharing parser and theme code. The independently published Typst Universe wrapper `@preview/merman:0.6.0` bundles Merman `0.10.0`. [Typst Universe](https://typst.app/universe/package/merman/), [#304](https://github.com/Latias94/merman/pull/304), [#306](https://github.com/Latias94/merman/pull/306)
 
 ### Fixed
 
-- Accept Flowchart node IDs that begin with a period, such as `...` and `.a`, matching Mermaid's `NODE_STRING`. Editor renames preserve adjacent edge operators, including open edges before names beginning with `o` or `x`.
-- Preserve literal ampersands in Flowchart IDs such as `A&B` and recognize spaced node groups such as `A & B`.
-- Accept punctuation in Flowchart node IDs and preserve classes, links and statements during editor renames. Match Mermaid's stroke and length for links with mixed endpoint markers.
-- Preserve valid Class and namespace source when renaming to Unicode names or reserved words that require backticks. Existing quotes, generic suffixes and relationship targets remain intact.
-- Finish interrupted Markdown publication and publish the requested output in one retry after blocked files become available, including batches with rollback journals written by older versions.
+- Render the upstream 500-node Flowchart within the existing layout work ceiling. ELK on 32-bit WebAssembly also lays out the 181-leaf fan-out regression with forced model order. [#328](https://github.com/Latias94/merman/pull/328)
+- Avoid false `resvg-safe` selector-budget errors for large Flowcharts and Class diagrams, including a Class diagram with 400 members. [#313](https://github.com/Latias94/merman/pull/313)
+- Accept Flowchart IDs with leading dots and punctuation, distinguish literal `A&B` IDs from `A & B` groups, and preserve adjacent edge operators and bindings during editor renames. Match Mermaid's stroke and length for compact links with mixed endpoint markers. LSP highlighting follows the corrected identifier and arrow boundaries. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
+- Preserve Class and namespace syntax when renaming to Unicode names or reserved words that require backticks, including existing quotes, generic suffixes, and relationship targets. [#308](https://github.com/Latias94/merman/pull/308)
+- Treat Usecase JSON keys such as `$serde_json::private::Number` as literal property names.
+- Produce consistent stylesheet output across repeated SVG sanitization, including styles with escaped carriage returns. [#325](https://github.com/Latias94/merman/pull/325)
+- Accept symlinked font directory roots for `--font-dir` and bounded system font discovery. [#315](https://github.com/Latias94/merman/issues/315), [#316](https://github.com/Latias94/merman/pull/316)
+- Spend less work on unchanged Markdown batch reruns. After blocked files become available, a single retry can finish rollback and publish the requested output, including when recovering journals written by older versions. [#328](https://github.com/Latias94/merman/pull/328)
+- Release queued Node calls' execution slots before their promises settle so follow-up calls can use the available capacity. [#328](https://github.com/Latias94/merman/pull/328)
+
+### Contributors
+
+Thanks [@Latias94](https://github.com/Latias94) for the implementation, [@MikeRomaa](https://github.com/MikeRomaa) for the Flowchart parsing contribution, [@mitch-karch](https://github.com/mitch-karch) for the Gantt Today Marker report, and [@mfontanini](https://github.com/mfontanini) for the font-directory symlink report.
 
 ## [0.10.0] - 2026-11-12
 

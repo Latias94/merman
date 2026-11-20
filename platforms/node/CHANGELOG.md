@@ -2,6 +2,20 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
+## [0.10.1] - Unreleased
+
+### Added
+
+- Set `fixed_unix_millis` and `fixed_local_offset_minutes` in binding options to render the Gantt Today Marker at a captured instant. [#312](https://github.com/Latias94/merman/pull/312)
+
+### Changed and fixed
+
+- Get SVG strings directly from the native addon in `renderSvg()` and `renderSvgSync()`.
+- Release queued calls' execution slots before their promises settle so follow-up calls can use the available capacity. [#328](https://github.com/Latias94/merman/pull/328)
+- Accept leading dots and punctuation in Flowchart IDs, distinguish `A&B` IDs from `A & B` groups, and match Mermaid's stroke and length for compact links with mixed endpoint markers. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
+- Avoid false `resvg-safe` selector-budget errors on large Flowchart and Class diagrams. [#313](https://github.com/Latias94/merman/pull/313)
+- Compute Flowchart SVG path lengths on demand for non-animated Neo edge masks.
+
 ## [0.10.0] - 2026-11-12
 
 Cumulative changes since the latest stable Node package group, `0.9.3`. The package remains experimental; see the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.

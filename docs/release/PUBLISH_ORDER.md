@@ -11,6 +11,12 @@ Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the 
 
 The main-line `0.10.0-alpha.2` is published for all selected products, with independently reconciled delivery recorded below. The previous `0.10.0-alpha.1` remains available. The `0.9.x` maintenance source and tags are unchanged.
 
+## 0.10.1 preparation
+
+On 2026-11-21 (Asia/Shanghai), the maintainer selected `0.10.1` for local candidate preparation and comparison with the [published 0.10.0 release](https://github.com/Latias94/merman/releases/tag/v0.10.0). Qualify the Windows CLI, Rust API, Node N-API, and Web SDK on their public render paths. The workspace version projection includes coupled package metadata. Publication scope and tag date await maintainer selection.
+
+Prepare Tree-sitter Mermaid `0.3.5` through its [independent release owner](TREE_SITTER_MERMAID.md) before publishing the coupled LSP. The Cargo and npm registries still serve `0.3.4` as of 2026-11-21. Reuse `roughr-merman 0.12.6`. The existing [published versions](PREBUILT_PRODUCTS.md#published-versions) remain the installation reference while candidate outputs qualify.
+
 ## 0.10.0 preparation
 
 The maintainer selected stable `0.10.0` for repository preparation on 2026-11-11 (Asia/Shanghai). The pending root and five workspace-coupled package changelogs consolidate the final user experience since the previous stable release, with published alpha entries retained. Release-facing examples target the selected version; the [host guide](PREBUILT_PRODUCTS.md#published-versions) still owns verified registry availability.
