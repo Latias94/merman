@@ -104,8 +104,7 @@ fn prepare_stadium_geometry(
     // Port of Mermaid `stadium.ts` points + `createPathFromPoints`.
     // Note that Mermaid's `generateCirclePoints()` pushes negated coordinates.
     // Use one source geometry for layout, paint, and intersection. The sampled arc list is
-    // retained for the path, while the source theoretical width remains the node dimension;
-    // re-sampling it during layout would shrink the same stadium twice.
+    // built on demand for the path. The source theoretical width remains the node dimension.
     //
     // Mermaid sizes the path from the `labelHelper(...)` bbox, so HTML labels are measured with
     // the CSS theme font size (e.g. `12.5px`) rather than the integer `parseFontSize` number.
@@ -124,7 +123,7 @@ fn prepare_stadium_geometry(
         ctx.node_padding,
         crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
     );
-    let path_data = path_from_points(&geometry.points);
+    let path_data = path_from_points(&geometry.outline());
     let w = geometry.width;
     let h = geometry.height;
     let radius = h / 2.0;

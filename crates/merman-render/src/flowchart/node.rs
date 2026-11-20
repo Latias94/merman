@@ -264,23 +264,20 @@ fn sampled_circle_points(
     start_deg: f64,
     end_deg: f64,
     negate: bool,
-) -> Vec<(f64, f64)> {
+) -> impl Iterator<Item = (f64, f64)> {
     let start = start_deg.to_radians();
     let step = (end_deg.to_radians() - start) / (count.saturating_sub(1).max(1) as f64);
-    (0..count)
-        .map(|i| {
-            let angle = start + i as f64 * step;
-            let x = center_x + radius * angle.cos();
-            let y = center_y + radius * angle.sin();
-            if negate { (-x, -y) } else { (x, y) }
-        })
-        .collect()
+    (0..count).map(move |i| {
+        let angle = start + i as f64 * step;
+        let x = center_x + radius * angle.cos();
+        let y = center_y + radius * angle.sin();
+        if negate { (-x, -y) } else { (x, y) }
+    })
 }
 
 pub(crate) struct StadiumGeometry {
     pub(crate) width: f64,
     pub(crate) height: f64,
-    pub(crate) points: Vec<(f64, f64)>,
 }
 impl StadiumGeometry {
     pub(crate) fn from_label(label_width: f64, label_height: f64, padding: f64, neo: bool) -> Self {
@@ -295,13 +292,26 @@ impl StadiumGeometry {
         let w = (label_width.max(0.0) + h / 4.0 + padding_x)
             .max(1.5 * h + (h - inscribed))
             .max(label_width.max(0.0) + padding_x + h - cap);
+        // Layout uses the theoretical dimensions. Paint and intersection sample the outline
+        // on demand because its narrower extrema would otherwise shrink the stadium twice.
+        Self {
+            width: w,
+            height: h,
+        }
+    }
+
+    pub(crate) fn outline(&self) -> Vec<(f64, f64)> {
+        let w = self.width;
+        let h = self.height;
         let radius = h / 2.0;
-        let mut points = vec![(-w / 2.0 + radius, -h / 2.0), (w / 2.0 - radius, -h / 2.0)];
+        const ARC_POINTS: usize = 50;
+        let mut points = Vec::with_capacity(2 * ARC_POINTS + 3);
+        points.extend([(-w / 2.0 + radius, -h / 2.0), (w / 2.0 - radius, -h / 2.0)]);
         points.extend(sampled_circle_points(
             -w / 2.0 + radius,
             0.0,
             radius,
-            50,
+            ARC_POINTS,
             90.0,
             270.0,
             true,
@@ -311,18 +321,12 @@ impl StadiumGeometry {
             w / 2.0 - radius,
             0.0,
             radius,
-            50,
+            ARC_POINTS,
             270.0,
             450.0,
             true,
         ));
-        // Keep the source theoretical dimensions. The sampled points are the paint/intersection
-        // outline, but using their narrower extrema for layout would shrink the same shape twice.
-        Self {
-            width: w,
-            height: h,
-            points,
-        }
+        points
     }
 }
 
@@ -1561,8 +1565,8 @@ mod render_dimension_tests {
         assert_eq!((stadium.width, stadium.height), (123.75, 35.0));
         let neo_stadium = StadiumGeometry::from_label(100.0, 20.0, 15.0, true);
         assert_eq!((neo_stadium.width, neo_stadium.height), (151.0, 44.0));
-        assert_eq!(stadium.points.len(), 103);
-        assert_eq!(neo_stadium.points.len(), 103);
+        assert_eq!(stadium.outline().len(), 103);
+        assert_eq!(neo_stadium.outline().len(), 103);
         let delay = DelayGeometry::from_label(100.0, 20.0, 15.0, false);
         let neo_delay = DelayGeometry::from_label(100.0, 20.0, 15.0, true);
         assert!((delay.width - 134.174243).abs() < 1e-5 && delay.height == 50.0);
@@ -1574,7 +1578,7 @@ mod render_dimension_tests {
         assert_eq!(display.points.len(), 55);
         assert_eq!(neo_display.points.len(), 55);
         for shape in [
-            StadiumGeometry::from_label(0.0, 0.0, 0.0, false).points,
+            StadiumGeometry::from_label(0.0, 0.0, 0.0, false).outline(),
             DelayGeometry::from_label(0.0, 0.0, 0.0, false).points,
             DisplayGeometry::from_label(0.0, 0.0, 0.0, false).points,
         ] {
