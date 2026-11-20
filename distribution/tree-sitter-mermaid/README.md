@@ -29,7 +29,7 @@ The grammar has its own version line, independent of Merman. Its npm and Cargo a
 grammar version, but their registry names differ: the npm package is scoped under `@mermanjs`, while
 the Rust crate and C library retain the standard `tree-sitter-mermaid` name.
 
-This guide targets `0.3.4`. The patch keeps generic suffixes attached to quoted Class names and recognizes compact Class relationship operators without consuming them as part of a class name. Check the [independent publication record](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md#0100-preparation) for verified registry availability.
+Version `0.3.5` improves highlighting for dot-prefixed node IDs and compact Flowchart-style edges. The installation examples below use the published `0.3.4` packages. Check [Publish Order](https://github.com/Latias94/merman/blob/main/docs/release/PUBLISH_ORDER.md) for current registry availability.
 Portable queries, Mermaid/ZenUML baselines, language ABI 15, runtime versions, and the Rust
 `cc` minimum of `1.10.0` remain unchanged. See [CHANGELOG.md](CHANGELOG.md) for package changes.
 Match the examples to the version installed in your project; earlier versions have their own tagged
@@ -151,7 +151,7 @@ int main(void) {
 }
 ```
 
-Version 0.3.4 pairs with Tree-sitter CLI, Rust, and Web runtime 0.27.1; the Rust language adapter uses compatible `^0.1.9`, and the generated language ABI remains 15. See [query migration](docs/query-migration.md) when upgrading queries and the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md) when maintaining the package.
+The grammar pairs with Tree-sitter CLI, Rust, and Web runtime 0.27.1. The Rust language adapter uses compatible `^0.1.9` and the generated language ABI remains 15. See [query migration](docs/query-migration.md) when upgrading queries and the [grammar release guide](../../docs/release/TREE_SITTER_MERMAID.md) when maintaining the package.
 
 ## Compatibility
 

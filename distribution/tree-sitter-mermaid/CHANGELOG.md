@@ -1,8 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.3.5 - Unreleased
 
 - Highlight node IDs that start with a dot, including `...`, in Flowchart, Swimlane, and Agentflow. Compact edges such as `.a-.->.b` in Flowchart keep the full operator highlighted.
+- Preserve literal ampersands in Flowchart node IDs and keep surrounding whitespace outside arrow and edge-label captures. Recognize compact arrows in additional endpoint and label forms.
 
 ## 0.3.4 - 2026-11-12
 
