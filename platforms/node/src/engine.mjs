@@ -1,4 +1,5 @@
 import { BoundedExecutor } from "./bounded-executor.mjs";
+import { supportsDirectNativeSvg } from "./native-loader.mjs";
 import {
   MermanInvalidTransportError,
   NODE_TRANSPORT_FIELD_LIMITS,
@@ -124,11 +125,14 @@ export async function createNodeEngine(
   try {
     assertTransport(transport);
     const runtimeCatalog = validateRuntimeCatalog(await transport.runtimeCatalogJson());
+    const directSvg = supportsDirectNativeSvg(transport) &&
+      runtimeCatalog.capabilities.operation_ids.includes("svg");
     return new MermanEngine(
       MERMAN_ENGINE_CONSTRUCTION_TOKEN,
       transport,
       runtimeCatalog,
       { concurrency, maxQueue },
+      directSvg,
     );
   } catch (error) {
     await disposeUnusableTransport(transport);
@@ -207,6 +211,7 @@ export function normalizeBindingOptions(value = {}) {
 }
 
 export class MermanEngine {
+  #directSvg;
   #disposePromise = null;
   #executor;
   #metadataIds;
@@ -214,13 +219,14 @@ export class MermanEngine {
   #runtimeCatalog;
   #transport;
 
-  constructor(constructionToken, transport, runtimeCatalog, queueOptions) {
+  constructor(constructionToken, transport, runtimeCatalog, queueOptions, directSvg) {
     if (constructionToken !== MERMAN_ENGINE_CONSTRUCTION_TOKEN) {
       throw new MermanInvalidTransportError(
         "MermanEngine instances must be created with createNodeEngine().",
       );
     }
     this.#transport = transport;
+    this.#directSvg = directSvg;
     this.#runtimeCatalog = runtimeCatalog;
     this.#metadataIds = new Set(
       runtimeCatalog.metadata_ids.filter((id) => METADATA_SPEC_BY_ID.has(id)),
@@ -333,15 +339,17 @@ export class MermanEngine {
     const prepared = prepareOperationRequest(request, { timeoutMs });
     if (signal?.aborted) return Promise.reject(abortError());
     const encoded = operationRequestJson(prepared, includeMetadata);
+    const directSvg = this.#usesDirectSvg(encoded.expectation, includeMetadata);
     return this.#executor.submit(
       async () => {
         // A signal can flip after queue admission but before this start microtask runs. That work
         // has not crossed the transport boundary, so preserve the established AbortError result.
         if (signal?.aborted) throw abortError();
-        let responseJson;
+        let response;
         try {
-          responseJson = await executeTransportOperation(
+          response = await executeTransportOperation(
             this.#transport,
+            directSvg ? "executeSvg" : "execute",
             encoded.json,
             signal,
             timeoutMs,
@@ -349,11 +357,11 @@ export class MermanEngine {
         } catch (cause) {
           throw decodeWireInvocationError(cause, "Merman operation");
         }
-        return decodeWireResponse(responseJson, encoded.expectation, {
+        return this.#decodeOperationResponse(response, encoded.expectation, {
           includeMetadata,
-          allowedCancellationReasons: invocationCancellationReasons(signal, timeoutMs),
-          requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
-          availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
+          directSvg,
+          signal,
+          timeoutMs,
         });
       },
       { signal },
@@ -370,16 +378,39 @@ export class MermanEngine {
       prepareOperationRequest(request, { timeoutMs }),
       includeMetadata,
     );
-    let responseJson;
+    const directSvg = this.#usesDirectSvg(encoded.expectation, includeMetadata);
+    let response;
     try {
-      responseJson = this.#transport.executeSync(encoded.json, timeoutMs);
+      response = directSvg
+        ? this.#transport.executeSvgSync(encoded.json, timeoutMs)
+        : this.#transport.executeSync(encoded.json, timeoutMs);
     } catch (cause) {
       throw decodeWireInvocationError(cause, "Merman operation");
     }
-    return decodeWireResponse(responseJson, encoded.expectation, {
+    return this.#decodeOperationResponse(response, encoded.expectation, {
       includeMetadata,
-      allowedCancellationReasons: invocationCancellationReasons(undefined, timeoutMs),
-      requireUnavailable: !this.#operationIds.has(encoded.expectation.operation_id),
+      directSvg,
+      timeoutMs,
+    });
+  }
+
+  #usesDirectSvg(expectation, includeMetadata) {
+    return this.#directSvg && !includeMetadata && expectation.operation_id === "svg";
+  }
+
+  #decodeOperationResponse(response, expectation, { includeMetadata, directSvg, signal, timeoutMs }) {
+    if (directSvg) {
+      if (typeof response === "string") return response;
+      if (response === null || typeof response !== "object" || !Object.hasOwn(response, "errorJson")) {
+        throw new MermanInvalidTransportError("The native SVG operation returned an invalid result.");
+      }
+      response = response.errorJson;
+    }
+    return decodeWireResponse(response, expectation, {
+      includeMetadata,
+      requireError: directSvg,
+      allowedCancellationReasons: invocationCancellationReasons(signal, timeoutMs),
+      requireUnavailable: !this.#operationIds.has(expectation.operation_id),
       availableCapabilityIds: this.#runtimeCatalog.capabilities.capability_ids,
     });
   }
@@ -491,8 +522,8 @@ function operationRequestJson({ expectation, request, value }, includeMetadata) 
   };
 }
 
-async function executeTransportOperation(transport, requestJson, signal, timeoutMs) {
-  if (!signal) return transport.execute(requestJson, undefined, timeoutMs);
+async function executeTransportOperation(transport, method, requestJson, signal, timeoutMs) {
+  if (!signal) return transport[method](requestJson, undefined, timeoutMs);
 
   // Forward into a private signal so the N-API bridge cannot replace a caller-owned `onabort`
   // handler while it installs its cooperative cancellation callback.
@@ -508,7 +539,7 @@ async function executeTransportOperation(transport, requestJson, signal, timeout
   };
   signal.addEventListener("abort", forwardAbort, { once: true });
   try {
-    const operation = transport.execute(requestJson, transportAbort.signal, timeoutMs);
+    const operation = transport[method](requestJson, transportAbort.signal, timeoutMs);
     transportReady = true;
     if (pendingAbort || signal.aborted) transportAbort.abort(signal.reason);
     return await operation;

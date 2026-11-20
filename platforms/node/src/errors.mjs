@@ -904,6 +904,7 @@ export function decodeWireResponse(
   expectation,
   {
     includeMetadata = true,
+    requireError = false,
     allowedCancellationReasons = [],
     requireUnavailable = false,
     availableCapabilityIds = [],
@@ -936,6 +937,9 @@ export function decodeWireResponse(
       availableCapabilityIds,
     );
     throw new MermanOperationError(error);
+  }
+  if (requireError) {
+    throw new MermanInvalidTransportError("The native SVG failure must contain an error envelope.");
   }
   if (envelope.ok !== true || Object.hasOwn(envelope, "error")) {
     throw new MermanInvalidTransportError(

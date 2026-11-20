@@ -11,7 +11,10 @@ import { resolveInstalledEntrypoint } from "./smoke-installed-package.mjs";
 const args = process.argv.slice(2);
 const projectIndex = args.indexOf("--project");
 const project = projectIndex === -1 ? null : args[projectIndex + 1];
-if (!project) throw new Error("usage: node napi-task-smoke.mjs --project <installed-project>");
+const requireDirectSvg = args.includes("--require-direct-svg");
+if (!project) {
+  throw new Error("usage: node napi-task-smoke.mjs --project <installed-project> [--require-direct-svg]");
+}
 
 const entrypoint = resolveInstalledEntrypoint(project);
 const requireFromInstalled = createRequire(entrypoint);
@@ -20,6 +23,9 @@ const artifact = requireFromInstalled.resolve(nativePackageName(target));
 const binding = requireFromInstalled(artifact);
 const { NativeEngine } = binding;
 assert.equal(typeof NativeEngine, "function");
+const supportsDirectSvg = typeof NativeEngine.prototype.executeSvg === "function";
+assert.equal(typeof NativeEngine.prototype.executeSvgSync === "function", supportsDirectSvg);
+if (requireDirectSvg) assert.ok(supportsDirectSvg, "the addon must provide the direct SVG methods");
 const manifest = JSON.parse(readFileSync(
   path.resolve(path.dirname(entrypoint), "..", "package.json"), "utf8",
 ));
@@ -38,6 +44,14 @@ const cold = new NativeEngine(options);
 const warm = new NativeEngine(options);
 const disposing = new NativeEngine(options);
 let accepted = [];
+
+const publicOptionsJson = JSON.stringify({
+  site_config: { htmlLabels: false },
+  svg: { diagram_id: "napi-task-smoke-public" },
+});
+const publicRequest = {
+  operationId: "svg", source: 'flowchart TD\nA["你好 & 🧪"] --> B', optionsJson: publicOptionsJson,
+};
 
 try {
   const concurrent = await Promise.all(Array.from({ length: 4 }, () => cold.execute(request)));
@@ -96,12 +110,56 @@ try {
   assert.equal(assertSvg(await cold.execute(request)), baseline);
 
   const installed = await import(pathToFileURL(entrypoint));
-  const publicEngine = await installed.createNodeEngine({ concurrency: 2 });
+  const publicEngine = await installed.createNodeEngine({ concurrency: 1, maxQueue: 1 });
   try {
-    const results = await Promise.all([
-      publicEngine.renderSvg(source), publicEngine.renderSvg(source),
-    ]);
-    for (const svg of results) assert.match(svg, /<svg\b/);
+    const svg = publicEngine.executeOperationSync(publicRequest);
+    assert.equal(svg.operation_id, "svg");
+    assert.equal(svg.media_type, "image/svg+xml");
+    assert.equal(JSON.parse(svg.metadata_json).byte_length, Buffer.byteLength(svg.data));
+    assert.match(svg.data, /<svg\b[^>]*\bid="napi-task-smoke-public"/);
+    assert.ok(svg.data.includes("你好") && svg.data.includes("🧪"));
+
+    // Disable the general methods after collecting the reference so accidental wire fallback
+    // cannot make the direct-path smoke pass, even when both paths return identical SVG.
+    const { execute, executeSync } = NativeEngine.prototype;
+    if (supportsDirectSvg) {
+      NativeEngine.prototype.execute = NativeEngine.prototype.executeSync = () => {
+        throw new Error("general execution called by the public SVG helper");
+      };
+    }
+    const { source: publicSource, optionsJson } = publicRequest;
+    try {
+      const first = publicEngine.renderSvg(publicSource, { optionsJson });
+      const second = publicEngine.renderSvg(publicSource, { optionsJson });
+      assert.throws(() => publicEngine.renderSvgSync(publicSource), installed.MermanLifecycleError);
+      await assert.rejects(publicEngine.renderSvg(publicSource), installed.MermanQueueSaturatedError);
+      for (const result of await Promise.all([first, second])) assert.equal(result, svg.data);
+      assert.equal(publicEngine.renderSvgSync(publicSource, { optionsJson }), svg.data);
+
+      const isDeadline = (error) => error instanceof installed.MermanOperationError &&
+        error.codeName === "MERMAN_CANCELLED" &&
+        error.cancellationDetails?.reason === "deadline_exceeded" &&
+        error.cancellationDetails?.phase === "admission";
+      assert.throws(() => publicEngine.renderSvgSync(publicSource, { timeoutMs: 0 }), isDeadline);
+      await assert.rejects(publicEngine.renderSvg(publicSource, { timeoutMs: 0 }), isDeadline);
+      await assert.rejects(publicEngine.renderSvg("flowchart TD\nA --> ]"), (error) =>
+        error instanceof installed.MermanOperationError &&
+        error.codeName === "MERMAN_PARSE_ERROR" &&
+        error.diagnosticDetails?.code === "merman.parse.diagram_parse",
+      );
+
+      const publicAbort = new AbortController();
+      const running = publicEngine.renderSvg("flowchart TD\n" + Array.from(
+        { length: 8_000 }, (_, index) => `N${index} --> N${index + 1}`,
+      ).join("\n"), { signal: publicAbort.signal });
+      await Promise.resolve(); // The executor invokes the transport in the preceding microtask.
+      publicAbort.abort();
+      await assert.rejects(running, (error) => error instanceof installed.MermanOperationError &&
+        error.codeName === "MERMAN_CANCELLED" && error.cancellationDetails?.reason === "requested");
+      assert.equal(await publicEngine.renderSvg(publicSource, { optionsJson }), svg.data);
+    } finally {
+      if (supportsDirectSvg) Object.assign(NativeEngine.prototype, { execute, executeSync });
+    }
   } finally {
     await publicEngine.dispose();
   }
@@ -133,6 +191,7 @@ try {
     sync_warmup: true, override_recovery: true, failure_recovery: true,
     cancellation_isolation: true, deadline_isolation: true,
     accepted_after_dispose: 2, installed_public_async_requests: 2,
+    installed_public_direct_svg: supportsDirectSvg,
   }));
 } finally {
   await Promise.allSettled(accepted);

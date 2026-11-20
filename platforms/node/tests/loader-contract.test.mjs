@@ -15,6 +15,7 @@ import {
   nodeLoaderPackageVersion,
   nativePackageName,
   resolveNodeTarget,
+  supportsDirectNativeSvg,
 } from "../src/native-loader.mjs";
 import {
   MermanDisposedError,
@@ -193,6 +194,8 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
   class NativeEngine {
     execute() {}
     executeSync() {}
+    executeSvg() { assert.fail("the injected binding must use the wire transport"); }
+    executeSvgSync() { assert.fail("the injected binding must use the wire transport"); }
     metadataJson(id) {
       return JSON.stringify({ id });
     }
@@ -214,6 +217,9 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
     nodeLoaderPackageVersion(),
   );
   assert.equal(catalogReads, 1);
+  assert.equal(transport.executeSvg, undefined);
+  assert.equal(transport.executeSvgSync, undefined);
+  assert.equal(supportsDirectNativeSvg(transport), false);
   await transport.dispose();
 });
 

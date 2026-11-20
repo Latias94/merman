@@ -3,7 +3,7 @@ import { MermanDisposedError, MermanInvalidTransportError } from "../errors.mjs"
 export function wrapCandidateEngine(
   engine,
   label,
-  { forwardsAbortSignal = false } = {},
+  { forwardsAbortSignal = false, directSvgAddon = false } = {},
 ) {
   if (
     typeof engine?.execute !== "function" ||
@@ -18,7 +18,9 @@ export function wrapCandidateEngine(
     if (!ownedEngine) throw new MermanDisposedError();
     return ownedEngine;
   };
-  return {
+  const executeSvg = directSvgAddon ? engine.executeSvg : undefined;
+  const executeSvgSync = directSvgAddon ? engine.executeSvgSync : undefined;
+  const transport = {
     execute: (requestJson, signal, timeoutMs) =>
       forwardsAbortSignal
         ? currentEngine().execute(requestJson, signal, timeoutMs)
@@ -33,4 +35,11 @@ export function wrapCandidateEngine(
       return disposing?.dispose?.();
     },
   };
+  if (typeof executeSvg === "function" && typeof executeSvgSync === "function") {
+    transport.executeSvg = (requestJson, signal, timeoutMs) =>
+      executeSvg.call(currentEngine(), requestJson, signal, timeoutMs);
+    transport.executeSvgSync = (requestJson, timeoutMs) =>
+      executeSvgSync.call(currentEngine(), requestJson, timeoutMs);
+  }
+  return transport;
 }

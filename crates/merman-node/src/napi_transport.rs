@@ -1,7 +1,7 @@
 use merman_bindings_core::{BindingEngine, OperationControl};
 use napi::{
     Env, Task,
-    bindgen_prelude::{AbortSignal, PromiseRaw},
+    bindgen_prelude::{AbortSignal, Either, PromiseRaw, ToNapiValue, TypeName},
 };
 use napi_derive::napi;
 use std::sync::Arc;
@@ -13,6 +13,14 @@ pub struct NativeEngine {
     engine: Option<Arc<BindingEngine>>,
 }
 
+#[napi(object, object_from_js = false)]
+pub struct SvgOperationFailure {
+    #[napi(js_name = "errorJson")]
+    pub error_json: String,
+}
+
+type AdmittedOperation<T> = fn(&BindingEngine, &str, OperationControl, Option<u32>) -> T;
+
 impl NativeEngine {
     fn engine(&self) -> Result<&Arc<BindingEngine>, napi::Error> {
         self.engine
@@ -20,14 +28,16 @@ impl NativeEngine {
             .ok_or_else(|| napi::Error::from_reason(wire::error_envelope(&wire::disposed_error())))
     }
 
-    fn admit_task(
+    fn admit_task<T>(
         &self,
         request_json: String,
         signal: Option<AbortSignal>,
         timeout_ms: Option<u32>,
-    ) -> napi::Result<ExecuteTask> {
+        execute: AdmittedOperation<T>,
+    ) -> napi::Result<ExecuteTask<T>> {
         let engine = Arc::clone(self.engine()?);
         let control = wire::admitted_operation_control(timeout_ms);
+        // Use cooperative cancellation so queued libuv work still computes the canonical error.
         if let Some(signal) = signal.as_ref() {
             let cancellation = control.clone();
             signal.on_abort(move || cancellation.cancel());
@@ -37,6 +47,7 @@ impl NativeEngine {
             control,
             engine,
             request_json,
+            execute,
         })
     }
 }
@@ -60,9 +71,24 @@ impl NativeEngine {
         signal: Option<AbortSignal>,
         timeout_ms: Option<u32>,
     ) -> napi::Result<PromiseRaw<'_, String>> {
-        let task = self.admit_task(request_json, signal, timeout_ms)?;
-        // Do not attach the signal to the async work. N-API may cancel queued async work before
-        // compute(), which would bypass the canonical BindingError cancellation envelope.
+        let task = self.admit_task(
+            request_json,
+            signal,
+            timeout_ms,
+            wire::execute_wire_with_admitted_control,
+        )?;
+        Ok(env.spawn(task)?.promise_object())
+    }
+
+    #[napi(js_name = "executeSvg")]
+    pub fn execute_svg(
+        &self,
+        env: Env,
+        request_json: String,
+        signal: Option<AbortSignal>,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<PromiseRaw<'_, Either<String, SvgOperationFailure>>> {
+        let task = self.admit_task(request_json, signal, timeout_ms, execute_direct_svg)?;
         Ok(env.spawn(task)?.promise_object())
     }
 
@@ -93,25 +119,40 @@ impl NativeEngine {
         ))
     }
 
+    #[napi(js_name = "executeSvgSync")]
+    pub fn execute_svg_sync(
+        &self,
+        request_json: String,
+        timeout_ms: Option<u32>,
+    ) -> napi::Result<Either<String, SvgOperationFailure>> {
+        Ok(execute_direct_svg(
+            self.engine()?.as_ref(),
+            &request_json,
+            wire::admitted_operation_control(timeout_ms),
+            timeout_ms,
+        ))
+    }
+
     #[napi]
     pub fn dispose(&mut self) {
         self.engine.take();
     }
 }
 
-pub struct ExecuteTask {
+struct ExecuteTask<T> {
     admitted_timeout_ms: Option<u32>,
     control: OperationControl,
     engine: Arc<BindingEngine>,
     request_json: String,
+    execute: AdmittedOperation<T>,
 }
 
-impl Task for ExecuteTask {
-    type Output = String;
-    type JsValue = String;
+impl<T: ToNapiValue + TypeName + Send + 'static> Task for ExecuteTask<T> {
+    type Output = T;
+    type JsValue = T;
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
-        Ok(wire::execute_wire_with_admitted_control(
+        Ok((self.execute)(
             self.engine.as_ref(),
             &self.request_json,
             self.control.clone(),
@@ -124,6 +165,25 @@ impl Task for ExecuteTask {
     }
 }
 
+fn execute_direct_svg(
+    engine: &BindingEngine,
+    request_json: &str,
+    control: OperationControl,
+    admitted_timeout_ms: Option<u32>,
+) -> Either<String, SvgOperationFailure> {
+    match wire::execute_svg_with_admitted_control(
+        engine,
+        request_json,
+        control,
+        admitted_timeout_ms,
+    ) {
+        Ok(svg) => Either::A(svg),
+        Err(error) => Either::B(SvgOperationFailure {
+            error_json: wire::error_envelope(&error),
+        }),
+    }
+}
+
 #[napi(js_name = "transportIdentityJson")]
 #[allow(dead_code)] // The N-API registration consumes this private-module export at load time.
 pub fn transport_identity_json() -> napi::Result<String> {
@@ -133,7 +193,7 @@ pub fn transport_identity_json() -> napi::Result<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::NativeEngine;
+    use super::{NativeEngine, wire::execute_wire_with_admitted_control};
     #[cfg(feature = "diagram-flowchart")]
     use napi::Task;
     use std::sync::Arc;
@@ -145,14 +205,31 @@ mod tests {
         assert_eq!(retained.strong_count(), 1);
         let request =
             r#"{"operation_id":"semantic-json","source":"flowchart TD\nA --> B","uri":null}"#;
-        let first = engine.admit_task(request.to_owned(), None, None).unwrap();
-        let second = engine.admit_task(request.to_owned(), None, None).unwrap();
+        let admit = || {
+            engine.admit_task(
+                request.to_owned(),
+                None,
+                None,
+                execute_wire_with_admitted_control,
+            )
+        };
+        let first = admit().unwrap();
+        let second = admit().unwrap();
         assert_eq!(retained.strong_count(), 3);
         assert!(Arc::ptr_eq(&first.engine, engine.engine().unwrap()));
         assert!(Arc::ptr_eq(&second.engine, &first.engine));
 
         engine.dispose();
-        assert!(engine.admit_task(request.to_owned(), None, None).is_err());
+        assert!(
+            engine
+                .admit_task(
+                    request.to_owned(),
+                    None,
+                    None,
+                    execute_wire_with_admitted_control
+                )
+                .is_err()
+        );
         assert_eq!(retained.strong_count(), 2);
         drop(first);
         assert_eq!(retained.strong_count(), 1);
@@ -166,8 +243,16 @@ mod tests {
         let mut engine = NativeEngine::new(String::new(), None).expect("construct NativeEngine");
         let request =
             r#"{"operation_id":"semantic-json","source":"flowchart TD\nA --> B","uri":null}"#;
-        let mut cancelled = engine.admit_task(request.to_owned(), None, None).unwrap();
-        let mut accepted = engine.admit_task(request.to_owned(), None, None).unwrap();
+        let admit = || {
+            engine.admit_task(
+                request.to_owned(),
+                None,
+                None,
+                execute_wire_with_admitted_control,
+            )
+        };
+        let mut cancelled = admit().unwrap();
+        let mut accepted = admit().unwrap();
         assert!(Arc::ptr_eq(&cancelled.engine, &accepted.engine));
         cancelled.control.cancel();
         engine.dispose();

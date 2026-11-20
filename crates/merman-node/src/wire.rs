@@ -346,6 +346,15 @@ struct NodeOperationRequest {
     include_metadata: bool,
 }
 
+impl NodeOperationRequest {
+    fn binding_request(&self, control: OperationControl) -> BindingOperationRequest<'_> {
+        BindingOperationRequest::new(&self.operation_id, self.source.as_bytes())
+            .with_optional_uri(self.uri.as_deref().map(str::as_bytes))
+            .with_options_json(self.options_json.as_deref().map_or(b"", str::as_bytes))
+            .with_control(control)
+    }
+}
+
 fn include_metadata_by_default() -> bool {
     true
 }
@@ -370,19 +379,34 @@ struct TransportIdentity<'a> {
 }
 
 #[derive(Debug, Serialize)]
-struct SuccessEnvelope {
+struct SuccessEnvelope<'a> {
     version: u32,
     ok: bool,
-    result: SuccessResult,
+    result: SuccessResult<'a>,
 }
 
 #[derive(Debug, Serialize)]
-struct SuccessResult {
-    operation_id: String,
-    media_type: String,
-    data: String,
+struct SuccessResult<'a> {
+    operation_id: &'static str,
+    media_type: &'static str,
+    data: &'a str,
     #[serde(skip_serializing_if = "Option::is_none")]
-    metadata_json: Option<String>,
+    metadata_json: Option<&'a str>,
+}
+
+impl<'a> SuccessEnvelope<'a> {
+    fn new(operation: OperationKey, data: &'a str, metadata_json: Option<&'a str>) -> Self {
+        Self {
+            version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
+            ok: true,
+            result: SuccessResult {
+                operation_id: operation.id(),
+                media_type: operation.spec().media_type,
+                data,
+                metadata_json,
+            },
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -561,8 +585,45 @@ fn execute_wire_inner(
     control: OperationControl,
     admitted_timeout_ms: Option<u32>,
 ) -> Result<String, BindingError> {
+    let (request, operation) = prepare_wire_request(request_json, &control, admitted_timeout_ms)?;
+    let operation_request = request.binding_request(control);
+    if request.include_metadata {
+        success_envelope(engine.execute(operation_request)?)
+    } else {
+        success_data_envelope(
+            operation.key(),
+            engine.execute_data(operation_request)?,
+            None,
+        )
+    }
+}
+
+#[cfg(feature = "transport-napi")]
+pub(crate) fn execute_svg_with_admitted_control(
+    engine: &BindingEngine,
+    request_json: &str,
+    control: OperationControl,
+    admitted_timeout_ms: Option<u32>,
+) -> Result<String, BindingError> {
+    binding_boundary(|| {
+        let (request, operation) =
+            prepare_wire_request(request_json, &control, admitted_timeout_ms)?;
+        if operation.key() != OperationKey::Svg || request.include_metadata {
+            return Err(BindingError::invalid_argument(
+                "Node direct SVG operations require operation_id `svg` and include_metadata false",
+            ));
+        }
+        direct_svg_response(engine.execute_data(request.binding_request(control))?)
+    })
+}
+
+fn prepare_wire_request(
+    request_json: &str,
+    control: &OperationControl,
+    admitted_timeout_ms: Option<u32>,
+) -> Result<(NodeOperationRequest, BindingOperationKind), BindingError> {
     let request = parse_operation_request_framing(request_json)?;
-    validate_operation_request_identity(&request)?;
+    let operation = validate_operation_request_identity(&request)?;
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
@@ -592,19 +653,7 @@ fn execute_wire_inner(
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
-
-    let operation_request =
-        BindingOperationRequest::new(&request.operation_id, request.source.as_bytes())
-            .with_optional_uri(request.uri.as_deref().map(str::as_bytes))
-            .with_options_json(request.options_json.as_deref().map_or(b"", str::as_bytes))
-            .with_control(control);
-    if request.include_metadata {
-        success_envelope(engine.execute(operation_request)?)
-    } else {
-        let data = engine.execute_data(operation_request)?;
-        let operation = BindingOperationKind::from_id(&request.operation_id)?;
-        success_data_envelope(operation, data, None)
-    }
+    Ok((request, operation))
 }
 
 pub(crate) fn error_envelope(error: &BindingError) -> String {
@@ -657,7 +706,9 @@ fn parse_operation_request_framing(
     Ok(request)
 }
 
-fn validate_operation_request_identity(request: &NodeOperationRequest) -> Result<(), BindingError> {
+fn validate_operation_request_identity(
+    request: &NodeOperationRequest,
+) -> Result<BindingOperationKind, BindingError> {
     let operation = BindingOperationKind::from_id(&request.operation_id)?;
     let has_uri = request.uri.as_deref().is_some_and(|uri| !uri.is_empty());
     if operation.requires_uri() != has_uri {
@@ -674,7 +725,7 @@ fn validate_operation_request_identity(request: &NodeOperationRequest) -> Result
             ),
         ));
     }
-    Ok(())
+    Ok(operation)
 }
 
 fn validate_operation_request_options(request: &NodeOperationRequest) -> Result<(), BindingError> {
@@ -764,40 +815,89 @@ fn success_envelope(
     )
     .map_err(producer_error)?;
 
-    success_data_envelope(operation, data, Some(metadata_json))
+    success_data_envelope(operation.key(), data, Some(&metadata_json))
 }
 
 fn success_data_envelope(
-    operation: BindingOperationKind,
+    operation: OperationKey,
     data: Vec<u8>,
-    metadata_json: Option<String>,
+    metadata_json: Option<&str>,
 ) -> Result<String, BindingError> {
-    let contract = node_wire_contract();
-    let operation_id = operation.operation_id();
-    let media_type = operation.media_type();
+    let data = response_data_text(operation, data)?;
+    serialize_bounded_json(
+        &SuccessEnvelope::new(operation, &data, metadata_json),
+        "response",
+        node_wire_contract().documents.response,
+    )
+    .map_err(producer_error)
+}
+
+fn response_data_text(operation: OperationKey, data: Vec<u8>) -> Result<String, BindingError> {
     let data = String::from_utf8(data).map_err(|error| {
+        let operation_id = operation.id();
         BindingError::internal(format!(
             "Node static-SVG candidate received non-UTF-8 output for `{operation_id}`: {error}"
         ))
     })?;
-    ensure_field(&data, "response data", contract.fields.data_utf8_bytes)
-        .map_err(producer_error)?;
-
-    serialize_bounded_json(
-        &SuccessEnvelope {
-            version: NODE_BINDING_RESULT_PAYLOAD_VERSION,
-            ok: true,
-            result: SuccessResult {
-                operation_id: operation_id.to_owned(),
-                media_type: media_type.to_owned(),
-                data,
-                metadata_json,
-            },
-        },
-        "response",
-        contract.documents.response,
+    ensure_field(
+        &data,
+        "response data",
+        node_wire_contract().fields.data_utf8_bytes,
     )
-    .map_err(producer_error)
+    .map_err(producer_error)?;
+    Ok(data)
+}
+
+#[cfg(feature = "transport-napi")]
+fn direct_svg_response(data: Vec<u8>) -> Result<String, BindingError> {
+    let data = response_data_text(OperationKey::Svg, data)?;
+    static EMPTY_ENVELOPE: LazyLock<(usize, Result<(), String>)> = LazyLock::new(|| {
+        let envelope = serde_json::to_string(&SuccessEnvelope::new(OperationKey::Svg, "", None))
+            .expect("the fixed SVG response envelope is serializable");
+        let shape = scan_bounded_json_text(
+            &envelope,
+            "response",
+            node_wire_contract().documents.response,
+        );
+        (envelope.len(), shape)
+    });
+    let (envelope_bytes, shape) = &*EMPTY_ENVELOPE;
+    let limits = node_wire_contract().documents.response;
+    // serde_json emits at most six bytes per UTF-8 byte (an ASCII control becomes \u00XX).
+    // The raw data field already fits the decoded-string ceiling, and its escaped content
+    // cannot change the fixed envelope shape.
+    const MAX_JSON_BYTES_PER_INPUT_BYTE: usize = 6;
+    if envelope_bytes.saturating_add(data.len().saturating_mul(MAX_JSON_BYTES_PER_INPUT_BYTE))
+        > limits.max_utf8_bytes
+    {
+        let mut count = JsonByteCount(0);
+        serde_json::to_writer(
+            &mut count,
+            &SuccessEnvelope::new(OperationKey::Svg, &data, None),
+        )
+        .map_err(|error| producer_error(format!("failed to serialize Node response: {error}")))?;
+        validate_document_bytes(count.0, "response", limits.max_utf8_bytes)
+            .map_err(producer_error)?;
+    }
+    shape
+        .as_ref()
+        .map_err(|reason| producer_error(reason.clone()))?;
+    Ok(data)
+}
+
+#[cfg(feature = "transport-napi")]
+struct JsonByteCount(usize);
+
+#[cfg(feature = "transport-napi")]
+impl std::io::Write for JsonByteCount {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0 += bytes.len();
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
 }
 
 fn try_error_envelope(error: &BindingError) -> Result<String, String> {
@@ -1082,13 +1182,17 @@ fn validate_bounded_json_text(
     label: &str,
     limits: NodeDocumentLimits,
 ) -> Result<(), String> {
-    if source.len() > limits.max_utf8_bytes {
+    validate_document_bytes(source.len(), label, limits.max_utf8_bytes)?;
+    scan_bounded_json_text(source, label, limits)
+}
+
+fn validate_document_bytes(bytes: usize, label: &str, max_utf8_bytes: usize) -> Result<(), String> {
+    if bytes > max_utf8_bytes {
         return Err(format!(
-            "{label} exceeds the {}-byte wire limit",
-            limits.max_utf8_bytes
+            "{label} exceeds the {max_utf8_bytes}-byte wire limit"
         ));
     }
-    scan_bounded_json_text(source, label, limits)
+    Ok(())
 }
 
 fn scan_bounded_json_text(
@@ -1371,6 +1475,11 @@ mod tests {
         scan_bounded_json_text, transport_identity_wire, validate_bounded_json_text,
         validate_runtime_catalog,
     };
+    #[cfg(feature = "transport-napi")]
+    use super::{
+        SuccessEnvelope, direct_svg_response, execute_svg_with_admitted_control,
+        success_data_envelope,
+    };
 
     #[test]
     fn runtime_catalog_reports_exact_static_svg_artifact() {
@@ -1590,6 +1699,57 @@ mod tests {
         assert!(scan_bounded_json_text(r#""\ud83d""#, "test", base).is_err());
     }
 
+    #[cfg(feature = "transport-napi")]
+    #[test]
+    fn direct_svg_response_matches_escaped_envelope_and_field_limits() {
+        use merman_bindings_core::OperationKey;
+
+        let contract = node_wire_contract();
+        let operation = OperationKey::Svg;
+        let mut escaped = String::from("\"\\\t\n\r\u{8}\u{c}\u{1f}é🧪\u{2028}\u{2029}/");
+        let initial_wire =
+            serde_json::to_string(&SuccessEnvelope::new(operation, &escaped, None)).unwrap();
+        assert_eq!(
+            direct_svg_response(escaped.as_bytes().to_vec()).unwrap(),
+            escaped
+        );
+        let max_wire_bytes = contract.documents.response.max_utf8_bytes;
+        let remaining = max_wire_bytes - initial_wire.len();
+        escaped.push_str(&"\0".repeat(remaining / 6));
+        escaped.push_str(&"x".repeat(remaining % 6));
+        assert_eq!(
+            direct_svg_response(escaped.as_bytes().to_vec()).unwrap(),
+            escaped
+        );
+        assert_eq!(
+            success_data_envelope(operation, escaped.as_bytes().to_vec(), None)
+                .unwrap()
+                .len(),
+            max_wire_bytes
+        );
+
+        let max_field_bytes = contract.fields.data_utf8_bytes;
+        let exact_field = vec![b'x'; max_field_bytes];
+        assert_eq!(
+            direct_svg_response(exact_field).unwrap().len(),
+            max_field_bytes
+        );
+
+        escaped.push('x');
+        for (data, expected) in [
+            (escaped.into_bytes(), "wire limit"),
+            // This exceeds both ceilings. The decoded field keeps priority.
+            (vec![0; max_field_bytes + 1], "field limit"),
+            (vec![0xff], "non-UTF-8"),
+        ] {
+            let direct = direct_svg_response(data.clone()).unwrap_err();
+            let legacy = success_data_envelope(operation, data, None).unwrap_err();
+            assert_eq!(direct.status(), legacy.status());
+            assert_eq!(direct.message(), legacy.message());
+            assert!(direct.message().contains(expected), "{direct:?}");
+        }
+    }
+
     #[test]
     fn bounded_json_matches_serde_finite_number_semantics() {
         let limits = node_wire_contract().documents.binding_options;
@@ -1746,6 +1906,18 @@ mod tests {
             assert_eq!(data["result"]["media_type"], full["result"]["media_type"]);
             assert_eq!(data["result"]["data"], full["result"]["data"]);
             assert!(data["result"].get("metadata_json").is_none());
+
+            #[cfg(feature = "transport-napi")]
+            if operation == "svg" {
+                let direct = execute_svg_with_admitted_control(
+                    &engine,
+                    &request.to_string(),
+                    admitted_operation_control(None),
+                    None,
+                )
+                .unwrap();
+                assert_eq!(direct, data["result"]["data"].as_str().unwrap());
+            }
         }
         for (operation, options) in [
             ("unknown-operation", ""),
@@ -1765,6 +1937,21 @@ mod tests {
             let data: serde_json::Value =
                 serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
             assert_eq!(data, full);
+
+            #[cfg(feature = "transport-napi")]
+            {
+                let error = execute_svg_with_admitted_control(
+                    &engine,
+                    &request.to_string(),
+                    admitted_operation_control(None),
+                    None,
+                )
+                .unwrap_err();
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&error_envelope(&error)).unwrap(),
+                    data
+                );
+            }
         }
     }
 
@@ -2085,14 +2272,22 @@ mod tests {
                 "MERMAN_CANCELLED",
                 "generic",
             ),
+            (
+                r#"{"operation_id":"svg","source":"flowchart TD\nA-->B","uri":null,"include_metadata":false,"options_json":"{"}"#,
+                "MERMAN_CANCELLED",
+                "generic",
+            ),
         ];
 
         for (request, expected_code_name, expected_kind) in cases {
             let control = merman_bindings_core::OperationControl::new();
             control.cancel();
-            let response: serde_json::Value =
-                serde_json::from_str(&execute_wire_with_control(&engine, request, control))
-                    .expect("mixed-error response");
+            let response: serde_json::Value = serde_json::from_str(&execute_wire_with_control(
+                &engine,
+                request,
+                control.clone(),
+            ))
+            .expect("mixed-error response");
 
             assert_eq!(response["error"]["code_name"], expected_code_name);
             assert_eq!(response["error"]["kind"], expected_kind);
@@ -2103,6 +2298,16 @@ mod tests {
                 );
             } else {
                 assert!(response["error"].get("details").is_none());
+            }
+
+            #[cfg(feature = "transport-napi")]
+            {
+                let error =
+                    execute_svg_with_admitted_control(&engine, request, control, None).unwrap_err();
+                assert_eq!(
+                    serde_json::from_str::<serde_json::Value>(&error_envelope(&error)).unwrap(),
+                    response
+                );
             }
         }
     }

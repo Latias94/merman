@@ -1355,6 +1355,24 @@ test("SVG convenience calls request data only while generic results retain metad
   await engine.dispose();
 });
 
+test("custom adapters cannot opt out of SVG envelope validation", async () => {
+  const rawSvg = "<svg />";
+  const factory = transportFactory({
+    async execute() { return rawSvg; },
+    executeSync() { return rawSvg; },
+    async executeSvg() { assert.fail("custom adapter SVG method was called"); },
+    executeSvgSync() { assert.fail("custom adapter SVG sync method was called"); },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    const source = "flowchart TD\nA";
+    await assert.rejects(engine.renderSvg(source), MermanInvalidTransportError);
+    assert.throws(() => engine.renderSvgSync(source), MermanInvalidTransportError);
+  } finally {
+    await engine.dispose();
+  }
+});
+
 test("generic operations reject superseded request fields", async () => {
   const factory = transportFactory();
   const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });

@@ -410,12 +410,13 @@ export function probeCandidateRuntime(stage, recipe) {
     ) {
       throw new Error(`${recipe.candidate} runtime SVG capability-plan payload is invalid.`);
     }
-    const success = parseWireResponse(engine.executeSync(JSON.stringify({
+    const svgRequest = {
       operation_id: "svg",
       source,
       uri: null,
       options_json: JSON.stringify({ resources: { limits: { max_source_bytes: 4096 } } }),
-    })));
+    };
+    const success = parseWireResponse(engine.executeSync(JSON.stringify(svgRequest)));
     if (
       success.ok !== true ||
       success.result?.operation_id !== "svg" ||
@@ -423,6 +424,22 @@ export function probeCandidateRuntime(stage, recipe) {
       typeof success.result?.data !== "string"
     ) {
       throw new Error(`${recipe.candidate} runtime SVG probe failed.`);
+    }
+    if (recipe.candidate === "napi") {
+      const dataRequest = { ...svgRequest, include_metadata: false };
+      if (
+        typeof engine.executeSvg !== "function" ||
+        typeof engine.executeSvgSync !== "function" ||
+        engine.executeSvgSync(JSON.stringify(dataRequest)) !== success.result.data
+      ) {
+        throw new Error("Native candidate direct SVG must match the wire response.");
+      }
+      const deadline = engine.executeSvgSync(JSON.stringify({
+        ...dataRequest, operation_control: { timeout_ms: 0 },
+      }), 0);
+      if (parseWireResponse(deadline?.errorJson).error?.details?.cancellation?.reason !== "deadline_exceeded") {
+        throw new Error("Native candidate direct SVG must preserve deadline errors.");
+      }
     }
     const svgEvidence = svgTransportEvidence(success.result.data);
     const math = parseWireResponse(engine.executeSync(JSON.stringify({
