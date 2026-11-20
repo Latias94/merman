@@ -176,8 +176,10 @@ release recipe currently provides bounded discovery.
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
 painting. Platform mode acquires those bytes on demand, including the default
-system face. On Windows the missing character is queried directly after explicit
-font sources have been tried. A context identity includes the policy, initial
+system face. On Windows, explicit faces are tried first. DirectWrite queries the
+actual missing character for script-specific fallback. Shared symbols and
+combining marks try the catalog fallback order before the single-character
+query. A context identity includes the policy, initial
 font bytes, and the system default family name when applicable.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.

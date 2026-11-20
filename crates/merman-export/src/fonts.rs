@@ -194,7 +194,7 @@ pub enum NativeFontError {
     Operation(#[from] OperationLedgerError),
     #[error("native font measurement: {0}")]
     Measurement(String),
-    #[error("the closed font set cannot shape this label")]
+    #[error("the selected fonts cannot shape this label")]
     MissingGlyphCoverage,
 }
 

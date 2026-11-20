@@ -611,6 +611,23 @@ fn windows_platform_fallback_shapes_a_supplementary_character_in_layout_and_pain
 
 #[cfg(target_os = "windows")]
 #[test]
+#[ignore = "requires Windows Trebuchet MS, Arial and Segoe UI Emoji"]
+fn windows_platform_fallback_keeps_coverage_when_a_scalar_face_would_change_the_run() {
+    let control = OperationControl::new();
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&control)
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    for family in ["Trebuchet MS, Verdana, Arial, sans-serif", "Arial"] {
+        let operation = context.for_operation(&OperationControl::new());
+        assert_text_advance_and_faces(&operation, family, "fi✓😀");
+        operation.check().unwrap();
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[test]
 #[ignore = "requires Windows system Arial; run explicitly on controlled system-font hosts"]
 fn windows_platform_selected_font_limit_is_fatal_instead_of_fallback_success() {
     let context = options()

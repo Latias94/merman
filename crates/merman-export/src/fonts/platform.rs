@@ -3,11 +3,13 @@
 use super::resolver::{ExpectedFace, FontCandidate};
 use super::*;
 use fontique::{
-    Attributes, Collection, CollectionOptions, FallbackKey, FontInfo, FontStyle, FontWeight,
-    FontWidth, GenericFamily, SourceKind,
+    Collection, CollectionOptions, FallbackKey, FontInfo, FontStyle, FontWeight, FontWidth,
+    GenericFamily, SourceKind,
 };
 use unicode_script::UnicodeScript;
-use usvg::fontdb::{Database, FaceInfo, Family, Source, Stretch, Style, Weight};
+use usvg::fontdb::{Database, FaceInfo, Family, ID, Source, Stretch, Style, Weight};
+
+type AcceptFallback<'a> = dyn FnMut(FontCandidate) -> Result<Option<ID>, NativeFontError> + 'a;
 
 #[cfg(windows)]
 #[allow(unsafe_code)]
@@ -22,7 +24,15 @@ struct PlatformCandidate {
 pub(super) struct PlatformFace {
     index: u32,
     family: String,
-    attributes: Option<Attributes>,
+    post_script_name: Option<String>,
+    attributes: FaceAttributes,
+}
+
+#[derive(Default)]
+struct FaceAttributes {
+    width: Option<FontWidth>,
+    style: Option<FontStyle>,
+    weight: Option<FontWeight>,
 }
 
 pub(super) struct PlatformCatalog {
@@ -144,30 +154,57 @@ impl PlatformCatalog {
         character: char,
         base: &FaceInfo,
         control: &OperationControl,
-        accept: &mut dyn FnMut(FontCandidate) -> Result<Option<usvg::fontdb::ID>, NativeFontError>,
-    ) -> Result<Option<usvg::fontdb::ID>, NativeFontError> {
+        accept: &mut AcceptFallback<'_>,
+    ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         #[cfg(windows)]
-        {
-            let exact = self
-                .character_fallback
-                .get_or_init(dwrite::CharacterFallback::new)
-                .as_ref()
-                .and_then(|fallback| fallback.lookup(character, base));
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if let Some(candidate) = exact
-                && let Some(id) = accept(candidate)?
-            {
+        let prefer_exact = !matches!(
+            character.script(),
+            unicode_script::Script::Common
+                | unicode_script::Script::Inherited
+                | unicode_script::Script::Unknown
+        );
+        #[cfg(windows)]
+        if prefer_exact {
+            // A script sample can miss the needed subset. Use the exact character
+            // before opening the sample's candidate files.
+            if let Some(id) = self.exact_fallback(character, base, control, accept)? {
                 return Ok(Some(id));
             }
         }
+        // Shared symbols and combining characters don't identify a run's script on their own.
+        // Keep the established fallback order for them before trying a scalar-only lookup.
         for candidate in self.fallback_candidates(character, base, control)? {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
             if let Some(id) = accept(candidate.into_file()?)? {
                 return Ok(Some(id));
             }
         }
+        #[cfg(windows)]
+        if !prefer_exact {
+            return self.exact_fallback(character, base, control, accept);
+        }
         Ok(None)
+    }
+
+    #[cfg(windows)]
+    fn exact_fallback(
+        &self,
+        character: char,
+        base: &FaceInfo,
+        control: &OperationControl,
+        accept: &mut AcceptFallback<'_>,
+    ) -> Result<Option<ID>, NativeFontError> {
+        let exact = self
+            .character_fallback
+            .get_or_init(dwrite::CharacterFallback::new)
+            .as_ref()
+            .and_then(|fallback| fallback.lookup(character, base));
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        match exact {
+            Some(candidate) => accept(candidate),
+            None => Ok(None),
+        }
     }
 
     fn fallback_candidates(
@@ -271,24 +308,38 @@ impl PlatformFace {
     }
 
     pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
-        let attributes_match = self.attributes.is_none_or(|selected| {
-            let style_matches = matches!(
-                (face.style, selected.style),
-                (Style::Normal, FontStyle::Normal)
-                    | (Style::Italic, FontStyle::Italic)
-                    | (Style::Oblique, FontStyle::Oblique(_))
-            );
-            f32::from(face.weight.0) == selected.weight.value()
-                && width(face.stretch) == selected.width
-                && style_matches
-        });
-        if face.index != self.index || !attributes_match || !matches_family(face, &self.family) {
+        if face.index != self.index
+            || self
+                .post_script_name
+                .as_ref()
+                .is_some_and(|name| *name != face.post_script_name)
+            || !self.attributes.matches(face)
+            || !matches_family(face, &self.family)
+        {
             return Err(source_error(
                 path,
                 "font properties changed after platform lookup; retry the operation",
             ));
         }
         Ok(())
+    }
+}
+
+impl FaceAttributes {
+    fn matches(&self, face: &FaceInfo) -> bool {
+        self.style.is_none_or(|selected| {
+            matches!(
+                (face.style, selected),
+                (Style::Normal, FontStyle::Normal)
+                    | (Style::Italic, FontStyle::Italic)
+                    | (Style::Oblique, FontStyle::Oblique(_))
+            )
+        }) && self
+            .width
+            .is_none_or(|selected| width(face.stretch) == selected)
+            && self
+                .weight
+                .is_none_or(|selected| f32::from(face.weight.0) == selected.value())
     }
 }
 
@@ -325,11 +376,12 @@ impl PlatformCandidate {
         PlatformFace {
             family: self.family,
             index: self.font.index(),
-            attributes: Some(Attributes {
-                width: self.font.width(),
-                style: self.font.style(),
-                weight: self.font.weight(),
-            }),
+            post_script_name: None,
+            attributes: FaceAttributes {
+                width: Some(self.font.width()),
+                style: Some(self.font.style()),
+                weight: Some(self.font.weight()),
+            },
         }
     }
 

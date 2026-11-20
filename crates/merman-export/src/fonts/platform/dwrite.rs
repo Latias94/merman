@@ -1,16 +1,21 @@
 //! Exact-character system fallback. DirectWrite returns a file descriptor; usvg shapes the text.
 
-use super::{FontCandidate, PlatformFace};
+use super::{FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, PlatformFace};
 use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf, ptr};
 use usvg::fontdb::{FaceInfo, Style};
 use windows::Win32::Foundation::E_POINTER;
 use windows::Win32::Graphics::DirectWrite::{
-    DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_STRETCH, DWRITE_FONT_STYLE_ITALIC,
-    DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE, DWRITE_FONT_WEIGHT,
+    DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_SIMULATIONS_BOLD, DWRITE_FONT_SIMULATIONS_OBLIQUE,
+    DWRITE_FONT_STRETCH, DWRITE_FONT_STRETCH_CONDENSED, DWRITE_FONT_STRETCH_EXPANDED,
+    DWRITE_FONT_STRETCH_EXTRA_CONDENSED, DWRITE_FONT_STRETCH_EXTRA_EXPANDED,
+    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STRETCH_SEMI_CONDENSED,
+    DWRITE_FONT_STRETCH_SEMI_EXPANDED, DWRITE_FONT_STRETCH_ULTRA_CONDENSED,
+    DWRITE_FONT_STRETCH_ULTRA_EXPANDED, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
+    DWRITE_FONT_STYLE_OBLIQUE, DWRITE_FONT_WEIGHT, DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME,
     DWRITE_READING_DIRECTION, DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory,
-    IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection, IDWriteFontFallback,
-    IDWriteLocalFontFileLoader, IDWriteNumberSubstitution, IDWriteTextAnalysisSource,
-    IDWriteTextAnalysisSource_Impl,
+    IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection, IDWriteFontFace5,
+    IDWriteFontFallback, IDWriteLocalFontFileLoader, IDWriteLocalizedStrings,
+    IDWriteNumberSubstitution, IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
 };
 use windows_core::{Error, Interface, OutRef, PCWSTR, Result, implement, w};
 
@@ -106,26 +111,85 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
         loader.GetFilePathFromKey(key, key_len, &mut path).ok()?;
         let path = PathBuf::from(OsString::from_wide(&path[..len]));
 
-        let names = font.GetFontFamily().ok()?.GetFamilyNames().ok()?;
+        let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
+        let mut postscripts = None;
+        let mut exists = Default::default();
+        let post_script_name = font
+            .GetInformationalStrings(
+                DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME,
+                &mut postscripts,
+                &mut exists,
+            )
+            .ok()
+            .filter(|_| exists.as_bool())
+            .and_then(|_| localized_name(&postscripts?));
+        let simulations = face.GetSimulations();
+        let variable = face
+            .cast::<IDWriteFontFace5>()
+            .is_ok_and(|face| face.HasVariations().as_bool());
+        // A simulated or variable instance can have different CSS attributes from its binary.
+        // Check the physical name and any attributes reported without those adjustments.
+        let attributes = if variable {
+            FaceAttributes::default()
+        } else {
+            FaceAttributes {
+                width: physical_width(font.GetStretch()),
+                style: if simulations.0 & DWRITE_FONT_SIMULATIONS_OBLIQUE.0 == 0 {
+                    match font.GetStyle() {
+                        DWRITE_FONT_STYLE_NORMAL => Some(FontStyle::Normal),
+                        DWRITE_FONT_STYLE_OBLIQUE => Some(FontStyle::Oblique(None)),
+                        DWRITE_FONT_STYLE_ITALIC => Some(FontStyle::Italic),
+                        _ => None,
+                    }
+                } else {
+                    None
+                },
+                weight: (simulations.0 & DWRITE_FONT_SIMULATIONS_BOLD.0 == 0)
+                    .then(|| FontWeight::new(font.GetWeight().0 as f32)),
+            }
+        };
+        Some(
+            PlatformFace {
+                index: face.GetIndex(),
+                family,
+                post_script_name,
+                attributes,
+            }
+            .into_file(path),
+        )
+    }
+}
+
+fn localized_name(names: &IDWriteLocalizedStrings) -> Option<String> {
+    // SAFETY: The COM object owns its strings and each output buffer includes the NUL.
+    unsafe {
         let mut english = 0;
         let mut exists = Default::default();
         names
             .FindLocaleName(w!("en-us"), &mut english, &mut exists)
             .ok()?;
-        let name_index = if exists.as_bool() { english } else { 0 };
-        let len = names.GetStringLength(name_index).ok()? as usize;
+        let index = if exists.as_bool() { english } else { 0 };
+        let len = names.GetStringLength(index).ok()? as usize;
         let mut name = vec![0; len.checked_add(1)?];
-        names.GetString(name_index, &mut name).ok()?;
-        Some(
-            PlatformFace {
-                index: face.GetIndex(),
-                family: String::from_utf16(&name[..len]).ok()?,
-                // DirectWrite can report synthetic attributes and fallback scaling. The resolver
-                // admits only the identified binary face and uses the shared usvg style policy.
-                attributes: None,
-            }
-            .into_file(path),
-        )
+        names.GetString(index, &mut name).ok()?;
+        String::from_utf16(&name[..len])
+            .ok()
+            .filter(|name| !name.is_empty())
+    }
+}
+
+fn physical_width(stretch: DWRITE_FONT_STRETCH) -> Option<FontWidth> {
+    match stretch {
+        DWRITE_FONT_STRETCH_ULTRA_CONDENSED => Some(FontWidth::ULTRA_CONDENSED),
+        DWRITE_FONT_STRETCH_EXTRA_CONDENSED => Some(FontWidth::EXTRA_CONDENSED),
+        DWRITE_FONT_STRETCH_CONDENSED => Some(FontWidth::CONDENSED),
+        DWRITE_FONT_STRETCH_SEMI_CONDENSED => Some(FontWidth::SEMI_CONDENSED),
+        DWRITE_FONT_STRETCH_NORMAL => Some(FontWidth::NORMAL),
+        DWRITE_FONT_STRETCH_SEMI_EXPANDED => Some(FontWidth::SEMI_EXPANDED),
+        DWRITE_FONT_STRETCH_EXPANDED => Some(FontWidth::EXPANDED),
+        DWRITE_FONT_STRETCH_EXTRA_EXPANDED => Some(FontWidth::EXTRA_EXPANDED),
+        DWRITE_FONT_STRETCH_ULTRA_EXPANDED => Some(FontWidth::ULTRA_EXPANDED),
+        _ => None,
     }
 }
 
@@ -209,4 +273,49 @@ fn report_text(run: &[u16], text: *mut *mut u16, len: *mut u32) -> Result<()> {
         len.write(run.len() as u32);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use usvg::fontdb::Database;
+
+    #[test]
+    #[ignore = "requires the Windows Trebuchet MS and Microsoft YaHei UI font files"]
+    fn directwrite_fallback_validates_the_physical_face_and_its_weight() {
+        let directory = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");
+        let load = |path| {
+            let mut database = Database::new();
+            database.load_font_data(std::fs::read(path).unwrap());
+            database
+        };
+        let base = load(directory.join("trebuc.ttf"));
+        let FontCandidate::File {
+            path,
+            index,
+            expected,
+        } = CharacterFallback::new()
+            .unwrap()
+            .lookup('中', base.faces().next().unwrap())
+            .unwrap()
+        else {
+            panic!("DirectWrite must provide a file-backed face");
+        };
+        let regular = load(path.clone());
+        let regular = regular.faces().find(|face| face.index == index).unwrap();
+        assert_eq!(regular.post_script_name, "MicrosoftYaHeiUI");
+        expected.validate(regular, &path).unwrap();
+
+        let bold = load(directory.join("msyhbd.ttc"));
+        let bold = bold.faces().find(|face| face.index == index).unwrap();
+        assert_eq!(bold.post_script_name, "MicrosoftYaHeiUI-Bold");
+        assert!(expected.validate(bold, &path).is_err());
+
+        let mut incorrect_name = regular.clone();
+        incorrect_name.post_script_name = bold.post_script_name.clone();
+        assert!(expected.validate(&incorrect_name, &path).is_err());
+        let mut incorrect_weight = regular.clone();
+        incorrect_weight.weight = bold.weight;
+        assert!(expected.validate(&incorrect_weight, &path).is_err());
+    }
 }
