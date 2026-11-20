@@ -138,7 +138,7 @@ impl OperationConfigBuilder {
         }
         match decision.materialization_plan(
             effective.get_str("theme"),
-            engine.site_config.get_str("theme"),
+            engine.initialization.site_config.get_str("theme"),
         ) {
             MaterializationPlan::InheritInitialized => {
                 if !source_merged {
@@ -149,11 +149,23 @@ impl OperationConfigBuilder {
             MaterializationPlan::Materialize { selected } => {
                 // Detection must observe initialized config. Keep that result only when its
                 // assignments actually need replay onto a newly materialized theme.
-                effective =
-                    match Self::materialize_operation_theme(engine, &decision, &source, selected) {
-                        Ok(config) => config,
-                        Err(error) => return Ok(Err(error.into())),
-                    };
+                let materialize =
+                    || Self::materialize_operation_theme(engine, &decision, &source, selected);
+                // The source merge can change authored ownership even when its values match.
+                // Only the site projection enters the cache, before detector changes are replayed.
+                let projected = if source.is_empty_object()
+                    && let Some(section) = family::config_namespace_for_diagram_type(diagram_type)
+                {
+                    engine
+                        .initialization
+                        .materialize_appearance(section, selected, materialize)
+                } else {
+                    materialize()
+                };
+                effective = match projected {
+                    Ok(config) => config,
+                    Err(error) => return Ok(Err(error.into())),
+                };
                 if let Some(changes) = &detector_changes {
                     changes.replay(&mut effective, control)?;
                 }
@@ -169,7 +181,7 @@ impl OperationConfigBuilder {
         if let Some(family) = family::operation_family_id(diagram_type, effective.as_config()) {
             effective.freeze_family_paint_inputs(
                 family.as_str(),
-                engine.initialization_inputs.as_config(),
+                engine.initialization.initialization_inputs.as_config(),
                 &source,
                 detector_changes.as_ref(),
                 control,
@@ -186,10 +198,11 @@ impl OperationConfigBuilder {
         source_config: &MermaidConfig,
         selected: crate::MermaidThemeId,
     ) -> std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError> {
-        let mut raw_config = engine.site_config.clone();
+        let mut raw_config = engine.initialization.site_config.clone();
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
         // The inherited path instead keeps ordinary updates to initialized derivations.
         let initial_variables = engine
+            .initialization
             .initialization_inputs
             .as_value()
             .get("themeVariables")
@@ -1184,12 +1197,13 @@ impl<'a> ParsePipeline<'a> {
         let upstream_defaults = crate::generated::upstream_default_config();
         let authored_authority = if self
             .engine
+            .initialization
             .initialization_inputs
             .as_value()
             .get("secure")
             .is_some()
         {
-            self.engine.initialization_inputs.as_config()
+            self.engine.initialization.initialization_inputs.as_config()
         } else {
             &upstream_defaults
         };
@@ -1654,6 +1668,101 @@ mod editor_parse_source_map_tests {
                 work.selected_theme_materializations, materializations,
                 "{work:?}"
             );
+        }
+    }
+
+    #[test]
+    fn site_appearance_is_reused_by_engine_clones_and_ignores_source_overrides() {
+        use serde_json::json;
+
+        let host = SourcePresentationConfig::from_value(json!({
+            "fontFamily": "Inter",
+            "flowchart": { "nodeSpacing": 50 },
+        }));
+        let engine = MermaidEngine::new().with_site_config(host.clone());
+        let clone = engine.clone();
+        for (parser, source, materializations) in [
+            (&engine, "flowchart TD\nA-->B", 1),
+            (&clone, "flowchart TD\nA-->B", 0),
+            (
+                &clone,
+                "---\nconfig:\n  look: classic\n---\nflowchart TD\nA-->B",
+                1,
+            ),
+            (
+                &clone,
+                "---\nconfig:\n  theme: default\n---\nflowchart TD\nA-->B",
+                1,
+            ),
+            (
+                &clone,
+                "---\nconfig:\n  theme: 'null'\n---\nflowchart TD\nA-->B",
+                0,
+            ),
+            (&engine, "flowchart-elk TD\nA-->B", 0),
+        ] {
+            let (actual, work) = crate::config::measure_config_work(|| {
+                parser.parse_metadata_sync(source).unwrap().effective_config
+            });
+            let reference = MermaidEngine::new()
+                .with_site_config(host.clone())
+                .parse_metadata_sync(source)
+                .unwrap()
+                .effective_config;
+            assert_eq!(
+                work.selected_theme_materializations, materializations,
+                "{source}"
+            );
+            assert_eq!(actual, reference, "{source}");
+            assert_eq!(
+                serde_json::to_vec(actual.as_value()).unwrap(),
+                serde_json::to_vec(reference.as_value()).unwrap(),
+                "{source}"
+            );
+            assert!(actual.explicit_config_owns_path("flowchart.nodeSpacing"));
+        }
+
+        let changed = clone.with_exact_site_config(Some(SourcePresentationConfig::from_value(
+            json!({ "flowchart": { "nodeSpacing": 61 } }),
+        )));
+        let (metadata, work) = crate::config::measure_config_work(|| {
+            changed.parse_metadata_sync("flowchart TD\nA-->B")
+        });
+        assert_eq!(work.selected_theme_materializations, 1);
+        assert_eq!(
+            metadata.unwrap().effective_config.as_value()["flowchart"]["nodeSpacing"],
+            61
+        );
+    }
+
+    #[test]
+    fn site_appearance_replays_detector_changes_even_on_a_cache_hit() {
+        fn detector(source: &str, config: &mut SourcePresentationConfig) -> bool {
+            config.set_value("flowchart.nodeSpacing", serde_json::json!(source.len()));
+            config.set_value("themeVariables.primaryColor", serde_json::json!("#123456"));
+            true
+        }
+
+        let host = SourcePresentationConfig::from_value(serde_json::json!({"fontFamily": "Inter"}));
+        let make_engine = || {
+            let mut engine = MermaidEngine::new().with_site_config(host.clone());
+            *engine.registry_mut() = DetectorRegistry::new();
+            engine.registry_mut().add_fn("flowchart-v2", detector);
+            engine
+        };
+        let engine = make_engine();
+        for (source, materializations) in [("first", 1), ("longer second", 0)] {
+            let (actual, work) =
+                crate::config::measure_config_work(|| engine.parse_metadata_sync(source));
+            let actual = actual.unwrap().effective_config;
+            let reference = make_engine()
+                .parse_metadata_sync(source)
+                .unwrap()
+                .effective_config;
+            assert_eq!(work.selected_theme_materializations, materializations);
+            assert_eq!(actual, reference);
+            assert_eq!(actual.as_value()["flowchart"]["nodeSpacing"], source.len());
+            assert!(actual.explicit_config_owns_path("themeVariables.primaryColor"));
         }
     }
 
