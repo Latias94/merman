@@ -31,6 +31,54 @@ fn leading_dot_node_ids_parse_as_vertices() {
     assert_eq!(edges, [(".a", "...")]);
 }
 
+#[test]
+fn dots_in_node_strings_and_at_link_boundaries_follow_flow_jison() {
+    let single = parse("flowchart TB\n.a.-b\n");
+    assert_eq!(single.nodes.len(), 1);
+    assert_eq!(single.nodes[0].id, ".a.-b");
+    assert!(single.edges.is_empty());
+
+    for (statement, from, to, stroke, length) in [
+        (".a.-->B", ".a.", "B", FlowEdgeStroke::Normal, 1),
+        (
+            "./src --> ../build",
+            "./src",
+            "../build",
+            FlowEdgeStroke::Normal,
+            1,
+        ),
+        ("B .-> C", "B", "C", FlowEdgeStroke::Dotted, 1),
+        (".a-.->B", ".a", "B", FlowEdgeStroke::Dotted, 1),
+        ("1..->B", "1", "B", FlowEdgeStroke::Dotted, 2),
+        ("A甲.->B", "A甲", "B", FlowEdgeStroke::Dotted, 1),
+        ("A,v.->B", "A,v", "B", FlowEdgeStroke::Dotted, 1),
+        ("default.->B", "default", "B", FlowEdgeStroke::Dotted, 1),
+    ] {
+        let model = parse(&format!("flowchart TB\n{statement}\n"));
+        let [edge] = model.edges.as_slice() else {
+            panic!("expected one edge for {statement}");
+        };
+        assert_eq!(
+            (edge.from.as_str(), edge.to.as_str()),
+            (from, to),
+            "{statement}"
+        );
+        assert_eq!(
+            (edge.stroke_kind, edge.length),
+            (stroke, length),
+            "{statement}"
+        );
+    }
+
+    for statement in ["B.->C", ".a.->B", "...-->B"] {
+        let source = format!("flowchart TB\n{statement}\n");
+        assert!(
+            parse_flowchart_model_for_render(&source, &metadata()).is_err(),
+            "{statement}"
+        );
+    }
+}
+
 #[cfg(feature = "editor-facts")]
 #[test]
 fn unclosed_label_recovery_reuses_quote_frames_without_losing_later_valid_labels() {

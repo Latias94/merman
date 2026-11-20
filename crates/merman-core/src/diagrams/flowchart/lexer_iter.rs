@@ -207,7 +207,7 @@ mod tests {
 
     #[test]
     fn leading_dot_identifiers_tokenize_without_consuming_dotted_links() {
-        let source = "...\n.a\nA --> ...\nB.->C\n";
+        let source = "...\n.a\nA --> ...\nB .-> C\n";
         let tokens = Lexer::new(source)
             .collect::<Result<Vec<_>, _>>()
             .expect("Mermaid NODE_STRING accepts a leading dot");
@@ -229,7 +229,7 @@ mod tests {
                 ("A", (7, 8)),
                 ("...", (13, 16)),
                 ("B", (17, 18)),
-                ("C", (21, 22)),
+                ("C", (23, 24)),
             ]
         );
     }

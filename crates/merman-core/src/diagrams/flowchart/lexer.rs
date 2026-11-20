@@ -137,6 +137,57 @@ fn non_ascii_id_char_len(input: &str, pos: usize) -> Option<usize> {
     (!ch.is_ascii() && is_mermaid_unicode_text(ch)).then(|| ch.len_utf8())
 }
 
+#[derive(Clone, Copy)]
+enum LinkFamily {
+    Normal,
+    Thick,
+    Dotted,
+    Invisible,
+}
+
+impl LinkFamily {
+    fn from_start(bytes: &[u8]) -> Option<Self> {
+        match bytes {
+            [b'-', b'-', ..] => Some(Self::Normal),
+            [b'=', b'=', ..] => Some(Self::Thick),
+            [b'-', b'.', ..] => Some(Self::Dotted),
+            _ => None,
+        }
+    }
+}
+
+// One or more dots followed by a hyphen, after any leading marker or hyphen.
+fn dotted_link_prefix_len(bytes: &[u8]) -> Option<usize> {
+    let dots = bytes.iter().take_while(|&&byte| byte == b'.').count();
+    (dots > 0 && bytes.get(dots) == Some(&b'-')).then_some(dots + 1)
+}
+
+// LINK and START_LINK take precedence when the lexer starts a new idStringToken.
+fn link_prefix_len(bytes: &[u8]) -> Option<usize> {
+    let marker = usize::from(matches!(bytes.first(), Some(b'x' | b'o' | b'<')));
+    let body = &bytes[marker..];
+    let len = if body.starts_with(b".") {
+        dotted_link_prefix_len(body)?
+    } else {
+        LinkFamily::from_start(body)?;
+        2
+    };
+    Some(marker + len)
+}
+
+fn node_string_len(bytes: &[u8]) -> usize {
+    for (pos, &byte) in bytes.iter().enumerate() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'%' | b'.' | b'/') {
+            continue;
+        }
+        if byte == b'-' && !matches!(bytes.get(pos + 1), Some(b'-' | b'.')) {
+            continue;
+        }
+        return pos;
+    }
+    bytes.len()
+}
+
 pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
@@ -1038,67 +1089,40 @@ impl<'input> Lexer<'input> {
         Some((start, Tok::Amp, self.pos))
     }
 
-    pub(super) fn lex_id(&mut self) -> Option<(usize, Tok, usize)> {
+    fn advance_id(&mut self) {
         let start = self.pos;
         let bytes = self.input.as_bytes();
-        if start >= bytes.len() {
-            return None;
-        }
-        let first = bytes[start];
-        // Ordinary comments are removed by preprocessing. Mermaid's NODE_STRING includes `%`,
-        // so remaining markers belong to identifiers and must reach the grammar unchanged.
-        // Its idStringToken also includes COMMA, even at the start of a literal vertex ID.
-        if first.is_ascii_alphanumeric()
-            || matches!(first, b'_' | b'%' | b',')
-            || (first == b'.' && bytes.get(start + 1).is_none_or(|&c| c != b'-'))
-        {
-            self.pos += 1;
-        } else {
-            self.pos += non_ascii_id_char_len(self.input, start)?;
-        }
-
-        while self.pos < bytes.len() {
-            if self.pos + 1 < bytes.len()
-                && (bytes[self.pos] == b'-' && bytes[self.pos + 1] == b'-'
-                    || bytes[self.pos] == b'=' && bytes[self.pos + 1] == b'=')
-            {
+        while let Some(&first) = bytes.get(self.pos) {
+            let rest = &bytes[self.pos..];
+            if link_prefix_len(rest).is_some() {
                 break;
             }
-            let b = bytes[self.pos];
-            if b.is_ascii_alphanumeric() || matches!(b, b'_' | b'%' | b',') {
-                self.pos += 1;
-                continue;
-            }
-            if let Some(len) = non_ascii_id_char_len(self.input, self.pos) {
-                self.pos += len;
-                continue;
-            }
-            if b == b'-' {
-                if self.pos + 1 < bytes.len() && bytes[self.pos + 1] == b'-' {
-                    break;
-                }
-                // Dotted edges start with `-.` (e.g. `A-.->B`). Avoid consuming the link start as
-                // part of the id while still allowing ids like `subcontainer-child`.
-                if self.pos + 1 < bytes.len() && bytes[self.pos + 1] == b'.' {
-                    break;
-                }
-                self.pos += 1;
-                continue;
-            }
-            if b == b'.' {
-                // Allow dots inside ids (Mermaid supports nodes like `P1.5`), but avoid consuming
-                // the `.` that starts a dotted link token like `.->` when it is directly adjacent
-                // to an id (e.g. `A.->B`).
-                if self.pos + 1 < bytes.len() && bytes[self.pos + 1] == b'-' {
-                    break;
-                }
-                self.pos += 1;
-                continue;
-            }
-            break;
-        }
 
-        if self.pos <= start {
+            // Mermaid joins adjacent idStringTokens into one vertex ID. A dot inside a
+            // NODE_STRING is literal; after NUM, COMMA, DOWN, DEFAULT or UNICODE_TEXT it
+            // can start another token, including a dotted link.
+            let len = match first {
+                b'0'..=b'9' => rest.iter().take_while(|byte| byte.is_ascii_digit()).count(),
+                b',' => 1,
+                b'v' if self.starts_with_kw("v") => 1,
+                b'd' if self.starts_with_kw("default") => "default".len(),
+                b'-' if self.pos == start => break,
+                byte if !byte.is_ascii() => {
+                    non_ascii_id_char_len(self.input, self.pos).unwrap_or(0)
+                }
+                _ => node_string_len(rest),
+            };
+            if len == 0 {
+                break;
+            }
+            self.pos += len;
+        }
+    }
+
+    pub(super) fn lex_id(&mut self) -> Option<(usize, Tok, usize)> {
+        let start = self.pos;
+        self.advance_id();
+        if self.pos == start {
             return None;
         }
 
@@ -1112,14 +1136,6 @@ impl<'input> Lexer<'input> {
         let start = self.pos;
         let input = self.input;
         let bytes = input.as_bytes();
-
-        #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        enum LinkFamily {
-            Normal,
-            Thick,
-            Dotted,
-            Invisible,
-        }
 
         struct LinkEndMatch {
             label_end: usize,
@@ -1219,18 +1235,7 @@ impl<'input> Lexer<'input> {
                     if cur < len && bytes[cur] == b'-' {
                         cur += 1;
                     }
-                    let mut dots = 0usize;
-                    while cur < len && bytes[cur] == b'.' {
-                        dots += 1;
-                        cur += 1;
-                    }
-                    if dots == 0 {
-                        return None;
-                    }
-                    if cur >= len || bytes[cur] != b'-' {
-                        return None;
-                    }
-                    cur += 1;
+                    cur += dotted_link_prefix_len(&bytes[cur..])?;
                     if cur < len && matches!(bytes[cur], b'x' | b'o' | b'>') {
                         cur += 1;
                     }
@@ -1351,50 +1356,20 @@ impl<'input> Lexer<'input> {
 
         // 2) START_LINK + edgeText + LINK (new notation): A-- text -->B
         let parse_start_link = |pos: usize| -> Option<StartLinkMatch> {
-            let len = bytes.len();
             let operator_start = skip_ecmascript_whitespace(input, pos);
-            if operator_start >= len {
-                return None;
-            }
-            let mut cur = operator_start;
-            if matches!(bytes[cur], b'x' | b'o' | b'<') {
-                cur += 1;
-                if cur >= len {
-                    return None;
-                }
-            }
-
-            if cur + 1 < len && bytes[cur] == b'-' && bytes[cur + 1] == b'-' {
-                cur += 2;
-                return Some(StartLinkMatch {
-                    family: LinkFamily::Normal,
-                    operator: input[operator_start..cur].to_string(),
-                    #[cfg(feature = "editor-facts")]
-                    operator_span: SourceSpan::new(operator_start, cur),
-                    match_end: skip_ecmascript_whitespace(input, cur),
-                });
-            }
-            if cur + 1 < len && bytes[cur] == b'=' && bytes[cur + 1] == b'=' {
-                cur += 2;
-                return Some(StartLinkMatch {
-                    family: LinkFamily::Thick,
-                    operator: input[operator_start..cur].to_string(),
-                    #[cfg(feature = "editor-facts")]
-                    operator_span: SourceSpan::new(operator_start, cur),
-                    match_end: skip_ecmascript_whitespace(input, cur),
-                });
-            }
-            if cur + 1 < len && bytes[cur] == b'-' && bytes[cur + 1] == b'.' {
-                cur += 2;
-                return Some(StartLinkMatch {
-                    family: LinkFamily::Dotted,
-                    operator: input[operator_start..cur].to_string(),
-                    #[cfg(feature = "editor-facts")]
-                    operator_span: SourceSpan::new(operator_start, cur),
-                    match_end: skip_ecmascript_whitespace(input, cur),
-                });
-            }
-            None
+            let marker = usize::from(matches!(
+                bytes.get(operator_start),
+                Some(b'x' | b'o' | b'<')
+            ));
+            let family = LinkFamily::from_start(&bytes[operator_start + marker..])?;
+            let end = operator_start + marker + 2;
+            Some(StartLinkMatch {
+                family,
+                operator: input[operator_start..end].to_string(),
+                #[cfg(feature = "editor-facts")]
+                operator_span: SourceSpan::new(operator_start, end),
+                match_end: skip_ecmascript_whitespace(input, end),
+            })
         };
 
         let Some(start_match) = parse_start_link(self.pos) else {
