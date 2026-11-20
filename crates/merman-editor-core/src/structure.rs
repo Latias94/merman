@@ -476,21 +476,21 @@ fn rename_edits(
                 && !er_quoted
                     .as_ref()
                     .is_some_and(|quoted| quoted.contains(&span.start));
-            let needs_space = item
-                .rename_policy
-                .needs_trailing_space(new_name, fence.text().get(span.end..)?);
+            let new_text = if needs_quotes {
+                format!("\"{new_name}\"")
+            } else {
+                item.rename_policy.replacement_text(
+                    new_name,
+                    fence.text().get(..span.start)?,
+                    fence.text().get(span.end..)?,
+                )
+            };
             let span = absolute_span(fence, span);
             let range = range_from_span(snapshot.source_map(), span)?;
             Some(EditorTextEdit {
                 fact_source: fence.text_index().source(),
                 range,
-                new_text: if needs_quotes {
-                    format!("\"{new_name}\"")
-                } else if needs_space {
-                    format!("{new_name} ")
-                } else {
-                    new_name.to_string()
-                },
+                new_text,
             })
         })
         .collect::<Vec<_>>();

@@ -176,14 +176,27 @@ fn link_prefix_len(bytes: &[u8]) -> Option<usize> {
 }
 
 #[cfg(feature = "editor-facts")]
-pub(crate) fn node_id_needs_link_space(name: &str, following: &str) -> bool {
-    let Some(len) = link_prefix_len(following.as_bytes()) else {
-        return false;
-    };
-    let probe = [name, &following[..len]].concat();
-    let mut lexer = Lexer::new(&probe);
-    lexer.advance_id();
-    lexer.pos != name.len()
+pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> String {
+    let mut text = String::with_capacity(name.len() + 2);
+    // An open normal, thick or dotted LINK can consume an adjacent circle or cross marker.
+    if name.starts_with(['o', 'x'])
+        && matches!(
+            preceding.as_bytes(),
+            [.., b'-' | b'.', b'-'] | [.., b'=', b'=']
+        )
+    {
+        text.push(' ');
+    }
+    text.push_str(name);
+    if let Some(len) = link_prefix_len(following.as_bytes()) {
+        let probe = [name, &following[..len]].concat();
+        let mut lexer = Lexer::new(&probe);
+        lexer.advance_id();
+        if lexer.pos != name.len() {
+            text.push(' ');
+        }
+    }
+    text
 }
 
 fn node_string_len(bytes: &[u8]) -> usize {

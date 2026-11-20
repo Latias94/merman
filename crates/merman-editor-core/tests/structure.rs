@@ -447,6 +447,59 @@ fn flowchart_rename_preserves_adjacent_edge_operators() {
     }
 }
 
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_rename_keeps_target_initials_out_of_open_links() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+    use merman_model::families::flowchart::FlowEdgeMarker;
+
+    let source = "flowchart TB\nA---B-->C\nA===B\nA-.-B\nA-->B\nA---|label|B\nA~~~B\n";
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///open-links.mmd",
+            1,
+            source.to_owned(),
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    for name in ["ops", "xray", "o"] {
+        let (edited, count) = apply_rename(&snapshot, Position::new(1, 4), name);
+        assert_eq!(count, 6);
+        let after_first = if name == "o" { " " } else { "" };
+        assert_eq!(
+            edited,
+            format!(
+                "flowchart TB\nA--- {name}{after_first}-->C\nA=== {name}\nA-.- {name}\nA-->{name}\nA---|label|{name}\nA~~~{name}\n"
+            )
+        );
+
+        let parsed = SemanticParser::new().parse_diagram_sync(&edited).unwrap();
+        let SemanticDiagramModel::Flowchart(model) = parsed.model else {
+            panic!("expected a Flowchart");
+        };
+        let targets = model
+            .edges
+            .iter()
+            .filter(|edge| edge.to == name)
+            .collect::<Vec<_>>();
+        assert_eq!(targets.len(), 6);
+        assert_eq!(
+            targets
+                .iter()
+                .filter(|edge| edge.end_marker == FlowEdgeMarker::None)
+                .count(),
+            5
+        );
+        assert!(
+            model
+                .edges
+                .iter()
+                .any(|edge| edge.from == name && edge.to == "C")
+        );
+    }
+}
+
 #[test]
 fn flowchart_rename_rejects_keyword_prefixed_dotted_ids() {
     let harness = SnapshotHarness::new();

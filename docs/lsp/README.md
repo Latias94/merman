@@ -84,7 +84,7 @@ Language behavior is driven by parser-backed facts from `merman-analysis` and qu
 - code actions use explicit `DiagnosticFix` metadata, never invent edits for diagnostics without a safe fix, and materialize one workspace edit when several requested diagnostics share the same fix allocation; and
 - completion uses editor-core replacement ranges, while resolve adds documentation without changing the selected insert edit.
 
-Renaming `A` to `...` in the Flowchart `A-->B` produces `... -->B`. The space keeps the dots in the node ID.
+Renaming `A` to `...` in the Flowchart `A-->B` produces `... -->B`. Renaming `B` to `ops` in `A---B` produces `A--- ops`, keeping the open edge and the full target name.
 
 `Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body
 text therefore receives no guessed body symbols, navigation, or rename. Tolerant Tree-sitter

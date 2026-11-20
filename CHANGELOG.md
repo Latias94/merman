@@ -12,7 +12,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Fixed
 
-- Accept Flowchart node IDs that begin with a period, such as `...` and `.a`, matching Mermaid's `NODE_STRING`. Editor renames insert a space when needed to keep a following edge operator distinct.
+- Accept Flowchart node IDs that begin with a period, such as `...` and `.a`, matching Mermaid's `NODE_STRING`. Editor renames preserve adjacent edge operators, including open edges before names beginning with `o` or `x`.
 - Preserve valid Class and namespace source when renaming to Unicode names or reserved words that require backticks. Existing quotes, generic suffixes and relationship targets remain intact.
 - Finish interrupted Markdown publication and publish the requested output in one retry after blocked files become available, including batches with rollback journals written by older versions.
 
