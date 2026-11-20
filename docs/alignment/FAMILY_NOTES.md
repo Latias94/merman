@@ -260,6 +260,9 @@ Dagre and ELK are separate layout paths selected through the
 the Mermaid-reachable adapter surface; it is not a promise to implement every Eclipse ELK option.
 Stable source edge identity must survive import, routing, label projection, and SVG emission.
 
+`A&B --> C` links the single node `A&B` to `C`. Horizontal whitespace on both sides of
+the ampersand in `A & B --> C` groups the two source nodes and produces two edges.
+
 Subgraph membership for grouped chains reverses the group order while retaining authored order
 within each ampersand group. First-owner filtering and dropped-member diagnostics consume that
 same membership sequence; node declarations and edge expansion retain their independent source

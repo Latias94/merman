@@ -201,7 +201,7 @@ pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> 
 
 fn node_string_len(bytes: &[u8]) -> usize {
     for (pos, &byte) in bytes.iter().enumerate() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'%' | b'.' | b'/') {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'%' | b'.' | b'/' | b'&') {
             continue;
         }
         if byte == b'-' && !matches!(bytes.get(pos + 1), Some(b'-' | b'.')) {
@@ -216,6 +216,7 @@ pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
     pub(super) pending: VecDeque<std::result::Result<(usize, Tok, usize), LexError>>,
+    pub(super) after_vertex: bool,
     pub(super) allow_header_direction: bool,
     pub(super) recover_partial_node_labels: bool,
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -237,6 +238,7 @@ impl<'input> Lexer<'input> {
             input,
             pos: 0,
             pending: VecDeque::new(),
+            after_vertex: false,
             allow_header_direction: false,
             recover_partial_node_labels: false,
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -303,6 +305,24 @@ impl<'input> Lexer<'input> {
             })
     }
 
+    fn reserved_keyword(&self) -> Option<&'static str> {
+        let candidates: &[&str] = match self.peek()? {
+            b'c' => &["classDef", "class"],
+            b'e' => &["end"],
+            b'f' => &["flowchart"],
+            b'g' => &["graph"],
+            b'i' => &["interpolate"],
+            b'l' => &["linkStyle"],
+            b's' => &["style", "subgraph", "swimlane-beta"],
+            b'_' => &["_self", "_blank", "_parent", "_top"],
+            _ => return None,
+        };
+        candidates
+            .iter()
+            .copied()
+            .find(|kw| self.starts_with_kw(kw))
+    }
+
     pub(super) fn lex_reserved_token_error(&mut self) -> Option<LexError> {
         let rest = &self.input[self.pos..];
         // Jison compiles these INITIAL keyword rules with an ASCII word boundary before
@@ -310,20 +330,10 @@ impl<'input> Lexer<'input> {
         // still requires a SPACE token before args.
         // INTERPOLATE and LINK_TARGET have no standalone identifier use; their valid argument
         // positions are consumed inside the click/linkStyle scanners instead.
-        let keyword = [
-            "style",
-            "linkStyle",
-            "classDef",
-            "class",
-            "subgraph",
-            "interpolate",
-            "_self",
-            "_blank",
-            "_parent",
-            "_top",
-        ]
-        .into_iter()
-        .find(|keyword| self.starts_with_kw(keyword))?;
+        let keyword = self.reserved_keyword()?;
+        if matches!(keyword, "end" | "flowchart" | "graph" | "swimlane-beta") {
+            return None;
+        }
         if matches!(
             keyword,
             "style" | "linkStyle" | "classDef" | "class" | "subgraph"
@@ -1106,7 +1116,18 @@ impl<'input> Lexer<'input> {
 
     pub(super) fn lex_amp(&mut self) -> Option<(usize, Tok, usize)> {
         let start = self.pos;
-        if self.peek()? != b'&' {
+        if self.peek()? != b'&' || !self.after_vertex {
+            return None;
+        }
+        // flow.jison groups nodes with `node spaceList AMP spaceList styledVertex`.
+        // In an identifier AMP itself is a legal idStringToken.
+        let is_space = |ch| !matches!(ch, '\r' | '\n') && is_ecmascript_trim_char(ch);
+        if !self.input[..start]
+            .chars()
+            .next_back()
+            .is_some_and(is_space)
+            || !self.input[start + 1..].chars().next().is_some_and(is_space)
+        {
             return None;
         }
         self.pos += 1;
@@ -1118,7 +1139,9 @@ impl<'input> Lexer<'input> {
         let bytes = self.input.as_bytes();
         while let Some(&first) = bytes.get(self.pos) {
             let rest = &bytes[self.pos..];
-            if link_prefix_len(rest).is_some() {
+            if link_prefix_len(rest).is_some()
+                || (self.pos != start && self.reserved_keyword().is_some())
+            {
                 break;
             }
 
@@ -1126,7 +1149,7 @@ impl<'input> Lexer<'input> {
             // its dots. After NUM, COMMA, DOWN, DEFAULT or UNICODE_TEXT a dot can start a link.
             let len = match first {
                 b'0'..=b'9' => rest.iter().take_while(|byte| byte.is_ascii_digit()).count(),
-                b',' => 1,
+                b',' | b'&' => 1,
                 b'v' if self.starts_with_kw("v") => 1,
                 b'd' if self.starts_with_kw("default") => "default".len(),
                 b'-' if self.pos == start => break,

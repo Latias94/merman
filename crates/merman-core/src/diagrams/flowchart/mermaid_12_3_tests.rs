@@ -32,6 +32,47 @@ fn leading_dot_node_ids_parse_as_vertices() {
 }
 
 #[test]
+fn ampersands_group_vertices_only_between_space_tokens() {
+    for (statement, expected) in [
+        (".a&B --> C", &[".a&B"][..]),
+        ("A&end.n --> C", &["A&end.n"]),
+        ("1&B --> C", &["1&B"]),
+        ("  & --> C", &["&"]),
+        ("A & & --> C", &["A", "&"]),
+        (".a \t&\u{a0}B --> C", &[".a", "B"]),
+        ("A[First] & B --> C", &["A", "B"]),
+    ] {
+        let model = parse(&format!("flowchart TB\n{statement}\n"));
+        let from = model
+            .edges
+            .iter()
+            .map(|edge| edge.from.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(from, expected, "{statement}");
+        assert!(model.edges.iter().all(|edge| edge.to == "C"));
+    }
+    let chain = parse("flowchart TB\nA --> |label| & --> B\n");
+    assert_eq!(chain.edges[0].to, "&");
+    assert_eq!(chain.edges[1].from, "&");
+
+    for statement in [
+        ".a &B --> C",
+        ".a& B --> C",
+        "A[First]&B --> C",
+        "A &\nB",
+        "&end.n --> C",
+        "1end.n --> C",
+        "A,style.n --> C",
+    ] {
+        let source = format!("flowchart TB\n{statement}\n");
+        assert!(
+            parse_flowchart_model_for_render(&source, &metadata()).is_err(),
+            "{statement}"
+        );
+    }
+}
+
+#[test]
 fn dots_in_node_strings_and_at_link_boundaries_follow_flow_jison() {
     let single = parse("flowchart TB\n.a.-b\n");
     assert_eq!(single.nodes.len(), 1);
