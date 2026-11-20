@@ -82,7 +82,8 @@
         "rust-render-base"
       ],
       "components": [
-        "sdk-cousine"
+        "sdk-cousine",
+        "usvg"
       ]
     },
     {
@@ -92,7 +93,8 @@
         "ratex-render"
       ],
       "components": [
-        "sdk-cousine"
+        "sdk-cousine",
+        "usvg"
       ]
     },
     {
@@ -103,7 +105,8 @@
         "ratex-render"
       ],
       "components": [
-        "sdk-cousine"
+        "sdk-cousine",
+        "usvg"
       ]
     },
     {
@@ -187,13 +190,13 @@
       "id": "cli-default",
       "description": "The source-default CLI feature closure including ELK without RaTeX math/font support.",
       "extends": ["elk-render"],
-      "components": []
+      "components": ["usvg"]
     },
     {
       "id": "cli-release",
       "description": "The published complete CLI release closure, including explicit ELK and RaTeX math/font support.",
       "extends": ["elk-render", "ratex-render"],
-      "components": []
+      "components": ["usvg"]
     },
     {
       "id": "web-full",
@@ -1503,6 +1506,45 @@
         }
       ],
       "notice": "The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT."
+    },
+    {
+      "id": "usvg",
+      "name": "usvg",
+      "version": "0.47.0 with font fallback backport",
+      "source": {
+        "repository": "https://github.com/linebender/resvg",
+        "ref": "v0.47.0",
+        "commit": "3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707",
+        "path": "crates/usvg"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/usvg"],
+      "license_expression": "Apache-2.0 OR MIT",
+      "selected_license": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE",
+          "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg/LICENSE-APACHE",
+          "source_path": "crates/usvg/LICENSE-APACHE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-MIT",
+          "sha256": "f5d934dc281b44e0003ee461ac740b18b6629a454decd872c774d34e4ee0b21d",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg/LICENSE-MIT",
+          "source_path": "crates/usvg/LICENSE-MIT",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/usvg/UPSTREAM.md",
+          "sha256": "0db7ed86d7e78e45409d0d58ce08fbfa886d4b1debe5450185d7e0b69c78fb88"
+        }
+      ],
+      "notice": "Source-tree builds of the native font and image export pipeline link usvg 0.47.0 with a local font fallback backport. This source component carries the two upstream license texts."
     }
   ]
 }
