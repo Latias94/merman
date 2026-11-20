@@ -12,13 +12,47 @@ fn flowchart_parser_open_edges_render_without_arrowhead() {
 
 #[test]
 fn flowchart_parser_edge_length_modifiers_add_spacing() {
-    let rendered =
-        render_flowchart("flowchart LR\nA ----> B", &AsciiRenderOptions::ascii()).unwrap();
+    for (operator, route) in [
+        ("---->", "-------->"),
+        ("o-->", "o----->"),
+        ("o==>", "o----->"),
+        ("x===", "x------"),
+        ("o==o", "o===o"),
+    ] {
+        let input = format!("flowchart LR\nA {operator} B");
+        let rendered = render_flowchart(&input, &AsciiRenderOptions::ascii()).unwrap();
+        let gap = " ".repeat(route.len());
+        assert_eq!(
+            rendered,
+            format!("+---+{gap}+---+\n| A |{route}| B |\n+---+{gap}+---+\n"),
+            "{input}"
+        );
+    }
+}
 
-    assert_eq!(
-        rendered,
-        "+---+         +---+\n| A |-------->| B |\n+---+         +---+\n"
-    );
+#[test]
+fn flowchart_split_mixed_markers_keep_authored_stroke_and_length_spacing() {
+    let options = AsciiRenderOptions::ascii();
+    let row_width = |operator: &str| {
+        // flow.jison gives these two forms different aggregate types. Both author the
+        // same circle, cross and dotted line for the terminal renderer.
+        let pipe = format!("flowchart LR\nA {operator}|z| B");
+        let split = format!("flowchart LR\nA o-. z {operator} B");
+        let rendered = render_flowchart(&split, &options).unwrap();
+        assert_eq!(
+            rendered,
+            render_flowchart(&pipe, &options).unwrap(),
+            "{split}"
+        );
+
+        let row = rendered.lines().find(|row| row.contains('z')).unwrap();
+        let (source, target) = row.split_once('z').unwrap();
+        assert!(source.contains('o') && source.contains('.'), "{rendered}");
+        assert!(target.contains('x') && target.contains('.'), "{rendered}");
+        row.len()
+    };
+
+    assert!(row_width("o-.......-x") > row_width("o-.-x"));
 }
 
 #[test]

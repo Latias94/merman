@@ -656,7 +656,7 @@ const createFlowFamilyRules = ({
     keywordPrefixedIdentifier(),
     token(prec(
       -5,
-      /[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
+      /[A-Za-z0-9_.\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
     )),
   ),
 });

@@ -567,6 +567,157 @@ fn markdown_comment_combinations_preserve_labels_in_all_shared_parser_paths() {
 }
 
 #[test]
+fn single_node_special_character_ids_match_flow_singlenode() {
+    // flow-singlenode.spec.js exercises these twelve characters in all three positions.
+    let special_chars = ['#', ':', '0', '&', ',', '*', '.', '\\', 'v', '-', '/', '_'];
+    let other_node_string_chars = ['!', '$', '\'', '+', '`', '?'];
+    for ch in special_chars.into_iter().chain(other_node_string_chars) {
+        for id in [ch.to_string(), format!("{ch}node"), format!("node{ch}")] {
+            let source = format!("graph TD; {id} --> A");
+            let model = parse_flowchart_model_for_render(&source, &metadata())
+                .unwrap_or_else(|error| panic!("{source:?}: {error}"));
+            let [from, to] = model.nodes.as_slice() else {
+                panic!("expected two nodes in {source:?}");
+            };
+            let [edge] = model.edges.as_slice() else {
+                panic!("expected one edge in {source:?}");
+            };
+            assert_eq!(from.id, id, "{source:?}");
+            assert_eq!(from.label.as_deref(), Some(id.as_str()), "{source:?}");
+            assert_eq!(to.id, "A", "{source:?}");
+            assert_eq!((&edge.from, &edge.to), (&from.id, &to.id), "{source:?}");
+        }
+    }
+}
+
+#[test]
+fn single_node_special_character_ids_preserve_token_boundaries() {
+    let parse_statement = |statement: &str| {
+        let source = format!("graph TD; {statement}");
+        parse_flowchart_model_for_render(&source, &metadata())
+            .unwrap_or_else(|error| panic!("{source:?}: {error}"))
+    };
+
+    let styled = parse_statement("#:*:::hot --> A");
+    assert_eq!(styled.nodes[0].id, "#:*");
+    assert_eq!(styled.nodes[0].classes, ["hot"]);
+
+    for (statement, from, stroke, length) in [
+        ("#.->A", "#", FlowEdgeStroke::Dotted, 1),
+        ("*.->A", "*", FlowEdgeStroke::Dotted, 1),
+        ("node:..->A", "node:", FlowEdgeStroke::Dotted, 2),
+        ("A+B==>A", "A+B", FlowEdgeStroke::Thick, 1),
+        ("?node====A", "?node", FlowEdgeStroke::Thick, 2),
+    ] {
+        let model = parse_statement(statement);
+        let [edge] = model.edges.as_slice() else {
+            panic!("expected one edge in {statement:?}");
+        };
+        assert_eq!(
+            (edge.from.as_str(), edge.to.as_str()),
+            (from, "A"),
+            "{statement:?}"
+        );
+        assert_eq!(
+            (edge.stroke_kind, edge.length),
+            (stroke, length),
+            "{statement:?}"
+        );
+    }
+
+    for (statement, label) in [
+        ("->odd]", "odd"),
+        ("A\n->odd]", "odd"),
+        (r#"A --> ->"a]b"]"#, "a]b"),
+        (r#"->"hello[world]"]"#, "hello[world]"),
+        ("->hello\nworld]", "hello\nworld"),
+    ] {
+        let model = parse_statement(statement);
+        let odd = model.nodes.iter().find(|node| node.id == "-").unwrap();
+        assert_eq!(odd.shape.as_deref(), Some("odd"), "{statement:?}");
+        assert_eq!(odd.label.as_deref(), Some(label), "{statement:?}");
+    }
+
+    for statement in [
+        "->",
+        "->unfinished",
+        r#"->"quoted ]""#,
+        "->\nB[later]",
+        "A ->",
+        "A ->\nB[later]",
+    ] {
+        let source = format!("graph TD; {statement}");
+        let start = source.find("->").unwrap();
+        let span = SourceSpan::new(start, start + 2);
+        let error = Lexer::new(&source)
+            .find_map(|item| item.err())
+            .unwrap_or_else(|| panic!("missing partial operator error in {source:?}"));
+        assert_eq!(
+            error.message, "incomplete flowchart edge operator",
+            "{source:?}"
+        );
+        assert_eq!(error.span, Some(span), "{source:?}");
+        #[cfg(feature = "editor-facts")]
+        assert!(
+            error
+                .expected_syntax
+                .contains(&crate::EditorExpectedSyntax::new(
+                    crate::EditorExpectedSyntaxKind::FlowchartOperator,
+                    span,
+                )),
+            "{source:?}"
+        );
+    }
+
+    for id in [
+        "node#end.v",
+        "A+end.foo",
+        r#"A"B"#,
+        r#"12A"q""#,
+        r#"A,+"q""#,
+        r#"A#*"`q`""#,
+    ] {
+        let model = parse_statement(&format!("{id} --> Z"));
+        assert_eq!(model.nodes[0].id, id);
+        assert_eq!(model.nodes[0].label.as_deref(), Some(id));
+        assert_eq!(model.edges[0].from, id);
+    }
+
+    for statement in [
+        "#end.v",
+        "*end.v",
+        "node#.->A",
+        "node*.->A",
+        "->hello[world]",
+        "->]",
+        "end+foo",
+        "1end?tail",
+        r#""q" --> Z"#,
+        r#""`q`" --> Z"#,
+        r#"12"q" --> Z"#,
+        r#"A,"q" --> Z"#,
+        r#"#"q" --> Z"#,
+        r#"*"q" --> Z"#,
+        r#"&"q" --> Z"#,
+        r#"v"q" --> Z"#,
+        r#"default"q" --> Z"#,
+        r#"甲"q" --> Z"#,
+        "=",
+        "A=B",
+        "=node==>Z",
+        "A=== =foo",
+        "node= ==>Z",
+        "A---=foo",
+    ] {
+        let source = format!("graph TD; {statement}");
+        assert!(
+            parse_flowchart_model_for_render(&source, &metadata()).is_err(),
+            "{source:?}"
+        );
+    }
+}
+
+#[test]
 fn attached_edge_ids_preserve_node_shapes_and_endpoints() {
     for node in [
         "A[bla]",

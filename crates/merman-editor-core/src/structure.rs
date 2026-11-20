@@ -381,7 +381,44 @@ pub fn rename(
     }) {
         return Err(RenameError::InvalidName);
     }
-    Ok(rename_edits(snapshot, fence, item, new_name))
+    let edit = rename_edits(snapshot, fence, item, new_name);
+    if item.rename_policy == EditorRenamePolicy::FlowchartNodeId
+        && item.name != new_name
+        && let Some(changes) = edit
+            .as_ref()
+            .and_then(|edit| edit.changes.get(snapshot.uri()))
+    {
+        let (source, targets) = flowchart_rename_source(snapshot, fence, new_name, changes)
+            .ok_or(RenameError::InvalidName)?;
+        if !merman_core::editor::flowchart_rename_preserves_targets(
+            &source, &item.name, new_name, &targets,
+        ) {
+            return Err(RenameError::InvalidName);
+        }
+    }
+    Ok(edit)
+}
+
+fn flowchart_rename_source(
+    snapshot: &DocumentSnapshot,
+    fence: &FenceSnapshot,
+    name: &str,
+    edits: &[EditorTextEdit],
+) -> Option<(String, Vec<SourceSpan>)> {
+    let source = fence.text();
+    let mut edited = String::with_capacity(source.len());
+    let mut targets = Vec::with_capacity(edits.len());
+    let mut cursor = 0;
+    for edit in edits {
+        let start = fence_relative_offset(snapshot, fence, edit.range.start)?;
+        edited.push_str(source.get(cursor..start)?);
+        let name_start = edited.len() + edit.new_text.find(name)?;
+        targets.push(SourceSpan::new(name_start, name_start + name.len()));
+        edited.push_str(&edit.new_text);
+        cursor = fence_relative_offset(snapshot, fence, edit.range.end)?;
+    }
+    edited.push_str(source.get(cursor..)?);
+    Some((edited, targets))
 }
 
 fn rename_edits(
@@ -465,7 +502,7 @@ fn rename_edits(
     let numeric_er_name = er_name && new_name.as_bytes().first().is_some_and(u8::is_ascii_digit);
     let mut edits = spans
         .into_iter()
-        .filter_map(|span| {
+        .map(|span| {
             let adjacent_er_name = er_boundaries.as_ref().is_some_and(|(starts, ends)| {
                 ends.contains(&span.start) || starts.contains(&span.end)
             });
@@ -493,7 +530,7 @@ fn rename_edits(
                 new_text,
             })
         })
-        .collect::<Vec<_>>();
+        .collect::<Option<Vec<_>>>()?;
     if edits.is_empty() {
         return None;
     }

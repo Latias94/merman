@@ -82,6 +82,16 @@ mod accessibility;
 mod ast;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod build;
+#[cfg(all(
+    feature = "editor-facts",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+mod editor_rename;
+#[cfg(all(
+    feature = "editor-facts",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+pub(crate) use editor_rename::rename_preserves_targets;
 mod lex;
 mod lexer;
 mod lexer_iter;
