@@ -214,8 +214,8 @@ pub(in crate::svg::parity::flowchart) struct FlowchartEdgePathGeom {
     pub(in crate::svg::parity::flowchart) pb: Option<path_bounds::SvgPathBounds>,
     /// Exact point list serialized into `data-points` by Mermaid's `insertEdge`.
     pub(in crate::svg::parity::flowchart) data_points: Vec<crate::model::LayoutPoint>,
-    pub(in crate::svg::parity::flowchart) original_path_length: Option<f64>,
-    pub(in crate::svg::parity::flowchart) path_length: Option<f64>,
+    /// Length of the displaced curve for an unanimated Neo dotted or dashed mask.
+    pub(in crate::svg::parity::flowchart) pre_hop_dash_mask_length: Option<f64>,
     /// A crossing triggered after-paint path rewriting, even if its visible jump was suppressed.
     pub(in crate::svg::parity::flowchart) line_hop_applied: bool,
     /// Input to insertEdge after layout postprocessing, before paint-time clipping.

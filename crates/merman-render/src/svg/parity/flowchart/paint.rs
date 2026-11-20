@@ -420,6 +420,14 @@ pub(super) fn prepare_edge_routes(
             ctx.config,
             ctx.work_meter,
             ctx.uses_elk_adapter_dom,
+            |edge| {
+                ctx.compatibility.look.is_neo()
+                    && flowchart_neo_mask_uses_dash_pairs(edge.edge.as_ref())
+                    && ctx
+                        .edge_style_plan
+                        .animation_for(edge.key)
+                        .is_ok_and(|animation| !animation.is_active())
+            },
         )?;
     }
     ctx.work_meter

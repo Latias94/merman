@@ -2,6 +2,10 @@
 
 use super::FlowchartCompiledStyles;
 
+pub(super) fn flowchart_neo_mask_uses_dash_pairs(edge: &crate::flowchart::FlowEdge) -> bool {
+    matches!(edge.stroke.as_deref(), Some("dotted" | "dashed"))
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(in crate::svg::parity::flowchart) enum FlowchartMarkerBase {
     PointStart,

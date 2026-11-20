@@ -533,10 +533,10 @@ fn flowchart_neo_edge_path_length(
     geom: &FlowchartEdgePathGeom,
     edge: &crate::flowchart::FlowEdge,
 ) -> Option<f64> {
-    if geom.line_hop_applied && !matches!(edge.stroke.as_deref(), Some("dotted" | "dashed")) {
-        geom.path_length
+    if geom.line_hop_applied && flowchart_neo_mask_uses_dash_pairs(edge) {
+        geom.pre_hop_dash_mask_length
     } else {
-        geom.original_path_length
+        svg_path_length_from_d(&geom.d)
     }
 }
 
@@ -574,7 +574,7 @@ impl FlowchartNeoEdgeMaskPlan {
         } else {
             path_length - start_offset - end_offset
         };
-        let repeated_dash_pairs = matches!(edge.stroke.as_deref(), Some("dotted" | "dashed"))
+        let repeated_dash_pairs = flowchart_neo_mask_uses_dash_pairs(edge)
             .then(|| (middle_length / 4.0).floor().max(0.0) as usize);
 
         let middle_bytes = if let Some(repeated_dash_pairs) = repeated_dash_pairs {
