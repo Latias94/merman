@@ -1442,7 +1442,14 @@ impl<'input> Lexer<'input> {
                 // Reuse the odd-label scanner so quoted brackets and cancellation agree.
                 if !self.after_vertex || input[start..operator_start].contains('\n') {
                     match self.find_label_end(label_start, "]") {
-                        Ok(Some(_)) => return None,
+                        Ok(Some(close)) => {
+                            let label = &input[label_start..close];
+                            // An unquoted `[` starts a square node, including on a later line.
+                            if !label.is_empty() && (label.starts_with('"') || !label.contains('['))
+                            {
+                                return None;
+                            }
+                        }
                         Ok(None) => {}
                         Err(error) => return Some(Err(error)),
                     }

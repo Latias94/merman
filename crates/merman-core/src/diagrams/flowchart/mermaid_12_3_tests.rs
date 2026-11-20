@@ -629,6 +629,8 @@ fn single_node_special_character_ids_preserve_token_boundaries() {
         ("->odd]", "odd"),
         ("A\n->odd]", "odd"),
         (r#"A --> ->"a]b"]"#, "a]b"),
+        (r#"->"hello[world]"]"#, "hello[world]"),
+        ("->hello\nworld]", "hello\nworld"),
     ] {
         let model = parse_statement(statement);
         let odd = model.nodes.iter().find(|node| node.id == "-").unwrap();
@@ -640,6 +642,7 @@ fn single_node_special_character_ids_preserve_token_boundaries() {
         "->",
         "->unfinished",
         r#"->"quoted ]""#,
+        "->\nB[later]",
         "A ->",
         "A ->\nB[later]",
     ] {
@@ -685,6 +688,8 @@ fn single_node_special_character_ids_preserve_token_boundaries() {
         "*end.v",
         "node#.->A",
         "node*.->A",
+        "->hello[world]",
+        "->]",
         "end+foo",
         "1end?tail",
         r#""q" --> Z"#,
