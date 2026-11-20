@@ -5,6 +5,14 @@ impl<'input> Iterator for Lexer<'input> {
 
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.next_token();
+        self.after_vertex = matches!(
+            &item,
+            Some(Ok((
+                _,
+                Tok::Id(_) | Tok::NodeLabel(_) | Tok::ShapeData(_),
+                _
+            )))
+        );
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         if let Some(Ok((_, token, _))) = &item {
             self.at_statement_start = matches!(token, Tok::Sep | Tok::KwEnd);
@@ -137,11 +145,11 @@ impl Lexer<'_> {
             return Some(Ok(tok));
         }
 
-        if let Some(tok) = self.lex_id() {
+        if let Some(tok) = self.lex_amp() {
             return Some(Ok(tok));
         }
 
-        if let Some(tok) = self.lex_amp() {
+        if let Some(tok) = self.lex_id() {
             return Some(Ok(tok));
         }
 
@@ -202,6 +210,35 @@ mod tests {
             tokens
                 .iter()
                 .any(|(_, token, _)| matches!(token, Tok::StyleSep))
+        );
+    }
+
+    #[test]
+    fn leading_dot_identifiers_tokenize_without_consuming_dotted_links() {
+        let source = "...\n.a\nA --> ...\nB .-> C\n";
+        let tokens = Lexer::new(source)
+            .collect::<Result<Vec<_>, _>>()
+            .expect("Mermaid NODE_STRING accepts a leading dot");
+        let ids = tokens
+            .iter()
+            .filter_map(|(start, token, end)| match token {
+                Tok::Id(id) => {
+                    assert_eq!(&source[*start..*end], id);
+                    Some((id.as_str(), (*start, *end)))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(
+            ids,
+            [
+                ("...", (0, 3)),
+                (".a", (4, 6)),
+                ("A", (7, 8)),
+                ("...", (13, 16)),
+                ("B", (17, 18)),
+                ("C", (23, 24)),
+            ]
         );
     }
 

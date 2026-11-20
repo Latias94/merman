@@ -143,6 +143,20 @@ impl EditorRenamePolicy {
         !matches!(self, Self::None)
     }
 
+    /// Formats an accepted name at an occurrence, preserving adjacent operators.
+    pub fn replacement_text(self, name: &str, preceding: &str, following: &str) -> String {
+        #[cfg(any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        ))]
+        if self == Self::FlowchartNodeId {
+            return crate::diagrams::flowchart::node_rename_text(name, preceding, following);
+        }
+        let _ = (preceding, following);
+        name.to_owned()
+    }
+
     pub fn accepts(self, candidate: &str) -> bool {
         match self {
             Self::None => false,
