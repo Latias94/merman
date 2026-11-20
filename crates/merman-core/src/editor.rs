@@ -38,6 +38,25 @@ pub fn flowchart_shape_names() -> impl Iterator<Item = &'static str> {
     }
 }
 
+/// Checks whether the edited Flowchart source still binds each renamed range to one node.
+/// `targets` are sorted byte ranges of the new name in `source`, excluding added whitespace.
+pub fn flowchart_rename_preserves_targets(
+    source: &str,
+    old_name: &str,
+    new_name: &str,
+    targets: &[SourceSpan],
+) -> bool {
+    #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+    {
+        crate::diagrams::flowchart::rename_preserves_targets(source, old_name, new_name, targets)
+    }
+    #[cfg(not(any(feature = "diagram-flowchart", feature = "diagram-swimlane")))]
+    {
+        let _ = (source, old_name, new_name, targets);
+        false
+    }
+}
+
 /// Whether a Class or Class namespace rename needs backticks under the compiled family lexer.
 ///
 /// ASCII names retain the identifier alphabet; non-ASCII names may use the family's quoted

@@ -178,17 +178,24 @@ fn link_prefix_len(bytes: &[u8]) -> Option<usize> {
 #[cfg(feature = "editor-facts")]
 pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> String {
     let mut text = String::with_capacity(name.len() + 2);
-    // An open normal, thick or dotted LINK can consume an adjacent circle or cross marker.
-    if name.starts_with(['o', 'x'])
+    // An open LINK can consume a marker or an extra dash from the target.
+    let adds_marker = name.starts_with(['o', 'x'])
         && matches!(
             preceding.as_bytes(),
             [.., b'-' | b'.', b'-'] | [.., b'=', b'=']
-        )
-    {
+        );
+    if adds_marker || (name.starts_with('-') && preceding.ends_with("--")) {
         text.push(' ');
     }
     text.push_str(name);
-    if let Some(len) = link_prefix_len(following.as_bytes()) {
+    if following.starts_with(';')
+        && name.rsplit_once('#').is_some_and(|(_, word)| {
+            !word.is_empty() && word.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')
+        })
+    {
+        // Mermaid preprocesses #word; as a character entity before lexing the statement.
+        text.push(' ');
+    } else if let Some(len) = link_prefix_len(following.as_bytes()) {
         let probe = [name, &following[..len]].concat();
         let mut lexer = Lexer::new(&probe);
         lexer.advance_id();
@@ -200,11 +207,17 @@ pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> 
 }
 
 fn node_string_len(bytes: &[u8]) -> usize {
+    // Jison 0.4.18 compiles flow.jison's `=(?!=)` alternative to `(?!)`, so a single
+    // equals sign is outside NODE_STRING. Thick links have their own earlier rules.
     for (pos, &byte) in bytes.iter().enumerate() {
-        if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'%' | b'.' | b'/' | b'&') {
+        if byte.is_ascii_alphanumeric() || b"!\"#$%&'*+.`?\\_/".contains(&byte) {
             continue;
         }
-        if byte == b'-' && !matches!(bytes.get(pos + 1), Some(b'-' | b'.')) {
+        if byte == b'-'
+            && bytes
+                .get(pos + 1)
+                .is_some_and(|next| !matches!(next, b'>' | b'-' | b'.'))
+        {
             continue;
         }
         return pos;
@@ -1145,14 +1158,17 @@ impl<'input> Lexer<'input> {
                 break;
             }
 
-            // Mermaid joins adjacent idStringTokens into one vertex ID. A NODE_STRING consumes
-            // its dots. After NUM, COMMA, DOWN, DEFAULT or UNICODE_TEXT a dot can start a link.
+            // Before each idStringToken, Jison gives quote states and single-character
+            // tokens priority. A quote inside a running NODE_STRING is literal.
             let len = match first {
+                b'"' => break,
                 b'0'..=b'9' => rest.iter().take_while(|byte| byte.is_ascii_digit()).count(),
-                b',' | b'&' => 1,
+                b',' | b'&' | b'#' | b'*' => 1,
+                b':' if !rest.starts_with(b":::") => 1,
                 b'v' if self.starts_with_kw("v") => 1,
                 b'd' if self.starts_with_kw("default") => "default".len(),
-                b'-' if self.pos == start => break,
+                // MINUS is an idStringToken when the NODE_STRING hyphen lookahead fails.
+                b'-' => node_string_len(rest).max(1),
                 byte if !byte.is_ascii() => {
                     non_ascii_id_char_len(self.input, self.pos).unwrap_or(0)
                 }
@@ -1421,7 +1437,17 @@ impl<'input> Lexer<'input> {
         let Some(start_match) = parse_start_link(self.pos) else {
             let operator_start = skip_ecmascript_whitespace(self.input, self.pos);
             if self.input[operator_start..].starts_with("->") {
-                self.pos = operator_start + 2;
+                let label_start = operator_start + 2;
+                // At a vertex position, MINUS can be the ID of an odd node: `->label]`.
+                // Reuse the odd-label scanner so quoted brackets and cancellation agree.
+                if !self.after_vertex || input[start..operator_start].contains('\n') {
+                    match self.find_label_end(label_start, "]") {
+                        Ok(Some(_)) => return None,
+                        Ok(None) => {}
+                        Err(error) => return Some(Err(error)),
+                    }
+                }
+                self.pos = label_start;
                 let selection = SourceSpan::new(operator_start, self.pos);
                 return Some(Err({
                     let error =

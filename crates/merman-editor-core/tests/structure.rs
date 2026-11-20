@@ -302,6 +302,187 @@ fn navigation_ignores_payload_spans_and_tracks_entities() {
     ));
 }
 
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_rename_preserves_class_and_click_target_lists() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    for binding in [
+        "class A,B hot",
+        "click A,B href \"https://example.com\"",
+        "click B call handle()",
+        "B:::hot",
+        "A --> B[\"label ::: retained\"]:::hot",
+        "B:::hot\nC -->",
+    ] {
+        let source = format!("flowchart TD\nA --> B\n{binding}\n");
+        let snapshot = harness
+            .analyze("file:///rename.mmd", 1, source, DocumentKind::Diagram)
+            .unwrap();
+        let locations = references(&snapshot, Position::new(1, 6), true).unwrap();
+        assert_eq!(locations.len(), 2, "{binding}");
+        for location in locations {
+            for name in ["foo,bar", ".a,b"] {
+                assert!(
+                    matches!(
+                        rename(&snapshot, location.range.start, name),
+                        Err(RenameError::InvalidName)
+                    ),
+                    "{binding} from {:?} to {name}",
+                    location.range.start
+                );
+            }
+            assert!(
+                rename(&snapshot, location.range.start, "renamed")
+                    .unwrap()
+                    .is_some()
+            );
+        }
+    }
+
+    let source =
+        "flowchart TD\nA:::hot --> B[label ::: text]\nstyle B fill:red\nclick A call handle()\n";
+    let snapshot = harness
+        .analyze("file:///rename.mmd", 2, source, DocumentKind::Diagram)
+        .unwrap();
+    for name in ["foo,bar", ".a,b"] {
+        let (edited, count) = apply_rename(&snapshot, Position::new(2, 6), name);
+        assert_eq!(count, 2);
+        let SemanticDiagramModel::Flowchart(model) = SemanticParser::new()
+            .parse_diagram_sync(&edited)
+            .unwrap()
+            .model
+        else {
+            panic!("expected a Flowchart");
+        };
+        assert_eq!(model.nodes.len(), 2);
+        assert_eq!(model.edges[0].to, name);
+        let node = model.nodes.iter().find(|node| node.id == name).unwrap();
+        assert_eq!(node.styles, ["fill:red"]);
+        assert_eq!(node.label.as_deref(), Some("label ::: text"));
+    }
+
+    let snapshot = harness
+        .analyze(
+            "file:///rename.mmd",
+            3,
+            "flowchart TD\nfoo\nbar\nfoo,bar[compound]:::hot\nother\n",
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    for line in [1, 2, 3] {
+        assert!(matches!(
+            rename(&snapshot, Position::new(line, 0), "fresh"),
+            Err(RenameError::InvalidName)
+        ));
+    }
+    assert!(
+        rename(&snapshot, Position::new(4, 0), "fresh")
+            .unwrap()
+            .is_some()
+    );
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_rename_checks_comment_markers_at_each_occurrence() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    for (source, name, accepted) in [
+        ("A --> B\n  B --> C", "%%gone", false),
+        ("A --> B\r\n\tB --> C", "%%", false),
+        ("A --> B\n%%{init: {}}%% B --> C", "%%gone", false),
+        ("A --> B; B --> C", "%%gone", true),
+        ("A --> B\nB --> C", "%tag", true),
+        ("A --> B\nB", "%%", true),
+    ] {
+        let snapshot = harness
+            .analyze(
+                "file:///rename.mmd",
+                1,
+                format!("flowchart TD\n{source}\n"),
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        if accepted {
+            let (edited, count) = apply_rename(&snapshot, Position::new(1, 6), name);
+            assert_eq!(count, 2, "{source} to {name}");
+            let SemanticDiagramModel::Flowchart(model) = SemanticParser::new()
+                .parse_diagram_sync(&edited)
+                .unwrap()
+                .model
+            else {
+                panic!("expected a Flowchart");
+            };
+            assert_eq!(model.edges[0].to, name);
+            assert_eq!(model.edges.len(), source.matches("-->").count());
+        } else {
+            assert!(
+                matches!(
+                    rename(&snapshot, Position::new(1, 6), name),
+                    Err(RenameError::InvalidName)
+                ),
+                "{source} to {name}"
+            );
+        }
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_punctuation_renames_preserve_statement_and_class_delimiters() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let harness = SnapshotHarness::new();
+    for (name, expected) in [
+        ("-node", "A--- -node; C --> D"),
+        ("#35", "A---#35 ; C --> D"),
+    ] {
+        let snapshot = harness
+            .analyze(
+                "file:///rename.mmd",
+                1,
+                "flowchart TD\nA---B; C --> D\n",
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        let (edited, count) = apply_rename(&snapshot, Position::new(1, 4), name);
+        assert_eq!(count, 1);
+        assert_eq!(edited, format!("flowchart TD\n{expected}\n"));
+        let SemanticDiagramModel::Flowchart(model) = SemanticParser::new()
+            .parse_diagram_sync(&edited)
+            .unwrap()
+            .model
+        else {
+            panic!("expected a Flowchart");
+        };
+        assert_eq!(model.edges.len(), 2);
+        assert_eq!(model.edges[0].to, name);
+        assert_eq!(model.edges[0].length, 1);
+    }
+    for (node, accepted) in [("B:::hot", false), ("B[label]:::hot", true)] {
+        let snapshot = harness
+            .analyze(
+                "file:///rename.mmd",
+                1,
+                format!("flowchart TD\n{node}\n"),
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        let result = rename(&snapshot, Position::new(1, 0), "node:");
+        if accepted {
+            assert!(result.unwrap().is_some());
+        } else {
+            assert!(matches!(result, Err(RenameError::InvalidName)));
+        }
+    }
+}
+
 #[test]
 fn rename_obeys_eventmodeling_family_grammar_policies() {
     let harness = SnapshotHarness::new();
