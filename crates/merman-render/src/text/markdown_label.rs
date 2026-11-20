@@ -4,6 +4,7 @@ use super::{
     is_ecmascript_whitespace, is_html_collapsible_ascii_whitespace,
     trim_html_collapsible_ascii_whitespace,
 };
+use std::borrow::Cow;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum MermaidMarkdownBlockKind {
@@ -602,7 +603,8 @@ pub(crate) fn mermaid_markdown_to_xhtml_label_fragment(
 /// generated fragment lets callers preserve the host measurer's native precision for that common
 /// case without guessing from Markdown punctuation. Any nested element, additional root node, or
 /// malformed fragment remains on the structured HTML path.
-pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<String> {
+/// Borrowed text is the literal content of one paragraph and needs no XML normalization.
+pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<Cow<'_, str>> {
     if let Some(text) = fragment
         .strip_prefix("<p>")
         .and_then(|text| text.strip_suffix("</p>"))
@@ -612,7 +614,7 @@ pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<String> {
             .bytes()
             .all(|byte| (b' '..=b'~').contains(&byte) && !matches!(byte, b'<' | b'&' | b']'))
         {
-            return Some(text.to_owned());
+            return Some(Cow::Borrowed(text));
         }
     }
 
@@ -630,12 +632,12 @@ pub(crate) fn mermaid_xhtml_label_plain_text(fragment: &str) -> Option<String> {
         return None;
     }
 
-    Some(
+    Some(Cow::Owned(
         paragraph
             .children()
             .filter_map(|child| child.text())
             .collect(),
-    )
+    ))
 }
 
 pub(crate) fn mermaid_xhtml_label_text_content(fragment: &str) -> Option<String> {
