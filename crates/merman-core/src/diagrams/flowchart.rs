@@ -170,10 +170,12 @@ pub(crate) fn lex_presentation_statement(
 
 #[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
-    let mut lexer = Lexer::new(candidate);
+    // A name is a fragment. The edited document supplies the actual following delimiter.
+    let probe = [candidate, ";"].concat();
+    let mut lexer = Lexer::new(&probe);
     matches!(
         (lexer.next(), lexer.next()),
-        (Some(Ok((0, Tok::Id(_), end))), None) if end == candidate.len()
+        (Some(Ok((0, Tok::Id(_), end))), Some(Ok((_, Tok::Sep, _)))) if end == candidate.len()
     )
 }
 
