@@ -1,8 +1,8 @@
 use super::{ParseIssue, UsecaseJsonInfinity, UsecaseJsonStringEncoding, json_string};
 use crate::SourceSpan;
 use serde::de::IgnoredAny;
-use serde_json::Value;
-use std::collections::{BTreeMap, BTreeSet};
+use serde_json::{Map, Value};
+use std::collections::BTreeMap;
 
 #[derive(Debug)]
 pub(super) struct ParsedJson {
@@ -12,16 +12,13 @@ pub(super) struct ParsedJson {
     pub non_finite_numbers: BTreeMap<String, UsecaseJsonInfinity>,
 }
 
-/// serde_json remains authoritative for syntax. The source walk additionally
-/// preserves key order and JavaScript numbers that JSON.stringify emits as null.
+/// Validate syntax with serde_json and construct literal objects alongside their
+/// source order. JavaScript numbers that JSON.stringify emits as null retain
+/// their infinity metadata.
 pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssue> {
-    let decoded = serde_json::from_str::<Value>(source);
-    if decoded.is_err() {
-        // IgnoredAny validates number syntax without requiring a finite f64.
-        serde_json::from_str::<IgnoredAny>(source)
-            .map_err(|error| json_error(source, offset, error))?;
-    }
-    let encoded = decoded.is_err()
+    serde_json::from_str::<IgnoredAny>(source)
+        .map_err(|error| json_error(source, offset, error))?;
+    let encoded = source.contains("\\u")
         && json_string::contains_unpaired(source)
             .map_err(|error| json_error(source, offset, error))?;
     let mut collector = Collector {
@@ -30,10 +27,9 @@ pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssu
         depth: 0,
         property_order: BTreeMap::new(),
         non_finite_numbers: BTreeMap::new(),
-        replacements: Vec::new(),
         encoded,
     };
-    collector.collect_value("").map_err(|local| {
+    let value = collector.collect_value("").map_err(|local| {
         ParseIssue::new(
             "Invalid JSON token or nesting depth",
             SourceSpan {
@@ -42,19 +38,6 @@ pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssu
             },
         )
     })?;
-    let mut value = if collector.replacements.is_empty() {
-        decoded.map_err(|error| json_error(source, offset, error))?
-    } else {
-        let mut normalized = String::new();
-        let mut previous = 0;
-        for (range, replacement) in &collector.replacements {
-            normalized.push_str(&source[previous..range.start]);
-            normalized.push_str(replacement);
-            previous = range.end;
-        }
-        normalized.push_str(&source[previous..]);
-        serde_json::from_str(&normalized).map_err(|error| json_error(source, offset, error))?
-    };
     if !value.is_object() {
         return Err(ParseIssue::new(
             "JSON value must have an object root",
@@ -64,8 +47,6 @@ pub(super) fn parse(source: &str, offset: usize) -> Result<ParsedJson, ParseIssu
             },
         ));
     }
-    // JSON.parse uses binary64 for every number, including integer literals.
-    normalize_json_numbers(&mut value);
     Ok(ParsedJson {
         value,
         string_encoding: encoded.then_some(UsecaseJsonStringEncoding::JsonUtf16),
@@ -99,25 +80,11 @@ fn json_error(source: &str, offset: usize, error: serde_json::Error) -> ParseIss
     )
 }
 
-fn normalize_json_numbers(value: &mut Value) {
-    match value {
-        Value::Number(number) => {
-            if let Some(number) = number.as_f64() {
-                *value = crate::json_value::number_value(number);
-            }
-        }
-        Value::Array(values) => values.iter_mut().for_each(normalize_json_numbers),
-        Value::Object(values) => values.values_mut().for_each(normalize_json_numbers),
-        _ => {}
-    }
-}
-
 struct Collector<'a> {
     source: &'a str,
     offset: usize,
     depth: usize,
     non_finite_numbers: BTreeMap<String, UsecaseJsonInfinity>,
-    replacements: Vec<(std::ops::Range<usize>, String)>,
     encoded: bool,
     property_order: BTreeMap<String, Vec<String>>,
 }
@@ -142,13 +109,12 @@ impl Collector<'_> {
         Ok(())
     }
 
-    fn collect_value(&mut self, pointer: &str) -> Result<(), usize> {
+    fn collect_value(&mut self, pointer: &str) -> Result<Value, usize> {
         self.skip_whitespace();
         match self.source.as_bytes().get(self.offset) {
             Some(byte @ (b'{' | b'[')) => {
-                // The fallback validator skips values iteratively. Bound this walk
-                // before serde_json's final Value decode enforces its own limit.
-                if self.depth >= 128 {
+                // serde_json admits 127 nested containers before its recursion limit.
+                if self.depth >= 127 {
                     return Err(self.offset);
                 }
                 let object = *byte == b'{';
@@ -161,7 +127,7 @@ impl Collector<'_> {
                 self.depth -= 1;
                 result
             }
-            Some(b'"') => self.read_string().map(|_| ()),
+            Some(b'"') => self.read_string().map(Value::String),
             Some(_) => {
                 // Scalars have already been validated by serde_json.
                 let start = self.offset;
@@ -171,51 +137,50 @@ impl Collector<'_> {
                     self.offset += 1;
                 }
                 let literal = &self.source[start..self.offset];
-                if let Ok(number) = literal.parse::<f64>()
-                    && number.is_infinite()
-                {
-                    let infinity = if number.is_sign_negative() {
-                        UsecaseJsonInfinity::Negative
-                    } else {
-                        UsecaseJsonInfinity::Positive
-                    };
-                    self.non_finite_numbers.insert(pointer.to_owned(), infinity);
-                    self.replacements.push((start..self.offset, "null".into()));
+                match literal {
+                    "null" => Ok(Value::Null),
+                    "true" => Ok(Value::Bool(true)),
+                    "false" => Ok(Value::Bool(false)),
+                    _ => {
+                        let number = literal.parse::<f64>().map_err(|_| start)?;
+                        if number.is_infinite() {
+                            let infinity = if number.is_sign_negative() {
+                                UsecaseJsonInfinity::Negative
+                            } else {
+                                UsecaseJsonInfinity::Positive
+                            };
+                            self.non_finite_numbers.insert(pointer.to_owned(), infinity);
+                            Ok(Value::Null)
+                        } else {
+                            Ok(crate::json_value::number_value(number))
+                        }
+                    }
                 }
-                Ok(())
             }
             None => Err(self.offset),
         }
     }
 
-    fn collect_object(&mut self, pointer: &str) -> Result<(), usize> {
+    fn collect_object(&mut self, pointer: &str) -> Result<Value, usize> {
         self.consume(b'{')?;
         let mut order = Vec::new();
-        let mut seen = BTreeSet::new();
+        let mut values = Map::new();
         self.skip_whitespace();
         if self.source.as_bytes().get(self.offset) != Some(&b'}') {
             loop {
-                let property_start = self.offset;
-                let encoded = self.encoded;
-                let literal = self.read_string()?;
-                let property = if encoded {
-                    json_string::canonical(literal)
-                } else {
-                    serde_json::from_str(literal)
-                }
-                .map_err(|_| property_start)?;
+                let property = self.read_string()?;
                 let property_pointer = format!(
                     "{pointer}/{}",
                     property.replace('~', "~0").replace('/', "~1")
                 );
-                if seen.insert(property.clone()) {
-                    order.push(property);
-                } else {
+                if values.contains_key(&property) {
                     self.delete_subtree(&property_pointer);
+                } else {
+                    order.push(property.clone());
                 }
                 self.skip_whitespace();
                 self.consume(b':')?;
-                self.collect_value(&property_pointer)?;
+                values.insert(property, self.collect_value(&property_pointer)?);
                 self.skip_whitespace();
                 if self.source.as_bytes().get(self.offset) == Some(&b'}') {
                     break;
@@ -226,17 +191,16 @@ impl Collector<'_> {
         }
         self.consume(b'}')?;
         self.property_order.insert(pointer.to_owned(), order);
-        Ok(())
+        Ok(Value::Object(values))
     }
 
-    fn collect_array(&mut self, pointer: &str) -> Result<(), usize> {
+    fn collect_array(&mut self, pointer: &str) -> Result<Value, usize> {
         self.consume(b'[')?;
         self.skip_whitespace();
-        let mut index = 0;
+        let mut values = Vec::new();
         if self.source.as_bytes().get(self.offset) != Some(&b']') {
             loop {
-                self.collect_value(&format!("{pointer}/{index}"))?;
-                index += 1;
+                values.push(self.collect_value(&format!("{pointer}/{}", values.len()))?);
                 self.skip_whitespace();
                 if self.source.as_bytes().get(self.offset) == Some(&b']') {
                     break;
@@ -244,20 +208,21 @@ impl Collector<'_> {
                 self.consume(b',')?;
             }
         }
-        self.consume(b']')
+        self.consume(b']')?;
+        Ok(Value::Array(values))
     }
 
-    fn read_string(&mut self) -> Result<&str, usize> {
+    fn read_string(&mut self) -> Result<String, usize> {
         let start = self.offset;
         self.consume(b'"')?;
         self.offset = json_string::token_end(self.source, start);
         let literal = &self.source[start..self.offset];
         if self.encoded {
-            let canonical = json_string::canonical(literal).map_err(|_| start)?;
-            let replacement = serde_json::to_string(&canonical).map_err(|_| start)?;
-            self.replacements.push((start..self.offset, replacement));
+            json_string::canonical(literal)
+        } else {
+            serde_json::from_str(literal)
         }
-        Ok(literal)
+        .map_err(|_| start)
     }
 
     fn delete_subtree(&mut self, pointer: &str) {
@@ -291,6 +256,33 @@ impl Collector<'_> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn internal_serde_keys_remain_literal_at_every_depth() {
+        let parsed = parse(
+            r#"{"$serde_json::private::RawValue":"true","nested":[{"\u0024serde_json::private::RawValue":"{}"},{"$serde_json::private::Number":"123"}]}"#,
+            0,
+        )
+        .unwrap();
+        assert_eq!(
+            parsed.value,
+            json!({
+                "$serde_json::private::RawValue": "true",
+                "nested": [
+                    {"$serde_json::private::RawValue": "{}"},
+                    {"$serde_json::private::Number": "123"}
+                ]
+            })
+        );
+        assert_eq!(
+            parsed.property_order[""],
+            ["$serde_json::private::RawValue", "nested"]
+        );
+        assert_eq!(
+            parsed.property_order["/nested/0"],
+            ["$serde_json::private::RawValue"]
+        );
+    }
 
     #[test]
     fn numbers_follow_javascript_binary64_and_normalize_negative_zero() {
