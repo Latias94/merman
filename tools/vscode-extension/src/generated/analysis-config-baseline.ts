@@ -36,6 +36,7 @@ export const BUNDLED_ANALYSIS_CONFIG_PROJECTION = {
     "merman.semantic.agentflow.shape_removed",
     "merman.semantic.agentflow.shape_unsupported",
     "merman.semantic.agentflow.containment_violation",
+    "merman.authoring.class.ignored_statement",
     "merman.git_graph.duplicate_commit_id"
   ],
   "constraints": {

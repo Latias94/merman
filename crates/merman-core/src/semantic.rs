@@ -34,6 +34,8 @@ fn remap_semantic_source_positions(
         SemanticDiagramModel::Block(model) => &mut model.warning_facts,
         #[cfg(feature = "diagram-git-graph")]
         SemanticDiagramModel::GitGraph(model) => &mut model.warning_facts,
+        #[cfg(feature = "diagram-class")]
+        SemanticDiagramModel::Class(model) => &mut model.warning_facts,
         _ => &mut [],
     };
     for (index, fact) in facts.iter_mut().enumerate() {

@@ -7,6 +7,7 @@ use crate::utils::format_url;
 use indexmap::IndexMap;
 use merman_model::families::class as class_typed;
 use merman_model::text::is_ecmascript_whitespace;
+use merman_model::warnings::{CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -328,6 +329,7 @@ pub(super) struct ClassDb<'a> {
     next_style_event_ordinal: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
+    warning_facts: Vec<DiagramWarningFact>,
     security_level: Option<&'a str>,
     config: &'a MermaidConfig,
 }
@@ -349,6 +351,7 @@ impl<'a> ClassDb<'a> {
             next_style_event_ordinal: 0,
             acc_title: None,
             acc_descr: None,
+            warning_facts: Vec::new(),
             security_level: config.get_str("securityLevel"),
             config,
         }
@@ -1039,7 +1042,21 @@ impl<'a> ClassDb<'a> {
                 self.add_note(class_id, &text);
                 Ok(())
             }
+            Action::WarnIgnoredStatement { span } => {
+                self.warn_ignored_statement(span);
+                Ok(())
+            }
         }
+    }
+
+    fn warn_ignored_statement(&mut self, span: crate::SourceSpan) {
+        self.warning_facts.push(
+            DiagramWarningFact::new(
+                CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
+                "Mermaid ignores this line. A bare class name has no effect. Use `class <name>` to declare a class.",
+            )
+            .with_span(span),
+        );
     }
 
     fn rebuild_namespace_memberships(&mut self) {
@@ -1162,6 +1179,7 @@ impl<'a> ClassDb<'a> {
                     lollipop: REL_LOLLIPOP,
                 },
             },
+            warning_facts: self.warning_facts,
         }
     }
 }

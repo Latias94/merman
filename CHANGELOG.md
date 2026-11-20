@@ -6,6 +6,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ## [Unreleased]
 
+### Added
+
+- New `merman.authoring.class.ignored_statement` diagnostic (`Recommended` ruleset, `Hint` level) for Class diagram statements that are ignored. This diagnostic helps to identify invalid syntax, such as using `title` as a statement instead of as a front matter field.
+
 ### Changed
 
 - Select Rust 1.100.0 for repository development, CI and release builders while retaining library MSRV 1.95. Update layout code for the stricter Clippy checks and remove unused workspace dependency aliases and redundant Cargo package metadata.

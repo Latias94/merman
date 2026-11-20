@@ -1118,6 +1118,79 @@ fn git_graph_duplicate_commit_id_is_warning() {
     assert!(diagnostic.message.contains("already exists"));
 }
 
+fn analyze_recommended(source: &str) -> merman_analysis::AnalysisPayload {
+    Analyzer::with_options(AnalysisOptions::default().with_rule_config(
+        AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+    ))
+    .analyze(source)
+}
+
+#[test]
+fn class_ignored_statements_are_recommended_hints_with_original_source_spans() {
+    let source =
+        "---\ntitle: Diagram\n---\nclassDiagram\n    title Ignored\n    foo Bar\n    class A\n";
+    let default_payload = analyze(source);
+    assert!(default_payload.valid);
+    assert!(
+        default_payload.diagnostics.is_empty(),
+        "{:?}",
+        default_payload.diagnostics
+    );
+
+    let payload = analyze_recommended(source);
+
+    assert!(payload.valid);
+    let diagnostics = payload
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            let span = diagnostic.span.as_ref().expect("ignored statement span");
+            (
+                diagnostic.id.as_str(),
+                diagnostic.severity,
+                diagnostic.category,
+                &source[span.byte_start..span.byte_end],
+                (span.line, span.column),
+            )
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(
+        diagnostics,
+        [
+            (
+                "merman.authoring.class.ignored_statement",
+                DiagnosticSeverity::Hint,
+                DiagnosticCategory::Semantic,
+                "title Ignored",
+                (5, 5),
+            ),
+            (
+                "merman.authoring.class.ignored_statement",
+                DiagnosticSeverity::Hint,
+                DiagnosticCategory::Semantic,
+                "foo Bar",
+                (6, 5),
+            ),
+        ]
+    );
+    assert!(
+        payload
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.message.contains("class <name>"))
+    );
+}
+
+#[test]
+fn class_statements_with_effects_are_not_ignored_statements() {
+    let payload = analyze_recommended(
+        "classDiagram\n    class A\n    A : +int count\n    A --> B : uses\n    note for A \"n\"\n",
+    );
+
+    assert!(payload.valid);
+    assert!(payload.diagnostics.is_empty(), "{:?}", payload.diagnostics);
+}
+
 #[test]
 fn block_width_overflow_is_warning() {
     let payload = analyze("block-beta\n  columns 1\n  A:1\n  B:2\n  C:3\n");

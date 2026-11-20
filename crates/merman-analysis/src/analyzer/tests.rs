@@ -1945,6 +1945,11 @@ fn policy_neutral_candidate_corpus_covers_available_backend_rules() {
             analyzer: Analyzer::new(),
             source: "gitGraph\ncommit id:\"duplicate\"\ncommit id:\"duplicate\"\n",
         },
+        CorpusCase {
+            name: "class ignored statement",
+            analyzer: Analyzer::new(),
+            source: "classDiagram\ntitle Ignored\nclass A\n",
+        },
     ];
 
     let mut strict_rules = AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Strict);

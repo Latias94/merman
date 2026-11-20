@@ -65,6 +65,9 @@ pub(crate) enum Action {
         class_id: Option<String>,
         text: String,
     },
+    WarnIgnoredStatement {
+        span: crate::SourceSpan,
+    },
 }
 
 #[derive(Debug, Clone, Copy)]

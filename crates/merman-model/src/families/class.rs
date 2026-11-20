@@ -63,6 +63,9 @@ pub struct ClassDiagramModel {
     pub constants: ClassConstants,
     #[serde(rename = "stylePrecedenceFacts", default)]
     pub style_precedence_facts: ClassStylePrecedenceFacts,
+    #[serde(rename = "warningFacts", skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
+    pub warning_facts: Vec<crate::warnings::DiagramWarningFact>,
 }
 
 impl ClassDiagramModel {
@@ -1533,6 +1536,7 @@ impl<'de> Deserialize<'de> for ClassDiagram {
                     constants: constants
                         .ok_or_else(|| serde::de::Error::missing_field("constants"))?,
                     style_precedence_facts: ClassStylePrecedenceFacts::default(),
+                    warning_facts: Vec::new(),
                 };
                 // An old full wire document already contains a visual projection. Retain that
                 // projection verbatim; it cannot recover authored namespaces or original ids.
