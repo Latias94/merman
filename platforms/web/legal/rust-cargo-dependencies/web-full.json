@@ -80,7 +80,7 @@
     "version": "0.9.3",
     "command_profile": "artifact-profile-runtime",
     "offline": true,
-    "cargo_lock_sha256": "0ea1e4ffc4430e7188550926995371a8fb94be4e20e420552da9f034317e2596",
+    "cargo_lock_sha256": "3fa3205596b0a1251504731cfb2665aa4ff16b45e9efe71cc25e3f4a0b5651ad",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4",
     "artifact_profile_sha256": "3661757da87934410547c3d7be421bcc993b4bcd60123cc668c17b2e2b55d333"
   },
