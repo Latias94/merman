@@ -175,6 +175,17 @@ fn link_prefix_len(bytes: &[u8]) -> Option<usize> {
     Some(marker + len)
 }
 
+#[cfg(feature = "editor-facts")]
+pub(crate) fn node_id_needs_link_space(name: &str, following: &str) -> bool {
+    let Some(len) = link_prefix_len(following.as_bytes()) else {
+        return false;
+    };
+    let probe = [name, &following[..len]].concat();
+    let mut lexer = Lexer::new(&probe);
+    lexer.advance_id();
+    lexer.pos != name.len()
+}
+
 fn node_string_len(bytes: &[u8]) -> usize {
     for (pos, &byte) in bytes.iter().enumerate() {
         if byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'%' | b'.' | b'/') {
@@ -1098,9 +1109,8 @@ impl<'input> Lexer<'input> {
                 break;
             }
 
-            // Mermaid joins adjacent idStringTokens into one vertex ID. A dot inside a
-            // NODE_STRING is literal; after NUM, COMMA, DOWN, DEFAULT or UNICODE_TEXT it
-            // can start another token, including a dotted link.
+            // Mermaid joins adjacent idStringTokens into one vertex ID. A NODE_STRING consumes
+            // its dots. After NUM, COMMA, DOWN, DEFAULT or UNICODE_TEXT a dot can start a link.
             let len = match first {
                 b'0'..=b'9' => rest.iter().take_while(|byte| byte.is_ascii_digit()).count(),
                 b',' => 1,

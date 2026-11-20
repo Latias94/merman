@@ -143,6 +143,20 @@ impl EditorRenamePolicy {
         !matches!(self, Self::None)
     }
 
+    /// Whether an accepted name needs a space to keep the following operator intact.
+    pub fn needs_trailing_space(self, name: &str, following: &str) -> bool {
+        #[cfg(any(
+            feature = "diagram-flowchart",
+            feature = "diagram-swimlane",
+            feature = "diagram-agentflow"
+        ))]
+        if self == Self::FlowchartNodeId {
+            return crate::diagrams::flowchart::node_id_needs_link_space(name, following);
+        }
+        let _ = (name, following);
+        false
+    }
+
     pub fn accepts(self, candidate: &str) -> bool {
         match self {
             Self::None => false,
