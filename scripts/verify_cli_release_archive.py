@@ -327,7 +327,7 @@ def _cli_release_runtime_ids(
     profiles: dict[str, object],
     *,
     surface: dict[str, object],
-) -> tuple[list[str], list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str], list[str]]:
     if profiles.get("schema_version") != 2:
         raise ArchiveVerificationError("artifact profiles schema_version must be 2")
     candidates = []
@@ -398,7 +398,7 @@ def _cli_release_runtime_ids(
     _require_exact_json(
         "cli-release cargo.features",
         cargo_features,
-        sorted(["all-diagrams", "system-fonts", *runtime_ids]),
+        sorted(["all-diagrams", "system-fonts", "windows-platform-font-default", *runtime_ids]),
     )
     for label, values in (
         ("cli-release expected runtime_ids", runtime_ids),
@@ -415,7 +415,7 @@ def _cli_release_runtime_ids(
         raise ArchiveVerificationError(
             "cli-release references unknown capabilities: " + ", ".join(unknown)
         )
-    return runtime_ids, output_ids, diagram_families
+    return runtime_ids, output_ids, diagram_families, cargo_features
 
 
 def _repository_compatibility(repo_root: Path) -> dict[str, str]:
@@ -524,6 +524,7 @@ def _release_capabilities_contract(
     repo_root: Path,
     *,
     version: str,
+    target: str | None = None,
 ) -> dict[str, object]:
     profiles = _read_repository_json(repo_root, ARTIFACT_PROFILES_PATH)
     surface = validate_capability_authority(
@@ -537,12 +538,15 @@ def _release_capabilities_contract(
         require_sorted_compiled_prerequisites=True,
     )
     digest = capability_surface_digest(surface)
-    runtime_ids, expected_output_ids, diagram_families = _cli_release_runtime_ids(
+    runtime_ids, expected_output_ids, diagram_families, cargo_features = _cli_release_runtime_ids(
         profiles,
         surface=surface,
     )
     subcontract = release_capabilities_subcontract(
-        surface, capability_ids=set(runtime_ids)
+        surface,
+        capability_ids=set(runtime_ids),
+        cargo_features=set(cargo_features),
+        windows=target == "x86_64-pc-windows-msvc",
     )
     _require_exact_json(
         "cli-release expected outputs",
@@ -716,6 +720,7 @@ def verify_runtime_contract(
     expected_capabilities = _release_capabilities_contract(
         repo_root,
         version=version,
+        target=target,
     )
     command = str(binary)
     version_result = run_checked(

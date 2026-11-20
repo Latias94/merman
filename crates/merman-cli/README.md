@@ -163,20 +163,19 @@ library behavior. For embedded integrations, use the
 
 Current-source default builds and the official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG keeps deterministic, font-agnostic
-measurement by default, without creating a native font context or discovering
-system fonts. Mermaid-to-PNG/JPEG/PDF rendering automatically discovers system
-fonts within bounded resource limits before layout and shares that context with
-native painting. This keeps label sizing and the export font selection together.
-It can change wrapping, node sizes and image/PDF snapshots, and system-font results
-depend on the host.
+measurement by default. For Mermaid PNG/JPEG/PDF, the Windows release archive
+queries the platform font catalog on demand and shares the selected fonts between
+native measurement and painting. Source defaults and release archives on other
+platforms use bounded system discovery. Font selection can change wrapping, node
+sizes, and image/PDF output across hosts or discovery providers.
 
 With those CLI capabilities compiled:
 
 | Font options | Mermaid SVG measurement | Mermaid PNG/JPEG/PDF measurement | Native-context system discovery |
 | --- | --- | --- | --- |
-| No font options | Deterministic | Native | Before layout for PNG/JPEG/PDF; off for SVG |
+| No font options | Deterministic | Native | Default provider for PNG/JPEG/PDF; off for SVG |
 | `--font-measurement deterministic` | Deterministic | Deterministic | Off |
-| `--font-file PATH` or `--font-dir PATH` | Native, using supplied fonts | Native, using supplied fonts | Off unless `--font-system on` is added |
+| `--font-file PATH` or `--font-dir PATH` | Native, using supplied fonts | Native, using supplied fonts | Off unless system fallback is requested |
 | `--font-measurement native` without font sources | Native | Native | On |
 | `--font-system on` | Native | Native | Explicitly on |
 
@@ -230,12 +229,12 @@ To explicitly use the fonts installed on the current machine instead:
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
-A build with the `platform-system-font-query` feature can query the operating
-system's font catalog with `--font-system platform`. This avoids reading the entire
-bounded catalog before layout. Platform font matching can change the selected
-faces and diagram geometry, and its metadata queries are outside Merman's scan
-budgets. The same selected font snapshots serve measurement and painting. See
-[Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
+Release archives and builds with the `platform-system-font-query` feature offer
+`--font-system platform` and `--font-system bounded`. `--font-system on` uses the
+build's default provider. Platform queries avoid reading the bounded catalog before
+layout. Platform metadata queries run outside Merman's scan budgets. Selected
+font bytes still have acquisition limits and serve both measurement and painting.
+See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.

@@ -628,6 +628,37 @@ fn windows_platform_fallback_keeps_coverage_when_a_scalar_face_would_change_the_
 
 #[cfg(target_os = "windows")]
 #[test]
+#[ignore = "requires Windows Calibri, Trebuchet MS and system font fallback"]
+fn windows_platform_fallback_covers_mixed_ligatures_symbols_and_han() {
+    let fonts = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    for (family, text, font_files) in [
+        (
+            "Calibri, Arial, sans-serif",
+            "fi✓中",
+            &["calibri.ttf", "seguiemj.ttf", "msyh.ttc"][..],
+        ),
+        (
+            "Trebuchet MS, Verdana, Arial, sans-serif",
+            "fi✚✗⚑",
+            &["trebuc.ttf", "seguisym.ttf"][..],
+        ),
+    ] {
+        if font_files.iter().any(|file| !fonts.join(file).is_file()) {
+            continue;
+        }
+        let operation = context.for_operation(&OperationControl::new());
+        assert_text_advance_and_faces(&operation, family, text);
+        operation.check().unwrap();
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[test]
 #[ignore = "requires the Windows Microsoft Himalaya and Trebuchet MS fonts"]
 fn windows_platform_fallback_accepts_the_physical_faces_alternate_postscript_record() {
     let fonts = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");

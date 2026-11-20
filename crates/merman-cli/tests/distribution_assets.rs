@@ -332,15 +332,18 @@ fn complete_profile_assets_expose_native_encoded_defaults_and_font_controls() {
         );
         assert_eq!(
             bash_option_values(&script, command, "--font-system"),
-            ["off".to_owned(), "on".to_owned()].into_iter().collect()
+            ["off", "on", "bounded", "platform"]
+                .map(str::to_owned)
+                .into_iter()
+                .collect()
         );
         let man = read_asset(&format!("man/merman-cli-{command}.1"));
         assert!(man.contains("Text measurement: SVG defaults to deterministic"));
         assert!(man.contains("PNG/JPEG/PDF use native fonts for shared layout and painting"));
         assert!(man.contains("Explicit deterministic keeps approximate layout"));
         assert!(man.contains("Control system font discovery"));
-        assert!(man.contains("native encoded output enables it by default"));
-        assert!(man.contains("Explicit font sources stay closed unless on is selected"));
+        assert!(man.contains("Native encoded output enables it by default"));
+        assert!(man.contains("enable system fallback for explicit fonts"));
         assert!(man.contains("Maximum uncached native font shaping probes per diagram"));
         assert!(man.contains("default: 16384"));
         assert!(!man.contains("title horizontal bounds only"));

@@ -933,12 +933,12 @@ mod font_policy_tests {
         assert!(selects_platform(Some(FontSystemKind::Platform)));
         assert!(!selects_platform(Some(FontSystemKind::Bounded)));
         assert!(!selects_platform(Some(FontSystemKind::Off)));
-        let experimental_default = cfg!(feature = "experimental-system-font-query");
-        assert_eq!(
-            selects_platform(Some(FontSystemKind::On)),
-            experimental_default
-        );
-        assert_eq!(selects_platform(None), experimental_default);
+        let platform_default = cfg!(any(
+            feature = "experimental-system-font-query",
+            all(windows, feature = "windows-platform-font-default")
+        ));
+        assert_eq!(selects_platform(Some(FontSystemKind::On)), platform_default);
+        assert_eq!(selects_platform(None), platform_default);
     }
 
     #[test]

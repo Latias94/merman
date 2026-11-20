@@ -899,6 +899,7 @@ pub(crate) enum FontMeasurementKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum FontSystemKind {
     Off,
+    /// Enable the build's default system font provider.
     On,
     /// Use Merman's bounded system font discovery.
     #[cfg(feature = "platform-system-font-query")]
@@ -910,6 +911,13 @@ pub(crate) enum FontSystemKind {
 
 #[cfg(feature = "native-fonts")]
 impl FontSystemKind {
+    pub(crate) const fn platform_is_default() -> bool {
+        cfg!(any(
+            feature = "experimental-system-font-query",
+            all(windows, feature = "windows-platform-font-default")
+        ))
+    }
+
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Off => "off",
@@ -926,7 +934,7 @@ impl FontSystemKind {
         match selection {
             Some(Self::Bounded | Self::Off) => false,
             Some(Self::Platform) => true,
-            Some(Self::On) | None => cfg!(feature = "experimental-system-font-query"),
+            Some(Self::On) | None => Self::platform_is_default(),
         }
     }
 }

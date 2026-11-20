@@ -297,14 +297,18 @@ native
 .RE
 .TP
 \fB\-\-font\-system\fR \fI<FONT_SYSTEM>\fR
-Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected
+Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
 off
 .IP \(bu 2
-on
+on: Enable the build\*(Aqs default system font provider
+.IP \(bu 2
+bounded: Use Merman\*(Aqs bounded system font discovery
+.IP \(bu 2
+platform: Query the platform\*(Aqs font catalog. Platform metadata access is outside Merman\*(Aqs scan limits
 .RE
 .TP
 \fB\-\-font\-max\-measurements\fR \fI<COUNT>\fR

@@ -26,6 +26,15 @@ The [published krilla-svg 0.8.1 manifest](https://docs.rs/crate/krilla-svg/0.8.1
 
 An incompatible `usvg::Tree` handoff prevents mixing the 0.49 renderer with the 0.47 PDF adapter. Keep CSS color acceleration local to the ZenUML renderer and TOML writing local to test tooling; parser-only and production read-only consumers should not inherit unused features.
 
+Repository builds use a [backport on usvg 0.47.0](../vendor/usvg/UPSTREAM.md) to finish font
+fallback after a partial candidate changes the glyph count. The workspace patch preserves the
+shared `usvg::Tree`, `usvg::Options`, and `fontdb` types across the font host, raster, and PDF.
+Registry packages still resolve the public 0.47 line through their consumer's Cargo workspace.
+The Windows release default is qualified with the repository patch. Remove the local source and
+patch together when a compatible released export chain covers these fallback cases.
+The Linux and FreeBSD Fontique builds load Fontconfig dynamically for explicit platform queries.
+This keeps Fontconfig outside the ordinary CLI's load-time dependency set.
+
 The 2026-11-19 dependency review selected Jiff 1.0.1, following the existing removal of Chrono.
 Jiff's [1.0 changelog](https://docs.rs/crate/jiff/1.0.1/source/CHANGELOG.md) commits to the stable
 1.x API and requires Rust 1.85, below Merman's MSRV. Merman does not expose Jiff types in its public

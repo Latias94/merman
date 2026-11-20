@@ -323,7 +323,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --font-system)
-                    COMPREPLY=($(compgen -W "off on" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "off on bounded platform" -- "${cur}"))
                     return 0
                     ;;
                 --font-max-measurements)
@@ -1170,7 +1170,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --font-system)
-                    COMPREPLY=($(compgen -W "off on" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "off on bounded platform" -- "${cur}"))
                     return 0
                     ;;
                 --font-max-measurements)
@@ -1543,7 +1543,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --font-system)
-                    COMPREPLY=($(compgen -W "off on" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "off on bounded platform" -- "${cur}"))
                     return 0
                     ;;
                 --font-max-measurements)

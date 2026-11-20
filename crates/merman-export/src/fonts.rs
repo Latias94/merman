@@ -1476,6 +1476,72 @@ mod tests {
     }
 
     #[test]
+    fn partial_fallback_with_different_ligatures_resolves_matching_clusters() {
+        let base = include_bytes!("../tests/fonts/MermanProbeBase.ttf");
+        let partial = include_bytes!("../tests/fonts/MermanProbePartial.ttf");
+        let full = include_bytes!("../tests/fonts/MermanProbeFull.ttf");
+        for (text, expected) in [
+            (
+                "fi✓\u{e000}",
+                ["MermanProbeBase", "MermanProbePartial", "MermanProbeBase"],
+            ),
+            ("fi✓中", ["MermanProbeFull"; 3]),
+        ] {
+            let control = OperationControl::new();
+            let context = NativeFontContext::from_font_bytes(
+                [base.to_vec(), partial.to_vec(), full.to_vec()],
+                NativeFontLimits::default(),
+                &control,
+            )
+            .unwrap()
+            .with_strict_glyph_coverage(true);
+            let style = TextStyle {
+                font_family: Some("MermanProbeBase".to_owned()),
+                font_size: 28.0,
+                ..Default::default()
+            };
+            let measured = context.measure(HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::CanvasMeasureTextWidth,
+                phase: TextMeasurementPhase::ComputedLength,
+                text,
+                style: &style,
+                max_width: None,
+                wrap_mode: WrapMode::HtmlLike,
+            });
+            let Some(HostTextMeasurement::Length(width)) = measured.unwrap() else {
+                panic!("expected complete native measurement");
+            };
+            assert_eq!(width, 42.0);
+
+            let mut options = usvg::Options::default();
+            let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="50"><text id="probe" x="0" y="40" font-family="MermanProbeBase" font-size="28">{text}</text></svg>"#
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                panic!("expected a laid-out text node");
+            };
+            let faces: Vec<_> = text
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .map(|glyph| {
+                    assert_ne!(glyph.id.0, 0);
+                    tree.fontdb()
+                        .face(glyph.font)
+                        .unwrap()
+                        .post_script_name
+                        .as_str()
+                })
+                .collect();
+            assert_eq!(faces, expected);
+            assert!(!observer.unresolved_glyph_fallback());
+            context.check().unwrap();
+        }
+    }
+
+    #[test]
     fn native_export_glyph_fallback_filters_symbols_and_records_the_outcome() {
         let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
         for fixture in ["MermanSymbolicTest.ttf", "MermanPictorialTest.ttf"] {

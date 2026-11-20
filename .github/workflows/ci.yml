@@ -518,8 +518,8 @@ jobs:
       - name: Test platform font host contracts on every host
         run: cargo nextest run --locked -p merman-export --no-default-features --features experimental-system-font-query,png,jpeg,pdf --test platform_font_context --run-ignored only --cargo-quiet
 
-      - name: Test experimental platform font CLI contracts on every host
-        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,native-fonts,system-fonts,experimental-system-font-query --test native_fonts_contract --cargo-quiet
+      - name: Test release platform font CLI policy on every host
+        run: cargo nextest run --locked -p merman-cli --no-default-features --features diagram-flowchart,png,windows-platform-font-default --test native_fonts_contract --cargo-quiet
 
       - name: Test host-sensitive contracts on ordinary runs
         if: runner.os != 'Linux' && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'

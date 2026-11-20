@@ -155,14 +155,14 @@
     },
     {
       "id": "cli-release",
-      "description": "Complete command-line release build with ELK, math, and native-fonts/system-fonts capabilities; Mermaid SVG defaults to deterministic measurement, while PNG/JPEG/PDF share native measurement and painting with bounded system discovery. Explicit font sources remain closed unless system fallback is selected.",
+      "description": "Complete command-line release build with ELK and math. Mermaid SVG defaults to deterministic measurement. PNG/JPEG/PDF share native measurement and painting with platform system-font queries on Windows and bounded system discovery elsewhere. Explicit font sources remain closed unless system fallback is selected.",
       "semantic_target": "native",
       "cargo": {
         "package": "merman-cli",
         "manifest": "crates/merman-cli/Cargo.toml",
         "profile": "dist",
         "default_features": false,
-        "features": ["all-diagrams", "analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing"],
+        "features": ["all-diagrams", "analysis", "ascii", "fixes", "icons", "jpeg", "layout-cytoscape", "layout-elk", "markdown", "math", "native-fonts", "network-icons", "parallel-markdown", "pdf", "png", "rustdoc", "shell-completions", "svg", "system-clock", "system-fonts", "system-random", "system-timezone", "system-timing", "windows-platform-font-default"],
         "target": {
           "name": "merman-cli",
           "kinds": ["bin"],

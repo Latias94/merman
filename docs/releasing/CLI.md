@@ -13,8 +13,8 @@ The standard CLI release is defined by the `cli-release` entry in
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
 Current source defaults and the official archive both include `layout-elk`, its EPL-2.0
-closure, and the corresponding notice/source obligations. They differ in math support:
-`cli-release` and cargo-dist select `math` explicitly, while current source defaults omit it.
+closure, and the corresponding notice/source obligations. `cli-release` and cargo-dist select
+`math` and `windows-platform-font-default` explicitly. Current Cargo source defaults omit both.
 Source installations can opt in with `cargo install merman-cli --features math`; see the
 [math capability decision](../adr/0097-explicit-math-capability.md).
 Published releases retain their version-specific feature contract. The published
@@ -50,12 +50,14 @@ archives do not cover musl/Alpine or NixOS; the Nix integration builds from sour
 
 Complete releases governed by the current source contract report capability document schema 2
 and CLI contract 7. Default source builds and the official release profile include `native-fonts`
-and `system-fonts`, while ordinary Mermaid SVG/PNG/JPEG/PDF output defaults to deterministic
-measurement without a native font context or system discovery for layout. PNG/JPEG/PDF painting
-can still load system fonts through the existing codec path. Explicit font files/directories
-enable native measurement with a closed set; `--font-measurement native` without sources or
-`--font-system on` explicitly requests system discovery when available. Fixed font contents
-and configuration avoid catalogue discovery for faster, reproducible native output. See the [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+and `system-fonts`. Mermaid SVG defaults to deterministic measurement. Mermaid PNG/JPEG/PDF
+use native measurements with the same font context as painting. The Windows archive uses the
+platform catalog by default, and other archives and Cargo source defaults use bounded discovery.
+Archive verification checks the provider for the archive's target. The Windows archive uses
+the [workspace usvg backport](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements), while
+registry consumers use the public usvg dependency. Explicit font files or directories enable
+native measurement with a closed set. See the
+[CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 
 Contract 7 retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
 `rustdoc` workflow, the ASCII capability subcontract, and the Plain JSON stderr failure channel

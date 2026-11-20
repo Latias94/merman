@@ -109,18 +109,21 @@ select their own direct leaf set instead.
 The current-source default CLI build and official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG defaults to deterministic text
 measurement without a native font context or system discovery. Mermaid PNG/JPEG/PDF
-automatically use bounded system discovery before layout and share the resulting
-native context between measurement and painting. These defaults apply to Mermaid
+share one native context between measurement and painting. The Windows release
+archive queries the platform catalog on demand, and the other release archives
+and Cargo source defaults use bounded discovery. These defaults apply to Mermaid
 input in `render`, `batch`, and `mmdc`; raw SVG conversion only paints existing
 geometry and is never relaid out. Host fonts can change wrapping, node sizes and
 image/PDF snapshots.
 
-Capabilities schema 2 / CLI contract 6 retain their versions. In `native_fonts`,
+In the CLI `native_fonts` capability document,
 `default_policy_scope: "mermaid-svg-input"` scopes the existing
 `default_measurement: "deterministic"`, `default_font_source: "none"`, and
 `default_system_discovery: "disabled"` values to SVG. The additive
-`encoded_output_defaults` object reports `measurement: "native"`,
-`font_source: "bounded-system-discovery"`, and `system_discovery: "before-layout"`.
+`encoded_output_defaults` object reports `measurement: "native"` and the active
+system-font provider. The bounded provider reports `bounded-system-discovery`
+with `before-layout`. The platform provider reports `platform-managed-system-query`
+with `platform-initialization-then-on-demand-families`.
 With no CLI `system-fonts` capability, those three encoded values are
 `deterministic`, `none`, and `disabled`. This discovery and runtime-default change
 does not change an ABI.
@@ -170,8 +173,10 @@ font policy. Use `--font-system platform` to query the operating system's font
 catalog through Fontique. `--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
-provider when no explicit fonts or font policy are supplied. The official
-release recipe currently provides bounded discovery.
+provider when no explicit fonts or font policy are supplied. The official release
+recipe selects `windows-platform-font-default`, which provides both policy options
+and makes platform discovery the default on Windows. Cargo source defaults continue
+to use bounded discovery.
 
 Platform queries and metadata mappings run outside Merman's scan budgets.
 Selected font bytes use bounded immutable snapshots shared by measurement and
