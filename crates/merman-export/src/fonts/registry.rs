@@ -137,11 +137,13 @@ impl FontSourceRegistry {
                 limits.max_files,
             )?;
             let occupied = self.initial.bytes.saturating_add(state.bytes);
-            let bytes = read_bounded(
+            let mut bytes = Vec::new();
+            read_bounded_into(
                 &path,
                 limits.max_bytes.saturating_sub(occupied),
                 control,
                 OperationPhase::Layout,
+                &mut bytes,
             )?;
             match &expected {
                 ExpectedFace::Bounded { digest, .. } => {
@@ -257,12 +259,13 @@ pub(super) fn snapshot_cmap(
     Ok(result)
 }
 
-pub(super) fn read_bounded(
+pub(super) fn read_bounded_into(
     path: &Path,
     limit: usize,
     control: &OperationControl,
     phase: OperationPhase,
-) -> Result<Vec<u8>, NativeFontError> {
+    bytes: &mut Vec<u8>,
+) -> Result<(), NativeFontError> {
     control.terminal_checkpoint_at(phase)?;
     // Recheck ancestors as well as the leaf when delayed materialization opens a source.
     for ancestor in path.ancestors() {
@@ -280,15 +283,18 @@ pub(super) fn read_bounded(
     if !metadata.is_file() {
         return Err(source_error(path, "expected a regular font file"));
     }
-    check_limit(
-        "system-font-bytes",
-        usize::try_from(metadata.len()).unwrap_or(usize::MAX),
-        limit,
-    )?;
+    let size = usize::try_from(metadata.len()).unwrap_or(usize::MAX);
+    check_limit("system-font-bytes", size, limit)?;
     let mut file = fs::File::open(path).map_err(|error| source_error(path, error))?;
-    let mut bytes = Vec::new();
+    // Keep at most one file length of spare capacity. Release an unsuitable buffer before
+    // reserving so growth never needs to copy the previous font or keep two fonts live.
+    if bytes.capacity() < size || bytes.capacity() > size.saturating_mul(2) {
+        *bytes = Vec::new();
+    } else {
+        bytes.clear();
+    }
     bytes
-        .try_reserve_exact(usize::try_from(metadata.len()).unwrap_or(usize::MAX))
+        .try_reserve_exact(size)
         .map_err(|error| source_error(path, error))?;
     let mut chunk = [0; 64 * 1024];
     loop {
@@ -306,12 +312,33 @@ pub(super) fn read_bounded(
         )?;
         bytes.extend_from_slice(&chunk[..count]);
     }
-    Ok(bytes)
+    Ok(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reused_read_buffer_charges_only_the_new_file_and_discards_its_old_tail() {
+        let expected = include_bytes!("../../tests/fonts/Cousine-Regular.ttf");
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fonts/Cousine-Regular.ttf")
+            .canonicalize()
+            .unwrap();
+        let mut bytes = vec![0xff; expected.len() + 1];
+        let control = OperationControl::new();
+        let read = |limit, bytes: &mut Vec<u8>| {
+            read_bounded_into(&path, limit, &control, OperationPhase::Admission, bytes)
+        };
+        read(expected.len(), &mut bytes).unwrap();
+        assert_eq!(bytes.as_slice(), expected);
+        assert!(matches!(
+            read(expected.len() - 1, &mut bytes),
+            Err(NativeFontError::Limit { resource: "system-font-bytes", actual, limit })
+                if actual == expected.len() && limit == expected.len() - 1
+        ));
+    }
 
     #[test]
     fn admitted_original_path_survives_removal_but_operation_fork_reopens_dynamic_sources() {
