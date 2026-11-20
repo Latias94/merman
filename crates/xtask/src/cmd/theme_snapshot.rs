@@ -12,7 +12,7 @@ use serde::Deserialize;
 use serde_json::{Map as JsonMap, Value as JsonValue, json};
 use std::collections::BTreeSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 
 pub(super) const THEME_RUNTIME_OUTPUT: &str =
@@ -474,7 +474,7 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         }
         (Some(runtime_out_path), Some(audit_out_path)) => (runtime_out_path, audit_out_path),
     };
-    if runtime_out_path == audit_out_path {
+    if output_destination(&runtime_out_path)? == output_destination(&audit_out_path)? {
         return Err(XtaskError::ThemeSnapshotProjection(
             "runtime and audit artifacts require distinct output paths".to_string(),
         ));
@@ -484,6 +484,35 @@ fn parse_generate_options(args: Vec<String>) -> Result<GenerateOptions, XtaskErr
         runtime_out_path,
         audit_out_path,
     })
+}
+
+fn output_destination(path: &Path) -> Result<PathBuf, XtaskError> {
+    let write_error = |source| XtaskError::WriteFile {
+        path: path.display().to_string(),
+        source,
+    };
+    let absolute = std::path::absolute(path).map_err(write_error)?;
+    for ancestor in absolute.ancestors() {
+        let mut destination = match ancestor.canonicalize() {
+            Ok(destination) => destination,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(error) => return Err(write_error(error)),
+        };
+        let suffix = absolute
+            .strip_prefix(ancestor)
+            .expect("output ancestor is a prefix");
+        for component in suffix.components() {
+            match component {
+                Component::ParentDir => {
+                    destination.pop();
+                }
+                Component::Normal(name) => destination.push(name),
+                _ => {}
+            }
+        }
+        return Ok(destination);
+    }
+    Ok(absolute)
 }
 
 fn paired_output_path(anchor: &Path, default_output: &str) -> PathBuf {
@@ -1265,12 +1294,25 @@ mod tests {
 
     #[test]
     fn generate_options_reject_output_path_collisions() {
+        let absolute_runtime = std::path::absolute("runtime.json").unwrap();
         for args in [
             vec![
                 "--out".to_string(),
                 "same.json".to_string(),
                 "--audit-out".to_string(),
                 "same.json".to_string(),
+            ],
+            vec![
+                "--out".to_string(),
+                "runtime.json".to_string(),
+                "--audit-out".to_string(),
+                absolute_runtime.to_str().unwrap().to_string(),
+            ],
+            vec![
+                "--out".to_string(),
+                "tmp/../runtime.json".to_string(),
+                "--audit-out".to_string(),
+                "runtime.json".to_string(),
             ],
             vec![
                 "--out".to_string(),
