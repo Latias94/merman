@@ -11,6 +11,7 @@ use crate::json::{
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::fmt;
+use std::ops::ControlFlow;
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -163,7 +164,7 @@ impl MermaidConfig {
         self.merge_with_mutation_observer(other, &mut |_| {});
     }
 
-    /// Merges Mermaid values while reporting each actual mutation path in encounter order.
+    /// Merges Mermaid values while reporting accepted assignments in encounter order.
     ///
     /// The observer receives path segments during this call and cannot retain a borrowed path.
     /// Source owners use these events without changing the value container's merge semantics.
@@ -175,7 +176,23 @@ impl MermaidConfig {
             return;
         }
         let mut path = Vec::new();
-        assign_with_depth_recording(self.value_mut(), other, 2, &mut path, record);
+        let mut reported_prefix = 0usize;
+        let first_write =
+            MergeTarget::Shared(self.as_value()).apply(other, 2, &mut path, &mut |path| {
+                record(path);
+                reported_prefix += 1;
+            });
+        if first_write.is_break() {
+            let result =
+                MergeTarget::Writable(self.value_mut()).apply(other, 2, &mut path, &mut |path| {
+                    if reported_prefix == 0 {
+                        record(path);
+                    } else {
+                        reported_prefix -= 1;
+                    }
+                });
+            debug_assert!(result.is_continue() && reported_prefix == 0);
+        }
     }
 
     fn value_mut(&mut self) -> &mut Value {
@@ -220,163 +237,205 @@ pub fn values_equal_controlled(
     Ok(true)
 }
 
-fn assign_with_depth_recording<'a, F>(
-    destination: &mut Value,
-    source: &'a Value,
-    depth: usize,
-    path: &mut Vec<&'a str>,
-    record_mutation: &mut F,
-) where
-    F: FnMut(&[&str]),
-{
-    if let Value::Array(source_items) = source {
-        match destination {
-            Value::Array(destination_items) => {
-                if !source_items.is_empty() {
-                    record_mutation(path);
-                }
-                merge_arrays(destination_items, source_items);
-            }
-            Value::Object(_) => merge_array_of_sources_recording(
-                destination,
-                source_items,
-                depth,
-                path,
-                record_mutation,
-            ),
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
+/// The shared traversal stops at the first write. A writable traversal then replays its
+/// unchanged prefix and continues in the detached tree. Both descend by borrowing each
+/// child directly, keeping ancestor keys out of the inner object and array loops.
+enum MergeTarget<'value> {
+    Shared(&'value Value),
+    Writable(&'value mut Value),
+}
+
+impl MergeTarget<'_> {
+    fn value(&self) -> &Value {
+        match self {
+            Self::Shared(value) => value,
+            Self::Writable(value) => value,
         }
-        return;
     }
 
-    if destination.is_null() {
-        // Mermaid 11.16.1 treats a null destination as an absent value and returns the source.
-        // Mutating the slot in place is the JSON equivalent of the caller assigning that return
-        // value back to the parent property.
-        record_mutation(path);
-        replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
-        return;
+    fn child(&mut self, key: &str) -> MergeTarget<'_> {
+        match self {
+            Self::Shared(value) => MergeTarget::Shared(value.get(key).expect("merge child exists")),
+            Self::Writable(value) => {
+                MergeTarget::Writable(value.get_mut(key).expect("merge child exists"))
+            }
+        }
     }
 
-    if source.is_null() {
-        // `assignWithDepth` ignores null-valued object properties when the destination is present.
-        return;
+    fn object_mut(&mut self) -> ControlFlow<(), &mut Map<String, Value>> {
+        match self {
+            Self::Shared(_) => ControlFlow::Break(()),
+            Self::Writable(value) => {
+                ControlFlow::Continue(value.as_object_mut().expect("merge parent is an object"))
+            }
+        }
     }
 
-    if depth == 0 {
-        object_assign_recording(destination, source, path, record_mutation);
-        return;
-    }
-
-    let (Value::Object(destination_map), Value::Object(source_map)) = (destination, source) else {
-        return;
-    };
-
-    for (key, source_child) in source_map {
-        if is_non_null_js_object(source_child) {
-            match destination_map.get_mut(key) {
-                Some(destination_child) if is_js_object(destination_child) => {
-                    path.push(key);
-                    assign_with_depth_recording(
-                        destination_child,
-                        source_child,
-                        depth - 1,
-                        path,
-                        record_mutation,
-                    );
-                    path.pop();
+    fn apply<'source>(
+        &mut self,
+        source: &'source Value,
+        depth: usize,
+        path: &mut Vec<&'source str>,
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        if let Value::Array(source_items) = source {
+            match self.value() {
+                Value::Array(_) if !source_items.is_empty() => {
+                    record(path);
+                    return self.append_array_items(source_items);
                 }
-                Some(_) => {}
-                None => {
-                    destination_map.insert(key.clone(), empty_container_for(source_child));
-                    if let Some(destination_child) = destination_map.get_mut(key) {
-                        path.push(key);
-                        assign_with_depth_recording(
-                            destination_child,
-                            source_child,
-                            depth - 1,
-                            path,
-                            record_mutation,
-                        );
-                        path.pop();
+                Value::Object(_) => {
+                    let mut pending = source_items.iter().rev().collect::<Vec<_>>();
+                    while let Some(source) = pending.pop() {
+                        if let Value::Array(items) = source {
+                            pending.extend(items.iter().rev());
+                        } else {
+                            self.apply(source, depth, path, record)?;
+                        }
+                    }
+                }
+                _ => {}
+            }
+            return ControlFlow::Continue(());
+        }
+
+        if self.value().is_null() {
+            return self.replace(source, path, record);
+        }
+        if source.is_null() {
+            return ControlFlow::Continue(());
+        }
+        if depth == 0 {
+            return self.shallow_assign(source, path, record);
+        }
+
+        let (Value::Object(_), Value::Object(source_map)) = (self.value(), source) else {
+            return ControlFlow::Continue(());
+        };
+        for (key, source_child) in source_map {
+            if source_child.is_null() {
+                continue;
+            }
+            let destination_child = self.value().get(key);
+            if is_non_null_js_object(source_child) {
+                match destination_child {
+                    Some(child) if is_js_object(child) => {}
+                    Some(_) => continue,
+                    None => {
+                        self.object_mut()?
+                            .insert(key.clone(), empty_container_for(source_child));
+                    }
+                }
+                path.push(key);
+                let result = self.child(key).apply(source_child, depth - 1, path, record);
+                path.pop();
+                result?;
+            } else if destination_child.is_none_or(|child| !is_js_object(child)) {
+                self.assign_member(key, source_child, path, record)?;
+            }
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn append_array_items(&mut self, source: &[Value]) -> ControlFlow<()> {
+        match self {
+            Self::Shared(Value::Array(destination)) => {
+                if source.iter().any(|item| !array_contains(destination, item)) {
+                    return ControlFlow::Break(());
+                }
+            }
+            Self::Writable(Value::Array(destination)) => {
+                for item in source {
+                    if !array_contains(destination, item) {
+                        destination.push(clone_value_nonrecursive(item));
                     }
                 }
             }
-        } else if !source_child.is_null()
-            && destination_map
-                .get(key)
-                .is_none_or(|value| !is_js_object(value))
-        {
-            path.push(key);
-            record_mutation(path);
-            path.pop();
-            insert_cloned(destination_map, key, source_child);
+            _ => unreachable!("array merge destination"),
         }
+        ControlFlow::Continue(())
     }
-}
 
-fn merge_array_of_sources_recording<'a, F>(
-    destination: &mut Value,
-    source_items: &'a [Value],
-    depth: usize,
-    path: &mut Vec<&'a str>,
-    record_mutation: &mut F,
-) where
-    F: FnMut(&[&str]),
-{
-    let mut stack = source_items.iter().rev().collect::<Vec<_>>();
-    while let Some(source) = stack.pop() {
-        if let Value::Array(items) = source {
-            stack.extend(items.iter().rev());
-        } else {
-            assign_with_depth_recording(destination, source, depth, path, record_mutation);
-        }
-    }
-}
-
-fn merge_arrays(destination: &mut Vec<Value>, source: &[Value]) {
-    for source_item in source {
-        let already_present = is_json_primitive(source_item)
-            && destination
-                .iter()
-                .any(|destination_item| same_json_primitive(destination_item, source_item));
-        if !already_present {
-            destination.push(clone_value_nonrecursive(source_item));
-        }
-    }
-}
-
-fn object_assign_recording<'a, F>(
-    destination: &mut Value,
-    source: &'a Value,
-    path: &mut Vec<&'a str>,
-    record_mutation: &mut F,
-) where
-    F: FnMut(&[&str]),
-{
-    match (destination, source) {
-        (Value::Object(destination_map), Value::Object(source_map)) => {
-            for (key, source_child) in source_map {
-                path.push(key);
-                record_mutation(path);
-                path.pop();
-                insert_cloned(destination_map, key, source_child);
+    fn shallow_assign<'source>(
+        &mut self,
+        source: &'source Value,
+        path: &mut Vec<&'source str>,
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        match (self.value(), source) {
+            (Value::Object(_), Value::Object(source_map)) => {
+                for (key, source_child) in source_map {
+                    self.assign_member(key, source_child, path, record)?;
+                }
+                ControlFlow::Continue(())
             }
+            // JavaScript arrays can own named properties, while JSON arrays cannot represent them.
+            (Value::Array(_), Value::Object(_)) => ControlFlow::Continue(()),
+            _ => self.replace(source, path, record),
         }
-        // JavaScript arrays can own named properties, while JSON arrays cannot represent them.
-        // Numeric config keys are not part of Mermaid's public config shape, so leave this
-        // unrepresentable object-to-array case unchanged.
-        (Value::Array(_), Value::Object(_)) => {}
-        (destination, source) => {
-            record_mutation(path);
-            replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
+    }
+
+    fn replace(
+        &mut self,
+        source: &Value,
+        path: &[&str],
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        record(path);
+        match self {
+            Self::Shared(value) if unchanged_scalar(value, source) => {}
+            Self::Shared(_) => return ControlFlow::Break(()),
+            Self::Writable(value) if !unchanged_scalar(value, source) => {
+                replace_value_nonrecursive(value, clone_value_nonrecursive(source));
+            }
+            Self::Writable(_) => {}
         }
+        ControlFlow::Continue(())
+    }
+
+    fn assign_member<'source>(
+        &mut self,
+        key: &'source str,
+        source: &Value,
+        path: &mut Vec<&'source str>,
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        path.push(key);
+        record(path);
+        path.pop();
+        if self
+            .value()
+            .get(key)
+            .is_some_and(|current| unchanged_scalar(current, source))
+        {
+            return ControlFlow::Continue(());
+        }
+        if let Some(previous) = self
+            .object_mut()?
+            .insert(key.to_owned(), clone_value_nonrecursive(source))
+        {
+            drop_value_nonrecursive(previous);
+        }
+        ControlFlow::Continue(())
     }
 }
 
-fn insert_cloned(destination: &mut Map<String, Value>, key: &str, source: &Value) {
-    if let Some(previous) = destination.insert(key.to_string(), clone_value_nonrecursive(source)) {
-        drop_value_nonrecursive(previous);
+fn array_contains(destination: &[Value], item: &Value) -> bool {
+    is_json_primitive(item)
+        && destination
+            .iter()
+            .any(|present| same_json_primitive(present, item))
+}
+
+fn unchanged_scalar(destination: &Value, source: &Value) -> bool {
+    match (destination, source) {
+        (Value::Number(old), Value::Number(new)) => {
+            old == new
+                && (!old.is_f64()
+                    || old.as_f64().map(f64::to_bits) == new.as_f64().map(f64::to_bits))
+        }
+        (Value::Null | Value::Bool(_) | Value::String(_), _) => destination == source,
+        _ => false,
     }
 }
 
@@ -514,6 +573,58 @@ mod tests {
         config.deep_merge(&json!({}));
 
         assert_eq!(config.as_value(), &Value::Null);
+    }
+
+    #[test]
+    fn merge_preserves_shared_json_and_reports_same_value_assignments() {
+        let original = MermaidConfig::from_value(json!({
+            "pie": {"textPosition": 0.75},
+            "list": [1, null],
+            "scalar": true
+        }));
+        let mut config = original.clone();
+        let mut observed = Vec::new();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            config.merge_with_mutation_observer(&json!({"pie": {}}), &mut |_| {
+                panic!("an existing empty section emits no assignments")
+            });
+            config.merge_with_mutation_observer(
+                &json!({
+                    "pie": {"textPosition": 0.75},
+                    "list": [1.0, null],
+                    "scalar": {"ignored": true}
+                }),
+                &mut |path| observed.push(path.join(".")),
+            );
+        });
+
+        assert_eq!(observed, ["pie.textPosition", "list"]);
+        assert_eq!(copies, 0);
+        assert!(Arc::ptr_eq(&original.value, &config.value));
+    }
+
+    #[test]
+    fn merge_copies_on_insertion_and_preserves_number_representation() {
+        let original = MermaidConfig::from_value(json!({"same": true, "zero": -0.0, "one": 1}));
+        let mut config = original.clone();
+        let mut observed = Vec::new();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            config.merge_with_mutation_observer(
+                &json!({"same": true, "added": {}, "zero": 0.0, "one": 1.0}),
+                &mut |path| observed.push(path.join(".")),
+            );
+        });
+
+        assert_eq!(copies, 1);
+        assert_eq!(observed, ["same", "zero", "one"]);
+        assert_eq!(
+            original.as_value().to_string(),
+            r#"{"same":true,"zero":-0.0,"one":1}"#
+        );
+        assert_eq!(
+            config.as_value().to_string(),
+            r#"{"same":true,"zero":0.0,"one":1.0,"added":{}}"#
+        );
     }
 
     #[test]
