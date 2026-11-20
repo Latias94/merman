@@ -218,7 +218,20 @@ Optional graph backends preserve registered fallback behavior. Without compiled 
 
 ## Review presentation and host services
 
-Core SVG leaves the background unset; set `SvgOutputPolicy.root_background_color` when opaque artwork is required. Optional `native-fonts` supports a reusable `NativeFontContext` through `RenderEnvironment::with_native_font_context`; the facade forks operation-local measurement state for each render while retaining the selected context for measurement/painting identity checks. Ordinary Rust defaults remain deterministic.
+Core SVG leaves the background unset. Set `SvgOutputPolicy.root_background_color` for opaque artwork.
+
+With `native-fonts`, install a reusable `NativeFontContext` through
+`SvgEnvironment::with_native_font_context`. Each render uses its own measurement state. The typed
+PNG, JPEG, and PDF paths reuse the selected context for painting. Set Mermaid's `fontFamily` to
+the family name registered by the intended face. Load TTF, OTF, or TTC files. For a web package
+that ships WOFF2, obtain the corresponding desktop font for native rendering.
+
+When painting the returned SVG with resvg, pass the same context to
+`NativeFontContext::apply_to_usvg_options` before parsing the SVG. If the painter has its own
+font resolver, register the same faces and configure family selection to match Merman. A system
+font earlier in the SVG's family stack can take precedence even when both renderers have loaded
+the same custom font. Check the selected family, weight, and style when investigating clipped
+text. See the [`merman-export` font selection guide](../../crates/merman-export/README.md#selection-and-fallback-order).
 
 For Mermaid-compatible semantic JSON, enable `compat-json` and retain the returned
 `ManagedSemanticJson` owner. Retain managed layout results too, using their maintained JSON
