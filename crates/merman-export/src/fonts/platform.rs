@@ -46,28 +46,26 @@ impl PlatformCatalog {
         result
     }
 
-    pub fn default_path(&self, control: &OperationControl) -> Result<PathBuf, NativeFontError> {
-        for generic in [GenericFamily::SansSerif, GenericFamily::Serif] {
-            let candidates = self.candidates(
-                None,
-                Some(generic),
-                Weight::NORMAL,
-                Stretch::Normal,
-                Style::Normal,
-                control,
-            )?;
-            if let Some(path) =
-                candidates
-                    .into_iter()
-                    .find_map(|candidate| match candidate.font.source().kind() {
-                        SourceKind::Path(path) => Some(path.as_ref().to_owned()),
-                        SourceKind::Memory(_) => None,
-                    })
-            {
-                return Ok(path);
+    pub(super) fn default_family(
+        &self,
+        control: &OperationControl,
+    ) -> Result<Option<String>, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Admission)?;
+        let mut collection = self.collection.lock().map_err(|_| {
+            NativeFontError::Measurement("platform font collection is poisoned".to_owned())
+        })?;
+        // Find a usable default family name for context identity without asking for its faces.
+        let name = self.call(|| {
+            for generic in [GenericFamily::SansSerif, GenericFamily::Serif] {
+                let id = collection.generic_families(generic).next();
+                if let Some(name) = id.and_then(|id| collection.family_name(id)) {
+                    return Some(name.to_owned());
+                }
             }
-        }
-        Err(NativeFontError::EmptyFontSet)
+            None
+        })?;
+        control.terminal_checkpoint_at(OperationPhase::Admission)?;
+        Ok(name)
     }
 
     fn candidates(
@@ -348,6 +346,13 @@ impl PlatformCatalog {
             .chain(std::iter::once(&usvg::FontFamily::Serif))
             .enumerate()
         {
+            let family = if matches!(family, usvg::FontFamily::Named(name) if name.is_empty())
+                && explicit.faces().next().is_none()
+            {
+                &usvg::FontFamily::SansSerif
+            } else {
+                family
+            };
             let family_fallback_used = index == font.families().len();
             let implicit = !matches!(family, usvg::FontFamily::Named(_));
             if let Some(face) = explicit_face(explicit, family, weight, stretch, style)
@@ -546,7 +551,6 @@ mod tests {
         NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(Database::new()),
             selection: Arc::new(FontSelectionPolicy::default()),
-            initial_system_faces: BTreeSet::new(),
             discovery: Some(super::super::resolver::DiscoveryProvider::Platform {
                 catalog: Arc::new(PlatformCatalog {
                     collection: Mutex::new(collection),

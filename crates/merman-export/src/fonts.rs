@@ -224,24 +224,12 @@ pub(crate) enum NativeExportFontSource {
 }
 
 impl NativeExportFontObserver {
-    fn new(
-        database: &usvg::fontdb::Database,
-        initial_system_faces: &BTreeSet<usvg::fontdb::ID>,
-    ) -> Self {
+    fn new(database: &usvg::fontdb::Database) -> Self {
         Self {
             admitted_faces: Arc::new(Mutex::new(
                 database
                     .faces()
-                    .map(|face| {
-                        (
-                            face.id,
-                            if initial_system_faces.contains(&face.id) {
-                                NativeExportFontSource::System
-                            } else {
-                                NativeExportFontSource::Caller
-                            },
-                        )
-                    })
+                    .map(|face| (face.id, NativeExportFontSource::Caller))
                     .collect(),
             )),
             family_fallback: Arc::new(AtomicBool::new(false)),
@@ -314,7 +302,6 @@ impl fmt::Debug for NativeFontContext {
 struct FontContextInner {
     database: Arc<usvg::fontdb::Database>,
     selection: Arc<FontSelectionPolicy>,
-    initial_system_faces: BTreeSet<usvg::fontdb::ID>,
     #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     discovery: Option<resolver::DiscoveryProvider>,
     #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -432,8 +419,8 @@ impl NativeFontContext {
         self.selected_faces()
     }
 
-    /// Context policy and initially admitted bytes. Platform discovery does not
-    /// make this a cross-process content fingerprint of all selected fonts.
+    /// Context policy and initially admitted bytes. Platform discovery can also
+    /// contribute the default family name. Later snapshots aren't fingerprinted here.
     pub fn identity(&self) -> &str {
         &self.0.identity
     }
@@ -474,8 +461,7 @@ impl NativeFontContext {
         options: &mut usvg::Options<'_>,
         control: &OperationControl,
     ) -> NativeExportFontObserver {
-        let observer =
-            NativeExportFontObserver::new(&self.0.database, &self.0.initial_system_faces);
+        let observer = NativeExportFontObserver::new(&self.0.database);
         options.fontdb = Arc::clone(&self.0.database);
         options.font_family.clone_from(&self.0.default_family);
         options.font_resolver =
@@ -507,7 +493,6 @@ impl NativeFontContext {
         FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
-            initial_system_faces: self.0.initial_system_faces.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -535,7 +520,6 @@ impl NativeFontContext {
         let context = Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
-            initial_system_faces: self.0.initial_system_faces.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -656,19 +640,8 @@ impl FontLoader {
             feature = "experimental-system-font-query",
             not(target_family = "wasm")
         ))]
-        let explicit_face_count = loader.database.faces().count();
-        #[cfg(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        ))]
         let platform = if system_fonts && platform_requested {
-            let mut explicit = loader.database.clone();
-            loader.selection.configure_generics(&mut explicit);
-            let catalog = platform::PlatformCatalog::new(control)?;
-            if loader.database.faces().next().is_none() {
-                loader.file(&catalog.default_path(control)?)?;
-            }
-            Some((Arc::new(catalog), Arc::new(explicit)))
+            Some(Arc::new(platform::PlatformCatalog::new(control)?))
         } else {
             None
         };
@@ -678,20 +651,6 @@ impl FontLoader {
         )))]
         let _ = platform_requested;
         loader.selection.configure_generics(&mut loader.database);
-        #[cfg(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        ))]
-        let initial_system_faces = if platform.is_some() && explicit_face_count == 0 {
-            loader.database.faces().map(|face| face.id).collect()
-        } else {
-            BTreeSet::new()
-        };
-        #[cfg(not(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        )))]
-        let initial_system_faces = BTreeSet::new();
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let system = if system_fonts && !platform_requested {
             Some(system::SystemCatalog::discover(&loader, control)?)
@@ -704,9 +663,6 @@ impl FontLoader {
             .map_or(&loader.database, |catalog| catalog.database.as_ref());
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let metadata = &loader.database;
-        if metadata.faces().next().is_none() {
-            return Err(NativeFontError::EmptyFontSet);
-        }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let selection = system
             .as_ref()
@@ -714,7 +670,28 @@ impl FontLoader {
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let selection = &loader.selection;
         // A symbol-only context remains usable through an explicit family name.
-        let default_family = selection.default_family(metadata).unwrap_or_default();
+        let default_family = metadata
+            .faces()
+            .next()
+            .map(|_| selection.default_family(metadata).unwrap_or_default());
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let default_family = match (default_family, platform.as_ref()) {
+            (None, Some(catalog)) => {
+                let family = catalog
+                    .default_family(control)?
+                    .ok_or(NativeFontError::EmptyFontSet)?;
+                loader.hash.update(b"platform-default-family\0");
+                loader.hash.update(family.as_bytes());
+                // usvg passes an empty default as a Named("") request. Let the platform
+                // resolver apply the generic-family policy for that implicit request.
+                Some(String::new())
+            }
+            (name, _) => name,
+        };
+        let default_family = default_family.ok_or(NativeFontError::EmptyFontSet)?;
         loader
             .hash
             .update(b"merman-native-text-v3/usvg-0.47/resolver-v3");
@@ -723,9 +700,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            // Platform identities describe policy and admitted initial bytes,
-            // not a content digest of every installed system font.
-            loader.hash.update(b"platform-query/fontique-0.12.0/v2");
+            loader.hash.update(b"\0platform-query/fontique-0.12.0/v3");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
@@ -741,24 +716,27 @@ impl FontLoader {
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let discovery =
             system.map(|catalog| resolver::DiscoveryProvider::Bounded(Arc::new(catalog)));
+        let database = Arc::new(loader.database);
         #[cfg(all(
             feature = "experimental-system-font-query",
             not(target_family = "wasm")
         ))]
         let discovery = platform
-            .map(|(catalog, explicit)| resolver::DiscoveryProvider::Platform { catalog, explicit })
+            .map(|catalog| resolver::DiscoveryProvider::Platform {
+                catalog,
+                explicit: Arc::clone(&database),
+            })
             .or(discovery);
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let sources = registry::FontSourceRegistry::new(
             loader.initial_sources,
             loader.source_aliases,
             loader.files,
-            loader.database.faces().count(),
+            database.faces().count(),
         );
         Ok(NativeFontContext(Arc::new(FontContextInner {
-            database: Arc::new(loader.database),
+            database,
             selection: Arc::new(loader.selection),
-            initial_system_faces,
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery,
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -1578,7 +1556,6 @@ mod tests {
         let context = NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(usvg::fontdb::Database::new()),
             selection: Arc::new(FontSelectionPolicy::default()),
-            initial_system_faces: BTreeSet::new(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: None,
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]

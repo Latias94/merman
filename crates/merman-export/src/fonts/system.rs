@@ -528,7 +528,6 @@ mod tests {
         Ok(NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(loader.database),
             selection: Arc::new(loader.selection),
-            initial_system_faces: BTreeSet::new(),
             discovery: Some(DiscoveryProvider::Bounded(Arc::new(catalog))),
             sources,
             default_family,
