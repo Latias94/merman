@@ -6,7 +6,6 @@ pub use managed::ManagedJson;
 use crate::{OperationControl, OperationControlResult};
 use serde_json::Number;
 use serde_json::{Map, Value};
-use std::collections::HashMap;
 use std::mem::size_of;
 
 pub fn number_value(value: f64) -> Value {
@@ -43,25 +42,23 @@ pub fn clone_value_nonrecursive_controlled(
     max_nesting_depth: usize,
     control: &OperationControl,
 ) -> OperationControlResult<Option<Value>> {
-    let mut cloned: HashMap<*const Value, Value> = HashMap::new();
+    let mut cloned = Vec::<ManagedJson>::new();
     let mut stack = vec![(value, false, 0usize)];
     let mut retained_bytes = 0usize;
     let mut visited_nodes = 0usize;
+    let bounded_weight = max_retained_bytes != usize::MAX;
 
     while let Some((current, visited, depth)) = stack.pop() {
-        if visited_nodes.is_multiple_of(64)
-            && let Err(cancelled) = control.checkpoint()
-        {
-            drop_cloned_values(cloned);
-            return Err(cancelled);
+        if visited_nodes.is_multiple_of(64) {
+            control.checkpoint()?;
         }
         visited_nodes = visited_nodes.saturating_add(1);
-        let current_ptr = std::ptr::from_ref(current);
         if visited {
-            retained_bytes = retained_bytes.saturating_add(value_clone_weight(current));
-            if retained_bytes > max_retained_bytes {
-                drop_cloned_values(cloned);
-                return Ok(None);
+            if bounded_weight {
+                retained_bytes = retained_bytes.saturating_add(value_clone_weight(current));
+                if retained_bytes > max_retained_bytes {
+                    return Ok(None);
+                }
             }
             let value = match current {
                 Value::Null => Value::Null,
@@ -70,50 +67,49 @@ pub fn clone_value_nonrecursive_controlled(
                 Value::String(v) => Value::String(v.clone()),
                 Value::Array(items) => {
                     let mut out = Vec::with_capacity(items.len());
-                    for (index, item) in items.iter().enumerate() {
+                    let children_start = cloned.len() - items.len();
+                    for (index, item) in cloned.drain(children_start..).enumerate() {
                         if index.is_multiple_of(64)
                             && let Err(cancelled) = control.checkpoint()
                         {
                             drop_value_nonrecursive(Value::Array(out));
-                            drop_cloned_values(cloned);
                             return Err(cancelled);
                         }
-                        if let Some(value) = cloned.remove(&std::ptr::from_ref(item)) {
-                            out.push(value);
-                        }
+                        out.push(item.into_unmanaged_value());
                     }
                     Value::Array(out)
                 }
                 Value::Object(entries) => {
-                    let mut out = Map::new();
-                    for (index, (key, child)) in entries.iter().enumerate() {
+                    let mut out = Map::with_capacity(entries.len());
+                    let children_start = cloned.len() - entries.len();
+                    for (index, (key, child)) in entries
+                        .keys()
+                        .zip(cloned.drain(children_start..))
+                        .enumerate()
+                    {
                         if index.is_multiple_of(64)
                             && let Err(cancelled) = control.checkpoint()
                         {
                             drop_value_nonrecursive(Value::Object(out));
-                            drop_cloned_values(cloned);
                             return Err(cancelled);
                         }
-                        if let Some(value) = cloned.remove(&std::ptr::from_ref(child)) {
-                            out.insert(key.clone(), value);
-                        }
+                        out.insert(key.clone(), child.into_unmanaged_value());
                     }
                     Value::Object(out)
                 }
             };
-            cloned.insert(current_ptr, value);
+            cloned.push(ManagedJson::from_value(value));
         } else {
             let has_children = matches!(current, Value::Array(items) if !items.is_empty())
                 || matches!(current, Value::Object(entries) if !entries.is_empty());
             if has_children && depth >= max_nesting_depth {
-                drop_cloned_values(cloned);
                 return Ok(None);
             }
-            let structural_weight = value_structural_weight(current);
-            retained_bytes = retained_bytes.saturating_add(structural_weight);
-            if retained_bytes > max_retained_bytes {
-                drop_cloned_values(cloned);
-                return Ok(None);
+            if bounded_weight {
+                retained_bytes = retained_bytes.saturating_add(value_structural_weight(current));
+                if retained_bytes > max_retained_bytes {
+                    return Ok(None);
+                }
             }
             stack.push((current, true, depth));
             match current {
@@ -132,15 +128,8 @@ pub fn clone_value_nonrecursive_controlled(
         }
     }
 
-    if let Err(cancelled) = control.checkpoint() {
-        drop_cloned_values(cloned);
-        return Err(cancelled);
-    }
-    Ok(Some(
-        cloned
-            .remove(&std::ptr::from_ref(value))
-            .unwrap_or(Value::Null),
-    ))
+    control.checkpoint()?;
+    Ok(cloned.pop().map(ManagedJson::into_unmanaged_value))
 }
 
 fn value_structural_weight(value: &Value) -> usize {
@@ -180,12 +169,6 @@ pub fn estimated_value_owned_heap_bytes(value: &Value) -> usize {
         }
     }
     retained_bytes
-}
-
-fn drop_cloned_values(cloned: HashMap<*const Value, Value>) {
-    for value in cloned.into_values() {
-        drop_value_nonrecursive(value);
-    }
 }
 
 pub fn drop_value_nonrecursive(mut value: Value) {
