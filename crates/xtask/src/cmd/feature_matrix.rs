@@ -64,6 +64,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
             "system-fonts",
             "platform-system-font-query",
             "experimental-system-font-query",
+            "windows-platform-font-default",
         ],
     ),
     (
@@ -134,6 +135,11 @@ const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
     ("merman-export", "bundled-fonts", "native-fonts"),
     ("merman-bindings-core", "native-fonts", "svg"),
     ("merman-bindings-core", "system-fonts", "native-fonts"),
+    (
+        "merman-cli",
+        "windows-platform-font-default",
+        "platform-system-font-query",
+    ),
     ("merman-ffi", "native-fonts", "svg"),
     ("merman-ffi", "bundled-fonts", "native-fonts"),
     ("merman-ffi", "system-fonts", "native-fonts"),
@@ -1947,6 +1953,11 @@ mod tests {
             ("merman-export", "bundled-fonts", "native-fonts"),
             ("merman-bindings-core", "native-fonts", "svg"),
             ("merman-bindings-core", "system-fonts", "native-fonts"),
+            (
+                "merman-cli",
+                "windows-platform-font-default",
+                "platform-system-font-query",
+            ),
             ("merman-ffi", "native-fonts", "svg"),
             ("merman-ffi", "bundled-fonts", "native-fonts"),
             ("merman-ffi", "system-fonts", "native-fonts"),
@@ -2722,6 +2733,7 @@ mod tests {
             ("merman-wasi", "system-fonts"),
             ("merman-wasi", "native-runtime"),
             ("merman-wasm", "bundled-fonts"),
+            ("merman", "windows-platform-font-default"),
             ("merman-typst-plugin", "bundled-fonts"),
             ("merman-bindings-core", "bundled-fonts"),
         ] {
