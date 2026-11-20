@@ -18,6 +18,7 @@ const swimlaneRules = createFlowFamilyRules({
   header: 'swimlane_header',
   headerEof: '_swimlane_header_eof',
   keywords: ['swimlane-beta'],
+  flowchartLexing: true,
 });
 
 const swimlaneConflicts = ($) => createFlowFamilyConflicts($, 'swimlane');

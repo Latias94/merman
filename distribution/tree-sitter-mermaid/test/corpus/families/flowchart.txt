@@ -392,6 +392,89 @@ flowchart LR
                 (flow_node_id)))))))))
 
 ==================
+compact identifiers and dotted links keep their lexical boundaries
+==================
+
+flowchart LR
+  1.->B
+  A...-B
+  A&B
+  A & B --> C
+  A--No-->B
+  ./a-->./b
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_node_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_node_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id))
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow_start)
+              (flow_middle_edge_label
+                (flow_middle_edge_label_text
+                  (flow_middle_edge_label_fragment)))
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))))))))
+
+==================
 graph header at eof
 ==================
 

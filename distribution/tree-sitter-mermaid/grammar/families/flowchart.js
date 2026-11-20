@@ -26,16 +26,29 @@ const statementKeyword = ($, prefix, keyword) => field(
 
 const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
 
-const keywordPrefixedIdentifier = () => choice(
-  token(prec(
-    60,
-    /classDef(?:[A-Za-z0-9_.!?$%#\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])+/
-  )),
-  token(prec(
-    40,
-    /(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])+/
-  )),
+const groupedNodeSeparator = () => alias(
+  token.immediate(/[^\S\r\n]+&[^\S\r\n]+/),
+  '&',
 );
+
+const identifier = (flowchartLexing) => {
+  const unicode = String.raw`\u00c0-\uffff`;
+  const head = flowchartLexing ? 'A-Za-z_./&' : 'A-Za-z0-9_.';
+  const part = (flowchartLexing ? 'A-Za-z0-9_/&' : 'A-Za-z0-9_') + unicode;
+  const tail = `(?:[${part}.!?$%#]|-[${part}])+`;
+  const variants = [
+    token(prec(60, new RegExp(`classDef${tail}`))),
+    token(prec(40, new RegExp(
+      `(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)${tail}`,
+    ))),
+    token(prec(-5, new RegExp(`[${head}${unicode}](?:${tail})?`))),
+  ];
+  if (flowchartLexing) {
+    // Jison lexes NUM first, so a dashless dotted arrow can follow it immediately.
+    variants.push(seq(/[0-9]+/, optional(token.immediate(prec(-5, new RegExp(tail))))));
+  }
+  return choice(...variants);
+};
 
 const headerDirection = ($) => seq(
   token.immediate(/[ \t]+/),
@@ -112,6 +125,7 @@ const createFlowFamilyRules = ({
   header,
   headerEof,
   keywords,
+  flowchartLexing = false,
 }) => ({
   [diagram]: ($) => choice(
     seq(
@@ -253,7 +267,7 @@ const createFlowFamilyRules = ({
   [familyRule(prefix, 'node')]: ($) => seq(
     field('vertex', ref($, prefix, 'vertex')),
     repeat(seq(
-      field('separator', '&'),
+      field('separator', flowchartLexing ? groupedNodeSeparator() : '&'),
       field('vertex', ref($, prefix, 'vertex')),
     )),
   ),
@@ -450,7 +464,10 @@ const createFlowFamilyRules = ({
     token.immediate('='),
     token.immediate('.'),
   )),
-  [familyRule(prefix, 'middle_edge_label_fragment')]: (_) => token.immediate(/[^-=.\r\n]+/),
+  // A trailing x, o, or < can belong to the closing arrow.
+  [familyRule(prefix, 'middle_edge_label_fragment')]: (_) => token.immediate(flowchartLexing
+    ? /(?:[xo<]?[^-=.xo<\r\n])+|[xo<]/
+    : /[^-=.\r\n]+/),
 
   [familyRule(prefix, 'arrow_start')]: (_) => token(prec(
     20,
@@ -652,13 +669,7 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'accessibility_block_text')]: (_) => token.immediate(/[^}]+/),
 
-  [familyRule(prefix, 'identifier')]: (_) => choice(
-    keywordPrefixedIdentifier(),
-    token(prec(
-      -5,
-      /[A-Za-z0-9_.\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
-    )),
-  ),
+  [familyRule(prefix, 'identifier')]: (_) => identifier(flowchartLexing),
 });
 
 const createFlowFamilyConflicts = ($, prefix) => [
@@ -678,6 +689,7 @@ const flowchartRules = createFlowFamilyRules({
   header: 'flowchart_header',
   headerEof: '_flowchart_header_eof',
   keywords: ['flowchart-elk', 'flowchart', 'graph'],
+  flowchartLexing: true,
 });
 
 const flowchartConflicts = ($) => createFlowFamilyConflicts($, 'flow');
