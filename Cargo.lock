@@ -2487,6 +2487,8 @@ dependencies = [
  "unicase",
  "unicode-script",
  "usvg",
+ "windows",
+ "windows-core",
 ]
 
 [[package]]

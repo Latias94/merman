@@ -35,7 +35,7 @@ pub(super) enum ExpectedFace {
         digest: Vec<u8>,
     },
     #[cfg(feature = "experimental-system-font-query")]
-    Platform(platform::PlatformCandidate),
+    Platform(platform::PlatformFace),
 }
 
 impl ExpectedFace {
@@ -47,7 +47,7 @@ impl ExpectedFace {
                 "font properties changed after metadata discovery; retry the operation",
             )),
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform(candidate) => platform::validate_candidate(face, candidate, path),
+            Self::Platform(candidate) => candidate.validate(face, path),
         }
     }
 }
@@ -102,13 +102,7 @@ impl DiscoveryProvider {
                         return Ok(Some(id));
                     }
                 }
-                for candidate in catalog.fallback_candidates(character, base, control)? {
-                    control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                    if let Some(id) = accept(platform::candidate(candidate)?)? {
-                        return Ok(Some(id));
-                    }
-                }
-                Ok(None)
+                catalog.fallback(character, base, control, accept)
             }
         }
     }

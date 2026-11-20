@@ -174,8 +174,11 @@ provider when no explicit fonts or font policy are supplied. The official
 release recipe currently provides bounded discovery.
 
 Platform queries and metadata mappings run outside Merman's scan budgets.
-Selected font bytes still use bounded immutable snapshots shared by measurement
-and painting. A context identity includes the policy and initial font bytes.
+Selected font bytes use bounded immutable snapshots shared by measurement and
+painting. Platform mode acquires those bytes on demand, including the default
+system face. On Windows the missing character is queried directly after explicit
+font sources have been tried. A context identity includes the policy, initial
+font bytes, and the system default family name when applicable.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.
 In builds with platform queries, `on`, `bounded`, and `platform` all allow system

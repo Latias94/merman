@@ -3,20 +3,33 @@
 use super::resolver::{ExpectedFace, FontCandidate};
 use super::*;
 use fontique::{
-    Collection, CollectionOptions, FallbackKey, FontInfo, FontStyle, FontWeight, FontWidth,
-    GenericFamily, SourceKind,
+    Attributes, Collection, CollectionOptions, FallbackKey, FontInfo, FontStyle, FontWeight,
+    FontWidth, GenericFamily, SourceKind,
 };
 use unicode_script::UnicodeScript;
 use usvg::fontdb::{Database, FaceInfo, Family, Source, Stretch, Style, Weight};
 
-pub(super) struct PlatformCandidate {
-    pub(super) font: FontInfo,
-    pub(super) family: String,
+#[cfg(windows)]
+#[allow(unsafe_code)]
+mod dwrite;
+
+struct PlatformCandidate {
+    font: FontInfo,
+    family: String,
+}
+
+/// Identity of a selected face as reported by its discovery provider.
+pub(super) struct PlatformFace {
+    index: u32,
+    family: String,
+    attributes: Option<Attributes>,
 }
 
 pub(super) struct PlatformCatalog {
     collection: Mutex<Collection>,
     invalid: std::sync::atomic::AtomicBool,
+    #[cfg(windows)]
+    character_fallback: OnceLock<Option<dwrite::CharacterFallback>>,
 }
 
 impl PlatformCatalog {
@@ -29,6 +42,8 @@ impl PlatformCatalog {
         Ok(Self {
             collection: Mutex::new(collection),
             invalid: std::sync::atomic::AtomicBool::new(false),
+            #[cfg(windows)]
+            character_fallback: OnceLock::new(),
         })
     }
 
@@ -124,7 +139,38 @@ impl PlatformCatalog {
         Ok(result)
     }
 
-    pub(super) fn fallback_candidates(
+    pub(super) fn fallback(
+        &self,
+        character: char,
+        base: &FaceInfo,
+        control: &OperationControl,
+        accept: &mut dyn FnMut(FontCandidate) -> Result<Option<usvg::fontdb::ID>, NativeFontError>,
+    ) -> Result<Option<usvg::fontdb::ID>, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        #[cfg(windows)]
+        {
+            let exact = self
+                .character_fallback
+                .get_or_init(dwrite::CharacterFallback::new)
+                .as_ref()
+                .and_then(|fallback| fallback.lookup(character, base));
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if let Some(candidate) = exact
+                && let Some(id) = accept(candidate)?
+            {
+                return Ok(Some(id));
+            }
+        }
+        for candidate in self.fallback_candidates(character, base, control)? {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if let Some(id) = accept(candidate.into_file()?)? {
+                return Ok(Some(id));
+            }
+        }
+        Ok(None)
+    }
+
+    fn fallback_candidates(
         &self,
         character: char,
         base: &FaceInfo,
@@ -215,29 +261,35 @@ fn platform_style(style: Style) -> FontStyle {
     }
 }
 
-pub(super) fn validate_candidate(
-    face: &FaceInfo,
-    candidate: &PlatformCandidate,
-    path: &Path,
-) -> Result<(), NativeFontError> {
-    let style_matches = matches!(
-        (face.style, candidate.font.style()),
-        (Style::Normal, FontStyle::Normal)
-            | (Style::Italic, FontStyle::Italic)
-            | (Style::Oblique, FontStyle::Oblique(_))
-    );
-    if face.index != candidate.font.index()
-        || f32::from(face.weight.0) != candidate.font.weight().value()
-        || width(face.stretch) != candidate.font.width()
-        || !style_matches
-        || !matches_family(face, &candidate.family)
-    {
-        return Err(source_error(
+impl PlatformFace {
+    fn into_file(self, path: PathBuf) -> FontCandidate {
+        FontCandidate::File {
             path,
-            "font properties changed after platform lookup; retry the operation",
-        ));
+            index: self.index,
+            expected: ExpectedFace::Platform(self),
+        }
     }
-    Ok(())
+
+    pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
+        let attributes_match = self.attributes.is_none_or(|selected| {
+            let style_matches = matches!(
+                (face.style, selected.style),
+                (Style::Normal, FontStyle::Normal)
+                    | (Style::Italic, FontStyle::Italic)
+                    | (Style::Oblique, FontStyle::Oblique(_))
+            );
+            f32::from(face.weight.0) == selected.weight.value()
+                && width(face.stretch) == selected.width
+                && style_matches
+        });
+        if face.index != self.index || !attributes_match || !matches_family(face, &self.family) {
+            return Err(source_error(
+                path,
+                "font properties changed after platform lookup; retry the operation",
+            ));
+        }
+        Ok(())
+    }
 }
 
 fn matches_family(face: &FaceInfo, expected: &str) -> bool {
@@ -268,17 +320,28 @@ fn matches_family(face: &FaceInfo, expected: &str) -> bool {
     })
 }
 
-pub(super) fn candidate(candidate: PlatformCandidate) -> Result<FontCandidate, NativeFontError> {
-    let SourceKind::Path(path) = candidate.font.source().kind() else {
-        return Err(NativeFontError::Measurement(
-            "platform candidate has no snapshot-compatible file path".to_owned(),
-        ));
-    };
-    Ok(FontCandidate::File {
-        path: path.as_ref().to_owned(),
-        index: candidate.font.index(),
-        expected: ExpectedFace::Platform(candidate),
-    })
+impl PlatformCandidate {
+    fn into_face(self) -> PlatformFace {
+        PlatformFace {
+            family: self.family,
+            index: self.font.index(),
+            attributes: Some(Attributes {
+                width: self.font.width(),
+                style: self.font.style(),
+                weight: self.font.weight(),
+            }),
+        }
+    }
+
+    fn into_file(self) -> Result<FontCandidate, NativeFontError> {
+        let SourceKind::Path(path) = self.font.source().kind() else {
+            return Err(NativeFontError::Measurement(
+                "platform candidate has no snapshot-compatible file path".to_owned(),
+            ));
+        };
+        let path = path.as_ref().to_owned();
+        Ok(self.into_face().into_file(path))
+    }
 }
 
 fn explicit_face(
@@ -381,7 +444,7 @@ impl PlatformCatalog {
                 control.terminal_checkpoint_at(OperationPhase::Layout)?;
                 if let Some(id) = accept(
                     super::resolver::FontSelection {
-                        candidate: candidate(selected)?,
+                        candidate: selected.into_file()?,
                         family_fallback_used,
                     },
                     implicit,
@@ -491,7 +554,10 @@ mod tests {
         assert_eq!(width(replacement.stretch), candidate.font.width());
         assert_eq!(platform_style(replacement.style), candidate.font.style());
         assert!(
-            validate_candidate(&replacement, &candidate, Path::new("unused-font-path")).is_err()
+            candidate
+                .into_face()
+                .validate(&replacement, Path::new("unused-font-path"))
+                .is_err()
         );
     }
 
@@ -510,7 +576,9 @@ mod tests {
                 font: font.clone(),
                 family: family.to_owned(),
             };
-            validate_candidate(&face, &candidate, Path::new("unused-font-path"))
+            candidate
+                .into_face()
+                .validate(&face, Path::new("unused-font-path"))
                 .expect("family aliases come from the same immutable binary");
         }
     }
@@ -555,6 +623,8 @@ mod tests {
                 catalog: Arc::new(PlatformCatalog {
                     collection: Mutex::new(collection),
                     invalid: AtomicBool::new(false),
+                    #[cfg(windows)]
+                    character_fallback: OnceLock::from(None),
                 }),
                 explicit: Arc::new(Database::new()),
             }),

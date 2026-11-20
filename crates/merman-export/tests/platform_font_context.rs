@@ -593,6 +593,24 @@ fn windows_platform_first_named_face_uses_the_only_file_slot() {
 
 #[cfg(target_os = "windows")]
 #[test]
+#[ignore = "requires Windows Segoe UI Emoji; run explicitly on controlled system-font hosts"]
+fn windows_platform_fallback_shapes_a_supplementary_character_in_layout_and_paint() {
+    let context = options()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .expect("Windows platform font context initializes");
+    assert_text_advance_and_faces(&context, "Cousine", "AVA \u{1f600}");
+    assert!(
+        context
+            .selected_faces()
+            .iter()
+            .any(|face| face.contains("Segoe"))
+    );
+    context.check().unwrap();
+}
+
+#[cfg(target_os = "windows")]
+#[test]
 #[ignore = "requires Windows system Arial; run explicitly on controlled system-font hosts"]
 fn windows_platform_selected_font_limit_is_fatal_instead_of_fallback_success() {
     let context = options()
