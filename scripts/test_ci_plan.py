@@ -1133,7 +1133,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
                 )
 
         # Generated checks retain their materialized DOMPurify/Node bootstrap. The
-        # offline all-feature consumer follows real experimental font-query builds.
+        # The offline all-feature consumer follows the release font policy check.
         self.assertIn("verify-generated", core)
         self.assertNotIn("verify-feature-matrix", core)
         self.assertIn("verify-feature-matrix", feature)
@@ -1143,8 +1143,12 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("Test representative ASCII public contracts", feature)
         self.assertIn("verify_theme_acceptance_boundary.py", core)
         self.assertLess(
-            core.index("Test experimental platform font CLI contracts on every host"),
+            core.index("Test release platform font CLI policy on every host"),
             core.index("verify_theme_acceptance_boundary.py"),
+        )
+        self.assertIn(
+            "--features diagram-flowchart,png,windows-platform-font-default --test native_fonts_contract",
+            core,
         )
         self.assertNotIn("verify_theme_acceptance_boundary.py", feature)
         self.assertNotIn("verify_theme_acceptance_boundary.py", theme)
@@ -1291,7 +1295,7 @@ class WorkflowFontDependenciesTests(unittest.TestCase):
         self.assertIn("if: always() && runner.os == 'macOS'", report)
         self.assertIn("df -h .", report)
         self.assertIn("du -sh target", report)
-        self.assertLess(job.index("Test experimental platform font CLI contracts"), job.index("Report macOS build disk usage"))
+        self.assertLess(job.index("Test release platform font CLI policy"), job.index("Report macOS build disk usage"))
 
     def test_lean_core_compile_fail_contracts_have_a_feature_contract_owner(self) -> None:
         from scripts.test_release_workflow_security import workflow_job

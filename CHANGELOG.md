@@ -26,6 +26,10 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Use Rust `1.100.0` for repository development, CI, and release builds. The library minimum is Rust `1.95`. [#308](https://github.com/Latias94/merman/pull/308)
 - Reduce the workspace Typst plugin's WASM size by sharing parser and theme code. The independently published Typst Universe wrapper `@preview/merman:0.6.0` bundles Merman `0.10.0`. [Typst Universe](https://typst.app/universe/package/merman/), [#304](https://github.com/Latias94/merman/pull/304), [#306](https://github.com/Latias94/merman/pull/306)
 
+### Performance verification
+
+- On the Windows 11 release build, system font queries reduced process reads from about 826 MB to 255 KB for a seven-node PNG export that selected the same system font as `0.10.0`. The PNG bytes matched. The two CLI versions also produced byte-identical SVG for all 114 Flowcharts in the Trident documentation workload, with a distinct diagram ID for each chart.
+
 ### Fixed
 
 - Render the upstream 500-node Flowchart within the existing layout work ceiling. ELK on 32-bit WebAssembly also lays out the 181-leaf fan-out regression with forced model order. [#328](https://github.com/Latias94/merman/pull/328)
