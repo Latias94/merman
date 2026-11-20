@@ -591,6 +591,30 @@ fn single_node_special_character_ids_match_flow_singlenode() {
 }
 
 #[test]
+fn directive_identifiers_with_apostrophes_preserve_the_next_statement() {
+    let model = parse(concat!(
+        "flowchart TD\n",
+        "A --> O'Brien\n",
+        "style O'Brien fill:red\n",
+        "classDef 'hot stroke:blue; class O'Brien,A 'hot\n",
+        "click O'Brien \"https://example.test/a;b\"; C --> D\n",
+    ));
+    let [first, styled, _, _] = model.nodes.as_slice() else {
+        panic!("all four authored nodes must survive directive scanning");
+    };
+    assert_eq!(styled.id, "O'Brien");
+    assert_eq!(styled.styles, ["fill:red"]);
+    assert_eq!(styled.classes, ["'hot", "clickable"]);
+    assert_eq!(first.classes, ["'hot"]);
+    assert_eq!(model.class_defs["'hot"], ["stroke:blue"]);
+    assert_eq!(styled.link.as_deref(), Some("https://example.test/a;b"));
+    let [_, next] = model.edges.as_slice() else {
+        panic!("the next edge must survive directive scanning");
+    };
+    assert_eq!((next.from.as_str(), next.to.as_str()), ("C", "D"));
+}
+
+#[test]
 fn single_node_special_character_ids_preserve_token_boundaries() {
     let parse_statement = |statement: &str| {
         let source = format!("graph TD; {statement}");

@@ -549,8 +549,7 @@ impl<'input> Lexer<'input> {
         )))
     }
 
-    pub(super) fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
-        let start = self.pos;
+    fn advance_to_stmt_end(&mut self) {
         let mut in_double_quote = false;
         let mut in_single_quote = false;
         let mut escaped = false;
@@ -595,12 +594,32 @@ impl<'input> Lexer<'input> {
             }
             self.pos += 1;
         }
-        (start, self.input[start..self.pos].to_string(), self.pos)
     }
 
-    pub(super) fn capture_to_stmt_end_from(&mut self, start: usize) -> (usize, String, usize) {
+    fn capture_directive_arguments(&mut self, leading_ids: usize) -> (usize, &'input str, usize) {
+        let start = self.pos;
+        // Directive identifiers follow NODE_STRING lexing, where apostrophes are literal.
+        // Scan the remaining payload separately so quoted tooltip/style delimiters still work.
+        for _ in 0..leading_ids {
+            let id_start = self.pos;
+            self.advance_id();
+            if self.pos == id_start {
+                break;
+            }
+            let id_end = self.pos;
+            self.skip_ws();
+            if self.pos == id_end {
+                break;
+            }
+        }
+        self.advance_to_stmt_end();
+        (start, &self.input[start..self.pos], self.pos)
+    }
+
+    fn stmt_end_from(&mut self, start: usize) -> usize {
         self.pos = start;
-        self.capture_to_stmt_end()
+        self.advance_to_stmt_end();
+        self.pos
     }
 
     pub(super) fn capture_recovery_to_stmt_end_from(
@@ -747,16 +766,16 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "style".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (rest_start, rest, end) = self.capture_directive_arguments(1);
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (target, style) = directive_argument_spans(&rest, rest_start);
+        let (target, style) = directive_argument_spans(rest, rest_start);
         #[cfg(feature = "editor-facts")]
-        let style_slot = trailing_value_slot(&rest, rest_start, style);
-        match lex::parse_style_stmt(&rest) {
+        let style_slot = trailing_value_slot(rest, rest_start, style);
+        match lex::parse_style_stmt(rest) {
             Ok(mut stmt) => {
-                lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
+                lex::attach_style_stmt_spans(&mut stmt, rest, rest_start);
                 #[cfg(feature = "editor-facts")]
                 {
                     stmt.editor_evidence = directive_editor_evidence(
@@ -800,22 +819,22 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "classDef".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = self.capture_directive_arguments(1);
         #[cfg(feature = "editor-facts")]
         let rest_start = _rest_start;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (class_name, style) = directive_argument_spans(&rest, rest_start);
+        let (class_name, style) = directive_argument_spans(rest, rest_start);
         #[cfg(feature = "editor-facts")]
-        let style_slot = trailing_value_slot(&rest, rest_start, style);
-        match lex::parse_classdef_stmt(&rest) {
+        let style_slot = trailing_value_slot(rest, rest_start, style);
+        match lex::parse_classdef_stmt(rest) {
             Ok(stmt) => {
                 #[cfg(feature = "editor-facts")]
                 let mut stmt = stmt;
                 #[cfg(feature = "editor-facts")]
                 {
-                    lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
+                    lex::attach_classdef_stmt_spans(&mut stmt, rest, rest_start);
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
                         class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
@@ -851,22 +870,22 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "class".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = self.capture_directive_arguments(2);
         #[cfg(feature = "editor-facts")]
         let rest_start = _rest_start;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (targets, class_name) = directive_argument_spans(&rest, rest_start);
+        let (targets, class_name) = directive_argument_spans(rest, rest_start);
         #[cfg(feature = "editor-facts")]
-        let class_name = active_following_span(&rest, rest_start, class_name);
-        match lex::parse_class_assign_stmt(&rest) {
+        let class_name = active_following_span(rest, rest_start, class_name);
+        match lex::parse_class_assign_stmt(rest) {
             Ok(stmt) => {
                 #[cfg(feature = "editor-facts")]
                 let mut stmt = stmt;
                 #[cfg(feature = "editor-facts")]
                 {
-                    lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
+                    lex::attach_class_assign_stmt_spans(&mut stmt, rest, rest_start);
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
                         targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
@@ -915,12 +934,12 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "click".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (rest_start, rest, end) = self.capture_directive_arguments(1);
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (target, _) = directive_argument_spans(&rest, rest_start);
-        match lex::parse_click_stmt(&rest, rest_start) {
+        let (target, _) = directive_argument_spans(rest, rest_start);
+        match lex::parse_click_stmt(rest, rest_start) {
             Ok(stmt) => {
                 #[cfg(feature = "editor-facts")]
                 let mut stmt = stmt;
@@ -995,8 +1014,8 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "linkStyle".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
-        match lex::parse_link_style_stmt(&rest, rest_start) {
+        let (rest_start, rest, end) = self.capture_directive_arguments(0);
+        match lex::parse_link_style_stmt(rest, rest_start) {
             Ok(stmt) => Some(Ok((start, Tok::LinkStyleStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -1630,8 +1649,7 @@ impl<'input> Lexer<'input> {
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
                     }
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `/]` or `\\]`)",
                         SourceSpan::new(start, token_end),
@@ -1704,8 +1722,7 @@ impl<'input> Lexer<'input> {
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
                     }
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `/]` or `\\]`)",
                         SourceSpan::new(start, token_end),
@@ -1781,8 +1798,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         format!("Unterminated node label (missing `{close}`)"),
                         SourceSpan::new(start, token_end),
@@ -1848,8 +1864,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `]`)",
                         SourceSpan::new(start, token_end),
@@ -1911,8 +1926,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `}`)",
                         SourceSpan::new(start, token_end),
@@ -1969,8 +1983,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `)`)",
                         SourceSpan::new(start, token_end),
