@@ -311,11 +311,14 @@ mod tests {
         assert_eq!(bold.post_script_name, "MicrosoftYaHeiUI-Bold");
         assert!(expected.validate(bold, &path).is_err());
 
-        let mut incorrect_name = regular.clone();
-        incorrect_name.post_script_name = bold.post_script_name.clone();
-        assert!(expected.validate(&incorrect_name, &path).is_err());
         let mut incorrect_weight = regular.clone();
         incorrect_weight.weight = bold.weight;
         assert!(expected.validate(&incorrect_weight, &path).is_err());
+
+        let super::super::ExpectedFace::Platform(mut descriptor) = expected else {
+            panic!("DirectWrite must provide a platform descriptor");
+        };
+        descriptor.post_script_name = Some(bold.post_script_name.clone());
+        assert!(descriptor.validate(regular, &path).is_err());
     }
 }

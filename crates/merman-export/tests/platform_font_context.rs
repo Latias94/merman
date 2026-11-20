@@ -628,6 +628,22 @@ fn windows_platform_fallback_keeps_coverage_when_a_scalar_face_would_change_the_
 
 #[cfg(target_os = "windows")]
 #[test]
+#[ignore = "requires the Windows Microsoft Himalaya and Trebuchet MS fonts"]
+fn windows_platform_fallback_accepts_the_physical_faces_alternate_postscript_record() {
+    let fonts = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");
+    if !fonts.join("himalaya.ttf").is_file() {
+        return;
+    }
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    assert_text_advance_and_faces(&context, "Trebuchet MS, Verdana, Arial, sans-serif", "བོད་");
+}
+
+#[cfg(target_os = "windows")]
+#[test]
 #[ignore = "requires Windows system Arial; run explicitly on controlled system-font hosts"]
 fn windows_platform_selected_font_limit_is_fatal_instead_of_fallback_success() {
     let context = options()

@@ -309,12 +309,12 @@ impl PlatformFace {
 
     pub(super) fn validate(&self, face: &FaceInfo, path: &Path) -> Result<(), NativeFontError> {
         if face.index != self.index
+            || !self.attributes.matches(face)
+            || !matches_family(face, &self.family)
             || self
                 .post_script_name
                 .as_ref()
-                .is_some_and(|name| *name != face.post_script_name)
-            || !self.attributes.matches(face)
-            || !matches_family(face, &self.family)
+                .is_some_and(|name| !matches_post_script_name(face, name))
         {
             return Err(source_error(
                 path,
@@ -323,6 +323,28 @@ impl PlatformFace {
         }
         Ok(())
     }
+}
+
+fn matches_post_script_name(face: &FaceInfo, expected: &str) -> bool {
+    if face.post_script_name == expected {
+        return true;
+    }
+    // fontdb stores the first supported record. The platform can select a different record
+    // from the very same face, so consult its admitted name table before rejecting the match.
+    let Source::Binary(data) = &face.source else {
+        return false;
+    };
+    use ttf_parser::{RawFace, Tag, name, name_id};
+    RawFace::parse(data.as_ref().as_ref(), face.index)
+        .ok()
+        .and_then(|face| face.table(Tag::from_bytes(b"name")))
+        .and_then(name::Table::parse)
+        .is_some_and(|table| {
+            table.names.into_iter().any(|record| {
+                record.name_id == name_id::POST_SCRIPT_NAME
+                    && record.to_string().is_some_and(|name| name == expected)
+            })
+        })
 }
 
 impl FaceAttributes {
@@ -512,6 +534,22 @@ impl PlatformCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn postscript_validation_uses_only_records_from_the_selected_collection_index() {
+        let mut database = Database::new();
+        database.load_font_data(
+            include_bytes!("../../tests/fonts/Cousine-test-collection.ttc").to_vec(),
+        );
+        let mut face = database
+            .faces()
+            .find(|face| face.index == 1)
+            .unwrap()
+            .clone();
+        let physical_name = std::mem::replace(&mut face.post_script_name, "AnotherRecord".into());
+        assert!(matches_post_script_name(&face, &physical_name));
+        assert!(!matches_post_script_name(&face, "Cousine-Regular"));
+    }
 
     fn memory_font(bytes: Vec<u8>) -> FontInfo {
         let source = fontique::SourceInfo::new(
