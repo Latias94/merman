@@ -395,6 +395,35 @@ fn canonical_highlights_keep_exact_archetype_spans() {
 }
 
 #[test]
+fn leading_dots_keep_flow_endpoint_and_operator_spans() {
+    let query_path = "queries/portable/highlights.scm";
+    let query = canonical_highlights_query();
+    let mut parser = parser();
+    for header in ["flowchart LR", "swimlane-beta LR"] {
+        let source = format!("{header}\n.a --> ...\n.b-.->.c\nA ...-B\nA...-B\n");
+        let captures = parse_capture_snapshots(&mut parser, &query, query_path, &source);
+        for (name, text) in [
+            ("variable", ".a"),
+            ("operator", "-->"),
+            ("variable", "..."),
+            ("variable", ".b"),
+            ("operator", "-.->"),
+            ("variable", ".c"),
+            ("operator", "...-"),
+            ("variable", "A...-B"),
+        ] {
+            assert_exact_capture(&captures, &source, name, text);
+        }
+    }
+
+    let agentflow = "agentflow-beta LR\n...-->.b\n";
+    let captures = parse_capture_snapshots(&mut parser, &query, query_path, agentflow);
+    for (name, text) in [("variable", "..."), ("operator", "-->"), ("variable", ".b")] {
+        assert_exact_capture(&captures, agentflow, name, text);
+    }
+}
+
+#[test]
 fn malformed_statement_keeps_later_sibling_highlights() {
     let source = "flowchart TD\n  A[broken label\n  C[Later] --> Target[Done]\n";
     let query = canonical_highlights_query();
