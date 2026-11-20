@@ -1005,3 +1005,62 @@ fn attached_edge_ids_preserve_editor_spans_references_and_rename_during_recovery
         );
     }
 }
+
+#[test]
+fn direction_without_a_direction_value_is_a_vertex_id() {
+    // flow.jison only lexes `direction\s+(TB|BT|RL|LR|TD)` as a direction statement.
+    for (body, expected_nodes, expected_edges) in [
+        ("direction", &["direction"][..], &[][..]),
+        ("direction ", &["direction"], &[]),
+        (
+            "direction --> B",
+            &["direction", "B"],
+            &[("direction", "B")],
+        ),
+        (
+            "A --> direction",
+            &["A", "direction"],
+            &[("A", "direction")],
+        ),
+        ("directionX", &["directionX"], &[]),
+    ] {
+        let model = parse(&format!("flowchart TB\n{body}\n"));
+        let nodes = model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(nodes, expected_nodes, "{body:?}");
+        let edges = model
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(edges, expected_edges, "{body:?}");
+    }
+
+    let model = parse("graph TB\n  subgraph Data\n    direction\n    Redux\n  end\n");
+    let subgraph = &model.subgraphs[0];
+    assert_eq!(subgraph.dir, None);
+    assert_eq!(subgraph.nodes, ["direction", "Redux"]);
+}
+
+#[test]
+fn direction_values_follow_the_upstream_prefix_rule() {
+    for (body, expected_dir) in [
+        ("direction LR", "LR"),
+        ("direction LRfoo", "LR"),
+        ("direction\n    RL", "RL"),
+        ("direction \t BT", "BT"),
+    ] {
+        let model = parse(&format!("graph TB\nsubgraph S\n{body}\nA\nend\n"));
+        assert_eq!(
+            model.subgraphs[0].dir.as_deref(),
+            Some(expected_dir),
+            "{body:?}"
+        );
+        assert_eq!(model.subgraphs[0].nodes, ["A"], "{body:?}");
+    }
+
+    assert!(parse_flowchart_model_for_render("graph TB\ndirection X\n", &metadata()).is_err());
+}

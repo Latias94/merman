@@ -1279,10 +1279,7 @@ fn directional_families_project_partial_values_from_recovery_facts() {
 
 #[test]
 fn directional_families_reject_prefixed_values_from_recovery_facts() {
-    for (source, line) in [
-        ("flowchart TD\nsubgraph group\ndirection LRfoo\nend\n", 2),
-        ("classDiagram\ndirection LRfoo", 1),
-    ] {
+    for (source, line) in [("classDiagram\ndirection LRfoo", 1)] {
         let harness = SnapshotHarness::new();
         let snapshot = harness
             .analyze(
@@ -1313,6 +1310,24 @@ fn directional_families_reject_prefixed_values_from_recovery_facts() {
         assert_eq!(edit.range.end.character, line_text.len(), "{source}");
         assert_eq!(edit.new_text, "LR", "{source}");
     }
+}
+
+#[test]
+fn flowchart_prefixed_direction_values_parse_like_mermaid() {
+    // flow.jison lexes `direction\s+LR[^\n]*`, so `LRfoo` is a complete LR statement.
+    let harness = SnapshotHarness::new();
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/example.mmd",
+            1,
+            "flowchart TD\nsubgraph group\ndirection LRfoo\nend\n".to_string(),
+            DocumentKind::Diagram,
+        )
+        .expect("test source should be accepted");
+    assert_eq!(
+        snapshot.fences()[0].text_index().source(),
+        FenceTextIndexSource::ParserComplete
+    );
 }
 
 #[test]

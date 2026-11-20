@@ -479,62 +479,29 @@ impl<'input> Lexer<'input> {
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.input[self.pos..]
-            .strip_prefix("direction")
-            .and_then(|rest| rest.chars().next())
-            .is_some_and(is_ecmascript_trim_char)
-        {
+        let rest = self.input[self.pos..].strip_prefix("direction")?;
+        let value = rest.trim_start_matches(is_ecmascript_trim_char);
+        if value.len() == rest.len() {
             return None;
         }
-        self.pos += "direction".len();
-        self.skip_ws();
 
-        let direction_start = self.pos;
-        while let Some(ch) = self.input[self.pos..].chars().next() {
-            if is_ecmascript_trim_char(ch) || ch == ';' {
-                break;
-            }
-            self.pos += ch.len_utf8();
-        }
-        let direction_end = self.pos;
-        while let Some(b) = self.peek() {
-            if b == b'\n' || b == b';' {
-                break;
-            }
-            self.pos += 1;
-        }
-        let statement_end = self.pos;
-        let direction = &self.input[direction_start..direction_end];
-        let selection = SourceSpan::new(direction_start, direction_end);
-
-        let Some(dir) = ["TB", "TD", "BT", "LR", "RL"]
+        let direction_start = self.input.len() - value.len();
+        let Some(dir) = ["TB", "BT", "RL", "LR", "TD"]
             .into_iter()
-            .find(|candidate| *candidate == direction)
+            .find(|candidate| value.starts_with(candidate))
         else {
-            let error = {
-                let error = LexError::with_span("invalid flowchart direction", selection);
-                #[cfg(feature = "editor-facts")]
-                let error = error.expecting(
-                    crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
-                    selection,
-                );
-                error
-            };
-            if self.recover_partial_node_labels {
-                return Some(Ok((
-                    start,
-                    Tok::DirectionStmt(DirectionStatementToken {
-                        direction: String::new(),
-                        #[cfg(any(test, feature = "editor-facts"))]
-                        selection,
-                        #[cfg(any(test, feature = "editor-facts"))]
-                        recovery_error: Some(error),
-                    }),
-                    statement_end,
-                )));
-            }
-            return Some(Err(error));
+            return self.lex_invalid_direction_stmt_recovery(start, direction_start);
         };
+
+        let direction_end = direction_start + dir.len();
+        let statement_end = self.input[direction_end..]
+            .find(['\n', ';'])
+            .map_or(self.input.len(), |offset| direction_end + offset);
+
+        self.pos = statement_end;
+
+        #[cfg(any(test, feature = "editor-facts"))]
+        let selection = SourceSpan::new(direction_start, direction_end);
 
         Some(Ok((
             start,
@@ -544,6 +511,61 @@ impl<'input> Lexer<'input> {
                 selection,
                 #[cfg(any(test, feature = "editor-facts"))]
                 recovery_error: None,
+            }),
+            statement_end,
+        )))
+    }
+
+    #[cfg(not(feature = "editor-facts"))]
+    fn lex_invalid_direction_stmt_recovery(
+        &mut self,
+        _start: usize,
+        _direction_start: usize,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        None
+    }
+
+    #[cfg(feature = "editor-facts")]
+    fn lex_invalid_direction_stmt_recovery(
+        &mut self,
+        start: usize,
+        direction_start: usize,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        if !self.recover_partial_node_labels || self.input[start..direction_start].contains('\n') {
+            return None;
+        }
+
+        let value = &self.input[direction_start..];
+        let direction_len = value
+            .find(|ch: char| is_ecmascript_trim_char(ch) || ch == ';')
+            .unwrap_or(value.len());
+        if direction_len == 0
+            || !value[..direction_len]
+                .chars()
+                .all(|ch| ch.is_ascii_alphanumeric())
+        {
+            return None;
+        }
+
+        let direction_end = direction_start + direction_len;
+        let statement_end = self.input[direction_end..]
+            .find(['\n', ';'])
+            .map_or(self.input.len(), |offset| direction_end + offset);
+        let selection = SourceSpan::new(direction_start, direction_end);
+
+        let error = LexError::with_span("invalid flowchart direction", selection).expecting(
+            crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
+            selection,
+        );
+
+        self.pos = statement_end;
+
+        Some(Ok((
+            start,
+            Tok::DirectionStmt(DirectionStatementToken {
+                direction: String::new(),
+                selection,
+                recovery_error: Some(error),
             }),
             statement_end,
         )))

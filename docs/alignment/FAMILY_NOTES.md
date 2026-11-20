@@ -267,6 +267,14 @@ Flowchart IDs can contain punctuation such as `#`, `:`, `*`, and `\`. The lexer 
 `:::` and link operators their Mermaid token boundaries. For example, `#:*:::hot`
 assigns the class `hot` to the node `#:*`.
 
+A direction statement requires whitespace after `direction`, which can cross physical lines,
+followed by `TB`, `BT`, `RL`, `LR` or `TD`. The selected lexer matches the value as a prefix, so
+`direction LRfoo` sets `LR`. Any other `direction` remains an ordinary node ID; a bare
+`direction` line inside a subgraph declares a vertex in that subgraph. The selected lexer's
+whole-line token rejects `subgraph TOP;direction TD;A-->B;end`, while Merman retains `;` as the
+statement boundary. This input-formatting difference is intentional. Owners:
+[12.3 regressions](../../crates/merman-core/src/diagrams/flowchart/mermaid_12_3_tests.rs).
+
 Mermaid counts an unmatched initial marker when measuring a link. Both `A o--> B` and
 `A o==> B` have a normal stroke and length 2. ASCII output preserves the authored circle
 at the source and the arrowhead at the target.
