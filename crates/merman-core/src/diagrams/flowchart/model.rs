@@ -102,8 +102,14 @@ pub(crate) struct LinkToken {
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 impl LinkToken {
-    pub(crate) const fn compatibility_edge_type(&self) -> &'static str {
-        match (self.start_marker, self.end_marker) {
+    pub(crate) fn compatibility_edge_type(&self) -> &'static str {
+        // An open START_LINK inherits the final LINK's aggregate type, including a pair
+        // such as `o--o` captured at the end of `--No--o`. Keep the authored marker for ASCII.
+        let start_marker = match self.start_marker {
+            FlowEdgeMarker::None => super::link::operator_start_marker(&self.end),
+            marker => marker,
+        };
+        match (start_marker, self.end_marker) {
             (FlowEdgeMarker::Point, FlowEdgeMarker::Point) => "double_arrow_point",
             (FlowEdgeMarker::Circle, FlowEdgeMarker::Circle) => "double_arrow_circle",
             (FlowEdgeMarker::Cross, FlowEdgeMarker::Cross) => "double_arrow_cross",

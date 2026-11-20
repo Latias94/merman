@@ -46,6 +46,14 @@ fn capabilities_follow_selected_model_families() {
         merman_ascii::ascii_supported_diagram_types().contains(&"sequence"),
         cfg!(feature = "diagram-sequence")
     );
+    assert_eq!(
+        merman_ascii::ascii_supported_diagram_types().contains(&"block"),
+        cfg!(feature = "diagram-block")
+    );
+    assert_eq!(
+        merman_ascii::ascii_supported_diagram_types().contains(&"usecase"),
+        cfg!(feature = "diagram-usecase")
+    );
 }
 
 #[test]
@@ -116,6 +124,16 @@ fn selected_graph_languages_render_independently() {
             cfg!(feature = "diagram-state"),
             "stateDiagram-v2\nStart --> Finish\n",
             "state",
+        ),
+        (
+            cfg!(feature = "diagram-usecase"),
+            "usecase-beta\nactor Start(\"Start\")\nFinish(\"Finish\")\nStart --> Finish\n",
+            "usecase",
+        ),
+        (
+            cfg!(feature = "diagram-block"),
+            "block-beta\ncolumns 2\nA[\"Start\"] B[\"Finish\"]\nA --> B\n",
+            "block",
         ),
     ] {
         if !enabled {

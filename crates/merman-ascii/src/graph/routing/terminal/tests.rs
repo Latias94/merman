@@ -30,11 +30,7 @@ fn node_ports(
     layout.nodes[0].height = height;
     layout.nodes[0].shape = shape;
     terminal_ports(
-        EndpointGeometry {
-            layout: &layout.nodes[0],
-            interior: false,
-            group: false,
-        },
+        EndpointGeometry::node(&layout.nodes[0]),
         EdgeRouteRequest {
             graph: &graph,
             graph_layout: &layout,

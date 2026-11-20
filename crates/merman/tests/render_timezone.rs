@@ -130,6 +130,7 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
             order: 0,
             start_ms: EARLIER_MS,
             end_ms: EARLIER_MS,
+            processed: true,
             ..GanttTask::default()
         },
         GanttTask {
@@ -139,6 +140,7 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
             order: 1,
             start_ms: LATER_MS,
             end_ms: LATER_MS,
+            processed: true,
             ..GanttTask::default()
         },
     ];
@@ -159,12 +161,16 @@ fn assert_gantt_fold_identity(runtime_policy: RuntimePolicy) {
         .expect("render repeated New York local time");
 
     assert!(
-        rendered.contains("range=2026-11-01T01:30:00.000 -> 2026-11-01T01:30:00.000"),
-        "the compatible earlier instant should keep the ordinary local display:\n{rendered}"
+        rendered.contains("From 2026-11-01T01:30:00.000 -04:00 to 2026-11-01T01:30:00.000 -05:00"),
+        "the local timeline should distinguish the two repeated times by offset:\n{rendered}"
     );
     assert!(
-        rendered.contains("range=2026-11-01T01:30:00.000-05:00 -> 2026-11-01T01:30:00.000-05:00"),
-        "the later repeated instant must disclose its actual offset:\n{rendered}"
+        rendered.contains("T1 interval (UTC): 2026-11-01T05:30:00.000 -> 2026-11-01T05:30:00.000"),
+        "the first record should preserve the exact earlier instant:\n{rendered}"
+    );
+    assert!(
+        rendered.contains("T2 interval (UTC): 2026-11-01T06:30:00.000 -> 2026-11-01T06:30:00.000"),
+        "the second record should preserve the exact later instant:\n{rendered}"
     );
 }
 

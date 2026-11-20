@@ -54,15 +54,15 @@ all-diagrams = [
     "diagram-xychart",
     "diagram-zenuml",
 ]
-diagram-architecture = ["merman-model/diagram-architecture", "merman-core/diagram-architecture"]
-diagram-block = ["merman-model/diagram-block", "merman-core/diagram-block"]
-diagram-c4 = ["merman-model/diagram-c4", "merman-core/diagram-c4"]
+diagram-architecture = ["merman-model/diagram-architecture", "merman-core/diagram-architecture", "dep:dugong", "dep:rustc-hash"]
+diagram-block = ["merman-model/diagram-block", "merman-core/diagram-block", "dep:dugong", "dep:rustc-hash"]
+diagram-c4 = ["merman-model/diagram-c4", "merman-core/diagram-c4", "dep:dugong", "dep:rustc-hash"]
 diagram-class = ["merman-model/diagram-class", "merman-core/diagram-class"]
 diagram-cynefin = ["merman-model/diagram-cynefin", "merman-core/diagram-cynefin"]
 diagram-er = ["merman-model/diagram-er", "merman-core/diagram-er"]
 diagram-event-modeling = ["merman-model/diagram-event-modeling", "merman-core/diagram-event-modeling"]
-diagram-agentflow = ["merman-model/diagram-agentflow", "merman-core/diagram-agentflow"]
-diagram-usecase = ["merman-model/diagram-usecase", "merman-core/diagram-usecase"]
+diagram-agentflow = ["merman-model/diagram-agentflow", "merman-core/diagram-agentflow", "dep:dugong", "dep:rustc-hash"]
+diagram-usecase = ["merman-model/diagram-usecase", "merman-core/diagram-usecase", "dep:dugong", "dep:rustc-hash", "dep:ryu-js"]
 diagram-flowchart = ["merman-model/diagram-flowchart", "merman-core/diagram-flowchart", "dep:dugong", "dep:rustc-hash", "dep:pulldown-cmark"]
 diagram-gantt = ["merman-model/diagram-gantt", "merman-core/diagram-gantt"]
 diagram-git-graph = ["merman-model/diagram-git-graph", "merman-core/diagram-git-graph"]
@@ -72,11 +72,11 @@ diagram-journey = ["merman-model/diagram-journey", "merman-core/diagram-journey"
 diagram-kanban = ["merman-model/diagram-kanban", "merman-core/diagram-kanban"]
 diagram-mindmap = ["merman-model/diagram-mindmap", "merman-core/diagram-mindmap"]
 diagram-packet = ["merman-model/diagram-packet", "merman-core/diagram-packet", "dep:ryu-js"]
-diagram-pie = ["merman-model/diagram-pie", "merman-core/diagram-pie"]
+diagram-pie = ["merman-model/diagram-pie", "merman-core/diagram-pie", "dep:ryu-js"]
 diagram-quadrant-chart = ["merman-model/diagram-quadrant-chart", "merman-core/diagram-quadrant-chart"]
 diagram-radar = ["merman-model/diagram-radar", "merman-core/diagram-radar"]
 diagram-railroad = ["merman-model/diagram-railroad", "merman-core/diagram-railroad"]
-diagram-requirement = ["merman-model/diagram-requirement", "merman-core/diagram-requirement"]
+diagram-requirement = ["merman-model/diagram-requirement", "merman-core/diagram-requirement", "dep:dugong", "dep:rustc-hash"]
 diagram-sankey = ["merman-model/diagram-sankey", "merman-core/diagram-sankey"]
 diagram-sequence = ["merman-model/diagram-sequence", "merman-core/diagram-sequence"]
 diagram-state = ["merman-model/diagram-state", "merman-core/diagram-state", "dep:dugong", "dep:rustc-hash"]
@@ -108,8 +108,32 @@ merman-core = { workspace = true, features = ["test-support", "presentation", "c
 sha2.workspace = true
 
 [[test]]
+name = "agentflow_model"
+required-features = ["diagram-agentflow"]
+
+[[test]]
+name = "architecture_model"
+required-features = ["diagram-architecture"]
+
+[[test]]
+name = "requirement_model"
+required-features = ["diagram-requirement"]
+
+[[test]]
+name = "pie_model"
+required-features = ["diagram-pie"]
+
+[[test]]
 name = "class_model"
 required-features = ["diagram-class"]
+
+[[test]]
+name = "block_model"
+required-features = ["diagram-block"]
+
+[[test]]
+name = "usecase_model"
+required-features = ["diagram-usecase"]
 
 [[test]]
 name = "er_model"
@@ -174,3 +198,11 @@ required-features = ["all-diagrams"]
 [[test]]
 name = "viewport_characterization"
 required-features = ["all-diagrams"]
+
+[[test]]
+name = "c4_model"
+required-features = ["diagram-c4"]
+
+[[test]]
+name = "zenuml_model"
+required-features = ["diagram-zenuml"]

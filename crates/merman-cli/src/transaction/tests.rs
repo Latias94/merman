@@ -73,7 +73,8 @@ fn approved_root_replacement_is_rejected_before_lock_creation() {
     std::fs::rename(&root, &displaced).unwrap();
     std::fs::create_dir(&root).unwrap();
 
-    let error = LockedRecoveredRoot::acquire_approved(approved).unwrap_err();
+    let error = LockedRecoveredRoot::acquire_approved(approved, &mut PublicationGuards::new(None))
+        .unwrap_err();
     assert!(matches!(error, TransactionError::InvalidState { .. }));
     assert!(!root.join(LOCK_FILE_NAME).exists());
     assert!(!displaced.join(LOCK_FILE_NAME).exists());
@@ -1384,12 +1385,13 @@ fn replacement_rejects_changed_owner_before_missing_source() {
     staging.working.transaction_identity =
         Arc::new(same_file::Handle::from_path(temp.path()).unwrap());
     let expected = staging.working.verify_owned_state().unwrap_err();
+    let generation = existing_generation(&manifest_path);
     let actual = deterministic_replace_from(
         &staging.working,
         0,
         &source,
         &target,
-        None,
+        TargetChange::Publish(&generation),
         "publish replacement",
     )
     .unwrap_err();
@@ -2331,6 +2333,173 @@ fn rollback_failure_retains_evidence_and_next_acquire_recovers() {
     drop(LockedRecoveredRoot::acquire(temp.path()).unwrap());
     assert_standard_old_generation(temp.path());
     assert!(!temp.path().join(TRANSACTION_DIR_NAME).exists());
+}
+
+#[cfg(windows)]
+#[test]
+fn rollback_retries_after_windows_read_handles_are_released_separately() {
+    use std::os::windows::fs::OpenOptionsExt as _;
+    use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
+
+    let temp = tempfile::tempdir().unwrap();
+    let root = temp.path();
+    let artifacts = (0..4)
+        .map(|index| relative(root, format!("artifact-{index}.svg")))
+        .collect::<Vec<_>>();
+    let manifest = relative(root, ".merman-manifest.json");
+    let plan = TransactionPlan::new(
+        artifacts
+            .iter()
+            .cloned()
+            .map(|target| TransactionEntryPlan::write(TransactionRole::Artifact, target))
+            .chain([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )]),
+    )
+    .unwrap();
+    let mut staging = LockedRecoveredRoot::acquire(root)
+        .unwrap()
+        .begin(plan)
+        .unwrap();
+    for target in artifacts.iter().chain([&manifest]) {
+        staging.stage_bytes(target, b"new").unwrap();
+    }
+    staging.ready().unwrap().interrupt_after_publish(3);
+
+    let open_without_delete_sharing = |index: usize| {
+        OpenOptions::new()
+            .read(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .open(artifacts[index].to_path(root).unwrap())
+            .unwrap()
+    };
+    let held_lower = open_without_delete_sharing(1);
+    let held_upper = open_without_delete_sharing(3);
+    let transaction = root.join(TRANSACTION_DIR_NAME);
+    let assert_incomplete = || {
+        let error = LockedRecoveredRoot::acquire(root).unwrap_err();
+        assert!(
+            matches!(error, TransactionError::Recovery { .. }),
+            "{error}"
+        );
+        let (state, _) = load_journal_slots(&transaction).unwrap();
+        assert_eq!(state.phase, JournalPhase::RollingBack);
+        assert_eq!(state.next_index, 0);
+    };
+    assert_incomplete();
+    assert!(!artifacts[0].to_path(root).unwrap().exists());
+    assert!(!artifacts[2].to_path(root).unwrap().exists());
+    drop(held_upper);
+    assert_incomplete();
+    assert!(!artifacts[3].to_path(root).unwrap().exists());
+    drop(held_lower);
+
+    let recovered = LockedRecoveredRoot::acquire(root).unwrap();
+    assert!(!transaction.exists());
+    assert!(
+        artifacts
+            .iter()
+            .all(|target| !target.to_path(root).unwrap().exists())
+    );
+    let mut staging = recovered
+        .begin(
+            TransactionPlan::new([TransactionEntryPlan::write(
+                TransactionRole::Manifest,
+                manifest.clone(),
+            )])
+            .unwrap(),
+        )
+        .unwrap();
+    staging.stage_bytes(&manifest, b"retry").unwrap();
+    staging.ready().unwrap().commit().unwrap();
+    assert_eq!(read(manifest.to_path(root).unwrap()), b"retry");
+}
+
+#[test]
+fn recovery_accepts_a_legacy_rollback_cursor_in_a_pending_or_promoted_slot() {
+    for pending in [true, false] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        seed_standard_old_generation(root);
+        let targets = Targets::under(root);
+        let mut staging = LockedRecoveredRoot::acquire(root)
+            .unwrap()
+            .begin(targets.standard_plan())
+            .unwrap();
+        stage_standard_new_generation(&mut staging, &targets);
+        staging.ready().unwrap().interrupt_after_publish(1);
+
+        let hook = CheckpointHook::new(|checkpoint| {
+            if checkpoint == (Checkpoint::RollbackBefore { index: 1 }) {
+                return Err(std::io::Error::other("leave a higher index pending"));
+            }
+            Ok(())
+        });
+        assert!(LockedRecoveredRoot::acquire_with_checkpoint(root, hook).is_err());
+        let transaction = root.join(TRANSACTION_DIR_NAME);
+        let (mut state, slot) = load_journal_slots(&transaction).unwrap();
+        assert_eq!(
+            (state.phase, state.next_index),
+            (JournalPhase::RollingBack, 0)
+        );
+        state.sequence += 1;
+        state.next_index = 1;
+        write_private_bytes(
+            &transaction.join(STATE_PENDING_NAME),
+            &state.encode(&transaction).unwrap(),
+        );
+        if !pending {
+            promote_pending_journal(&transaction, slot.other()).unwrap();
+        }
+
+        drop(LockedRecoveredRoot::acquire(root).unwrap());
+        assert_standard_old_generation(root);
+        assert!(!transaction.exists());
+    }
+}
+
+#[test]
+fn rollback_rejects_same_byte_file_replacements_at_its_mutation_boundary() {
+    for replacing in [false, true] {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let targets = Targets::under(root);
+        let artifact = targets.artifact_a.to_path(root).unwrap();
+        if replacing {
+            std::fs::write(&artifact, b"old-a").unwrap();
+        }
+        let mut staging = LockedRecoveredRoot::acquire(root)
+            .unwrap()
+            .begin(targets.standard_plan())
+            .unwrap();
+        stage_standard_new_generation(&mut staging, &targets);
+        staging.ready().unwrap().interrupt_after_publish(0);
+
+        let replacement = root.join("external.svg");
+        std::fs::write(&replacement, b"new-a").unwrap();
+        let replacement_identity = same_file::Handle::from_path(&replacement).unwrap();
+        let hook_target = artifact.clone();
+        let hook = CheckpointHook::new(move |checkpoint| {
+            let boundary = if replacing {
+                Checkpoint::ReplaceBefore { index: 0 }
+            } else {
+                Checkpoint::DeleteBefore { index: 0 }
+            };
+            if checkpoint == boundary {
+                std::fs::rename(&replacement, &hook_target)?;
+            }
+            Ok(())
+        });
+        let error = LockedRecoveredRoot::acquire_with_checkpoint(root, hook).unwrap_err();
+        assert!(error.to_string().contains("rollback boundary"), "{error}");
+        assert!(root.join(TRANSACTION_DIR_NAME).is_dir());
+        assert_eq!(read(&artifact), b"new-a");
+        assert_eq!(
+            same_file::Handle::from_path(&artifact).unwrap(),
+            replacement_identity
+        );
+    }
 }
 
 #[test]

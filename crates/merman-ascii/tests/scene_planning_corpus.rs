@@ -93,31 +93,130 @@ fn reduced_dense_source_keeps_the_original_order_and_only_the_recorded_omissions
 }
 
 #[test]
-fn reduced_strict_outcome_keeps_planning_diagnostics_distinct_from_resource_errors() {
-    let model = parse_model(source(REDUCED));
-    let options = AsciiRenderOptions::unicode().with_layout_profile(AsciiLayoutProfile::Canonical);
-    match render_model_with_resources(&model, &options, AsciiResourcePolicy::unbounded()) {
-        Ok(diagram) => {
-            let labels: std::collections::BTreeSet<_> = diagram
+fn dense_strict_sources_have_complete_spatial_primaries_under_trusted_native_limits() {
+    use merman_model::{OperationControl, resources::ResourceProfile, runtime::RuntimePolicy};
+    for (bytes, node_count, max_height) in [(REDUCED, 20, 120), (ORIGINAL, 100, 300)] {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync(source(bytes))
+            .unwrap();
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            let context = RuntimePolicy::deterministic().begin_operation().unwrap();
+            let output =
+                AsciiRenderer::new(options.with_layout_profile(AsciiLayoutProfile::Canonical))
+                    .unwrap()
+                    .render_parsed_report(
+                        &parsed,
+                        AsciiViewportPolicy::with_max_width(120).overflow(OverflowPolicy::Allow),
+                        &OperationControl::new(),
+                        &context,
+                        AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative),
+                    )
+                    .expect("the frozen cycle ladders must produce complete spatial primaries");
+            assert_eq!(output.projection, AsciiProjection::Diagrammatic);
+            assert_eq!(
+                output.requested_graph_presentation,
+                AsciiGraphPresentation::Strict
+            );
+            assert!(!output.fallback.attempted);
+            assert!(!output.emitted_overflowed);
+            assert_eq!(output.primary_extent, Some(output.emitted_extent));
+            assert!(output.emitted_extent.width <= 120);
+            assert!(
+                output.emitted_extent.height <= max_height,
+                "the dense primary must fit its spatial acceptance bound: {:?}",
+                output.emitted_extent
+            );
+            let labels: std::collections::BTreeSet<_> = output
+                .text
                 .split(|character: char| !character.is_ascii_alphanumeric())
                 .collect();
-            for index in 0..20 {
+            for index in 0..node_count {
                 assert!(labels.contains(format!("C{index}").as_str()));
             }
+            assert!(!output.text.contains("family:") && !output.text.contains("Keys:"));
         }
-        Err(AsciiError::RoutingSearchExhausted {
-            diagram_type,
-            edge_index,
-        }) => {
-            assert_eq!(diagram_type, "flowchart");
-            assert!(edge_index < 33);
+    }
+}
+
+#[test]
+fn capacity_recovery_keeps_narrow_cycles_and_all_edge_labels() {
+    use merman_model::{OperationControl, resources::ResourceProfile, runtime::RuntimePolicy};
+
+    for input in [
+        include_str!(
+            "testdata/local-semantic/flowchart/scene_planning/labelled-cycle-capacity.mmd"
+        ),
+        include_str!("testdata/local-semantic/flowchart/scene_planning/narrow-cycle-capacity.mmd"),
+    ] {
+        let parsed = merman_core::SemanticParser::new()
+            .parse_diagram_sync(input)
+            .unwrap();
+        for options in [AsciiRenderOptions::ascii(), AsciiRenderOptions::unicode()] {
+            let context = RuntimePolicy::deterministic().begin_operation().unwrap();
+            let output =
+                AsciiRenderer::new(options.with_layout_profile(AsciiLayoutProfile::Canonical))
+                    .unwrap()
+                    .render_parsed_report(
+                        &parsed,
+                        AsciiViewportPolicy::with_max_width(50).overflow(OverflowPolicy::Error),
+                        &OperationControl::new(),
+                        &context,
+                        AsciiResourcePolicy::for_profile(ResourceProfile::TrustedNative),
+                    )
+                    .expect("component recovery must preserve existing 50-column spatial results");
+            assert_eq!(output.projection, AsciiProjection::Diagrammatic);
+            assert!(!output.fallback.attempted);
+            assert!(!output.emitted_overflowed);
+            assert!(output.emitted_extent.width <= 50);
+            for label in (0..8).map(|index| format!("N{index}")) {
+                assert!(output.text.contains(&label), "missing node {label}");
+            }
+            if input.contains("label1") {
+                for label in ["label1", "label3", "label5", "label7", "label9", "label11"] {
+                    assert!(output.text.contains(label), "missing edge label {label}");
+                }
+            }
         }
-        Err(AsciiError::PortCapacityExceeded {
-            required,
-            available,
-            ..
-        }) => assert!(required > available),
-        Err(error) => panic!("strict planning must preserve its typed outcome: {error}"),
+    }
+}
+
+#[test]
+fn dense_recovery_keeps_reverse_root_directions_and_readable_labels() {
+    for (direction, horizontal, marker) in [("BT", false, '▲'), ("RL", true, '◄')] {
+        let input = source(REDUCED).replacen("flowchart TD", &format!("flowchart {direction}"), 1);
+        let model = parse_model(&input);
+        let text = render_model_with_resources(
+            &model,
+            &AsciiRenderOptions::unicode(),
+            AsciiResourcePolicy::unbounded(),
+        )
+        .expect("the reverse view must preserve the complete cyclic graph");
+        let position = |label: &str| {
+            text.lines()
+                .enumerate()
+                .find_map(|(row, line)| line.find(label).map(|column| (column, row)))
+                .expect("each full node label must remain readable")
+        };
+        let first = position(" C0 ");
+        let last = position(" C15 ");
+        assert!(
+            if horizontal {
+                first.0 > last.0
+            } else {
+                first.1 > last.1
+            },
+            "{direction}\n{text}"
+        );
+        assert!(
+            text.contains(marker),
+            "the main-axis arrows must point {direction}\n{text}"
+        );
+        let labels: std::collections::BTreeSet<_> = text
+            .split(|character: char| !character.is_ascii_alphanumeric())
+            .collect();
+        for index in 0..20 {
+            assert!(labels.contains(format!("C{index}").as_str()));
+        }
     }
 }
 

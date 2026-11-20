@@ -1,0 +1,20 @@
+usecase-beta
+direction LR
+actor Customer
+actor Auditor
+systemBoundary Shop(Order service)@{type:package}
+Browse(Browse)
+Checkout(Checkout)
+Pay[Payment]
+Receipt(Receipt)
+end
+Customer --> Browse
+Customer --> Checkout
+Browse --> Checkout
+Checkout ..>:include Pay
+Pay --> Receipt
+Receipt ..>:extend Checkout
+Auditor --> Receipt
+Auditor --o Pay
+Auditor --x Browse
+note for Pay "Review payment"

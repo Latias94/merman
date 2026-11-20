@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Highlight node IDs that start with a dot, including `...`, in Flowchart, Swimlane, and Agentflow. Compact edges such as `.a-.->.b` in Flowchart keep the full operator highlighted.
+
 ## 0.3.4 - 2026-11-12
 
 - Keep generic suffixes attached to backtick-quoted Class names in declarations and compact relationship endpoints.

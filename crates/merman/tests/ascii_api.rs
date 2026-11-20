@@ -37,6 +37,53 @@ fn deeply_nested_flowchart(depth: usize) -> String {
     lines.join("\n")
 }
 
+#[cfg(feature = "diagram-git-graph")]
+#[test]
+fn gitgraph_facade_preserves_actual_projection_and_keyed_parent_records() {
+    let body = "gitGraph LR:\ncommit id:\"A\"\nbranch feature\ncommit id:\"F\"\ncheckout main\ncommit id:\"B\"\nmerge feature id:\"M\" tag:\"v1\"\n";
+    for (parallel, width) in [(false, 80), (false, 20), (true, 80)] {
+        let source = if parallel {
+            format!("---\nconfig:\n  gitGraph:\n    parallelCommits: true\n---\n{body}")
+        } else {
+            body.to_string()
+        };
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                &source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::ascii(),
+                    viewport: AsciiViewportPolicy::with_max_width(width)
+                        .overflow(OverflowPolicy::Fallback),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(output)) = output else {
+            panic!("missing ASCII report")
+        };
+        assert_eq!(
+            output.projection.as_str(),
+            if !parallel && width == 80 {
+                "diagrammatic"
+            } else {
+                "structured_text"
+            }
+        );
+        assert_eq!(output.fallback.attempted, width == 20);
+        assert!(output.emitted_extent.width <= width);
+        let records: String = output
+            .text
+            .split_once("GitGraph records")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect();
+        assert_eq!(records.matches("[commit]").count(), 4);
+        assert!(records.contains("parents=[\"B\",\"F\"]"));
+    }
+}
+
 #[test]
 fn renderer_renders_ascii_flowchart_from_mermaid_text() {
     let output = Renderer::new()
@@ -131,6 +178,78 @@ fn facade_ascii_keeps_source_label_entities_in_primary_and_narrow_fallback() {
     }
 }
 
+#[cfg(all(
+    feature = "presentation",
+    feature = "diagram-agentflow",
+    feature = "diagram-block",
+    feature = "diagram-usecase"
+))]
+#[test]
+fn family_ascii_uses_the_same_semantics_from_canonical_and_presentation_artifacts() {
+    let sources = [
+        (
+            "agentflow-beta\nA[Request] --> B[Result]",
+            AsciiOutputOutcome::Fallback,
+        ),
+        (
+            "agentflow-beta\nA[Request]@{instruction: inspect, params: {retries: 3}} --> B[Result]",
+            AsciiOutputOutcome::Primary,
+        ),
+        (
+            "usecase-beta\nactor Customer(\"Customer\")\nCheckout(\"Place order\")\nCustomer --> Checkout",
+            AsciiOutputOutcome::Fallback,
+        ),
+        (
+            "block-beta\ncolumns 3\nA[\"Request\"]:2 space\nB[\"Result\"]:3\nA --> B",
+            AsciiOutputOutcome::Fallback,
+        ),
+    ];
+    for (source, narrow_outcome) in sources {
+        for width in [10, 80, 100, 120] {
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let renderer = Renderer::new();
+            let semantic = renderer
+                .parse_semantic(source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let presentation = renderer
+                .prepare_presentation(source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation ASCII output");
+            };
+            assert_eq!(canonical.text, full.text, "width {width}: {source}");
+            assert_eq!(canonical.outcome, full.outcome);
+            assert_eq!(canonical.projection, full.projection);
+            assert_eq!(canonical.emitted_extent, full.emitted_extent);
+            assert!(full.emitted_extent.width <= width);
+            assert_eq!(
+                full.outcome,
+                if width == 10 {
+                    narrow_outcome
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+        }
+    }
+}
+
 #[cfg(feature = "diagram-packet")]
 #[test]
 fn packet_facade_retains_source_geometry_policy_and_actual_projection() {
@@ -159,6 +278,671 @@ fn packet_facade_retains_source_geometry_policy_and_actual_projection() {
             assert!(output.text.contains("7..0"), "{}", output.text);
             assert!(output.text.contains("15..8"));
             assert!(output.text.contains("|     Body      |    Header     |"));
+        }
+    }
+}
+
+#[cfg(all(feature = "presentation", feature = "diagram-gantt"))]
+#[test]
+fn gantt_ascii_matches_canonical_and_presentation_schedules_records_and_reports() {
+    let body = concat!(
+        "gantt\ntitle Release plan\naccTitle: Delivery plan\n",
+        "dateFormat YYYY-MM-DD\naxisFormat %d\ntodayMarker off\n",
+        "section Delivery work\nBuild phase: done, build, 2026-01-01, 2d\n",
+        "section Review work\nReview phase: crit, active, review, after build, 1d\n",
+        "section Delivery work\nShip phase: milestone, ship, after review, 0d\n",
+    );
+    let renderer = Renderer::new();
+    for compact_mode in [false, true] {
+        let source = if compact_mode {
+            format!("---\nconfig:\n  gantt:\n    displayMode: compact\n---\n{body}")
+        } else {
+            body.to_string()
+        };
+        let mut expected_records = None;
+        for width in [59, 60] {
+            let semantic = renderer
+                .parse_semantic(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let merman::model::SemanticDiagramModel::Gantt(model) = semantic.model() else {
+                panic!("expected canonical Gantt model");
+            };
+            let scheduled_fields: Vec<_> = model
+                .tasks
+                .iter()
+                .map(|task| {
+                    vec![
+                        format!("startTime:{}", task.start_ms),
+                        format!("endTime:{}", task.end_ms),
+                        format!(
+                            "renderEndTime:{}",
+                            serde_json::to_string(&task.render_end_ms).unwrap()
+                        ),
+                        format!(
+                            "startConstraint:{}",
+                            serde_json::to_string(&task.start_constraint).unwrap()
+                        ),
+                        format!(
+                            "endConstraint:{}",
+                            serde_json::to_string(&task.end_constraint).unwrap()
+                        ),
+                        format!("raw:{}", serde_json::to_string(&task.raw).unwrap()),
+                    ]
+                })
+                .collect();
+            assert_eq!(scheduled_fields.len(), 3);
+            let presentation = renderer
+                .prepare_presentation(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical Gantt ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation Gantt ASCII output");
+            };
+            assert_eq!(
+                canonical.text, full.text,
+                "compact {compact_mode}, width {width}"
+            );
+            assert_eq!(canonical.report(), full.report());
+            let fallback = !compact_mode && width < 60;
+            assert_eq!(full.family, "gantt");
+            assert_eq!(full.encoding.as_str(), "plain");
+            assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+            assert!(!full.compact_attempted);
+            assert_eq!(full.fallback.attempted, fallback);
+            assert_eq!(full.primary_overflowed, Some(fallback));
+            assert_eq!(
+                full.outcome,
+                if fallback {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+            assert_eq!(
+                full.projection.as_str(),
+                if compact_mode || fallback {
+                    "structured_text"
+                } else {
+                    "diagrammatic"
+                }
+            );
+            assert!(!full.emitted_overflowed);
+            assert!(full.emitted_extent.width <= width);
+            assert_eq!(
+                full.text.contains("Gantt timeline (elapsed time)"),
+                !compact_mode && !fallback
+            );
+
+            // Remove only presentation continuation indents, preserving authored spaces.
+            let mut records: Vec<String> = Vec::new();
+            for line in full.text.lines() {
+                if let Some(continuation) = line.strip_prefix("  ")
+                    && let Some(record) = records.last_mut()
+                {
+                    record.push_str(continuation);
+                } else {
+                    records.push(line.to_string());
+                }
+            }
+            let records: Vec<_> = records
+                .into_iter()
+                .skip_while(|record| !record.starts_with("Keys: T1..Tn"))
+                .collect();
+            assert!(
+                !records.is_empty(),
+                "missing complete records: {}",
+                full.text
+            );
+            let task_keys: Vec<_> = records
+                .iter()
+                .filter(|record| record.contains(" [task] "))
+                .map(|record| record.split_once(' ').unwrap().0)
+                .collect();
+            assert_eq!(task_keys, ["T1", "T2", "T3"]);
+            for (index, (id, label, section, start, end)) in [
+                (
+                    "build",
+                    "Build phase",
+                    "Delivery work",
+                    "2026-01-01",
+                    "2026-01-03",
+                ),
+                (
+                    "review",
+                    "Review phase",
+                    "Review work",
+                    "2026-01-03",
+                    "2026-01-04",
+                ),
+                (
+                    "ship",
+                    "Ship phase",
+                    "Delivery work",
+                    "2026-01-04",
+                    "2026-01-04",
+                ),
+            ]
+            .into_iter()
+            .enumerate()
+            {
+                let key = format!("T{}", index + 1);
+                assert!(records.contains(&format!(
+                    "{key} [task] id=\"{id}\" label=\"{label}\" section=\"{section}\" sectionIndex={index} order={index}"
+                )));
+                assert!(records.iter().any(|record| {
+                    record.starts_with(&format!("{key} interval (UTC): {start} -> {end}"))
+                }));
+                let details = records
+                    .iter()
+                    .find(|record| record.starts_with(&format!("{key} details: {{")))
+                    .expect("each task retains its complete details");
+                for expected in &scheduled_fields[index] {
+                    assert!(
+                        details.contains(expected),
+                        "missing {expected:?}: {details}"
+                    );
+                }
+                for field in [
+                    "type:",
+                    "classes:",
+                    "active:",
+                    "done:",
+                    "crit:",
+                    "milestone:",
+                    "vert:",
+                    "prevTaskId:",
+                    "processed:true",
+                    "manualEndTime:",
+                ] {
+                    assert!(details.contains(field), "missing {field:?}: {details}");
+                }
+            }
+            let metadata = records
+                .iter()
+                .find(|record| record.starts_with("gantt details: {"))
+                .expect("Gantt retains complete metadata");
+            for expected in [
+                "title:\"Release plan\"",
+                "accTitle:\"Delivery plan\"",
+                "sections:[\"Delivery work\",\"Review work\",\"Delivery work\"]",
+                "dateFormat:\"YYYY-MM-DD\"",
+                "axisFormat:\"%d\"",
+                "todayMarker:\"off\"",
+                "sourceConfig:",
+            ] {
+                assert!(
+                    metadata.contains(expected),
+                    "missing {expected:?}: {metadata}"
+                );
+            }
+            if let Some(expected) = &expected_records {
+                assert_eq!(
+                    &records, expected,
+                    "record reflow must preserve all content"
+                );
+            } else {
+                expected_records = Some(records);
+            }
+        }
+    }
+}
+
+#[cfg(feature = "diagram-gantt")]
+#[test]
+fn gantt_ascii_uses_structured_text_primary_for_empty_zero_span_and_vertical_sources() {
+    for source in [
+        "gantt\nsection Empty work\n",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\nRelease marker: milestone, marker, 2026-01-01, 0d\n",
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\nReview marker: vert, marker, 2026-01-01, 1d\n",
+    ] {
+        let output = Renderer::new()
+            .render(RenderRequest::ascii(
+                source,
+                OperationControl::new(),
+                AsciiRequest {
+                    options: AsciiRenderOptions::unicode(),
+                    viewport: AsciiViewportPolicy::with_max_width(10)
+                        .overflow(OverflowPolicy::Fallback),
+                    ..Default::default()
+                },
+            ))
+            .unwrap();
+        let RenderOutput::Ascii(Some(output)) = output else {
+            panic!("expected Gantt ASCII output");
+        };
+        assert_eq!(output.projection.as_str(), "structured_text");
+        assert_eq!(output.outcome, AsciiOutputOutcome::Primary);
+        assert!(!output.fallback.attempted);
+        assert_eq!(output.primary_overflowed, Some(false));
+        assert!(!output.emitted_overflowed);
+        assert!(output.emitted_extent.width <= 10);
+        let compact: String = output.text.split_whitespace().collect();
+        assert!(compact.contains("ganttdetails:{"));
+        if source.contains("marker,") {
+            assert!(compact.contains("T1[task]id=\"marker\""));
+            assert!(compact.contains("T1details:{"));
+            assert!(compact.contains("T1interval(UTC):2026-01-01->"));
+        }
+    }
+}
+
+#[cfg(all(feature = "presentation", feature = "diagram-pie"))]
+#[test]
+fn pie_ascii_matches_canonical_and_presentation_records_and_projection() {
+    for (dogs, cats, primary_projection) in [(386, 85, "diagrammatic"), (0, 0, "structured_text")] {
+        let source = format!("pie showData\ntitle Pets\n\"Dogs\": {dogs}\n\"Cats\": {cats}\n");
+        let renderer = Renderer::new();
+        for width in [10, 20, 80] {
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let semantic = renderer
+                .parse_semantic(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let presentation = renderer
+                .prepare_presentation(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical Pie ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation Pie ASCII output");
+            };
+            assert_eq!(canonical.text, full.text, "width {width}: {source}");
+            assert_eq!(canonical.report(), full.report());
+            assert_eq!(full.family, "pie");
+            assert_eq!(full.encoding.as_str(), "plain");
+            assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+            assert!(!full.compact_attempted);
+            assert_eq!(full.fallback.attempted, width < 80);
+            assert_eq!(full.primary_overflowed, Some(width < 80));
+            assert_eq!(
+                full.outcome,
+                if width < 80 {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+            assert_eq!(
+                full.projection.as_str(),
+                if width < 80 {
+                    "structured_text"
+                } else {
+                    primary_projection
+                }
+            );
+            assert!(!full.emitted_overflowed);
+            assert!(full.emitted_extent.width <= width);
+            let compact: String = full.text.split_whitespace().collect();
+            for expected in [
+                format!("P1label=\"Dogs\"value={dogs}"),
+                format!("P2label=\"Cats\"value={cats}"),
+                "Pets".to_string(),
+            ] {
+                assert!(
+                    compact.contains(&expected),
+                    "missing {expected:?}: {}",
+                    full.text
+                );
+            }
+            assert!(compact.find("P1label=").unwrap() < compact.find("P2label=").unwrap());
+        }
+    }
+}
+
+#[cfg(all(feature = "presentation", feature = "diagram-c4"))]
+#[test]
+fn c4_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = concat!(
+        "C4Dynamic\n",
+        "Person(user, \"Customer\")\n",
+        "Boundary(zone, \"Services\") {\n",
+        "Container(api, \"API\", \"Rust\", \"Serves requests\")\n}\n",
+        "Rel_Back(api, user, \"Replies\", \"HTTPS\")\n",
+    );
+    let renderer = Renderer::new();
+    for width in [10, 80] {
+        let semantic = renderer
+            .parse_semantic(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let presentation = renderer
+            .prepare_presentation(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let request = AsciiRequest {
+            options: AsciiRenderOptions::unicode(),
+            viewport: AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Fallback),
+            ..Default::default()
+        };
+        let RenderOutput::Ascii(Some(canonical)) = semantic
+            .render(merman::RenderTarget::Ascii(request.clone()))
+            .unwrap()
+        else {
+            panic!("expected canonical C4 ASCII output");
+        };
+        let RenderOutput::Ascii(Some(full)) = presentation
+            .render(merman::RenderTarget::Ascii(request))
+            .unwrap()
+        else {
+            panic!("expected presentation C4 ASCII output");
+        };
+        assert_eq!(canonical.text, full.text, "width {width}");
+        assert_eq!(canonical.report(), full.report());
+        assert_eq!(full.family, "c4");
+        assert_eq!(full.encoding.as_str(), "plain");
+        assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+        assert!(!full.compact_attempted);
+        assert_eq!(full.fallback.attempted, width == 10);
+        assert_eq!(full.primary_overflowed, Some(width == 10));
+        assert_eq!(
+            full.projection.as_str(),
+            if width == 10 {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert!(!full.emitted_overflowed);
+        assert!(full.emitted_extent.width <= width);
+        let compact: String = full.text.split_whitespace().collect();
+        for expected in [
+            "E1[relationship]type=\"rel_b\"source=[S2]alias=\"api\"target=[S1]alias=\"user\"heads=sourcerender-number=1",
+            "S2techn={text:\"Rust\"}",
+            "parentBoundary=[B2]alias=\"zone\"",
+            "Servesrequests",
+            "Replies",
+            "HTTPS",
+        ] {
+            assert!(
+                compact.contains(expected),
+                "missing {expected:?}: {}",
+                full.text
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "presentation", feature = "diagram-architecture"))]
+#[test]
+fn architecture_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = concat!(
+        "architecture-beta\n",
+        "service api(server)[API]\n",
+        "service db(database)[Database]\n",
+        "api:R --> L:db\n",
+    );
+    let renderer = Renderer::new();
+    for width in [None, Some(10)] {
+        let semantic = renderer
+            .parse_semantic(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let presentation = renderer
+            .prepare_presentation(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let request = AsciiRequest {
+            options: AsciiRenderOptions::unicode(),
+            viewport: width.map_or_else(AsciiViewportPolicy::unrestricted, |width| {
+                AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Fallback)
+            }),
+            ..Default::default()
+        };
+        let RenderOutput::Ascii(Some(canonical)) = semantic
+            .render(merman::RenderTarget::Ascii(request.clone()))
+            .unwrap()
+        else {
+            panic!("expected canonical Architecture ASCII output");
+        };
+        let RenderOutput::Ascii(Some(full)) = presentation
+            .render(merman::RenderTarget::Ascii(request))
+            .unwrap()
+        else {
+            panic!("expected presentation Architecture ASCII output");
+        };
+        assert_eq!(canonical.text, full.text, "width {width:?}");
+        assert_eq!(canonical.report(), full.report());
+        assert_eq!(full.family, "architecture");
+        assert_eq!(full.encoding.as_str(), "plain");
+        assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+        assert!(!full.compact_attempted);
+        assert_eq!(full.fallback.attempted, width.is_some());
+        assert_eq!(full.primary_overflowed, Some(width.is_some()));
+        assert_eq!(
+            full.outcome,
+            if width.is_some() {
+                AsciiOutputOutcome::Fallback
+            } else {
+                AsciiOutputOutcome::Primary
+            }
+        );
+        assert_eq!(
+            full.projection.as_str(),
+            if width.is_some() {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert!(!full.emitted_overflowed);
+        if let Some(width) = width {
+            assert!(full.emitted_extent.width <= width);
+        }
+        let compact: String = full.text.split_whitespace().collect();
+        for expected in [
+            "N1[service]id=\"api\"title=\"API\"",
+            "N2[service]id=\"db\"title=\"Database\"",
+            "E1lhs=[N1]id=\"api\"lhsDir=\"R\"lhsInto=null",
+            "E1rhs=[N2]id=\"db\"rhsDir=\"L\"rhsInto=true",
+        ] {
+            assert!(
+                compact.contains(expected),
+                "missing {expected:?}: {}",
+                full.text
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "presentation", feature = "diagram-zenuml"))]
+#[test]
+fn zenuml_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = "zenuml\nAlice->Bob: Hello\nBob-->Alice: Reply\n";
+    let renderer = Renderer::new();
+    for width in [None, Some(10)] {
+        let semantic = renderer
+            .parse_semantic(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let presentation = renderer
+            .prepare_presentation(source, OperationControl::new())
+            .unwrap()
+            .unwrap();
+        let request = AsciiRequest {
+            options: AsciiRenderOptions::unicode(),
+            viewport: width.map_or_else(AsciiViewportPolicy::unrestricted, |width| {
+                AsciiViewportPolicy::with_max_width(width).overflow(OverflowPolicy::Fallback)
+            }),
+            ..Default::default()
+        };
+        let RenderOutput::Ascii(Some(canonical)) = semantic
+            .render(merman::RenderTarget::Ascii(request.clone()))
+            .unwrap()
+        else {
+            panic!("expected canonical ZenUML ASCII output");
+        };
+        let RenderOutput::Ascii(Some(full)) = presentation
+            .render(merman::RenderTarget::Ascii(request))
+            .unwrap()
+        else {
+            panic!("expected presentation ZenUML ASCII output");
+        };
+        assert_eq!(canonical.text, full.text, "width {width:?}");
+        assert_eq!(canonical.report(), full.report());
+        assert_eq!(full.family, "zenuml");
+        assert_eq!(full.encoding.as_str(), "plain");
+        assert_eq!(full.requested_graph_presentation.as_str(), "strict");
+        assert!(!full.compact_attempted);
+        assert_eq!(full.fallback.attempted, width.is_some());
+        assert_eq!(full.primary_overflowed, Some(width.is_some()));
+        assert_eq!(
+            full.outcome,
+            if width.is_some() {
+                AsciiOutputOutcome::Fallback
+            } else {
+                AsciiOutputOutcome::Primary
+            }
+        );
+        assert_eq!(
+            full.projection.as_str(),
+            if width.is_some() {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert!(!full.emitted_overflowed);
+        if let Some(width) = width {
+            assert!(full.emitted_extent.width <= width);
+        }
+        let compact: String = full.text.split_whitespace().collect();
+        for expected in [
+            "P1[participant]name=\"Alice\"",
+            "P2[participant]name=\"Bob\"",
+            "S1[message]id=\"zenuml-statement-0\"parent=nullsection=nullfrom=[P1]name=\"Alice\"to=[P2]name=\"Bob\"style=asynchronousassignment=nulllabel=\"Hello\"bodyCount=0",
+            "S2[return]id=\"zenuml-statement-1\"parent=nullsection=nullfrom=[P2]name=\"Bob\"to=[P1]name=\"Alice\"label=\"Reply\"",
+            "S1details:{",
+            "S2details:{",
+            "explicit_from:\"Alice\"",
+            "explicit_to:\"Alice\"",
+            "span:{",
+            "occurrences:[",
+        ] {
+            assert!(
+                compact.contains(expected),
+                "missing {expected:?}: {}",
+                full.text
+            );
+        }
+    }
+}
+
+#[cfg(all(feature = "presentation", feature = "diagram-requirement"))]
+#[test]
+fn requirement_ascii_matches_canonical_and_presentation_records_and_projection() {
+    let source = concat!(
+        "---\ntitle: Traceability\n---\n",
+        "requirementDiagram\n",
+        "requirement req {\nid: R-1\ntext: Login required\nrisk: high\nverifymethod: test\n}\n",
+        "element sys {\ntype: service\ndocref: spec.md\n}\n",
+        "sys - satisfies -> req\n",
+    );
+    for (source, primary_projection) in [
+        (source.to_string(), "diagrammatic"),
+        (
+            source.replace("sys - satisfies", "missing - satisfies"),
+            "structured_text",
+        ),
+    ] {
+        let renderer = Renderer::new();
+        for width in [4, 10, 80] {
+            let semantic = renderer
+                .parse_semantic(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let presentation = renderer
+                .prepare_presentation(&source, OperationControl::new())
+                .unwrap()
+                .unwrap();
+            let request = AsciiRequest {
+                options: AsciiRenderOptions::unicode(),
+                viewport: AsciiViewportPolicy::with_max_width(width)
+                    .overflow(OverflowPolicy::Fallback),
+                ..Default::default()
+            };
+            let RenderOutput::Ascii(Some(canonical)) = semantic
+                .render(merman::RenderTarget::Ascii(request.clone()))
+                .unwrap()
+            else {
+                panic!("expected canonical Requirement ASCII output");
+            };
+            let RenderOutput::Ascii(Some(full)) = presentation
+                .render(merman::RenderTarget::Ascii(request))
+                .unwrap()
+            else {
+                panic!("expected presentation Requirement ASCII output");
+            };
+            assert_eq!(canonical.text, full.text, "width {width}: {source}");
+            assert_eq!(canonical.report(), full.report());
+            assert_eq!(full.family, "requirement");
+            let fallback_expected = width == 4 && primary_projection == "diagrammatic";
+            assert_eq!(
+                full.outcome,
+                if fallback_expected {
+                    AsciiOutputOutcome::Fallback
+                } else {
+                    AsciiOutputOutcome::Primary
+                }
+            );
+            assert_eq!(
+                full.projection.as_str(),
+                if fallback_expected {
+                    "structured_text"
+                } else {
+                    primary_projection
+                }
+            );
+            assert!(full.emitted_extent.width <= width);
+            let compact: String = full.text.split_whitespace().collect();
+            for expected in [
+                "name=\"req\"id=\"R-1\"",
+                "text=\"Loginrequired\"risk=\"High\"verifyMethod=\"Test\"",
+                "N1[element]name=\"sys\"type=\"service\"docRef=\"spec.md\"",
+                "Traceability",
+            ] {
+                assert!(
+                    compact.contains(expected),
+                    "missing {expected:?}: {}",
+                    full.text
+                );
+            }
+            if primary_projection == "structured_text" {
+                assert!(
+                    compact
+                        .contains("source=[](unresolved)name=\"missing\"target=[R1]name=\"req\"")
+                );
+            } else {
+                assert!(compact.contains("source=[N1]name=\"sys\"target=[R1]name=\"req\""));
+            }
         }
     }
 }

@@ -121,6 +121,202 @@ fn render(source: &str, options: &Value) -> String {
         .unwrap()
 }
 
+#[cfg(feature = "ascii")]
+#[test]
+fn gantt_ascii_hosts_preserve_source_config_records_and_the_selected_projection() {
+    let body = concat!(
+        "gantt\ndateFormat YYYY-MM-DD\nsection Delivery work\n",
+        "Build phase: done, build, 2026-01-01, 2d\n",
+        "Review phase: crit, active, review, after build, 1d\n",
+    );
+    for (compact_mode, width) in [(false, 60_u64), (false, 59), (true, 59)] {
+        let gantt_config = if compact_mode {
+            "  gantt:\n    displayMode: compact\n"
+        } else {
+            ""
+        };
+        let source = format!(
+            "---\ntitle: Host release plan\nconfig:\n  theme: dark\n{gantt_config}---\n{body}"
+        );
+        let options = serde_json::to_vec(&json!({
+            "ascii": {"colorMode": "plain", "overflow": "fallback", "maxWidth": width},
+        }))
+        .unwrap();
+        let engine = merman_bindings_core::BindingEngine::from_options(&options).unwrap();
+        let cached = engine.render_ascii_result(source.as_bytes()).unwrap();
+        let once = merman_bindings_core::render_ascii_result(source.as_bytes(), &options).unwrap();
+        assert_eq!(
+            cached.data(),
+            once.data(),
+            "compact {compact_mode}, width {width}"
+        );
+        let cached_metadata: Value = serde_json::from_slice(cached.metadata_json()).unwrap();
+        let once_metadata: Value = serde_json::from_slice(once.metadata_json()).unwrap();
+        assert_eq!(cached_metadata["output_plan"], once_metadata["output_plan"]);
+        let plan = &cached_metadata["output_plan"];
+        let fallback = !compact_mode && width < 60;
+        assert_eq!(plan["kind"], "ascii");
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["family"], "gantt");
+        assert_eq!(plan["layout_profile"], "canonical");
+        assert_eq!(plan["compact_attempted"], false);
+        assert_eq!(plan["fallback_attempted"], fallback);
+        assert_eq!(
+            plan["outcome"],
+            if fallback { "fallback" } else { "primary" }
+        );
+        assert_eq!(
+            plan["projection"],
+            if compact_mode || fallback {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert!(plan["emitted_width"].as_u64().unwrap() <= width);
+        let text = std::str::from_utf8(cached.data()).unwrap();
+        assert!(!text.contains('\u{1b}'));
+        let records: String = text
+            .lines()
+            .map(|line| line.strip_prefix("  ").unwrap_or(line))
+            .collect();
+        for expected in [
+            "sourceTitle:\"Host release plan\"",
+            "label=\"Build phase\"",
+            "label=\"Review phase\"",
+            "section=\"Delivery work\"",
+            "T1 interval (UTC): 2026-01-01 -> 2026-01-03",
+            "T2 interval (UTC): 2026-01-03 -> 2026-01-04",
+        ] {
+            assert!(records.contains(expected), "missing {expected:?}: {text}");
+        }
+        let compact: String = text.split_whitespace().collect();
+        for expected in ["ganttdetails:{", "sourceConfig:{", "\"theme\":\"dark\""] {
+            assert!(compact.contains(expected), "missing {expected:?}: {text}");
+        }
+        if compact_mode {
+            assert!(compact.contains("\"gantt\":{\"displayMode\":\"compact\"}"));
+        }
+    }
+}
+
+#[cfg(all(feature = "ascii", feature = "diagram-git-graph"))]
+#[test]
+fn gitgraph_ascii_hosts_keep_track_records_and_the_actual_output_plan() {
+    let body = "gitGraph LR:\ncommit id:\"A\"\nbranch feature\ncommit id:\"F\"\ncheckout main\ncommit id:\"B\"\nmerge feature id:\"M\" tag:\"v1\"\n";
+    for (parallel, width) in [(false, 80), (false, 20), (true, 80)] {
+        let source = format!(
+            "---\ntitle: Host history\nconfig:\n  theme: dark\n  gitGraph:\n    parallelCommits: {parallel}\n---\n{body}"
+        );
+        let options = serde_json::to_vec(&json!({ "ascii": { "colorMode": "plain", "overflow": "fallback", "maxWidth": width } })).unwrap();
+        let engine = merman_bindings_core::BindingEngine::from_options(&options).unwrap();
+        let cached = engine.render_ascii_result(source.as_bytes()).unwrap();
+        let once = merman_bindings_core::render_ascii_result(source.as_bytes(), &options).unwrap();
+        assert_eq!(cached.data(), once.data());
+        assert_eq!(cached.metadata_json(), once.metadata_json());
+        let Some(merman_bindings_core::BindingOutputPlan::Ascii(plan)) =
+            cached.metadata().output_plan()
+        else {
+            panic!("missing ASCII plan")
+        };
+        assert_eq!(plan.family(), "gitGraph");
+        assert_eq!(
+            plan.projection(),
+            if !parallel && width == 80 {
+                "diagrammatic"
+            } else {
+                "structured_text"
+            }
+        );
+        assert_eq!(
+            plan.outcome(),
+            if width == 20 { "fallback" } else { "primary" }
+        );
+        assert_eq!(plan.fallback_attempted(), width == 20);
+        assert!(plan.emitted_width() <= width);
+        let records: String = std::str::from_utf8(cached.data())
+            .unwrap()
+            .split_once("GitGraph records")
+            .unwrap()
+            .1
+            .split_whitespace()
+            .collect();
+        assert_eq!(records.matches("[commit]").count(), 4);
+        assert!(records.contains("parents=[\"B\",\"F\"]"));
+        assert!(records.contains("sourceTitle:\"Hosthistory\""));
+        assert!(records.contains("\"theme\":\"dark\""));
+    }
+}
+
+#[cfg(feature = "ascii")]
+#[test]
+fn zenuml_ascii_hosts_keep_source_records_and_the_complete_width_fallback() {
+    let source = format!("---\ntitle: Host ZenUML\nconfig:\n  theme: dark\n---\n{ZENUML}");
+    for width in [None, Some(10)] {
+        let mut options = json!({"ascii": {"colorMode": "plain", "overflow": "fallback"}});
+        if let Some(width) = width {
+            options["ascii"]["maxWidth"] = json!(width);
+        }
+        let options = serde_json::to_vec(&options).unwrap();
+        let engine = merman_bindings_core::BindingEngine::from_options(&options).unwrap();
+        let cached = engine.render_ascii_result(source.as_bytes()).unwrap();
+        let once = merman_bindings_core::render_ascii_result(source.as_bytes(), &options).unwrap();
+        assert_eq!(cached.data(), once.data(), "width {width:?}");
+        let cached_metadata: Value = serde_json::from_slice(cached.metadata_json()).unwrap();
+        let once_metadata: Value = serde_json::from_slice(once.metadata_json()).unwrap();
+        assert_eq!(cached_metadata["output_plan"], once_metadata["output_plan"]);
+        let plan = &cached_metadata["output_plan"];
+        assert_eq!(plan["kind"], "ascii");
+        assert_eq!(plan["schema_version"], 4);
+        assert_eq!(plan["family"], "zenuml");
+        assert_eq!(plan["encoding"], "plain");
+        assert_eq!(plan["layout_profile"], "canonical");
+        assert_eq!(plan["requested_graph_presentation"], "strict");
+        assert_eq!(plan["compact_attempted"], false);
+        assert_eq!(plan["fallback_capability"], "available");
+        assert_eq!(plan["fallback_attempted"], width.is_some());
+        assert_eq!(plan["primary_overflowed"], width.is_some());
+        assert_eq!(plan["emitted_overflowed"], false);
+        assert_eq!(
+            plan["projection"],
+            if width.is_some() {
+                "structured_text"
+            } else {
+                "diagrammatic"
+            }
+        );
+        assert_eq!(
+            plan["outcome"],
+            if width.is_some() {
+                "fallback"
+            } else {
+                "primary"
+            }
+        );
+        if let Some(width) = width {
+            assert!(plan["emitted_width"].as_u64().unwrap() <= width);
+        }
+        let text = std::str::from_utf8(cached.data()).unwrap();
+        assert!(!text.contains('\u{1b}'));
+        let compact: String = text.split_whitespace().collect();
+        for expected in [
+            "zenumldetails:{",
+            "sourceTitle:\"HostZenUML\"",
+            "sourceConfig:{",
+            "\"theme\":\"dark\"",
+            "Alice",
+            "Bob",
+            "Hello",
+            "Reply",
+            "zenuml-statement-0",
+            "zenuml-statement-1",
+        ] {
+            assert!(compact.contains(expected), "missing {expected:?}: {text}");
+        }
+    }
+}
+
 fn has_class(node: roxmltree::Node<'_, '_>, class: &str) -> bool {
     node.attribute("class")
         .is_some_and(|classes| classes.split_ascii_whitespace().any(|item| item == class))

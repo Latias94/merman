@@ -53,7 +53,7 @@ impl AsciiLayoutProfile {
     }
 }
 
-/// Presentation policy for the admitted Flowchart, Swimlane, and State graph families.
+/// Presentation policy for admitted Agentflow, Flowchart, Requirement, Swimlane, and State graphs.
 #[non_exhaustive]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AsciiGraphPresentation {
@@ -231,7 +231,10 @@ pub(crate) struct XyChartLayoutPolicy {
 pub(crate) struct AsciiLayoutPolicies {
     pub profile: AsciiLayoutProfile,
     pub flowchart: FlowchartLayoutPolicy,
+    pub agentflow: GraphLayoutPolicy,
+    pub requirement: GraphLayoutPolicy,
     pub state: GraphLayoutPolicy,
+    pub usecase: GraphLayoutPolicy,
     pub sequence: SequenceLayoutPolicy,
     pub xychart: XyChartLayoutPolicy,
 }
@@ -422,7 +425,10 @@ impl AsciiRenderOptions {
                     structural_charset: host.structural_charset,
                     terminal_width_profile: host.terminal_width_profile,
                 },
-                state: state_layout_policy(self, host),
+                state: terminal_graph_layout_policy(self, host),
+                usecase: terminal_graph_layout_policy(self, host),
+                agentflow: terminal_graph_layout_policy(self, host),
+                requirement: terminal_graph_layout_policy(self, host),
                 sequence: SequenceLayoutPolicy {
                     participant_label_wrap_width: 12,
                     participant_spacing: self.resolved_sequence_participant_spacing(),
@@ -580,7 +586,10 @@ impl AsciiRenderOptions {
     }
 }
 
-fn state_layout_policy(options: AsciiRenderOptions, host: AsciiHostPolicy) -> GraphLayoutPolicy {
+fn terminal_graph_layout_policy(
+    options: AsciiRenderOptions,
+    host: AsciiHostPolicy,
+) -> GraphLayoutPolicy {
     GraphLayoutPolicy {
         node_padding_x: options.node_padding_x.unwrap_or(options.box_border_padding),
         node_padding_y: options.resolved_graph_node_padding_y(),
@@ -691,6 +700,7 @@ mod tests {
             .resolve_policies();
 
         assert_eq!(canonical.output, compact.output);
+        assert_eq!(canonical.layout.usecase, compact.layout.usecase);
         assert_eq!(canonical.options.flowchart_node_label_wrap_width, 40);
         assert_eq!(compact.options.flowchart_node_label_wrap_width, 40);
         assert_eq!(canonical.options.sequence_participant_spacing, 5);

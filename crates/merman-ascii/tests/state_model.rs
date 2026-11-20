@@ -1379,3 +1379,68 @@ fn bidirectional_state_labels_keep_reading_clearance() {
     assert!(!rendered.contains("submitchanges requested"), "{rendered}");
     assert!(!rendered.contains("changes requestedsubmit"), "{rendered}");
 }
+
+#[test]
+fn state_original_concurrent_conditions_keep_every_label_and_transition() {
+    let source = concat!(
+        "stateDiagram-v2\r\n",
+        "    [*] --> Active\r\n",
+        "\r\n",
+        "    state Active {\r\n",
+        "        [*] --> NumLockOff\r\n",
+        "        NumLockOff --> NumLockOn : EvNumLockPressed\r\n",
+        "        NumLockOn --> NumLockOff : EvNumLockPressed\r\n",
+        "        --\r\n",
+        "        [*] --> CapsLockOff\r\n",
+        "        CapsLockOff --> CapsLockOn : EvCapsLockPressed\r\n",
+        "        CapsLockOn --> CapsLockOff : EvCapsLockPressed\r\n",
+        "        --\r\n",
+        "        [*] --> ScrollLockOff\r\n",
+        "        ScrollLockOff --> ScrollLockOn : EvScrollLockPressed\r\n",
+        "        ScrollLockOn --> ScrollLockOff : EvScrollLockPressed\r\n",
+        "    }\r\n",
+    );
+    let model = support::parse_model(source);
+    let options = AsciiRenderOptions::unicode();
+    let rendered = support::render_model_with_resources(
+        &model,
+        &options,
+        merman_ascii::AsciiResourcePolicy::for_profile(
+            merman_model::resources::ResourceProfile::TrustedNative,
+        ),
+    )
+    .expect("the original concurrent State diagram must retain a complete strict rendering");
+    support::assert_rectangular_terminal_grid(&rendered);
+    let (width, height) = support::terminal_extent(&rendered);
+    assert!(width <= 71 && height <= 79, "{rendered}");
+    for condition in [
+        "EvNumLockPressed",
+        "EvCapsLockPressed",
+        "EvScrollLockPressed",
+    ] {
+        assert_eq!(rendered.matches(condition).count(), 2, "{rendered}");
+    }
+    for state in [
+        "NumLockOff",
+        "NumLockOn",
+        "CapsLockOff",
+        "CapsLockOn",
+        "ScrollLockOff",
+        "ScrollLockOn",
+    ] {
+        assert_eq!(rendered.matches(state).count(), 1, "{rendered}");
+    }
+    assert_eq!(rendered.matches('●').count(), 4, "{rendered}");
+    assert_eq!(
+        rendered
+            .chars()
+            .filter(|ch| matches!(ch, '►' | '◄' | '▲' | '▼'))
+            .count(),
+        10,
+        "{rendered}",
+    );
+    assert!(
+        !rendered.contains("divider-id") && !rendered.contains("id-"),
+        "{rendered}"
+    );
+}

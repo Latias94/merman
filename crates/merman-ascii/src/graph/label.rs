@@ -49,6 +49,7 @@ pub(super) struct GraphLabelMetrics {
 #[derive(Debug, Clone)]
 pub(super) struct GraphNodeLabelPlan {
     kind: GraphNodeLabelPlanKind,
+    tabular: bool,
     primary: GraphLabelSectionPlan,
     secondary: Option<GraphLabelSectionPlan>,
     title_line_count: usize,
@@ -97,6 +98,7 @@ struct GraphLabelPartPlan {
 #[derive(Debug)]
 pub(crate) struct DeferredGraphNodeLabelPlan<'a> {
     kind: GraphNodeLabelPlanKind,
+    tabular: bool,
     primary: DeferredGraphLabelSectionPlan<'a>,
     secondary: Option<DeferredGraphLabelSectionPlan<'a>>,
     metrics: GraphLabelMetrics,
@@ -154,6 +156,7 @@ pub(super) struct GraphLabel {
     width: usize,
     width_profile: TerminalWidthProfile,
     compartment_break_after: Option<usize>,
+    tabular: bool,
 }
 
 impl GraphLabel {
@@ -183,6 +186,7 @@ impl GraphLabel {
             width: 0,
             width_profile,
             compartment_break_after: None,
+            tabular: false,
         }
     }
 
@@ -247,7 +251,26 @@ impl GraphLabel {
         if self.lines.is_empty() {
             return 0;
         }
-        self.lines.len() + (self.lines.len() - 1) * GRAPH_LABEL_LINE_GAP
+        self.line_y_offset(self.lines.len() - 1) + 1
+    }
+
+    pub(super) fn line_y_offset(&self, index: usize) -> usize {
+        if self.tabular {
+            index + usize::from(self.is_tabular_body(index))
+        } else {
+            index * (GRAPH_LABEL_LINE_GAP + 1)
+        }
+    }
+
+    pub(super) fn is_tabular_body(&self, index: usize) -> bool {
+        self.tabular
+            && self
+                .compartment_break_after
+                .is_some_and(|title| index >= title)
+    }
+
+    pub(super) const fn is_tabular(&self) -> bool {
+        self.tabular
     }
 
     pub(super) fn compartment_break_after(&self) -> Option<usize> {
@@ -302,6 +325,7 @@ impl GraphLabel {
             width,
             width_profile,
             compartment_break_after,
+            tabular: false,
         }
     }
 
@@ -363,6 +387,7 @@ impl GraphLabel {
             width,
             width_profile,
             compartment_break_after: None,
+            tabular: false,
         })
     }
 
@@ -507,6 +532,24 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
     ) -> crate::Result<Option<Self>> {
+        Self::try_joined_with_wrap(
+            fragments,
+            fallback,
+            None,
+            diagram_type,
+            width_profile,
+            resources,
+        )
+    }
+
+    pub(crate) fn try_joined_with_wrap(
+        fragments: impl IntoIterator<Item = &'a str>,
+        fallback: Option<&'a str>,
+        wrap_width: Option<usize>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Option<Self>> {
         let mut parts = Vec::new();
         for raw in fragments {
             resources.checkpoint()?;
@@ -514,7 +557,7 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
                 raw,
                 width_profile,
                 true,
-                None,
+                wrap_width,
                 LabelBreakPolicy::MermaidLabelBreaks,
                 resources,
             )?
@@ -530,7 +573,7 @@ impl<'a> DeferredGraphLabelSectionPlan<'a> {
             let Some(fallback) = fallback else {
                 return Ok(None);
             };
-            return Self::try_single(fallback, None, diagram_type, width_profile, resources)
+            return Self::try_single(fallback, wrap_width, diagram_type, width_profile, resources)
                 .map(Some);
         }
         Self::from_parts(parts, resources).map(Some)
@@ -698,6 +741,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
         let metrics = primary.metrics;
         Ok(Self {
             kind: GraphNodeLabelPlanKind::Single,
+            tabular: false,
             secondary: None,
             metrics: graph_label_metrics(metrics.max_width, metrics.line_count, resources)?,
             document_cells: metrics.document_cells,
@@ -713,6 +757,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
     pub(crate) fn compartmented(
         primary: DeferredGraphLabelSectionPlan<'a>,
         secondary: DeferredGraphLabelSectionPlan<'a>,
+        wrap_width: Option<usize>,
         diagram_type: &'static str,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
@@ -741,6 +786,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
         )?;
         Ok(Self {
             kind: GraphNodeLabelPlanKind::Compartmented,
+            tabular: false,
             metrics: graph_label_metrics(
                 primary.metrics.max_width.max(secondary.metrics.max_width),
                 line_count,
@@ -753,12 +799,36 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
             secondary: Some(secondary),
             width_profile,
             diagram_type,
-            wrap_width: None,
+            wrap_width,
         })
     }
 
     pub(crate) const fn document_cells(&self) -> usize {
         self.document_cells
+    }
+
+    /// Dense body rows share one text-block origin; the title retains its own divider.
+    #[cfg(feature = "diagram-usecase")]
+    pub(crate) fn table(
+        primary: DeferredGraphLabelSectionPlan<'a>,
+        secondary: DeferredGraphLabelSectionPlan<'a>,
+        diagram_type: &'static str,
+        width_profile: TerminalWidthProfile,
+        resources: &ResourceContext,
+    ) -> crate::Result<Self> {
+        let line_count =
+            resources.checked_grid_add(primary.metrics.line_count, secondary.metrics.line_count)?;
+        let mut plan = Self::compartmented(
+            primary,
+            secondary,
+            None,
+            diagram_type,
+            width_profile,
+            resources,
+        )?;
+        plan.tabular = true;
+        plan.metrics.content_height = resources.checked_grid_add(line_count, 1)?;
+        Ok(plan)
     }
 
     pub(crate) const fn materialized_bytes(&self) -> usize {
@@ -796,6 +866,7 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
             .map_err(|_| label_allocation_failed())?;
         plans.push(GraphNodeLabelPlan {
             kind: self.kind,
+            tabular: self.tabular,
             primary,
             secondary,
             title_line_count,
@@ -815,6 +886,26 @@ impl<'a> DeferredGraphNodeLabelPlan<'a> {
 }
 
 impl PreparedGraphNodeText {
+    /// Transfers a single prepared source and its replay plan without rescanning or copying it.
+    #[cfg(any(
+        feature = "diagram-architecture",
+        feature = "diagram-block",
+        feature = "diagram-c4"
+    ))]
+    pub(super) fn into_single_label_plan(mut self) -> crate::Result<(String, GraphNodeLabelPlan)> {
+        if self.compartments.is_some() || self.plans.len() != 1 {
+            return Err(invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE));
+        }
+        let plan = self
+            .plans
+            .pop()
+            .ok_or_else(|| invalid_graph_label_plan(GENERIC_GRAPH_DIAGRAM_TYPE))?;
+        if plan.kind != GraphNodeLabelPlanKind::Single {
+            return Err(invalid_graph_label_plan(plan.diagram_type));
+        }
+        Ok((self.label, plan))
+    }
+
     pub(super) fn label(&self) -> &str {
         &self.label
     }
@@ -934,6 +1025,7 @@ impl GraphNodeLabelPlan {
         };
         Ok(GraphNodeLabelPlanHandle::Owned(Self {
             kind,
+            tabular: false,
             primary,
             secondary,
             title_line_count,
@@ -974,15 +1066,7 @@ impl GraphNodeLabelPlan {
         self.admit_materialization(resources)?;
         match (self.kind, node.compartments()) {
             (GraphNodeLabelPlanKind::Single, None) => {
-                let (lines, width) = self
-                    .primary
-                    .materialize_after_admission(node.label(), resources)?;
-                Ok(GraphLabel {
-                    lines,
-                    width,
-                    width_profile: self.width_profile,
-                    compartment_break_after: None,
-                })
+                self.materialize_single_after_admission(node.label(), resources)
             }
             (GraphNodeLabelPlanKind::Compartmented, Some(compartments)) => {
                 let Some(body) = self.secondary.as_ref() else {
@@ -1005,10 +1089,48 @@ impl GraphNodeLabelPlan {
                     width: title_width.max(body_width),
                     width_profile: self.width_profile,
                     compartment_break_after: Some(self.title_line_count.max(1)),
+                    tabular: self.tabular,
                 })
             }
             _ => Err(invalid_graph_label_plan(self.diagram_type)),
         }
+    }
+
+    /// Replays a prepared group title after the family has finished its source-copy batch.
+    #[cfg(any(
+        feature = "diagram-architecture",
+        feature = "diagram-block",
+        feature = "diagram-c4"
+    ))]
+    pub(super) fn materialize_single_label(
+        &self,
+        source: &str,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabel> {
+        if self.kind != GraphNodeLabelPlanKind::Single {
+            return Err(invalid_graph_label_plan(self.diagram_type));
+        }
+        resources.transaction(|resources| {
+            self.admit_materialization(resources)?;
+            self.materialize_single_after_admission(source, resources)
+        })
+    }
+
+    fn materialize_single_after_admission(
+        &self,
+        source: &str,
+        resources: &ResourceContext,
+    ) -> crate::Result<GraphLabel> {
+        let (lines, width) = self
+            .primary
+            .materialize_after_admission(source, resources)?;
+        Ok(GraphLabel {
+            lines,
+            width,
+            width_profile: self.width_profile,
+            compartment_break_after: None,
+            tabular: false,
+        })
     }
 
     fn admit_materialization(&self, resources: &ResourceContext) -> crate::Result<()> {

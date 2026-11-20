@@ -84,6 +84,13 @@ Language behavior is driven by parser-backed facts from `merman-analysis` and qu
 - code actions use explicit `DiagnosticFix` metadata, never invent edits for diagnostics without a safe fix, and materialize one workspace edit when several requested diagnostics share the same fix allocation; and
 - completion uses editor-core replacement ranges, while resolve adds documentation without changing the selected insert edit.
 
+Renaming `A` to `...` in the Flowchart `A-->B` produces `... -->B`. Renaming `B` to `ops` in `A---B` produces `A--- ops`, keeping the open edge and the full target name.
+
+Flowchart renames check the node's whole reference group before returning edits. A node with a `class`, `click`,
+or inline `:::` binding cannot take a comma-containing ID because Mermaid splits those targets
+at commas. A plain node or a `style` target can take that ID. An ID beginning with `%%` is valid
+where it survives Mermaid's comment preprocessing.
+
 `Unavailable` provenance means no parser-backed body facts exist. Unknown or unrecoverable body
 text therefore receives no guessed body symbols, navigation, or rename. Tolerant Tree-sitter
 syntax highlighting remains independent of that semantic state. Source-start diagram headers and

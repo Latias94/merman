@@ -6,97 +6,217 @@ import type { AsciiCapability } from "@mermanjs/web";
 export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   {
     "diagram_type": "agentflow",
-    "display_name": "agentflow",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Agentflow",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "distinct task, tool, input, reference-document, action, decision, and connector roles",
+      "sequence arrows, headless dotted references, and failure cross markers",
+      "expanded flow containers, nesting, local directions, and global node ownership",
+      "complete keyed original entities and relationships for rich or collapsed reading records",
+      "metadata types, authored styles, diagnostics, source configuration, and quoted identities in records"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "semantic metadata, collapsed views, unsupported shapes, and ambiguous containment use StructuredText primaries",
+      "collapsed reading records disclose authored children and relationships rather than claiming browser-visible geometry",
+      "terminal shapes approximate browser geometry and do not execute tools or resolve connectorRef metadata",
+      "dense spatial routes remain bounded; Adaptive can select complete Plain records"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/agentflow_model.rs",
+        "note": "parser-backed roles, operators, scopes, metadata, viewport, resource and cancellation coverage"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/AGENTFLOW_SUPPORT.md",
+        "note": "family-owned spatial admission and complete keyed reading records"
       }
     ]
   },
   {
     "diagram_type": "architecture",
-    "display_name": "architecture",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Architecture",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "canonical services, junctions, nested groups, and typed relationships",
+      "independent declared source and target sides and arrow ownership",
+      "group endpoints anchored to their owning service rather than arbitrary group members",
+      "ordered row and column alignment constraints with explicit conflict classification",
+      "complete keyed node, group, edge, layout-hint, accessibility, and source records"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "terminal roles and frames approximate browser geometry; icons and authored metadata remain records",
+      "invalid or conflicting detached geometry uses complete StructuredText primaries",
+      "Canonical layout and Strict graph presentation only; no universal spatial extent guarantee",
+      "strict routing, resources, cancellation, and deadlines remain errors; Plain width fallback retains complete records"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/architecture_model.rs",
+        "note": "family-local identity, declared sides, group anchors, alignment, records, and operation boundaries"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/ARCHITECTURE_SUPPORT.md",
+        "note": "family-owned spatial semantics and complete Architecture reading records"
       }
     ]
   },
   {
     "diagram_type": "block",
-    "display_name": "block",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Block",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "family-owned terminal columns and authored column spans",
+      "ordered rows and explicit spacer cells",
+      "nested composite block frames",
+      "independent source and target markers, strokes, and edge labels",
+      "complete keyed hierarchy and relationship records for width fallback"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "terminal geometry approximates browser shapes",
+      "non-spatial numeric columns and spans require explicit diagnostics",
+      "bounded routing may reject dense or colliding fixed-grid relationships",
+      "styling and accessibility metadata are retained by fallback rather than browser painting"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/block_model.rs",
+        "note": "parser-backed terminal column, span, nesting, edge, and resource contracts"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/BLOCK_SUPPORT.md",
+        "note": "family-owned fixed-grid support and diagnostic boundaries"
       }
     ]
   },
   {
     "diagram_type": "c4",
-    "display_name": "c4",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "C4",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "Context, Container, Component, Dynamic, and Deployment views",
+      "declaration-order rows with family-owned shape and boundary column counts",
+      "distinct shape aliases, role-labelled rectangles, and nested boundary frames",
+      "shape-first alias resolution and explicit boundary relationship endpoints",
+      "independent source and target arrowheads and final-order Dynamic numbering",
+      "short spatial relationship keys with complete labels, technologies, and descriptions in records",
+      "complete keyed shape, boundary, relationship, layout, accessibility, style, and source metadata"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "terminal role rectangles approximate browser C4 shapes; icons and authored styles remain records",
+      "synthetic global boundaries are hidden spatially and retained in the reading inventory",
+      "ambiguous, unresolved, cyclic, or non-spatial detached models use complete StructuredText primaries",
+      "direction-suffixed relation names do not force cardinal ports in the pinned C4 renderer",
+      "bounded strict routing can reject dense fixed-row scenes; Plain width fallback retains complete records"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/c4_model.rs",
+        "note": "parser-backed views, identity, row layout, nesting, markers, reading records, resources and cancellation"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/C4_SUPPORT.md",
+        "note": "family-owned spatial admission and complete keyed C4 reading records"
       }
     ]
   },
@@ -156,7 +276,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "class compartments, annotations, and relationship coverage are capability prior art"
       },
       {
@@ -176,7 +296,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
         "note": "shared relation_graph gap owner records routed and summary boundaries"
       }
     ]
@@ -238,6 +358,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "relationship labels",
       "cardinality markers",
       "parent diamond cardinality markers",
+      "nested ER group frames and typed group endpoints",
+      "actual member identity disclosure for group facade routes",
       "identifying relationships",
       "top-down, bottom-up, left-right, and right-left directions",
       "self-relationship loops",
@@ -253,12 +375,14 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "bounded private-channel search does not guarantee a route for every topology",
       "unknown cardinality markers are unsupported",
       "unknown relationship identity kinds are unsupported",
+      "ancestor/member relationships use typed summaries alongside group geometry",
+      "duplicate groups, ambiguous ownership, and shadowed forward-reference endpoints are unsupported",
       "accessibility, Mermaid diagram source comments, and styling metadata are intentionally omitted from terminal output"
     ],
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "ER attributes, relationships, and cardinalities are capability prior art"
       },
       {
@@ -278,7 +402,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-classer-010",
         "note": "shared relation_graph gap owner records routed and summary boundaries"
       }
     ]
@@ -340,6 +464,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "supported_semantics": [
       "root directions",
       "boxed nodes and common shapes",
+      "explicit type compartments for admitted uncommon shapes",
+      "icon and image metadata as complete terminal text",
       "terminal-cell wrapped node labels",
       "edge labels",
       "open dotted and thick edges",
@@ -348,7 +474,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "terminal color roles"
     ],
     "limits": [
-      "icons and images are omitted",
+      "icon glyphs and image pixels are not rendered; asset metadata is disclosed as text",
+      "fixed control shapes reject asset metadata rather than hiding it",
       "callbacks and links are not terminal output",
       "some uncommon route shapes are approximate"
     ],
@@ -360,12 +487,12 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "graph ASCII shape and disconnected-layout tests are capability prior art"
       },
       {
         "kind": "local_advantage",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
         "note": "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability"
       },
       {
@@ -379,7 +506,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "diagram_type": "gantt",
     "display_name": "Gantt",
     "semantic_coverage": "partial",
-    "primary_projection": "structured_text",
+    "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
@@ -401,7 +528,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "fallback_encodings": [
       "plain"
     ],
-    "support_level": "summary",
+    "support_level": "partial",
     "supported_semantics": [
       "titles",
       "sections",
@@ -413,24 +540,29 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "tags",
       "time-of-day precision",
       "deterministic date formatting",
-      "length-framed authored report fields"
+      "quoted authored report fields",
+      "shared elapsed-time axis over resolved task intervals",
+      "scheduled-midpoint milestones and visible-end task bars",
+      "independent done, active and critical status badges",
+      "complete source-ordered keyed task and metadata records"
     ],
     "limits": [
-      "no terminal timeline geometry",
-      "output is a readable task summary",
-      "links and click callbacks are metadata-only",
+      "terminal endpoints are rounded to cells; collapsed intervals use a marker",
+      "compact, vertical markers, unprocessed tasks, noncanonical order and zero-span domains retain complete records",
+      "calendar tick styling, today markers and dependency arrows are records rather than terminal geometry",
+      "links and click callbacks are retained as non-executable records",
       "duplicate or empty task ids are rejected"
     ],
     "evidence": [
       {
         "kind": "local_semantic_probe",
-        "source": "crates/merman-ascii/tests/new_family_models.rs",
-        "note": "typed-model tests preserve task identity and typed scheduling constraints with injective authored-field framing without claiming pseudo-graph geometry"
+        "source": "crates/merman-ascii/tests/gantt_timeline.rs",
+        "note": "parser-backed aligned time axis, milestones, excludes, complete records, viewport and resource contracts"
       },
       {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-        "note": "support matrix classifies Gantt as structured-text output"
+        "source": "docs/rendering/ascii/GANTT_SUPPORT.md",
+        "note": "bounded family-owned timeline admission and complete reading records"
       }
     ]
   },
@@ -438,7 +570,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "diagram_type": "gitgraph",
     "display_name": "GitGraph",
     "semantic_coverage": "partial",
-    "primary_projection": "structured_text",
+    "primary_projection": "diagrammatic",
     "structured_text_fallback": true,
     "layout_profiles": [
       "canonical"
@@ -460,7 +592,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "fallback_encodings": [
       "plain"
     ],
-    "support_level": "summary",
+    "support_level": "partial",
     "supported_semantics": [
       "commits",
       "branches",
@@ -469,23 +601,27 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "cherry-picks",
       "parent topology",
       "explicit merge id and type overrides",
-      "ordering"
+      "ordering",
+      "fixed branch tracks in LR, TB, and BT directions",
+      "crossings distinct from ancestry junctions",
+      "source-index commit and branch records"
     ],
     "limits": [
-      "does not draw a full Git lane graph",
-      "terminal output normalizes implementation flags into semantic labels",
+      "parallel commits and ambiguous or non-tip routes use complete record primaries",
+      "cherry-pick sources are records rather than ancestry lines",
+      "branch heads and creation points absent from the model are not inferred",
       "unknown direct-model commit types are rejected"
     ],
     "evidence": [
       {
         "kind": "local_semantic_probe",
-        "source": "crates/merman-ascii/tests/new_family_models.rs",
-        "note": "typed-model tests preserve graph history facts in terminal text"
+        "source": "crates/merman-ascii/tests/git_graph_tracks.rs",
+        "note": "parser-backed direction, topology, identity, width, and encoding probes"
       },
       {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#structured-text-outputs",
-        "note": "support matrix classifies GitGraph as structured-text output"
+        "source": "docs/rendering/ascii/GITGRAPH_SUPPORT.md",
+        "note": "bounded branch tracks and complete records own the spatial admission contract"
       }
     ]
   },
@@ -618,6 +754,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "columns",
       "cards",
       "stable card and group ids",
+      "independent repeated card occurrences",
       "assignments",
       "metadata",
       "deterministic Unassigned grouping",
@@ -627,7 +764,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "limits": [
       "drag and board presentation metadata are not terminal output",
       "group parent ownership is disclosed without nested board geometry",
-      "duplicate or empty ids are rejected"
+      "duplicate group ids and empty ids are rejected"
     ],
     "evidence": [
       {
@@ -761,25 +898,58 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "pie",
-    "display_name": "pie",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Pie",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "family-owned percent bars on one shared 0..100% scale with 50 terminal cells",
+      "all categories in source order with stable P1, P2, and subsequent reading keys",
+      "complete keyed labels and exact numeric values, including non-finite direct-model values",
+      "showData controls raw values beside bars; exact values always remain in records",
+      "title, accessibility metadata, source title, and source configuration in records",
+      "upstream first-duplicate-label wins for parsed input; direct-model duplicates retain separate keys",
+      "complete keyed reading records for non-spatial data and narrow width fallback"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "percent bars approximate Pie proportions rather than browser slice geometry",
+      "diagrammatic admission requires nonempty finite nonnegative values with a positive total",
+      "empty, all-zero, non-finite, or negative data use complete StructuredText primaries with an explicit reason",
+      "positive values quantized below one bar cell are explicitly marked; no category is filtered",
+      "narrow fallback reflows complete keyed records without truncation and requires Plain encoding",
+      "only Canonical layout and Strict graph presentation are admitted"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/pie_model.rs",
+        "note": "parser-backed percent bars, exact records, direct-model admission, viewports, encodings, and resource coverage"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/PIE_SUPPORT.md",
+        "note": "family-owned percent-bar admission and complete keyed Pie reading records"
       }
     ]
   },
@@ -857,25 +1027,59 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "requirement",
-    "display_name": "requirement",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Requirement",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict",
+      "adaptive"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "one shared endpoint graph with R requirement and N element reading keys",
+      "all six requirement types with id, text, risk, and verifyMethod records",
+      "element type and docRef records",
+      "full contains, copies, derives, satisfies, verifies, refines, and traces labels",
+      "solid contains relationships with a source circle and no target arrow",
+      "dotted non-contains relationships with a target arrow",
+      "top-down, bottom-up, left-right, and right-left directions",
+      "complete keyed declarations and source/target relationship records following topology",
+      "classes, styles, accessibility, source title, and source configuration in records"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "ambiguous or duplicate names, unresolved endpoints, and unknown relation kinds or directions use StructuredText primaries",
+      "terminal geometry approximates browser nodes and does not paint CSS or resolve document references",
+      "dense spatial planning failures remain diagnostics; Adaptive can select complete Plain records",
+      "reading primaries use a natural width of 80; narrow fallback reflows complete keyed records without truncation"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/requirement_model.rs",
+        "note": "parser-backed shared endpoints, typed relations, complete fields, record primaries, viewports, and resource coverage"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/REQUIREMENT_SUPPORT.md",
+        "note": "family-owned spatial admission and complete keyed Requirement reading records"
       }
     ]
   },
@@ -958,7 +1162,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "sequence parser and block-layout cases are capability prior art"
       },
       {
@@ -1012,7 +1216,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "state-oriented ASCII shape ideas are prior art, not a byte oracle"
       },
       {
@@ -1022,7 +1226,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-state-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-state-010",
         "note": "remaining state presentation metadata is explicitly tracked"
       }
     ]
@@ -1060,6 +1264,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "supported_semantics": [
       "root directions",
       "boxed nodes and common shapes",
+      "explicit type compartments for admitted uncommon shapes",
+      "icon and image metadata as complete terminal text",
       "terminal-cell wrapped node labels",
       "edge labels",
       "open dotted and thick edges",
@@ -1068,7 +1274,8 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       "terminal color roles"
     ],
     "limits": [
-      "icons and images are omitted",
+      "icon glyphs and image pixels are not rendered; asset metadata is disclosed as text",
+      "fixed control shapes reject asset metadata rather than hiding it",
       "callbacks and links are not terminal output",
       "some uncommon route shapes are approximate"
     ],
@@ -1080,12 +1287,12 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "graph ASCII shape and disconnected-layout tests are capability prior art"
       },
       {
         "kind": "local_advantage",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#intentional-differences",
         "note": "true RL/BT handling is a local semantic target, not a beautiful-mermaid capability"
       },
       {
@@ -1226,25 +1433,56 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
   },
   {
     "diagram_type": "usecase",
-    "display_name": "usecase",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "Usecase",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "distinct actor, use-case, boundary, package, and note roles",
+      "association, include, extend, and generalization relationship identity",
+      "independent endpoint markers and dotted relationships",
+      "top-down, bottom-up, left-right, and right-left directions",
+      "boundary membership and note attachment",
+      "ordered JSON tables with typed paths, literal values, and non-finite number metadata",
+      "complete keyed entity and relationship records for width fallback"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "terminal role presentation approximates browser actor and ellipse geometry",
+      "JSON tables retain indexed array paths and quoted strings rather than browser cell geometry",
+      "bounded routing may reject dense or colliding compound relationships",
+      "styling, animation, and accessibility metadata are retained by fallback rather than browser painting"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/usecase_model.rs",
+        "note": "parser-backed family roles, relationship identity, scopes, viewports, and resources"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/USECASE_SUPPORT.md",
+        "note": "family-owned role projection and bounded route admission"
       }
     ]
   },
@@ -1348,7 +1586,7 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
     "evidence": [
       {
         "kind": "beautiful_mermaid_prior_art",
-        "source": "crates/merman-ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
+        "source": "docs/rendering/ascii/ASCII_REFERENCE_COMPARISON.md#family-comparison",
         "note": "XYChart ASCII and legend behavior are capability prior art"
       },
       {
@@ -1358,32 +1596,66 @@ export const GENERATED_ASCII_CAPABILITIES: readonly AsciiCapability[] = [
       },
       {
         "kind": "gap_registry",
-        "source": "crates/merman-ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
+        "source": "docs/rendering/ascii/ASCII_GAP_REGISTRY.md#a-xy-010",
         "note": "shared line topology retains sample ownership; terminal quantization, dense bars, and marker reuse remain explicit compact-layout limits"
       }
     ]
   },
   {
     "diagram_type": "zenuml",
-    "display_name": "zenuml",
-    "semantic_coverage": null,
-    "primary_projection": "none",
-    "structured_text_fallback": false,
-    "layout_profiles": [],
-    "graph_presentations": [],
-    "width_profiles": [],
-    "encodings": [],
-    "fallback_encodings": [],
-    "support_level": "unsupported",
-    "supported_semantics": [],
+    "display_name": "ZenUML",
+    "semantic_coverage": "partial",
+    "primary_projection": "diagrammatic",
+    "structured_text_fallback": true,
+    "layout_profiles": [
+      "canonical"
+    ],
+    "graph_presentations": [
+      "strict"
+    ],
+    "width_profiles": [
+      "unicode",
+      "cjk"
+    ],
+    "encodings": [
+      "plain",
+      "ansi16",
+      "ansi256",
+      "truecolor",
+      "html"
+    ],
+    "fallback_encodings": [
+      "plain"
+    ],
+    "support_level": "partial",
+    "supported_semantics": [
+      "declaration-ordered keyed participants and depth-first keyed statements",
+      "synchronous, asynchronous, return, self, creation, and nested call paths",
+      "nested control frames with sections, participant group heading bands, references, and dividers",
+      "complete appended ZenUML records retain identities, metadata, spans, and source configuration",
+      "iterative flat serialization preserves nested statement and section ownership"
+    ],
     "limits": [
-      "no terminal projection is available"
+      "missing references, duplicate identities, invalid groups, and invalid lifecycles use complete StructuredText primaries",
+      "terminal lifelines and frames approximate browser geometry; presentation metadata remains records",
+      "Canonical layout and Strict graph presentation only; no universal dense-scene or spatial extent guarantee",
+      "resource/allocation failures, cancellation, and deadlines remain errors under unchanged budgets; width fallback is Plain-only"
     ],
     "evidence": [
       {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman-ascii/tests/zenuml_model.rs",
+        "note": "family-local message, control, identity, record, viewport, resource, and cancellation contracts"
+      },
+      {
+        "kind": "local_semantic_probe",
+        "source": "crates/merman/tests/ascii_api.rs",
+        "note": "basic ZenUML scene and complete Plain fallback agree across canonical and presentation adapters"
+      },
+      {
         "kind": "support_matrix",
-        "source": "docs/rendering/ASCII_SUPPORT_MATRIX.md#unsupported-families",
-        "note": "the total capability matrix records this typed family as unsupported"
+        "source": "docs/rendering/ascii/ZENUML_SUPPORT.md",
+        "note": "family-owned borrowed ZenUML projection, complete records, and explicit admission boundaries"
       }
     ]
   }

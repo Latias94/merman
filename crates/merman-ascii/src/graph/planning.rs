@@ -1,7 +1,7 @@
 use super::charset::GraphCharset;
 #[cfg(test)]
 use super::layout::layout_graph_with_feedback;
-use super::layout::{GraphLayout, LayoutFeedback, LayoutInput};
+use super::layout::{GraphLayout, LayoutFeedback, LayoutInput, MeasuredLayout};
 use super::model::AsciiGraph;
 use super::routing::{self, RouteScenePlan};
 use crate::error::{AsciiError, Result};
@@ -18,6 +18,13 @@ pub(super) struct PlannedGraph<'graph> {
     pub(super) routes: RouteScenePlan<'graph>,
 }
 
+struct InitialGraph<'graph> {
+    measured: MeasuredLayout,
+    feedback: LayoutFeedback,
+    input: routing::SceneRoutingInput<'graph>,
+    incumbent: Option<RouteScenePlan<'graph>>,
+}
+
 pub(super) fn plan_graph<'graph>(
     graph: &'graph AsciiGraph,
     policy: &GraphLayoutPolicy,
@@ -28,10 +35,19 @@ pub(super) fn plan_graph<'graph>(
     let local_budget = GraphPlanningBudget::default();
     let execution = execution.with_graph_planning(&local_budget);
     execution.checkpoint(OperationPhase::Layout)?;
-    let mut feedback = LayoutFeedback::default();
     let layout_input = LayoutInput::try_new(graph, policy, resources, execution)?;
-    let mut measured = layout_input.generate(&feedback, resources, execution)?;
-    let input = routing::SceneRoutingInput::try_new(graph, &graph.edges, charset, resources)?;
+    let InitialGraph {
+        mut measured,
+        mut feedback,
+        input,
+        incumbent,
+    } = initial_layout(graph, &layout_input, charset, policy, resources, execution)?;
+    if let Some(routes) = incumbent {
+        return Ok(PlannedGraph {
+            layout: measured.layout,
+            routes,
+        });
+    }
     let mut next_feedback = 0;
     loop {
         execution.checkpoint(OperationPhase::Layout)?;
@@ -107,4 +123,79 @@ pub(super) fn plan_graph<'graph>(
             result => result?,
         };
     }
+}
+
+fn initial_layout<'graph>(
+    graph: &'graph AsciiGraph,
+    input: &LayoutInput<'_>,
+    charset: &GraphCharset,
+    policy: &GraphLayoutPolicy,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<InitialGraph<'graph>> {
+    let initial = input.generate(&LayoutFeedback::default(), resources, execution)?;
+    let routes = routing::SceneRoutingInput::try_new(graph, &graph.edges, charset, resources)?;
+    let allowance = &execution
+        .graph_planning()
+        .expect("scene planning budget")
+        .reflow_work;
+    let before = resources.layout_work_used();
+    let mut bounded = resources
+        .clone()
+        .with_planning_work_allowance(allowance.get());
+    let mut incumbent = None;
+    let candidate = (|| {
+        let mut feedback = LayoutFeedback::default();
+        if !feedback.record_initial_returns_with_input(input, &initial, &bounded)? {
+            return Ok(None);
+        }
+        // Spend at most half of the remaining preparation allowance proving that the
+        // current geometry needs no growth. Keep the other half for a measured rebuild.
+        let remaining = allowance
+            .get()
+            .saturating_sub(resources.layout_work_used() - before);
+        let mut probe = bounded.clone().with_planning_work_allowance(remaining / 2);
+        match routing::route_scene_with_input(
+            graph,
+            &initial.layout,
+            &routes,
+            charset,
+            policy,
+            &mut probe,
+            execution,
+        ) {
+            Ok(routes) => {
+                incumbent = Some(routes);
+                return Ok(None);
+            }
+            Err(
+                AsciiError::RoutingSearchExhausted { .. }
+                | AsciiError::PortCapacityExceeded { .. }
+                | AsciiError::PlanningWorkAllowanceExhausted,
+            ) => {}
+            Err(error) => return Err(error),
+        }
+        let measured = input.generate(&feedback, &mut bounded, execution)?;
+        Ok(Some((measured, feedback)))
+    })();
+    allowance.set(
+        allowance
+            .get()
+            .saturating_sub(resources.layout_work_used().saturating_sub(before)),
+    );
+    let (measured, feedback) = match candidate {
+        Ok(Some(candidate)) => candidate,
+        Ok(None) => (initial, LayoutFeedback::default()),
+        Err(AsciiError::PlanningWorkAllowanceExhausted) => {
+            allowance.set(0);
+            (initial, LayoutFeedback::default())
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(InitialGraph {
+        measured,
+        feedback,
+        input: routes,
+        incumbent,
+    })
 }

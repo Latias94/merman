@@ -1557,12 +1557,10 @@ fn layout_flowchart_with_model(
     // self-loops. Boundary edges use the visible collapsed node as their endpoint, while edges
     // wholly hidden by a collapsed subgraph are omitted.
     work_control.charge_adapter(model.edges.len())?;
-    let mut projected_edges: Vec<FlowEdge> = Vec::with_capacity(model.edges.len());
-    let mut projected_edge_owner_indices: Vec<usize> = Vec::with_capacity(model.edges.len());
+    let mut projected_edges = Vec::with_capacity(model.edges.len());
     for (edge_index, edge) in model.edges.iter().enumerate() {
         if let Some(projected) = super::project_flowchart_edge(edge, render_label_sources) {
-            projected_edges.push(projected);
-            projected_edge_owner_indices.push(edge_index);
+            projected_edges.push((edge_index, projected));
         }
     }
     work_control.charge_adapter(projected_edges.len())?;
@@ -1570,7 +1568,10 @@ fn layout_flowchart_with_model(
     // Mermaid's dagre adapter expands self-loop edges into a chain of two special label nodes plus
     // three edges. This avoids `v == w` edges in Dagre and is required for SVG parity (Mermaid
     // uses `*-cyclic-special-*` ids when rendering self-loops).
-    let self_loop_count = projected_edges.iter().filter(|e| e.from == e.to).count();
+    let self_loop_count = projected_edges
+        .iter()
+        .filter(|(_, edge)| edge.from == edge.to)
+        .count();
     let derived_render_edges = work_control.checked_add(
         projected_edges.len(),
         work_control.checked_mul(self_loop_count, 2)?,
@@ -1586,18 +1587,18 @@ fn layout_flowchart_with_model(
         std::collections::HashSet::new();
     let merge_self_loops = super::flowchart_dagre_merges_self_loop_segments(&model.keyword);
     let mut unmerged_first_slots = HashMap::new();
-    for (projected_index, e) in projected_edges.iter().enumerate() {
-        let edge_index = projected_edge_owner_indices[projected_index];
-        if e.from != e.to {
-            render_edges.push(std::borrow::Cow::Borrowed(e));
+    for (edge_index, projected) in projected_edges {
+        if projected.from != projected.to {
+            render_edges.push(projected.into_render_edge());
             render_edge_self_loop_meta.push(None);
             render_edge_owner_indices.push(edge_index);
             continue;
         }
 
-        let mut helper_edges = super::flowchart_self_loop_helper_edges(e);
+        let edge = projected.semantic;
+        let mut helper_edges = super::flowchart_self_loop_helper_edges(edge);
         helper_edges.edge_mid.label = model
-            .edge_label_for_render(edge_index, e)
+            .edge_label_for_render(edge_index, edge)
             .map(str::to_owned);
         if self_loop_label_node_id_set.insert(helper_edges.special_id_1.clone()) {
             self_loop_label_node_ids.push(helper_edges.special_id_1.clone());
@@ -1616,7 +1617,7 @@ fn layout_flowchart_with_model(
             // insertion position. Keep both its geometry and label owner at those same slots.
             Some(
                 *unmerged_first_slots
-                    .entry(e.from.as_str())
+                    .entry(edge.from.as_str())
                     .or_insert(render_edges.len()),
             )
         };
@@ -1629,9 +1630,9 @@ fn layout_flowchart_with_model(
         .enumerate()
         {
             let meta = Some(FlowchartSelfLoopSegmentMeta {
-                logical_edge_id: e.id.clone(),
+                logical_edge_id: edge.id.clone(),
                 owner_index: edge_index,
-                node_id: e.from.clone(),
+                node_id: edge.from.clone(),
                 order: order as u8,
             });
             let slot = first_slot

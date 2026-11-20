@@ -557,7 +557,7 @@ impl Canvas {
         execution: AsciiExecution<'_>,
     ) -> crate::Result<String> {
         debug_assert_eq!(self.resources.policy(), *execution.resources());
-        self.finish_with_options_controlled(options, false, execution)
+        self.finish_with_options_controlled(options, execution.trims_canvas_padding(), execution)
     }
 
     #[cfg(test)]

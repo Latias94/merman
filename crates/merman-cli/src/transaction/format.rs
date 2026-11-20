@@ -735,7 +735,7 @@ impl JournalState {
                 newer.next_index == newer.entries.len()
             }
             (JournalPhase::RollingBack, JournalPhase::RollingBack) => {
-                newer.next_index <= self.next_index
+                newer.next_index <= self.next_index || newer.next_index < newer.entries.len()
             }
             (JournalPhase::RollingBack, JournalPhase::RolledBack) => newer.next_index == 0,
             _ => false,

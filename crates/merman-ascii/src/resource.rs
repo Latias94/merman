@@ -426,6 +426,17 @@ impl ResourceContext {
         self
     }
 
+    /// Adds already retained text buffers to a nested materializer's output admission.
+    pub(crate) fn with_additional_retained_output(mut self, bytes: usize) -> Result<Self> {
+        self.checkpoint()?;
+        self.retained_output_bytes = self
+            .retained_output_bytes
+            .checked_add(bytes)
+            .ok_or_else(|| self.overflow_after_checkpoint(AsciiResourceLimitId::MaxOutputBytes))?;
+        self.check(AsciiResourceLimitId::MaxOutputBytes, 0)?;
+        Ok(self)
+    }
+
     pub(crate) fn with_planning_work_allowance(mut self, remaining: usize) -> Self {
         let end = self.layout_work_used().saturating_add(remaining);
         self.planning_work_end = Some(
@@ -433,6 +444,11 @@ impl ResourceContext {
                 .map_or(end, |current| current.min(end)),
         );
         self
+    }
+
+    pub(crate) fn remaining_planning_work(&self) -> Option<usize> {
+        self.planning_work_end
+            .map(|end| end.saturating_sub(self.layout_work_used()))
     }
 
     /// Creates a ledger-sharing view whose resource admissions observe operation cancellation.
@@ -1217,6 +1233,110 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn nested_retained_output_preserves_outer_allowance_and_exact_boundary() {
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 13)
+            .expect("valid output limit")
+            .with_limit(AsciiResourceLimitId::MaxDocumentCells, 7)
+            .expect("valid document limit");
+        let outer = ResourceContext::new(policy).with_retained_output(5, 2);
+        let nested = outer
+            .clone()
+            .with_additional_retained_output(3)
+            .expect("the first nested buffer should fit")
+            .with_additional_retained_output(2)
+            .expect("the second nested buffer should fit alongside the outer candidate");
+
+        nested
+            .check(AsciiResourceLimitId::MaxOutputBytes, 3)
+            .expect("five outer and five nested bytes leave exactly three output bytes");
+        let error = nested
+            .check(AsciiResourceLimitId::MaxOutputBytes, 4)
+            .expect_err("output admission must include every retained buffer");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::Ceiling,
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: 14,
+                max: 13,
+                ..
+            })
+        ));
+        nested
+            .check(AsciiResourceLimitId::MaxDocumentCells, 5)
+            .expect("adding retained bytes must preserve the outer document-cell allowance");
+        outer
+            .check(AsciiResourceLimitId::MaxOutputBytes, 8)
+            .expect("nested reservations must not mutate the parent allowance");
+
+        nested
+            .clone()
+            .with_additional_retained_output(3)
+            .expect("retained buffers alone may exactly fill the output allowance");
+        let error = nested
+            .with_additional_retained_output(4)
+            .expect_err("excess retained bytes must fail before any output is requested");
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::Ceiling,
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: 14,
+                max: 13,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn additional_retained_output_rejects_arithmetic_overflow() {
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, usize::MAX)
+            .expect("the maximum representable output limit should be valid");
+        let error = ResourceContext::new(policy)
+            .with_retained_output(usize::MAX, 0)
+            .with_additional_retained_output(1)
+            .expect_err("nested retained bytes must use checked addition");
+
+        assert!(matches!(
+            error,
+            AsciiError::ResourceLimitExceeded(AsciiResourceLimitExceeded {
+                cause: AsciiResourceLimitCause::ArithmeticOverflow,
+                limit: AsciiResourceLimitId::MaxOutputBytes,
+                actual: usize::MAX,
+                max,
+                ..
+            }) if max == usize::MAX - 1
+        ));
+    }
+
+    #[test]
+    fn additional_retained_output_prioritizes_cancellation() {
+        let policy = AsciiResourcePolicy::unbounded()
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, 4)
+            .expect("valid output limit");
+        for (retained, additional) in [(3, 2), (usize::MAX, 1)] {
+            let control = OperationControl::new();
+            let resources = ResourceContext::new(policy)
+                .with_retained_output(retained, 0)
+                .controlled(control.clone(), OperationPhase::Semantic);
+            control.cancel();
+
+            let error = resources
+                .with_additional_retained_output(additional)
+                .expect_err("cancellation must precede retained-output ceilings and overflow");
+
+            assert!(matches!(
+                error,
+                AsciiError::Cancelled(cancelled)
+                    if cancelled.phase == OperationPhase::Semantic
+                        && cancelled.reason == CancelReason::Requested
+            ));
+        }
     }
 
     #[test]

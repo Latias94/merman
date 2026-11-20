@@ -51,9 +51,10 @@ pub(super) fn flowchart_helper_node_ids(
     owners
         .iter()
         .filter_map(|owner| model.edges.get(owner.semantic_index()))
-        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
-        .filter(|(from, to)| from == to)
-        .flat_map(|(from, _)| {
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge(edge, render_context))
+        .filter(|edge| edge.from == edge.to)
+        .flat_map(|edge| {
+            let from = edge.from;
             [
                 format!("{from}---{from}---1"),
                 format!("{from}---{from}---2"),
@@ -64,7 +65,7 @@ pub(super) fn flowchart_helper_node_ids(
 
 pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     model: &'a crate::flowchart::FlowchartModel,
-    render_context: &crate::flowchart::FlowchartRenderContext,
+    render_context: &'a crate::flowchart::FlowchartRenderContext,
     layout_edge_owners: &crate::flowchart::FlowchartEdgeOwners,
     uses_elk_adapter_dom: bool,
 ) -> FlowchartRenderInputs<'a> {
@@ -77,9 +78,9 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
     let renderable_self_loop_nodes: FxHashSet<&str> = layout_edge_owners
         .iter()
         .filter_map(|owner| model.edges.get(owner.semantic_index()))
-        .filter_map(|edge| crate::flowchart::project_flowchart_edge_endpoints(edge, render_context))
-        .filter(|(from, to)| from == to)
-        .map(|(from, _)| from)
+        .filter_map(|edge| crate::flowchart::project_flowchart_edge(edge, render_context))
+        .filter(|edge| edge.from == edge.to)
+        .map(|edge| edge.from)
         .collect();
     let semantic_edges = model
         .edges
@@ -92,18 +93,13 @@ pub(in crate::svg::parity::flowchart) fn prepare_flowchart_render_inputs<'a>(
             if !renderable_edges.contains(&semantic_index)
                 && (merge_self_loops
                     || projected.from != projected.to
-                    || !renderable_self_loop_nodes.contains(projected.from.as_str()))
+                    || !renderable_self_loop_nodes.contains(projected.from))
             {
                 return None;
             }
-            let edge = if projected.from == edge.from && projected.to == edge.to {
-                Cow::Borrowed(edge)
-            } else {
-                Cow::Owned(projected)
-            };
             Some(FlowchartRenderEdge {
                 key: crate::flowchart::FlowchartEdgeKey::new(semantic_index),
-                edge,
+                edge: projected.into_render_edge(),
             })
         });
     if uses_elk_adapter_dom {

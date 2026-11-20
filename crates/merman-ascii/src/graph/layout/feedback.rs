@@ -4,6 +4,7 @@ use super::super::label::try_measure_edge_label;
 use super::super::model::{AsciiGraph, GraphDirection, GraphEdgeMarker, GraphNodeShape};
 use super::super::shape::GraphNodeShapeSize;
 use super::super::topology::{GraphEndpointIndex, GraphGroupTopology};
+use super::grid::GRID_UNITS_PER_RANK;
 use super::{GraphLayout, GridCoord, LayoutInput, charge_sort_work};
 use crate::error::{AsciiError, Result};
 use crate::options::GraphLayoutPolicy;
@@ -25,6 +26,7 @@ pub(in crate::graph) struct LayoutFeedback {
     endpoints: Vec<(usize, GraphNodeShapeSize)>,
     corridors: Vec<CorridorDemand>,
     returns: Vec<ScopedReturnDemand>,
+    component_ranks: Option<Vec<usize>>,
 }
 
 struct CorridorDemand {
@@ -40,8 +42,26 @@ struct ScopedReturnDemand {
 }
 
 impl LayoutFeedback {
-    /// Records the first unmet endpoint/corridor request. The caller owns the finite rebuild
-    /// schedule; a repeated request does not justify another generation.
+    /// Measures cyclic compound scopes before routing. Root returns and real self loops
+    /// already own exterior envelopes; only recovery may request extra space for those.
+    pub(in crate::graph) fn record_initial_returns_with_input(
+        &mut self,
+        input: &LayoutInput<'_>,
+        measured: &MeasuredLayout,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        resources.checkpoint()?;
+        if input.graph.groups.is_empty() {
+            return Ok(false);
+        }
+        let requests = scoped_return_demands_with_input(input, measured, None, resources)?;
+        let changed = !requests.is_empty();
+        self.returns = requests;
+        Ok(changed)
+    }
+
+    /// Records the first measured endpoint or corridor request. The caller owns the
+    /// finite rebuild schedule; a repeated request does not justify another generation.
     pub(in crate::graph) fn record_failure_with_input(
         &mut self,
         input: &LayoutInput<'_>,
@@ -111,6 +131,7 @@ impl LayoutFeedback {
 
     /// Adds simultaneous return-lane demand in the failed edge's actual compound scope.
     /// SCC analysis is iterative, metered, and confined to scope-projected semantic edges.
+    /// Flat component ranks are a last resort when no existing capacity request grows.
     pub(in crate::graph) fn record_return_failure_with_input(
         &mut self,
         input: &LayoutInput<'_>,
@@ -118,26 +139,159 @@ impl LayoutFeedback {
         miss: &AsciiError,
         resources: &ResourceContext,
     ) -> Result<bool> {
-        let changed = self.record_failure_with_input(input, measured, miss, resources)?;
+        let mut changed = self.record_failure_with_input(input, measured, miss, resources)?;
         let AsciiError::RoutingSearchExhausted { edge_index, .. } = miss else {
             return Ok(changed);
         };
-        let Some(request) =
+        if let Some(request) =
             scoped_return_demand_with_input(input, measured, *edge_index, resources)?
-        else {
-            return Ok(changed);
-        };
-        resources.charge_layout_work(self.returns.len())?;
-        for current in &mut self.returns {
-            resources.checkpoint()?;
-            if current.scope == request.scope && current.cross_x == request.cross_x {
-                let grew = current.cells < request.cells;
-                current.cells = current.cells.max(request.cells);
-                return Ok(changed || grew);
+        {
+            resources.charge_layout_work(self.returns.len())?;
+            let mut recorded = false;
+            for current in &mut self.returns {
+                resources.checkpoint()?;
+                if current.scope == request.scope && current.cross_x == request.cross_x {
+                    changed |= current.cells < request.cells;
+                    current.cells = current.cells.max(request.cells);
+                    recorded = true;
+                    break;
+                }
+            }
+            if !recorded {
+                reserve(&mut self.returns, 1)?;
+                self.returns.push(request);
+                changed = true;
             }
         }
-        reserve(&mut self.returns, 1)?;
-        self.returns.push(request);
+        if changed || self.component_ranks.is_some() {
+            return Ok(changed);
+        }
+        self.record_component_ranks_with_input(input, measured, resources)
+    }
+
+    /// Main-grid coordinates in source node order, admitted only after routing fails.
+    pub(in crate::graph::layout) fn component_ranks(&self) -> Option<&[usize]> {
+        self.component_ranks.as_deref()
+    }
+
+    fn record_component_ranks_with_input(
+        &mut self,
+        input: &LayoutInput<'_>,
+        measured: &MeasuredLayout,
+        resources: &ResourceContext,
+    ) -> Result<bool> {
+        resources.checkpoint()?;
+        let graph = input.graph;
+        if graph.diagram_type() != "flowchart"
+            || !graph.groups.is_empty()
+            || graph.nodes.len() != measured.layout.nodes.len()
+        {
+            return Ok(false);
+        }
+        for node in &graph.nodes {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            if node.semantics.side_constraint.is_some() {
+                return Ok(false);
+            }
+        }
+        // Invisible edges still constrain authored ranks. This first recovery slice must
+        // not silently remove those constraints when constructing its condensation DAG.
+        for edge in &graph.edges {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            if !edge.stroke.is_visible() {
+                return Ok(false);
+            }
+        }
+        let scoped = ScopeGraph::try_with_topology(graph, input.topology.as_ref(), resources)?;
+        if scoped.edges.len() != graph.edges.len() {
+            return Ok(false);
+        }
+        let (components, sizes) = scoped.components(resources)?;
+        let mut cyclic = false;
+        for &size in &sizes {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            cyclic |= size > 1;
+        }
+        if !cyclic {
+            return Ok(false);
+        }
+
+        let count = sizes.len();
+        resources.charge_layout_work_product(count, 4)?;
+        let mut outgoing = Vec::new();
+        let mut indegrees = Vec::new();
+        let mut ranks = Vec::new();
+        let mut pending = Vec::new();
+        reserve(&mut outgoing, count)?;
+        reserve(&mut indegrees, count)?;
+        reserve(&mut ranks, count)?;
+        reserve(&mut pending, count)?;
+        outgoing.resize_with(count, Vec::new);
+        indegrees.resize(count, 0usize);
+        ranks.resize(count, 0usize);
+        for edge in &scoped.edges {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            let from = components[edge.from];
+            let to = components[edge.to];
+            if from == to {
+                continue;
+            }
+            let minlen = resources.checked_grid_mul(
+                graph.edges[edge.source_edge_index].length.max(1),
+                GRID_UNITS_PER_RANK,
+            )?;
+            reserve(&mut outgoing[from], 1)?;
+            outgoing[from].push((to, minlen));
+            // Parallel source edges retain independent minlen constraints and balanced
+            // indegree decrements; intra-component edges and self loops add none.
+            indegrees[to] = resources.checked_work_add(indegrees[to], 1)?;
+        }
+        for (component, &indegree) in indegrees.iter().enumerate() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            if indegree == 0 {
+                pending.push(component);
+            }
+        }
+        let mut processed = 0;
+        while let Some(from) = pending.pop() {
+            resources.checkpoint()?;
+            resources.charge_layout_work(1)?;
+            processed += 1;
+            for &(to, minlen) in &outgoing[from] {
+                resources.checkpoint()?;
+                resources.charge_layout_work(1)?;
+                ranks[to] = ranks[to].max(resources.checked_grid_add(ranks[from], minlen)?);
+                indegrees[to] -= 1;
+                if indegrees[to] == 0 {
+                    pending.push(to);
+                }
+            }
+        }
+        if processed != count {
+            return Ok(false);
+        }
+
+        resources.charge_layout_work(graph.nodes.len())?;
+        let mut node_ranks = Vec::new();
+        reserve(&mut node_ranks, graph.nodes.len())?;
+        let horizontal = graph.direction.canonical() == GraphDirection::LeftRight;
+        let mut changed = false;
+        for (index, node) in measured.layout.nodes.iter().enumerate() {
+            resources.checkpoint()?;
+            let rank = ranks[components[index]];
+            let current = if horizontal { node.grid.x } else { node.grid.y };
+            changed |= rank != current;
+            node_ranks.push(rank);
+        }
+        if !changed {
+            return Ok(false);
+        }
+        self.component_ranks = Some(node_ranks);
         Ok(true)
     }
 
@@ -974,53 +1128,83 @@ fn scoped_return_demand_with_input(
     failed_edge_index: usize,
     resources: &ResourceContext,
 ) -> Result<Option<ScopedReturnDemand>> {
+    Ok(
+        scoped_return_demands_with_input(input, measured, Some(failed_edge_index), resources)?
+            .pop(),
+    )
+}
+
+struct ReturnLanes {
+    scope: Option<usize>,
+    horizontal: bool,
+    pitch: usize,
+    active: usize,
+    peak: usize,
+}
+
+fn scoped_return_demands_with_input(
+    input: &LayoutInput<'_>,
+    measured: &MeasuredLayout,
+    failed_edge_index: Option<usize>,
+    resources: &ResourceContext,
+) -> Result<Vec<ScopedReturnDemand>> {
     let graph = input.graph;
     let policy = &input.policy;
     let scoped = ScopeGraph::try_with_topology(graph, input.topology.as_ref(), resources)?;
     let (components, sizes) = scoped.components(resources)?;
-    resources.charge_layout_work(scoped.edges.len())?;
-    let mut failed = None;
-    for edge in &scoped.edges {
-        resources.checkpoint()?;
-        if edge.source_edge_index == failed_edge_index {
-            failed = Some(edge);
-            break;
+    let selected_component = if let Some(failed_edge_index) = failed_edge_index {
+        resources.charge_layout_work(scoped.edges.len())?;
+        let mut selected = None;
+        for edge in &scoped.edges {
+            resources.checkpoint()?;
+            if edge.source_edge_index == failed_edge_index {
+                if components[edge.from] == components[edge.to] {
+                    selected = Some(components[edge.from]);
+                }
+                break;
+            }
         }
-    }
-    let Some(failed) = failed else {
-        return Ok(None);
+        let Some(component) = selected else {
+            return Ok(Vec::new());
+        };
+        Some(component)
+    } else {
+        None
     };
-    let component = components[failed.from];
-    if components[failed.to] != component || (sizes[component] == 1 && failed.from != failed.to) {
-        return Ok(None);
-    }
-    let direction = failed
-        .scope
-        .and_then(|index| measured.group_directions.get(index).copied().flatten())
-        .map_or(graph.direction.canonical(), |direction| {
-            direction.before_root_output_transform(graph.direction)
-        });
-    let horizontal = direction.canonical() == GraphDirection::LeftRight;
-    let reversed_direction = matches!(
-        direction,
-        GraphDirection::RightLeft | GraphDirection::BottomTop
-    );
     let mut events = Vec::new();
     reserve(
         &mut events,
         resources.checked_work_mul(scoped.edges.len(), 2)?,
     )?;
-    let mut pitch = PRIVATE_CONTACT_PITCH;
+    resources.charge_layout_work(sizes.len())?;
+    let mut lanes = Vec::new();
+    reserve(&mut lanes, sizes.len())?;
+    lanes.resize_with(sizes.len(), || None::<ReturnLanes>);
     let bounds = scoped.endpoint_bounds(&measured.layout, resources)?;
     for edge in &scoped.edges {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
-        if edge.scope != failed.scope
-            || components[edge.from] != component
+        if failed_edge_index.is_none() && (edge.scope.is_none() || edge.from == edge.to) {
+            continue;
+        }
+        let component = components[edge.from];
+        if selected_component.is_some_and(|selected| selected != component)
             || components[edge.to] != component
+            || (sizes[component] == 1 && edge.from != edge.to)
         {
             continue;
         }
+        let direction = edge
+            .scope
+            .and_then(|index| measured.group_directions.get(index).copied().flatten())
+            .map_or(graph.direction.canonical(), |direction| {
+                direction.before_root_output_transform(graph.direction)
+            });
+        let horizontal = direction.canonical() == GraphDirection::LeftRight;
+        let reversed_direction = matches!(
+            direction,
+            GraphDirection::RightLeft | GraphDirection::BottomTop
+        );
         resources.charge_layout_work(2)?;
         let (Some(from), Some(to)) = (bounds[edge.from], bounds[edge.to]) else {
             continue;
@@ -1040,8 +1224,15 @@ fn scoped_return_demand_with_input(
         if !physical_return && !rank_return {
             continue;
         }
-        events.push((start.min(end), LaneEventKind::Start));
-        events.push((start.max(end), LaneEventKind::End));
+        events.push((component, start.min(end), LaneEventKind::Start));
+        events.push((component, start.max(end), LaneEventKind::End));
+        let demand = lanes[component].get_or_insert(ReturnLanes {
+            scope: edge.scope,
+            horizontal,
+            pitch: PRIVATE_CONTACT_PITCH,
+            active: 0,
+            peak: 0,
+        });
         let original = &graph.edges[edge.source_edge_index];
         if let Some(raw) = &original.label
             && let Some(label) = try_measure_edge_label(
@@ -1056,62 +1247,94 @@ fn scoped_return_demand_with_input(
             } else {
                 label.max_width
             };
-            pitch = pitch.max(resources.checked_grid_add(cross, 2)?);
+            demand.pitch = demand.pitch.max(resources.checked_grid_add(cross, 2)?);
         }
+    }
+    if events.is_empty() {
+        return Ok(Vec::new());
     }
     charge_sort_work(events.len(), resources)?;
     // Starts sort before ends: returns sharing a turn rank still need independent lanes.
     events.sort_unstable();
-    let mut active = 0;
-    let mut lanes = 0;
-    for (_, kind) in events {
+    for (component, _, kind) in events {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
+        let Some(demand) = &mut lanes[component] else {
+            continue;
+        };
         match kind {
             LaneEventKind::Start => {
-                active = resources.checked_work_add(active, 1)?;
-                lanes = lanes.max(active);
+                demand.active = resources.checked_work_add(demand.active, 1)?;
+                demand.peak = demand.peak.max(demand.active);
             }
-            LaneEventKind::End => active -= 1,
+            LaneEventKind::End => demand.active -= 1,
         }
     }
-    if lanes == 0 {
-        return Ok(None);
-    }
-    let cells = resources.checked_grid_add(resources.checked_grid_mul(lanes, pitch)?, 2)?;
-    resources.grid_extent(cells, 1)?;
-    let scope_bounds = failed
-        .scope
-        .and_then(|index| bounds[graph.nodes.len() + index]);
-    let mut available = usize::MAX;
-    let scope_parent = failed.scope.map(|index| graph.nodes.len() + index);
+    // Build both transverse margins once for each scope, rather than rescanning all
+    // endpoints for every cyclic component in the initial whole-scene request.
+    let scope_count = resources.checked_work_add(graph.groups.len(), 1)?;
+    resources.charge_layout_work_product(scope_count, 2)?;
+    let mut available = Vec::new();
+    let mut requested = Vec::new();
+    reserve(&mut available, scope_count)?;
+    reserve(&mut requested, scope_count)?;
+    available.resize(scope_count, (usize::MAX, usize::MAX));
+    requested.resize(scope_count, (0usize, 0usize));
     for (index, &parent) in scoped.parents.iter().enumerate() {
         resources.checkpoint()?;
         resources.charge_layout_work(1)?;
-        if parent != scope_parent {
-            continue;
-        }
-        if let Some(bounds) = bounds[index] {
-            let margin = match (scope_bounds, horizontal) {
-                (Some(scope), true) => bounds
-                    .y
-                    .saturating_sub(scope.y + 1)
-                    .min(scope.bottom.saturating_sub(bounds.bottom + 1)),
-                (Some(scope), false) => bounds
-                    .x
-                    .saturating_sub(scope.x + 1)
-                    .min(scope.right.saturating_sub(bounds.right + 1)),
-                (None, true) => bounds.y,
-                (None, false) => bounds.x,
+        let slot = parent.map_or(graph.groups.len(), |parent| parent - graph.nodes.len());
+        let scope_bounds = parent.and_then(|parent| bounds[parent]);
+        if let Some(endpoint) = bounds[index] {
+            let (x, y) = match scope_bounds {
+                Some(scope) => (
+                    endpoint
+                        .x
+                        .saturating_sub(scope.x + 1)
+                        .min(scope.right.saturating_sub(endpoint.right + 1)),
+                    endpoint
+                        .y
+                        .saturating_sub(scope.y + 1)
+                        .min(scope.bottom.saturating_sub(endpoint.bottom + 1)),
+                ),
+                None => (endpoint.x, endpoint.y),
             };
-            available = available.min(margin);
+            available[slot].0 = available[slot].0.min(x);
+            available[slot].1 = available[slot].1.min(y);
         }
     }
-    Ok((cells > available).then_some(ScopedReturnDemand {
-        scope: failed.scope,
-        cross_x: !horizontal,
-        cells,
-    }))
+    for demand in lanes.into_iter().flatten() {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        let cells = resources
+            .checked_grid_add(resources.checked_grid_mul(demand.peak, demand.pitch)?, 2)?;
+        resources.grid_extent(cells, 1)?;
+        let slot = demand.scope.unwrap_or(graph.groups.len());
+        let (available, requested) = if demand.horizontal {
+            (available[slot].1, &mut requested[slot].1)
+        } else {
+            (available[slot].0, &mut requested[slot].0)
+        };
+        if cells > available {
+            *requested = (*requested).max(cells);
+        }
+    }
+    let mut requests = Vec::new();
+    reserve(&mut requests, resources.checked_work_mul(scope_count, 2)?)?;
+    for (slot, (x, y)) in requested.into_iter().enumerate() {
+        resources.checkpoint()?;
+        resources.charge_layout_work(1)?;
+        for (cross_x, cells) in [(true, x), (false, y)] {
+            if cells > 0 {
+                requests.push(ScopedReturnDemand {
+                    scope: (slot < graph.groups.len()).then_some(slot),
+                    cross_x,
+                    cells,
+                });
+            }
+        }
+    }
+    Ok(requests)
 }
 
 #[cfg(test)]

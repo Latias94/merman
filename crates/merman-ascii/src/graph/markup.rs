@@ -125,6 +125,10 @@ impl<'a> FlowchartLabels<'a> {
         Ok(())
     }
 
+    pub(super) const fn retained_bytes(&self) -> usize {
+        self.retained_bytes
+    }
+
     pub(super) fn node(&self, index: usize) -> (&str, LabelBreakPolicy) {
         self.get(
             LabelOwner::Node(index),

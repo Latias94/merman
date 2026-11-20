@@ -260,6 +260,22 @@ Dagre and ELK are separate layout paths selected through the
 the Mermaid-reachable adapter surface; it is not a promise to implement every Eclipse ELK option.
 Stable source edge identity must survive import, routing, label projection, and SVG emission.
 
+`A&B --> C` links the single node `A&B` to `C`. Horizontal whitespace on both sides of
+the ampersand in `A & B --> C` groups the two source nodes and produces two edges.
+
+Flowchart IDs can contain punctuation such as `#`, `:`, `*`, and `\`. The lexer gives
+`:::` and link operators their Mermaid token boundaries. For example, `#:*:::hot`
+assigns the class `hot` to the node `#:*`.
+
+Mermaid counts an unmatched initial marker when measuring a link. Both `A o--> B` and
+`A o==> B` have a normal stroke and length 2. ASCII output preserves the authored circle
+at the source and the arrowhead at the target.
+
+For a split label with different endpoint markers, as in `A o-- label --x B`, Mermaid
+12.3.0 reports `INVALID` for type and stroke and omits the length. Merman's model retains
+the authored markers, stroke and numeric length used by ASCII. The compatibility JSON and
+SVG for this split form still differ from Mermaid's fallback. See the [ASCII Flowchart contract](../rendering/ascii/FLOWCHART_SUPPORT.md).
+
 Subgraph membership for grouped chains reverses the group order while retaining authored order
 within each ampersand group. First-owner filtering and dropped-member diagnostics consume that
 same membership sequence; node declarations and edge expansion retain their independent source

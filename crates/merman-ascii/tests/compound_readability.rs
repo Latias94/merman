@@ -75,7 +75,7 @@ fn route_directions(ch: char) -> u8 {
         '┤' => 1 | 4 | 8,
         '┬' => 2 | 4 | 8,
         '┴' => 1 | 2 | 8,
-        '+' | '┼' => 1 | 2 | 4 | 8,
+        '+' | '┼' | '╪' => 1 | 2 | 4 | 8,
         _ => 0,
     }
 }
@@ -182,12 +182,7 @@ fn assert_group_frame(
                 rows.get(next_y)?.get(next_x).copied()
             };
             let Some(first) = at(1) else { return false };
-            // A horizontal overpass leaves exactly one cell of a vertical route
-            // unpainted. Require its immediate continuation beyond that crossing.
             route_directions(first) & direction != 0
-                || (horizontal
-                    && first == '─'
-                    && at(2).is_some_and(|second| route_directions(second) & direction != 0))
         };
         assert!(
             continues(false, before) && continues(true, after),

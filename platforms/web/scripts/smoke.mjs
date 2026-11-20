@@ -1444,7 +1444,7 @@ if (hasCapability("ascii")) {
   assert.deepEqual(asciiCapabilities.find((entry) => entry.diagram_type === "state")
     .layout_profiles, ["canonical"]);
   assert.deepEqual(asciiCapabilities.find((entry) => entry.diagram_type === "zenuml")
-    .graph_presentations, []);
+    .graph_presentations, ["strict"]);
 } else {
   assert.equal(typeof api.renderAscii, "undefined");
   assert.equal(typeof api.renderAsciiResult, "undefined");

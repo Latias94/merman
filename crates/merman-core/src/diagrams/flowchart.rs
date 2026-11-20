@@ -82,6 +82,16 @@ mod accessibility;
 mod ast;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 mod build;
+#[cfg(all(
+    feature = "editor-facts",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+mod editor_rename;
+#[cfg(all(
+    feature = "editor-facts",
+    any(feature = "diagram-flowchart", feature = "diagram-swimlane")
+))]
+pub(crate) use editor_rename::rename_preserves_targets;
 mod lex;
 mod lexer;
 mod lexer_iter;
@@ -133,6 +143,8 @@ use accessibility::FlowchartAccessibility;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use build::FlowchartBuildState;
 use lexer::Lexer;
+#[cfg(feature = "editor-facts")]
+pub(crate) use lexer::node_rename_text;
 use link::{destruct_end_link, destruct_labeled_end_link, destruct_start_link};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use semantic::{FlowchartSemanticContext, apply_semantic_statements};

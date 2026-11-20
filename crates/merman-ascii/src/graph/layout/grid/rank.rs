@@ -13,7 +13,7 @@ use dugong::{
 };
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 
-const GRID_UNITS_PER_RANK: usize = 4;
+pub(in crate::graph::layout) const GRID_UNITS_PER_RANK: usize = 4;
 
 type NodeIndexById<'a> = HashMap<&'a str, usize>;
 
@@ -66,13 +66,38 @@ pub(super) fn rank_levels(
     graph: &AsciiGraph,
     topology: Option<&GraphGroupTopology<'_>>,
     direction: GraphDirection,
+    component_ranks: Option<&[usize]>,
     resources: &mut ResourceContext,
     execution: AsciiExecution<'_>,
 ) -> Result<RankLevels> {
-    // Preserve the existing admission order: resolve authored side constraints first, then run
-    // Dagre, then project the adjusted levels and incoming-parent lanes.
+    // Dagre owns the initial candidate. A flat cyclic scene may supply measured component
+    // ranks after a routing miss; keep every original node and rebuild incoming-parent lanes.
     let side_constraints = resolve_node_side_constraints(graph, topology, resources)?;
-    let mut levels = dagre_rank_levels(graph, topology, direction, resources, execution)?;
+    let mut levels = if let Some(ranks) = component_ranks {
+        if !graph.groups.is_empty()
+            || ranks.len() != graph.nodes.len()
+            || side_constraints.iter().any(Option::is_some)
+        {
+            return Err(AsciiError::UnsupportedFeature {
+                diagram_type: graph.diagram_type(),
+                feature: "invalid component rank feedback",
+            });
+        }
+        resources.charge_layout_work(ranks.len())?;
+        let mut nodes = Vec::new();
+        try_reserve_vec(&mut nodes, ranks.len())?;
+        for (index, &rank) in ranks.iter().enumerate() {
+            checkpoint_layout(execution, index)?;
+            nodes.push(rank);
+        }
+        DagreRankLevels {
+            nodes,
+            leaf_groups: Vec::new(),
+            reversed_edge_indices: Vec::new(),
+        }
+    } else {
+        dagre_rank_levels(graph, topology, direction, resources, execution)?
+    };
     apply_side_constraint_levels(
         graph,
         direction,
@@ -1021,6 +1046,7 @@ mod tests {
             &graph,
             None,
             GraphDirection::TopDown,
+            None,
             &mut resources,
             AsciiExecution::for_test(&policy),
         )

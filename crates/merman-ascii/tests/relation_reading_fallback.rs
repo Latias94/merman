@@ -566,6 +566,69 @@ fn er_reading_resolves_generated_ids_and_attaches_each_cardinality_to_its_actual
 
 #[cfg(feature = "diagram-er")]
 #[test]
+fn er_group_reading_binds_authored_members_and_typed_routing_endpoints_separately() {
+    let mut parsed = parsed(concat!(
+        "erDiagram\ndirection LR\n",
+        "subgraph Outer [Outer Domain]\n",
+        "subgraph Inner [Inner Domain]\nMEMBER\nend\nPEER\nend\n",
+        "subgraph Other [Other Domain]\nEXTERNAL\nend\n",
+        "Outer }|..o| Other : grouped\n",
+        "MEMBER ||--o{ EXTERNAL : exported\n",
+        "EXTERNAL o|--|{ Inner : imports\n",
+    ));
+    let SemanticDiagramModel::Er(model) = &mut parsed.model else {
+        unreachable!()
+    };
+    let previous = model.entities["MEMBER"].id.clone();
+    // This route spelling is also a different entity's authored key. Membership must still
+    // resolve MEMBER and PEER by declaration, independently of that relationship route.
+    model.entities.get_mut("MEMBER").unwrap().id = "PEER".into();
+    for relationship in &mut model.relationships {
+        for endpoint in [&mut relationship.entity_a, &mut relationship.entity_b] {
+            if *endpoint == previous {
+                *endpoint = "PEER".into();
+            }
+        }
+    }
+    model.entities.get_mut("Inner").unwrap().css_styles = vec!["stroke:#123456".into()];
+    let report = fallback(&parsed, 24, AsciiRenderOptions::ascii());
+    let rows = records(&report.text);
+    let outer = key_for(&rows, "group", "Outer");
+    let inner = key_for(&rows, "group", "Inner");
+    let other = key_for(&rows, "group", "Other");
+    let member = key_for(&rows, "entity", "MEMBER");
+    let peer = key_for(&rows, "entity", "PEER");
+    let external = key_for(&rows, "entity", "EXTERNAL");
+    for record in [
+        format!("{outer} members: [{inner}, {peer}]"),
+        format!("{inner} members: [{member}]"),
+        format!("{other} members: [{external}]"),
+        format!("E1: {outer} [1..*] --dotted-- {other} [0..1]"),
+        format!("E2: {member} [1] --solid-- {external} [0..*]"),
+        format!("E3: {external} [0..1] --solid-- {inner} [1..*]"),
+    ] {
+        assert!(rows.contains(&record), "missing {record}: {rows:#?}");
+    }
+    for (key, label) in [("E1", "grouped"), ("E2", "exported"), ("E3", "imports")] {
+        assert_eq!(quoted_record(&rows, &format!("{key} label: ")), label);
+    }
+    let shadow = key_for(&rows, "shadow entity", "Inner");
+    assert!(
+        rows.contains(&format!("{shadow} shadow-of: {inner}")),
+        "{rows:#?}"
+    );
+    assert_eq!(
+        detail_fields(&rows, &shadow)["cssStyles"],
+        json!(["stroke:#123456"])
+    );
+    assert!(
+        !rows.iter().any(|row| row.ends_with("[entity]: \"Inner\"")),
+        "{rows:#?}"
+    );
+}
+
+#[cfg(feature = "diagram-er")]
+#[test]
 fn er_reading_retains_attribute_keys_comments_aliases_styles_and_source_metadata() {
     let mut parsed = parsed(concat!(
         "erDiagram\ndirection LR\n",

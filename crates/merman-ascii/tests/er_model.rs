@@ -7,7 +7,7 @@ use merman_ascii::{
 use merman_core::{ParseOptions, presentation::MermaidEngine};
 use merman_model::OperationControl;
 use merman_model::families::er::{
-    ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship,
+    ErAttribute, ErDiagramModel, ErEntity, ErRelSpec, ErRelationship, ErSubgraph,
 };
 use merman_model::presentation::RenderSemanticModel;
 use std::path::Path;
@@ -411,6 +411,222 @@ fn er_render_model_rejects_duplicate_rendered_entity_ids() {
     );
 
     assert_unsupported_er_model(&model, "duplicate rendered ER entity ids");
+}
+
+#[test]
+fn er_groups_render_nested_frames_and_group_relationships_without_shadow_boxes() {
+    for direction in ["TB", "BT", "LR", "RL"] {
+        let input = format!(
+            "erDiagram\ndirection {direction}\n\
+             subgraph Outer [Outer Domain]\n\
+               subgraph Inner [Inner Domain]\nMEMBER\nend\nend\n\
+             subgraph Other [Other Domain]\nEXTERNAL\nend\n\
+             Outer }}|..o| Other : grouped\n"
+        );
+        let rendered = render_er(&input, &AsciiRenderOptions::ascii())
+            .expect("completed groups should be admitted as genuine relationship endpoints");
+        for title in ["Outer Domain", "Inner Domain", "Other Domain"] {
+            assert_eq!(
+                rendered.matches(title).count(),
+                1,
+                "{direction}:\n{rendered}"
+            );
+        }
+        for id in ["Outer", "Inner", "Other"] {
+            let identity = format!(r#"group(bytes={})="{id}""#, id.len());
+            assert_eq!(rendered.matches(&identity).count(), 1, "{rendered}");
+        }
+        assert!(!rendered.contains("| Outer |"), "{rendered}");
+        assert!(!rendered.contains("| Other |"), "{rendered}");
+        let member_row = rendered
+            .lines()
+            .find(|row| row.contains("MEMBER"))
+            .expect("a nested member must remain visible");
+        assert!(member_row.matches('|').count() >= 6, "{rendered}");
+        assert_eq!(rendered.matches("grouped").count(), 1, "{rendered}");
+        assert!(
+            rendered.contains("}|") || rendered.contains("|{"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains("o|") || rendered.contains("|o"),
+            "{rendered}"
+        );
+        assert!(
+            rendered.contains(':') || rendered.contains('.'),
+            "{rendered}"
+        );
+        assert!(!rendered.contains("relations:"), "{direction}:\n{rendered}");
+    }
+}
+
+#[test]
+fn er_group_facades_disclose_actual_entity_and_group_endpoints() {
+    let input = concat!(
+        "erDiagram\ndirection LR\n",
+        "subgraph Parent\nsubgraph Child\nMEMBER\nend\nend\n",
+        "EXTERNAL\n",
+        "MEMBER ||..o{ EXTERNAL : exported\n",
+        "EXTERNAL o|--|{ Child : imports\n",
+    );
+    let rendered = render_er(input, &AsciiRenderOptions::ascii())
+        .expect("mixed entity/group relationships should keep their actual endpoint identities");
+    for fact in [
+        r#"source-entity(bytes=6)="MEMBER""#,
+        r#"source-via-group(bytes=6)="Parent""#,
+        r#"target-group(bytes=5)="Child""#,
+        r#"target-via-group(bytes=6)="Parent""#,
+        "exported",
+        "imports",
+    ] {
+        assert!(rendered.contains(fact), "missing {fact}:\n{rendered}");
+    }
+    assert!(!rendered.contains("| Child |"), "{rendered}");
+    assert!(
+        !rendered.contains(r#"target-entity(bytes=5)="Child""#),
+        "{rendered}"
+    );
+}
+
+#[test]
+fn er_ancestor_member_relationship_is_a_complete_summary_instead_of_a_self_loop() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\nsubgraph Parent\nMEMBER\nend\n",
+            "Parent ||..o{ MEMBER : contains\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("opaque ancestor/member geometry must retain a complete typed relationship");
+    assert!(rendered.contains("relations:"), "{rendered}");
+    assert!(
+        rendered.contains(r#"group(bytes=6)="Parent" ||..o{ entity(bytes=6)="MEMBER" : contains"#),
+        "{rendered}"
+    );
+    let member_row = rendered
+        .lines()
+        .find(|row| row.contains("| MEMBER |"))
+        .expect("the real entity must remain inside the group frame");
+    assert!(member_row.matches('|').count() >= 4, "{rendered}");
+    assert_eq!(rendered.matches("contains").count(), 1, "{rendered}");
+}
+
+#[test]
+fn er_group_only_models_keep_empty_frames_and_group_self_relationships() {
+    let model = ErDiagramModel {
+        direction: "TB".into(),
+        subgraphs: vec![ErSubgraph {
+            id: "Empty".into(),
+            title: "Empty Domain".into(),
+            ..ErSubgraph::default()
+        }],
+        relationships: vec![ErRelationship {
+            entity_a: "Empty".into(),
+            entity_b: "Empty".into(),
+            role_a: "recursive".into(),
+            rel_spec: ErRelSpec {
+                card_b: "ONLY_ONE".into(),
+                card_a: "ZERO_OR_MORE".into(),
+                rel_type: "IDENTIFYING".into(),
+            },
+        }],
+        ..ErDiagramModel::default()
+    };
+    let rendered = render_er_model(&model, &AsciiRenderOptions::ascii())
+        .expect("an empty group with a genuine self-relationship needs no fake entity");
+    assert_eq!(rendered.matches("Empty Domain").count(), 1, "{rendered}");
+    assert!(rendered.contains(r#"group(bytes=5)="Empty""#), "{rendered}");
+    assert!(rendered.contains("recursive"), "{rendered}");
+    assert!(rendered.contains("o{"), "{rendered}");
+}
+
+#[test]
+fn er_group_local_direction_routes_internal_relationships_inside_the_frame() {
+    let rendered = render_er(
+        concat!(
+            "erDiagram\ndirection TB\nsubgraph Local\ndirection RL\n",
+            "A ||--o{ B : owns\nend\n",
+        ),
+        &AsciiRenderOptions::ascii(),
+    )
+    .expect("a group's explicit direction controls its internal relationship geometry");
+    let (a_row, a_column) = line_and_column_containing(&rendered, "| A |");
+    let (b_row, b_column) = line_and_column_containing(&rendered, "| B |");
+    assert_eq!(a_row, b_row, "{rendered}");
+    assert!(b_column < a_column, "{rendered}");
+    assert_eq!(rendered.matches("owns").count(), 1, "{rendered}");
+    assert!(
+        rendered.lines().nth(a_row).unwrap().matches('|').count() >= 6,
+        "{rendered}"
+    );
+}
+
+#[test]
+fn er_group_models_reject_inconsistent_membership_and_endpoint_domains_precisely() {
+    let original = parse_er_model(concat!(
+        "erDiagram\nsubgraph G\nA\nend\nsubgraph H\nB\nend\n",
+        "G ||--|| H : grouped\n",
+    ));
+    let mut model = original.clone();
+    model.subgraphs[1].id = "G".into();
+    assert_unsupported_er_model(&model, "duplicate ER group ids");
+
+    let mut model = original.clone();
+    model.subgraphs[0].nodes.push("missing".into());
+    assert_unsupported_er_model(&model, "ER groups with missing members");
+
+    let mut model = original.clone();
+    model.subgraphs[1].nodes.push("A".into());
+    assert_unsupported_er_model(&model, "ER members with multiple group owners");
+
+    let mut model = original.clone();
+    model.subgraphs[0].nodes = vec!["H".into()];
+    model.subgraphs[1].nodes = vec!["G".into()];
+    assert_unsupported_er_model(&model, "cyclic ER group membership");
+
+    let mut model = original.clone();
+    model.entities.get_mut("A").unwrap().id = "G".into();
+    assert_unsupported_er_model(&model, "ambiguous rendered ER endpoint ids");
+
+    let mut model = original.clone();
+    model.relationships[0].entity_a = model.entities["G"].id.clone();
+    assert_unsupported_er_model(&model, "relationships with shadowed ER entity endpoints");
+
+    let mut model = original;
+    model.relationships[0].entity_b = "unknown-route".into();
+    assert_unsupported_er_model(&model, "relationships with missing ER endpoints");
+}
+
+#[test]
+fn er_group_nesting_observes_resource_limits_and_cancellation() {
+    let mut source = String::from("erDiagram\n");
+    for depth in 0..8 {
+        source.push_str(&format!("subgraph G{depth}\n"));
+    }
+    source.push_str("MEMBER\n");
+    for _ in 0..8 {
+        source.push_str("end\n");
+    }
+    let limit = AsciiResourcePolicy::default()
+        .with_limit(AsciiResourceLimitId::MaxNestingDepth, 7)
+        .unwrap();
+    let error = render_er_with_resources(&source, &AsciiRenderOptions::ascii(), limit)
+        .expect_err("group nesting must be checked before container rendering");
+    assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+        if details.limit == AsciiResourceLimitId::MaxNestingDepth && details.actual == 8));
+
+    let control = OperationControl::new();
+    control.cancel();
+    let context = MermaidEngine::new().begin_operation().unwrap();
+    let error = render_controlled_model(
+        &parse_er_render_model(&source),
+        &AsciiRenderOptions::ascii(),
+        &control,
+        &context,
+        AsciiResourcePolicy::default(),
+    )
+    .expect_err("cancelled group planning must not become a relationship summary");
+    assert!(matches!(error, AsciiError::Cancelled(_)));
 }
 
 #[test]

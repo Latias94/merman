@@ -8,6 +8,13 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub(super) enum RecordPart<'a> {
     Plain(&'a str),
+    #[cfg_attr(
+        not(feature = "all-diagrams"),
+        allow(
+            dead_code,
+            reason = "Some families write dynamic quoted fields through RecordWriter"
+        )
+    )]
     Quoted(&'a str),
 }
 

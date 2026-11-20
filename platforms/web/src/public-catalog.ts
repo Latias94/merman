@@ -54,6 +54,10 @@ export type DiagramType = (typeof SUPPORTED_DIAGRAMS)[number];
 export type DiagramMetadataId = string;
 
 export const SUPPORTED_ASCII_DIAGRAMS = [
+  "agentflow",
+  "architecture",
+  "block",
+  "c4",
   "class",
   "er",
   "flowchart",
@@ -63,25 +67,39 @@ export const SUPPORTED_ASCII_DIAGRAMS = [
   "kanban",
   "mindmap",
   "packet",
+  "pie",
+  "requirement",
   "sequence",
   "state",
   "swimlane",
   "timeline",
   "treeView",
+  "usecase",
   "xychart",
+  "zenuml",
 ] as const;
 
 export type AsciiDiagramType = (typeof SUPPORTED_ASCII_DIAGRAMS)[number];
 
 export const DIAGRAMMATIC_ASCII_DIAGRAMS = [
+  "agentflow",
+  "architecture",
+  "block",
+  "c4",
   "class",
   "er",
   "flowchart",
+  "gantt",
+  "gitgraph",
   "packet",
+  "pie",
+  "requirement",
   "sequence",
   "state",
   "swimlane",
+  "usecase",
   "xychart",
+  "zenuml",
 ] as const satisfies readonly AsciiDiagramType[];
 
 export type DiagrammaticAsciiDiagramType =

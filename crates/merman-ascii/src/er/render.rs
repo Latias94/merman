@@ -24,6 +24,8 @@ use crate::{AsciiError, Result};
 use merman_model::families::er::{ErAttribute, ErDiagramModel, ErEntity, ErRelationship};
 use std::collections::{HashMap, hash_map::Entry};
 
+mod group;
+
 const ER_LEVEL_HORIZONTAL_GAP: usize = 4;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -106,6 +108,7 @@ struct ErRelationLayout<'a> {
     bottom_id: &'a str,
     top_identity: &'a str,
     bottom_identity: &'a str,
+    endpoint_kinds: Option<[group::ErEndpointKind; 2]>,
     top_cardinality: &'a str,
     bottom_cardinality: &'a str,
     label: Option<RelationGraphLabel>,
@@ -155,6 +158,11 @@ fn render_er_diagram_impl(
         RelationDirection::try_from_model(&model.direction, "er", "unknown ER diagram directions");
     resources.checkpoint()?;
     let direction = direction?;
+    if !model.subgraphs.is_empty() {
+        preflight_er_text(model, &mut resources)?;
+        charge_er_model_work(model, &mut resources)?;
+        return group::render_grouped_er_diagram(model, options, direction, resources, execution);
+    }
     if model.entities.is_empty() {
         if !model.relationships.is_empty() {
             return Err(AsciiError::UnsupportedFeature {
@@ -317,6 +325,7 @@ fn render_er_components<'model>(
                 &relationship.entity_b,
                 authored_entity_identities,
             )?,
+            endpoint_kinds: None,
             top_cardinality: relationship.rel_spec.card_b.as_str(),
             bottom_cardinality: relationship.rel_spec.card_a.as_str(),
             label,
@@ -967,7 +976,9 @@ fn er_relationship_summary_row<'model>(
         horizontal_cardinality_marker(layout.bottom_cardinality, PhysicalPortSide::Left, charset)?;
     let relation = er_relationship_summary_line(&relationship.rel_spec.rel_type, charset)?;
     let source = deferred.try_register_framed_value(
-        "id(bytes=",
+        layout
+            .endpoint_kinds
+            .map_or("id(bytes=", |kinds| kinds[0].summary_prefix()),
         layout.top_identity,
         width_profile,
         resources,
@@ -982,7 +993,9 @@ fn er_relationship_summary_row<'model>(
         resources,
     )?;
     let target = deferred.try_register_framed_value(
-        "id(bytes=",
+        layout
+            .endpoint_kinds
+            .map_or("id(bytes=", |kinds| kinds[1].summary_prefix()),
         layout.bottom_identity,
         width_profile,
         resources,
@@ -1459,10 +1472,23 @@ fn charge_er_model_work(model: &ErDiagramModel, resources: &mut ResourceContext)
         .checked_add(model.relationships.len())
         .and_then(|value| value.checked_add(attribute_count?))
         .ok_or_else(|| work_overflow(resources))?;
-    resources.charge_layout_work(item_count.max(1))
+    let item_count = model.subgraphs.iter().try_fold(item_count, |total, group| {
+        total.checked_add(1)?.checked_add(group.nodes.len())
+    });
+    resources.charge_layout_work(item_count.ok_or_else(|| work_overflow(resources))?.max(1))
 }
 
 fn preflight_er_text(model: &ErDiagramModel, resources: &mut ResourceContext) -> Result<()> {
+    for group in &model.subgraphs {
+        charge_text_layout(resources, &group.id)?;
+        charge_text_layout(resources, &group.title)?;
+        if let Some(direction) = &group.dir {
+            charge_text_layout(resources, direction)?;
+        }
+        for member in &group.nodes {
+            charge_text_layout(resources, member)?;
+        }
+    }
     for entity in model.entities.values() {
         charge_text_layout(resources, &entity.id)?;
         charge_text_layout(resources, entity_display_label(entity))?;
@@ -1719,6 +1745,7 @@ mod tests {
                     &authored_entity_identities,
                 )
                 .expect("ER summary target identity should exist"),
+                endpoint_kinds: None,
                 top_cardinality: relationship.rel_spec.card_b.as_str(),
                 bottom_cardinality: relationship.rel_spec.card_a.as_str(),
                 label,
@@ -2019,6 +2046,7 @@ mod tests {
                     &authored_entity_identities,
                 )
                 .expect("horizontal ER target identity should exist"),
+                endpoint_kinds: None,
                 top_cardinality: relationship.rel_spec.card_b.as_str(),
                 bottom_cardinality: relationship.rel_spec.card_a.as_str(),
                 label,

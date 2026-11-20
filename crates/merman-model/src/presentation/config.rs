@@ -146,7 +146,7 @@ impl PresentationConfig {
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self, PresentationConfigError>> {
         let mut budget = ConfigConstructionBudget::new(policy, control);
-        if let Err(error) = budget.charge_json(values.as_value())? {
+        if let Err(error) = budget.charge_config(&values)? {
             return Ok(Err(error));
         }
         let explicit_config_paths = match authored_paths(values.as_value(), &mut budget)? {
@@ -175,11 +175,11 @@ impl PresentationConfig {
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self, PresentationConfigError>> {
         let mut budget = ConfigConstructionBudget::new(policy, control);
-        if let Err(error) = budget.charge_json(parts.values.as_value())? {
+        if let Err(error) = budget.charge_config(&parts.values)? {
             return Ok(Err(error));
         }
         if let Some(recipe) = &parts.recipe
-            && let Err(error) = budget.charge_json(recipe.compatibility_config().as_value())?
+            && let Err(error) = budget.charge_config(recipe.compatibility_config())?
         {
             return Ok(Err(error));
         }

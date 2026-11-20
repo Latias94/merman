@@ -373,7 +373,32 @@ fn write_er(bytes: &[u8], lines: &mut SemanticFallbackWriter<'_>) -> Result<()> 
     let mut root = root_fields(bytes, lines)?;
     let entities = map_entities(&mut root, "entities", "N", lines)?;
     let groups = list_entities(&mut root, "subgraphs", "G", lines)?;
-    let endpoints = model_identities(entities.iter().chain(groups.iter()));
+    let mut members = Identities::new();
+    for group in &groups {
+        lines
+            .semantic_resources
+            .charge_layout_work(group.id.len().max(1))?;
+        members.insert(group.id.as_str(), group.key.as_str());
+    }
+    let group_ids = members.clone();
+    // Membership names authored declarations; relationships name routing IDs. A group spelling
+    // can also have an entity shadow created by Jison, which is never a visible entity endpoint.
+    let mut endpoints = if groups.is_empty() {
+        model_identities(entities.iter())
+    } else {
+        model_identities(groups.iter())
+    };
+    if !groups.is_empty() {
+        for entity in &entities {
+            lines
+                .semantic_resources
+                .charge_layout_work(entity.id.len().max(1))?;
+            if !group_ids.contains_key(entity.id.as_str()) {
+                members.insert(entity.id.as_str(), entity.key.as_str());
+                endpoints.insert(entity.model_id.as_str(), entity.key.as_str());
+            }
+        }
+    }
     write_header(&mut root, lines)?;
     write_plain_record(
         if groups.is_empty() {
@@ -386,17 +411,22 @@ fn write_er(bytes: &[u8], lines: &mut SemanticFallbackWriter<'_>) -> Result<()> 
     for group in &groups {
         let mut fields = declaration(group, "group", lines)?;
         quoted_field(&group.key, "title", &mut fields, "title", lines)?;
-        reference_list(
-            &group.key,
-            "members",
-            &mut fields,
-            "nodes",
-            &endpoints,
-            lines,
-        )?;
+        reference_list(&group.key, "members", &mut fields, "nodes", &members, lines)?;
         details(&group.key, &fields, lines)?;
     }
     for entity in &entities {
+        if let Some(group_key) = group_ids.get(entity.id.as_str()) {
+            let fields = declaration(entity, "shadow entity", lines)?;
+            write_record(
+                &[RecordPart::Plain(&format!(
+                    "{} shadow-of: {group_key}",
+                    entity.key
+                ))],
+                lines,
+            )?;
+            details(&entity.key, &fields, lines)?;
+            continue;
+        }
         let mut fields = declaration(entity, "entity", lines)?;
         omit_same_text(&mut fields, "label", &entity.id, lines)?;
         omit_values(&mut fields, "alias", &["\"\""]);

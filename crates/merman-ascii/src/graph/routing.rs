@@ -118,6 +118,7 @@ struct PreparedSceneRouting<'layout> {
     graph_layout: &'layout GraphLayout,
     branch_allocation: allocation::BranchAllocation,
     protected: Rc<occupancy::ProtectedScene<'layout>>,
+    label_regions: Rc<occupancy::LabelRegionCache<'layout>>,
     route_order: Vec<usize>,
     route_scan_width: usize,
 }
@@ -160,11 +161,14 @@ impl<'layout> PreparedSceneRouting<'layout> {
                     .overflow(AsciiResourceLimitId::MaxLayoutWorkUnits)
             })?;
         let protected = SceneOccupancy::try_prepare_protection(graph_layout, resources)?;
+        let label_regions =
+            occupancy::LabelRegionCache::try_new(graph_layout, canonical_edges.len(), resources)?;
         let route_order = plan_route_order(graph, graph_layout, canonical_edges, resources)?;
         Ok(Self {
             graph_layout,
             branch_allocation,
             protected,
+            label_regions,
             route_order,
             route_scan_width,
         })
@@ -420,6 +424,7 @@ impl RouteScene {
                     text,
                     placement: label.placement,
                     color: label.paint.color,
+                    mirrored_horizontally: false,
                 });
                 draw_routed_label(canvas, &label)?;
             }
@@ -442,6 +447,7 @@ impl RouteScene {
                     text,
                     placement: label.placement,
                     color: label.paint.color,
+                    mirrored_horizontally: false,
                 });
                 draw_routed_label(canvas, &label)?;
             }
@@ -462,6 +468,7 @@ impl RouteLabelTransform {
         match self {
             Self::Identity => label,
             Self::HorizontalMirror { width } => EdgeLabel {
+                mirrored_horizontally: !label.mirrored_horizontally,
                 placement: label.placement.with_position(
                     width
                         .saturating_sub(label.placement.x())
@@ -479,6 +486,7 @@ impl RouteLabelTransform {
                         height.saturating_sub(label.placement.y().saturating_add(line_count)),
                     ),
                     color: label.color,
+                    mirrored_horizontally: label.mirrored_horizontally,
                 }
             }
         }
@@ -567,6 +575,9 @@ pub(super) fn route_scene_with_input<'a>(
         graph, &prepared, input, charset, policy, true, resources, execution,
     ) {
         Ok(improved) => Ok(improved),
+        // Optional quality cannot discard a complete scene when a caller's private
+        // preparation slice ends. Public resource and cancellation errors still propagate.
+        Err(AsciiError::PlanningWorkAllowanceExhausted) => Ok(incumbent),
         Err(error) if error.graph_planning_fallback_reason().is_some() => Ok(incumbent),
         Err(error) => Err(error),
     }
@@ -607,7 +618,7 @@ fn route_scene_kernel<'a>(
             .try_reserve(canonical_edges.len())
             .map_err(|_| layout_allocation_failed())?;
         let mut occupancy = SceneOccupancy::try_new_with_protection(
-            graph_layout,
+            Rc::clone(&prepared.label_regions),
             canonical_edges.len(),
             policy.edge_label_lane_radius,
             Rc::clone(&prepared.protected),
@@ -783,7 +794,7 @@ fn route_scene_kernel<'a>(
                 allowance.account_scene_work(start_work, initial_allowance, resources);
             }
             let mut defer_loop_labels = edge.from == edge.to && !container_endpoint;
-            let needs_terminal_search = selected.is_none()
+            let mut needs_terminal_search = selected.is_none()
                 || (quality || input.independent_incidents[edge_index])
                     && !honors_allocation
                     && selected.as_ref().is_some_and(|(score, _, plan)| {
@@ -830,6 +841,27 @@ fn route_scene_kernel<'a>(
                 if selected.is_none()
                     && !witnesses.blockers.is_empty()
                     && edge.from != edge.to
+                    && let Some((score, plan)) = try_undisplaced_route(
+                        request,
+                        path::RouteObstacles {
+                            scene: &occupancy,
+                            routes: &routes,
+                            owner: &owner,
+                        },
+                        label_plans.descriptor(edge_index),
+                        &budget.allocation,
+                        resources,
+                        execution,
+                    )?
+                {
+                    needs_terminal_search = input.independent_incidents[edge_index]
+                        && route_needs_search(forward, score, &plan, false);
+                    selected = Some((score, usize::MAX, plan));
+                    defer_loop_labels = false;
+                }
+                if selected.is_none()
+                    && !witnesses.blockers.is_empty()
+                    && edge.from != edge.to
                     && repair_blocked_scene_for_input(
                         request,
                         input,
@@ -845,7 +877,9 @@ fn route_scene_kernel<'a>(
                     quality_requested = true;
                     continue;
                 }
-                occupancy.begin_blocker_collection(resources)?;
+                if needs_terminal_search {
+                    occupancy.begin_blocker_collection(resources)?;
+                }
             }
             if needs_terminal_search
                 && let Some((score, plan)) = terminal::plan_terminal_route_with_budget(
@@ -1014,6 +1048,39 @@ fn route_scene_kernel<'a>(
         allowance.account_scene_work(start_work, initial_allowance, resources);
     }
     result
+}
+
+fn try_undisplaced_route(
+    request: EdgeRouteRequest<'_>,
+    obstacles: path::RouteObstacles<'_>,
+    label: Option<label::RoutedLabelDescriptor>,
+    allowance: &crate::operation::SearchAllowance,
+    resources: &mut ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Option<(RouteCandidateScore, RoutePlan)>> {
+    // A blocked direct path need not displace another edge. Split the remaining
+    // slice between an unchanged-scene trial and repair, without adding credit.
+    let work = allowance
+        .remaining()
+        .1
+        .min(resources.remaining_planning_work().unwrap_or(usize::MAX))
+        / 2;
+    if work == 0 {
+        return Ok(None);
+    }
+    let mut trial = resources.clone().with_planning_work_allowance(work);
+    match terminal::plan_terminal_route_with_budget(
+        request,
+        obstacles,
+        label,
+        None,
+        terminal::SearchBudget::Limited(allowance),
+        &mut trial,
+        execution,
+    ) {
+        Err(AsciiError::PlanningWorkAllowanceExhausted) => Ok(None),
+        result => result,
+    }
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1195,6 +1262,16 @@ fn forward_route_direction(
     request: EdgeRouteRequest<'_>,
     resources: &ResourceContext,
 ) -> Result<Option<StepDirection>> {
+    use super::model::GraphPortSide;
+    if let (Some(source), Some(target)) = (&request.edge.source_port, &request.edge.target_port) {
+        return Ok(match (source.side, target.side) {
+            (GraphPortSide::Right, GraphPortSide::Left) => Some(StepDirection::Right),
+            (GraphPortSide::Left, GraphPortSide::Right) => Some(StepDirection::Left),
+            (GraphPortSide::Bottom, GraphPortSide::Top) => Some(StepDirection::Down),
+            (GraphPortSide::Top, GraphPortSide::Bottom) => Some(StepDirection::Up),
+            _ => None,
+        });
+    }
     let Some(direction) = compound_route_direction(
         request.graph,
         request.graph_layout,
@@ -1368,18 +1445,8 @@ fn admit_route_candidate(
         return Ok(None);
     }
     let Some(plan) = plan.resolve_endpoint_attachments(
-        plan::EndpointGeometry::for_route(
-            request.from,
-            request.to,
-            request.graph_layout,
-            resources,
-        )?,
-        plan::EndpointGeometry::for_route(
-            request.to,
-            request.from,
-            request.graph_layout,
-            resources,
-        )?,
+        plan::EndpointGeometry::for_request(request, MarkerEndpoint::Start, resources)?,
+        plan::EndpointGeometry::for_request(request, MarkerEndpoint::End, resources)?,
         request.charset,
         resources,
     )?
@@ -1479,6 +1546,14 @@ fn canonicalize_edges(
         .map_err(|_| layout_allocation_failed())?;
     for index in &order {
         resources.charge_layout_work(1)?;
+        for port in [&edges[*index].source_port, &edges[*index].target_port]
+            .into_iter()
+            .flatten()
+        {
+            if let Some(anchor) = &port.anchor {
+                resources.charge_layout_work(anchor.len())?;
+            }
+        }
         canonical_edges.push(edges[*index].clone());
     }
     Ok(CanonicalEdges {
@@ -1501,6 +1576,8 @@ fn compare_edges(left: &AsciiGraphEdge, right: &AsciiGraphEdge) -> Ordering {
         .then_with(|| marker_order(left.start_marker).cmp(&marker_order(right.start_marker)))
         .then_with(|| marker_order(left.end_marker).cmp(&marker_order(right.end_marker)))
         .then_with(|| left.length.cmp(&right.length))
+        .then_with(|| left.source_port.cmp(&right.source_port))
+        .then_with(|| left.target_port.cmp(&right.target_port))
         .then_with(|| color_order(left.style.line).cmp(&color_order(right.style.line)))
         .then_with(|| color_order(left.style.arrow).cmp(&color_order(right.style.arrow)))
         .then_with(|| color_order(left.style.label).cmp(&color_order(right.style.label)))

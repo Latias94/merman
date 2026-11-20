@@ -2620,14 +2620,8 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
             .try_reserve_exact(4)
             .map_err(|_| layout_allocation_failed())?;
         if let Some(label) = layout.top_endpoint_label {
-            let (center_x, mut y) =
+            let (center_x, y) =
                 geometry.endpoint_label_anchor(true, label.line_count(), resources)?;
-            if matches!(
-                geometry.source_port().side(),
-                PhysicalPortSide::Right | PhysicalPortSide::Left
-            ) {
-                y = resources.checked_grid_add(y, 1)?;
-            }
             overlays.push(RelationOverlay::endpoint_label(
                 center_x,
                 y,
@@ -2665,14 +2659,8 @@ impl<'relation> relation_graph::RelationComponentAdapter<'relation, RelationLayo
         }
 
         if let Some(label) = layout.bottom_endpoint_label {
-            let (center_x, mut y) =
+            let (center_x, y) =
                 geometry.endpoint_label_anchor(false, label.line_count(), resources)?;
-            if matches!(
-                geometry.target_port().side(),
-                PhysicalPortSide::Right | PhysicalPortSide::Left
-            ) {
-                y = resources.checked_grid_add(y, 1)?;
-            }
             overlays.push(RelationOverlay::endpoint_label(
                 center_x,
                 y,
@@ -2972,11 +2960,16 @@ fn class_route_profile(layout: &RelationLayout<'_>) -> relation_graph::LayeredRe
                 .unwrap_or(0),
         );
 
-    if endpoint_label_gap > 0 {
+    let profile = if endpoint_label_gap > 0 {
         relation_graph::LayeredRelationRouteProfile::class_with_endpoint_labels(endpoint_label_gap)
     } else {
         relation_graph::LayeredRelationRouteProfile::class()
-    }
+    };
+    let physical = layout.physical();
+    profile.with_endpoint_label_sizes(
+        [physical.top_endpoint_label, physical.bottom_endpoint_label]
+            .map(|label| label.map(|label| (label.width(), label.line_count()))),
+    )
 }
 
 fn marker_char(

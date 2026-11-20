@@ -465,6 +465,11 @@ that recovery retains the target and transaction evidence instead of replacing u
 contents. Restore the intended read access and rerun the command to let recovery inspect the
 retained generation. A transaction already marked committed or rolled back only finishes cleanup.
 
+If files are temporarily unavailable during rollback, release them and rerun the command.
+Recovery inspects each target against the retained generation, including when an older journal
+recorded a higher rollback cursor on a retry. Once recovery succeeds, the same invocation can
+publish the requested generation using the identities of files restored under the lock.
+
 Stdin requires an explicit logical name and output directory:
 
 ```sh

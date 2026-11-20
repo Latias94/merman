@@ -14,13 +14,13 @@ use crate::options::AsciiRenderOptions;
 use crate::options::{FlowchartLayoutPolicy, TerminalWidthProfile};
 use crate::resource::{AsciiResourceLimitId, AsciiResourceLimitPhase, ResourceContext};
 use crate::safe_text::{
-    LabelBreakPolicy, NormalizedTextPlan, NormalizedTrimmedTextPlan, charge_text_layout,
-    try_plan_normalized_text, try_plan_normalized_trimmed_literal_rows,
+    BudgetedTextDocument, LabelBreakPolicy, NormalizedTextPlan, NormalizedTrimmedTextPlan,
+    charge_text_layout, try_plan_normalized_text, try_plan_normalized_trimmed_literal_rows,
     try_plan_normalized_trimmed_text,
 };
 use merman_model::families::flowchart::{
     FlowEdgeMarker as CoreFlowEdgeMarker, FlowEdgeStroke as CoreFlowEdgeStroke,
-    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowchartModel,
+    FlowEdgeVisibility as CoreFlowEdgeVisibility, FlowNode, FlowchartModel,
 };
 use rustc_hash::{FxHashMap as HashMap, FxHashSet as HashSet};
 use std::num::NonZeroUsize;
@@ -86,10 +86,19 @@ fn from_flowchart_model_transactional(
         },
     )?;
     let labels = FlowchartLabels::new(model, layout_policy.terminal_width_profile, resources)?;
-    let projection_plan = FlowchartProjectionPlan::try_new(
-        &labels,
+    let presentations = plan_node_presentations(
+        model,
         &memberships,
         direction,
+        labels.retained_bytes(),
+        layout_policy,
+        resources,
+        execution,
+    )?;
+    let projection_plan = FlowchartProjectionPlan::try_new(
+        &labels,
+        &presentations,
+        &memberships,
         Some(wrap_width.get()),
         layout_policy.terminal_width_profile,
         resources,
@@ -169,6 +178,8 @@ fn from_flowchart_model_transactional(
                 end_marker: parse_flow_edge_marker(edge.end_marker),
                 length: edge.length,
                 style,
+                source_port: None,
+                target_port: None,
             },
             label_break_policy,
         );
@@ -550,6 +561,113 @@ struct FlowchartNodeProjectionPlan<'a> {
     shape: ResolvedGraphNodeShape,
 }
 
+#[derive(Debug)]
+struct FlowchartNodePresentation {
+    shape: ResolvedGraphNodeShape,
+    details: Option<String>,
+}
+
+fn plan_node_presentations(
+    model: &FlowchartModel,
+    memberships: &FlowchartMembershipIndex<'_>,
+    direction: GraphDirection,
+    mut retained_bytes: usize,
+    layout_policy: &FlowchartLayoutPolicy,
+    resources: &ResourceContext,
+    execution: AsciiExecution<'_>,
+) -> Result<Vec<Option<FlowchartNodePresentation>>> {
+    let wrap_width = layout_policy.node_label_wrap_width;
+    let width_profile = layout_policy.terminal_width_profile;
+    resources.charge_layout_work(model.nodes.len())?;
+    let mut presentations = Vec::new();
+    presentations
+        .try_reserve_exact(model.nodes.len())
+        .map_err(|_| projection_allocation_failed())?;
+    for (index, node) in model.nodes.iter().enumerate() {
+        checkpoint_projection(execution, index)?;
+        if memberships.group_owns_node_id(&node.id) {
+            presentations.push(None);
+            continue;
+        }
+        let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
+        let detail_resources = resources
+            .clone()
+            .with_additional_retained_output(retained_bytes)?;
+        let details =
+            node_projection_details(node, shape, wrap_width, width_profile, &detail_resources)?;
+        if let Some(details) = &details {
+            retained_bytes = checked_projection_metric_add(
+                resources,
+                AsciiResourceLimitId::MaxOutputBytes,
+                retained_bytes,
+                details.len(),
+            )?;
+        }
+        presentations.push(Some(FlowchartNodePresentation { shape, details }));
+    }
+    Ok(presentations)
+}
+
+fn node_projection_details(
+    node: &FlowNode,
+    shape: ResolvedGraphNodeShape,
+    wrap_width: usize,
+    width_profile: TerminalWidthProfile,
+    resources: &ResourceContext,
+) -> Result<Option<String>> {
+    let annotation = shape.annotation;
+    let fields = [
+        ("icon", node.icon.as_deref()),
+        ("image", node.img.as_deref()),
+        ("form", node.form.as_deref()),
+        ("label position", node.pos.as_deref()),
+        ("constraint", node.constraint.as_deref()),
+    ];
+    if annotation.is_none()
+        && fields.iter().all(|(_, value)| value.is_none())
+        && node.asset_width.is_none()
+        && node.asset_height.is_none()
+    {
+        return Ok(None);
+    }
+    if shape.suppresses_label() {
+        return Err(AsciiError::UnsupportedFeature {
+            diagram_type: "flowchart",
+            feature: "metadata on fixed control node shapes",
+        });
+    }
+    // These are terminal details, not fetched assets. The budgeted producer admits complete
+    // fields before materializing them; the node-label plan then measures their actual rows
+    // alongside the authored label before sizing contours or allocating route contacts.
+    let options = crate::AsciiRenderOptions::unicode()
+        .with_color_mode(crate::AsciiColorMode::Plain)
+        .with_terminal_width_profile(width_profile);
+    let mut document = BudgetedTextDocument::from_resources(resources.clone(), &options);
+    if let Some(annotation) = annotation {
+        document.push_wrapped_prefixed_line_with("", "", wrap_width, |line| {
+            line.push_str(annotation)
+        })?;
+    }
+    for (key, value) in fields {
+        let Some(value) = value else { continue };
+        document.push_wrapped_prefixed_line_with("", "", wrap_width, |line| {
+            line.write_fmt(format_args!("{key}: "))?;
+            line.push_quoted_text(value)
+        })?;
+    }
+    for (key, value) in [
+        ("asset width", node.asset_width),
+        ("asset height", node.asset_height),
+    ] {
+        if let Some(value) = value {
+            document.push_wrapped_prefixed_line_with("", "", wrap_width, |line| {
+                line.write_fmt(format_args!("{key}: {value}"))
+            })?;
+        }
+    }
+    document.finish().map(Some)
+}
+
 #[derive(Debug, Clone, Copy)]
 struct FlowchartGroupProjectionPlan<'a> {
     canonical_index: usize,
@@ -633,8 +751,8 @@ impl ProjectionMaterializationAdmission {
 impl<'a> FlowchartProjectionPlan<'a> {
     fn try_new(
         labels: &'a FlowchartLabels<'_>,
+        presentations: &'a [Option<FlowchartNodePresentation>],
         memberships: &FlowchartMembershipIndex<'_>,
-        direction: GraphDirection,
         wrap_width: Option<usize>,
         width_profile: TerminalWidthProfile,
         resources: &ResourceContext,
@@ -660,23 +778,49 @@ impl<'a> FlowchartProjectionPlan<'a> {
                 nodes.push(None);
                 continue;
             }
-            let shape = resolve_flowchart_node_shape(node.layout_shape.as_deref(), direction)?;
+            let presentation =
+                presentations[index]
+                    .as_ref()
+                    .ok_or(AsciiError::UnsupportedFeature {
+                        diagram_type: "flowchart",
+                        feature: "missing node presentation plan",
+                    })?;
+            let shape = presentation.shape;
             let (label, break_policy) = labels.node(index);
             let projected_label = shape.projected_label(label);
-            let text = DeferredGraphNodeLabelPlan::single(
-                DeferredGraphLabelSectionPlan::try_single_with_break_policy(
-                    projected_label,
-                    wrap_width,
-                    "flowchart",
-                    width_profile,
-                    break_policy,
-                    resources,
-                )?,
+            let primary = DeferredGraphLabelSectionPlan::try_single_with_break_policy(
+                projected_label,
                 wrap_width,
                 "flowchart",
                 width_profile,
+                break_policy,
                 resources,
             )?;
+            let text = if let Some(details) = presentation.details.as_deref() {
+                DeferredGraphNodeLabelPlan::compartmented(
+                    primary,
+                    DeferredGraphLabelSectionPlan::try_single_with_break_policy(
+                        details,
+                        None,
+                        "flowchart",
+                        width_profile,
+                        LabelBreakPolicy::LiteralRows,
+                        resources,
+                    )?,
+                    wrap_width,
+                    "flowchart",
+                    width_profile,
+                    resources,
+                )?
+            } else {
+                DeferredGraphNodeLabelPlan::single(
+                    primary,
+                    wrap_width,
+                    "flowchart",
+                    width_profile,
+                    resources,
+                )?
+            };
             admission.include_copy(&node.id, resources)?;
             admission.include_node_label(&text, resources)?;
             nodes.push(Some(FlowchartNodeProjectionPlan { text, shape }));
@@ -840,19 +984,6 @@ fn validate_supported_flowchart_model(
             // plan below.  Parser-owned contexts may still provide the more precise effective
             // CSS/source-order projection.
             continue;
-        }
-        if node.icon.is_some()
-            || node.img.is_some()
-            || node.form.is_some()
-            || node.pos.is_some()
-            || node.constraint.is_some()
-            || node.asset_width.is_some()
-            || node.asset_height.is_some()
-        {
-            return Err(AsciiError::UnsupportedFeature {
-                diagram_type: "flowchart",
-                feature: "flowchart icon and image node metadata",
-            });
         }
     }
     for (index, edge) in model.edges.iter().enumerate() {
@@ -1140,6 +1271,200 @@ mod tests {
             ));
             assert_eq!(below_resources.layout_work_used(), PRIOR_WORK);
             assert_eq!(below_resources.document_cells_used(), PRIOR_DOCUMENT_CELLS);
+        }
+    }
+
+    #[test]
+    fn annotated_flowchart_projection_charges_details_and_rolls_back_on_work_failure() {
+        let mut model = model_with_edge(flow_edge("A", "B"));
+        model.nodes[0].layout_shape = Some("delay".to_string());
+        model.nodes[0].label = Some("Queued".to_string());
+        model.nodes[0].icon = Some("mdi:计时器\\n".to_string());
+        model.nodes[0].asset_width = Some(80.0);
+        let unbounded = AsciiResourcePolicy::unbounded();
+        let mut measured_resources = ResourceContext::new(unbounded);
+        let measured = from_flowchart_model(
+            &model,
+            &AsciiRenderOptions::unicode(),
+            &mut measured_resources,
+        )
+        .expect("measured role and asset fields should project");
+        let compartments = measured.nodes[0]
+            .compartments()
+            .expect("details need a measured compartment");
+        assert_eq!(compartments.title, "Queued");
+        assert!(compartments.body.contains("shape: delay"));
+        assert!(compartments.body.contains("mdi:计时器\\\\n"));
+        assert!(compartments.body.contains("asset width: 80"));
+        let work = measured_resources.layout_work_used();
+        let cells = measured_resources.document_cells_used();
+        assert!(work > 1 && cells > 0);
+
+        let exact_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, work)
+            .unwrap();
+        let mut exact_resources = ResourceContext::new(exact_policy);
+        let exact =
+            from_flowchart_model(&model, &AsciiRenderOptions::unicode(), &mut exact_resources)
+                .expect("the measured projection work is sufficient");
+        assert_eq!(exact, measured);
+        assert_eq!(exact_resources.layout_work_used(), work);
+        assert_eq!(exact_resources.document_cells_used(), cells);
+
+        let below_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxLayoutWorkUnits, work - 1)
+            .unwrap();
+        let mut below_resources = ResourceContext::new(below_policy);
+        let error =
+            from_flowchart_model(&model, &AsciiRenderOptions::unicode(), &mut below_resources)
+                .expect_err("one less work unit must reject the complete projection");
+        assert!(matches!(error, AsciiError::ResourceLimitExceeded(details)
+            if details.limit == AsciiResourceLimitId::MaxLayoutWorkUnits && details.max == work - 1));
+        assert_eq!(below_resources.layout_work_used(), 0);
+        assert_eq!(below_resources.document_cells_used(), 0);
+    }
+
+    #[test]
+    fn node_presentations_reject_cumulative_asset_details_at_output_boundary() {
+        const DETAILS: &str = "icon: \"计时器\"";
+        let mut model = model_with_edge(flow_edge("A", "B"));
+        model.edges.clear();
+        model.nodes.push(flow_node("C"));
+        for node in &mut model.nodes {
+            node.icon = Some("计时器".to_string());
+        }
+        let layout_policy = AsciiRenderOptions::unicode().flowchart_layout();
+        let unbounded = AsciiResourcePolicy::unbounded();
+        let individual_policy = unbounded
+            .with_limit(AsciiResourceLimitId::MaxOutputBytes, DETAILS.len())
+            .expect("one asset detail should have an exact output allowance");
+        for node in &model.nodes {
+            let resources = ResourceContext::new(individual_policy);
+            let shape = resolve_flowchart_node_shape(None, GraphDirection::LeftRight)
+                .expect("the default node shape should resolve");
+            let details = node_projection_details(
+                node,
+                shape,
+                layout_policy.node_label_wrap_width,
+                layout_policy.terminal_width_profile,
+                &resources,
+            )
+            .expect("every detail should fit individually at the exact byte limit");
+            assert_eq!(details.as_deref(), Some(DETAILS));
+        }
+
+        let total_bytes = DETAILS.len() * model.nodes.len();
+        for max in [total_bytes, total_bytes - 1] {
+            let policy = unbounded
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, max)
+                .expect("the cumulative detail allowance should be valid");
+            let resources = ResourceContext::new(policy);
+            let control = OperationControl::new();
+            let execution = AsciiExecution::new(&control, &policy);
+            let memberships = FlowchartMembershipIndex::try_new(&model, &resources, execution)
+                .expect("the model should have no group memberships");
+            let labels =
+                FlowchartLabels::new(&model, layout_policy.terminal_width_profile, &resources)
+                    .expect("plain labels should remain borrowed");
+            assert_eq!(labels.retained_bytes(), 0);
+
+            let result = plan_node_presentations(
+                &model,
+                &memberships,
+                GraphDirection::LeftRight,
+                labels.retained_bytes(),
+                &layout_policy,
+                &resources,
+                execution,
+            );
+            if max == total_bytes {
+                let presentations = result.expect("the exact cumulative byte limit should pass");
+                assert_eq!(presentations.len(), model.nodes.len());
+                for presentation in presentations {
+                    assert_eq!(
+                        presentation
+                            .expect("every asset node should have a presentation")
+                            .details
+                            .as_deref(),
+                        Some(DETAILS)
+                    );
+                }
+            } else {
+                let error = result
+                    .expect_err("the final detail must be refused during presentation planning");
+                assert!(matches!(
+                    error,
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                            && details.actual == total_bytes
+                            && details.max == max
+                ));
+            }
+        }
+    }
+
+    #[test]
+    fn node_presentations_preserve_projected_labels_and_outer_retained_output() {
+        const OUTER_RETAINED_BYTES: usize = 7;
+        const LABEL: &str = "主标签";
+        const DETAILS: &str = "image: \"图.svg\"";
+        let mut model = model_with_edge(flow_edge("A", "B"));
+        model.edges.clear();
+        model.nodes.truncate(1);
+        model.nodes[0].label = Some(format!("**{LABEL}**"));
+        model.nodes[0].label_type = Some("markdown".to_string());
+        model.nodes[0].img = Some("图.svg".to_string());
+        let layout_policy = AsciiRenderOptions::unicode().flowchart_layout();
+        let total_bytes = OUTER_RETAINED_BYTES + LABEL.len() + DETAILS.len();
+
+        for max in [total_bytes, total_bytes - 1] {
+            let policy = AsciiResourcePolicy::unbounded()
+                .with_limit(AsciiResourceLimitId::MaxOutputBytes, max)
+                .expect("the combined label and detail allowance should be valid");
+            let resources =
+                ResourceContext::new(policy).with_retained_output(OUTER_RETAINED_BYTES, 0);
+            let control = OperationControl::new();
+            let execution = AsciiExecution::new(&control, &policy);
+            let memberships = FlowchartMembershipIndex::try_new(&model, &resources, execution)
+                .expect("the model should have no group memberships");
+            let labels =
+                FlowchartLabels::new(&model, layout_policy.terminal_width_profile, &resources)
+                    .expect("the projected primary label should fit before adding asset details");
+            assert_eq!(labels.node(0).0, LABEL);
+            assert_eq!(labels.retained_bytes(), LABEL.len());
+
+            let result = plan_node_presentations(
+                &model,
+                &memberships,
+                GraphDirection::LeftRight,
+                labels.retained_bytes(),
+                &layout_policy,
+                &resources,
+                execution,
+            );
+            if max == total_bytes {
+                let presentations = result
+                    .expect("outer candidate, projected label, and details should fit exactly");
+                assert_eq!(presentations.len(), 1);
+                assert_eq!(
+                    presentations[0]
+                        .as_ref()
+                        .expect("the asset node should have a presentation")
+                        .details
+                        .as_deref(),
+                    Some(DETAILS)
+                );
+            } else {
+                let error = result
+                    .expect_err("neither the primary label nor the outer reservation may be lost");
+                assert!(matches!(
+                    error,
+                    AsciiError::ResourceLimitExceeded(details)
+                        if details.limit == AsciiResourceLimitId::MaxOutputBytes
+                            && details.actual == total_bytes
+                            && details.max == max
+                ));
+            }
         }
     }
 

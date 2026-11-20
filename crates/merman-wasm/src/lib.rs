@@ -968,14 +968,28 @@ mod tests {
             .unwrap();
         assert_eq!(class["graph_presentations"], serde_json::json!(["strict"]));
 
-        let zenuml = capabilities
+        #[cfg(feature = "diagram-zenuml")]
+        {
+            let zenuml = capabilities
+                .iter()
+                .find(|capability| capability["diagram_type"] == "zenuml")
+                .unwrap();
+            assert_eq!(zenuml["semantic_coverage"], "partial");
+            assert_eq!(zenuml["primary_projection"], "diagrammatic");
+            assert_eq!(zenuml["support_level"], "partial");
+            assert_eq!(zenuml["layout_profiles"], serde_json::json!(["canonical"]));
+            assert_eq!(zenuml["graph_presentations"], serde_json::json!(["strict"]));
+            assert_eq!(zenuml["fallback_encodings"], serde_json::json!(["plain"]));
+        }
+
+        let radar = capabilities
             .iter()
-            .find(|capability| capability["diagram_type"] == "zenuml")
+            .find(|capability| capability["diagram_type"] == "radar")
             .unwrap();
-        assert!(zenuml["semantic_coverage"].is_null());
-        assert_eq!(zenuml["primary_projection"], "none");
-        assert_eq!(zenuml["support_level"], "unsupported");
-        assert_eq!(zenuml["graph_presentations"], serde_json::json!([]));
+        assert!(radar["semantic_coverage"].is_null());
+        assert_eq!(radar["primary_projection"], "none");
+        assert_eq!(radar["support_level"], "unsupported");
+        assert_eq!(radar["graph_presentations"], serde_json::json!([]));
     }
 
     #[test]

@@ -63,4 +63,4 @@ It does not cover activation boxes or loop/alt/opt/par blocks in the upstream RE
 
 `merman-ascii` consumes `merman-core` typed sequence models, which are richer than the upstream
 `mermaid-ascii` parser. Product gaps beyond copied fixture parity are tracked in
-`crates/merman-ascii/SEQUENCE_SUPPORT.md` and the `ascii-sequence-parity` workstream.
+`docs/rendering/ascii/SEQUENCE_SUPPORT.md` and the `ascii-sequence-parity` workstream.

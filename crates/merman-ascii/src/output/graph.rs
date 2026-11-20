@@ -109,9 +109,9 @@ pub(super) fn write_if_graph(
     if let Some(title) = take_text(&mut root, "sourceTitle", lines)? {
         lines.push_quoted("title", &title)?;
     }
-    lines.push("Keys: N nodes; G groups; E edges, source then target.".into())?;
+    lines.push("Keys: N nodes; G groups; E edges, source then target.")?;
     if state || !groups.is_empty() {
-        lines.push("Local directions inherit unless marked explicit.".into())?;
+        lines.push("Local directions inherit unless marked explicit.")?;
     }
 
     let explicit_directions = take_array(&mut root, "subgraphExplicitDirections", lines)?;
@@ -162,7 +162,7 @@ fn write_groups(
     lines: &mut SemanticFallbackWriter<'_>,
 ) -> Result<()> {
     if !groups.is_empty() {
-        lines.push("Groups:".into())?;
+        lines.push("Groups:")?;
     }
     for (index, mut group) in groups.into_iter().enumerate() {
         let id = take_text(&mut group.fields, "id", lines)?.ok_or_else(invalid_projection)?;
@@ -365,7 +365,7 @@ fn write_nodes(nodes: Vec<NodeRecord<'_>>, lines: &mut SemanticFallbackWriter<'_
     if nodes.is_empty() {
         return Ok(());
     }
-    lines.push("Nodes:".into())?;
+    lines.push("Nodes:")?;
     let mut membership: BTreeMap<String, Vec<String>> = BTreeMap::new();
     for node in nodes {
         write_record(&node.parts(), lines)?;
@@ -388,7 +388,7 @@ fn write_relationships<'a>(
     lines: &mut SemanticFallbackWriter<'_>,
 ) -> Result<()> {
     if state {
-        lines.push("Relationships:".into())?;
+        lines.push("Relationships:")?;
     }
     let mut explained_markers = BTreeSet::new();
     let mut explained_strokes = BTreeSet::new();
