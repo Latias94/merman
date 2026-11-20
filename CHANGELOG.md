@@ -28,7 +28,9 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Performance verification
 
+- The full browser SDK reached its first SVG for a medium Flowchart in 214 ms, down from 275 ms in `0.10.0`. Eight paired runs in Chromium on Windows measured local package loading, WebAssembly compilation and rendering. Both releases returned the same SVG bytes.
 - On the Windows 11 release build, system font queries reduced process reads from about 826 MB to 255 KB for a seven-node PNG export that selected the same system font as `0.10.0`. The PNG bytes matched. The two CLI versions also produced byte-identical SVG for all 114 Flowcharts in the Trident documentation workload, with a distinct diagram ID for each chart.
+- Reusing a Rust renderer configured with `flowchart.nodeSpacing: 50` reduced warm allocation traffic from 395 KB to 207 KB per two-node render in a same-toolchain comparison against the source before the optimization. The renderer kept about 142 KB of additional theme data after its first render. A 500-node Classic Flowchart skipped 499 edge-length calculations and made 831 fewer allocations. Both diagrams kept identical SVGs.
 
 ### Fixed
 

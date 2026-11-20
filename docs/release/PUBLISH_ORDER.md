@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-12 (Asia/Shanghai)
+Last updated: 2026-11-21 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -14,6 +14,8 @@ The main-line `0.10.0-alpha.2` is published for all selected products, with inde
 ## 0.10.1 preparation
 
 On 2026-11-21 (Asia/Shanghai), the maintainer selected `0.10.1` for local candidate preparation and comparison with the [published 0.10.0 release](https://github.com/Latias94/merman/releases/tag/v0.10.0). Qualify the Windows CLI, Rust API, Node N-API, and Web SDK on their public render paths. The workspace version projection includes coupled package metadata. Publication scope and tag date await maintainer selection.
+
+Local Windows qualification exercised the CLI archive, the Windows x64 Node package, and all five installed Web packages in Chromium on the main thread and in a Worker. The root changelog records the matching SVG corpus, the lower font discovery read volume, and the calibrated full browser SDK first-render comparison. The selected release commit still requires the immutable multi-platform preflight.
 
 Prepare Tree-sitter Mermaid `0.3.5` through its [independent release owner](TREE_SITTER_MERMAID.md) before publishing the coupled LSP. The Cargo and npm registries still serve `0.3.4` as of 2026-11-21. Reuse `roughr-merman 0.12.6`. The existing [published versions](PREBUILT_PRODUCTS.md#published-versions) remain the installation reference while candidate outputs qualify.
 
