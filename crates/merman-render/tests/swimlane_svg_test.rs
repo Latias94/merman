@@ -41,6 +41,49 @@ fn render_swimlane(source: &str, diagram_id: &str) -> String {
 }
 
 #[test]
+fn long_edge_placeholders_preserve_authored_nodes_and_routes() {
+    let diagram_id = "long-edge-placeholder";
+    let source = |middle| format!("swimlane-beta TB\n  A --> {middle}[Review] --> C\n  A --> C\n");
+    let control_svg = render_swimlane(&source("checkpoint"), diagram_id);
+    let control = roxmltree::Document::parse(&control_svg).unwrap();
+
+    for middle in ["placeholder-0", "__merman_swimlane_placeholder_0"] {
+        let (svg, layout) = render_swimlane_with_layout(&source(middle), diagram_id);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            layout
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            ["A", middle, "C"]
+        );
+        assert_eq!(
+            text_content(node_element(&document, diagram_id, middle)),
+            "Review"
+        );
+
+        let routes = [
+            (("A", middle), "L_A_checkpoint_0"),
+            ((middle, "C"), "L_checkpoint_C_0"),
+            (("A", "C"), "L_A_C_0"),
+        ];
+        assert_eq!(layout.edges.len(), routes.len());
+        for (edge, ((from, to), control_id)) in layout.edges.iter().zip(routes) {
+            assert_eq!((edge.from.as_str(), edge.to.as_str()), (from, to));
+            assert_eq!(edge.id, format!("L_{from}_{to}_0"));
+            assert!(edge.points.len() >= 2, "missing route for {}", edge.id);
+            let path = semantic_element(&document, &edge.id, "edge");
+            let control_path = semantic_element(&control, control_id, "edge");
+            assert_eq!(
+                path.attribute("d").unwrap(),
+                control_path.attribute("d").unwrap()
+            );
+        }
+    }
+}
+
+#[test]
 fn mermaid_12_3_shared_members_keep_empty_lane_shells_titles_and_edge_turns() {
     let source =
         include_str!("../../../fixtures/swimlane/local_mermaid_12_3_shared_members_tb.mmd");
