@@ -222,16 +222,11 @@ Core SVG leaves the background unset. Set `SvgOutputPolicy.root_background_color
 
 With `native-fonts`, install a reusable `NativeFontContext` through
 `SvgEnvironment::with_native_font_context`. Each render uses its own measurement state. The typed
-PNG, JPEG, and PDF paths reuse the selected context for painting. Set Mermaid's `fontFamily` to
-the family name registered by the intended face. Load TTF, OTF, or TTC files. For a web package
-that ships WOFF2, obtain the corresponding desktop font for native rendering.
+PNG, JPEG, and PDF paths reuse the selected context for painting.
 
-When painting the returned SVG with resvg, pass the same context to
-`NativeFontContext::apply_to_usvg_options` before parsing the SVG. If the painter has its own
-font resolver, register the same faces and configure family selection to match Merman. A system
-font earlier in the SVG's family stack can take precedence even when both renderers have loaded
-the same custom font. Check the selected family, weight, and style when investigating clipped
-text. See the [`merman-export` font selection guide](../../crates/merman-export/README.md#selection-and-fallback-order).
+When the painter uses the same `usvg` version, use `NativeFontContext::apply_to_usvg_options`
+to share the context before parsing the SVG. For an independent painter, register the same
+font faces and match the font stack as shown below. [Font selection and fallback](../../crates/merman-export/README.md#selection-and-fallback-order)
 
 For Mermaid-compatible semantic JSON, enable `compat-json` and retain the returned
 `ManagedSemanticJson` owner. Retain managed layout results too, using their maintained JSON
@@ -239,6 +234,62 @@ writers rather than raw recursive serde. Canonical semantic inspection exposes t
 
 Mermaid 12 changes default layout, theme, and look. To request the earlier presentation choices, set top-level `layout: dagre`, `theme: default`, and `look: classic` through the host's approved site configuration. These choices do not promise byte-identical old SVG; correctness fixes and measurement changes also affect geometry and IDs. Refresh snapshots and selectors against the actual artifact. Runtime configuration does not remove compiled ELK dependencies or their distribution notices.
 
-Text measurement is deterministic and font-agnostic by default. The removed vendored metric tables are not replaced by a guarantee for the host's display font. When the final font stack is known, supply `DeterministicTextMeasurer::with_width_callback(...)` through the text-measurement policy; measure complete candidate strings and let Merman own wrapping. Use a host provider when measurement can fail. The maintained [font integration example](../../crates/merman/examples/render_svg_monospace.rs) demonstrates the current request/environment wiring. Test titles, multiline labels, Unicode, zoom, and the final raster path using the installed font.
+Default SVG measurement is deterministic and font-agnostic. For applications that measure in their display toolkit, `DeterministicTextMeasurer::with_width_callback(...)` accepts widths of complete candidate strings and lets Merman own wrapping. Use a host provider when measurement can fail. Test titles, multiline labels, Unicode and zoom in the final display stack. See the [monospace callback example](../../crates/merman/examples/render_svg_monospace.rs).
 
 The default runtime is deterministic. Enable and select native clock, time-zone, or random adapters only when the host needs them. In particular, date-dependent Gantt output should be tested with an explicit deterministic or native policy. Apply resource limits at the operation boundary and keep host scheduling, document versions, and retained caches in the host. See the [resource-policy host guide](../integration/RESOURCE_POLICY.md), [host integration recipes](../../crates/merman/examples/README.md#host-integration-recipes) and [the symbol migration reference](../release/UNRELEASED_UPGRADE_GUIDE.md) for detailed replacements.
+
+### Match standalone SVG labels to resvg fonts
+
+`SvgPipeline::resvg_safe()` preserves the source label viewport when converting HTML to SVG text.
+The default estimate for the 14 px bold Class title `Animal` in issue #331 was 39.2 px, while
+native measurement with Arial Bold gave 46.68 px. A downstream painter that chooses the wider
+face can clip the last letter. State transition labels and ER entity, attribute and relationship
+labels use the same viewport mechanism. [Issue #331](https://github.com/Latias94/merman/issues/331)
+
+When your application controls both stages, pass the font files to Merman **before layout** and
+register the same faces in the external painter. Set Mermaid's `fontFamily` using the family
+names stored in those files. If your theme sets `themeVariables.fontFamily`, use the same stack
+there. Class and ER use the top-level setting for some width probes and the theme setting for
+displayed labels. The example sets both explicitly.
+For example, a Fontsource stylesheet can call a face `Recursive Variable` while the TTF
+registers `Recursive Sans Linear Light`. A resvg process with system fonts can then continue down the stack
+to Arial even when it has loaded the Recursive file. Check the family in `fontdb::FaceInfo::families`
+and include the weights, styles and glyph coverage the diagram uses. For WOFF or WOFF2 web
+assets, obtain the corresponding native TTF or OTF files.
+
+Run the example from the repository root with the checked-in Cousine regular and bold faces.
+[Standalone resvg 0.50.0 example](../../crates/merman/examples/standalone_resvg/src/main.rs)
+
+```sh
+cargo run --manifest-path crates/merman/examples/standalone_resvg/Cargo.toml --target-dir target -- target/native-labels crates/merman-export/tests/fonts/Cousine-Regular.ttf crates/merman-export/tests/fonts/Cousine-Bold.ttf
+```
+
+The example writes `class.svg` and `class.png`. It reads each file once, passes identical bytes to
+`NativeFontContext::from_font_bytes` and resvg, and takes the family names from resvg's font database.
+Put a text family that covers the labels first. The example reports missing coverage or a glyph
+that would require independent fallback. When a subset and a full face share the same family,
+style and weight, supply the full face once. A TTC can already contain a face supplied as a TTF.
+For path-based loading, `NativeFontOptions::with_font_file` also accepts font collections.
+If your host uses the same `usvg` version as Merman,
+you can also install the context's database and resolver with `fonts.apply_to_usvg_options(&mut options)`
+before `usvg::Tree::from_str`. For a separate process or a different `resvg` version, supply the
+same font files and effective family stack there. The standalone SVG references fonts by name.
+To diagnose a mismatch, read `selected_faces()` from the diagnostics returned by
+`svg.evidence().native_font_diagnostics()`. Compare those names and collection indices with the
+faces of the positioned glyphs in the consumer's `usvg::Tree`.
+
+For variable fonts, also check the `wght` axis. For ordinary text, Merman's usvg 0.47 uses the
+font's default axis position and resvg 0.50 requests 400. Both request 700 for the bold Class title.
+With the tested Recursive file (default 300), the title fits and the member label advances match,
+although their outlines differ. With the tested Noto Sans SC file (default 100), `+String nom`
+measures 75.19 px at layout and 79.83 px at paint, enough to clip. For matching weight instances,
+supply static Regular (400) and Bold (700) faces to both stages. With the weight-only Recursive
+file, FontTools can produce both instances from the same source.
+
+```sh
+fonttools varLib.instancer Recursive.ttf wght=400 -o Regular.ttf
+fonttools varLib.instancer Recursive.ttf wght=700 -o Bold.ttf
+```
+
+Even with a matching face, italic or overhanging glyphs can extend past their text advance.
+The source viewport still clips ink that crosses its boundary.

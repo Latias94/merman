@@ -1,0 +1,13 @@
+[package]
+name = "standalone-resvg"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+# This consumer owns its resvg version independently of Merman's native font backend.
+[workspace]
+
+[dependencies]
+merman = { path = "../..", default-features = false, features = ["diagram-class", "native-fonts"] }
+resvg = { version = "=0.50.0", default-features = false, features = ["text"] }
+serde_json = "1"

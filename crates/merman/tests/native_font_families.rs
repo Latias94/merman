@@ -1,7 +1,9 @@
 #![cfg(feature = "native-fonts")]
 
 use merman::svg::export::{NativeFontContext, NativeFontOptions};
-use merman::svg::{TextMeasurementOperation, TextMeasurementPhase, TextMeasurementSource};
+use merman::svg::{
+    SvgPipeline, TextMeasurementOperation, TextMeasurementPhase, TextMeasurementSource,
+};
 use merman::{
     OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgOutput, SvgRequest,
 };
@@ -203,6 +205,14 @@ mod er_native_regressions {
 }
 
 fn render(source: &str, context: Option<NativeFontContext>) -> SvgOutput {
+    render_with_pipeline(source, context, None)
+}
+
+fn render_with_pipeline(
+    source: &str,
+    context: Option<NativeFontContext>,
+    pipeline: Option<SvgPipeline>,
+) -> SvgOutput {
     let environment = match context {
         Some(context) => SvgEnvironment::deterministic()
             .with_native_font_context(context)
@@ -215,6 +225,7 @@ fn render(source: &str, context: Option<NativeFontContext>) -> SvgOutput {
             OperationControl::new(),
             SvgRequest {
                 environment,
+                pipeline,
                 ..Default::default()
             },
         ))
@@ -778,4 +789,146 @@ fn rich_text_fallback_shapes_selected_faces_without_svg_only_style_interference(
             .collect(),
         "the actual backend must shape each retained HTML emphasis face"
     );
+}
+
+#[test]
+#[cfg(any(
+    feature = "diagram-class",
+    feature = "diagram-state",
+    feature = "diagram-er"
+))]
+fn standalone_svg_label_ink_fits_the_clipped_viewport_with_matching_faces() {
+    fn shaped_text<'a>(group: &'a usvg::Group, label: &str) -> Option<&'a usvg::Text> {
+        group.children().iter().find_map(|node| match node {
+            usvg::Node::Group(group) => shaped_text(group, label),
+            usvg::Node::Text(text) if text.chunks().iter().any(|chunk| chunk.text() == label) => {
+                Some(text.as_ref())
+            }
+            _ => None,
+        })
+    }
+
+    let context = font_context();
+    // The standalone consumer also has its own sans-serif substitute. A web CSS alias
+    // missing from its font database could select that face even with Cousine loaded.
+    let mut paint = usvg::Options::default();
+    let fonts =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../merman-export/tests/fonts");
+    for file in [
+        "MermanSymbolicTest.ttf",
+        "Cousine-Regular.ttf",
+        "Cousine-Bold.ttf",
+    ] {
+        paint.fontdb_mut().load_font_file(fonts.join(file)).unwrap();
+    }
+    paint
+        .fontdb_mut()
+        .set_sans_serif_family("Merman Symbolic Test");
+    let cases: &[(&str, &[&str])] = &[
+        #[cfg(feature = "diagram-class")]
+        (
+            "classDiagram\nclass Animal {\n+String nom\n+manger()\n}\nAnimal <|-- Vache",
+            &["Animal", "Vache", "+String nom", "+manger()"],
+        ),
+        #[cfg(feature = "diagram-state")]
+        (
+            "stateDiagram-v2\nSolid --> Gas: sublimation",
+            &["Solid", "Gas", "sublimation"],
+        ),
+        #[cfg(feature = "diagram-er")]
+        (
+            "erDiagram\nCUSTOMER ||--o{ ORDER : places\nCUSTOMER {\nstring name\n}",
+            &["CUSTOMER", "ORDER", "name", "places"],
+        ),
+    ];
+    for &(diagram, labels) in cases {
+        let source = format!(
+            "---\nconfig:\n  htmlLabels: true\n  fontFamily: 'Cousine, sans-serif'\n  themeVariables:\n    fontFamily: 'Cousine, sans-serif'\n---\n{diagram}\n"
+        );
+        let parity = render(&source, Some(context.clone()));
+        let source_xml = roxmltree::Document::parse(parity.svg()).unwrap();
+        let output = render_with_pipeline(
+            &source,
+            Some(context.clone()),
+            Some(SvgPipeline::resvg_safe()),
+        );
+        assert_native_without_fallback(&output, diagram);
+        let measured_faces = output
+            .evidence()
+            .native_font_diagnostics()
+            .unwrap()
+            .selected_faces();
+        let xml = roxmltree::Document::parse(output.svg()).unwrap();
+        let tree = usvg::Tree::from_str(output.svg(), &paint).unwrap();
+        for &label in labels {
+            let expected_face = match label {
+                "Animal" | "Vache" => "Cousine-Bold",
+                _ => "Cousine-Regular",
+            };
+            assert!(
+                measured_faces.contains(&format!("{expected_face}#0")),
+                "{label}: layout selected {measured_faces:?}"
+            );
+            let text = shaped_text(tree.root(), label)
+                .unwrap_or_else(|| panic!("consumer did not shape {label:?}"));
+            let faces: std::collections::BTreeSet<_> = text
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .map(|glyph| {
+                    tree.fontdb()
+                        .face(glyph.font)
+                        .unwrap()
+                        .post_script_name
+                        .as_str()
+                })
+                .collect();
+            assert_eq!(faces, [expected_face].into_iter().collect(), "{label}");
+
+            let viewport = xml
+                .descendants()
+                .find(|node| node.has_tag_name("text") && node.text() == Some(label))
+                .and_then(|node| node.ancestors().find(|node| node.has_tag_name("svg")))
+                .unwrap_or_else(|| panic!("missing label viewport for {label:?}"));
+            assert!(
+                viewport
+                    .attribute("style")
+                    .unwrap()
+                    .contains("overflow:hidden"),
+                "{label}"
+            );
+            let original = source_xml
+                .descendants()
+                .find(|node| {
+                    node.has_tag_name("foreignObject")
+                        && node
+                            .descendants()
+                            .any(|child| child.is_text() && child.text() == Some(label))
+                })
+                .unwrap_or_else(|| panic!("missing source foreignObject for {label:?}"));
+            let dimensions = |node: roxmltree::Node<'_, '_>| {
+                ["width", "height"]
+                    .map(|attr| node.attribute(attr).unwrap().parse::<f32>().unwrap())
+            };
+            let [width, height] = dimensions(viewport);
+            assert_eq!(
+                [width, height],
+                dimensions(original),
+                "{label}: source viewport dimensions"
+            );
+            // Flattened outlines are in the label's local viewBox, before resvg clips its ink.
+            let ink = text.flattened().bounding_box();
+            assert!(
+                ink.width() > 0.0 && ink.height() > 0.0,
+                "{label}: empty ink"
+            );
+            assert!(
+                ink.left() >= -0.01
+                    && ink.top() >= -0.01
+                    && ink.right() <= width + 0.01
+                    && ink.bottom() <= height + 0.01,
+                "{label:?} shaped with {expected_face}: ink {ink:?} exceeds the {width} x {height} label viewport"
+            );
+        }
+    }
 }
