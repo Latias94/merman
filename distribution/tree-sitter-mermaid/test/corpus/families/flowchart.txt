@@ -406,6 +406,65 @@ graph LR
       (direction))))
 
 ==================
+direction as a node or a direction statement
+==================
+
+flowchart TD
+  direction --> B
+  direction
+  directionLR --> direction
+  direction LRfoo;direction
+
+    RL
+
+---
+
+(source_file
+  (flowchart_diagram
+    (flowchart_header
+      (diagram_keyword)
+      (direction))
+    (flow_body
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_node_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_edge_statement
+            (flow_node
+              (flow_vertex
+                (flow_node_id)))
+            (flow_edge
+              (flow_arrow))
+            (flow_node
+              (flow_vertex
+                (flow_node_id))))))
+      (flow_line_item
+        (flow_statement
+          (flow_direction_statement
+            (flow_statement_keyword)
+            (flow_direction))))
+      (flow_line_item
+        (flow_statement
+          (flow_direction_statement
+            (flow_statement_keyword)
+            (flow_direction)))))))
+
+==================
 keyword-prefixed node identifiers stay ordinary nodes
 ==================
 

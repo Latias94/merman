@@ -33882,52 +33882,75 @@
       }
     },
     "swimlane_direction_statement": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "keyword",
-          "content": {
-            "type": "ALIAS",
+      "type": "PREC_DYNAMIC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "keyword",
             "content": {
-              "type": "TOKEN",
+              "type": "ALIAS",
               "content": {
-                "type": "PREC",
-                "value": 30,
+                "type": "TOKEN",
                 "content": {
-                  "type": "STRING",
-                  "value": "direction"
+                  "type": "PREC",
+                  "value": -5,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "direction"
+                  }
                 }
-              }
-            },
-            "named": true,
-            "value": "swimlane_statement_keyword"
-          }
-        },
-        {
-          "type": "IMMEDIATE_TOKEN",
-          "content": {
-            "type": "PATTERN",
-            "value": "[ \\t]+"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "direction",
-          "content": {
-            "type": "ALIAS",
+              },
+              "named": true,
+              "value": "swimlane_statement_keyword"
+            }
+          },
+          {
+            "type": "REPEAT",
             "content": {
-              "type": "IMMEDIATE_TOKEN",
+              "type": "SYMBOL",
+              "name": "_line_ending"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "direction",
+            "content": {
+              "type": "ALIAS",
               "content": {
-                "type": "PATTERN",
-                "value": "(?:LR|RL|TB|BT|TD)"
+                "type": "TOKEN",
+                "content": {
+                  "type": "PREC",
+                  "value": 1,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "(?:LR|RL|TB|BT|TD)"
+                  }
+                }
+              },
+              "named": true,
+              "value": "swimlane_direction"
+            }
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "IMMEDIATE_TOKEN",
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[^;\\r\\n]+"
+                }
+              },
+              {
+                "type": "BLANK"
               }
-            },
-            "named": true,
-            "value": "swimlane_direction"
+            ]
           }
-        }
-      ]
+        ]
+      }
     },
     "swimlane_edge_statement": {
       "type": "PREC_RIGHT",
@@ -37452,11 +37475,22 @@
                 "value": 40,
                 "content": {
                   "type": "PATTERN",
-                  "value": "(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\\u00c0-\\uffff]|-[A-Za-z0-9_\\u00c0-\\uffff])+"
+                  "value": "(?:subgraph|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\\u00c0-\\uffff]|-[A-Za-z0-9_\\u00c0-\\uffff])+"
                 }
               }
             }
           ]
+        },
+        {
+          "type": "TOKEN",
+          "content": {
+            "type": "PREC",
+            "value": -5,
+            "content": {
+              "type": "PATTERN",
+              "value": "direction"
+            }
+          }
         },
         {
           "type": "TOKEN",
@@ -50346,52 +50380,75 @@
       }
     },
     "flow_direction_statement": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "keyword",
-          "content": {
-            "type": "ALIAS",
+      "type": "PREC_DYNAMIC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "keyword",
             "content": {
-              "type": "TOKEN",
+              "type": "ALIAS",
               "content": {
-                "type": "PREC",
-                "value": 30,
+                "type": "TOKEN",
                 "content": {
-                  "type": "STRING",
-                  "value": "direction"
+                  "type": "PREC",
+                  "value": -5,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "direction"
+                  }
                 }
-              }
-            },
-            "named": true,
-            "value": "flow_statement_keyword"
-          }
-        },
-        {
-          "type": "IMMEDIATE_TOKEN",
-          "content": {
-            "type": "PATTERN",
-            "value": "[ \\t]+"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "direction",
-          "content": {
-            "type": "ALIAS",
+              },
+              "named": true,
+              "value": "flow_statement_keyword"
+            }
+          },
+          {
+            "type": "REPEAT",
             "content": {
-              "type": "IMMEDIATE_TOKEN",
+              "type": "SYMBOL",
+              "name": "_line_ending"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "direction",
+            "content": {
+              "type": "ALIAS",
               "content": {
-                "type": "PATTERN",
-                "value": "(?:LR|RL|TB|BT|TD)"
+                "type": "TOKEN",
+                "content": {
+                  "type": "PREC",
+                  "value": 1,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "(?:LR|RL|TB|BT|TD)"
+                  }
+                }
+              },
+              "named": true,
+              "value": "flow_direction"
+            }
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "IMMEDIATE_TOKEN",
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[^;\\r\\n]+"
+                }
+              },
+              {
+                "type": "BLANK"
               }
-            },
-            "named": true,
-            "value": "flow_direction"
+            ]
           }
-        }
-      ]
+        ]
+      }
     },
     "flow_edge_statement": {
       "type": "PREC_RIGHT",
@@ -53916,11 +53973,22 @@
                 "value": 40,
                 "content": {
                   "type": "PATTERN",
-                  "value": "(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\\u00c0-\\uffff]|-[A-Za-z0-9_\\u00c0-\\uffff])+"
+                  "value": "(?:subgraph|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\\u00c0-\\uffff]|-[A-Za-z0-9_\\u00c0-\\uffff])+"
                 }
               }
             }
           ]
+        },
+        {
+          "type": "TOKEN",
+          "content": {
+            "type": "PREC",
+            "value": -5,
+            "content": {
+              "type": "PATTERN",
+              "value": "direction"
+            }
+          }
         },
         {
           "type": "TOKEN",
@@ -71528,52 +71596,75 @@
       }
     },
     "agentflow_direction_statement": {
-      "type": "SEQ",
-      "members": [
-        {
-          "type": "FIELD",
-          "name": "keyword",
-          "content": {
-            "type": "ALIAS",
+      "type": "PREC_DYNAMIC",
+      "value": 1,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "keyword",
             "content": {
-              "type": "TOKEN",
+              "type": "ALIAS",
               "content": {
-                "type": "PREC",
-                "value": 30,
+                "type": "TOKEN",
                 "content": {
-                  "type": "STRING",
-                  "value": "direction"
+                  "type": "PREC",
+                  "value": -5,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "direction"
+                  }
                 }
-              }
-            },
-            "named": true,
-            "value": "agentflow_statement_keyword"
-          }
-        },
-        {
-          "type": "IMMEDIATE_TOKEN",
-          "content": {
-            "type": "PATTERN",
-            "value": "[ \\t]+"
-          }
-        },
-        {
-          "type": "FIELD",
-          "name": "direction",
-          "content": {
-            "type": "ALIAS",
+              },
+              "named": true,
+              "value": "agentflow_statement_keyword"
+            }
+          },
+          {
+            "type": "REPEAT",
             "content": {
-              "type": "IMMEDIATE_TOKEN",
+              "type": "SYMBOL",
+              "name": "_line_ending"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "direction",
+            "content": {
+              "type": "ALIAS",
               "content": {
-                "type": "PATTERN",
-                "value": "(?:LR|RL|TB|BT|TD)"
+                "type": "TOKEN",
+                "content": {
+                  "type": "PREC",
+                  "value": 1,
+                  "content": {
+                    "type": "PATTERN",
+                    "value": "(?:LR|RL|TB|BT|TD)"
+                  }
+                }
+              },
+              "named": true,
+              "value": "agentflow_direction"
+            }
+          },
+          {
+            "type": "CHOICE",
+            "members": [
+              {
+                "type": "IMMEDIATE_TOKEN",
+                "content": {
+                  "type": "PATTERN",
+                  "value": "[^;\\r\\n]+"
+                }
+              },
+              {
+                "type": "BLANK"
               }
-            },
-            "named": true,
-            "value": "agentflow_direction"
+            ]
           }
-        }
-      ]
+        ]
+      }
     },
     "agentflow_edge_statement": {
       "type": "PREC_RIGHT",
@@ -75097,11 +75188,22 @@
                     "value": 40,
                     "content": {
                       "type": "PATTERN",
-                      "value": "(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\\u00c0-\\uffff]|-[A-Za-z0-9_\\u00c0-\\uffff])+"
+                      "value": "(?:subgraph|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\\u00c0-\\uffff]|-[A-Za-z0-9_\\u00c0-\\uffff])+"
                     }
                   }
                 }
               ]
+            },
+            {
+              "type": "TOKEN",
+              "content": {
+                "type": "PREC",
+                "value": -5,
+                "content": {
+                  "type": "PATTERN",
+                  "value": "direction"
+                }
+              }
             },
             {
               "type": "TOKEN",
@@ -77679,6 +77781,10 @@
       "_radar_wardley_unclosed_quoted_string"
     ],
     [
+      "agentflow_direction_statement",
+      "agentflow_identifier"
+    ],
+    [
       "_agentflow_labeled_edge",
       "_agentflow_unlabeled_edge"
     ],
@@ -77723,6 +77829,10 @@
       "event_gwt_then_group"
     ],
     [
+      "flow_direction_statement",
+      "flow_identifier"
+    ],
+    [
       "_flow_labeled_edge",
       "_flow_unlabeled_edge"
     ],
@@ -77756,6 +77866,10 @@
     [
       "state_composite_declaration",
       "state_named_declaration"
+    ],
+    [
+      "swimlane_direction_statement",
+      "swimlane_identifier"
     ],
     [
       "_swimlane_labeled_edge",

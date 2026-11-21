@@ -26,6 +26,11 @@ const statementKeyword = ($, prefix, keyword) => field(
 
 const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
 
+const identifierPrecedence = -5;
+
+// At identifier precedence, a longer name such as `directionLR` wins the whole token.
+const directionKeyword = () => token(prec(identifierPrecedence, /direction/));
+
 const keywordPrefixedIdentifier = () => choice(
   token(prec(
     60,
@@ -33,7 +38,7 @@ const keywordPrefixedIdentifier = () => choice(
   )),
   token(prec(
     40,
-    /(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])+/
+    /(?:subgraph|class|style|linkStyle|click|accTitle|accDescr|end)(?:[A-Za-z0-9_.!?$%#\u00c0-\uffff]|-[A-Za-z0-9_\u00c0-\uffff])+/
   )),
 );
 
@@ -219,14 +224,16 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'subgraph_end')]: (_) => token(prec(30, 'end')),
 
-  [familyRule(prefix, 'direction_statement')]: ($) => seq(
-    statementKeyword($, prefix, 'direction'),
-    token.immediate(/[ \t]+/),
+  // flow.jison matches a direction value by prefix and consumes the rest of the statement.
+  [familyRule(prefix, 'direction_statement')]: ($) => prec.dynamic(1, seq(
+    field('keyword', alias(directionKeyword(), ref($, prefix, 'statement_keyword'))),
+    repeat($._line_ending),
     field('direction', alias(
-      token.immediate(/(?:LR|RL|TB|BT|TD)/),
+      token(prec(1, /(?:LR|RL|TB|BT|TD)/)),
       ref($, prefix, 'direction'),
     )),
-  ),
+    optional(token.immediate(/[^;\r\n]+/)),
+  )),
 
   [familyRule(prefix, 'edge_statement')]: ($) => prec.right(60, seq(
     field('source', ref($, prefix, 'node')),
@@ -654,14 +661,17 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'identifier')]: (_) => choice(
     keywordPrefixedIdentifier(),
+    directionKeyword(),
     token(prec(
-      -5,
+      identifierPrecedence,
       /[A-Za-z0-9_.\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*(?:-[A-Za-z0-9_\u00c0-\uffff][A-Za-z0-9_.!?$%#\u00c0-\uffff]*)*/,
     )),
   ),
 });
 
 const createFlowFamilyConflicts = ($, prefix) => [
+  // A newline after `direction` can terminate a node or precede a direction value.
+  [ref($, prefix, 'direction_statement'), ref($, prefix, 'identifier')],
   [
     privateRef($, prefix, 'labeled_edge'),
     privateRef($, prefix, 'unlabeled_edge'),
