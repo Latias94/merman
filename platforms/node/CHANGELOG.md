@@ -20,6 +20,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 - Accept leading dots and punctuation in Flowchart IDs, distinguish `A&B` IDs from `A & B` groups, and match Mermaid's stroke and length for compact links with mixed endpoint markers. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
 - Avoid false `resvg-safe` selector-budget errors on large Flowchart and Class diagrams. [#313](https://github.com/Latias94/merman/pull/313)
 - Compute Flowchart SVG path lengths on demand for non-animated Neo edge masks.
+- Reduce buffer growth when writing the generated Flowchart stylesheet. [#336](https://github.com/Latias94/merman/pull/336)
 
 ## [0.10.0] - 2026-11-12
 
