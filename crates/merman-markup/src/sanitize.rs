@@ -495,10 +495,8 @@ fn dompurify_config_object(
     config: &MermaidConfig,
 ) -> Option<&serde_json::Map<String, serde_json::Value>> {
     config
-        .as_value()
-        .as_object()
-        .and_then(|o| o.get("dompurifyConfig"))
-        .and_then(|v| v.as_object())
+        .get("dompurifyConfig")
+        .and_then(serde_json::Value::as_object)
 }
 
 fn dompurify_extract_string_list(
@@ -1012,6 +1010,21 @@ mod tests {
             "securityLevel": "strict",
             "flowchart": { "htmlLabels": true }
         }))
+    }
+
+    #[test]
+    fn dompurify_policy_borrows_the_unmodified_configuration_section() {
+        let base = MermaidConfig::from_value(json!({
+            "dompurifyConfig": { "ADD_ATTR": ["data-label"] },
+            "flowchart": { "nodeSpacing": 40 }
+        }));
+        let mut config = base.clone().with_shared_sections();
+        config.set_value("flowchart.nodeSpacing", json!(50));
+
+        assert!(std::ptr::eq(
+            dompurify_config_object(&base).unwrap(),
+            dompurify_config_object(&config).unwrap(),
+        ));
     }
 
     #[test]
