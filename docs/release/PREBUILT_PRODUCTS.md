@@ -9,31 +9,30 @@ the same release. Supported prebuilt installs need no Rust compiler. The
 
 ## Published Versions
 
-The registry versions and [GitHub Release assets](https://github.com/Latias94/merman/releases/tag/v0.10.0)
-below were checked on 2026-11-21. Select an exact version for reproducible installs.
+The versions below were verified on 2026-11-22. Select an exact version for reproducible installs.
 
 | Channel | Published version | Installation |
 | --- | --- | --- |
-| Rust | `0.10.0` | `cargo add merman@0.10.0` |
-| CLI / standalone LSP | `0.10.0` | [Installers and archives](https://github.com/Latias94/merman/releases/tag/v0.10.0) |
-| Browser / Worker | `0.10.0` | `npm install --save-exact @mermanjs/web@0.10.0` |
-| Native Node / Node-WASM | `0.10.0` | `npm install --save-exact @mermanjs/node@0.10.0` or `npm install --save-exact @mermanjs/node-wasm@0.10.0` |
+| Rust | `0.11.0` | `cargo add merman@0.11.0` |
+| CLI / standalone LSP | `0.11.0` | [Installers and archives](https://github.com/Latias94/merman/releases/tag/v0.11.0) |
+| Browser / Worker | `0.11.0` | `npm install --save-exact @mermanjs/web@0.11.0` |
+| Native Node / Node-WASM | `0.11.0` | `npm install --save-exact @mermanjs/node@0.11.0` or `npm install --save-exact @mermanjs/node-wasm@0.11.0` |
 | Python | `0.10.0` | `python -m pip install --only-binary=:all: merman==0.10.0` |
 | Flutter / native Dart | `0.10.0` | `flutter pub add 'merman:0.10.0'` |
 | Android | `0.10.0` | [Local Maven ZIP or AAR](#android-installation) |
 | Apple | `0.10.0` | [Complete local SwiftPM / XCFramework](#swift-installation) |
 | Native C / WASI SDK | `0.10.0` | [SDK downloads](https://github.com/Latias94/merman/releases/tag/v0.10.0) and [flavor choices](#native-c-and-wasi-installation) |
 
-The [0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) covers the move from `0.9.x` and
-the `0.10.0` alphas. The source guides for [0.11.0](README.md#merman-0110) describe that version's
-contracts. Each registry and package manager follows its own release schedule.
+The [0.11.0 upgrade notes](README.md#merman-0110) cover layout, fonts, and binding changes.
+Use the [0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for earlier migrations from
+`0.9.x` and the `0.10.0` alphas. Each registry and package manager follows its own release schedule.
 
 ## Recommended Paths
 
 | Your application | Start here | Outputs and boundaries |
 | --- | --- | --- |
-| Browser or browser Worker | [Browser SDK](https://github.com/Latias94/merman/blob/v0.10.0/platforms/web/README.md) | Complete browser SDK or focused SVG, analysis, editor, and ASCII packages |
-| Node, static-site generation or server rendering | [`@mermanjs/node`](https://github.com/Latias94/merman/blob/v0.10.0/platforms/node/README.md) | Automatic native package selection with explicit Node-WASM available separately |
+| Browser or browser Worker | [Browser SDK](https://github.com/Latias94/merman/blob/v0.11.0/platforms/web/README.md) | Complete browser SDK or focused SVG, analysis, editor, and ASCII packages |
+| Node, static-site generation or server rendering | [`@mermanjs/node`](https://github.com/Latias94/merman/blob/v0.11.0/platforms/node/README.md) | Automatic native package selection with explicit Node-WASM available separately |
 | Python | [`merman` wheel](https://github.com/Latias94/merman/blob/v0.10.0/platforms/python/merman/README.md) | pip and uv select a matching native wheel |
 | Flutter or native Dart | [`merman` on pub.dev](https://pub.dev/packages/merman/versions/0.10.0) | Downloads and verifies the build target's library, with local assets for offline builds |
 | Kotlin on Android | [Local Maven repository](#android-installation) | Maven ZIP retains AAR metadata and transitive dependencies |
@@ -42,8 +41,8 @@ contracts. Each registry and package manager follows its own release schedule.
 | Go, Python or another non-JavaScript sandbox host | `sdk-wasi-full` | SVG and PNG; math and ELK; one WASI reactor with a separate ABI |
 | Rust, CLI/LSP, Rustdoc, Typst or editor integration | [Package surfaces](PACKAGE_SURFACES.md) | Source crates and independent task products keep their existing installation routes |
 
-Web full/render and the `0.10.0` Swift, Android, Python, Flutter, and Node products include SVG
-math. These native bindings do not include PNG/JPEG/PDF
+The `0.11.0` Web full/render packages and both Node transports include SVG math, as do the
+`0.10.0` Swift, Android, Python, and Flutter products. These native bindings do not include PNG/JPEG/PDF
 encoders or native C/WASI's memory-font service. Native C/WASI SDK flavors have their own output
 and font services. Dedicated analysis/editor/ASCII packages retain their task
 scope. Check the loaded runtime catalog and the matching version's guide for available operations.
@@ -130,6 +129,11 @@ for commands, platform requirements, installed examples, and qualification.
 
 ## Fonts and Output Formats
 
+For CLI PNG, JPEG, and PDF, the official Windows archive uses platform font discovery by default.
+The macOS and Linux archives and ordinary Cargo installs default to bounded discovery. For a fixed
+font set and quicker startup, pass `--font-file` for each required file and `--font-system off`.
+Ordinary Mermaid-to-SVG rendering uses deterministic measurement by default. [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts)
+
 Complete SVG semantics do not imply every output codec or font service. Swift can use its existing
 host text-measurement callback; it does not expose the native C/WASI memory-font constructor.
 Native C and WASI can use caller-supplied font bytes for consistent measurement and painting.
@@ -148,8 +152,8 @@ the separate source-helper route for checkout builds.
 
 Node requires Node.js `22+`; GNU Linux native packages require glibc `2.31+`. Native packages
 distinguish glibc from musl and support Linux ARM64 and x86-64. Keep optional dependencies enabled
-and install on the deployment target. For the portable transport, install `@mermanjs/node-wasm@0.10.0`
-and follow its [Node-WASM guide](../../platforms/node/packages/node-wasm/README.md). The native
+and install on the deployment target. For the portable transport, install `@mermanjs/node-wasm@0.11.0`
+and follow the [Node-WASM guide](https://github.com/Latias94/merman/blob/v0.11.0/platforms/node/packages/node-wasm/README.md). The native
 loader does not switch transports on failure; Node-WASM is separate from the browser package.
 
 Flutter `0.10.0` requires Flutter `3.47.7+` or native Dart `3.10+`. Its thin facade verifies

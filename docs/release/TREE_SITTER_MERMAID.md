@@ -7,9 +7,9 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Prepared version: `0.3.5`, required by the Merman LSP `0.11.0` candidate
-- Latest published version: [`0.3.4`](https://github.com/Latias94/merman/releases/tag/tree-sitter-mermaid-v0.3.4) (2026-11-11, Asia/Shanghai)
-- Intended independent release tag: `tree-sitter-mermaid-v0.3.5`
+- Registry version: `0.3.5` on [crates.io](https://crates.io/crates/tree-sitter-mermaid/0.3.5) and [npm](https://www.npmjs.com/package/@mermanjs/tree-sitter-mermaid/v/0.3.5) (2026-11-22, Asia/Shanghai)
+- Standalone GitHub archive: [`0.3.4`](https://github.com/Latias94/merman/releases/tag/tree-sitter-mermaid-v0.3.4)
+- Registry release tag: [`tree-sitter-mermaid-v0.3.5`](https://github.com/Latias94/merman/tree/tree-sitter-mermaid-v0.3.5)
 - Cargo package: `tree-sitter-mermaid`
 - npm package: `@mermanjs/tree-sitter-mermaid`
 - Language symbol: `mermaid`
@@ -22,7 +22,7 @@ publication without the protected release environment and maintainer credentials
 - Mermaid syntax baseline: 11.16.1 for the original 35 families, plus Agentflow/Usecase from 12.0.0
 - ZenUML Core baseline: 3.50.1
 
-Candidate `0.3.5` fixes Flowchart-style identifier and arrow boundaries while retaining the portable queries, Mermaid and ZenUML baselines, language ABI 15, runtime versions, and the Rust `cc` minimum of `1.10.0`. Consumer changes across earlier versions are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). Publish the verified grammar before the workspace crates that require it and record registry visibility in [Publish Order](PUBLISH_ORDER.md).
+Version `0.3.5` fixes Flowchart-style identifier and arrow boundaries and supplies the grammar for Merman LSP `0.11.0`. It retains the portable queries, Mermaid and ZenUML baselines, language ABI 15, runtime versions, and the Rust `cc` minimum of `1.10.0`. Consumer changes across versions are in the [query migration guide](../../distribution/tree-sitter-mermaid/docs/query-migration.md). Publish a required grammar version before the workspace crates that depend on it and record registry visibility in [Publish Order](PUBLISH_ORDER.md).
 
 Cargo, npm (including its lockfile), `tree-sitter.json`, `metadata/provenance.json`, Make, and CMake versions must match. Regenerate the C parser and language WASM after a version change because they embed the language version. A release tag must resolve to the immutable commit containing the generated parser, root WASM, queries, and legal material.
 
