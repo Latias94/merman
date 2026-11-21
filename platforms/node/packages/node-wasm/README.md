@@ -42,7 +42,8 @@ const svg = await engine.renderSvg(source, {
 });
 ```
 
-The pipeline values are `parity`, `readable`, and `resvg-safe`. `readable` is a text overlay for
+The pipeline values are `parity`, `static`, `readable`, and `resvg-safe`. Use `static` for fixed
+illustrations to omit unused generated palette rules. `readable` is a text overlay for
 consumers that ignore HTML labels; browsers can display both copies and show overlapping text.
 Use `parity` for browser display, with a host-owned DOM-admission policy when embedding SVG into
 HTML. Pipeline selection alone does not establish browser DOM safety. The `resvg-safe` pipeline

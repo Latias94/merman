@@ -24,7 +24,8 @@ static projection. Select those consumer policies when an application requires p
 ## Generation and consumer admission
 
 Use `SvgPipeline::parity().with_generation(SvgGeneration::Static)` in `SvgRequest.pipeline`,
-or `merman-cli render --format svg --svg-pipeline static`, to request SVG for a fixed diagram.
+`merman-cli render --format svg --svg-pipeline static`, or `svg.pipeline: "static"` in
+binding options to request SVG for a fixed diagram. [Binding options](../bindings/OPTIONS_JSON.md#svg-options)
 The Flowchart, Agentflow, and Swimlane writers retain generated container palette rules for the
 slots present in the rendered document. The SVG retains its authored CSS, labels, links,
 accessibility metadata, and viewBox. Hosts that change container classes or `data-color-id`

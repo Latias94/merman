@@ -105,7 +105,8 @@ const options = {
 const svg = await engine.renderSvg(source, options);
 ```
 
-The supported pipeline values are `parity`, `readable`, and `resvg-safe`. `readable` is an advanced
+The supported pipeline values are `parity`, `static`, `readable`, and `resvg-safe`. Use `static`
+for fixed illustrations to omit unused generated palette rules. `readable` is an advanced
 text overlay for consumers that ignore HTML labels; browsers can display both copies and show
 overlapping text. Use `parity` for browser display. `resvg-safe` also removes unsupported styles,
 so it is not a lossless replacement for `readable`. HTML embedding still requires a host-owned

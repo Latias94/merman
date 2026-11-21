@@ -340,6 +340,25 @@ mod tests {
         assert!(svg.contains("data-merman-foreignobject"));
     }
 
+    #[test]
+    fn render_svg_static_pipeline_preserves_the_body_and_elides_unused_palette_rules() {
+        let source = b"---\nconfig:\n  layout: dagre\n---\nflowchart TD\nA[Start] --> B[Done]";
+        let full = render_svg(source, br#"{"svg":{"diagram_id":"static-binding"}}"#).unwrap();
+        let compact = render_svg(
+            source,
+            br#"{"svg":{"diagram_id":"static-binding","pipeline":"static"}}"#,
+        )
+        .unwrap();
+        let full = std::str::from_utf8(&full).unwrap();
+        let compact = std::str::from_utf8(&compact).unwrap();
+        let (full_style, full_body) = full.split_once("</style>").unwrap();
+        let (compact_style, compact_body) = compact.split_once("</style>").unwrap();
+        assert_eq!(full_body, compact_body);
+        assert!(full_style.contains("data-color-id=\"color-0\""));
+        assert!(!compact_style.contains("data-color-id=\"color-0\""));
+        assert!(compact_style.len() < full_style.len());
+    }
+
     #[cfg(feature = "svg")]
     fn assert_missing_math(error: BindingError) {
         assert_eq!(error.status(), BindingStatus::UnsupportedOperation);

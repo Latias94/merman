@@ -999,7 +999,7 @@ does not depend on them.
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
-| `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
+| `svg.pipeline` | string | `parity` | `parity`, `static`, `readable`, or `resvg-safe`. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
@@ -1008,13 +1008,14 @@ Choose the pipeline for the consumer that will display the SVG:
 | Consumer | Pipeline | Behavior |
 | --- | --- | --- |
 | Browser or Webview | `parity` (default) | Preserves Mermaid HTML labels and styles without adding text overlays. |
+| Fixed illustration | `static` | Preserves Mermaid label markup and emits generated palette rules for the slots used by the diagram. Use `parity` for dynamic recoloring. |
 | resvg/usvg, including native PNG/JPEG/PDF export | `resvg-safe` | Converts HTML labels, applies compatibility cleanup, and validates the result. Native binary exports select this contract automatically. |
 | Custom consumer that ignores HTML labels but needs the remaining SVG preserved | `readable` (advanced) | Keeps HTML and appends best-effort SVG text. Browsers can display both copies and show overlapping text. |
 
 `readable` is a text-fallback overlay, not pretty-printing or a higher-quality browser mode. Use
 `parity` for browser previews. `resvg-safe` also removes unsupported styles and active content,
 so it is not a lossless replacement for `readable`. Neither option substitutes for the host's
-browser DOM-admission policy. All three pipeline values and their defaults remain unchanged.
+browser DOM-admission policy. The same admission policy applies when embedding a `static` SVG.
 
 `resvg-safe` includes structural cleanup for labels that already include native SVG `<switch>`
 text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for
