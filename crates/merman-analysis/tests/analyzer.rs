@@ -1223,6 +1223,41 @@ fn class_ignored_statement_error_policy_agrees_across_analysis_backends() {
 
 #[cfg(feature = "diagram-class")]
 #[test]
+fn class_ignored_statement_encloses_an_internal_comment_in_markdown() {
+    let statement = "`First\n  %% 作者注\nLast`";
+    let document = format!(
+        "# Types 🦀\n\n```mermaid\nclassDiagram\nclass First\n{statement}\nclass Last\n```\n"
+    );
+    let options = AnalysisOptions::default()
+        .with_source(source_descriptor_for_markdown_path(Some("types.md")))
+        .with_rule_config(
+            AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
+        );
+    let start = document.find(statement).unwrap();
+    for analyzer in [
+        Analyzer::with_options(options.clone()),
+        #[cfg(feature = "compat-json")]
+        Analyzer::with_mermaid_engine(merman_core::presentation::MermaidEngine::new(), options),
+    ] {
+        let payload = analyzer.analyze(&document);
+        let [diagnostic] = payload.diagnostics.as_slice() else {
+            panic!("expected one Class hint, got {:?}", payload.diagnostics);
+        };
+        assert_eq!(diagnostic.id, "merman.authoring.class.ignored_statement");
+        let span = diagnostic.span.as_ref().unwrap();
+        assert_eq!(
+            (span.byte_start, span.byte_end),
+            (start, start + statement.len())
+        );
+        assert_eq!(
+            analyzer.analyze_facts(&document).diagnostics,
+            payload.diagnostics
+        );
+    }
+}
+
+#[cfg(feature = "diagram-class")]
+#[test]
 fn class_statements_with_effects_are_not_ignored_statements() {
     let payload = analyze_recommended(
         "classDiagram\n    class A\n    A : +int count\n    A --> B : uses\n    note for A \"n\"\n",

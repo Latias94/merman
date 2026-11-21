@@ -1049,7 +1049,7 @@ impl<'a> ClassDb<'a> {
                     facts.push(
                         DiagramWarningFact::new(
                             CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
-                            "Mermaid ignores this line. A bare class name has no effect. Use `class <name>` to declare a class.",
+                            "Merman parsed this statement as a bare class name and ignored it. Use `class <name>` to declare a class.",
                         )
                         .with_span(span),
                     );

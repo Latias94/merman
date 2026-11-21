@@ -100,7 +100,13 @@ Statement: ActionList = {
   <t:AccDescrMultiline> =>? arena.push_actions(vec![Action::SetAccDescr(t)], control),
 
   <c:ClassStatement> =>? arena.push_actions(c, control),
-  <l:@L> <_name:Name> <r:@R> =>? arena.push_actions(vec![Action::WarnIgnoredStatement { span: crate::SourceSpan::new(l, r) }], control),
+  <l:@L> <_name:Name> <r:@R> =>? {
+    if arena.capture_ignored_statements {
+      arena.push_actions([Action::WarnIgnoredStatement { span: crate::SourceSpan::new(l, r) }], control)
+    } else {
+      Ok(ActionList::default())
+    }
+  },
   <m:MemberStatement> =>? arena.push_actions(vec![m], control),
   <a:AnnotationStatement> =>? arena.push_actions(vec![a], control),
   <r:RelationStatement> =>? arena.push_actions(vec![Action::AddRelation { data: r }], control),

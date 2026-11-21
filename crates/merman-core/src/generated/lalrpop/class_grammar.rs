@@ -1,5 +1,5 @@
 // auto-generated: "lalrpop 0.23.2"
-// sha3: f14dc70aff32cc90c23f07ffbe03332a2e7e53a834eea0a87efa57d5e1c7438b
+// sha3: 945286d56dfaa5d94932c4e83646546d081088cea497758ca38c29f5b8e50587
 // features:
 use crate::diagrams::class::ast::{ActionArena, ActionList, ClassIdList};
 use crate::diagrams::class::{
@@ -4711,7 +4711,13 @@ fn __action14<
     (_, r, _): (usize, usize, usize),
 ) -> Result<ActionList,__lalrpop_util::ParseError<usize,Tok,crate::diagrams::class::LexError>>
 {
-    arena.push_actions(vec![Action::WarnIgnoredStatement { span: crate::SourceSpan::new(l, r) }], control)
+    {
+    if arena.capture_ignored_statements {
+      arena.push_actions([Action::WarnIgnoredStatement { span: crate::SourceSpan::new(l, r) }], control)
+    } else {
+      Ok(ActionList::default())
+    }
+  }
 }
 
 #[allow(unused_variables)]

@@ -133,6 +133,10 @@ impl ClassSyntax {
             active
         });
         let mut arena = ActionArena::default();
+        #[cfg(feature = "editor-facts")]
+        {
+            arena.capture_ignored_statements = editor_facts.is_some();
+        }
         let actions = class_grammar::ActionsParser::new()
             .parse(&mut arena, control, controlled_events)
             .map(|list| arena.into_actions(list));
@@ -1622,6 +1626,23 @@ fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String
 mod tests {
     use super::*;
     use std::fmt::Write as _;
+
+    #[test]
+    fn omitted_editor_facts_do_not_allocate_ignored_statement_actions() {
+        let source = "classDiagram\nFirst\nSecond\n";
+        let control = OperationControl::new();
+        let syntax = ClassSyntax::lex(source, &control).unwrap();
+        let parsed = syntax
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .unwrap();
+        assert_eq!(parsed.actions.unwrap().count(), 0);
+    }
 
     fn assert_carrier_work(source: &str, expected: (usize, usize, usize, usize)) {
         let control = OperationControl::new();

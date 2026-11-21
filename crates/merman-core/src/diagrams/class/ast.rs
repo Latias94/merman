@@ -115,6 +115,7 @@ pub(super) struct ActionArena {
     records: Vec<ActionRecord>,
     class_ids: Vec<ClassIdRecord>,
     construction_steps: usize,
+    pub(super) capture_ignored_statements: bool,
     #[cfg(test)]
     action_links: usize,
     #[cfg(test)]

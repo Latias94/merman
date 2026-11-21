@@ -582,7 +582,7 @@ const AGENTFLOW_CONTAINMENT_VIOLATION_RULE: RuleDescriptor = RuleDescriptor {
 };
 const CLASS_IGNORED_STATEMENT_RULE: RuleDescriptor = RuleDescriptor {
     id: CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
-    description: "Report bare Class diagram lines, such as `title …`, that Mermaid parses and ignores.",
+    description: "Report statements that Merman's Class parser ignores as bare names, such as `title Overview`.",
     evidence: &[
         "https://github.com/mermaid-js/mermaid/blob/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src/diagrams/class/parser/classDiagram.jison",
     ],
