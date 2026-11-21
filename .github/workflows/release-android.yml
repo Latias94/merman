@@ -167,10 +167,11 @@ jobs:
         run: python3 scripts/release-version.py check --version "$VERSION"
 
       - name: Setup JDK
-        uses: actions/setup-java@v6.2.0
+        uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
+          problem-matcher: true
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4.0.4
@@ -315,10 +316,11 @@ jobs:
         run: echo "java=$(python3 trusted/platforms/android/build-android.py --print-version java)" >> "$GITHUB_OUTPUT"
 
       - name: Setup JDK
-        uses: actions/setup-java@v6.2.0
+        uses: actions/setup-java@v6.3.0
         with:
           distribution: temurin
           java-version: ${{ steps.android-toolchain.outputs.java }}
+          problem-matcher: true
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v4.0.4
