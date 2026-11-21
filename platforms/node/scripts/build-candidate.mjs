@@ -650,15 +650,8 @@ export function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
     path.join(nodeRoot, "scripts", "theme-authoring-smoke.mjs"),
-    path.join(nodeRoot, "src", "bounded-executor.mjs"),
-    path.join(nodeRoot, "src", "engine.mjs"),
-    path.join(nodeRoot, "src", "errors.mjs"),
-    path.join(nodeRoot, "src", "generated", "binding-contract.mjs"),
-    path.join(nodeRoot, "src", "generated", "capability-surface.mjs"),
-    path.join(nodeRoot, "src", "generated", "node-wire-contract.json"),
-    path.join(nodeRoot, "src", "native-loader.mjs"),
-    path.join(nodeRoot, "src", "transport-contract.mjs"),
   ]);
+  for (const file of walkFiles(path.join(nodeRoot, "src"))) files.add(file);
   for (const root of roots) {
     for (const file of walkFiles(root, { skipBuildOutputs: true })) files.add(file);
   }

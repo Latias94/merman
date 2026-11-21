@@ -73,7 +73,7 @@ try {
     assert.equal(await cold.executeSvg(source), baseline);
     for (const args of [[`${source}\ud800`], [source, '"\udc00"']]) {
       assert.throws(() => cold.executeSvgSync(...args), (error) => {
-        const failure = assertError(error.message, "MERMAN_INVALID_OPTIONS_JSON");
+        const failure = assertError(error.message, "MERMAN_OPTIONS_JSON_ERROR");
         assert.match(failure.message, /isolated UTF-16 surrogate/i);
         return true;
       });
@@ -82,7 +82,7 @@ try {
     assert.equal(expired.details.cancellation.phase, "admission");
     const optionsLimit = NODE_WIRE_CONTRACT.fields.options_json_utf8_bytes;
     assert.throws(() => cold.executeSvgSync(source, " ".repeat(optionsLimit + 1)), (error) => {
-      const failure = assertError(error.message, "MERMAN_INVALID_OPTIONS_JSON");
+      const failure = assertError(error.message, "MERMAN_OPTIONS_JSON_ERROR");
       assert.match(failure.message, /options_json.*field limit/i);
       return true;
     });
@@ -190,7 +190,7 @@ try {
         assert.throws(() => publicEngine.renderSvgSync(exact, { optionsJson, timeoutMs: 0 }), isDeadline);
         assert.throws(() => publicEngine.renderSvg(exact + "x", { optionsJson, timeoutMs: 0 }), /wire limit/i);
         const privateOverflow = cold.executeSvgSync(exact + "x", optionsJson, 0);
-        assert.match(assertError(privateOverflow.errorJson, "MERMAN_INVALID_OPTIONS_JSON").message, /wire limit/i);
+        assert.match(assertError(privateOverflow.errorJson, "MERMAN_OPTIONS_JSON_ERROR").message, /wire limit/i);
         assert.throws(() => publicEngine.renderSvg(exact + "x", { optionsJson: "{", timeoutMs: 0 }), /optionsJson/i);
         const aborted = AbortSignal.abort();
         assert.throws(() => publicEngine.renderSvg("\ud800", { signal: aborted, optionsJson: "{" }), /isolated UTF-16 surrogate/i);
