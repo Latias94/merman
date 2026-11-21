@@ -81,6 +81,7 @@ pub mod presentation;
 mod resource_tests;
 mod runtime;
 pub mod semantic;
+mod source_json;
 mod source_span;
 #[cfg(feature = "presentation")]
 mod theme;

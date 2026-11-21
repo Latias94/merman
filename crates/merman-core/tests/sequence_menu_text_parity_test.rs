@@ -15,6 +15,35 @@ fn parse_sequence(source: &str) -> SequenceDiagramModel {
 }
 
 #[test]
+fn menu_json_keys_are_literal_in_links_and_nested_properties() {
+    let model = parse_sequence(concat!(
+        "sequenceDiagram\nparticipant A\n",
+        r#"links A: {"$serde_json::private::RawValue":"https://example.test/raw", "Guide":"https://example.test/guide", "Ignore":null, "\u0024serde_json::private::RawValue":"https://example.test/updated"}"#,
+        "\n",
+        r#"properties A: {"nested":[{"\u0024serde_json::private::RawValue":"true", "fraction":0.12345678901234567}, {"$serde_json::private::Number":"123", "integer":18446744073709551615}]}"#,
+        "\n",
+    ));
+    let actor = &model.actors["A"];
+    assert_eq!(
+        actor.links.keys().map(String::as_str).collect::<Vec<_>>(),
+        ["$serde_json::private::RawValue", "Guide"]
+    );
+    assert_eq!(
+        actor.links["$serde_json::private::RawValue"],
+        "https://example.test/updated"
+    );
+    assert_eq!(actor.links["Guide"], "https://example.test/guide");
+    let nested = &actor.properties["nested"];
+    assert_eq!(nested[0]["$serde_json::private::RawValue"], "true");
+    assert_eq!(
+        nested[0]["fraction"],
+        serde_json::from_str::<serde_json::Value>("0.12345678901234567").unwrap()
+    );
+    assert_eq!(nested[1]["$serde_json::private::Number"], "123");
+    assert_eq!(nested[1]["integer"].as_u64(), Some(u64::MAX));
+}
+
+#[test]
 fn menu_text_modifiers_are_removed_before_reading_links_and_properties() {
     for newline in ["\n", "\r\n"] {
         for prefix in ["", "wrap:", ":wrap:", "nowrap:", ":nowrap:"] {
