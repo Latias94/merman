@@ -22,6 +22,7 @@ extern {
     "end" => Tok::KwEnd,
 
     Sep => Tok::Sep,
+    AccessibilityValue => Tok::AccessibilityValue(<String>),
     Amp => Tok::Amp,
     StyleSep => Tok::StyleSep,
 
@@ -45,7 +46,7 @@ extern {
 }
 
 pub FlowchartAst: FlowchartAst = {
-  <_lead:Seps> <h:Header> <_s:Seps> <st:Statements> => {
+  <_lead:LeadingSeps> <h:Header> <st:Statements> => {
     let (keyword, direction, header_span) = h;
     FlowchartAst { keyword, direction, header_span, statements: std::mem::take(statements), root: st }
   },
@@ -59,18 +60,25 @@ Header: (String, Option<String>, SourceSpan) = {
 };
 
 Statements: StatementList = {
-  => StatementList::default(),
   <s:Statement> <rest:StatementRest> =>? statements.prepend(s, rest, control),
+  StatementRest,
 };
 
 StatementRest: StatementList = {
-  <_sep:Sep> <_seps:Seps> <s:Statement> <rest:StatementRest> =>? statements.prepend(s, rest, control),
-  Seps => StatementList::default(),
+  => StatementList::default(),
+  Sep <rest:Statements> => rest,
+  // flow.jison's accessibility productions return a member and need no trailing separator.
+  <s:AccessibilityStatement> <rest:Statements> =>? statements.prepend(s, rest, control),
 };
 
-Seps: () = {
+AccessibilityStatement: StatementId = {
+  <value:AccessibilityValue> =>? statements.push(Stmt::AccessibilityValue(value), control),
+};
+
+LeadingSeps: () = {
   => (),
-  Sep Seps => (),
+  Sep LeadingSeps => (),
+  AccessibilityValue LeadingSeps => (),
 };
 
 Statement: StatementId = {
@@ -165,12 +173,8 @@ Chain: (Vec<Vec<Node>>, Vec<Vec<Edge>>) = {
   }
 };
 
-Seps1: () = {
-  Sep Seps => (),
-};
-
 SubgraphBlock: SubgraphBlock = {
-  "subgraph" <h:SubgraphHeader?> <_s:Seps1> <inner:Statements> "end" => SubgraphBlock { header: h.unwrap_or_default(), statements: inner }
+  "subgraph" <h:SubgraphHeader?> Sep <inner:Statements> "end" => SubgraphBlock { header: h.unwrap_or_default(), statements: inner }
 };
 
 EdgeSeg: (Option<String>, LinkToken, Option<LabeledText>, Vec<Node>) = {

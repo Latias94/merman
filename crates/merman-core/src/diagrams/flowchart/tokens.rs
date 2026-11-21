@@ -23,6 +23,7 @@ pub(crate) enum Tok {
     KwEnd,
 
     Sep,
+    AccessibilityValue(String),
     Amp,
     StyleSep,
     NodeLabel(NodeLabelToken),

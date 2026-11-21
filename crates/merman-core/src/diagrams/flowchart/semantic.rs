@@ -79,7 +79,7 @@ impl<'a> FlowchartSemanticContext<'a> {
             };
 
             match stmt {
-                Stmt::Subgraph(_) => {}
+                Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
                 Stmt::Style(s) => {
                     if seen_edge_indices.contains_key(&s.target) {
                         continue;

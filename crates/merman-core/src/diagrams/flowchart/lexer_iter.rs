@@ -15,7 +15,8 @@ impl<'input> Iterator for Lexer<'input> {
         );
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         if let Some(Ok((_, token, _))) = &item {
-            self.at_statement_start = matches!(token, Tok::Sep | Tok::KwEnd);
+            self.at_statement_start =
+                matches!(token, Tok::Sep | Tok::KwEnd | Tok::AccessibilityValue(_));
         }
         item
     }

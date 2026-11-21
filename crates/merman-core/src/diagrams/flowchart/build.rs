@@ -89,7 +89,7 @@ impl FlowchartBuildState {
                         );
                     }
                 }
-                Stmt::Subgraph(_) => {}
+                Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
                 Stmt::Direction(_)
                 | Stmt::ClassDef(_)
                 | Stmt::ClassAssign(_)
