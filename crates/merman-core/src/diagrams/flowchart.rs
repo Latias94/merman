@@ -304,12 +304,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
                     &mut facts,
                     control,
                 )?;
-                collect_expected_syntax_from_tokens(
-                    code,
-                    trace.editor_tokens(),
-                    &mut facts,
-                    control,
-                )?;
+                collect_expected_syntax_from_tokens(code, &trace, &mut facts, control)?;
             }
             let (acc_title, acc_descr) = accessibility.metadata(code);
             let model = match parse_flowchart_semantic_source_from_ast_controlled(
@@ -772,13 +767,40 @@ impl FlowchartTokenTrace {
             })
     }
 
-    #[cfg(feature = "editor-facts")]
-    fn editor_tokens(&self) -> impl Iterator<Item = &FlowchartToken> {
-        self.items.iter().filter_map(|item| match item {
-            FlowchartTracedItem::Token(token)
-            | FlowchartTracedItem::RecoveredToken { token, .. } => Some(token),
-            FlowchartTracedItem::LexerError(_) => None,
-        })
+    fn editor_tokens(&self) -> impl Iterator<Item = (usize, &FlowchartToken)> {
+        self.items
+            .iter()
+            .enumerate()
+            .filter_map(|(index, item)| match item {
+                FlowchartTracedItem::Token(token)
+                | FlowchartTracedItem::RecoveredToken { token, .. } => Some((index, token)),
+                FlowchartTracedItem::LexerError(_) => None,
+            })
+    }
+
+    fn direction_value_span(
+        &self,
+        index: usize,
+        token: &FlowchartToken,
+        code_len: usize,
+    ) -> Option<SourceSpan> {
+        match &token.1 {
+            Tok::DirectionStmt(stmt) => stmt.completion_span,
+            Tok::Id(id) if id == "direction" => {
+                // A standalone vertex also offers a direction value after trailing whitespace.
+                let Some(FlowchartTracedItem::Token((_, Tok::Sep, _))) = self.items[..index].last()
+                else {
+                    return None;
+                };
+                let insertion = match self.items.get(index + 1) {
+                    Some(FlowchartTracedItem::Token((start, Tok::Sep, _))) => *start,
+                    None => code_len,
+                    _ => return None,
+                };
+                (insertion > token.2).then_some(SourceSpan::new(insertion, insertion))
+            }
+            _ => None,
+        }
     }
 }
 
@@ -893,13 +915,19 @@ fn recover_flowchart_editor_facts_from_tokens(
     facts.mark_recovered();
     let mut collector = FlowchartRecoveryFactCollector::default();
     let mut tokens = trace.editor_tokens().enumerate().peekable();
-    while let Some((index, (start, token, end))) = tokens.next() {
-        if index % 128 == 0 {
+    while let Some((emitted, (index, token))) = tokens.next() {
+        if emitted.is_multiple_of(128) {
             control.checkpoint()?;
+        }
+        if editor_demand.captures_rich()
+            && let Some(span) = trace.direction_value_span(index, token, code.len())
+        {
+            push_flowchart_direction_value_expected_syntax(span, &mut facts);
         }
         let shape_data_target = tokens
             .peek()
-            .is_some_and(|(_, (_, token, _))| matches!(token, Tok::ShapeData(_)));
+            .is_some_and(|(_, (_, next))| matches!(next.1, Tok::ShapeData(_)));
+        let (start, token, end) = token;
         collector.accept(
             code,
             token,
@@ -1007,16 +1035,20 @@ fn flowchart_eof_recovery_insertion(
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 #[cfg(feature = "editor-facts")]
-fn collect_expected_syntax_from_tokens<'a>(
+fn collect_expected_syntax_from_tokens(
     code: &str,
-    tokens: impl Iterator<Item = &'a FlowchartToken>,
+    trace: &FlowchartTokenTrace,
     #[cfg(feature = "editor-facts")] facts: &mut EditorSemanticFacts,
     control: &OperationControl,
 ) -> OperationControlResult<()> {
-    for (index, (start, token, end)) in tokens.enumerate() {
+    for (index, token) in trace.editor_tokens() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
+        if let Some(span) = trace.direction_value_span(index, token, code.len()) {
+            push_flowchart_direction_value_expected_syntax(span, facts);
+        }
+        let (start, token, end) = token;
         match token {
             Tok::NodeLabel(label) => {
                 if let Some(trigger_span) = label.trigger_span {
@@ -1025,9 +1057,6 @@ fn collect_expected_syntax_from_tokens<'a>(
             }
             Tok::ShapeData(_) => {
                 push_flowchart_shape_value_expected_syntax(code, *start, *end, facts)
-            }
-            Tok::DirectionStmt(stmt) => {
-                push_flowchart_direction_value_expected_syntax(stmt.selection, facts)
             }
             _ => {}
         }
@@ -1194,10 +1223,8 @@ fn collect_editor_fact_from_token(
         | Tok::AccessibilityValue(_)
         | Tok::Amp
         | Tok::StyleSep
-        | Tok::Direction(_) => {}
-        Tok::DirectionStmt(stmt) => {
-            push_flowchart_direction_value_expected_syntax(stmt.selection, facts)
-        }
+        | Tok::Direction(_)
+        | Tok::DirectionStmt(_) => {}
         Tok::Arrow(_) | Tok::EdgeId(_) => {}
         Tok::ShapeData(_) => push_flowchart_shape_value_expected_syntax(code, start, end, facts),
     }

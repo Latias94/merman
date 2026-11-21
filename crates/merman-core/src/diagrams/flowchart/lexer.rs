@@ -225,6 +225,43 @@ fn node_string_len(bytes: &[u8]) -> usize {
     bytes.len()
 }
 
+pub(super) struct DirectionMatch {
+    pub(super) direction: &'static str,
+    pub(super) offset: usize,
+    #[cfg(any(test, feature = "editor-facts"))]
+    unambiguous: bool,
+}
+
+pub(super) fn match_direction(input: &str, prefix: &str) -> Option<DirectionMatch> {
+    // Jison selects the first matching rule. Its greedy prefix selects the last occurrence
+    // of that rule's direction, which also owns the editor selection.
+    let candidates = prefix
+        .rmatch_indices("direction")
+        .filter_map(|(offset, keyword)| {
+            let suffix = &input[offset + keyword.len()..];
+            let value = suffix.trim_start_matches(is_ecmascript_trim_char);
+            if suffix.len() == value.len() {
+                return None;
+            }
+            ["TB", "BT", "RL", "LR", "TD"]
+                .into_iter()
+                .enumerate()
+                .find(|(_, dir)| value.starts_with(dir))
+                .map(|(priority, dir)| (priority, dir, input.len() - value.len()))
+        });
+    #[cfg(any(test, feature = "editor-facts"))]
+    let mut count = 0_usize;
+    #[cfg(any(test, feature = "editor-facts"))]
+    let candidates = candidates.inspect(|_| count += 1);
+    let (_, direction, offset) = candidates.min_by_key(|(priority, _, _)| *priority)?;
+    Some(DirectionMatch {
+        direction,
+        offset,
+        #[cfg(any(test, feature = "editor-facts"))]
+        unambiguous: count == 1,
+    })
+}
+
 pub(super) struct Lexer<'input> {
     pub(super) input: &'input str,
     pub(super) pos: usize,
@@ -232,6 +269,9 @@ pub(super) struct Lexer<'input> {
     pub(super) after_vertex: bool,
     pub(super) allow_header_direction: bool,
     pub(super) recover_partial_node_labels: bool,
+    // The direction rules look through the rest of a statement. Cache misses across its tokens.
+    direction_checked_until: usize,
+    direction_statement_ends: VecDeque<usize>,
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
     pub(super) accessibility: super::accessibility::FlowchartAccessibility,
     #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -254,6 +294,8 @@ impl<'input> Lexer<'input> {
             after_vertex: false,
             allow_header_direction: false,
             recover_partial_node_labels: false,
+            direction_checked_until: 0,
+            direction_statement_ends: VecDeque::new(),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
             accessibility: super::accessibility::FlowchartAccessibility::default(),
             #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
@@ -475,73 +517,101 @@ impl<'input> Lexer<'input> {
         rest.starts_with(';') || after_space.is_empty() || after_space.starts_with('\n')
     }
 
-    pub(super) fn lex_direction_stmt(
+    fn direction_statement_end(&mut self, start: usize, require_keyword: bool) -> usize {
+        while self
+            .direction_statement_ends
+            .front()
+            .is_some_and(|&end| end < start)
+        {
+            self.direction_statement_ends.pop_front();
+        }
+        if let Some(&end) = self.direction_statement_ends.front() {
+            return end;
+        }
+        let line = self.input[start..].split('\n').next().unwrap_or_default();
+        let line_end = start + line.len();
+        if line.contains(';') && (!require_keyword || line.contains("direction")) {
+            // Only a separator token ends a compact statement. Semicolons inside node labels,
+            // edge labels and shape data belong to the token that consumed them.
+            let mut tokens = Lexer::new(line);
+            tokens.direction_checked_until = usize::MAX;
+            #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+            if let Some(control) = &self.control {
+                tokens.label_scanner.set_control(control);
+                tokens.control = Some(control.clone());
+            }
+            self.direction_statement_ends
+                .extend(tokens.flatten().filter_map(|(pos, token, _)| {
+                    (matches!(token, Tok::Sep) && line.as_bytes().get(pos) == Some(&b';'))
+                        .then_some(start + pos)
+                }));
+        }
+        self.direction_statement_ends.push_back(line_end);
+        self.direction_statement_ends[0]
+    }
+
+    pub(super) fn lex_whole_line_direction(
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
         let start = self.pos;
-        if !self.input[self.pos..]
-            .strip_prefix("direction")
-            .and_then(|rest| rest.chars().next())
-            .is_some_and(is_ecmascript_trim_char)
+        if self.allow_header_direction || start < self.direction_checked_until {
+            return None;
+        }
+        // JavaScript `.*` stops at a line terminator. Merman also admits semicolon-separated
+        // statements. Only the whitespace between `direction` and the value can cross lines.
+        let boundary = self.direction_statement_end(start, true);
+        let prefix = self.input[start..boundary]
+            .split(['\r', '\u{2028}', '\u{2029}'])
+            .next()
+            .unwrap_or_default();
+        let rest = &self.input[start..];
+        let Some(matched) = match_direction(rest, prefix) else {
+            self.direction_checked_until = start + prefix.len();
+            return None;
+        };
+        let direction_start = start + matched.offset;
+        #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
+        if let Some(token) = self.lex_accessibility_statement() {
+            return Some(token);
+        }
+        if rest.starts_with('"')
+            || rest.starts_with("@{")
+            || ["click", "call", "href"].iter().any(|kw| {
+                rest.strip_prefix(kw)
+                    .and_then(|tail| tail.chars().next())
+                    .is_some_and(is_ecmascript_trim_char)
+            })
         {
             return None;
         }
-        self.pos += "direction".len();
-        self.skip_ws();
 
-        let direction_start = self.pos;
-        while let Some(ch) = self.input[self.pos..].chars().next() {
-            if is_ecmascript_trim_char(ch) || ch == ';' {
-                break;
+        let end = direction_start + matched.direction.len();
+        let statement_end = self.direction_statement_end(direction_start, false);
+        let selection = SourceSpan::new(direction_start, end);
+        // At the current cursor, these INITIAL keywords precede the direction rules. An
+        // unindented `class direction LR` emits CLASS then direction_lr where a target is needed.
+        // With leading spaces, the direction rule instead consumes the whole statement.
+        if let Some(keyword) = self
+            .reserved_keyword()
+            .or_else(|| self.starts_with_kw("default").then_some("default"))
+        {
+            if matches!(keyword, "graph" | "flowchart" | "end" | "swimlane-beta") {
+                return None;
             }
-            self.pos += ch.len_utf8();
+            self.pos = statement_end;
+            return Some(Err(LexError::with_span(
+                format!("unexpected direction in Flowchart {keyword} statement"),
+                selection,
+            )));
         }
-        let direction_end = self.pos;
-        while let Some(b) = self.peek() {
-            if b == b'\n' || b == b';' {
-                break;
-            }
-            self.pos += 1;
-        }
-        let statement_end = self.pos;
-        let direction = &self.input[direction_start..direction_end];
-        let selection = SourceSpan::new(direction_start, direction_end);
-
-        let Some(dir) = ["TB", "TD", "BT", "LR", "RL"]
-            .into_iter()
-            .find(|candidate| *candidate == direction)
-        else {
-            let error = {
-                let error = LexError::with_span("invalid flowchart direction", selection);
-                #[cfg(feature = "editor-facts")]
-                let error = error.expecting(
-                    crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
-                    selection,
-                );
-                error
-            };
-            if self.recover_partial_node_labels {
-                return Some(Ok((
-                    start,
-                    Tok::DirectionStmt(DirectionStatementToken {
-                        direction: String::new(),
-                        #[cfg(any(test, feature = "editor-facts"))]
-                        selection,
-                        #[cfg(any(test, feature = "editor-facts"))]
-                        recovery_error: Some(error),
-                    }),
-                    statement_end,
-                )));
-            }
-            return Some(Err(error));
-        };
-
+        self.pos = statement_end;
         Some(Ok((
             start,
             Tok::DirectionStmt(DirectionStatementToken {
-                direction: dir.to_string(),
+                direction: matched.direction.to_string(),
                 #[cfg(any(test, feature = "editor-facts"))]
-                selection,
+                // Replacing a competing value can change which line the token consumes.
+                completion_span: matched.unambiguous.then_some(selection),
                 #[cfg(any(test, feature = "editor-facts"))]
                 recovery_error: None,
             }),
@@ -549,7 +619,55 @@ impl<'input> Lexer<'input> {
         )))
     }
 
-    pub(super) fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
+    #[cfg(feature = "editor-facts")]
+    pub(super) fn lex_partial_direction_stmt(
+        &mut self,
+    ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
+        if !self.recover_partial_node_labels {
+            return None;
+        }
+        let start = self.pos;
+        let rest = self.input[start..].strip_prefix("direction")?;
+        let value = rest.trim_start_matches(|ch| ch != '\n' && is_ecmascript_trim_char(ch));
+        if value.len() == rest.len() {
+            return None;
+        }
+        let direction_start = self.input.len() - value.len();
+        let direction_len = value
+            .find(|ch: char| is_ecmascript_trim_char(ch) || ch == ';')
+            .unwrap_or(value.len());
+        let candidate = &value[..direction_len];
+        // Two adjacent vertex IDs cannot form a statement. A spaced `&` groups vertices,
+        // while labels, named links, and other continuations have their own token kinds.
+        if candidate == "&" || !super::is_valid_editor_node_id(candidate) {
+            return None;
+        }
+
+        let direction_end = direction_start + direction_len;
+        let statement_end = self.input[direction_end..]
+            .find(['\n', ';'])
+            .map_or(self.input.len(), |offset| direction_end + offset);
+        let selection = SourceSpan::new(direction_start, direction_end);
+
+        let error = LexError::with_span("invalid flowchart direction", selection).expecting(
+            crate::EditorExpectedSyntaxKind::FlowchartDirectionValue,
+            selection,
+        );
+
+        self.pos = statement_end;
+
+        Some(Ok((
+            start,
+            Tok::DirectionStmt(DirectionStatementToken {
+                direction: String::new(),
+                completion_span: Some(selection),
+                recovery_error: Some(error),
+            }),
+            statement_end,
+        )))
+    }
+
+    fn consume_statement_body(&mut self) -> SourceSpan {
         let start = self.pos;
         let mut in_double_quote = false;
         let mut in_single_quote = false;
@@ -595,7 +713,16 @@ impl<'input> Lexer<'input> {
             }
             self.pos += 1;
         }
-        (start, self.input[start..self.pos].to_string(), self.pos)
+        SourceSpan::new(start, self.pos)
+    }
+
+    pub(super) fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
+        let span = self.consume_statement_body();
+        (
+            span.start,
+            self.input[span.start..span.end].to_owned(),
+            span.end,
+        )
     }
 
     pub(super) fn capture_to_stmt_end_from(&mut self, start: usize) -> (usize, String, usize) {
@@ -915,12 +1042,13 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "click".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let body = self.consume_statement_body();
+        let end = body.end;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (target, _) = directive_argument_spans(&rest, rest_start);
-        match lex::parse_click_stmt(&rest, rest_start) {
+        let (target, _) = directive_argument_spans(&self.input[body.start..end], body.start);
+        match lex::parse_click_stmt(self.input, body) {
             Ok(stmt) => {
                 #[cfg(feature = "editor-facts")]
                 let mut stmt = stmt;

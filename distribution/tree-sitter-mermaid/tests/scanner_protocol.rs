@@ -1,6 +1,9 @@
 use std::ffi::{c_char, c_void};
 
-const TOKEN_COUNT: usize = 23;
+#[path = "support/scanner_symbols.rs"]
+mod scanner_symbols;
+use scanner_symbols::{DIRECTIVE_BODY, TOKEN_COUNT};
+
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
 const MAX_INDENTATION: usize = 65_534;
@@ -26,7 +29,6 @@ const KANBAN_REINDENT: u16 = 17;
 const KANBAN_DEDENT: u16 = 18;
 const KANBAN_OVERFLOW: u16 = 19;
 const END_OF_INPUT: u16 = 20;
-const DIRECTIVE_BODY: u16 = 21;
 const CLASS_COMPACT_IDENTIFIER: u16 = 22;
 
 #[derive(Clone, Copy)]
@@ -301,6 +303,18 @@ fn restarted(scanner: &Scanner) -> Scanner {
     restored.deserialize(&encoded);
     assert_eq!(restored.serialize(), encoded);
     restored
+}
+
+#[test]
+fn scanner_symbol_mask_matches_the_generated_grammar() {
+    let grammar: serde_json::Value =
+        serde_json::from_str(include_str!("../src/grammar.json")).unwrap();
+    let externals = grammar["externals"].as_array().unwrap();
+    assert_eq!(TOKEN_COUNT, externals.len());
+    assert_eq!(
+        externals[usize::from(DIRECTIVE_BODY)]["name"],
+        "_directive_body"
+    );
 }
 
 #[test]

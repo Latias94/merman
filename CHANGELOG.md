@@ -21,6 +21,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Accept punctuation in Flowchart node IDs and preserve classes, links and statements during editor renames. Match Mermaid's stroke and length for links with mixed endpoint markers.
 - Preserve valid Class and namespace source when renaming to Unicode names or reserved words that require backticks. Existing quotes, generic suffixes and relationship targets remain intact.
 - Finish interrupted Markdown publication and publish the requested output in one retry after blocked files become available, including batches with rollback journals written by older versions.
+- Treat a Flowchart `direction` that is not followed by `TB`, `BT`, `RL`, `LR` or `TD` as a node ID, and allow extra characters after the direction such as `direction LRfoo`.
 
 ## [0.10.0] - 2026-11-12
 
