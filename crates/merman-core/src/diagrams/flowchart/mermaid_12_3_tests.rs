@@ -1179,3 +1179,123 @@ fn attached_edge_ids_preserve_editor_spans_references_and_rename_during_recovery
         );
     }
 }
+
+#[test]
+fn direction_without_a_direction_value_is_a_vertex_id() {
+    // flow.jison only lexes `direction\s+(TB|BT|RL|LR|TD)` as a direction statement.
+    for (body, expected_nodes, expected_edges) in [
+        ("direction", &["direction"][..], &[][..]),
+        ("direction ", &["direction"], &[]),
+        (
+            "direction --> B",
+            &["direction", "B"],
+            &[("direction", "B")],
+        ),
+        (
+            "A --> direction",
+            &["A", "direction"],
+            &[("A", "direction")],
+        ),
+        ("directionX", &["directionX"], &[]),
+    ] {
+        let model = parse(&format!("flowchart TB\n{body}\n"));
+        let nodes = model
+            .nodes
+            .iter()
+            .map(|node| node.id.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(nodes, expected_nodes, "{body:?}");
+        let edges = model
+            .edges
+            .iter()
+            .map(|edge| (edge.from.as_str(), edge.to.as_str()))
+            .collect::<Vec<_>>();
+        assert_eq!(edges, expected_edges, "{body:?}");
+    }
+
+    let model = parse("graph TB\n  subgraph Data\n    direction\n    Redux\n  end\n");
+    let subgraph = &model.subgraphs[0];
+    assert_eq!(subgraph.dir, None);
+    assert_eq!(subgraph.nodes, ["direction", "Redux"]);
+}
+
+#[test]
+fn direction_values_follow_the_upstream_prefix_rule() {
+    for (body, expected_dir) in [
+        ("direction LR", "LR"),
+        ("direction LRfoo", "LR"),
+        ("direction\n    RL", "RL"),
+        ("direction \t BT", "BT"),
+        ("direction LRfoo direction TB", "TB"),
+        ("direction TD direction LR", "LR"),
+        ("A[direction LR]", "LR"),
+        ("  class direction RL", "RL"),
+    ] {
+        let model = parse(&format!("graph TB\nsubgraph S\n{body}\nA\nend\n"));
+        assert_eq!(
+            model.subgraphs[0].dir.as_deref(),
+            Some(expected_dir),
+            "{body:?}"
+        );
+        assert_eq!(model.subgraphs[0].nodes, ["A"], "{body:?}");
+    }
+
+    assert!(parse_flowchart_model_for_render("graph TB\ndirection X\n", &metadata()).is_err());
+    for prior_keyword in ["class direction RL", "default direction LR"] {
+        assert!(
+            parse_flowchart_model_for_render(&format!("graph TB\n{prior_keyword}\n"), &metadata())
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn direction_rules_use_statement_separators_outside_labels() {
+    for statement in [
+        "A[\"direction LR; x\"]",
+        "A[\"x; direction LR\"]",
+        "A -->|x; y| B[direction LR]",
+        "A@{ label: \"x; direction LR\", shape: rect }",
+        "direction\nLR A[\"x;y\"]",
+    ] {
+        let model = parse(&format!("flowchart TB\nsubgraph S\n{statement};Z\nend\n"));
+        assert_eq!(model.subgraphs[0].dir.as_deref(), Some("LR"), "{statement}");
+        assert_eq!(model.subgraphs[0].nodes, ["Z"], "{statement}");
+    }
+    let model = parse("flowchart TD\nsubgraph S\nA[\"x;y\"];direction LR;B --> C\nend\n");
+    assert_eq!(model.subgraphs[0].dir.as_deref(), Some("LR"));
+    assert_eq!(model.nodes.len(), 3);
+    assert_eq!((&*model.edges[0].from, &*model.edges[0].to), ("B", "C"));
+}
+
+#[test]
+fn closing_a_subgraph_consumes_the_indentation_before_a_direction_match() {
+    for directive in ["class direction LR", "style direction LR"] {
+        let source =
+            format!("flowchart TD\nsubgraph Outer\nsubgraph Inner\nB\nend\n  {directive}\nend\n");
+        assert!(
+            parse_flowchart_model_for_render(&source, &metadata()).is_err(),
+            "{directive}"
+        );
+    }
+    for gap in ["\n  ", " ", "\u{2028}", "\u{2029}"] {
+        let model = parse(&format!(
+            "flowchart TD\nsubgraph Outer\nsubgraph Inner\nB\nend{gap}direction LR\nend\n"
+        ));
+        assert_eq!(model.subgraphs.last().unwrap().dir.as_deref(), Some("LR"));
+    }
+}
+
+#[test]
+fn direction_value_selection_follows_the_greedy_upstream_rule() {
+    let source = "direction LR direction TBfoo direction TBbar";
+    let Some(Ok((_, super::Tok::DirectionStmt(statement), end))) = super::Lexer::new(source).next()
+    else {
+        panic!("expected a Flowchart direction statement");
+    };
+    assert_eq!(statement.direction, "TB");
+    let matched = super::lexer::match_direction(source, source).unwrap();
+    assert_eq!(matched.offset, source.rfind("TB").unwrap());
+    assert_eq!(statement.completion_span, None);
+    assert_eq!(end, source.len());
+}

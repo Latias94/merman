@@ -86,6 +86,7 @@ module.exports = grammar({
     $._directive_body,
     $._class_compact_identifier,
     $._flowchart_group_separator,
+    $._flow_direction_prefix,
   ],
 
   conflicts: ($) => [

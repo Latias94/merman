@@ -424,6 +424,38 @@ fn leading_dots_keep_flow_endpoint_and_operator_spans() {
 }
 
 #[test]
+fn flow_direction_highlights_select_the_last_pair_at_the_highest_priority() {
+    let query_path = "queries/portable/highlights.scm";
+    let query = canonical_highlights_query();
+    let mut parser = parser();
+    let directions = ["TB", "BT", "RL", "LR", "TD"];
+    for (first_rank, first) in directions.iter().enumerate() {
+        for (last_rank, last) in directions.iter().enumerate() {
+            let source = format!("flowchart TD\ndirection {first}foo direction {last}bar\n");
+            let captures = parse_capture_snapshots(&mut parser, &query, query_path, &source);
+            let spans: Vec<_> = captures
+                .iter()
+                .filter(|capture| capture.start_position.row == 1)
+                .map(|capture| (capture.name.as_str(), capture.range.clone()))
+                .collect();
+            let winner = directions[first_rank.min(last_rank)];
+            let keyword = source
+                .rfind(&format!("direction {winner}"))
+                .expect("winning pair");
+            let value = keyword + "direction ".len();
+            assert_eq!(
+                spans,
+                [
+                    ("keyword", keyword..keyword + "direction".len()),
+                    ("constant", value..value + winner.len()),
+                ],
+                "{source}"
+            );
+        }
+    }
+}
+
+#[test]
 fn malformed_statement_keeps_later_sibling_highlights() {
     let source = "flowchart TD\n  A[broken label\n  C[Later] --> Target[Done]\n";
     let query = canonical_highlights_query();
@@ -449,6 +481,16 @@ fn malformed_statement_keeps_later_sibling_highlights() {
 
 #[test]
 fn incremental_highlights_match_fresh_queries() {
+    replace_and_compare_highlights(
+        "flowchart TD\ndirection LR direction TDfoo\n",
+        "TDfoo",
+        "TBfoo",
+    );
+    replace_and_compare_highlights(
+        "flowchart TD\ndirection\n%% gap\nLRfoo --> B\n",
+        "LRfoo",
+        "Other",
+    );
     replace_and_compare_highlights(
         "flowchart TD\nA[Start] --> B[Finish]\n",
         "Finish",

@@ -90,7 +90,7 @@ pub(crate) struct NodeLabelToken {
 pub(crate) struct DirectionStatementToken {
     pub direction: String,
     #[cfg(any(test, feature = "editor-facts"))]
-    pub selection: SourceSpan,
+    pub completion_span: Option<SourceSpan>,
     #[cfg(any(test, feature = "editor-facts"))]
     pub recovery_error: Option<LexError>,
 }

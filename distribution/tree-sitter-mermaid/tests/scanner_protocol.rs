@@ -1,6 +1,9 @@
 use std::ffi::{c_char, c_void};
 
-const TOKEN_COUNT: usize = 24;
+#[path = "support/scanner_symbols.rs"]
+mod scanner_symbols;
+use scanner_symbols::{DIRECTIVE_BODY, TOKEN_COUNT};
+
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
 const MAX_INDENTATION: usize = 65_534;
@@ -26,9 +29,9 @@ const KANBAN_REINDENT: u16 = 17;
 const KANBAN_DEDENT: u16 = 18;
 const KANBAN_OVERFLOW: u16 = 19;
 const END_OF_INPUT: u16 = 20;
-const DIRECTIVE_BODY: u16 = 21;
 const CLASS_COMPACT_IDENTIFIER: u16 = 22;
 const FLOWCHART_GROUP_SEPARATOR: u16 = 23;
+const FLOW_DIRECTION_PREFIX: u16 = 24;
 
 #[derive(Clone, Copy)]
 struct TokenGroup {
@@ -305,6 +308,43 @@ fn restarted(scanner: &Scanner) -> Scanner {
 }
 
 #[test]
+fn scanner_symbol_mask_matches_the_generated_grammar() {
+    let grammar: serde_json::Value =
+        serde_json::from_str(include_str!("../src/grammar.json")).unwrap();
+    let externals: Vec<_> = grammar["externals"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|symbol| symbol["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(TOKEN_COUNT, externals.len());
+    assert_eq!(externals[usize::from(DIRECTIVE_BODY)], "_directive_body");
+    assert_eq!(
+        externals[usize::from(FLOWCHART_GROUP_SEPARATOR)],
+        "_flowchart_group_separator"
+    );
+    assert_eq!(
+        externals[usize::from(FLOW_DIRECTION_PREFIX)],
+        "_flow_direction_prefix"
+    );
+
+    let (_, scanner) = include_str!("../src/scanner.c")
+        .split_once("enum TokenType {")
+        .unwrap();
+    let (enum_body, _) = scanner.split_once("};").unwrap();
+    let scanner_symbols: Vec<_> = enum_body
+        .trim()
+        .split_terminator(',')
+        .map(str::trim)
+        .collect();
+    let generated_symbols: Vec<_> = externals
+        .iter()
+        .map(|name| name.trim_start_matches('_').to_ascii_uppercase())
+        .collect();
+    assert_eq!(scanner_symbols, generated_symbols);
+}
+
+#[test]
 fn scanner_state_round_trips_and_reindents_without_truncation() {
     let mut scanner = Scanner::new();
     let mindmap = family_mask(usize::from(MINDMAP_START));
@@ -380,6 +420,20 @@ fn flowchart_group_separator_requires_space_on_both_sides() {
         );
     }
     assert!(!scanner.scan(b" & X", &[true; TOKEN_COUNT]).matched);
+    assert!(scanner.serialize().is_empty());
+}
+
+#[test]
+fn flow_direction_prefix_leaves_the_winning_keyword_for_the_grammar() {
+    let mut scanner = Scanner::new();
+    let symbols = token_mask(FLOW_DIRECTION_PREFIX);
+    let source = b"direction LR direction\r\n  %% direction BT\r\nTBfoo";
+    let matched = scanner.scan(source, &symbols);
+    assert!(matched.matched);
+    assert_eq!(matched.symbol, FLOW_DIRECTION_PREFIX);
+    assert_eq!(matched.marked_end, b"direction LR ".len());
+    assert!(!scanner.scan(b"direction TB direction BT", &symbols).matched);
+    assert!(!scanner.scan(source, &[true; TOKEN_COUNT]).matched);
     assert!(scanner.serialize().is_empty());
 }
 

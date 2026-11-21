@@ -26,6 +26,11 @@ const statementKeyword = ($, prefix, keyword) => field(
 
 const optionalInlineGap = () => optional(token.immediate(/[ \t]+/));
 
+const identifierPrecedence = -5;
+
+// At identifier precedence, a longer name such as `directionLR` wins the whole token.
+const directionKeyword = () => token(prec(identifierPrecedence, /direction/));
+
 const identifier = (flowchartLexing) => {
   const unicode = String.raw`\u00c0-\uffff`;
   const head = flowchartLexing ? 'A-Za-z_./&' : 'A-Za-z0-9_.';
@@ -34,13 +39,14 @@ const identifier = (flowchartLexing) => {
   const variants = [
     token(prec(60, new RegExp(`classDef${tail}`))),
     token(prec(40, new RegExp(
-      `(?:subgraph|direction|class|style|linkStyle|click|accTitle|accDescr|end)${tail}`,
+      `(?:subgraph|class|style|linkStyle|click|accTitle|accDescr|end)${tail}`,
     ))),
-    token(prec(-5, new RegExp(`[${head}${unicode}](?:${tail})?`))),
+    directionKeyword(),
+    token(prec(identifierPrecedence, new RegExp(`[${head}${unicode}](?:${tail})?`))),
   ];
   if (flowchartLexing) {
     // Jison lexes NUM first, so a dashless dotted arrow can follow it immediately.
-    variants.push(seq(/[0-9]+/, optional(token.immediate(prec(-5, new RegExp(tail))))));
+    variants.push(seq(/[0-9]+/, optional(token.immediate(prec(identifierPrecedence, new RegExp(tail))))));
   }
   return choice(...variants);
 };
@@ -228,14 +234,21 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'subgraph_end')]: (_) => token(prec(30, 'end')),
 
-  [familyRule(prefix, 'direction_statement')]: ($) => seq(
-    statementKeyword($, prefix, 'direction'),
-    token.immediate(/[ \t]+/),
+  // flow.jison matches a value by prefix. Keep the selected pair and any
+  // whole-line comments that Mermaid removes between its keyword and value.
+  [familyRule(prefix, 'direction_statement')]: ($) => prec.dynamic(1, seq(
+    repeat($._flow_direction_prefix),
+    field('keyword', alias(directionKeyword(), ref($, prefix, 'statement_keyword'))),
+    repeat(seq(
+      $._line_ending,
+      optional(alias(token(/%%[^{\r\n][^\r\n]*/), $.comment)),
+    )),
     field('direction', alias(
-      token.immediate(/(?:LR|RL|TB|BT|TD)/),
+      token(prec(1, /(?:LR|RL|TB|BT|TD)/)),
       ref($, prefix, 'direction'),
     )),
-  ),
+    optional(token.immediate(/[^;\r\n]+/)),
+  )),
 
   [familyRule(prefix, 'edge_statement')]: ($) => prec.right(60, seq(
     field('source', ref($, prefix, 'node')),
@@ -668,6 +681,8 @@ const createFlowFamilyRules = ({
 });
 
 const createFlowFamilyConflicts = ($, prefix) => [
+  // A newline after `direction` can terminate a node or precede a direction value.
+  [ref($, prefix, 'direction_statement'), ref($, prefix, 'identifier')],
   [
     privateRef($, prefix, 'labeled_edge'),
     privateRef($, prefix, 'unlabeled_edge'),
