@@ -5,8 +5,8 @@ pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 
 use crate::json::estimated_value_owned_heap_bytes;
 use crate::json::{
-    ManagedJson, clone_value_nonrecursive, clone_value_nonrecursive_controlled,
-    drop_value_nonrecursive,
+    ManagedJson, clone_object_nonrecursive_controlled, clone_value_nonrecursive,
+    clone_value_nonrecursive_controlled, drop_value_nonrecursive,
 };
 #[cfg(feature = "presentation-data")]
 use crate::resources::ModelComplexity;
@@ -119,6 +119,7 @@ impl SectionOverrides {
     }
 }
 
+#[derive(Clone)]
 pub(crate) struct SectionEntries<'a> {
     base: &'a Map<String, Value>,
     changed: &'a Map<String, Value>,
@@ -250,7 +251,6 @@ impl MermaidConfig {
         &self.value.construction_complexity
     }
 
-    #[cfg(feature = "presentation-data")]
     pub(crate) fn section_entries(&self) -> Option<(usize, SectionEntries<'_>)> {
         let ConfigStorage::Sections(sections) = &self.value.storage else {
             return None;
@@ -274,6 +274,16 @@ impl MermaidConfig {
         max_nesting_depth: usize,
         control: &OperationControl,
     ) -> OperationControlResult<Option<Value>> {
+        control.checkpoint()?;
+        if let Some((len, entries)) = self.section_entries() {
+            return clone_object_nonrecursive_controlled(
+                len,
+                entries,
+                max_retained_bytes,
+                max_nesting_depth,
+                control,
+            );
+        }
         clone_value_nonrecursive_controlled(
             self.as_value(),
             max_retained_bytes,
@@ -391,11 +401,19 @@ impl MermaidConfig {
         if matches!(other, Value::Object(map) if map.is_empty()) {
             return;
         }
-        if self.share_sections_on_write
-            && let Value::Object(updates) = other
-            && self.is_object()
-        {
-            self.merge_sections(updates, record);
+        if self.share_sections_on_write && self.is_object() {
+            match other {
+                Value::Object(updates) => self.merge_sections(updates, record),
+                Value::Array(items) => {
+                    let _ = visit_array_updates(items, |update| {
+                        if let Value::Object(updates) = update {
+                            self.merge_sections(updates, record);
+                        }
+                        ControlFlow::Continue(())
+                    });
+                }
+                _ => {}
+            }
             return;
         }
         let mut path = Vec::new();
@@ -522,16 +540,19 @@ impl MermaidConfig {
     }
 
     fn value_mut(&mut self) -> &mut Value {
-        if Arc::get_mut(&mut self.value).is_none()
-            || matches!(self.value.storage, ConfigStorage::Sections(_))
-        {
+        if let Some(value) = Arc::get_mut(&mut self.value) {
+            if let ConfigStorage::Sections(sections) = &mut value.storage {
+                let json = sections.flattened.take().unwrap_or_else(|| {
+                    #[cfg(any(test, feature = "test-support"))]
+                    test_support::record_cow_copy();
+                    sections.flatten()
+                });
+                value.storage = ConfigStorage::Json(json);
+            }
+        } else {
             #[cfg(any(test, feature = "test-support"))]
             test_support::record_cow_copy();
-            let json = match &self.value.storage {
-                ConfigStorage::Json(json) => json.clone(),
-                ConfigStorage::Sections(sections) => sections.flatten(),
-            };
-            self.value = Arc::new(json.into());
+            self.value = Arc::new(self.to_managed_json().into());
         }
         let value = Arc::make_mut(&mut self.value);
         #[cfg(feature = "presentation-data")]
@@ -605,6 +626,21 @@ fn merge_member_action(destination: Option<&Value>, source: &Value) -> MergeMemb
     }
 }
 
+fn visit_array_updates<'source>(
+    source_items: &'source [Value],
+    mut visit: impl FnMut(&'source Value) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    let mut pending = source_items.iter().rev().collect::<Vec<_>>();
+    while let Some(source) = pending.pop() {
+        if let Value::Array(items) = source {
+            pending.extend(items.iter().rev());
+        } else {
+            visit(source)?;
+        }
+    }
+    ControlFlow::Continue(())
+}
+
 impl MergeTarget<'_> {
     fn value(&self) -> &Value {
         match self {
@@ -645,14 +681,9 @@ impl MergeTarget<'_> {
                     return self.append_array_items(source_items);
                 }
                 Value::Object(_) => {
-                    let mut pending = source_items.iter().rev().collect::<Vec<_>>();
-                    while let Some(source) = pending.pop() {
-                        if let Value::Array(items) = source {
-                            pending.extend(items.iter().rev());
-                        } else {
-                            self.apply(source, depth, path, record)?;
-                        }
-                    }
+                    return visit_array_updates(source_items, |source| {
+                        self.apply(source, depth, path, record)
+                    });
                 }
                 _ => {}
             }
@@ -964,6 +995,59 @@ mod tests {
             serde_json::to_vec(&flat.to_managed_json()).unwrap()
         );
         assert!(sections.flattened.get().is_none());
+    }
+
+    #[test]
+    fn section_merges_keep_empty_and_ordered_array_sources_lazy() {
+        let base = MermaidConfig::from_value(json!({
+            "large": "x".repeat(32 * 1_024),
+            "flowchart": {"nodeSpacing": 50},
+        }));
+        let mut flat = base.clone();
+        let mut layered = base.clone().with_shared_sections();
+        flat.set_value("flowchart.rankSpacing", json!(61));
+        layered.set_value("flowchart.rankSpacing", json!(61));
+        for source in [Value::Null, json!([]), json!([[null, []], true, {}])] {
+            layered.merge_with_mutation_observer(&source, &mut |_| {
+                panic!("an empty merge should report no assignments")
+            });
+        }
+
+        let updates = json!([
+            {"flowchart": {"nodeSpacing": 70}},
+            [{"enabled": true}, {"flowchart": {"nodeSpacing": 72, "rankSpacing": 61}}],
+        ]);
+        let mut flat_paths = Vec::new();
+        flat.merge_with_mutation_observer(&updates, &mut |path| flat_paths.push(path.join(".")));
+        let mut layered_paths = Vec::new();
+        layered.merge_with_mutation_observer(&updates, &mut |path| {
+            layered_paths.push(path.join("."));
+        });
+        assert_eq!(layered_paths, flat_paths);
+        assert_eq!(layered.to_managed_json(), flat.to_managed_json());
+        let ConfigStorage::Sections(sections) = &layered.value.storage else {
+            panic!("expected a section fork");
+        };
+        assert!(sections.flattened.get().is_none());
+    }
+
+    #[test]
+    fn unique_section_owner_reuses_its_cached_json_for_raw_mutation() {
+        let base = MermaidConfig::from_value(json!({"large": "x".repeat(32 * 1_024), "tiny": 0}));
+        let mut config = base.clone().with_shared_sections();
+        config.set_value("tiny", json!(1));
+        let cached_buffer = config.as_value()["large"].as_str().unwrap().as_ptr();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            config.as_value_mut()["tiny"] = json!(2);
+        });
+
+        assert_eq!(copies, 0);
+        assert_eq!(
+            config.as_value()["large"].as_str().unwrap().as_ptr(),
+            cached_buffer
+        );
+        assert_eq!(config.get("tiny"), Some(&json!(2)));
+        assert_eq!(base.get("tiny"), Some(&json!(0)));
     }
 
     #[test]
@@ -1434,5 +1518,49 @@ mod tests {
             config.clone_value_bounded_controlled(64 * 1024, 16, &control),
             Err(crate::OperationCancelled { .. })
         ));
+    }
+
+    #[test]
+    fn bounded_section_clone_checks_limits_without_materializing_the_projection() {
+        let base = MermaidConfig::from_value(json!({
+            "before": "x".repeat(2 * 1_024 * 1_024),
+            "section": {"nested": ["value"]},
+            "after": false,
+        }));
+        let mut config = base.clone().with_shared_sections();
+        config.set_value("section.new", json!(7));
+        config.set_value("appended", json!(true));
+        let ConfigStorage::Sections(sections) = &config.value.storage else {
+            panic!("expected a section fork");
+        };
+
+        let control = OperationControl::new();
+        let expected = config.to_managed_json();
+        let bytes = estimated_value_owned_heap_bytes(expected.as_value());
+        for (limit, depth) in [(1_024, 16), (bytes - 1, 16), (bytes, 2)] {
+            assert!(
+                config
+                    .clone_value_bounded_controlled(limit, depth, &control)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        let cloned = config
+            .clone_value_bounded_controlled(bytes, 3, &control)
+            .unwrap()
+            .map(ManagedJson::from_value)
+            .unwrap();
+        assert_eq!(
+            serde_json::to_vec(&cloned).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+
+        control.cancel();
+        assert!(
+            config
+                .clone_value_bounded_controlled(bytes, 3, &control)
+                .is_err()
+        );
+        assert!(sections.flattened.get().is_none());
     }
 }
