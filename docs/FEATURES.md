@@ -203,10 +203,13 @@ requests. Its capability document reports platform queries in
 Selected directory roots, including system font roots such as `~/.fonts`, resolve
 symlinks and ancestor aliases before scanning. Directory contents use bounded,
 stable traversal and skip discovered symlinks, including recursive links. Earlier
-equal family/style/weight faces take precedence. TTF, OTF, and TTC sources are
-supported; fonts are never fetched from a network. Font loading does not change
-Mermaid `fontFamily`: select your family in Mermaid configuration as well.
-Missing families use the same resolver for measurement and painting.
+equal family/style/weight faces take precedence. The loader reads TTF, OTF, and TTC
+files from local sources only. Native measurement and painting share a resolver for missing families.
+Use the family names registered from the files in Mermaid's `fontFamily` stack.
+For example, if resvg registers your font as `Recursive`, use `Recursive` in the stack.
+With only that file loaded, an external resvg can omit labels that request the web alias
+`Recursive Variable`.
+[Matching standalone SVG labels to resvg fonts](rendering/RUST_EMBEDDING.md#match-standalone-svg-labels-to-resvg-fonts)
 
 Explicit sources select native measurement automatically. The shared backend
 handles all 23 text-measurement protocol operations across layout, wrapping,
