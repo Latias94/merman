@@ -1,6 +1,6 @@
 # Merman Rust Examples
 
-Every user-facing example in this directory is a self-contained Rust file. It declares its own Mermaid source, uses no shared `support` module, and can be copied into another crate's `examples/` directory.
+Each user-facing example declares its own Mermaid source and can be copied into another crate. The standalone resvg example includes a consumer manifest to select the painter version independently.
 
 Run commands below from the Merman repository root. Start with the default complete SVG build:
 
@@ -15,6 +15,7 @@ cargo run -p merman --example render_svg > diagram.svg
 | Render one source string to SVG | [`render_svg.rs`](render_svg.rs) | Uses `Renderer` with a typed `SvgRequest` and keeps the operation boundary explicit. |
 | Run a cancellable background preview | [`render_cancellable.rs`](render_cancellable.rs) | Keeps a host control handle and starts the deadline when the worker executes. |
 | Measure with an installed monospace font | [`render_svg_monospace.rs`](render_svg_monospace.rs) | Selects a system monospace face and shapes complete wrapping candidates with Rustybuzz. |
+| Paint a standalone SVG with external resvg | [Standalone resvg](standalone_resvg/src/main.rs) | Uses the same OpenType faces for Merman layout and resvg painting. |
 | Embed several SVGs in one HTML document | [`embed_multiple_svgs.rs`](embed_multiple_svgs.rs) | Uses typed SVG requests with caller-owned IDs that remain unique after normalization. |
 | Render many independent files with one policy | [`render_many.rs`](render_many.rs) | Reuses one configured `Renderer` across operations. |
 | Export a bounded PNG | [`render_png.rs`](render_png.rs) | Selects a fit box, scale, background, and allocation limits before rasterization. |
@@ -247,6 +248,10 @@ Enable `features = ["png"]` on the Merman dependency when copying `render_png`, 
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
+The standalone resvg example includes its own [consumer manifest](standalone_resvg/Cargo.toml).
+The [Rust embedding guide](../../../docs/rendering/RUST_EMBEDDING.md#match-standalone-svg-labels-to-resvg-fonts)
+shows the command and how to select the same font families in a separate consumer.
+
 ## Minimize Features Later
 
 The commands above favor a successful first run. Once the workflow is known, disable defaults,
@@ -260,6 +265,7 @@ The table lists output and engine requirements in addition to that family select
 | `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `theme_recipe`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
 | `render_png` | `png` (also enables `svg`) |
+| `standalone_resvg` | `native-fonts` (also enables `svg`) |
 
 For example:
 
