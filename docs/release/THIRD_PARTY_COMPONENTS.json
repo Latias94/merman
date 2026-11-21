@@ -1541,7 +1541,7 @@
         {
           "type": "pinned-file",
           "path": "vendor/usvg/UPSTREAM.md",
-          "sha256": "1e96edc81756d72beb66619ced8bd671d932eba229007dc237ee55e35ff97011"
+          "sha256": "28af2c704f4b54072cada37791f2a095e7cda5e50978d89b5bea34b4e6bb4e9e"
         }
       ],
       "notice": "Source-tree builds of the native font and image export pipeline link usvg 0.47.0 with a local font fallback backport. This source component carries the two upstream license texts."
