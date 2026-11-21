@@ -52,7 +52,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_subroutine(
             write_outline(out, common, &ops_to_svg_path_d(stroke));
             out.push_str("</g>");
         }
-        return FlowchartNodeShapeEmissionReceipt::hand_drawn_hachure();
+        return FlowchartNodeShapeEmissionReceipt::hand_drawn_subroutine();
     }
 
     let w = (total_w - 2.0 * FRAME_WIDTH).max(1.0);
