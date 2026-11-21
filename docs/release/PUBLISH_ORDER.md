@@ -1,15 +1,31 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-21 (Asia/Shanghai)
+Last updated: 2026-11-22 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
 ## Version Decision
 
-Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives and the Apple XCFramework. After alpha publication, all selected stable Web, Node, Python, Flutter and Android backfills are delivered and independently reconciled below. The Node loader, both transports and all five native members are available at `0.9.3` under `latest`.
+The latest main-line workspace release is `0.11.0`. See the [host guide](PREBUILT_PRODUCTS.md#published-versions) for versions by channel and the dated records below for earlier publication evidence.
 
-The main-line `0.10.0-alpha.2` is published for all selected products, with independently reconciled delivery recorded below. The previous `0.10.0-alpha.1` remains available. The `0.9.x` maintenance source and tags are unchanged.
+## 0.11.0 publication
+
+On 2026-11-22 (Asia/Shanghai), [PR #336](https://github.com/Latias94/merman/pull/336) fast-forwarded `main` to `2ce0fa4589f13c6c80c4e0be9d3292eedfbc4471`, tree `c54c25facf3e23ecde96ccc97a78248e9f2e6af3`. The [workspace tag](https://github.com/Latias94/merman/tree/v0.11.0) identifies that source. [PR CI](https://github.com/Latias94/merman/actions/runs/44915502818) and [main CI](https://github.com/Latias94/merman/actions/runs/44930670180) each passed 68 jobs. The immutable [release preflight](https://github.com/Latias94/merman/actions/runs/44915499232), attempt 1, passed 54 jobs. Its evidence artifact `14716594924` has ZIP SHA-256 `23cc0684fb7d87e3457c15d5f2cf8f5c68102f162e43bab497e1d49a90a11659`.
+
+| Channel | Scope and observed delivery | Publication run |
+| --- | --- | --- |
+| Cargo | Selected. All 26 workspace crates at `0.11.0` match the public downloads, API and sparse-index checksums, and Trusted Publishing source. Receipt artifact `14718887360` has ZIP SHA-256 `ebbc9fdd5e755c938594a47c362b9f9b61eadf7560501a0a337a4322b9b7b9fc`. | [44932341909](https://github.com/Latias94/merman/actions/runs/44932341909), attempt 1 |
+| CLI / standalone LSP | Selected. All 27 public release assets match the signed manifest and originating workflow attestations. CLI and LSP passed archive execution for all five release targets. The downloaded Windows archives passed a second execution check, including native PNG fonts, a collapsed Swimlane, a 500-node Flowchart, and LSP stdio. | [44932341941](https://github.com/Latias94/merman/actions/runs/44932341941), attempt 1 |
+| Web npm | Selected. All five packages serve `0.11.0` under `latest`. Downloaded tarballs, integrities, signatures and provenance match artifact `14721335367` (ZIP SHA-256 `a969fa297f953a07fcb7c6ea3207f60827a79e009027c433618bb770ed89abe7`). The registry-installed Web and Web Render packages mount SVG in Chromium and render in a Worker. | [44936576769](https://github.com/Latias94/merman/actions/runs/44936576769), attempt 1 |
+| Node npm | Selected. All nine packages serve `0.11.0` under `latest`. Downloaded tarballs, integrities, signatures and provenance match artifact `14720926803` (ZIP SHA-256 `36f986eee158636b7a91e7901897131c55eb5b3613b6460cd427b074b01c9f66`). The registry-installed Windows N-API and Node-WASM packages returned identical default and static SVGs through the sync and async entry points. | [44936582342](https://github.com/Latias94/merman/actions/runs/44936582342), attempt 1 |
+| Tree-sitter Mermaid Cargo/npm | Selected as the LSP prerequisite. Both registries serve `0.3.5` from the matching grammar tag. Cargo API, index and archive agree. npm serves the exact tarball under `latest` with registry signatures and matching provenance. | [44930741411](https://github.com/Latias94/merman/actions/runs/44930741411), attempt 1 |
+| Native C / WASI SDK, Swift, Android | Deferred. The matching archives are available on the [0.10.0 Release](https://github.com/Latias94/merman/releases/tag/v0.10.0). | |
+| Python and Flutter | Deferred. [PyPI](https://pypi.org/project/merman/0.10.0/) and [pub.dev](https://pub.dev/packages/merman/versions/0.10.0) serve `0.10.0`. | |
+| Standalone grammar GitHub archives | Deferred. [0.3.4](https://github.com/Latias94/merman/releases/tag/tree-sitter-mermaid-v0.3.4) serves the source and WASM archives. | |
+| VSIX, Typst, CLI container, Pages, and external package managers | Deferred. Current availability is unverified in this publication. | |
+
+The workspace reuses the independently published [Roughr 0.12.6](https://crates.io/crates/roughr-merman/0.12.6).
 
 ## 0.11.0 preparation
 
