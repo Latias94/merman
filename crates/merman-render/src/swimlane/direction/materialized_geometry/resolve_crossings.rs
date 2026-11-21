@@ -167,40 +167,32 @@ fn crossing_snapshot(edges: &[WorkingEdge], replacements: &ReplacementMap) -> Cr
     }
 }
 
-fn crossing_count_with_replacements(
+fn crossing_count_with_replaced_edge(
     edges: &[WorkingEdge],
     current: &CrossingSnapshot,
-    replacements: &ReplacementMap,
-    work_budget: &mut LayoutWorkBudget,
-) -> Result<usize> {
-    if replacements.is_empty() {
-        return Ok(current.count);
-    }
-    work_budget.charge(current.pairs.len())?;
+    edge_index: usize,
+    candidate: &[LayoutPoint],
+) -> usize {
     let current_affected: usize = current
         .pairs
         .iter()
-        .filter(|pair| {
-            replacements.contains_key(&pair.first) || replacements.contains_key(&pair.second)
-        })
+        .filter(|pair| pair.first == edge_index || pair.second == edge_index)
         .map(|pair| pair.count)
         .sum();
-    work_budget.charge(unordered_pair_count(edges.len()))?;
+    let candidate_segments = segments_for(&dedupe_consecutive_points(candidate, EPSILON));
     let mut replacement_affected = 0;
-    for first in 0..edges.len() {
-        let first_changed = replacements.contains_key(&first);
-        let first_points = points_for(edges, first, replacements);
-        for second in first + 1..edges.len() {
-            if !first_changed && !replacements.contains_key(&second) {
-                continue;
-            }
-            replacement_affected += crossing_count_between_paths(
-                &first_points,
-                &points_for(edges, second, replacements),
-            );
+    for (other_index, other) in edges.iter().enumerate() {
+        if other_index == edge_index {
+            continue;
         }
+        let other_segments = segments_for(&dedupe_consecutive_points(&other.points, EPSILON));
+        replacement_affected += if other_index < edge_index {
+            crossing_count_between_segments(&other_segments, &candidate_segments)
+        } else {
+            crossing_count_between_segments(&candidate_segments, &other_segments)
+        };
     }
-    Ok(current.count - current_affected + replacement_affected)
+    current.count - current_affected + replacement_affected
 }
 
 fn crossing_components(snapshot: &CrossingSnapshot) -> Vec<Vec<usize>> {
@@ -1210,17 +1202,19 @@ pub(in crate::swimlane::direction) fn resolve_rendered_orthogonal_crossings(
                         work_budget,
                     )?
                 };
-                let replacements = ReplacementMap::from_iter([(edge_index, candidate.clone())]);
-                let candidate_crossings = crossing_count_with_replacements(
-                    &layout.original_edges,
-                    &current,
-                    &replacements,
-                    work_budget,
-                )?;
-                let candidate_bends = count_orthogonal_bends(&candidate, EPSILON);
+                // Both scoring charges apply to every candidate, even one rejected for a conflict.
+                work_budget.charge(current.pairs.len())?;
+                work_budget.charge(unordered_pair_count(layout.original_edges.len()))?;
                 if candidate_hits_node || candidate_has_segment_conflict {
                     continue;
                 }
+                let candidate_crossings = crossing_count_with_replaced_edge(
+                    &layout.original_edges,
+                    &current,
+                    edge_index,
+                    &candidate,
+                );
+                let candidate_bends = count_orthogonal_bends(&candidate, EPSILON);
                 let improves_current_edge = candidate_crossings < current.count
                     || (candidate_crossings == current.count
                         && candidate_bends < current_edge_bends);
@@ -1271,6 +1265,43 @@ mod budget_tests {
             label_node_id: None,
             reversed_for_layout: false,
             points: vec![LayoutPoint { x: 0.0, y }, LayoutPoint { x: 20.0, y }],
+        }
+    }
+
+    #[test]
+    fn single_edge_crossing_count_matches_full_replacement() {
+        let point = |x, y| LayoutPoint { x, y };
+        let offset = EPSILON * 0.75;
+        let bent = WorkingEdge {
+            points: vec![
+                point(5.0, -5.0),
+                point(5.0, -5.0),
+                point(5.0 + offset, -5.0),
+                point(5.0 - offset, 15.0),
+                point(15.0, 5.0),
+                point(15.0, -5.0),
+            ],
+            ..edge("bent", 0.0)
+        };
+        let edges = [edge("top", 0.0), bent, edge("bottom", 10.0)];
+        let current = crossing_snapshot(&edges, &ReplacementMap::new());
+        assert_eq!(current.count, 3);
+
+        for (edge_index, candidate, expected) in [
+            (0, &[][..], 1),
+            (1, &edges[1].points[..4], 2),
+            (2, edges[0].points.as_slice(), 4),
+        ] {
+            let full = strict_crossing_count(
+                &edges,
+                &ReplacementMap::from_iter([(edge_index, candidate.to_vec())]),
+            );
+            assert_eq!(full, expected, "edge {edge_index}");
+            assert_eq!(
+                crossing_count_with_replaced_edge(&edges, &current, edge_index, candidate),
+                full,
+                "edge {edge_index}"
+            );
         }
     }
 
