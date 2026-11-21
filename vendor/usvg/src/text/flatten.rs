@@ -76,10 +76,6 @@ pub(crate) fn flatten(
         // with just outlines (which is the most common case).
         let mut span_builder = tiny_skia_path::PathBuilder::new();
 
-        // For variable fonts, we need to extract the outline with variations applied.
-        // We can't use the cache here since the outline depends on variation values.
-        let has_explicit_variations = !span.variations.is_empty();
-
         for glyph in &span.positioned_glyphs {
             // A (best-effort conversion of a) COLR glyph.
             if let Some(tree) = cache.fontdb_colr(glyph.font, glyph.id) {
@@ -138,10 +134,16 @@ pub(crate) fn flatten(
 
                 new_children.push(Node::Group(Box::new(group)));
             } else {
-                // Only bypass cache if: explicit variations OR (auto opsz AND font has opsz axis)
-                let needs_variations = has_explicit_variations
-                    || (span.font_optical_sizing == crate::FontOpticalSizing::Auto
-                        && cache.has_opsz_axis(glyph.font));
+                // The outline cache stores default coordinates. Keep using it when the face
+                // has no applicable variation, including most uses of CSS font-weight.
+                let needs_variations = cache.font_variation_axes(glyph.font).iter().any(|axis| {
+                    let tag = axis.tag.to_bytes();
+                    (tag == *b"opsz" && span.font_optical_sizing == FontOpticalSizing::Auto)
+                        || span
+                            .variations
+                            .iter()
+                            .any(|v| v.tag == tag && v.value != axis.def_value)
+                });
 
                 let outline = if needs_variations {
                     cache.fontdb.outline_with_variations(
@@ -221,7 +223,7 @@ pub(crate) trait DatabaseExt {
         font_size: f32,
         font_optical_sizing: crate::FontOpticalSizing,
     ) -> Option<tiny_skia_path::Path>;
-    fn has_opsz_axis(&self, id: ID) -> bool;
+    fn variation_axes(&self, id: ID) -> Vec<ttf_parser::VariationAxis>;
     fn raster(&self, id: ID, glyph_id: GlyphId) -> Option<BitmapImage>;
     fn svg(&self, id: ID, glyph_id: GlyphId) -> Option<Node>;
     fn colr(&self, id: ID, glyph_id: GlyphId) -> Option<Tree>;
@@ -271,26 +273,7 @@ impl DatabaseExt for Database {
         self.with_face_data(id, |data, face_index| -> Option<tiny_skia_path::Path> {
             let mut font = ttf_parser::Face::parse(data, face_index).ok()?;
 
-            for v in variations {
-                font.set_variation(ttf_parser::Tag::from_bytes(&v.tag), v.value);
-            }
-
-            // Auto-set opsz if font-optical-sizing is auto and not explicitly set
-            if font_optical_sizing == crate::FontOpticalSizing::Auto {
-                let has_explicit_opsz = variations.iter().any(|v| v.tag == *b"opsz");
-                if !has_explicit_opsz {
-                    // Check if font has opsz axis
-                    if let Some(axes) = font.tables().fvar {
-                        let has_opsz_axis = axes
-                            .axes
-                            .into_iter()
-                            .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"opsz"));
-                        if has_opsz_axis {
-                            font.set_variation(ttf_parser::Tag::from_bytes(b"opsz"), font_size);
-                        }
-                    }
-                }
-            }
+            super::apply_variations(&mut font, variations, font_size, font_optical_sizing);
 
             let mut builder = PathBuilder {
                 builder: tiny_skia_path::PathBuilder::new(),
@@ -301,18 +284,15 @@ impl DatabaseExt for Database {
         })?
     }
 
-    fn has_opsz_axis(&self, id: ID) -> bool {
-        self.with_face_data(id, |data, face_index| -> Option<bool> {
-            let font = ttf_parser::Face::parse(data, face_index).ok()?;
-            let has_opsz = font.tables().fvar.map_or(false, |axes| {
-                axes.axes
-                    .into_iter()
-                    .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"opsz"))
-            });
-            Some(has_opsz)
+    fn variation_axes(&self, id: ID) -> Vec<ttf_parser::VariationAxis> {
+        self.with_face_data(id, |data, face_index| {
+            ttf_parser::Face::parse(data, face_index)
+                .ok()
+                .into_iter()
+                .flat_map(|face| face.variation_axes())
+                .collect()
         })
-        .flatten()
-        .unwrap_or(false)
+        .unwrap_or_default()
     }
 
     fn raster(&self, id: ID, glyph_id: GlyphId) -> Option<BitmapImage> {

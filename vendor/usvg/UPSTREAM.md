@@ -7,10 +7,16 @@ The Cargo manifest disables publication. The runtime source and both upstream li
 are copied from the archive.
 
 The change in `src/text/layout.rs` keeps trying fallback faces after an incompatible partial
-shape. It can fill a missing cluster when both faces shape the same original byte range.
-Upstream [resvg #1087](https://github.com/linebender/resvg/pull/1087) discusses the cluster
-boundary problem. The Merman workspace patches one usvg source for native measurement, raster,
-and vector PDF. Remove this patch when a common supported release fixes the regression.
+shape or a character with no fallback. It can fill a missing cluster when both faces shape
+the same original byte range. Upstream [resvg #1087](https://github.com/linebender/resvg/pull/1087)
+discusses the cluster boundary problem.
+
+The CSS weight mapping follows [usvg 0.50.0](https://docs.rs/crate/usvg/0.50.0/source/src/parser/text.rs).
+It supplies `wght` for CSS normal (400) as well as other weights. An explicit `wght` takes
+precedence. Outline caching still applies to faces at their default coordinates.
+
+The Merman workspace patches one usvg source for native measurement, raster, and vector PDF.
+Remove the corresponding patches when a common supported release provides these fixes.
 
 The native metric probe reuses a single text shape to obtain start- and end-anchor bounds.
 It retains the normal positioning and outline-conversion checks for both bounds. Merman's

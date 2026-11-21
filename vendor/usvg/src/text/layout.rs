@@ -1377,71 +1377,71 @@ pub(crate) fn shape_text(
     )
     .unwrap_or_default();
 
-    // Remember all attempted faces, including faces with an incompatible partial shape.
+    // Remember every attempted face. An exhausted character may still be repaired by a face
+    // selected for a later character, since each candidate is shaped over the whole run.
     let mut used_fonts = vec![font.id];
+    let mut exhausted = HashSet::new();
 
-    // Loop until all glyphs become resolved or until no more fonts are left.
-    'outer: loop {
-        let mut missing = None;
-        for glyph in &glyphs {
-            if glyph.is_missing() {
-                missing = Some(glyph.byte_idx.char_from(text));
-                break;
-            }
-        }
-
-        if let Some(c) = missing {
-            let Some(id) = (resolver.select_fallback)(c, &used_fonts, fontdb) else {
-                break 'outer;
-            };
-            if used_fonts.contains(&id) {
-                break 'outer;
-            }
-            let Some(fallback_font) = fontdb.load_font(id) else {
-                break 'outer;
-            };
-            used_fonts.push(id);
-
-            // Shape again, using a new font.
-            let fallback_glyphs = shape_text_with_font(
-                text,
-                Arc::new(fallback_font),
-                small_caps,
-                apply_kerning,
-                variations,
-                font_size,
-                font_optical_sizing,
-                fontdb,
-            )
-            .unwrap_or_default();
-            if fallback_glyphs.is_empty() {
-                continue 'outer;
+    while let Some(id) = glyphs
+        .iter()
+        .filter(|glyph| glyph.is_missing())
+        .find_map(|glyph| {
+            let c = glyph.byte_idx.char_from(text);
+            if exhausted.contains(&c) {
+                return None;
             }
 
-            let all_matched = fallback_glyphs.iter().all(|g| !g.is_missing());
-            if all_matched {
-                // Replace all glyphs when all of them were matched.
-                glyphs = fallback_glyphs;
-                break 'outer;
-            }
-
-            // Only use positional substitution when both shapes describe the same clusters.
-            if glyphs.len() != fallback_glyphs.len()
-                || glyphs.iter().zip(&fallback_glyphs).any(|(base, fallback)| {
-                    base.byte_idx != fallback.byte_idx || base.cluster_len != fallback.cluster_len
-                })
-            {
-                fill_matching_clusters(&mut glyphs, &fallback_glyphs);
-                continue 'outer;
-            }
-
-            for (base, fallback) in glyphs.iter_mut().zip(fallback_glyphs) {
-                if base.is_missing() && !fallback.is_missing() {
-                    *base = fallback;
+            match (resolver.select_fallback)(c, &used_fonts, fontdb) {
+                Some(id) if !used_fonts.contains(&id) => Some(id),
+                _ => {
+                    exhausted.insert(c);
+                    None
                 }
             }
-        } else {
-            break 'outer;
+        })
+    {
+        used_fonts.push(id);
+        let Some(fallback_font) = fontdb.load_font(id) else {
+            continue;
+        };
+
+        // Shape again, using a new font.
+        let fallback_glyphs = shape_text_with_font(
+            text,
+            Arc::new(fallback_font),
+            small_caps,
+            apply_kerning,
+            variations,
+            font_size,
+            font_optical_sizing,
+            fontdb,
+        )
+        .unwrap_or_default();
+        if fallback_glyphs.is_empty() {
+            continue;
+        }
+
+        let all_matched = fallback_glyphs.iter().all(|g| !g.is_missing());
+        if all_matched {
+            // Replace all glyphs when all of them were matched.
+            glyphs = fallback_glyphs;
+            break;
+        }
+
+        // Only use positional substitution when both shapes describe the same clusters.
+        if glyphs.len() != fallback_glyphs.len()
+            || glyphs.iter().zip(&fallback_glyphs).any(|(base, fallback)| {
+                base.byte_idx != fallback.byte_idx || base.cluster_len != fallback.cluster_len
+            })
+        {
+            fill_matching_clusters(&mut glyphs, &fallback_glyphs);
+            continue;
+        }
+
+        for (base, fallback) in glyphs.iter_mut().zip(fallback_glyphs) {
+            if base.is_missing() && !fallback.is_missing() {
+                *base = fallback;
+            }
         }
     }
 
@@ -1505,41 +1505,7 @@ fn shape_text_with_font(
     fontdb.with_face_data(font.id, |font_data, face_index| -> Option<Vec<Glyph>> {
         let mut rb_font = rustybuzz::Face::from_slice(font_data, face_index)?;
 
-        // Build the list of variations to apply
-        let mut final_variations: Vec<rustybuzz::Variation> = variations
-            .iter()
-            .map(|v| rustybuzz::Variation {
-                tag: Tag::from_bytes(&v.tag),
-                value: v.value,
-            })
-            .collect();
-
-        // Automatic optical sizing: if font-optical-sizing is auto and the font has
-        // an 'opsz' axis that isn't explicitly set, auto-set it to match font size.
-        // This matches browser behavior (CSS font-optical-sizing: auto).
-        if font_optical_sizing == crate::FontOpticalSizing::Auto {
-            let has_explicit_opsz = variations.iter().any(|v| v.tag == *b"opsz");
-            if !has_explicit_opsz {
-                // Check if font has opsz axis using the already parsed rb_font
-                if let Some(axes) = rb_font.tables().fvar {
-                    let has_opsz_axis = axes
-                        .axes
-                        .into_iter()
-                        .any(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"opsz"));
-                    if has_opsz_axis {
-                        final_variations.push(rustybuzz::Variation {
-                            tag: Tag::from_bytes(b"opsz"),
-                            value: font_size,
-                        });
-                    }
-                }
-            }
-        }
-
-        // Apply font variations for variable fonts
-        if !final_variations.is_empty() {
-            rb_font.set_variations(&final_variations);
-        }
+        super::apply_variations(rb_font.as_mut(), variations, font_size, font_optical_sizing);
 
         let bidi_info = unicode_bidi::BidiInfo::new(text, Some(unicode_bidi::Level::ltr()));
         let paragraph = &bidi_info.paragraphs[0];

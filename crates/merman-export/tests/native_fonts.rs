@@ -873,6 +873,35 @@ fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
 
 #[cfg(feature = "png")]
 #[test]
+fn missing_emoji_does_not_block_chinese_export_fallback() {
+    use merman_export::{ExportError, RasterOptions, svg_to_png_with_report};
+
+    let context = NativeFontOptions::default()
+        .with_font_file(font("Cousine-Regular.ttf"))
+        .with_font_file(font("NotoSansSC-subset.ttf"))
+        .load(&OperationControl::new())
+        .unwrap();
+    let options = RasterOptions::default().with_font_context(context.clone());
+    for (label, missing) in [("A🚀中B", 1), ("A中🚀B", 1), ("A中B", 0)] {
+        let (_, report) = svg_to_png_with_report(&export_svg(label), &options).unwrap();
+        let fonts = report.fonts();
+        assert!(fonts.glyph_fallback_used(), "{label}");
+        assert_eq!(fonts.notdef_glyph_count(), missing, "{label}");
+        assert_eq!(fonts.unresolved_glyph_fallback(), missing != 0, "{label}");
+    }
+
+    let strict =
+        RasterOptions::default().with_font_context(context.with_strict_glyph_coverage(true));
+    assert!(matches!(
+        svg_to_png_with_report(&export_svg("A🚀中B"), &strict),
+        Err(ExportError::NativeFont(
+            NativeFontError::MissingGlyphCoverage
+        ))
+    ));
+}
+
+#[cfg(feature = "png")]
+#[test]
 fn zero_html_glyphs_do_not_paint_or_poison_strict_native_exports() {
     let context =
         load_memory(Default::default(), &OperationControl::new()).with_strict_glyph_coverage(true);

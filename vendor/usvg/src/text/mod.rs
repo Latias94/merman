@@ -15,6 +15,29 @@ mod colr;
 /// Provides access to the layout of a text node.
 pub mod layout;
 
+// Use the same coordinates for shaping and outline extraction.
+fn apply_variations(
+    face: &mut rustybuzz::ttf_parser::Face<'_>,
+    variations: &[crate::FontVariation],
+    font_size: f32,
+    optical_sizing: crate::FontOpticalSizing,
+) {
+    use rustybuzz::ttf_parser::Tag;
+
+    if !face.is_variable() {
+        return;
+    }
+
+    for variation in variations {
+        face.set_variation(Tag::from_bytes(&variation.tag), variation.value);
+    }
+    if optical_sizing == crate::FontOpticalSizing::Auto
+        && !variations.iter().any(|variation| variation.tag == *b"opsz")
+    {
+        face.set_variation(Tag::from_bytes(b"opsz"), font_size);
+    }
+}
+
 /// A shorthand for [FontResolver]'s font selection function.
 ///
 /// This function receives a font specification (families + a style, weight,

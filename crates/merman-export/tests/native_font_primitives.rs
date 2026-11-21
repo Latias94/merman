@@ -197,6 +197,57 @@ fn proportional_advance_preserves_pair_kerning_instead_of_summing_glyph_widths()
 }
 
 #[test]
+fn variable_weight_uses_css_normal_for_advance_and_ink() {
+    let fixture = include_bytes!("fonts/MermanVariableWeight.ttf");
+    let face = ttf_parser::Face::parse(fixture, 0).unwrap();
+    let axis = face
+        .variation_axes()
+        .into_iter()
+        .find(|axis| axis.tag == ttf_parser::Tag::from_bytes(b"wght"))
+        .unwrap();
+    assert_eq!(axis.def_value, 100.0);
+
+    let context = context(&["MermanVariableWeight.ttf"]);
+    let mut style = style("Merman Variable Weight");
+    style.font_size = 32.0;
+    let mut options = usvg::Options::default();
+    context.apply_to_usvg_options(&mut options);
+    let geometry = |font_attributes: &str| {
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="240" height="100"><g font-family="Merman Variable Weight" font-size="32" {font_attributes}><text id="left" x="100" y="75">AV</text><text id="right" x="100" y="75" text-anchor="end">AV</text></g></svg>"#
+        );
+        let tree = usvg::Tree::from_str(&source, &options).unwrap();
+        let Some(usvg::Node::Text(text)) = tree.node_by_id("left") else {
+            panic!("variable font must produce a text node");
+        };
+        let weight = text.layouted()[0]
+            .variations
+            .iter()
+            .find(|variation| variation.tag == *b"wght")
+            .map(|variation| variation.value);
+        (
+            svg_advance(&tree),
+            text.flattened().bounding_box().width(),
+            weight,
+        )
+    };
+
+    let regular = geometry(r#"font-weight="400""#);
+    assert_eq!(regular.2, Some(400.0));
+    assert_eq!(regular, geometry(""));
+    assert_eq!(regular, geometry(r#"font-variation-settings="'wght' 400""#));
+    let thin = geometry(r#"font-weight="100""#);
+    assert_eq!(
+        thin,
+        geometry(r#"font-weight="700" font-variation-settings="'wght' 100""#)
+    );
+    let bold = geometry(r#"font-weight="700""#);
+    assert!(thin.0 < regular.0 && regular.0 < bold.0);
+    assert!(thin.1 < regular.1 && regular.1 < bold.1);
+    assert!((advance(&context, "AV", &style) - regular.0).abs() < 0.001);
+}
+
+#[test]
 fn collection_index_is_used_for_measurement_and_export_face_selection() {
     let context = context(&["Cousine-test-collection.ttc"]);
     assert_eq!(context.face_count(), 2);

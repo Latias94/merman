@@ -417,8 +417,8 @@ fn convert_font(node: SvgNode, state: &converter::State) -> Font {
     let has_ital = variations.iter().any(|v| &v.tag == b"ital");
     let has_slnt = variations.iter().any(|v| &v.tag == b"slnt");
 
-    // Map font-weight to wght axis (if not already set)
-    if !has_wght && weight != 400 {
+    // The face's default wght coordinate can differ from CSS normal (400).
+    if !has_wght {
         variations.push(FontVariation::new(*b"wght", weight as f32));
     }
 
