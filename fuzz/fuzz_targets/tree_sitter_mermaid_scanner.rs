@@ -4,11 +4,14 @@ use std::ffi::{c_char, c_void};
 
 use libfuzzer_sys::fuzz_target;
 
+#[path = "../../distribution/tree-sitter-mermaid/tests/support/scanner_symbols.rs"]
+mod scanner_symbols;
+use scanner_symbols::{DIRECTIVE_BODY, TOKEN_COUNT};
+
 const MAX_INPUT_BYTES: usize = 1031;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
-const TOKEN_COUNT: usize = 23;
-const DIRECTIVE_BODY: usize = 21;
+const _: () = assert!(TOKEN_COUNT <= u32::BITS as usize);
 const REGRESSION_SEED_PREFIX: &[u8] = b"seed\n";
 const DIRECTIVE_SEED_PREFIX: &[u8] = b"directive\n";
 
@@ -207,7 +210,7 @@ impl Drop for Scanner {
 fn split_input(data: &[u8]) -> Option<FuzzInput<'_>> {
     if let Some(row) = data.strip_prefix(DIRECTIVE_SEED_PREFIX) {
         let mut symbols = [false; TOKEN_COUNT];
-        symbols[DIRECTIVE_BODY] = true;
+        symbols[usize::from(DIRECTIVE_BODY)] = true;
         return Some(FuzzInput {
             state: &[],
             valid_symbols: symbols,
