@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 7;
+const CLI_CONTRACT_VERSION: u32 = 8;
 #[cfg(feature = "ascii")]
 const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 

@@ -28,7 +28,7 @@ SUPPORT_ASSETS_SINCE = "0.8.0"
 
 class HomebrewInstallVerifierTests(unittest.TestCase):
     def test_standard_release_includes_rustdoc_theme_and_their_manpages(self) -> None:
-        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 7)
+        self.assertEqual(verifier.CLI_CONTRACT_VERSION, 8)
         self.assertIn("rustdoc", verifier.COMMANDS)
         self.assertIn("theme", verifier.COMMANDS)
         self.assertEqual(len(verifier.MANPAGE_NAMES), 17)
@@ -126,7 +126,7 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                 "system_discovery": "before-layout",
             })
             self.assertEqual(fixture.capabilities["schema_version"], 2)
-            self.assertEqual(fixture.capabilities["cli_contract_version"], 7)
+            self.assertEqual(fixture.capabilities["cli_contract_version"], 8)
             self.assertTrue(
                 verifier.verify_homebrew_install(
                     formula_version="0.8.0",
@@ -737,8 +737,8 @@ class HomebrewInstallVerifierTests(unittest.TestCase):
                     runner=fixture.run,
                 )
 
-    def test_cli_contract_version_must_be_exactly_seven(self) -> None:
-        for version in (None, 5, 6, 8, "7", 7.0, True):
+    def test_cli_contract_version_must_be_exactly_eight(self) -> None:
+        for version in (None, 6, 7, 9, "8", 8.0, True):
             with self.subTest(version=version), self.installation_fixture() as fixture:
                 if version is None:
                     fixture.capabilities.pop("cli_contract_version")

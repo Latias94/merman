@@ -33,7 +33,7 @@ else:
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v2.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 7
+CLI_CONTRACT_VERSION = 8
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",

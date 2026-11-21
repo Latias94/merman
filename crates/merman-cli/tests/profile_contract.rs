@@ -308,7 +308,7 @@ fn assert_capability_document(case: &str, payload: &Value) {
     let expected_commands = expected_commands(&expected_ids);
 
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 7);
+    assert_eq!(payload["cli_contract_version"], 8);
     #[cfg(feature = "svg")]
     {
         assert_eq!(payload["theme_presets"]["schema_version"], 1);

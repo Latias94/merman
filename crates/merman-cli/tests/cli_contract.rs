@@ -1708,7 +1708,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 7);
+    assert_eq!(payload["cli_contract_version"], 8);
     #[cfg(feature = "svg")]
     {
         assert_eq!(payload["theme_presets"]["schema_version"], 1);

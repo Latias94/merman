@@ -232,7 +232,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 7,
+        "cli_contract_version": 8,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -1474,7 +1474,7 @@ class RuntimeContractTests(unittest.TestCase):
             "system_discovery": "before-layout",
         })
         self.assertEqual(payload["schema_version"], 2)
-        self.assertEqual(payload["cli_contract_version"], 7)
+        self.assertEqual(payload["cli_contract_version"], 8)
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
         self.assertEqual(len(native["measurement_operations"]), 23)
@@ -1959,7 +1959,7 @@ class RuntimeContractTests(unittest.TestCase):
                 ),
                 (
                     "cli_contract_version",
-                    lambda value: value.__setitem__("cli_contract_version", 6),
+                    lambda value: value.__setitem__("cli_contract_version", 7),
                 ),
                 (
                     "cli_contract_version",

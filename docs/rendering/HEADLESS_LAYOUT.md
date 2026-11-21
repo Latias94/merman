@@ -37,9 +37,11 @@ to an `std::io::Write`. It writes one value when the source contains a diagram. 
 supplies any trailing newline and flushes the destination. The CLI uses this path for geometry.
 
 Use `RenderRequest::layout_snapshot`, `RenderTarget::LayoutSnapshot`, or `merman-cli layout
---snapshot` to retrieve the 0.10 response shape with `meta`, `semantic`, and `layout`. This is
-the migration for callers reading `meta.config` or `meta.effective_config`. Existing platform
-binding layout operations still return the full snapshot.
+--snapshot` to retrieve `meta`, `semantic`, and `layout`. CLI integrations can check
+`cli_contract_version` in `merman-cli capabilities --json`. Contract 7 uses `layout` for the
+full snapshot. Contract 8 uses `layout --snapshot`. Request the snapshot for `meta.config`,
+`meta.effective_config`, or the parse diagnostic when using `--suppress-errors`.
+Platform binding layout operations return the full snapshot.
 
 When a caller must inspect full metadata before choosing a graphical output, prepare a
 `PresentationArtifact`, then consume it into exactly one target:

@@ -145,13 +145,13 @@ required.
 
 ## Library usage
 
-Enable only the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`) on the `merman`
-crate. PNG and JPEG share private bitmap preparation; PDF remains a separate vector export path.
-The following example uses both `png` and `pdf`:
+Enable the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`) on the `merman`
+crate. PNG and JPEG share bitmap preparation. PDF has its own vector export path.
+The following Flowchart example exports PNG and PDF using system fonts.
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "pdf"] }
+merman = { version = "0.11.0", default-features = false, features = ["diagram-flowchart", "png", "pdf", "system-fonts"] }
 ```
 
 ```rust
@@ -209,7 +209,7 @@ Calling `into_bytes()` is an explicit lossy projection that discards those recei
 The same path is available as a runnable repository example:
 
 ```sh
-cargo run -p merman --features png --example render_png
+cargo run -p merman --features png,system-fonts --example render_png
 ```
 
 If an application already owns SVG text, finalize it before calling low-level encoders. Those
@@ -217,9 +217,9 @@ encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
 ```toml
 [dependencies]
-merman-core = { version = "=0.8.0-alpha.6", default-features = false }
-merman-render = { version = "=0.8.0-alpha.6", default-features = false }
-merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman-model = { version = "0.11.0", default-features = false }
+merman-render = { version = "0.11.0", default-features = false }
+merman-export = { version = "0.11.0", default-features = false, features = ["png", "jpeg", "pdf", "system-fonts"] }
 ```
 
 ```rust
