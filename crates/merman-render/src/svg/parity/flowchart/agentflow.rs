@@ -77,14 +77,14 @@ fn agentflow_declarations(
             .unwrap_or_else(|| value.to_string())
     };
     let border = color_value(&borders[slot % borders.len()]);
-    let fill = (!backgrounds.is_empty())
-        .then(|| {
-            format!(
-                "fill:{};",
-                color_value(&backgrounds[slot % backgrounds.len()])
-            )
-        })
-        .unwrap_or_default();
+    let fill = if backgrounds.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "fill:{};",
+            color_value(&backgrounds[slot % backgrounds.len()])
+        )
+    };
     format!("stroke:{border};{fill}")
 }
 
@@ -217,7 +217,7 @@ pub(super) fn emitted_palette_slots(
 ) -> Result<Option<BTreeSet<usize>>> {
     const ATTRIBUTE: &str = "data-color-id";
     const SCAN_CHUNK: usize = 8_192;
-    let bytes = svg[body_start..].as_bytes();
+    let bytes = &svg.as_bytes()[body_start..];
     let finder = memchr::memmem::Finder::new(ATTRIBUTE.as_bytes());
     let mut found = false;
     for start in (0..bytes.len()).step_by(SCAN_CHUNK) {
