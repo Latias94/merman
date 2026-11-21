@@ -28,6 +28,18 @@ impl PreprocessedSource {
         }
         facts.symbols = remapped_symbols;
 
+        for warnings in facts.warning_facts.chunks_mut(128) {
+            control.checkpoint()?;
+            for warning in warnings {
+                let parser_span = warning.span;
+                self.remap_warning_fact_spans(warning);
+                // The reported statement can enclose a removed comment or directive.
+                // Only its display range may include the deleted text.
+                warning.span = warning
+                    .span
+                    .or_else(|| self.try_map_enclosing_span(parser_span?));
+            }
+        }
         let mut dropped_diagnostic_spans = 0usize;
         for (index, diagnostic) in facts.diagnostics.iter_mut().enumerate() {
             if index % 128 == 0 {

@@ -9,7 +9,8 @@ use crate::{
 use merman_core::preprocess::{SourceConfigEvidence, SourceConfigOrigin};
 use merman_model::warnings::{
     AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID, AGENTFLOW_SHAPE_REMOVED_WARNING_RULE_ID,
-    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID, DiagramWarningFact,
+    AGENTFLOW_SHAPE_UNSUPPORTED_WARNING_RULE_ID, BLOCK_WIDTH_WARNING_RULE_ID,
+    CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact,
     FLOWCHART_EXPLICIT_DIRECTION_WARNING_RULE_ID, FLOWCHART_UNKNOWN_STYLE_TARGET_WARNING_RULE_ID,
     GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID,
 };
@@ -579,6 +580,20 @@ const AGENTFLOW_CONTAINMENT_VIOLATION_RULE: RuleDescriptor = RuleDescriptor {
     origin: RuleOrigin::MermaidCompatibility,
     fixable: false,
 };
+const CLASS_IGNORED_STATEMENT_RULE: RuleDescriptor = RuleDescriptor {
+    id: CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
+    description: "Report statements that Merman's Class parser ignores as bare names, such as `title Overview`.",
+    evidence: &[
+        "https://github.com/mermaid-js/mermaid/blob/2086904e76c692331e34a45d7cc3bc30860d040e/packages/mermaid/src/diagrams/class/parser/classDiagram.jison",
+    ],
+    default_severity: DiagnosticSeverity::Hint,
+    category: DiagnosticCategory::Semantic,
+    tags: &[],
+    default_enabled: false,
+    default_profile: AnalysisRuleProfile::Recommended,
+    origin: RuleOrigin::MermanAuthoring,
+    fixable: false,
+};
 const GIT_GRAPH_DUPLICATE_COMMIT_RULE: RuleDescriptor = RuleDescriptor {
     id: GIT_GRAPH_DUPLICATE_COMMIT_RULE_ID,
     description: "Report duplicate gitGraph commit ids.",
@@ -619,6 +634,7 @@ const RULE_DESCRIPTORS: &[RuleDescriptor] = &[
     AGENTFLOW_SHAPE_REMOVED_RULE,
     AGENTFLOW_SHAPE_UNSUPPORTED_RULE,
     AGENTFLOW_CONTAINMENT_VIOLATION_RULE,
+    CLASS_IGNORED_STATEMENT_RULE,
     GIT_GRAPH_DUPLICATE_COMMIT_RULE,
 ];
 
@@ -1147,6 +1163,7 @@ fn warning_fact_rule_descriptor(rule_id: &str) -> Option<RuleDescriptor> {
         AGENTFLOW_CONTAINMENT_VIOLATION_WARNING_RULE_ID => {
             Some(AGENTFLOW_CONTAINMENT_VIOLATION_RULE)
         }
+        CLASS_IGNORED_STATEMENT_WARNING_RULE_ID => Some(CLASS_IGNORED_STATEMENT_RULE),
         GIT_GRAPH_DUPLICATE_COMMIT_WARNING_RULE_ID => Some(GIT_GRAPH_DUPLICATE_COMMIT_RULE),
         _ => None,
     }

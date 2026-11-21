@@ -7,6 +7,7 @@ use crate::utils::format_url;
 use indexmap::IndexMap;
 use merman_model::families::class as class_typed;
 use merman_model::text::is_ecmascript_whitespace;
+use merman_model::warnings::{CLASS_IGNORED_STATEMENT_WARNING_RULE_ID, DiagramWarningFact};
 use serde_json::Value;
 use std::collections::BTreeMap;
 
@@ -939,7 +940,11 @@ impl<'a> ClassDb<'a> {
         self.relations.push(rel);
     }
 
-    pub(super) fn apply(&mut self, action: Action) -> std::result::Result<(), String> {
+    pub(super) fn apply(
+        &mut self,
+        action: Action,
+        warning_facts: Option<&mut Vec<DiagramWarningFact>>,
+    ) -> std::result::Result<(), String> {
         match action {
             Action::SetDirection(d) => {
                 self.set_direction(&d);
@@ -1037,6 +1042,18 @@ impl<'a> ClassDb<'a> {
             }
             Action::AddNote { class_id, text } => {
                 self.add_note(class_id, &text);
+                Ok(())
+            }
+            Action::WarnIgnoredStatement { span } => {
+                if let Some(facts) = warning_facts {
+                    facts.push(
+                        DiagramWarningFact::new(
+                            CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
+                            "Merman parsed this statement as a bare class name and ignored it. Use `class <name>` to declare a class.",
+                        )
+                        .with_span(span),
+                    );
+                }
                 Ok(())
             }
         }

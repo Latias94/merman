@@ -36,13 +36,7 @@ fn remap_semantic_source_positions(
         SemanticDiagramModel::GitGraph(model) => &mut model.warning_facts,
         _ => &mut [],
     };
-    for (index, fact) in facts.iter_mut().enumerate() {
-        if index % 128 == 0 {
-            control.checkpoint()?;
-        }
-        source.remap_warning_fact_spans(fact);
-    }
-    control.checkpoint()
+    source.remap_warning_facts_controlled(facts, control)
 }
 /// Parses diagram meaning without requiring theme resolution, layout, or SVG rendering.
 ///

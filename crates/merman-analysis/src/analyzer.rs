@@ -1061,14 +1061,20 @@ impl DiagramAnalysisEvidence {
                 let (metadata, outcome, editor_facts, source_config) =
                     snapshot.into_parts_with_source_config();
                 let metadata = metadata.into();
-                let editor_facts = available_editor_facts(editor_facts);
+                let mut editor_facts = available_editor_facts(editor_facts);
                 match outcome {
-                    SemanticParseOutcome::Parsed(model) => Self::Parsed {
-                        metadata,
-                        warning_facts: model.into_warning_facts(),
-                        editor_facts,
-                        source_config,
-                    },
+                    SemanticParseOutcome::Parsed(model) => {
+                        let mut warning_facts = model.into_warning_facts();
+                        if let Some(facts) = &mut editor_facts {
+                            warning_facts.append(&mut facts.warning_facts);
+                        }
+                        Self::Parsed {
+                            metadata,
+                            warning_facts,
+                            editor_facts,
+                            source_config,
+                        }
+                    }
                     SemanticParseOutcome::Failed(error) => Self::ParseFailed {
                         metadata,
                         error,
