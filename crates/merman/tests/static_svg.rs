@@ -145,7 +145,9 @@ click A href "https://example.org/guide" "Guide"
     assert!(css.contains(
         r#"[data-color-id="color-0"].cluster:not(.swimlane) rect{stroke:#112233;fill:#ddeeff;}"#
     ));
-    assert!(css.contains(".own") && css.contains("fill:#abcdef") && css.contains("stroke:#fedcba"));
+    assert!(css.contains(
+        ".own>*{fill:rgb(171, 205, 239)!important;stroke:rgb(254, 220, 186)!important;}"
+    ));
 }
 
 #[test]
@@ -238,16 +240,27 @@ fn static_generation_keeps_registry_and_browser_inline_styles_complete() {
     assert!(full.contains("M0 0H16V16H0z"));
     assert_eq!(optimized, full);
 
-    let browser = render_svg(
-        &renderer,
-        "flowchart LR\nA --> B\n",
-        SvgRequest {
-            pipeline: Some(static_pipeline().with_browser_inline_contract("browser")),
-            ..SvgRequest::default()
-        },
-    )
-    .unwrap();
-    assert!(browser.contains(r#"[data-color-id="color-3"]"#));
+    let browser_svg = |pipeline: SvgPipeline| {
+        render_svg(
+            &renderer,
+            "flowchart LR\nA --> B\n",
+            SvgRequest {
+                pipeline: Some(pipeline.with_browser_inline_contract("browser")),
+                ..SvgRequest::default()
+            },
+        )
+        .unwrap()
+    };
+    let browser = browser_svg(static_pipeline());
+    assert_eq!(browser, browser_svg(SvgPipeline::parity()));
+    let document = roxmltree::Document::parse(&browser).unwrap();
+    let style = document
+        .root_element()
+        .children()
+        .find(|node| node.has_tag_name("style"))
+        .and_then(|node| node.text())
+        .unwrap();
+    assert!(style.contains(r#"[data-color-id="color-3"]"#));
 }
 
 #[test]
