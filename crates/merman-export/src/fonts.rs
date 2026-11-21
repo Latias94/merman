@@ -280,6 +280,7 @@ impl NativeExportFontObserver {
         self.unresolved_glyph.store(true, Ordering::Relaxed);
     }
 
+    // Lookup misses are only coverage evidence on parsers without final omission reporting.
     pub(crate) fn unresolved_glyph_fallback(&self) -> bool {
         self.unresolved_glyph.load(Ordering::Relaxed)
     }
@@ -377,6 +378,8 @@ impl NativeFontContext {
     /// Starts an independent operation scope with the selected glyph coverage policy.
     ///
     /// Strict contexts return an error instead of declining unsupported shaping requests.
+    /// Native export with registry usvg 0.47 conservatively rejects resolver misses because
+    /// that parser cannot distinguish fully omitted glyphs from speculative lookups.
     /// Font bytes and selection order are shared; caches, counters, and failures are reset.
     /// Both [`Self::for_operation`] and [`Self::for_export`] preserve this policy.
     #[must_use]

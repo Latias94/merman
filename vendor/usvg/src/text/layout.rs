@@ -229,8 +229,10 @@ pub(crate) fn layout_text(
     resolver: &FontResolver,
     fontdb: &mut Arc<fontdb::Database>,
     probe_end_anchor: bool,
+    no_primary_face: &mut bool,
 ) -> Option<(TextLayout, Option<TextLayout>)> {
     let mut fonts_cache: FontsCache = HashMap::new();
+    let mut primary_miss = false;
 
     for chunk in &text_node.chunks {
         for span in &chunk.spans {
@@ -239,9 +241,22 @@ pub(crate) fn layout_text(
                     (resolver.select_font)(&span.font, fontdb).and_then(|id| fontdb.load_font(id))
                 {
                     fonts_cache.insert(span.font.clone(), Arc::new(font));
+                } else {
+                    primary_miss |= span.visible;
                 }
             }
         }
+    }
+
+    if primary_miss && !*no_primary_face {
+        // A later span may have resolved the same request. Check the font cache that
+        // actually controls which spans can emit glyphs.
+        *no_primary_face = text_node.chunks.iter().any(|chunk| {
+            chunk
+                .spans
+                .iter()
+                .any(|span| span.visible && !fonts_cache.contains_key(&span.font))
+        });
     }
 
     let mut geometry = TextGeometry::default();

@@ -793,6 +793,8 @@ pub(crate) fn convert_group(
         layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         children: Vec::new(),
+        #[cfg(feature = "text")]
+        text_font_omissions: Default::default(),
     };
     collect_children(cache, &mut g);
 
@@ -862,6 +864,8 @@ pub(crate) fn convert_group(
 
     if !required {
         parent.children.append(&mut g.children);
+        #[cfg(feature = "text")]
+        parent.text_font_omissions.merge(g.text_font_omissions);
         return None;
     }
 

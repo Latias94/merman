@@ -145,8 +145,19 @@ pub(crate) fn convert(
         .as_ref()
         .is_some_and(|probe| probe.id.as_ref() == text.id());
     let probe_end_anchor = report_anchor && text::layout::can_probe_end_anchor(&text);
-    let Some(end_x) = text::convert(&mut text, &state.opt.font_resolver, cache, probe_end_anchor)
-    else {
+    let Some(end_x) = text::convert(
+        &mut text,
+        &state.opt.font_resolver,
+        cache,
+        probe_end_anchor,
+        &mut parent.text_font_omissions.no_primary_face,
+    ) else {
+        // A missing glyph may have no outline. Retain the final visible layout evidence
+        // when the entire text node is dropped during conversion.
+        parent.text_font_omissions.dropped_notdef = parent.text_font_omissions.dropped_notdef
+            || text.layouted.iter().any(|span| {
+                span.visible && span.positioned_glyphs.iter().any(|glyph| glyph.id.0 == 0)
+            });
         return;
     };
     if let Some(probe) = cache.text_anchor_probe.as_mut().filter(|_| report_anchor) {

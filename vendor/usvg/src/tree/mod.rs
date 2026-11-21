@@ -1042,6 +1042,8 @@ pub struct Group {
     pub(crate) layer_bounding_box: NonZeroRect,
     pub(crate) abs_layer_bounding_box: NonZeroRect,
     pub(crate) children: Vec<Node>,
+    #[cfg(feature = "text")]
+    pub(crate) text_font_omissions: crate::text::TextFontOmissions,
 }
 
 impl Group {
@@ -1065,6 +1067,8 @@ impl Group {
             layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
             abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
             children: Vec::new(),
+            #[cfg(feature = "text")]
+            text_font_omissions: Default::default(),
         }
     }
 
@@ -1186,6 +1190,17 @@ impl Group {
     /// Group's children.
     pub fn children(&self) -> &[Node] {
         &self.children
+    }
+
+    /// Returns the font omissions local to this group, when the parser records them.
+    /// The first flag is a visible span without a loadable primary face. The second is
+    /// a visible `.notdef` glyph in a text node that could not be converted to paths.
+    #[cfg(feature = "text")]
+    pub fn text_font_omissions(&self) -> Option<(bool, bool)> {
+        Some((
+            self.text_font_omissions.no_primary_face,
+            self.text_font_omissions.dropped_notdef,
+        ))
     }
 
     /// Checks if this group should be isolated during rendering.

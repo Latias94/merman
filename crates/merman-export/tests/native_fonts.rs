@@ -873,6 +873,78 @@ fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
 
 #[cfg(feature = "png")]
 #[test]
+fn strict_exports_accept_final_mixed_font_spans() {
+    use merman_export::{ExportError, RasterOptions, svg_to_png_with_report};
+
+    let context = NativeFontOptions::default()
+        .with_font_file(font("NotoSansSC-subset.ttf"))
+        .with_font_file(font("MermanSymbolicTest.ttf"))
+        .load(&OperationControl::new())
+        .unwrap();
+    let raster = RasterOptions::default()
+        .with_font_context(context.clone().with_strict_glyph_coverage(true));
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let seal = |suffix| {
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="8" y="40" fill="red" font-family="Noto Sans SC" font-size="24">中{suffix}<tspan fill="blue" font-family="Merman Symbolic Test">A</tspan></text></svg>"#
+        );
+        merman_render::svg::finalize_resvg_svg(&source, &session).unwrap()
+    };
+
+    let covered = seal("");
+    let (png, report) = svg_to_png_with_report(&covered, &raster).unwrap();
+    assert!(!report.fonts().unresolved_font_request());
+    assert!(!report.fonts().unresolved_glyph_fallback());
+    assert_eq!(report.fonts().notdef_glyph_count(), 0);
+    let (_, _, pixels) = png_pixels(png);
+    let pixels = pixels.as_chunks::<4>().0;
+    assert!(pixels.iter().any(|p| p[3] > 0 && p[0] > p[2]));
+    assert!(pixels.iter().any(|p| p[3] > 0 && p[2] > p[0]));
+
+    let missing = seal("🚀");
+    let permissive = RasterOptions::default().with_font_context(context.clone());
+    let (_, report) = svg_to_png_with_report(&missing, &permissive).unwrap();
+    assert!(report.fonts().unresolved_glyph_fallback());
+    assert_eq!(report.fonts().notdef_glyph_count(), 1);
+    assert!(matches!(
+        svg_to_png_with_report(&missing, &raster),
+        Err(ExportError::NativeFont(
+            NativeFontError::MissingGlyphCoverage
+        ))
+    ));
+
+    #[cfg(feature = "jpeg")]
+    {
+        let (jpeg, report) = merman_export::svg_to_jpeg_with_report(&covered, &raster).unwrap();
+        assert!(jpeg.starts_with(b"\xff\xd8\xff"));
+        assert!(!report.fonts().unresolved_glyph_fallback());
+        assert!(matches!(
+            merman_export::svg_to_jpeg_with_report(&missing, &raster),
+            Err(ExportError::NativeFont(
+                NativeFontError::MissingGlyphCoverage
+            ))
+        ));
+    }
+    #[cfg(feature = "pdf")]
+    {
+        let pdf = merman_export::PdfOptions::default()
+            .with_font_context(context.with_strict_glyph_coverage(true));
+        let (bytes, report) = merman_export::svg_to_pdf_with_report(&covered, &pdf).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert!(!report.fonts().unresolved_glyph_fallback());
+        assert!(matches!(
+            merman_export::svg_to_pdf_with_report(&missing, &pdf),
+            Err(ExportError::NativeFont(
+                NativeFontError::MissingGlyphCoverage
+            ))
+        ));
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
 fn missing_emoji_does_not_block_chinese_export_fallback() {
     use merman_export::{ExportError, RasterOptions, svg_to_png_with_report};
 
@@ -892,12 +964,14 @@ fn missing_emoji_does_not_block_chinese_export_fallback() {
 
     let strict =
         RasterOptions::default().with_font_context(context.with_strict_glyph_coverage(true));
-    assert!(matches!(
-        svg_to_png_with_report(&export_svg("A🚀中B"), &strict),
-        Err(ExportError::NativeFont(
-            NativeFontError::MissingGlyphCoverage
-        ))
-    ));
+    for label in ["A🚀中B", "A中🚀B"] {
+        assert!(matches!(
+            svg_to_png_with_report(&export_svg(label), &strict),
+            Err(ExportError::NativeFont(
+                NativeFontError::MissingGlyphCoverage
+            ))
+        ));
+    }
 }
 
 #[cfg(feature = "png")]

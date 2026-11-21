@@ -43,8 +43,11 @@ returns `FontSourceUnavailable`; it does not silently paint missing text. The
 
 `NativeFontContext::from_font_bytes(...)` admits a bounded caller-owned set without
 filesystem discovery. `with_strict_glyph_coverage(true)` rejects missing coverage in
-measurement and final painting. The C font constructor and WASI transport use this
-strict policy and share the same admitted bytes across layout and encoding.
+measurement and final painting. Bundled native exports check the visible positioned glyphs
+and text omitted because of missing fonts or glyphs. Cargo consumers resolving registry
+usvg 0.47 also treat resolver misses as possible omissions, so strict coverage can reject
+some mixed-font spans that painted successfully. The C font constructor and WASI transport
+use the strict policy and share the same admitted bytes across layout and encoding.
 The optional `bundled-fonts` resource is a small Latin/Greek/Cyrillic Cousine fallback,
 not a complete CJK or emoji font pack. Supply additional licensed fonts for those
 scripts. Ordinary SVG keeps text and only uses the context for measurement: it does

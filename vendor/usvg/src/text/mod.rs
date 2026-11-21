@@ -15,6 +15,19 @@ mod colr;
 /// Provides access to the layout of a text node.
 pub mod layout;
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TextFontOmissions {
+    pub(crate) no_primary_face: bool,
+    pub(crate) dropped_notdef: bool,
+}
+
+impl TextFontOmissions {
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.no_primary_face |= other.no_primary_face;
+        self.dropped_notdef |= other.dropped_notdef;
+    }
+}
+
 // Use the same coordinates for shaping and outline extraction.
 fn apply_variations(
     face: &mut rustybuzz::ttf_parser::Face<'_>,
@@ -229,8 +242,15 @@ pub(crate) fn convert(
     resolver: &FontResolver,
     cache: &mut Cache,
     probe_end_anchor: bool,
+    no_primary_face: &mut bool,
 ) -> Option<Option<f32>> {
-    let (layout, end) = layout::layout_text(text, resolver, &mut cache.fontdb, probe_end_anchor)?;
+    let (layout, end) = layout::layout_text(
+        text,
+        resolver,
+        &mut cache.fontdb,
+        probe_end_anchor,
+        no_primary_face,
+    )?;
     text.layouted = layout.spans;
     text.bounding_box = layout.bbox.to_rect();
     text.abs_bounding_box = layout.bbox.transform(text.abs_transform)?.to_rect();

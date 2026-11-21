@@ -2300,9 +2300,7 @@ fn parse_pdf_tree(
 ))]
 fn check_export_glyph_coverage(context: &NativeFontContext, plan: ExportFontPlan) -> Result<()> {
     if context.strict_glyph_coverage()
-        && (plan.unresolved_font_request()
-            || plan.unresolved_glyph_fallback()
-            || plan.notdef_glyph_count() != 0)
+        && (plan.unresolved_font_request() || plan.unresolved_glyph_fallback())
     {
         return Err(NativeFontError::MissingGlyphCoverage.into());
     }

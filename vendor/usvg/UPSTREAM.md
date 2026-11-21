@@ -21,3 +21,8 @@ Remove the corresponding patches when a common supported release provides these 
 The native metric probe reuses a single text shape to obtain start- and end-anchor bounds.
 It retains the normal positioning and outline-conversion checks for both bounds. Merman's
 registry builds use the two-element probe with the published usvg API.
+
+Text conversion records visible spans without a usable primary face and missing glyphs in
+text nodes that are dropped during conversion. The exporter combines these omissions with
+the final positioned glyphs to check strict coverage. Individual resolver misses during
+speculative shaping can be recovered by later spans or fallback faces.

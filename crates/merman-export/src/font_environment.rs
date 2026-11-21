@@ -64,12 +64,15 @@ impl ExportFontPlan {
         self.glyph_fallback_used
     }
 
-    /// Returns whether usvg could not select any face for at least one text run.
+    /// Returns whether a visible text span lacked a usable primary face.
+    /// Registry usvg 0.47 conservatively reports any failed primary lookup.
     pub const fn unresolved_font_request(self) -> bool {
         self.unresolved_font_request
     }
 
-    /// Returns whether usvg could not find a fallback face for at least one character.
+    /// Returns whether final visible text has unresolved glyph coverage.
+    /// Registry usvg 0.47 cannot distinguish fully omitted glyphs from speculative lookup
+    /// misses, so it conservatively includes both final `.notdef` glyphs and lookup misses.
     pub const fn unresolved_glyph_fallback(self) -> bool {
         self.unresolved_glyph_fallback
     }
@@ -135,22 +138,36 @@ impl ExportFontPlanSeed {
         )?;
         #[cfg(not(feature = "native-fonts"))]
         let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts, control)?;
-        let unresolved_glyph_fallback = self
-            .recorder
-            .unresolved_glyph_fallback
-            .load(Ordering::Relaxed)
-            || evidence.notdef_glyph_count != 0;
         #[cfg(feature = "native-fonts")]
         let native_facts = self.native_export.as_ref().map(|observer| {
             (
                 observer.family_fallback_used(),
                 observer.glyph_fallback_used(),
-                observer.unresolved_font_request(),
-                observer.unresolved_glyph_fallback(),
             )
         });
         #[cfg(not(feature = "native-fonts"))]
-        let native_facts: Option<(bool, bool, bool, bool)> = None;
+        let native_facts: Option<(bool, bool)> = None;
+
+        let mut unresolved_font_request = evidence.no_primary_face;
+        let mut unresolved_glyph_fallback =
+            evidence.dropped_notdef || evidence.notdef_glyph_count != 0;
+        if tree.root().text_font_omissions().is_none() {
+            // Registry usvg prunes some missing glyphs before exposing the tree.
+            // Keep lookup misses as conservative coverage evidence on this backend.
+            unresolved_font_request |= self
+                .recorder
+                .unresolved_font_request
+                .load(Ordering::Relaxed);
+            unresolved_glyph_fallback |= self
+                .recorder
+                .unresolved_glyph_fallback
+                .load(Ordering::Relaxed);
+            #[cfg(feature = "native-fonts")]
+            if let Some(observer) = &self.native_export {
+                unresolved_font_request |= observer.unresolved_font_request();
+                unresolved_glyph_fallback |= observer.unresolved_glyph_fallback();
+            }
+        }
 
         export_checkpoint(control)?;
         Ok(ExportFontPlan {
@@ -162,24 +179,32 @@ impl ExportFontPlanSeed {
                 || native_facts.is_some_and(|facts| facts.0),
             glyph_fallback_used: self.recorder.glyph_fallback_used.load(Ordering::Relaxed)
                 || native_facts.is_some_and(|facts| facts.1),
-            unresolved_font_request: self
-                .recorder
-                .unresolved_font_request
-                .load(Ordering::Relaxed)
-                || native_facts.is_some_and(|facts| facts.2),
-            unresolved_glyph_fallback: unresolved_glyph_fallback
-                || native_facts.is_some_and(|facts| facts.3),
+            unresolved_font_request,
+            unresolved_glyph_fallback,
             unclassified_face_count: evidence.unclassified_face_count,
             notdef_glyph_count: evidence.notdef_glyph_count,
         })
     }
 }
 
+// The workspace usvg provides an inherent method. Published Merman consumers using the
+// registry usvg 0.47 API can inspect final positioned glyphs but cannot inspect omissions.
+#[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
+trait RegistryUsvgGroup {
+    fn text_font_omissions(&self) -> Option<(bool, bool)> {
+        None
+    }
+}
+
+impl RegistryUsvgGroup for usvg::Group {}
+
 #[derive(Debug, Default)]
 struct FinalTreeFontEvidence {
     used_system_fonts: bool,
     unclassified_face_count: usize,
     notdef_glyph_count: usize,
+    no_primary_face: bool,
+    dropped_notdef: bool,
 }
 
 impl FinalTreeFontEvidence {
@@ -252,12 +277,18 @@ impl FinalTreeFontEvidence {
         control: &OperationControl,
     ) -> Result<()> {
         export_checkpoint(control)?;
-        if !visited_groups.insert(std::ptr::from_ref(group)) {
+        if group.opacity().get() == 0.0 || !visited_groups.insert(std::ptr::from_ref(group)) {
             return Ok(());
+        }
+        if let Some((no_primary_face, dropped_notdef)) = group.text_font_omissions() {
+            self.no_primary_face |= no_primary_face;
+            self.dropped_notdef |= dropped_notdef;
         }
         for node in group.children() {
             export_checkpoint(control)?;
             match node {
+                usvg::Node::Path(path) if !path.is_visible() => continue,
+                usvg::Node::Image(image) if !image.is_visible() => continue,
                 usvg::Node::Group(group) => self.visit_group(
                     group,
                     system_faces,
@@ -570,12 +601,18 @@ mod tests {
                         include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec(),
                     );
                 }
-                let selection = Arc::new(FontSelectionPolicy::from_database(&database));
-                let database = Arc::new(database);
-                let recorder = Arc::new(FontResolutionRecorder::default());
+                let environment = ExportFontEnvironment::from_resources(
+                    &FontCatalog::system_fonts(),
+                    &FontSourcePolicy::system_only(),
+                    || {
+                        let selection = FontSelectionPolicy::from_database(&database);
+                        (Arc::new(database), Arc::new(selection))
+                    },
+                )
+                .unwrap();
                 let options = usvg::Options {
-                    fontdb: Arc::clone(&database),
-                    font_resolver: system_font_resolver(database, selection, Arc::clone(&recorder)),
+                    fontdb: environment.fontdb,
+                    font_resolver: environment.resolver,
                     ..Default::default()
                 };
                 let tree = usvg::Tree::from_str(
@@ -599,14 +636,12 @@ mod tests {
                 assert!(glyphs.iter().all(|glyph| {
                     tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
                 }));
-                assert_eq!(
-                    recorder.glyph_fallback_used.load(Ordering::Relaxed),
-                    include_text_fallback
-                );
-                assert_eq!(
-                    recorder.unresolved_glyph_fallback.load(Ordering::Relaxed),
-                    !include_text_fallback
-                );
+                let plan = environment
+                    .plan
+                    .finish_with_tree(&tree, &OperationControl::new())
+                    .unwrap();
+                assert_eq!(plan.glyph_fallback_used(), include_text_fallback);
+                assert_eq!(plan.unresolved_glyph_fallback(), !include_text_fallback);
             }
         }
     }
@@ -833,6 +868,116 @@ mod tests {
             .unwrap();
         assert!(missing.notdef_glyph_count() > 0);
         assert!(missing.unresolved_glyph_fallback());
+    }
+
+    #[cfg(feature = "native-fonts")]
+    #[test]
+    fn native_export_coverage_with_and_without_omission_evidence() {
+        let control = OperationControl::new();
+        let context = |fonts: &[&[u8]]| {
+            crate::NativeFontContext::from_font_bytes(
+                fonts.iter().map(|bytes| bytes.to_vec()),
+                crate::NativeFontLimits::default(),
+                &control,
+            )
+            .unwrap()
+            .with_strict_glyph_coverage(true)
+        };
+        let symbolic_bytes = include_bytes!("../tests/fonts/MermanSymbolicTest.ttf");
+        let noto_bytes = include_bytes!("../tests/fonts/NotoSansSC-subset.ttf");
+        let symbolic = context(&[symbolic_bytes]);
+        let noto = context(&[noto_bytes]);
+        let mixed = context(&[noto_bytes, symbolic_bytes]);
+        for (context, body, vendored, registry) in [
+            (
+                &mixed,
+                r#"<text id="probe" y="20" font-family="Noto Sans SC">中<tspan font-family="Merman Symbolic Test">A</tspan></text>"#,
+                (false, false),
+                (false, true),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" font-family="sans-serif">A</text>"#,
+                (true, false),
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" font-family="sans-serif">A<tspan font-family="Merman Symbolic Test">A</tspan></text>"#,
+                (true, false),
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" visibility="hidden" font-family="sans-serif">A</text>"#,
+                (false, false),
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" display="none" font-family="sans-serif">A</text>"#,
+                (false, false),
+                (false, false),
+            ),
+            (
+                &noto,
+                r#"<g transform="translate(8 0)"><text id="probe" y="20" font-family="Noto Sans SC">🚀</text></g>"#,
+                (false, true),
+                (false, true),
+            ),
+            (
+                &noto,
+                r#"<text id="probe" y="20" visibility="hidden" font-family="Noto Sans SC">🚀</text>"#,
+                (false, false),
+                (false, true),
+            ),
+            (
+                &noto,
+                r#"<text id="probe" y="20" font-family="Noto Sans SC">中<tspan visibility="hidden">🚀</tspan></text>"#,
+                (false, false),
+                (false, true),
+            ),
+            (
+                &noto,
+                r#"<g opacity="0"><text id="probe" y="20" font-family="Noto Sans SC">🚀</text></g>"#,
+                (false, false),
+                (false, true),
+            ),
+        ] {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60">{body}</svg>"#
+            );
+            let mut options = usvg::Options::default();
+            let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+            let seed = ExportFontPlanSeed::from_native_context(context, observer);
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let plan = seed.finish_with_tree(&tree, &control).unwrap();
+            assert_eq!(plan.notdef_glyph_count(), 0, "{body}");
+            let expected = if tree.root().text_font_omissions().is_some() {
+                vendored
+            } else {
+                registry
+            };
+            assert_eq!(
+                (
+                    plan.unresolved_font_request(),
+                    plan.unresolved_glyph_fallback()
+                ),
+                expected,
+                "{body}"
+            );
+            let result = crate::check_export_glyph_coverage(context, plan);
+            if expected.0 || expected.1 {
+                assert!(matches!(
+                    result,
+                    Err(ExportError::NativeFont(
+                        crate::NativeFontError::MissingGlyphCoverage
+                    ))
+                ));
+            } else {
+                result.unwrap();
+            }
+        }
     }
 
     #[test]
