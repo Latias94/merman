@@ -4,13 +4,13 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-This guide documents `0.11.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current Node changelog](CHANGELOG.md) and [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for changes and upgrade actions.
+This guide documents `0.11.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [Node changelog](CHANGELOG.md) and [0.11.0 migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts) for changes and upgrade actions.
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
 ## Quick start
 
-The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.11.0` targets Mermaid `12.3.0` and uses Node binding API `1`, [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md), and theme execution evidence schema `2`.
+The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. [Options JSON](../../docs/bindings/OPTIONS_JSON.md)
 
 Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. See the [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) for Step animation and static output policy, shared shapes, and layout changes.
 

@@ -4,7 +4,7 @@ Explicit Node-targeted WebAssembly rendering for Node.js 22+ and static-site bui
 This is a separate opt-in package; `@mermanjs/node` remains the native N-API package and never
 silently falls back to browser or Node WASM.
 
-Version `0.11.0` targets Mermaid `12.3.0` and uses Node binding API `1`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability, and the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. The package remains experimental.
+The package remains experimental. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the facade, generated glue, and WASM at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. Upgrade all package assets together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 

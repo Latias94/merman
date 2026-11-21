@@ -12,7 +12,7 @@ Changes since stable [0.10.0](#0100---2026-11-12).
 
 - Migrate CLI `--ascii-report` and binding `output_plan` readers to ASCII schema `4`. Replace `overflowed` with nullable `primary_overflowed` and required `emitted_overflowed`. Read `requested_graph_presentation` for the requested policy. The primary dimensions, layout profile, and overflow status are null together when no primary layout was produced. Preserve zero dimensions for a measured empty diagram. [ASCII report migration](docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4), [#323](https://github.com/Latias94/merman/pull/323)
 - CLI `layout` and Rust `RenderRequest::layout_json` now return versioned geometry. Use `merman-cli layout --snapshot` or `RenderRequest::layout_snapshot` for the full 0.10 envelope with `meta`, `semantic`, and `layout`. On 114 Trident documentation Flowcharts, the geometry responses occupy about 3% of the full snapshot bytes and preserve the same coordinates. [Layout guide](docs/rendering/HEADLESS_LAYOUT.md)
-- Use matching Web wrappers and WASM for transport API `11`. Upgrade Swift and Python wrappers together with their native libraries for UniFFI binding API `8`. [Binding migration](docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+- Use matching Web wrappers and WASM for transport API `11`. Upgrade Node wrappers together with their native addon or WASM artifact for transport API `2`, and Swift and Python wrappers together with their native libraries for UniFFI binding API `8`. [Binding migration](docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ### Added
 
@@ -38,7 +38,7 @@ Changes since stable [0.10.0](#0100---2026-11-12).
 ### Fixed
 
 - Render the upstream 500-node Flowchart within the existing layout work ceiling. ELK on 32-bit WebAssembly also lays out the 181-leaf fan-out regression with forced model order. [#328](https://github.com/Latias94/merman/pull/328)
-- Keep Swimlane nodes named `placeholder-0` and their edges when the layout adds internal long-edge placeholders.
+- Keep Swimlane nodes named `placeholder-0` and their edges when the layout adds internal long-edge placeholders. Collapsed Swimlane groups now hide their contents and preserve every visible boundary route and its label.
 - The bundled native exporter continues to find glyphs for later characters after an unavailable fallback. CSS regular weight selects weight 400 on variable fonts even when their default axis value differs. Explicit variation settings take precedence.
 - Avoid false `resvg-safe` selector-budget errors for large Flowcharts and Class diagrams, including a Class diagram with 400 members. [#313](https://github.com/Latias94/merman/pull/313)
 - Accept Flowchart IDs with leading dots and punctuation, distinguish literal `A&B` IDs from `A & B` groups, and preserve adjacent edge operators and bindings during editor renames. Match Mermaid's stroke and length for compact links with mixed endpoint markers. LSP highlighting follows the corrected identifier and arrow boundaries. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)

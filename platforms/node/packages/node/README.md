@@ -3,7 +3,7 @@
 Native Mermaid-compatible SVG rendering for Node.js 22+ and static-site build pipelines, without
 Chromium, a browser-WASM fallback, or a postinstall binary download.
 
-Version `0.11.0` targets Mermaid `12.3.0` and uses Node binding API `1`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the loader and native platform package at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability, and the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. The package remains experimental.
+The package remains experimental. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. Keep the loader and native platform package at the same exact version and source revision. [Verified versions and installation](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) · [0.11.0 migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. Upgrade the loader and platform package together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 

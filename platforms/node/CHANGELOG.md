@@ -4,13 +4,18 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 
 ## [0.11.0] - Unreleased
 
+### Upgrading
+
+- Upgrade the Node wrapper and its native addon or WASM artifact together for Node transport API `2`. [Migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+
 ### Added
 
+- Set `svg.pipeline` to `"static"` in `optionsJson` to omit unused generated palette rules from fixed illustrations. [#336](https://github.com/Latias94/merman/pull/336)
 - Set `fixed_unix_millis` and `fixed_local_offset_minutes` in binding options to render the Gantt Today Marker at a captured instant. [#312](https://github.com/Latias94/merman/pull/312)
 
 ### Changed and fixed
 
-- Get SVG strings directly from the native addon in `renderSvg()` and `renderSvgSync()`.
+- Pass the SVG source directly to the native addon and receive the SVG string directly in `renderSvg()` and `renderSvgSync()`. [#336](https://github.com/Latias94/merman/pull/336)
 - Release queued calls' execution slots before their promises settle so follow-up calls can use the available capacity. [#328](https://github.com/Latias94/merman/pull/328)
 - Accept leading dots and punctuation in Flowchart IDs, distinguish `A&B` IDs from `A & B` groups, and match Mermaid's stroke and length for compact links with mixed endpoint markers. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
 - Avoid false `resvg-safe` selector-budget errors on large Flowchart and Class diagrams. [#313](https://github.com/Latias94/merman/pull/313)
