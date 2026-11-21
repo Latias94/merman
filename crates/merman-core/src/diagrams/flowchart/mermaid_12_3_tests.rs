@@ -1250,6 +1250,25 @@ fn direction_values_follow_the_upstream_prefix_rule() {
 }
 
 #[test]
+fn attached_default_shape_data_preserves_direction_text_and_edge() {
+    let model = parse("flowchart TB\ndefault@{label: \"direction LR\", shape: rect} --> B\n");
+    assert_eq!(model.nodes.len(), 2);
+    let node = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "default")
+        .unwrap();
+    assert_eq!(node.label.as_deref(), Some("direction LR"));
+    assert_eq!(node.shape.as_deref(), Some("rect"));
+    assert_eq!(model.edges.len(), 1);
+    let edge = &model.edges[0];
+    assert_eq!((edge.from.as_str(), edge.to.as_str()), ("default", "B"));
+
+    let separated = "flowchart TB\ndefault @{label: \"direction LR\", shape: rect} --> B\n";
+    assert!(parse_flowchart_model_for_render(separated, &metadata()).is_err());
+}
+
+#[test]
 fn direction_rules_use_statement_separators_outside_labels() {
     for statement in [
         "A[\"direction LR; x\"]",

@@ -627,8 +627,11 @@ impl<'input> Lexer<'input> {
         if let Some(token) = self.lex_accessibility_statement() {
             return Some(token);
         }
+        // flow.jison allows DEFAULT as an identifier token. An adjacent `@{` then opens
+        // the shape-data state at the next cursor, ahead of the direction rules.
         if rest.starts_with('"')
             || rest.starts_with("@{")
+            || rest.starts_with("default@{")
             || ["click", "call", "href"].iter().any(|kw| {
                 rest.strip_prefix(kw)
                     .and_then(|tail| tail.chars().next())
