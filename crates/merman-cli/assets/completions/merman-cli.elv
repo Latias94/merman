@@ -381,6 +381,7 @@ set edit:completion:arg-completer[merman-cli] = {|@words|
             cand --resource-limit 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated'
             cand --operation-timeout-ms 'Cancel the complete command operation after this many milliseconds'
             cand --pretty 'Pretty-print JSON output'
+            cand --snapshot 'Include compatibility semantics, metadata, and the full effective configuration'
             cand --suppress-errors 'Emit an error diagram instead of failing on parse errors'
             cand --system-clock 'Use the system clock while keeping other runtime sources deterministic'
             cand --system-timezone 'Use the system local timezone while keeping other runtime sources deterministic'

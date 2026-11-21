@@ -437,6 +437,7 @@ unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining 
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l pretty -d 'Pretty-print JSON output'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l snapshot -d 'Include compatibility semantics, metadata, and the full effective configuration'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l suppress-errors -d 'Emit an error diagram instead of failing on parse errors'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l system-clock -d 'Use the system clock while keeping other runtime sources deterministic'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l system-timezone -d 'Use the system local timezone while keeping other runtime sources deterministic'

@@ -399,6 +399,7 @@ Register-ArgumentCompleter -Native -CommandName 'merman-cli' -ScriptBlock {
             [CompletionResult]::new('--resource-limit', '--resource-limit', [CompletionResultType]::ParameterName, 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated')
             [CompletionResult]::new('--operation-timeout-ms', '--operation-timeout-ms', [CompletionResultType]::ParameterName, 'Cancel the complete command operation after this many milliseconds')
             [CompletionResult]::new('--pretty', '--pretty', [CompletionResultType]::ParameterName, 'Pretty-print JSON output')
+            [CompletionResult]::new('--snapshot', '--snapshot', [CompletionResultType]::ParameterName, 'Include compatibility semantics, metadata, and the full effective configuration')
             [CompletionResult]::new('--suppress-errors', '--suppress-errors', [CompletionResultType]::ParameterName, 'Emit an error diagram instead of failing on parse errors')
             [CompletionResult]::new('--system-clock', '--system-clock', [CompletionResultType]::ParameterName, 'Use the system clock while keeping other runtime sources deterministic')
             [CompletionResult]::new('--system-timezone', '--system-timezone', [CompletionResultType]::ParameterName, 'Use the system local timezone while keeping other runtime sources deterministic')
