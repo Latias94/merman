@@ -475,11 +475,7 @@ impl<'a> ParsePipeline<'a> {
                 if matches!(resolved, Some(ResolvedSemanticParser::BuiltIn(_))) {
                     let (line_offset, column_offset) = code.parser_position_offset();
                     model.offset_diagnostic_positions(line_offset, column_offset);
-                    Self::remap_warning_facts_controlled(
-                        model.warning_facts_mut(),
-                        &source_map,
-                        control,
-                    )?;
+                    code.remap_warning_facts_controlled(model.warning_facts_mut(), control)?;
                 }
                 match model.into_compatibility_json_controlled(&meta.compat_json_metadata(), control)? {
                     Ok((model, warning_facts)) => Ok((Ok(model), editor_facts, warning_facts)),
@@ -547,7 +543,7 @@ impl<'a> ParsePipeline<'a> {
             false
         };
         if custom_warning_adapter_succeeded {
-            Self::remap_warning_facts_controlled(&mut warning_facts, &source_map, control)?;
+            code.remap_warning_facts_controlled(&mut warning_facts, control)?;
             Self::write_custom_warning_facts(model.as_value_mut(), &warning_facts);
         }
         control.checkpoint()?;
@@ -561,8 +557,11 @@ impl<'a> ParsePipeline<'a> {
             input_bytes: self.text.len(),
         });
 
-        let editor_facts =
+        let mut editor_facts =
             self.finish_snapshot_editor_facts(owner, combined_facts, &meta, &source_map, control)?;
+        if let ParsedEditorFacts::Available(facts) = &mut editor_facts {
+            warning_facts.append(&mut facts.warning_facts);
+        }
 
         Self::finish_editor_snapshot_controlled(
             meta,
@@ -872,11 +871,9 @@ impl<'a> ParsePipeline<'a> {
             CompatibilitySemanticParse::BuiltIn(mut model) => {
                 let (line_offset, column_offset) = source_map.source.parser_position_offset();
                 model.offset_diagnostic_positions(line_offset, column_offset);
-                Self::remap_warning_facts_controlled(
-                    model.warning_facts_mut(),
-                    source_map,
-                    control,
-                )?;
+                source_map
+                    .source
+                    .remap_warning_facts_controlled(model.warning_facts_mut(), control)?;
                 Ok(model
                     .into_compatibility_json_controlled(&meta.compat_json_metadata(), control)?
                     .map(|(model, _)| model))
@@ -936,22 +933,6 @@ impl<'a> ParsePipeline<'a> {
         }
         control.checkpoint()?;
         Ok(Some(warning_facts))
-    }
-
-    #[cfg(feature = "compat-json")]
-    fn remap_warning_facts_controlled(
-        warning_facts: &mut [DiagramWarningFact],
-        source_map: &ParserSourceMap<'_>,
-        control: &OperationControl,
-    ) -> OperationControlResult<()> {
-        for (index, fact) in warning_facts.iter_mut().enumerate() {
-            if index.is_multiple_of(128) {
-                control.checkpoint()?;
-            }
-            Self::remap_warning_fact_spans(fact, source_map);
-        }
-        control.checkpoint()?;
-        Ok(())
     }
 
     #[cfg(all(feature = "compat-json", feature = "editor-facts"))]

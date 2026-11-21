@@ -30,32 +30,6 @@ C1 <|-- C2 : inherits
 
 #[cfg(feature = "compat-json")]
 #[test]
-fn ignored_statement_warnings_stay_out_of_the_compat_projection() {
-    let code = "classDiagram\ntitle Overview\nclass A\n";
-    let meta = meta();
-    let typed = parse::parse_class_typed_with_render_context(code, &meta)
-        .expect("bare className statements parse")
-        .0;
-    let warnings = typed
-        .model()
-        .warning_facts
-        .iter()
-        .map(|fact| {
-            let span = fact.span.expect("ignored statement span");
-            (fact.rule_id.as_str(), &code[span.start..span.end])
-        })
-        .collect::<Vec<_>>();
-    assert_eq!(
-        warnings,
-        [("merman.authoring.class.ignored_statement", "title Overview")]
-    );
-
-    let compat = parse::parse_class(code, &meta).expect("compat parse");
-    assert!(compat.get("warningFacts").is_none(), "{compat}");
-}
-
-#[cfg(feature = "compat-json")]
-#[test]
 fn typed_relations_distinguish_authored_none_from_the_compatibility_sentinel() {
     let code = r#"classDiagram
 class A

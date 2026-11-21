@@ -28,6 +28,7 @@ impl PreprocessedSource {
         }
         facts.symbols = remapped_symbols;
 
+        self.remap_warning_facts_controlled(&mut facts.warning_facts, control)?;
         let mut dropped_diagnostic_spans = 0usize;
         for (index, diagnostic) in facts.diagnostics.iter_mut().enumerate() {
             if index % 128 == 0 {

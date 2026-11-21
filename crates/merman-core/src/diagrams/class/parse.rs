@@ -245,7 +245,7 @@ fn construct_class_semantic_source<'a>(
     let ClassSyntaxOutcome {
         actions,
         #[cfg(feature = "editor-facts")]
-        editor_facts,
+        mut editor_facts,
     } = syntax.into_actions(
         #[cfg(feature = "editor-facts")]
         code,
@@ -264,12 +264,16 @@ fn construct_class_semantic_source<'a>(
         }
     };
 
+    #[cfg(feature = "editor-facts")]
+    let mut warning_facts = editor_facts.as_mut().map(|facts| &mut facts.warning_facts);
+    #[cfg(not(feature = "editor-facts"))]
+    let mut warning_facts: Option<&mut Vec<_>> = None;
     let mut db = ClassDb::new(config);
     for (index, action) in actions.into_iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        if let Err(message) = db.apply(action) {
+        if let Err(message) = db.apply(action, warning_facts.as_deref_mut()) {
             return Ok(Err(Box::new(ClassSemanticFailure::Db {
                 message,
                 #[cfg(feature = "editor-facts")]

@@ -112,8 +112,6 @@ impl SemanticDiagramModel {
             Self::Block(model) => model.warning_facts,
             #[cfg(feature = "diagram-git-graph")]
             Self::GitGraph(model) => model.warning_facts,
-            #[cfg(feature = "diagram-class")]
-            Self::Class(model) => model.warning_facts,
             _ => Vec::new(),
         }
     }

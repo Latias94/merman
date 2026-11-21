@@ -1118,6 +1118,7 @@ fn git_graph_duplicate_commit_id_is_warning() {
     assert!(diagnostic.message.contains("already exists"));
 }
 
+#[cfg(feature = "diagram-class")]
 fn analyze_recommended(source: &str) -> merman_analysis::AnalysisPayload {
     Analyzer::with_options(AnalysisOptions::default().with_rule_config(
         AnalysisRuleConfig::default().with_profile(AnalysisRuleProfile::Recommended),
@@ -1125,6 +1126,7 @@ fn analyze_recommended(source: &str) -> merman_analysis::AnalysisPayload {
     .analyze(source)
 }
 
+#[cfg(feature = "diagram-class")]
 #[test]
 fn class_ignored_statements_are_recommended_hints_with_original_source_spans() {
     let source =
@@ -1181,6 +1183,45 @@ fn class_ignored_statements_are_recommended_hints_with_original_source_spans() {
     );
 }
 
+#[cfg(all(feature = "diagram-class", feature = "compat-json"))]
+#[test]
+fn class_ignored_statement_error_policy_agrees_across_analysis_backends() {
+    use merman_core::presentation::MermaidEngine;
+
+    let source = "---\r\ntitle: Types\r\n---\r\nclassDiagram\r\n    %% 注释\r\n    title Ignored\r\n    class A\r\n";
+    let rule = "merman.authoring.class.ignored_statement";
+    let rules = AnalysisRuleConfig::default()
+        .with_profile(AnalysisRuleProfile::Recommended)
+        .with_rule_severity(rule, DiagnosticSeverity::Error)
+        .unwrap();
+    let options = AnalysisOptions::default().with_rule_config(rules);
+    let typed = Analyzer::with_options(options.clone());
+    let adapter = Analyzer::with_mermaid_engine(MermaidEngine::new(), options);
+
+    let expected = typed.analyze(source);
+    assert!(!expected.valid);
+    assert_eq!(expected.summary.errors, 1);
+    let [diagnostic] = expected.diagnostics.as_slice() else {
+        panic!(
+            "expected one Class diagnostic, got {:?}",
+            expected.diagnostics
+        );
+    };
+    assert_eq!(diagnostic.id, rule);
+    assert_eq!(diagnostic.severity, DiagnosticSeverity::Error);
+    let span = diagnostic.span.as_ref().unwrap();
+    assert_eq!(&source[span.byte_start..span.byte_end], "title Ignored");
+    assert_eq!((span.line, span.column), (6, 5));
+
+    assert_eq!(adapter.analyze(source), expected);
+    for analyzer in [typed, adapter] {
+        let facts = analyzer.analyze_facts(source);
+        assert!(!facts.valid);
+        assert_eq!(facts.diagnostics, expected.diagnostics);
+    }
+}
+
+#[cfg(feature = "diagram-class")]
 #[test]
 fn class_statements_with_effects_are_not_ignored_statements() {
     let payload = analyze_recommended(

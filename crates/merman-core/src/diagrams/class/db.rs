@@ -329,7 +329,6 @@ pub(super) struct ClassDb<'a> {
     next_style_event_ordinal: usize,
     acc_title: Option<String>,
     acc_descr: Option<String>,
-    warning_facts: Vec<DiagramWarningFact>,
     security_level: Option<&'a str>,
     config: &'a MermaidConfig,
 }
@@ -351,7 +350,6 @@ impl<'a> ClassDb<'a> {
             next_style_event_ordinal: 0,
             acc_title: None,
             acc_descr: None,
-            warning_facts: Vec::new(),
             security_level: config.get_str("securityLevel"),
             config,
         }
@@ -942,7 +940,11 @@ impl<'a> ClassDb<'a> {
         self.relations.push(rel);
     }
 
-    pub(super) fn apply(&mut self, action: Action) -> std::result::Result<(), String> {
+    pub(super) fn apply(
+        &mut self,
+        action: Action,
+        warning_facts: Option<&mut Vec<DiagramWarningFact>>,
+    ) -> std::result::Result<(), String> {
         match action {
             Action::SetDirection(d) => {
                 self.set_direction(&d);
@@ -1043,20 +1045,18 @@ impl<'a> ClassDb<'a> {
                 Ok(())
             }
             Action::WarnIgnoredStatement { span } => {
-                self.warn_ignored_statement(span);
+                if let Some(facts) = warning_facts {
+                    facts.push(
+                        DiagramWarningFact::new(
+                            CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
+                            "Mermaid ignores this line. A bare class name has no effect. Use `class <name>` to declare a class.",
+                        )
+                        .with_span(span),
+                    );
+                }
                 Ok(())
             }
         }
-    }
-
-    fn warn_ignored_statement(&mut self, span: crate::SourceSpan) {
-        self.warning_facts.push(
-            DiagramWarningFact::new(
-                CLASS_IGNORED_STATEMENT_WARNING_RULE_ID,
-                "Mermaid ignores this line. A bare class name has no effect. Use `class <name>` to declare a class.",
-            )
-            .with_span(span),
-        );
     }
 
     fn rebuild_namespace_memberships(&mut self) {
@@ -1179,7 +1179,6 @@ impl<'a> ClassDb<'a> {
                     lollipop: REL_LOLLIPOP,
                 },
             },
-            warning_facts: self.warning_facts,
         }
     }
 }

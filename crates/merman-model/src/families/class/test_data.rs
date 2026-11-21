@@ -90,7 +90,6 @@ pub(super) fn authored_model(with_collisions: bool) -> ClassDiagramModel {
             },
         },
         style_precedence_facts: ClassStylePrecedenceFacts::default(),
-        warning_facts: Vec::new(),
     }
 }
 
