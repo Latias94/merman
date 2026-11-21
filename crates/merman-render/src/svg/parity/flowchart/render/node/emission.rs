@@ -386,7 +386,7 @@ impl FlowchartNodeShapeEmissionReceipt {
         receipt
     }
 
-    pub(in crate::svg::parity::flowchart) const fn hand_drawn_process() -> Self {
+    pub(in crate::svg::parity::flowchart) const fn hand_drawn_hachure() -> Self {
         let facet = FlowchartNodeFacetEmission::new(
             FlowchartNodeFacetReach::Verified,
             FlowchartNodeFacetReach::None,

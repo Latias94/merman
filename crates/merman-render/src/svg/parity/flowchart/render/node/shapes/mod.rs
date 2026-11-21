@@ -189,6 +189,7 @@ pub(super) fn advance_rough_geometry(
             stacked_rectangle::advance_stacked_rectangle_rough_geometry(ctx, common, label)
         }
         FlowchartShape::Stadium => stadium::advance_stadium_rough_geometry(ctx, common, label),
+        FlowchartShape::Subroutine => subroutine::advance_rough_geometry(common),
         FlowchartShape::TaggedDocument => {
             tagged_wave_document::advance_tagged_wave_document_rough_geometry(ctx, common, label)
         }
@@ -210,7 +211,6 @@ pub(super) fn advance_rough_geometry(
         | FlowchartShape::LinedCylinder
         | FlowchartShape::Icon
         | FlowchartShape::NotchedRectangle
-        | FlowchartShape::Subroutine
         | FlowchartShape::Text => {}
     }
     Ok(())

@@ -254,6 +254,50 @@ const SHAPES: &[&str] = &[
 ];
 
 #[test]
+fn hand_drawn_subroutine_draws_hatching_and_side_rules_before_the_label() {
+    with_context("handDrawn", 42, "subroutine", false, |ctx| {
+        let mut svg = String::new();
+        super::render_flowchart_node(
+            &mut svg,
+            ctx,
+            "A",
+            0.0,
+            0.0,
+            crate::svg::parity::timing::RenderTiming::disabled(),
+            &mut Default::default(),
+        )?;
+        let doc = crate::xml_dom::Document::parse(&svg).unwrap();
+        let node = doc.root_element();
+        let children: Vec<_> = node.children().filter(|child| child.is_element()).collect();
+        let [frame, right, left, label] = children[..] else {
+            panic!("expected a frame, two side rules, and the label");
+        };
+        assert_eq!(frame.attribute("class"), Some("basic label-container"));
+        assert_eq!(
+            frame.children().filter(|child| child.is_element()).count(),
+            2
+        );
+        for group in [frame, right, left] {
+            for path in group.children().filter(|child| child.is_element()) {
+                assert!(path.has_tag_name("path"));
+                assert_eq!(path.attribute("fill"), Some("none"));
+                assert!(path.attribute("d").is_some_and(|d| !d.is_empty()));
+            }
+        }
+        assert_eq!(
+            right.children().filter(|child| child.is_element()).count(),
+            1
+        );
+        assert_eq!(
+            left.children().filter(|child| child.is_element()).count(),
+            1
+        );
+        assert_eq!(label.attribute("class"), Some("label"));
+        Ok(())
+    });
+}
+
+#[test]
 fn math_only_shape_prefix_keeps_the_next_actual_rough_path() {
     for look in ["classic", "handDrawn"] {
         for seed in [-1, 0, 4_294_967_296, 7] {

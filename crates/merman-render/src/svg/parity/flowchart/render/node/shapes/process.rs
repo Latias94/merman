@@ -47,7 +47,7 @@ pub(in crate::svg::parity::flowchart::render::node) fn render_process_rectangle(
             common.stroke_width,
             escape_attr(common.stroke_dasharray),
         );
-        return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_process();
+        return super::super::emission::FlowchartNodeShapeEmissionReceipt::hand_drawn_hachure();
     }
 
     // Keep Mermaid's square default while preserving explicit Neo configuration

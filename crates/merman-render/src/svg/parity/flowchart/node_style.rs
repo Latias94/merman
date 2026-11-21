@@ -194,11 +194,10 @@ impl FlowchartNodeTerminalSourceOwnership {
             }
             _ => return Ok(owners),
         };
-        // These hand-drawn writers emit paths with their own presentation attributes for all
-        // four paint fields. Subroutine still emits a polygon; BPMN retains native primitives.
-        let rough_paths = hand_drawn && bpmn_shape.is_none() && shape != FlowchartShape::Subroutine;
+        // Hand-drawn paths carry their own paint attributes. BPMN retains native primitives.
+        let rough_paths = hand_drawn && bpmn_shape.is_none();
         // The normal .node primitive rules specify fill/stroke/width, blocking inheritance.
-        // Hand-drawn wrappers use .rough-node, so native Subroutine/BPMN paint may inherit.
+        // Hand-drawn wrappers use .rough-node, so native BPMN paint may inherit.
         let inherits_paint = hand_drawn && !rough_paths;
         let inherits_width =
             inherits_paint && bpmn_shape.is_none_or(|shape| shape.event_rings().is_none());
