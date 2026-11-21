@@ -87,8 +87,11 @@ impl DiscoveryProvider {
         base: &FaceInfo,
         excluded: &[FaceInfo],
         control: &OperationControl,
+        sources: &super::registry::FontSourceRegistry,
         accept: &mut dyn FnMut(FontCandidate) -> Result<Option<ID>, NativeFontError>,
     ) -> Result<Option<ID>, NativeFontError> {
+        #[cfg(not(feature = "experimental-system-font-query"))]
+        let _ = sources;
         match self {
             Self::Bounded(catalog) => catalog.fallback(character, base, excluded, control, accept),
             #[cfg(feature = "experimental-system-font-query")]
@@ -103,7 +106,7 @@ impl DiscoveryProvider {
                         return Ok(Some(id));
                     }
                 }
-                catalog.fallback(character, base, control, accept)
+                catalog.fallback(character, base, control, sources, accept)
             }
         }
     }
@@ -136,12 +139,16 @@ pub(super) fn resolver(
                     .ok_or(NativeFontError::SystemDiscoveryUnavailable)?;
                 provider.select(font, &select_control, &mut |selection, check_implicit| {
                     let source = selection.candidate.export_source();
-                    let id = select_context.0.sources.materialize(
+                    let Some(id) = select_context.0.sources.materialize(
                         selection.candidate,
+                        None,
                         database,
                         &select_context.0.limits,
                         &select_control,
-                    )?;
+                    )?
+                    else {
+                        return Ok(None);
+                    };
                     if check_implicit
                         && !database
                             .face(id)
@@ -186,14 +193,19 @@ pub(super) fn resolver(
                     base,
                     &excluded_faces,
                     &control,
+                    &context.0.sources,
                     &mut |candidate| {
                         let source = candidate.export_source();
-                        let id = context.0.sources.materialize(
+                        let Some(id) = context.0.sources.materialize(
                             candidate,
+                            Some(character),
                             database,
                             &context.0.limits,
                             &control,
-                        )?;
+                        )?
+                        else {
+                            return Ok(None);
+                        };
                         if excluded.contains(&id) {
                             return Ok(None);
                         }

@@ -184,6 +184,7 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
                 family,
                 post_script_name,
                 attributes,
+                coverage_source: None,
             }
             .into_file(path),
         )

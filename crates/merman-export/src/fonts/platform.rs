@@ -3,8 +3,8 @@
 use super::resolver::{ExpectedFace, FontCandidate};
 use super::*;
 use fontique::{
-    Collection, CollectionOptions, FallbackKey, FontInfo, FontStyle, FontWeight, FontWidth,
-    GenericFamily, SourceKind,
+    Collection, CollectionOptions, FallbackKey, FamilyId, FamilyInfo, FontInfo, FontStyle,
+    FontWeight, FontWidth, GenericFamily, SourceKind,
 };
 use ttf_parser::{RawFace, Tag, name, name_id};
 use unicode_script::UnicodeScript;
@@ -15,6 +15,10 @@ type AcceptFallback<'a> = dyn FnMut(FontCandidate) -> Result<Option<ID>, NativeF
 #[cfg(windows)]
 #[allow(unsafe_code)]
 mod dwrite;
+
+#[cfg(target_os = "macos")]
+#[allow(unsafe_code)]
+mod coretext;
 
 struct PlatformCandidate {
     font: FontInfo,
@@ -27,6 +31,7 @@ pub(super) struct PlatformFace {
     family: String,
     post_script_name: Option<String>,
     attributes: FaceAttributes,
+    coverage_source: Option<FontInfo>,
 }
 
 #[derive(Default)]
@@ -41,6 +46,8 @@ pub(super) struct PlatformCatalog {
     invalid: std::sync::atomic::AtomicBool,
     #[cfg(windows)]
     character_fallback: OnceLock<Option<dwrite::CharacterFallback>>,
+    #[cfg(test)]
+    family_queries: std::sync::atomic::AtomicUsize,
 }
 
 impl PlatformCatalog {
@@ -55,6 +62,8 @@ impl PlatformCatalog {
             invalid: std::sync::atomic::AtomicBool::new(false),
             #[cfg(windows)]
             character_fallback: OnceLock::new(),
+            #[cfg(test)]
+            family_queries: std::sync::atomic::AtomicUsize::new(0),
         })
     }
 
@@ -94,60 +103,60 @@ impl PlatformCatalog {
         Ok(name)
     }
 
-    fn candidates(
+    fn query<T>(
         &self,
-        name: Option<&str>,
-        generic: Option<GenericFamily>,
+        control: &OperationControl,
+        query: impl FnOnce(&mut Collection) -> T,
+    ) -> Result<T, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let mut collection = self.collection.lock().map_err(|_| {
+            NativeFontError::Measurement("platform font collection is poisoned".to_owned())
+        })?;
+        let result = self.call(|| query(&mut collection))?;
+        drop(collection);
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        Ok(result)
+    }
+
+    fn family(
+        &self,
+        id: FamilyId,
+        control: &OperationControl,
+    ) -> Result<Option<FamilyInfo>, NativeFontError> {
+        self.query(control, |collection| {
+            #[cfg(test)]
+            self.family_queries
+                .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+            collection.family(id)
+        })
+    }
+
+    fn candidates<T>(
+        &self,
+        requested: &usvg::FontFamily,
         weight: Weight,
         stretch: Stretch,
         style: Style,
         control: &OperationControl,
-    ) -> Result<Vec<PlatformCandidate>, NativeFontError> {
-        control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        if name == Some("") {
-            return Ok(Vec::new());
-        }
-        let mut collection = self.collection.lock().map_err(|_| {
-            NativeFontError::Measurement("platform font collection is poisoned".to_owned())
-        })?;
-        let families = if let Some(name) = name {
-            let family = self.call(|| collection.family_by_name(name))?;
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            family.into_iter().collect::<Vec<_>>()
-        } else if let Some(generic) = generic {
-            let ids = self.call(|| collection.generic_families(generic).collect::<Vec<_>>())?;
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            let mut families = Vec::new();
-            for id in ids {
-                control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                if let Some(family) = self.call(|| collection.family(id))? {
-                    families.push(family);
-                }
-                control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        mut accept: impl FnMut(PlatformCandidate) -> Result<Option<T>, NativeFontError>,
+    ) -> Result<Option<T>, NativeFontError> {
+        let ids = self.query(control, |collection| match requested {
+            usvg::FontFamily::Named(name) if !name.is_empty() => {
+                collection.family_id(name).into_iter().collect::<Vec<_>>()
             }
-            families
-        } else {
-            Vec::new()
-        };
-        let result = families
-            .into_iter()
-            .filter_map(|family| {
-                family
-                    .match_font(
-                        width(stretch),
-                        platform_style(style),
-                        FontWeight::new(f32::from(weight.0)),
-                        false,
-                    )
-                    .map(|font| PlatformCandidate {
-                        font: font.clone(),
-                        family: family.name().to_owned(),
-                    })
-            })
-            .collect();
-        drop(collection);
-        control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        Ok(result)
+            _ => generic_family(requested)
+                .map(|generic| collection.generic_families(generic).collect())
+                .unwrap_or_default(),
+        })?;
+        for id in ids {
+            if let Some(family) = self.family(id, control)?
+                && let Some(candidate) = matching_candidate(&family, weight, stretch, style)
+                && let Some(result) = accept(candidate)?
+            {
+                return Ok(Some(result));
+            }
+        }
+        Ok(None)
     }
 
     pub(super) fn fallback(
@@ -155,9 +164,16 @@ impl PlatformCatalog {
         character: char,
         base: &FaceInfo,
         control: &OperationControl,
+        sources: &super::registry::FontSourceRegistry,
         accept: &mut AcceptFallback<'_>,
     ) -> Result<Option<ID>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        #[cfg(not(target_os = "macos"))]
+        let _ = sources;
+        #[cfg(target_os = "macos")]
+        if let Some(id) = self.exact_fallback(character, base, control, sources, accept)? {
+            return Ok(Some(id));
+        }
         #[cfg(windows)]
         let prefer_exact = !matches!(
             character.script(),
@@ -175,8 +191,11 @@ impl PlatformCatalog {
         }
         // Shared symbols and combining characters don't identify a run's script on their own.
         // Keep the established fallback order for them before trying a scalar-only lookup.
-        for candidate in self.fallback_candidates(character, base, control)? {
-            if let Some(candidate) = self.candidate_file(candidate, control)?
+        for family_id in self.fallback_families(character, control)? {
+            if let Some(family) = self.family(family_id, control)?
+                && let Some(candidate) =
+                    matching_candidate(&family, base.weight, base.stretch, base.style)
+                && let Some(candidate) = self.candidate_file(candidate, control)?
                 && let Some(id) = accept(candidate)?
             {
                 return Ok(Some(id));
@@ -187,6 +206,91 @@ impl PlatformCatalog {
             return self.exact_fallback(character, base, control, accept);
         }
         Ok(None)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn exact_fallback(
+        &self,
+        character: char,
+        base: &FaceInfo,
+        control: &OperationControl,
+        sources: &super::registry::FontSourceRegistry,
+        accept: &mut AcceptFallback<'_>,
+    ) -> Result<Option<ID>, NativeFontError> {
+        let Some(selected) = self.call(|| coretext::fallback(character, base))? else {
+            return Ok(None);
+        };
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let Some(family_id) =
+            self.query(control, |collection| collection.family_id(&selected.family))?
+        else {
+            return Ok(None);
+        };
+        let Some(family) = self.family(family_id, control)? else {
+            return Ok(None);
+        };
+        let mut mapped_source = None;
+        for font in family.fonts() {
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if mapped_source
+                .as_ref()
+                .is_none_or(|(id, _)| *id != font.source().id())
+            {
+                let data = self.discovery_data(font, sources)?;
+                mapped_source = Some((font.source().id(), data));
+            }
+            let matches = self.call(|| {
+                mapped_source
+                    .as_ref()
+                    .and_then(|(_, data)| data.as_ref())
+                    .is_some_and(|data| {
+                        RawFace::parse(data.as_ref(), font.index())
+                            .ok()
+                            .and_then(|raw| {
+                                name::Table::parse(raw.table(Tag::from_bytes(b"name"))?)
+                            })
+                            .is_some_and(|table| {
+                                post_script_name_matches(table, &selected.post_script_name)
+                            })
+                    })
+            })?;
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if !matches {
+                continue;
+            }
+            let candidate = PlatformCandidate {
+                font: font.clone(),
+                family: family.name().to_owned(),
+            };
+            if let Some(FontCandidate::File {
+                path,
+                index,
+                expected: ExpectedFace::Platform(mut face),
+            }) = self.candidate_file(candidate, control)?
+            {
+                face.post_script_name = Some(selected.post_script_name);
+                return accept(FontCandidate::File {
+                    path,
+                    index,
+                    expected: ExpectedFace::Platform(face),
+                });
+            }
+        }
+        Ok(None)
+    }
+
+    #[cfg(target_os = "macos")]
+    fn discovery_data(
+        &self,
+        font: &FontInfo,
+        sources: &super::registry::FontSourceRegistry,
+    ) -> Result<Option<fontique::Blob<u8>>, NativeFontError> {
+        if let SourceKind::Path(path) = font.source().kind()
+            && let Some(data) = sources.snapshot(path)?
+        {
+            return Ok(Some(fontique::Blob::new(data)));
+        }
+        self.call(|| font.load(None))
     }
 
     #[cfg(windows)]
@@ -214,12 +318,11 @@ impl PlatformCatalog {
         }
     }
 
-    fn fallback_candidates(
+    fn fallback_families(
         &self,
         character: char,
-        base: &FaceInfo,
         control: &OperationControl,
-    ) -> Result<Vec<PlatformCandidate>, NativeFontError> {
+    ) -> Result<Vec<FamilyId>, NativeFontError> {
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         let mut collection = self.collection.lock().map_err(|_| {
             NativeFontError::Measurement("platform font collection is poisoned".to_owned())
@@ -252,27 +355,7 @@ impl PlatformCatalog {
             }
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
         }
-        let mut candidates = Vec::new();
-        for id in ids {
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            let family = self.call(|| collection.family(id))?;
-            if let Some(family) = family {
-                let font = family.match_font(
-                    width(base.stretch),
-                    platform_style(base.style),
-                    FontWeight::new(f32::from(base.weight.0)),
-                    false,
-                );
-                if let Some(font) = font {
-                    candidates.push(PlatformCandidate {
-                        font: font.clone(),
-                        family: family.name().to_owned(),
-                    });
-                }
-            }
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-        }
-        Ok(candidates)
+        Ok(ids)
     }
 
     fn candidate_file(
@@ -307,6 +390,25 @@ impl PlatformCatalog {
     }
 }
 
+fn matching_candidate(
+    family: &FamilyInfo,
+    weight: Weight,
+    stretch: Stretch,
+    style: Style,
+) -> Option<PlatformCandidate> {
+    family
+        .match_font(
+            width(stretch),
+            platform_style(style),
+            FontWeight::new(f32::from(weight.0)),
+            false,
+        )
+        .map(|font| PlatformCandidate {
+            font: font.clone(),
+            family: family.name().to_owned(),
+        })
+}
+
 fn platform_call<T>(call: impl FnOnce() -> T) -> Result<T, NativeFontError> {
     // Native failures must reach the fallible boundary. Aborting panic profiles
     // and native calls that do not return remain outside this containment.
@@ -337,6 +439,20 @@ fn platform_style(style: Style) -> FontStyle {
 }
 
 impl PlatformFace {
+    pub(super) fn discovery_covers(
+        &self,
+        character: char,
+    ) -> Result<Option<bool>, NativeFontError> {
+        platform_call(|| {
+            let font = self.coverage_source.as_ref()?;
+            // Fontique maps path sources without copying the whole binary. Reuse the
+            // admission parser and coverage rules, including malformed-table handling.
+            let data = font.load(None)?;
+            let face = ttf_parser::Face::parse(data.as_ref(), font.index()).ok()?;
+            Some(crate::font_selection::covers_character(&face, character))
+        })
+    }
+
     fn into_file(self, path: PathBuf) -> FontCandidate {
         FontCandidate::File {
             path,
@@ -369,11 +485,20 @@ fn matches_post_script_name(face: &FaceInfo, expected: &str) -> bool {
     }
     // fontdb stores the first supported record. The platform can select a different record
     // from the very same face, so consult its admitted name table before rejecting the match.
-    face_names(face).is_some_and(|table| {
-        table.names.into_iter().any(|record| {
-            record.name_id == name_id::POST_SCRIPT_NAME
-                && record.to_string().is_some_and(|name| name == expected)
-        })
+    face_names(face).is_some_and(|table| post_script_name_matches(table, expected))
+}
+
+fn post_script_name_matches(table: name::Table<'_>, expected: &str) -> bool {
+    table.names.into_iter().any(|record| {
+        record.name_id == name_id::POST_SCRIPT_NAME
+            && (record.to_string().is_some_and(|name| name == expected)
+                // Some macOS fonts have only Macintosh Roman name records, which
+                // ttf-parser's Unicode conversion intentionally excludes. OpenType
+                // PostScript names are ASCII, so no legacy text decoder is needed.
+                || (record.platform_id == ttf_parser::PlatformId::Macintosh
+                    && record.encoding_id == 0
+                    && record.name.is_ascii()
+                    && record.name == expected.as_bytes()))
     })
 }
 
@@ -438,6 +563,7 @@ impl PlatformCandidate {
                 style: Some(self.font.style()),
                 weight: Some(self.font.weight()),
             },
+            coverage_source: Some(self.font),
         }
     }
 }
@@ -527,29 +653,21 @@ impl PlatformCatalog {
             {
                 return Ok(Some(id));
             }
-            let name = match family {
-                usvg::FontFamily::Named(name) => Some(name.as_str()),
-                _ => None,
-            };
-            for selected in self.candidates(
-                name,
-                generic_family(family),
-                weight,
-                stretch,
-                style,
-                control,
-            )? {
-                if let Some(candidate) = self.candidate_file(selected, control)?
-                    && let Some(id) = accept(
+            if let Some(id) =
+                self.candidates(family, weight, stretch, style, control, |selected| {
+                    let Some(candidate) = self.candidate_file(selected, control)? else {
+                        return Ok(None);
+                    };
+                    accept(
                         super::resolver::FontSelection {
                             candidate,
                             family_fallback_used,
                         },
                         implicit,
-                    )?
-                {
-                    return Ok(Some(id));
-                }
+                    )
+                })?
+            {
+                return Ok(Some(id));
             }
         }
         Ok(None)
@@ -559,6 +677,229 @@ impl PlatformCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_catalog() -> PlatformCatalog {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let mut collection = Collection::new(CollectionOptions {
+            system_fonts: false,
+            ..Default::default()
+        });
+        collection.load_fonts_from_paths([
+            root.join("Cousine-Regular.ttf"),
+            root.join("NotoSans-Latin-subset.ttf"),
+        ]);
+        let first = collection.family_id("Cousine").unwrap();
+        let second = collection.family_id("Noto Sans").unwrap();
+        collection.set_generic_families(GenericFamily::SansSerif, [first, second].into_iter());
+        PlatformCatalog {
+            collection: Mutex::new(collection),
+            invalid: AtomicBool::new(false),
+            #[cfg(windows)]
+            character_fallback: OnceLock::from(None),
+            family_queries: std::sync::atomic::AtomicUsize::new(0),
+        }
+    }
+
+    #[test]
+    fn generic_queries_stop_after_the_first_accepted_family() {
+        for accepted in ["Cousine", "Noto Sans"] {
+            let catalog = test_catalog();
+            let mut visited = Vec::new();
+            let result = catalog
+                .candidates(
+                    &usvg::FontFamily::SansSerif,
+                    Weight::NORMAL,
+                    Stretch::Normal,
+                    Style::Normal,
+                    &OperationControl::new(),
+                    |candidate| {
+                        visited.push(candidate.family.clone());
+                        Ok((candidate.family == accepted).then_some(candidate.family))
+                    },
+                )
+                .unwrap();
+            assert_eq!(result.as_deref(), Some(accepted));
+            let expected = if accepted == "Cousine" {
+                vec!["Cousine"]
+            } else {
+                vec!["Cousine", "Noto Sans"]
+            };
+            assert_eq!(visited, expected);
+            assert_eq!(
+                catalog.family_queries.load(Ordering::Relaxed),
+                expected.len()
+            );
+        }
+    }
+
+    #[test]
+    fn generic_query_stops_on_cancellation_or_admission_error() {
+        for cancel in [false, true] {
+            let catalog = test_catalog();
+            let control = OperationControl::new();
+            let result = catalog.candidates::<()>(
+                &usvg::FontFamily::SansSerif,
+                Weight::NORMAL,
+                Stretch::Normal,
+                Style::Normal,
+                &control,
+                |_| {
+                    if cancel {
+                        control.cancel();
+                        Ok(None)
+                    } else {
+                        Err(NativeFontError::Limit {
+                            resource: "system-font-bytes",
+                            actual: 2,
+                            limit: 1,
+                        })
+                    }
+                },
+            );
+            assert!(if cancel {
+                matches!(result, Err(NativeFontError::Operation(_)))
+            } else {
+                matches!(
+                    result,
+                    Err(NativeFontError::Limit {
+                        resource: "system-font-bytes",
+                        ..
+                    })
+                )
+            });
+            assert_eq!(catalog.family_queries.load(Ordering::Relaxed), 1);
+        }
+    }
+
+    fn file_candidate(path: &Path, index: u32) -> FontCandidate {
+        let font = FontInfo::from_source(
+            fontique::SourceInfo::new(fontique::SourceId::new(), SourceKind::Path(path.into())),
+            index,
+        )
+        .unwrap();
+        PlatformCandidate {
+            font,
+            family: "Cousine".to_owned(),
+        }
+        .into_face()
+        .into_file(path.to_owned())
+    }
+
+    #[test]
+    fn non_covering_fallback_does_not_consume_snapshot_budget() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts/Cousine-Regular.ttf");
+        let registry =
+            super::super::registry::FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let control = OperationControl::new();
+        let limits = NativeFontLimits {
+            max_bytes: 1,
+            ..Default::default()
+        };
+        let mut database = Arc::new(Database::new());
+        assert!(
+            registry
+                .materialize(
+                    file_candidate(&path, 0),
+                    Some('\u{0378}'),
+                    &mut database,
+                    &limits,
+                    &control
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert_eq!(registry.resident_bytes(), 0);
+        assert!(database.is_empty());
+        assert!(matches!(
+            registry.materialize(
+                file_candidate(&path, 0),
+                Some('A'),
+                &mut database,
+                &limits,
+                &control
+            ),
+            Err(NativeFontError::Limit {
+                resource: "system-font-bytes",
+                limit: 1,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn fallback_discovery_cannot_override_an_admitted_collection_snapshot() {
+        let root = std::env::temp_dir().join(format!(
+            "merman-platform-snapshot-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        fs::create_dir(&root).unwrap();
+        let root = root.canonicalize().unwrap();
+        let path = root.join("font.ttc");
+        let original = include_bytes!("../../tests/fonts/Cousine-test-collection.ttc");
+        fs::write(&path, original).unwrap();
+        let candidate = file_candidate(&path, 1);
+        let later_candidate = file_candidate(&root.join(".").join("font.ttc"), 1);
+        #[cfg(target_os = "macos")]
+        let font = match &candidate {
+            FontCandidate::File {
+                expected: ExpectedFace::Platform(face),
+                ..
+            } => face.coverage_source.clone().unwrap(),
+            _ => unreachable!(),
+        };
+        let registry =
+            super::super::registry::FontSourceRegistry::new(BTreeMap::new(), BTreeMap::new(), 0, 0);
+        let control = OperationControl::new();
+        let limits = NativeFontLimits::default();
+        let mut database = Arc::new(Database::new());
+        let selected = registry
+            .materialize(candidate, Some('A'), &mut database, &limits, &control)
+            .unwrap()
+            .unwrap();
+        fs::write(
+            &path,
+            include_bytes!("../../tests/fonts/NotoSansSC-subset.ttf"),
+        )
+        .unwrap();
+        let repeated = registry
+            .materialize(later_candidate, Some('A'), &mut database, &limits, &control)
+            .unwrap()
+            .unwrap();
+        assert_eq!(selected, repeated);
+        assert_eq!(
+            database.face(selected).unwrap().post_script_name,
+            "Cousine-Italic"
+        );
+        assert_eq!(database.face(selected).unwrap().index, 1);
+        assert_eq!(registry.resident_bytes(), original.len());
+        fs::remove_file(path).unwrap();
+        #[cfg(target_os = "macos")]
+        {
+            let data = test_catalog()
+                .discovery_data(&font, &registry)
+                .unwrap()
+                .unwrap();
+            let raw = RawFace::parse(data.as_ref(), font.index()).unwrap();
+            let names = name::Table::parse(raw.table(Tag::from_bytes(b"name")).unwrap()).unwrap();
+            assert!(post_script_name_matches(names, "Cousine-Italic"));
+            assert!(!post_script_name_matches(names, "Cousine-Regular"));
+            assert_eq!(data.as_ref(), original);
+        }
+        fs::remove_dir(root).unwrap();
+    }
+
+    #[test]
+    fn postscript_identity_accepts_macintosh_roman_ascii_records() {
+        let mut bytes = Vec::new();
+        for value in [0_u16, 1, 18, 1, 0, 0, name_id::POST_SCRIPT_NAME, 12, 0] {
+            bytes.extend_from_slice(&value.to_be_bytes());
+        }
+        bytes.extend_from_slice(b"LucidaGrande");
+        let table = name::Table::parse(&bytes).unwrap();
+        assert!(post_script_name_matches(table, "LucidaGrande"));
+        assert!(!post_script_name_matches(table, "LucidaGrande-Bold"));
+    }
 
     #[test]
     fn postscript_validation_uses_only_records_from_the_selected_collection_index() {
@@ -740,6 +1081,7 @@ mod tests {
                     invalid: AtomicBool::new(false),
                     #[cfg(windows)]
                     character_fallback: OnceLock::from(None),
+                    family_queries: std::sync::atomic::AtomicUsize::new(0),
                 }),
                 explicit: Arc::new(Database::new()),
             }),
@@ -835,18 +1177,17 @@ mod tests {
             panic!("platform discovery");
         };
         for family in ["Segoe UI Variable Display", "Segoe UI Variable Text"] {
-            let candidates = catalog
+            let candidate = catalog
                 .candidates(
-                    Some(family),
-                    None,
+                    &usvg::FontFamily::Named(family.to_owned()),
                     Weight::NORMAL,
                     Stretch::Normal,
                     Style::Normal,
                     &control,
+                    |candidate| Ok(Some(candidate)),
                 )
+                .unwrap()
                 .unwrap();
-            assert_eq!(candidates.len(), 1, "{family}");
-            let candidate = candidates.into_iter().next().unwrap();
             assert!(!candidate.font.axes().is_empty(), "{family}");
             assert!(
                 catalog
