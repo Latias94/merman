@@ -1008,6 +1008,72 @@ fn comma_click_tooltips_keep_missing_targets_and_overwrite_each_target_independe
 }
 
 #[test]
+fn flowchart_accessibility_values_follow_subgraph_membership_order() {
+    // flow.jison returns the trimmed statement value; FlowDB.addSubGraph claims it on close.
+    for directive in ["accTitle: A", "accDescr: A", "accDescr { A }"] {
+        let source = format!(
+            "flowchart TD\nsubgraph G\n{directive}\nX\nend\nsubgraph Other\nA --> B\nend\n"
+        );
+        let model = parse(&source);
+        assert_eq!(model.subgraphs[0].nodes, ["A", "X"], "{directive}");
+        assert_eq!(model.subgraphs[1].nodes, ["B"], "{directive}");
+        assert_eq!(model.vertex_calls, ["X", "A", "B"], "{directive}");
+        let ids: Vec<_> = model.nodes.iter().map(|node| node.id.as_str()).collect();
+        assert_eq!(ids, ["X", "A", "B"], "{directive}");
+        assert_eq!(
+            model.dropped_subgraph_members,
+            [FlowDroppedSubgraphMember {
+                node: "A".into(),
+                kept_by: "G".into(),
+                dropped_from: "Other".into(),
+            }]
+        );
+    }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn flowchart_accessibility_filters_self_duplicates_and_empty_blocks() {
+    let source = concat!(
+        "flowchart TD\nsubgraph G\n",
+        "accTitle: G\naccDescr: Disconnected node\naccTitle: Disconnected node\n",
+        "accDescr { \u{feff}\n  first\n   second  }accDescr {}\n",
+        "accDescr { \n\t} X\nend\naccTitle: Root only\n",
+    );
+    let parsed = crate::SemanticParser::new()
+        .parse_diagram_sync(source)
+        .unwrap();
+    let crate::SemanticDiagramModel::Flowchart(model) = parsed.model else {
+        panic!("expected a Flowchart");
+    };
+    assert_eq!(
+        model.subgraphs[0].nodes,
+        ["Disconnected node", "first\n   second", "X"]
+    );
+    assert_eq!(model.vertex_calls, ["X"]);
+    assert_eq!(model.acc_title.as_deref(), Some("Root only"));
+    assert_eq!(model.acc_descr.as_deref(), Some("first\nsecond"));
+    assert!(model.dropped_subgraph_members.is_empty());
+}
+
+#[test]
+fn flowchart_accessibility_colon_consumes_whitespace_before_its_value() {
+    for keyword in ["accTitle", "accDescr"] {
+        let source = format!("flowchart TD\nsubgraph G\n{keyword}: \n  X\nend\nA --> B\n");
+        let model = parse(&source);
+        assert_eq!(model.subgraphs[0].nodes, ["X"], "{keyword}");
+        assert_eq!(model.vertex_calls, ["A", "B"], "{keyword}");
+        let model = parse(&format!("flowchart TD\n{keyword}: previous\n{keyword}:"));
+        let value = if keyword == "accTitle" {
+            model.acc_title
+        } else {
+            model.acc_descr
+        };
+        assert_eq!(value.as_deref(), Some(""), "{keyword}");
+    }
+}
+
+#[test]
 fn dropped_subgraph_members_keep_first_owner_and_source_order() {
     let model = parse(concat!(
         "flowchart LR\nsubgraph one\na\nb\nend\n",

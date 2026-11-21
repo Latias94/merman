@@ -20,6 +20,10 @@ Changes since stable [0.10.0](#0100---2026-11-12).
 - Opt in to Plain `adaptive` terminal output for Flowchart, Swimlane, State, Agentflow, and Requirement. When routing exhausts its search or runs out of ports, the renderer can emit complete node and relationship records. Use `--ascii-graph-presentation adaptive --ascii-color plain` in the CLI or `ascii.graph_presentation` in binding options. [Graph presentation and viewport](docs/rendering/ASCII_SUPPORT_MATRIX.md#viewport-and-report-contract), [#323](https://github.com/Latias94/merman/pull/323), [#324](https://github.com/Latias94/merman/pull/324)
 - Show the Gantt Today Marker at the browser's current time in Playground and carry that instant into exports. Replay a captured instant with `--fixed-unix-millis` in the CLI or `fixed_unix_millis` in binding options, together with the local offset. [#311](https://github.com/Latias94/merman/issues/311), [#312](https://github.com/Latias94/merman/pull/312)
 
+### Added
+
+- New `merman.authoring.class.ignored_statement` diagnostic (`Recommended` ruleset, `Hint` level) for Class diagram statements that are ignored. This diagnostic helps to identify invalid syntax, such as using `title` as a statement instead of as a front matter field.
+
 ### Changed
 
 - Select `--svg-pipeline static`, Rust `SvgGeneration::Static`, or `svg.pipeline: "static"` in binding options for fixed illustrations. The renderer emits container palette rules for the slots present in the diagram. Across 114 Trident documentation Flowcharts, this reduced raw SVG bytes by 52% and per-file gzip bytes by 21%, with matching initial Chromium frames. Native image and PDF targets use static generation where the pipeline permits it. For dynamic recoloring, use the default SVG pipeline. [SVG output guide](docs/rendering/SVG_OUTPUT_PIPELINE.md)

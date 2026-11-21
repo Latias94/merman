@@ -55,6 +55,11 @@ Failures before family metadata retain source-configuration evidence in
 cancellation through the outer `OperationControlResult`; known-type variants skip detection.
 Ordinary `parse_diagram_*` calls omit editor observation.
 
+For Class diagrams, `SemanticParser` snapshots report ignored bare-name statements such as
+`title Overview` in `EditorSemanticFacts::warning_facts`, with byte ranges in the original input.
+`MermaidEngine::parse_diagram_snapshot_sync` exposes the same warnings in the `warning_facts`
+field of `DiagramParseOutcome::Parsed` alongside the Mermaid-compatible JSON.
+
 ## Quick Start
 
 Select the required families without output or presentation features:

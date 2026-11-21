@@ -2,9 +2,7 @@
 use std::cell::Cell;
 
 use super::{LexError, Lexer, Tok, is_ecmascript_trim_char};
-#[cfg(feature = "editor-facts")]
-use crate::SourceSpan;
-use crate::{OperationControl, OperationControlResult};
+use crate::{OperationControl, OperationControlResult, SourceSpan};
 
 #[cfg(test)]
 thread_local! {
@@ -57,20 +55,26 @@ pub(super) struct FlowchartAccessibilityStatement {
 /// so their interior text never reaches this collector. The original source stays unchanged.
 #[derive(Default)]
 pub(super) struct FlowchartAccessibility {
-    pub(super) title: Option<String>,
-    pub(super) description: Option<String>,
+    title: Option<SourceSpan>,
+    description: Option<SourceSpan>,
     #[cfg(feature = "editor-facts")]
     pub(super) statements: Vec<FlowchartAccessibilityStatement>,
     #[cfg(feature = "editor-facts")]
     pub(super) capture_statements: bool,
 }
 
+impl FlowchartAccessibility {
+    pub(super) fn metadata(&self, input: &str) -> (Option<String>, Option<String>) {
+        let value = |span: SourceSpan| input[span.start..span.end].to_owned();
+        (self.title.map(value), self.description.map(value))
+    }
+}
+
 impl Lexer<'_> {
     pub(super) fn lex_accessibility_statement(
         &mut self,
     ) -> Option<std::result::Result<(usize, Tok, usize), LexError>> {
-        // The grammar skips accessibility through a separator, so only admit it where a
-        // statement can begin; it must not turn an invalid adjacent node into a valid one.
+        // Accessibility directives are statements and cannot interrupt a vertex or an edge.
         if !self.at_statement_start {
             return None;
         }
@@ -119,17 +123,22 @@ impl Lexer<'_> {
         } else {
             content_end
         };
-        if complete {
-            let value = self.input[content_start..content_end]
-                .trim_matches(is_ecmascript_trim_char)
-                .to_owned();
+        // In flow.jison the closing brace wins over an empty multiline value, so an empty
+        // block has no statement value and does not replace an earlier description.
+        let token = if complete && (!block || content_start < content_end) {
+            let value =
+                self.input[content_start..content_end].trim_end_matches(is_ecmascript_trim_char);
+            let span = SourceSpan::new(content_start, content_start + value.len());
             match directive {
-                FlowchartAccessibilityDirective::Title => self.accessibility.title = Some(value),
+                FlowchartAccessibilityDirective::Title => self.accessibility.title = Some(span),
                 FlowchartAccessibilityDirective::Description => {
-                    self.accessibility.description = Some(value);
+                    self.accessibility.description = Some(span);
                 }
             }
-        }
+            Tok::AccessibilityValue(value.to_owned())
+        } else {
+            Tok::Sep
+        };
         #[cfg(feature = "editor-facts")]
         if self.accessibility.capture_statements {
             self.accessibility
@@ -140,9 +149,7 @@ impl Lexer<'_> {
                     span: SourceSpan::new(start, self.pos),
                 });
         }
-        // A separator lets the existing grammar skip the directive without changing source
-        // offsets or introducing accessibility tokens into the generated parser contract.
-        Ok((start, Tok::Sep, self.pos))
+        Ok((start, token, self.pos))
     }
 }
 

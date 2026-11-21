@@ -299,6 +299,9 @@ classes. Repeated targets preserve repeated class assignments. Owners:
 [interaction-order tests](../../crates/merman-core/tests/flowchart_interaction_order_parity_test.rs)
 and [editor integration](../../crates/merman-editor-core/tests/parser_parity.rs).
 
+Inside a subgraph, each trimmed accessibility value participates in first-owner membership without
+declaring a vertex.
+
 Accessibility directives are recognized at the authoritative lexer's plain cursor. The same text
 inside quoted, Markdown or other label payloads remains label content and cannot replace the
 diagram's accessible name. Asset width and height updates follow the selected DB's truthiness

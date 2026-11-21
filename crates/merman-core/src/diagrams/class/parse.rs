@@ -133,6 +133,10 @@ impl ClassSyntax {
             active
         });
         let mut arena = ActionArena::default();
+        #[cfg(feature = "editor-facts")]
+        {
+            arena.capture_ignored_statements = editor_facts.is_some();
+        }
         let actions = class_grammar::ActionsParser::new()
             .parse(&mut arena, control, controlled_events)
             .map(|list| arena.into_actions(list));
@@ -245,7 +249,7 @@ fn construct_class_semantic_source<'a>(
     let ClassSyntaxOutcome {
         actions,
         #[cfg(feature = "editor-facts")]
-        editor_facts,
+        mut editor_facts,
     } = syntax.into_actions(
         #[cfg(feature = "editor-facts")]
         code,
@@ -264,12 +268,16 @@ fn construct_class_semantic_source<'a>(
         }
     };
 
+    #[cfg(feature = "editor-facts")]
+    let mut warning_facts = editor_facts.as_mut().map(|facts| &mut facts.warning_facts);
+    #[cfg(not(feature = "editor-facts"))]
+    let mut warning_facts: Option<&mut Vec<_>> = None;
     let mut db = ClassDb::new(config);
     for (index, action) in actions.into_iter().enumerate() {
         if index % 128 == 0 {
             control.checkpoint()?;
         }
-        if let Err(message) = db.apply(action) {
+        if let Err(message) = db.apply(action, warning_facts.as_deref_mut()) {
             return Ok(Err(Box::new(ClassSemanticFailure::Db {
                 message,
                 #[cfg(feature = "editor-facts")]
@@ -1618,6 +1626,23 @@ fn class_label_member_selection(label: &str, span: SourceSpan) -> Option<(String
 mod tests {
     use super::*;
     use std::fmt::Write as _;
+
+    #[test]
+    fn omitted_editor_facts_do_not_allocate_ignored_statement_actions() {
+        let source = "classDiagram\nFirst\nSecond\n";
+        let control = OperationControl::new();
+        let syntax = ClassSyntax::lex(source, &control).unwrap();
+        let parsed = syntax
+            .into_actions(
+                #[cfg(feature = "editor-facts")]
+                source,
+                #[cfg(feature = "editor-facts")]
+                EditorFactsDemand::Omit,
+                &control,
+            )
+            .unwrap();
+        assert_eq!(parsed.actions.unwrap().count(), 0);
+    }
 
     fn assert_carrier_work(source: &str, expected: (usize, usize, usize, usize)) {
         let control = OperationControl::new();

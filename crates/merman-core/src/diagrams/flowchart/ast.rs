@@ -176,6 +176,7 @@ pub(crate) enum Stmt {
     },
     Node(Box<Node>),
     Subgraph(SubgraphBlock),
+    AccessibilityValue(String),
     Direction(String),
     Style(StyleStmt),
     ClassDef(ClassDefStmt),

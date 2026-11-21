@@ -294,12 +294,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
 ) -> OperationControlResult<crate::family::SemanticConstruction<FlowchartModel>> {
     control.checkpoint()?;
     let mut trace = construct_flowchart_token_trace(code, control)?;
-    let FlowchartAccessibility {
-        title: acc_title,
-        description: acc_descr,
-        statements: accessibility_statements,
-        ..
-    } = std::mem::take(&mut trace.accessibility);
+    let accessibility = std::mem::take(&mut trace.accessibility);
     let (model, facts) = match parse_flowchart_ast_from_trace(&trace, meta, control)? {
         Ok(ast) => {
             let mut facts = EditorSemanticFacts::new();
@@ -307,7 +302,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
                 facts = editor_facts_from_flowchart_ast(&ast, control)?;
                 control.checkpoint()?;
                 collect_accessibility_directive_prefixes(
-                    &accessibility_statements,
+                    &accessibility.statements,
                     &mut facts,
                     control,
                 )?;
@@ -318,6 +313,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
                     control,
                 )?;
             }
+            let (acc_title, acc_descr) = accessibility.metadata(code);
             let model = match parse_flowchart_semantic_source_from_ast_controlled(
                 ast, acc_title, acc_descr, meta, false, control,
             )? {
@@ -331,7 +327,7 @@ fn construct_flowchart_captured_semantic_model_controlled<M: FlowchartMetadata>(
             let (facts, eof_insertion) = flowchart_recovery_facts(
                 code,
                 trace,
-                &accessibility_statements,
+                &accessibility.statements,
                 error.as_ref(),
                 editor_demand,
                 control,
@@ -479,17 +475,11 @@ fn parse_flowchart_semantic_source_controlled_with_render_context<M: FlowchartMe
     control: &OperationControl,
 ) -> OperationControlResult<Result<FlowchartSemanticSource>> {
     control.checkpoint()?;
-    let (
-        ast,
-        FlowchartAccessibility {
-            title: acc_title,
-            description: acc_descr,
-            ..
-        },
-    ) = match parse_flowchart_ast_controlled(code, meta, control)? {
+    let (ast, accessibility) = match parse_flowchart_ast_controlled(code, meta, control)? {
         Ok(parsed) => parsed,
         Err(error) => return Ok(Err(error)),
     };
+    let (acc_title, acc_descr) = accessibility.metadata(code);
     parse_flowchart_semantic_source_from_ast_controlled(
         ast,
         acc_title,
@@ -664,7 +654,7 @@ fn prepare_flowchart_shape_data(
                     prepare_flowchart_shape_data_document(source, control, &mut documents)?;
                 }
             }
-            Stmt::Subgraph(_) => {}
+            Stmt::Subgraph(_) | Stmt::AccessibilityValue(_) => {}
             Stmt::ShapeData { yaml, .. } => {
                 prepare_flowchart_shape_data_document(yaml, control, &mut documents)?;
             }
@@ -1086,7 +1076,7 @@ impl FlowchartRecoveryFactCollector {
             Tok::Arrow(_) => TokenKind::Arrow,
             Tok::EdgeLabel(_) => TokenKind::EdgeLabel,
             Tok::Id(_) => TokenKind::Id,
-            Tok::Sep => TokenKind::Sep,
+            Tok::Sep | Tok::AccessibilityValue(_) => TokenKind::Sep,
             _ => TokenKind::Other,
         };
         if editor_demand.captures_rich() {
@@ -1200,6 +1190,7 @@ fn collect_editor_fact_from_token(
         | Tok::KwSubgraph
         | Tok::KwEnd
         | Tok::Sep
+        | Tok::AccessibilityValue(_)
         | Tok::Amp
         | Tok::StyleSep
         | Tok::Direction(_) => {}
@@ -1343,7 +1334,7 @@ fn collect_editor_facts_from_statements_with_seen_edges(
                     );
                 }
             }
-            Stmt::Direction(_) => {}
+            Stmt::Direction(_) | Stmt::AccessibilityValue(_) => {}
         }
     }
     control.checkpoint()

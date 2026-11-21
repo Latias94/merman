@@ -197,6 +197,48 @@ fn parse_diagram_flowchart_label_keywords_do_not_invent_accessibility_facts() {
 }
 
 #[test]
+fn parse_diagram_flowchart_accessibility_members_preserve_editor_symbol_identity() {
+    let engine = MermaidEngine::new();
+    for (directive, field) in [
+        ("accTitle: A", "accTitle"),
+        ("accDescr: A", "accDescr"),
+        ("accDescr { A }", "accDescr"),
+    ] {
+        let source = format!(
+            "flowchart TD\nsubgraph G\n{directive}\nX\nend\nsubgraph Other\nA --> B\nend\n"
+        );
+        let snapshot = engine
+            .parse_diagram_snapshot_sync(&source)
+            .unwrap()
+            .unwrap();
+        let model = snapshot.outcome().parsed_model().unwrap();
+        assert_eq!(model[field], "A");
+        assert_eq!(model["subgraphs"][0]["nodes"], json!(["A", "X"]));
+        assert_eq!(model["subgraphs"][1]["nodes"], json!(["B"]));
+        assert_eq!(
+            model["other"]["droppedSubGraphMembers"],
+            json!([{"node": "A", "keptBy": "G", "droppedFrom": "Other"}])
+        );
+
+        let ParsedEditorFacts::Available(facts) = snapshot.editor_facts() else {
+            panic!("expected Flowchart editor facts");
+        };
+        let start = source.find(directive).unwrap();
+        assert!(facts.expected_syntax.iter().any(|expected| {
+            expected.kind == EditorExpectedSyntaxKind::Directive
+                && expected.span == SourceSpan::new(start, start + directive.len())
+        }));
+        let endpoint = source.find("A --> B").unwrap();
+        let mut symbols = facts.symbols.iter().filter(|s| s.name == "A");
+        let symbol = symbols.next().expect("edge endpoint A");
+        assert_eq!(symbol.selection, SourceSpan::new(endpoint, endpoint + 1));
+        assert_eq!(symbol.role, EditorSemanticRole::Entity);
+        assert_eq!(symbol.rename_policy, EditorRenamePolicy::FlowchartNodeId);
+        assert!(symbols.next().is_none());
+    }
+}
+
+#[test]
 fn parse_diagram_flowchart_accessibility_preserves_block_and_statement_boundaries() {
     let engine = MermaidEngine::new();
     let source = concat!(

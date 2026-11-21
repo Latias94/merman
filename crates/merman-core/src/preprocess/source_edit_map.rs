@@ -183,6 +183,20 @@ impl PreprocessedSource {
         }
     }
 
+    pub(crate) fn remap_warning_facts_controlled(
+        &self,
+        facts: &mut [crate::DiagramWarningFact],
+        control: &OperationControl,
+    ) -> OperationControlResult<()> {
+        for chunk in facts.chunks_mut(128) {
+            control.checkpoint()?;
+            for fact in chunk {
+                self.remap_warning_fact_spans(fact);
+            }
+        }
+        control.checkpoint()
+    }
+
     pub(crate) fn remap_warning_fact_spans(&self, fact: &mut crate::DiagramWarningFact) {
         let source_span = fact.span;
         let remapped_span = source_span.and_then(|span| self.try_map_span(span));

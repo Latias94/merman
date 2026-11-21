@@ -494,6 +494,9 @@ pub struct EditorSemanticFacts {
     pub symbols: Vec<EditorSemanticSymbol>,
     pub directive_prefixes: Vec<String>,
     pub diagnostics: Vec<EditorSemanticDiagnostic>,
+    /// Rule-identified warnings collected during parsing, in original source coordinates.
+    /// Compatibility snapshots move these into the successful outcome's `warning_facts`.
+    pub warning_facts: Vec<merman_model::warnings::DiagramWarningFact>,
     pub expected_syntax: Vec<EditorExpectedSyntax>,
 }
 

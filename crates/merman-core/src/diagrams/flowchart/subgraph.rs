@@ -236,6 +236,7 @@ fn push_statement_items(
             }
         }
         Stmt::Node(n) => out.push(StatementItem::Id(n.id.clone())),
+        Stmt::AccessibilityValue(value) => out.push(StatementItem::Id(value.clone())),
         Stmt::Direction(d) => out.push(StatementItem::Dir(d.clone())),
         Stmt::ShapeData { target, .. } => out.push(StatementItem::Id(target.clone())),
         Stmt::Subgraph(_)
