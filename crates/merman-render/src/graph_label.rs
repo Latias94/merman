@@ -68,7 +68,7 @@ pub(crate) fn flowchart_node_label_min_width(
     {
         return 0.0;
     }
-    crate::config::config_f64(config.as_value(), &["flowchart", "minNodeWidth"])
+    crate::config::config_f64(config, &["flowchart", "minNodeWidth"])
         .unwrap_or(0.0)
         .max(0.0)
 }
