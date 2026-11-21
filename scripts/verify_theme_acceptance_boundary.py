@@ -67,14 +67,18 @@ def main() -> None:
             'let _ = core::mem::size_of::<(RenderedDocument, StandaloneSvgArtifact, RasterOptions)>();\n}\n',
             encoding="utf-8",
         )
-        command = ["cargo", "check", "--offline", "--quiet"]
+        # A fresh consumer resolves published dependencies without the workspace's patches.
+        command = ["cargo", "check", "--quiet"]
         production = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True)
         if production.returncode != 0:
             raise RuntimeError(f"Production consumer failed to compile:\n{production.stderr}")
         print("external consumer resolves production APIs with every producer feature enabled", flush=True)
         for unavailable_import in PRIVATE_IMPORTS:
             source.write_text(f"use {unavailable_import};\nfn main() {{}}\n", encoding="utf-8")
-            result = subprocess.run(command, cwd=project, env=env, capture_output=True, text=True)
+            result = subprocess.run(
+                [*command, "--locked", "--offline"],
+                cwd=project, env=env, capture_output=True, text=True,
+            )
             if result.returncode == 0 or "error[E0432]" not in result.stderr:
                 raise RuntimeError(
                     f"Expected an unresolved import for {unavailable_import}:\n{result.stderr}"
