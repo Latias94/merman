@@ -4,11 +4,14 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [0.10.1] - Unreleased
+## [0.11.0] - Unreleased
+
+Changes since stable [0.10.0](#0100---2026-11-12).
 
 ### Upgrading
 
-- Migrate CLI `--ascii-report` and binding `output_plan` readers to ASCII schema `4`. Replace `overflowed` with nullable `primary_overflowed` and required `emitted_overflowed`. The primary dimensions, layout profile, and overflow status are null together when no primary layout was produced. Preserve zero dimensions for a measured empty diagram. [ASCII report migration](docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4), [#323](https://github.com/Latias94/merman/pull/323)
+- Migrate CLI `--ascii-report` and binding `output_plan` readers to ASCII schema `4`. Replace `overflowed` with nullable `primary_overflowed` and required `emitted_overflowed`. Read `requested_graph_presentation` for the requested policy. The primary dimensions, layout profile, and overflow status are null together when no primary layout was produced. Preserve zero dimensions for a measured empty diagram. [ASCII report migration](docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4), [#323](https://github.com/Latias94/merman/pull/323)
+- CLI `layout` and Rust `RenderRequest::layout_json` now return versioned geometry. Use `merman-cli layout --snapshot` or `RenderRequest::layout_snapshot` for the full 0.10 envelope with `meta`, `semantic`, and `layout`. [Layout guide](docs/rendering/HEADLESS_LAYOUT.md)
 - Use matching Web wrappers and WASM for transport API `11`. Upgrade Swift and Python wrappers together with their native libraries for UniFFI binding API `8`. [Binding migration](docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ### Added
@@ -19,18 +22,15 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 
 ### Changed
 
-- The official Windows CLI queries the system font catalog on demand by default for PNG, JPEG, and PDF exports. Layout and painting share the selected fonts, and the bundled exporter retries mixed-script and symbol fallback when a partial match changes glyph clustering. Default Cargo builds use bounded discovery. Select `--font-system platform` or `--font-system bounded` explicitly in release builds. Font selection and wrapping can differ by provider. [CLI font and installation contract](docs/releasing/CLI.md#cli-contract-migration)
+- Select `--svg-pipeline static` or Rust `SvgGeneration::Static` for fixed illustrations. The renderer emits container palette rules for the slots present in the diagram. Native image and PDF targets use static generation where the pipeline permits it. For dynamic recoloring, use the default SVG pipeline. [SVG output guide](docs/rendering/SVG_OUTPUT_PIPELINE.md)
+- The official Windows CLI queries the system font catalog on demand by default for PNG, JPEG, and PDF exports. Layout and painting share the selected fonts, and the bundled exporter retries mixed-script and symbol fallback when a partial match changes glyph clustering. Default Cargo builds use bounded discovery. Select `--font-system platform` or `--font-system bounded` explicitly in release builds. Font selection and wrapping can differ by provider. A Windows named variable family that the exporter cannot represent falls through to the next family in the font stack. [CLI font and installation contract](docs/releasing/CLI.md#cli-contract-migration)
+- The bundled native exporter obtains text advance and bounds from a single shaping pass for each uncached ordinary label measurement.
 - Reduce first-render compilation work in browser WebAssembly and repeated parsing, layout, and painting work in Flowchart, ER, Sequence, and Mindmap. [#328](https://github.com/Latias94/merman/pull/328)
-- Reuse host theme calculations when a renderer repeatedly draws the same diagram family without source overrides. Compute Flowchart SVG path lengths only when edge painting uses them.
-- Return SVG strings directly from the native Node addon for `renderSvg()` and `renderSvgSync()`.
+- Reuse host theme calculations when a renderer repeatedly draws the same diagram family without source overrides. Flowchart rendering with frontmatter reads resolved configuration by section and shares untouched engine settings. Replay identical ELK layout assignments without copying the effective configuration. Large Flowcharts reuse unique edge IDs and compute SVG path lengths when edge painting needs them. Compound ELK Flowcharts skip unnecessary edge-order scans. Swimlane routing skips scoring candidates that already conflict with nodes or segments.
+- Skip reading SVG titles and descriptions in Markdown batches that only write image files.
+- The native Node addon accepts the source separately and returns SVG strings directly for `renderSvg()` and `renderSvgSync()`. Keep the JS wrapper and addon from the same release.
 - Use Rust `1.100.0` for repository development, CI, and release builds. The library minimum is Rust `1.95`. [#308](https://github.com/Latias94/merman/pull/308)
 - Reduce the workspace Typst plugin's WASM size by sharing parser and theme code. The independently published Typst Universe wrapper `@preview/merman:0.6.0` bundles Merman `0.10.0`. [Typst Universe](https://typst.app/universe/package/merman/), [#304](https://github.com/Latias94/merman/pull/304), [#306](https://github.com/Latias94/merman/pull/306)
-
-### Performance verification
-
-- The full browser SDK reached its first SVG for a medium Flowchart in 214 ms, down from 275 ms in `0.10.0`. Eight paired runs in Chromium on Windows measured local package loading, WebAssembly compilation and rendering. Both releases returned the same SVG bytes.
-- On the Windows 11 release build, system font queries reduced process reads from about 826 MB to 255 KB for a seven-node PNG export that selected the same system font as `0.10.0`. The PNG bytes matched. The two CLI versions also produced byte-identical SVG for all 114 Flowcharts in the Trident documentation workload, with a distinct diagram ID for each chart.
-- Reusing a Rust renderer configured with `flowchart.nodeSpacing: 50` reduced warm allocation traffic from 395 KB to 207 KB per two-node render in a same-toolchain comparison against the source before the optimization. The renderer kept about 142 KB of additional theme data after its first render. A 500-node Classic Flowchart skipped 499 edge-length calculations and made 831 fewer allocations. Both diagrams kept identical SVGs.
 
 ### Fixed
 
@@ -38,7 +38,7 @@ The format is based on *Keep a Changelog*, and this project adheres to *Semantic
 - Avoid false `resvg-safe` selector-budget errors for large Flowcharts and Class diagrams, including a Class diagram with 400 members. [#313](https://github.com/Latias94/merman/pull/313)
 - Accept Flowchart IDs with leading dots and punctuation, distinguish literal `A&B` IDs from `A & B` groups, and preserve adjacent edge operators and bindings during editor renames. Match Mermaid's stroke and length for compact links with mixed endpoint markers. LSP highlighting follows the corrected identifier and arrow boundaries. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
 - Preserve Class and namespace syntax when renaming to Unicode names or reserved words that require backticks, including existing quotes, generic suffixes, and relationship targets. [#308](https://github.com/Latias94/merman/pull/308)
-- Treat Usecase JSON keys such as `$serde_json::private::Number` as literal property names.
+- Preserve literal JSON object keys in Usecase properties, init directives, and Sequence links and properties. Configurations keep their original validation errors when a property name matches Serde metadata.
 - Produce consistent stylesheet output across repeated SVG sanitization, including styles with escaped carriage returns. [#325](https://github.com/Latias94/merman/pull/325)
 - Accept symlinked font directory roots for `--font-dir` and bounded system font discovery. [#315](https://github.com/Latias94/merman/issues/315), [#316](https://github.com/Latias94/merman/pull/316)
 - Spend less work on unchanged Markdown batch reruns. After blocked files become available, a single retry can finish rollback and publish the requested output, including when recovering journals written by older versions. [#328](https://github.com/Latias94/merman/pull/328)

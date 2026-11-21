@@ -2,14 +2,16 @@
 
 Render supported Mermaid diagram families as ASCII or Unicode text in a browser.
 
-Version `0.10.0` uses Web transport API `10` and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+Version `0.11.0` uses Web transport API `11` and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+
+Use `renderAsciiResult()` to read ASCII schema `4` output metadata. Update report readers for the nullable primary layout and separate emitted overflow. [ASCII report migration](https://github.com/Latias94/merman/blob/main/docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
 
 Published `0.10.0-alpha.2` retains Web transport API `9`. Version `0.10.0-alpha.1` retains Web transport API `8` and Options JSON schema `3`. Upgrade all package assets together; see the [contract migration](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up) for the transport change.
 
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web-ascii@0.10.0
+npm install --save-exact @mermanjs/web-ascii@0.11.0
 ```
 
 ```ts

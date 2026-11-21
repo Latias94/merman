@@ -7,7 +7,7 @@ publication without the protected release environment and maintainer credentials
 ## Release identity
 
 - Package root: `distribution/tree-sitter-mermaid`
-- Prepared version: `0.3.5`, required by the Merman LSP `0.10.1` candidate
+- Prepared version: `0.3.5`, required by the Merman LSP `0.11.0` candidate
 - Latest published version: [`0.3.4`](https://github.com/Latias94/merman/releases/tag/tree-sitter-mermaid-v0.3.4) (2026-11-11, Asia/Shanghai)
 - Intended independent release tag: `tree-sitter-mermaid-v0.3.5`
 - Cargo package: `tree-sitter-mermaid`

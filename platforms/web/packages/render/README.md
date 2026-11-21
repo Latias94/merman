@@ -3,7 +3,7 @@
 Render Mermaid diagrams to SVG in a browser with Cytoscape and ELK layouts,
 without shipping the analysis, editor, or ASCII workflows from the complete SDK.
 
-Version `0.10.0` uses Web transport API `10`, theme execution evidence schema `2`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
+Version `0.11.0` uses Web transport API `11`, theme execution evidence schema `2`, and Options JSON schema `3`. Keep the facade, generated glue, and WASM at the same exact version and source revision. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability.
 
 Published `0.10.0-alpha.2` retains Web transport API `9`. Version `0.10.0-alpha.1` retains Web transport API `8`, theme execution evidence schema `1`, and Options JSON schema `3`. Upgrade all package assets together and update evidence consumers for the [render-evidence changes](https://github.com/Latias94/merman/blob/main/docs/release/UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up).
 
@@ -13,7 +13,7 @@ analysis, editor and ASCII operations.
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web-render@0.10.0
+npm install --save-exact @mermanjs/web-render@0.11.0
 ```
 
 ```ts

@@ -16,9 +16,10 @@ See the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available vers
 
 The generated transport exposes generic operation dispatch plus stable convenience functions for the capabilities compiled into its artifact profile. It can project SVG, semantic JSON, layout JSON, ASCII/Unicode, validation, diagnostics, document facts, metadata, and editor operations.
 
-Merman `0.10.0` reports the following contracts. Published `0.10.0-alpha.2` artifacts retain transport API `9`; `0.10.0-alpha.1` retains transport API `8`, facts schema `2`, and theme execution evidence schema `1`. Version `0.9.3` retains transport API `5`. Upgrade the facade, glue, and WASM together; source builds must use one revision.
+Merman `0.11.0` reports the following contracts. Published `0.10.0` uses transport API `10` and ASCII output schema `3`. Published `0.10.0-alpha.2` artifacts retain transport API `9`; `0.10.0-alpha.1` retains transport API `8`, facts schema `2`, and theme execution evidence schema `1`. Version `0.9.3` retains transport API `5`. Upgrade the facade, glue, and WASM together; source builds must use one revision.
 
-- transport API version `10`;
+- transport API version `11`
+- ASCII output schema `4` for ASCII-capable artifacts
 - Options JSON schema `3`;
 - runtime catalog schema `1`;
 - text-measurement protocol version `1`;

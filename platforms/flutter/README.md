@@ -4,21 +4,21 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Flutter or standalone Dart without a browser or JavaScript runtime. The package is a Dart-friendly facade over Merman's native ABI 3 table and uses Native Assets to bundle size-oriented native libraries for supported targets.
 
-This guide documents `0.10.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
+This guide documents `0.11.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> `Merman.open()` accepts only the exact native package version `0.10.0` paired with this Dart package. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
+> `Merman.open()` accepts only the exact native package version `0.11.0` paired with this Dart package. `Merman.openPath(...)` may load another package version, but both entry points require the current complete ABI 3 table, runtime catalog fields, Options JSON schema `3`, metadata and payload schemas, and service constructor. Historical partial ABI 3 producers and ABI 2 are not fallback paths.
 
-Version `0.10.0` uses native ABI `3`, Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. Upgrade the Dart facade, manifest, and native assets together, and update saved options and JSON consumers as described in the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md).
+Version `0.11.0` uses native ABI `3`, Options JSON schema `3`, facts schema `3`, theme execution evidence schema `2`, and ASCII output schema `4`. In `MermanAsciiOutputPlan`, read nullable `primaryOverflowed` for the primary layout and `emittedOverflowed` for the output text. Upgrade the Dart facade, manifest, and native assets together, and update saved options and JSON consumers as described in the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md).
 
 ## Install
 
 Pin the exact package version when pairing the Dart facade with its Native Assets libraries:
 
 ```sh
-flutter pub add 'merman:0.10.0'
+flutter pub add 'merman:0.11.0'
 ```
 
-For source development, use the matching `0.10.0` source revision and a local path dependency:
+For source development, use the matching `0.11.0` source revision and a local path dependency:
 
 ```yaml
 dependencies:
@@ -92,7 +92,7 @@ An HTTPS mirror can host the same versioned asset filenames:
 hooks:
   user_defines:
     merman:
-      mirror: https://artifacts.example.org/merman/v0.10.0/
+      mirror: https://artifacts.example.org/merman/v0.11.0/
 ```
 
 The mirror changes the download location only; package-pinned digests remain mandatory.

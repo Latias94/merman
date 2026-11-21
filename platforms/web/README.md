@@ -2,7 +2,7 @@
 
 Use Merman's Rust parser, renderers, analysis, and editor APIs in a browser through WebAssembly.
 
-This guide documents `0.10.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
+This guide documents `0.11.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current changelog](../../CHANGELOG.md) for changes and upgrade actions.
 
 Start with `@mermanjs/web` when evaluating Merman or when one browser realm needs several
 workflows. Choose a focused package when the application has one isolated workflow and the smaller
@@ -45,7 +45,7 @@ See the [Astro host integration guide](../../docs/integrations/astro.md) for bro
 ## Quick start
 
 ```sh
-npm install --save-exact @mermanjs/web@0.10.0
+npm install --save-exact @mermanjs/web@0.11.0
 ```
 
 ```ts

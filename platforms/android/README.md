@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams in Android apps without a WebView or a JavaScript runtime. The Kotlin API uses a direct JNI transport over Merman's shared binding engine.
 
-Current examples target `0.10.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.10.0` AAR for the current examples.
+Current examples target `0.11.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.11.0` AAR for the current examples.
 
 > **Binding contract:** Kotlin classes and `libmerman_android_jni.so` must come from the same
 > `0.10.0` AAR. The published download below uses local coordinate
@@ -64,8 +64,8 @@ the extraction root containing `io/merman/merman-android/`. Central installation
 separately verified namespace, publication and public resolution of that exact coordinate;
 the local group name is not evidence of Central ownership.
 
-For a matching `0.10.0` repository built from source, use its selected group and repository path
-with `-PmermanVersion=0.10.0`. Keep its Kotlin facade and native libraries together.
+For a matching `0.11.0` repository built from source, use its selected group and repository path
+with `-PmermanVersion=0.11.0`. Keep its Kotlin facade and native libraries together. ASCII schema `4` reports nullable `primaryOverflowed` and required `emittedOverflowed` in `MermanAsciiOutputPlan`. [ASCII report migration](../../docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
 
 ## Render A Diagram
 
@@ -310,7 +310,7 @@ The AAR contains the Kotlin API and `libmerman_android_jni.so` for both supporte
 Do not package a second native library beside it. This legacy release uses Options JSON
 schema `2` and omits math and binary codecs. Follow its
 [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/android/README.md) for API
-examples; the current theme examples in this README require a matching `0.10.0` AAR.
+examples; the current theme examples in this README require a matching `0.11.0` AAR.
 
 ## Documentation And Releases
 
