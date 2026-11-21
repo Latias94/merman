@@ -1736,6 +1736,36 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
+    fn flowchart_elk_layout_replay_keeps_the_cached_projection_shared() {
+        let engine = MermaidEngine::new().with_exact_site_config(None);
+        engine
+            .parse_metadata_sync("classDiagram\nA <|-- B")
+            .unwrap();
+        let parse_elk = || {
+            engine
+                .parse_metadata_sync("flowchart-elk TD\nA-->B")
+                .unwrap()
+                .effective_config
+        };
+
+        let (cold, cold_work) = crate::config::measure_config_work(parse_elk);
+        let (warm, warm_work) = crate::config::measure_config_work(parse_elk);
+        assert_eq!(
+            cold_work.selected_theme_materializations, 1,
+            "{cold_work:?}"
+        );
+        assert_eq!(
+            warm_work.selected_theme_materializations, 0,
+            "{warm_work:?}"
+        );
+        assert_eq!(warm_work.json_cow_copies, 0, "{warm_work:?}");
+        assert!(std::ptr::eq(cold.as_value(), warm.as_value()));
+        assert_eq!(warm, cold);
+        assert_eq!(warm.get_str("layout"), Some("elk"));
+        assert!(warm.explicit_config_owns_path("layout"));
+    }
+
+    #[test]
     fn site_appearance_replays_detector_changes_even_on_a_cache_hit() {
         fn detector(source: &str, config: &mut SourcePresentationConfig) -> bool {
             config.set_value("flowchart.nodeSpacing", serde_json::json!(source.len()));

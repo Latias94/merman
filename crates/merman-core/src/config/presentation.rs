@@ -568,6 +568,19 @@ impl SourcePresentationConfig {
     }
 
     fn replace_detector_segments(&mut self, path: &[&str], value: Option<&Value>) {
+        // String equality is exact. Replay records explicit claims separately and continues
+        // to replace containers so their contents and key order follow the detector.
+        if let Some(Value::String(replacement)) = value
+            && path
+                .iter()
+                .try_fold(self.as_value(), |parent, segment| {
+                    parent.as_object()?.get(*segment)
+                })
+                .and_then(Value::as_str)
+                == Some(replacement.as_str())
+        {
+            return;
+        }
         let Some((key, parents)) = path.split_last() else {
             if let Some(value) = value {
                 replace_value_nonrecursive(
@@ -1349,19 +1362,20 @@ mod tests {
         assert!(!changes.value_changed_at("themeVariables.primaryColor"));
         assert!(working.explicit_config_owns_path("themeVariables.primaryColor"));
 
-        let mut replayed = original.clone();
-        replayed.set_value_preserving_theme_compatibility(
+        let mut changed_projection = original.clone();
+        changed_projection.set_value_preserving_theme_compatibility(
             "themeVariables.primaryColor",
             json!("#654321"),
         );
-        changes
-            .replay(&mut replayed, &OperationControl::new())
-            .unwrap();
-        assert_eq!(
-            replayed.get_str("themeVariables.primaryColor"),
-            Some("#123456")
-        );
-        assert!(replayed.explicit_config_owns_path("themeVariables.primaryColor"));
+        let expected = freeze(working.clone());
+        for (projection, copies) in [(&original, 0), (&changed_projection, 1)] {
+            let mut replayed = projection.clone();
+            let (result, replay_work) =
+                measure_config_work(|| changes.replay(&mut replayed, &OperationControl::new()));
+            result.unwrap();
+            assert_eq!(replay_work.json_cow_copies, copies, "{replay_work:?}");
+            assert_eq!(freeze(replayed), expected);
+        }
         working.freeze_theme_compatibility();
         let surviving = working.mermaid_compatibility_fields().unwrap();
         assert!(!surviving.iter().any(|field| {
