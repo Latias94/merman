@@ -7,13 +7,17 @@ use svgtypes::{Length, LengthUnit as Unit};
 
 use super::svgtree::{AId, EId, SvgNode};
 use super::{OptionLog, converter};
-use crate::{Group, Mask, MaskType, Node, NonEmptyString, NonZeroRect, Transform, Units};
+use crate::{
+    Group, Mask, MaskType, Node, NonEmptyString, NonZeroRect, TextFontOmissions, Transform, Units,
+};
 
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
     object_bbox: Option<NonZeroRect>,
     cache: &mut converter::Cache,
+    missing_bbox_text: &dyn Fn() -> TextFontOmissions,
+    omissions: &mut TextFontOmissions,
 ) -> Option<Arc<Mask>> {
     // A `mask` attribute must reference a `mask` element.
     if node.tag_name() != Some(EId::Mask) {
@@ -83,7 +87,14 @@ pub(crate) fn convert(
     // Resolve linked mask.
     let mut mask = None;
     if let Some(link) = node.attribute::<SvgNode>(AId::Mask) {
-        mask = convert(link, state, object_bbox, cache);
+        mask = convert(
+            link,
+            state,
+            object_bbox,
+            cache,
+            missing_bbox_text,
+            omissions,
+        );
 
         // Linked `mask` must be valid.
         if mask.is_none() {
@@ -112,6 +123,7 @@ pub(crate) fn convert(
         let object_bbox = match object_bbox {
             Some(v) => v,
             None => {
+                omissions.merge(missing_bbox_text());
                 log::warn!("Masking of zero-sized shapes is not allowed.");
                 return None;
             }
@@ -133,6 +145,7 @@ pub(crate) fn convert(
         // A mask without children at this point is invalid.
         // Only masks with zero bbox and `objectBoundingBox` can be empty.
         if !real_root.has_children() {
+            omissions.merge(real_root.text_font_omissions);
             return None;
         }
     }

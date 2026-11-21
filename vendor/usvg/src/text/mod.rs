@@ -15,19 +15,6 @@ mod colr;
 /// Provides access to the layout of a text node.
 pub mod layout;
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct TextFontOmissions {
-    pub(crate) no_primary_face: bool,
-    pub(crate) dropped_notdef: bool,
-}
-
-impl TextFontOmissions {
-    pub(crate) fn merge(&mut self, other: Self) {
-        self.no_primary_face |= other.no_primary_face;
-        self.dropped_notdef |= other.dropped_notdef;
-    }
-}
-
 // Use the same coordinates for shaping and outline extraction.
 fn apply_variations(
     face: &mut rustybuzz::ttf_parser::Face<'_>,

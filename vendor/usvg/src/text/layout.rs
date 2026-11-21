@@ -171,6 +171,17 @@ pub struct Span {
     pub line_through: Option<Path>,
 }
 
+impl Span {
+    pub(crate) fn has_visible_paint(&self) -> bool {
+        self.visible
+            && (crate::has_nontransparent_paint(self.fill.as_ref(), self.stroke.as_ref())
+                || [&self.underline, &self.overline, &self.line_through]
+                    .into_iter()
+                    .flatten()
+                    .any(|path| crate::has_nontransparent_paint(path.fill(), path.stroke())))
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GlyphCluster {
     byte_idx: ByteIndex,
@@ -242,7 +253,7 @@ pub(crate) fn layout_text(
                 {
                     fonts_cache.insert(span.font.clone(), Arc::new(font));
                 } else {
-                    primary_miss |= span.visible;
+                    primary_miss |= span.has_visible_paint();
                 }
             }
         }
@@ -255,7 +266,7 @@ pub(crate) fn layout_text(
             chunk
                 .spans
                 .iter()
-                .any(|span| span.visible && !fonts_cache.contains_key(&span.font))
+                .any(|span| span.has_visible_paint() && !fonts_cache.contains_key(&span.font))
         });
     }
 

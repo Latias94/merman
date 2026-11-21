@@ -31,7 +31,7 @@ pub struct State<'a> {
     pub(crate) parent_markers: Vec<SvgNode<'a, 'a>>,
     /// Stores the resolved fill and stroke of a use node
     /// or a path element (for markers)
-    pub(crate) context_element: Option<(Option<Fill>, Option<Stroke>)>,
+    pub(crate) context_element: Option<ContextPaint>,
     pub(crate) fe_image_link: bool,
     /// A viewBox of the parent SVG element.
     pub(crate) view_box: NonZeroRect,
@@ -40,6 +40,14 @@ pub struct State<'a> {
     /// Width and height can be set independently.
     pub(crate) use_size: (Option<f32>, Option<f32>),
     pub(crate) opt: &'a Options<'a>,
+}
+
+#[derive(Clone, Default)]
+pub(crate) struct ContextPaint {
+    pub(crate) fill: Option<Fill>,
+    pub(crate) stroke: Option<Stroke>,
+    pub(crate) fill_omissions: TextFontOmissions,
+    pub(crate) stroke_omissions: TextFontOmissions,
 }
 
 #[derive(Clone)]
@@ -793,7 +801,6 @@ pub(crate) fn convert_group(
         layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
         children: Vec::new(),
-        #[cfg(feature = "text")]
         text_font_omissions: Default::default(),
     };
     collect_children(cache, &mut g);
@@ -804,22 +811,45 @@ pub(crate) fn convert_group(
 
     // `mask` and `filter` cannot be set on `clipPath` children.
     // But `clip-path` can.
+    let clip_link = node.attribute::<SvgNode>(AId::ClipPath);
+    let mask_link = state
+        .parent_clip_path
+        .is_none()
+        .then(|| node.attribute::<SvgNode>(AId::Mask))
+        .flatten();
+    let missing_bbox_text = || visible_group_omissions(&g);
 
     let mut clip_path = None;
-    if let Some(link) = node.attribute::<SvgNode>(AId::ClipPath) {
-        clip_path = super::clippath::convert(link, state, object_bbox, cache);
+    if let Some(link) = clip_link {
+        let mut omissions = TextFontOmissions::default();
+        clip_path = super::clippath::convert(
+            link,
+            state,
+            object_bbox,
+            cache,
+            &missing_bbox_text,
+            &mut omissions,
+        );
         if clip_path.is_none() {
+            preserve_pruned_attachment(parent, &g, omissions);
             return None;
         }
     }
 
     let mut mask = None;
-    if state.parent_clip_path.is_none() {
-        if let Some(link) = node.attribute::<SvgNode>(AId::Mask) {
-            mask = super::mask::convert(link, state, object_bbox, cache);
-            if mask.is_none() {
-                return None;
-            }
+    if let Some(link) = mask_link {
+        let mut omissions = TextFontOmissions::default();
+        mask = super::mask::convert(
+            link,
+            state,
+            object_bbox,
+            cache,
+            &missing_bbox_text,
+            &mut omissions,
+        );
+        if mask.is_none() {
+            preserve_pruned_attachment(parent, &g, omissions);
+            return None;
         }
     }
 
@@ -864,7 +894,6 @@ pub(crate) fn convert_group(
 
     if !required {
         parent.children.append(&mut g.children);
-        #[cfg(feature = "text")]
         parent.text_font_omissions.merge(g.text_font_omissions);
         return None;
     }
@@ -877,6 +906,44 @@ pub(crate) fn convert_group(
     g.calculate_bounding_boxes();
 
     Some(g)
+}
+
+fn preserve_pruned_attachment(parent: &mut Group, consumer: &Group, omissions: TextFontOmissions) {
+    // A missing glyph can invalidate a resource and remove its consumer from the tree.
+    // Keep the evidence at the consumer's parent without retaining unpaintable geometry.
+    if omissions.any() && group_may_paint(consumer) {
+        parent
+            .text_font_omissions
+            .merge(consumer.text_font_omissions);
+        parent.text_font_omissions.merge(omissions);
+    }
+}
+
+fn visible_group_omissions(group: &Group) -> TextFontOmissions {
+    if group.opacity.get() == 0.0 {
+        return TextFontOmissions::default();
+    }
+    let mut omissions = group.text_font_omissions;
+    for node in &group.children {
+        if let Node::Group(child) = node {
+            omissions.merge(visible_group_omissions(child));
+        }
+    }
+    omissions
+}
+
+fn group_may_paint(group: &Group) -> bool {
+    group.opacity.get() != 0.0
+        && (group.text_font_omissions.any()
+            || !group.filters.is_empty()
+            || group.children.iter().any(|node| match node {
+                Node::Group(child) => group_may_paint(child),
+                Node::Path(path) => {
+                    path.is_visible() && has_nontransparent_paint(path.fill(), path.stroke())
+                }
+                Node::Image(image) => image.is_visible(),
+                Node::Text(text) => group_may_paint(text.flattened()),
+            }))
 }
 
 fn convert_path(
@@ -892,8 +959,11 @@ fn convert_path(
     }
 
     let has_bbox = tiny_skia_path.bounds().width() > 0.0 && tiny_skia_path.bounds().height() > 0.0;
-    let mut fill = super::style::resolve_fill(node, has_bbox, state, cache);
-    let mut stroke = super::style::resolve_stroke(node, has_bbox, state, cache);
+    let mut fill_omissions = TextFontOmissions::default();
+    let mut stroke_omissions = TextFontOmissions::default();
+    let mut fill = super::style::resolve_fill(node, has_bbox, state, cache, &mut fill_omissions);
+    let mut stroke =
+        super::style::resolve_stroke(node, has_bbox, state, cache, &mut stroke_omissions);
     let visibility: Visibility = node.find_attribute(AId::Visibility).unwrap_or_default();
     let mut visible = visibility == Visibility::Visible;
     let rendering_mode: ShapeRendering = node
@@ -969,7 +1039,12 @@ fn convert_path(
             s
         });
 
-        marker_state.context_element = Some((fill, stroke));
+        marker_state.context_element = Some(ContextPaint {
+            fill,
+            stroke,
+            fill_omissions,
+            stroke_omissions,
+        });
 
         marker::convert(
             node,
@@ -1004,6 +1079,11 @@ fn convert_path(
         Some(v) => v,
         None => return,
     };
+
+    if visibility == Visibility::Visible {
+        parent.text_font_omissions.merge(fill_omissions);
+        parent.text_font_omissions.merge(stroke_omissions);
+    }
 
     match (raw_paint_order.order, marker) {
         ([PaintOrderKind::Markers, _, _], Some(markers_node)) => {

@@ -107,7 +107,13 @@ pub(crate) fn convert(
     let rotate_list = resolve_rotate_list(text_node);
     let writing_mode = convert_writing_mode(text_node);
 
-    let chunks = collect_text_chunks(text_node, &pos_list, state, cache);
+    let chunks = collect_text_chunks(
+        text_node,
+        &pos_list,
+        state,
+        cache,
+        &mut parent.text_font_omissions,
+    );
 
     let rendering_mode: TextRendering = text_node
         .find_attribute(AId::TextRendering)
@@ -156,7 +162,8 @@ pub(crate) fn convert(
         // when the entire text node is dropped during conversion.
         parent.text_font_omissions.dropped_notdef = parent.text_font_omissions.dropped_notdef
             || text.layouted.iter().any(|span| {
-                span.visible && span.positioned_glyphs.iter().any(|glyph| glyph.id.0 == 0)
+                span.has_visible_paint()
+                    && span.positioned_glyphs.iter().any(|glyph| glyph.id.0 == 0)
             });
         return;
     };
@@ -181,6 +188,7 @@ fn collect_text_chunks(
     pos_list: &[CharacterPosition],
     state: &converter::State,
     cache: &mut converter::Cache,
+    omissions: &mut TextFontOmissions,
 ) -> Vec<TextChunk> {
     let mut iter_state = IterState {
         chars_count: 0,
@@ -190,7 +198,14 @@ fn collect_text_chunks(
         chunks: Vec::new(),
     };
 
-    collect_text_chunks_impl(text_node, pos_list, state, cache, &mut iter_state);
+    collect_text_chunks_impl(
+        text_node,
+        pos_list,
+        state,
+        cache,
+        &mut iter_state,
+        omissions,
+    );
 
     iter_state.chunks
 }
@@ -201,6 +216,7 @@ fn collect_text_chunks_impl(
     state: &converter::State,
     cache: &mut converter::Cache,
     iter_state: &mut IterState,
+    omissions: &mut TextFontOmissions,
 ) {
     for child in parent.children() {
         if child.is_element() {
@@ -227,7 +243,7 @@ fn collect_text_chunks_impl(
                 iter_state.split_chunk = true;
             }
 
-            collect_text_chunks_impl(child, pos_list, state, cache, iter_state);
+            collect_text_chunks_impl(child, pos_list, state, cache, iter_state, omissions);
 
             iter_state.text_flow = TextFlow::Linear;
 
@@ -300,18 +316,19 @@ fn collect_text_chunks_impl(
 
         let visibility: Visibility = parent.find_attribute(AId::Visibility).unwrap_or_default();
 
+        let mut paint_omissions = TextFontOmissions::default();
         let span = TextSpan {
             start: 0,
             end: 0,
-            fill: style::resolve_fill(parent, true, state, cache),
-            stroke: style::resolve_stroke(parent, true, state, cache),
+            fill: style::resolve_fill(parent, true, state, cache, &mut paint_omissions),
+            stroke: style::resolve_stroke(parent, true, state, cache, &mut paint_omissions),
             paint_order,
             font,
             font_size,
             small_caps: parent.find_attribute::<&str>(AId::FontVariant) == Some("small-caps"),
             apply_kerning,
             font_optical_sizing,
-            decoration: resolve_decoration(parent, state, cache),
+            decoration: resolve_decoration(parent, state, cache, &mut paint_omissions),
             visible: visibility == Visibility::Visible,
             dominant_baseline,
             alignment_baseline: parent
@@ -323,6 +340,9 @@ fn collect_text_chunks_impl(
             text_length,
             length_adjust: parent.find_attribute(AId::LengthAdjust).unwrap_or_default(),
         };
+        if span.visible {
+            omissions.merge(paint_omissions);
+        }
 
         let mut is_new_span = true;
         for c in child.text().chars() {
@@ -799,6 +819,7 @@ fn resolve_decoration(
     tspan: SvgNode,
     state: &converter::State,
     cache: &mut converter::Cache,
+    omissions: &mut TextFontOmissions,
 ) -> TextDecoration {
     // Checks if a decoration is present in a single node.
     fn find_decoration(node: SvgNode, value: &str) -> bool {
@@ -835,8 +856,10 @@ fn resolve_decoration(
         }
 
         Some(TextDecorationStyle {
-            fill: fill_node.and_then(|node| style::resolve_fill(node, true, state, cache)),
-            stroke: stroke_node.and_then(|node| style::resolve_stroke(node, true, state, cache)),
+            fill: fill_node
+                .and_then(|node| style::resolve_fill(node, true, state, cache, omissions)),
+            stroke: stroke_node
+                .and_then(|node| style::resolve_stroke(node, true, state, cache, omissions)),
         })
     };
 

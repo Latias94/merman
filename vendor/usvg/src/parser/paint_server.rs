@@ -21,6 +21,8 @@ pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
     cache: &mut converter::Cache,
+    has_bbox: bool,
+    omissions: &mut TextFontOmissions,
 ) -> Option<ServerOrColor> {
     // Check for existing.
     if let Some(paint) = cache.paint.get(node.element_id()) {
@@ -31,7 +33,7 @@ pub(crate) fn convert(
     let paint = match node.tag_name().unwrap() {
         EId::LinearGradient => convert_linear(node, state),
         EId::RadialGradient => convert_radial(node, state),
-        EId::Pattern => convert_pattern(node, state, cache),
+        EId::Pattern => convert_pattern(node, state, cache, has_bbox, omissions),
         _ => unreachable!(),
     };
 
@@ -151,6 +153,8 @@ fn convert_pattern(
     node: SvgNode,
     state: &converter::State,
     cache: &mut converter::Cache,
+    has_bbox: bool,
+    omissions: &mut TextFontOmissions,
 ) -> Option<ServerOrColor> {
     let node_with_children = find_pattern_with_children(node)?;
 
@@ -205,6 +209,7 @@ fn convert_pattern(
 
         converter::convert_children(node_with_children, state, cache, &mut g);
         if !g.has_children() {
+            omissions.merge(g.text_font_omissions);
             return None;
         }
 
@@ -213,6 +218,11 @@ fn convert_pattern(
     } else {
         converter::convert_children(node_with_children, state, cache, &mut patt.root);
         if !patt.root.has_children() {
+            if has_bbox
+                || (units == Units::UserSpaceOnUse && content_units == Units::UserSpaceOnUse)
+            {
+                omissions.merge(patt.root.text_font_omissions);
+            }
             return None;
         }
     }

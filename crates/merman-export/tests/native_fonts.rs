@@ -872,8 +872,44 @@ fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
 }
 
 #[cfg(feature = "png")]
+fn records_font_omissions() -> bool {
+    #[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
+    trait RegistryGroup {
+        fn text_font_omissions(&self) -> Option<(bool, bool)> {
+            None
+        }
+    }
+    impl RegistryGroup for usvg::Group {}
+    usvg::Tree::from_str(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#,
+        &usvg::Options::default(),
+    )
+    .unwrap()
+    .root()
+    .text_font_omissions()
+    .is_some()
+}
+
+#[cfg(feature = "png")]
+fn assert_strict_export<T>(result: merman_export::Result<T>, missing: bool, case: &str) {
+    if missing {
+        assert!(
+            matches!(
+                result,
+                Err(merman_export::ExportError::NativeFont(
+                    NativeFontError::MissingGlyphCoverage
+                ))
+            ),
+            "expected missing glyph coverage for {case}"
+        );
+    } else if let Err(error) = result {
+        panic!("strict export failed for {case}: {error}");
+    }
+}
+
+#[cfg(feature = "png")]
 #[test]
-fn strict_exports_accept_final_mixed_font_spans() {
+fn strict_exports_check_final_mixed_font_spans() {
     use merman_export::{ExportError, RasterOptions, svg_to_png_with_report};
 
     let context = NativeFontOptions::default()
@@ -894,17 +930,26 @@ fn strict_exports_accept_final_mixed_font_spans() {
     };
 
     let covered = seal("");
-    let (png, report) = svg_to_png_with_report(&covered, &raster).unwrap();
+    let permissive = RasterOptions::default().with_font_context(context.clone());
+    let records_omissions = records_font_omissions();
+    let (png, report) = svg_to_png_with_report(&covered, &permissive).unwrap();
     assert!(!report.fonts().unresolved_font_request());
-    assert!(!report.fonts().unresolved_glyph_fallback());
+    assert_eq!(
+        report.fonts().unresolved_glyph_fallback(),
+        !records_omissions
+    );
     assert_eq!(report.fonts().notdef_glyph_count(), 0);
     let (_, _, pixels) = png_pixels(png);
     let pixels = pixels.as_chunks::<4>().0;
     assert!(pixels.iter().any(|p| p[3] > 0 && p[0] > p[2]));
     assert!(pixels.iter().any(|p| p[3] > 0 && p[2] > p[0]));
+    assert_strict_export(
+        svg_to_png_with_report(&covered, &raster),
+        !records_omissions,
+        "mixed-span PNG",
+    );
 
     let missing = seal("🚀");
-    let permissive = RasterOptions::default().with_font_context(context.clone());
     let (_, report) = svg_to_png_with_report(&missing, &permissive).unwrap();
     assert!(report.fonts().unresolved_glyph_fallback());
     assert_eq!(report.fonts().notdef_glyph_count(), 1);
@@ -917,9 +962,17 @@ fn strict_exports_accept_final_mixed_font_spans() {
 
     #[cfg(feature = "jpeg")]
     {
-        let (jpeg, report) = merman_export::svg_to_jpeg_with_report(&covered, &raster).unwrap();
+        let (jpeg, report) = merman_export::svg_to_jpeg_with_report(&covered, &permissive).unwrap();
         assert!(jpeg.starts_with(b"\xff\xd8\xff"));
-        assert!(!report.fonts().unresolved_glyph_fallback());
+        assert_eq!(
+            report.fonts().unresolved_glyph_fallback(),
+            !records_omissions
+        );
+        assert_strict_export(
+            merman_export::svg_to_jpeg_with_report(&covered, &raster),
+            !records_omissions,
+            "mixed-span JPEG",
+        );
         assert!(matches!(
             merman_export::svg_to_jpeg_with_report(&missing, &raster),
             Err(ExportError::NativeFont(
@@ -929,17 +982,169 @@ fn strict_exports_accept_final_mixed_font_spans() {
     }
     #[cfg(feature = "pdf")]
     {
+        let permissive = merman_export::PdfOptions::default().with_font_context(context.clone());
         let pdf = merman_export::PdfOptions::default()
             .with_font_context(context.with_strict_glyph_coverage(true));
-        let (bytes, report) = merman_export::svg_to_pdf_with_report(&covered, &pdf).unwrap();
+        let (bytes, report) = merman_export::svg_to_pdf_with_report(&covered, &permissive).unwrap();
         assert!(bytes.starts_with(b"%PDF-"));
-        assert!(!report.fonts().unresolved_glyph_fallback());
+        assert_eq!(
+            report.fonts().unresolved_glyph_fallback(),
+            !records_omissions
+        );
+        assert_strict_export(
+            merman_export::svg_to_pdf_with_report(&covered, &pdf),
+            !records_omissions,
+            "mixed-span PDF",
+        );
         assert!(matches!(
             merman_export::svg_to_pdf_with_report(&missing, &pdf),
             Err(ExportError::NativeFont(
                 NativeFontError::MissingGlyphCoverage
             ))
         ));
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn strict_exports_check_visible_text_in_svg_resources() {
+    let font = NativeFontOptions::default()
+        .with_font_file(font("NotoSansSC-subset.ttf"))
+        .load(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    let raster = merman_export::RasterOptions::default().with_font_context(font.clone());
+    #[cfg(feature = "pdf")]
+    let pdf = merman_export::PdfOptions::default().with_font_context(font);
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let records_omissions = records_font_omissions();
+    let check = |body: &str, missing: bool, case: &str| {
+        let text = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60">{body}</svg>"#
+        );
+        let svg = merman_render::svg::finalize_resvg_svg(&text, &session).unwrap();
+        assert_strict_export(merman_export::svg_to_png(&svg, &raster), missing, case);
+        #[cfg(feature = "jpeg")]
+        assert_strict_export(merman_export::svg_to_jpeg(&svg, &raster), missing, case);
+        #[cfg(feature = "pdf")]
+        assert_strict_export(
+            merman_export::svg_to_pdf_with_options(&svg, &pdf),
+            missing,
+            case,
+        );
+    };
+    let text =
+        r#"<text x="9" y="36" font-size="28" font-family="Noto Sans SC" fill="white">A</text>"#;
+    let box_path = r#"<rect width="120" height="60" fill="white"/>"#;
+    for (tag, attribute, units) in [
+        ("clipPath", "clip-path", ""),
+        (
+            "mask",
+            "mask",
+            r#"maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="60""#,
+        ),
+    ] {
+        let definitions = format!(r##"<defs><{tag} id="base" {units}>{text}</{tag}></defs>"##);
+        let consumer = format!(r##"<g {attribute}="url(#base)">{box_path}</g>"##);
+        check(&format!("{definitions}{consumer}"), true, tag);
+        // An invalid empty linked resource used to drop the complete chain and its evidence.
+        for (base_extra, case) in [("", "pruned link"), (box_path, "retained link")] {
+            let chain = format!(
+                r##"<defs><{tag} id="base" {units}>{base_extra}{text}</{tag}>
+                    <{tag} id="middle" {units} {attribute}="url(#base)">{box_path}</{tag}>
+                    <{tag} id="outer" {units} {attribute}="url(#middle)">{box_path}</{tag}></defs>
+                    <g {attribute}="url(#outer)">{box_path}</g>"##
+            );
+            check(&chain, true, case);
+            check(
+                &chain.replace(">A</text>", ">中</text>"),
+                false,
+                "covered link",
+            );
+        }
+        check(
+            &format!(r##"{definitions}<g {attribute}="url(#base)" opacity="0">{box_path}</g>"##),
+            !records_omissions,
+            "transparent consumer",
+        );
+        for resource_geometry in ["", box_path] {
+            for props in [r#"fill-opacity="0""#, r#"visibility="hidden""#] {
+                check(
+                    &format!(
+                        r##"<defs><{tag} id="base" {units}>{resource_geometry}{text}</{tag}></defs>
+                            <g {attribute}="url(#base)"><rect width="120" height="60" {props}/></g>"##
+                    ),
+                    !records_omissions,
+                    "consumer with invisible contents",
+                );
+            }
+        }
+        check(
+            &format!("{definitions}{box_path}"),
+            false,
+            "unused resource",
+        );
+    }
+
+    for (definition, attribute) in [
+        (
+            r#"<clipPath id="bounds" clipPathUnits="objectBoundingBox"><rect width="1" height="1"/></clipPath>"#,
+            "clip-path",
+        ),
+        (
+            r#"<mask id="bounds" maskUnits="userSpaceOnUse" maskContentUnits="objectBoundingBox" x="0" y="0" width="120" height="60"><rect width="1" height="1" fill="white"/></mask>"#,
+            "mask",
+        ),
+    ] {
+        let body = format!(
+            r##"<defs>{definition}</defs><g {attribute}="url(#bounds)"><g>{text}</g></g>"##
+        );
+        check(&body, true, "missing glyph defines the object's bounds");
+        check(
+            &body.replace(">A</text>", ">中</text>"),
+            false,
+            "covered object bounds",
+        );
+    }
+
+    let pattern = format!(
+        r#"<defs><pattern id="tiles" patternUnits="userSpaceOnUse" width="120" height="60">{text}</pattern></defs>"#
+    );
+    for (paint, missing) in [
+        (r#"fill="url(#tiles)""#, true),
+        (r#"fill="url(#tiles) red""#, true),
+        (r#"fill="none" stroke="url(#tiles)""#, true),
+        (r#"fill="url(#tiles)" fill-opacity="0""#, !records_omissions),
+        (
+            r#"fill="url(#tiles)" visibility="hidden""#,
+            !records_omissions,
+        ),
+    ] {
+        check(
+            &format!(r#"{pattern}<rect width="120" height="60" {paint}/>"#),
+            missing,
+            paint,
+        );
+    }
+    check(
+        &format!(
+            r#"{}<line x2="100" y1="20" y2="20" fill="none" stroke="url(#tiles)"/>"#,
+            pattern.replace(
+                "patternUnits=",
+                "patternContentUnits=\"objectBoundingBox\" patternUnits="
+            )
+        ),
+        !records_omissions,
+        "pattern content coordinates require nonzero object bounds",
+    );
+    for (paint, missing) in [
+        (r#"fill="none""#, !records_omissions),
+        (r#"fill="white" fill-opacity="0""#, !records_omissions),
+        (r#"fill="none" stroke="white""#, true),
+    ] {
+        check(&text.replace(r#"fill="white""#, paint), missing, paint);
     }
 }
 

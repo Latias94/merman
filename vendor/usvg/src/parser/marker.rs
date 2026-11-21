@@ -206,6 +206,8 @@ fn resolve(
 
         if g.has_children() {
             parent.children.push(Node::Group(Box::new(g)));
+        } else {
+            parent.text_font_omissions.merge(g.text_font_omissions);
         }
     };
 

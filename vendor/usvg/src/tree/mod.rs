@@ -1016,6 +1016,23 @@ impl Node {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub(crate) struct TextFontOmissions {
+    pub(crate) no_primary_face: bool,
+    pub(crate) dropped_notdef: bool,
+}
+
+impl TextFontOmissions {
+    pub(crate) fn any(self) -> bool {
+        self.no_primary_face || self.dropped_notdef
+    }
+
+    pub(crate) fn merge(&mut self, other: Self) {
+        self.no_primary_face |= other.no_primary_face;
+        self.dropped_notdef |= other.dropped_notdef;
+    }
+}
+
 /// A group container.
 ///
 /// The preprocessor will remove all groups that don't impact rendering.
@@ -1042,8 +1059,7 @@ pub struct Group {
     pub(crate) layer_bounding_box: NonZeroRect,
     pub(crate) abs_layer_bounding_box: NonZeroRect,
     pub(crate) children: Vec<Node>,
-    #[cfg(feature = "text")]
-    pub(crate) text_font_omissions: crate::text::TextFontOmissions,
+    pub(crate) text_font_omissions: TextFontOmissions,
 }
 
 impl Group {
@@ -1067,7 +1083,6 @@ impl Group {
             layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
             abs_layer_bounding_box: NonZeroRect::from_xywh(0.0, 0.0, 1.0, 1.0).unwrap(),
             children: Vec::new(),
-            #[cfg(feature = "text")]
             text_font_omissions: Default::default(),
         }
     }

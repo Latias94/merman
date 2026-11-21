@@ -351,6 +351,20 @@ pub struct TextSpan {
 }
 
 impl TextSpan {
+    #[cfg(feature = "text")]
+    pub(crate) fn has_visible_paint(&self) -> bool {
+        self.visible
+            && (has_nontransparent_paint(self.fill(), self.stroke())
+                || [
+                    self.decoration.underline(),
+                    self.decoration.overline(),
+                    self.decoration.line_through(),
+                ]
+                .into_iter()
+                .flatten()
+                .any(|style| has_nontransparent_paint(style.fill(), style.stroke())))
+    }
+
     /// A span start in bytes.
     ///
     /// Offset is relative to the parent text chunk and not the parent text element.
@@ -459,6 +473,11 @@ impl TextSpan {
     pub fn length_adjust(&self) -> LengthAdjust {
         self.length_adjust
     }
+}
+
+pub(crate) fn has_nontransparent_paint(fill: Option<&Fill>, stroke: Option<&Stroke>) -> bool {
+    fill.is_some_and(|fill| fill.opacity().get() != 0.0)
+        || stroke.is_some_and(|stroke| stroke.opacity().get() != 0.0)
 }
 
 /// A text chunk anchor property.

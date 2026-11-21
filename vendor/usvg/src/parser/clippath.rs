@@ -6,13 +6,15 @@ use std::sync::Arc;
 
 use super::converter;
 use super::svgtree::{AId, EId, SvgNode};
-use crate::{ClipPath, Group, NonEmptyString, NonZeroRect, Transform, Units};
+use crate::{ClipPath, Group, NonEmptyString, NonZeroRect, TextFontOmissions, Transform, Units};
 
 pub(crate) fn convert(
     node: SvgNode,
     state: &converter::State,
     object_bbox: Option<NonZeroRect>,
     cache: &mut converter::Cache,
+    missing_bbox_text: &dyn Fn() -> TextFontOmissions,
+    omissions: &mut TextFontOmissions,
 ) -> Option<Arc<ClipPath>> {
     // A `clip-path` attribute must reference a `clipPath` element.
     if node.tag_name() != Some(EId::ClipPath) {
@@ -42,6 +44,7 @@ pub(crate) fn convert(
         let object_bbox = match object_bbox {
             Some(v) => v,
             None => {
+                omissions.merge(missing_bbox_text());
                 log::warn!("Clipping of zero-sized shapes is not allowed.");
                 return None;
             }
@@ -54,7 +57,14 @@ pub(crate) fn convert(
     // Resolve linked clip path.
     let mut clip_path = None;
     if let Some(link) = node.attribute::<SvgNode>(AId::ClipPath) {
-        clip_path = convert(link, state, object_bbox, cache);
+        clip_path = convert(
+            link,
+            state,
+            object_bbox,
+            cache,
+            missing_bbox_text,
+            omissions,
+        );
 
         // Linked `clipPath` must be valid.
         if clip_path.is_none() {
@@ -87,6 +97,7 @@ pub(crate) fn convert(
         Some(clip)
     } else {
         // A clip path without children is invalid.
+        omissions.merge(clip.root.text_font_omissions);
         None
     }
 }

@@ -7,7 +7,7 @@ use super::svgtree::{AId, FromValue, SvgNode};
 use crate::tree::ContextElement;
 use crate::{
     ApproxEqUlps, Color, Fill, FillRule, LineCap, LineJoin, Opacity, Paint, Stroke,
-    StrokeMiterlimit, Units,
+    StrokeMiterlimit, TextFontOmissions, Units,
 };
 
 impl<'a, 'input: 'a> FromValue<'a, 'input> for LineCap {
@@ -48,6 +48,7 @@ pub(crate) fn resolve_fill(
     has_bbox: bool,
     state: &converter::State,
     cache: &mut converter::Cache,
+    omissions: &mut TextFontOmissions,
 ) -> Option<Fill> {
     if state.parent_clip_path.is_some() {
         // A `clipPath` child can be filled only with a black color.
@@ -59,30 +60,36 @@ pub(crate) fn resolve_fill(
         });
     }
 
-    let mut sub_opacity = Opacity::ONE;
-    let (paint, context_element) =
-        if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Fill)) {
-            let value: &str = n.attribute(AId::Fill)?;
-            convert_paint(
-                node,
-                value,
-                AId::Fill,
-                has_bbox,
-                state,
-                &mut sub_opacity,
-                cache,
-            )?
-        } else {
-            (Paint::Color(Color::black()), None)
-        };
+    let mut resolution = PaintResolution::new();
+    let paint = if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Fill)) {
+        let value: &str = n.attribute(AId::Fill)?;
+        convert_paint(
+            node,
+            value,
+            AId::Fill,
+            has_bbox,
+            state,
+            &mut resolution,
+            cache,
+        )
+    } else {
+        Some((Paint::Color(Color::black()), None))
+    };
 
+    if paint.is_none() && !resolution.omissions.any() {
+        return None;
+    }
     let fill_opacity = node
         .find_attribute::<Opacity>(AId::FillOpacity)
         .unwrap_or(Opacity::ONE);
+    if fill_opacity.get() != 0.0 {
+        omissions.merge(resolution.omissions);
+    }
+    let (paint, context_element) = paint?;
 
     Some(Fill {
         paint,
-        opacity: sub_opacity * fill_opacity,
+        opacity: resolution.opacity * fill_opacity,
         rule: node.find_attribute(AId::FillRule).unwrap_or_default(),
         context_element,
     })
@@ -93,47 +100,53 @@ pub(crate) fn resolve_stroke(
     has_bbox: bool,
     state: &converter::State,
     cache: &mut converter::Cache,
+    omissions: &mut TextFontOmissions,
 ) -> Option<Stroke> {
     if state.parent_clip_path.is_some() {
         // A `clipPath` child cannot be stroked.
         return None;
     }
 
-    let mut sub_opacity = Opacity::ONE;
-    let (paint, context_element) =
-        if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Stroke)) {
-            let value: &str = n.attribute(AId::Stroke)?;
+    let mut resolution = PaintResolution::new();
+    let paint = if let Some(n) = node.ancestors().find(|n| n.has_attribute(AId::Stroke)) {
+        let value: &str = n.attribute(AId::Stroke)?;
 
-            convert_paint(
-                node,
-                value,
-                AId::Stroke,
-                has_bbox,
-                state,
-                &mut sub_opacity,
-                cache,
-            )?
-        } else {
-            return None;
-        };
+        convert_paint(
+            node,
+            value,
+            AId::Stroke,
+            has_bbox,
+            state,
+            &mut resolution,
+            cache,
+        )
+    } else {
+        return None;
+    };
 
+    if paint.is_none() && !resolution.omissions.any() {
+        return None;
+    }
     let width = node.resolve_valid_length(AId::StrokeWidth, state, 1.0)?;
+    let stroke_opacity = node
+        .find_attribute::<Opacity>(AId::StrokeOpacity)
+        .unwrap_or(Opacity::ONE);
+    if stroke_opacity.get() != 0.0 {
+        omissions.merge(resolution.omissions);
+    }
+    let (paint, context_element) = paint?;
 
     // Must be bigger than 1.
     let miterlimit = node.find_attribute(AId::StrokeMiterlimit).unwrap_or(4.0);
     let miterlimit = if miterlimit < 1.0 { 1.0 } else { miterlimit };
     let miterlimit = StrokeMiterlimit::new(miterlimit);
 
-    let stroke_opacity = node
-        .find_attribute::<Opacity>(AId::StrokeOpacity)
-        .unwrap_or(Opacity::ONE);
-
     let stroke = Stroke {
         paint,
         dasharray: conv_dasharray(node, state),
         dashoffset: node.resolve_length(AId::StrokeDashoffset, state, 0.0),
         miterlimit,
-        opacity: sub_opacity * stroke_opacity,
+        opacity: resolution.opacity * stroke_opacity,
         width,
         linecap: node.find_attribute(AId::StrokeLinecap).unwrap_or_default(),
         linejoin: node.find_attribute(AId::StrokeLinejoin).unwrap_or_default(),
@@ -143,13 +156,27 @@ pub(crate) fn resolve_stroke(
     Some(stroke)
 }
 
+struct PaintResolution {
+    opacity: Opacity,
+    omissions: TextFontOmissions,
+}
+
+impl PaintResolution {
+    fn new() -> Self {
+        Self {
+            opacity: Opacity::ONE,
+            omissions: TextFontOmissions::default(),
+        }
+    }
+}
+
 fn convert_paint(
     node: SvgNode,
     value: &str,
     aid: AId,
     has_bbox: bool,
     state: &converter::State,
-    opacity: &mut Opacity,
+    resolution: &mut PaintResolution,
     cache: &mut converter::Cache,
 ) -> Option<(Paint, Option<ContextElement>)> {
     let paint = match svgtypes::Paint::from_str(value) {
@@ -176,34 +203,40 @@ fn convert_paint(
     match paint {
         svgtypes::Paint::None => None,
         svgtypes::Paint::Inherit => None, // already resolved by svgtree
-        svgtypes::Paint::ContextFill => state
-            .context_element
-            .clone()
-            .and_then(|(f, _)| f)
-            .map(|f| (f.paint, f.context_element)),
-        svgtypes::Paint::ContextStroke => state
-            .context_element
-            .clone()
-            .and_then(|(_, s)| s)
-            .map(|s| (s.paint, s.context_element)),
+        svgtypes::Paint::ContextFill => {
+            let context = state.context_element.as_ref()?;
+            resolution.omissions.merge(context.fill_omissions);
+            context.fill.clone().map(|f| (f.paint, f.context_element))
+        }
+        svgtypes::Paint::ContextStroke => {
+            let context = state.context_element.as_ref()?;
+            resolution.omissions.merge(context.stroke_omissions);
+            context.stroke.clone().map(|s| (s.paint, s.context_element))
+        }
         svgtypes::Paint::CurrentColor => {
             let svg_color: svgtypes::Color = node
                 .find_attribute(AId::Color)
                 .unwrap_or_else(svgtypes::Color::black);
             let (color, alpha) = svg_color.split_alpha();
-            *opacity = alpha;
+            resolution.opacity = alpha;
             Some((Paint::Color(color), None))
         }
         svgtypes::Paint::Color(svg_color) => {
             let (color, alpha) = svg_color.split_alpha();
-            *opacity = alpha;
+            resolution.opacity = alpha;
             Some((Paint::Color(color), None))
         }
         svgtypes::Paint::FuncIRI(func_iri, fallback) => {
             if let Some(link) = node.document().element_by_id(func_iri) {
                 let tag_name = link.tag_name().unwrap();
                 if tag_name.is_paint_server() {
-                    match paint_server::convert(link, state, cache) {
+                    match paint_server::convert(
+                        link,
+                        state,
+                        cache,
+                        has_bbox,
+                        &mut resolution.omissions,
+                    ) {
                         Some(paint_server::ServerOrColor::Server(paint)) => {
                             // We can use a paint server node with ObjectBoundingBox units
                             // for painting only when the shape itself has a bbox.
@@ -211,23 +244,25 @@ fn convert_paint(
                             // See SVG spec 7.11 for details.
 
                             if !has_bbox && paint.units() == Units::ObjectBoundingBox {
-                                from_fallback(node, fallback, opacity).map(|p| (p, None))
+                                from_fallback(node, fallback, &mut resolution.opacity)
+                                    .map(|p| (p, None))
                             } else {
                                 Some((paint, None))
                             }
                         }
                         Some(paint_server::ServerOrColor::Color { color, opacity: so }) => {
-                            *opacity = so;
+                            resolution.opacity = so;
                             Some((Paint::Color(color), None))
                         }
-                        None => from_fallback(node, fallback, opacity).map(|p| (p, None)),
+                        None => from_fallback(node, fallback, &mut resolution.opacity)
+                            .map(|p| (p, None)),
                     }
                 } else {
                     log::warn!("'{}' cannot be used to {} a shape.", tag_name, aid);
                     None
                 }
             } else {
-                from_fallback(node, fallback, opacity).map(|p| (p, None))
+                from_fallback(node, fallback, &mut resolution.opacity).map(|p| (p, None))
             }
         }
     }

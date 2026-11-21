@@ -29,16 +29,18 @@ pub(crate) fn convert(
     }
 
     let mut use_state = state.clone();
-    use_state.context_element = Some((
-        style::resolve_fill(node, true, state, cache).map(|mut f| {
+    let mut paint = converter::ContextPaint::default();
+    paint.fill =
+        style::resolve_fill(node, true, state, cache, &mut paint.fill_omissions).map(|mut f| {
             f.context_element = Some(ContextElement::UseNode);
             f
-        }),
-        style::resolve_stroke(node, true, state, cache).map(|mut s| {
+        });
+    paint.stroke = style::resolve_stroke(node, true, state, cache, &mut paint.stroke_omissions)
+        .map(|mut s| {
             s.context_element = Some(ContextElement::UseNode);
             s
-        }),
-    ));
+        });
+    use_state.context_element = Some(paint);
 
     // We require an original transformation to setup 'clipPath'.
     let mut orig_ts = node.resolve_transform(AId::Transform, state);
@@ -102,6 +104,7 @@ pub(crate) fn convert(
             }
 
             if g.children.is_empty() {
+                parent.text_font_omissions.merge(g.text_font_omissions);
                 return;
             }
 
