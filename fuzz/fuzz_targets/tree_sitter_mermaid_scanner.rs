@@ -7,7 +7,7 @@ use libfuzzer_sys::fuzz_target;
 const MAX_INPUT_BYTES: usize = 1031;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
-const TOKEN_COUNT: usize = 23;
+include!(concat!(env!("OUT_DIR"), "/scanner_tokens.rs"));
 const DIRECTIVE_BODY: usize = 21;
 const REGRESSION_SEED_PREFIX: &[u8] = b"seed\n";
 const DIRECTIVE_SEED_PREFIX: &[u8] = b"directive\n";
@@ -170,7 +170,7 @@ impl Scanner {
 
     fn scan(&mut self, row: &[u8], valid_symbols: &[bool; TOKEN_COUNT]) -> ScanResult {
         let mut lexer = MockLexer::new(row);
-        // SAFETY: The scanner, lexer, and symbol mask remain valid for the call.
+        // SAFETY: The scanner and lexer remain live. The mask has the generated parser's width.
         let matched = unsafe {
             tree_sitter_mermaid_external_scanner_scan(
                 self.0,
