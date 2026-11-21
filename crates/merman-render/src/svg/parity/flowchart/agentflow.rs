@@ -122,14 +122,16 @@ pub(super) fn write_flowchart_container_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
     binding: &crate::flowchart::FlowchartCompatibilityBinding,
-    slots: impl IntoIterator<Item = usize>,
+    slots: impl IntoIterator<Item = usize, IntoIter: ExactSizeIterator>,
 ) -> Result<()> {
     let look = &binding.palette_look;
     let backgrounds =
         (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
+    let slots = slots.into_iter();
+    let remaining_slots = slots.len().saturating_sub(1);
     let mut prefix = String::new();
     let mut fragments = String::new();
-    for slot in slots {
+    for (index, slot) in slots.enumerate() {
         out.checkpoint()?;
         let border = container_palette_value(&binding.palette[slot]);
         let background =
@@ -173,7 +175,8 @@ pub(super) fn write_flowchart_container_css(
         let group_path = collapsed(&mut fragments, ".collapsed-group path");
         let indicator = collapsed(&mut fragments, ".collapsed-indicator");
         let separator = collapsed(&mut fragments, ".collapsed-separator");
-        let _ = write!(
+        let selector_bytes = fragments.len() - fill.len();
+        let written = write!(
             out,
             "{},{}{{stroke:{border};{fill}}}{}{{fill:{border};}}{}{{stroke:{border};}}",
             &fragments[group],
@@ -182,6 +185,15 @@ pub(super) fn write_flowchart_container_css(
             &fragments[separator],
             fill = &fragments[fill],
         );
+        if index == 0 && remaining_slots != 0 && written.is_ok() {
+            // Four selectors use the prefix directly. The fragments contain the other selectors
+            // after the fill declaration. Callers visit slots in ascending order.
+            let per_slot = prefix
+                .len()
+                .saturating_mul(4)
+                .saturating_add(selector_bytes);
+            out.hint_additional_capacity(per_slot.saturating_mul(remaining_slots));
+        }
     }
     out.checkpoint()
 }
