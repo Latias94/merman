@@ -115,7 +115,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
 ) -> Result<root_svg::RootedSvg> {
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
-    let flowchart_layout = adapt_swimlane_layout(model, layout);
+    let flowchart_layout = adapt_swimlane_layout(layout);
     super::svg_emit::render_flowchart_svg_model(
         super::svg_emit::FlowchartSvgModelRequest {
             layout: &flowchart_layout,
@@ -147,7 +147,7 @@ pub(in crate::svg::parity) fn swimlane_edge_geometry(
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
-    let flowchart_layout = adapt_swimlane_layout(model, layout);
+    let flowchart_layout = adapt_swimlane_layout(layout);
     super::paint::edge_geometry(
         super::svg_emit::FlowchartSvgModelRequest {
             layout: &flowchart_layout,
@@ -172,10 +172,7 @@ pub(in crate::svg::parity) fn swimlane_edge_geometry(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-fn adapt_swimlane_layout(
-    model: &crate::flowchart::FlowchartModel,
-    layout: &SwimlaneLayout,
-) -> FlowchartLayout {
+fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
     let label_nodes: FxHashMap<&str, &crate::model::SwimlaneNodeLayout> = layout
         .nodes
         .iter()
@@ -255,24 +252,14 @@ fn adapt_swimlane_layout(
         })
         .collect();
 
-    let mut top_level_order: Vec<String> = model.nodes.iter().map(|node| node.id.clone()).collect();
-    top_level_order.extend(
-        layout
-            .nodes
-            .iter()
-            .filter(|node| node.is_edge_label)
-            .map(|node| node.id.clone()),
-    );
-    let dom_node_order_by_root =
-        std::collections::HashMap::from([(String::new(), top_level_order)]);
-
     FlowchartLayout {
         nodes,
         edges,
         edge_owners: layout.edge_owners.clone(),
         clusters,
         bounds: layout.bounds.clone(),
-        dom_node_order_by_root,
+        // Swimlane supplies its node schedule through the prepared node inventory.
+        dom_node_order_by_root: Default::default(),
         uses_elk_adapter_dom: false,
     }
 }

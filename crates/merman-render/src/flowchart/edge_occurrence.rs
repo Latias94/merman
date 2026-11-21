@@ -60,6 +60,7 @@ pub(crate) struct FlowchartEdgeTransportPlan<'a> {
 }
 
 impl<'a> FlowchartEdgeTransportPlan<'a> {
+    #[cfg(test)]
     pub(crate) fn for_semantic_edges(edges: &'a [FlowEdge]) -> Self {
         Self::for_keyed_edges(
             edges

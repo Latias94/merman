@@ -84,6 +84,67 @@ fn long_edge_placeholders_preserve_authored_nodes_and_routes() {
 }
 
 #[test]
+fn collapsed_groups_keep_parallel_boundary_routes_and_their_authored_labels() {
+    let source = "swimlane-beta TB
+subgraph G[Team]
+A --> B
+end
+G@{ view: collapsed }
+B next@-->|Ship| X
+A retry@-->|Retry| X";
+    let (svg, layout) = render_swimlane_with_layout(source, "collapsed");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(
+        layout
+            .nodes
+            .iter()
+            .filter(|node| !node.is_edge_label)
+            .map(|node| (node.id.as_str(), node.shape.as_str()))
+            .collect::<Vec<_>>(),
+        [("G", "collapsedGroup"), ("X", "squareRect")]
+    );
+    assert_eq!(layout.edges.len(), 2);
+    assert!(layout.lanes.iter().all(|lane| lane.id != "G"));
+    let collapsed = semantic_element(&document, "G", "node");
+    assert!(has_class(collapsed, "node"));
+    assert_eq!(text_content(collapsed), "Team");
+    assert!(
+        collapsed
+            .children()
+            .any(|node| has_class(node, "collapsed-group"))
+    );
+    for (edge, (id, label)) in layout
+        .edges
+        .iter()
+        .zip([("next", "Ship"), ("retry", "Retry")])
+    {
+        assert_eq!(
+            (edge.id.as_str(), edge.from.as_str(), edge.to.as_str()),
+            (id, "G", "X")
+        );
+        assert!(edge.points.len() >= 2);
+        let label_node = layout
+            .nodes
+            .iter()
+            .find(|node| {
+                node.is_edge_label && Some(node.id.as_str()) == edge.label_node_id.as_deref()
+            })
+            .expect("edge owns its measured label node");
+        assert_eq!(label_node.label, label);
+        assert!(
+            !semantic_element(&document, id, "edge")
+                .attribute("d")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            text_content(semantic_element(&document, id, "edge-label")),
+            label
+        );
+    }
+}
+
+#[test]
 fn mermaid_12_3_shared_members_keep_empty_lane_shells_titles_and_edge_turns() {
     let source =
         include_str!("../../../fixtures/swimlane/local_mermaid_12_3_shared_members_tb.mmd");

@@ -21,7 +21,9 @@ mod working;
 
 use crate::Result;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use crate::flowchart::FlowchartConfigView;
+use crate::flowchart::{
+    FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeTransportPlan, project_flowchart_edge,
+};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::math::MathRenderer;
 use crate::model::{
@@ -95,10 +97,24 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         source_edges,
     ))?;
     work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
+    let visible_edges = model
+        .edges
+        .iter()
+        .enumerate()
+        .filter_map(|(index, edge)| {
+            project_flowchart_edge(edge, render_label_sources)
+                .map(|edge| (FlowchartEdgeKey::new(index), edge))
+        })
+        .collect::<Vec<_>>();
+    let transport_plan = FlowchartEdgeTransportPlan::for_keyed_edges(
+        visible_edges
+            .iter()
+            .map(|(key, edge)| (*key, edge.semantic)),
+    );
     let config = config::SwimlaneConfig::from_config(effective_config);
     let mut working = prepare::prepare(
-        model,
-        render_label_sources,
+        &crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources),
+        (&visible_edges, &transport_plan),
         effective_config,
         measurer,
         math_renderer,
@@ -127,64 +143,47 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         .filter(|curve| !curve.is_empty())
         .or(config_curve.as_deref())
         .unwrap_or("basis");
-    let curve_by_owner = model
-        .edges
-        .iter()
-        .map(|edge| {
-            edge.interpolate
-                .as_deref()
-                .filter(|curve| !curve.is_empty())
-                .unwrap_or(default_curve)
-        })
-        .collect::<Vec<_>>();
-
-    if working.original_edges.len() != model.edges.len() {
+    if working.original_edges.len() != visible_edges.len() {
         return Err(crate::Error::InvalidModel {
             message: format!(
-                "Swimlane edge-owner count {} does not match semantic edge count {}",
+                "Swimlane edge-owner count {} does not match visible edge count {}",
                 working.original_edges.len(),
-                model.edges.len()
+                visible_edges.len()
             ),
         });
     }
 
-    let transport_plan =
-        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
-    let mut curve_by_id = std::collections::HashMap::new();
-    for (semantic_index, edge) in working.original_edges.iter().enumerate() {
-        let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
-        let source = &model.edges[semantic_index];
-        let expected = transport_plan
-            .id(key)
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: format!(
-                    "missing Swimlane transport id for semantic edge owner {semantic_index}"
-                ),
-            })?;
-        if edge.id != expected
-            || edge.reference_id != expected
+    let mut curve_by_id = std::collections::HashMap::with_capacity(visible_edges.len());
+    for ((key, source), edge) in visible_edges.iter().zip(&working.original_edges) {
+        if transport_plan.id(*key) != Some(edge.id.as_str())
+            || edge.reference_id != edge.id
             || edge.from != source.from
             || edge.to != source.to
         {
             return Err(crate::Error::InvalidModel {
                 message: format!(
-                    "Swimlane working edge `{}` does not match semantic owner {semantic_index}",
-                    edge.id
+                    "Swimlane working edge `{}` does not match semantic owner {}",
+                    edge.id,
+                    key.semantic_index()
                 ),
             });
         }
-        curve_by_id.insert(edge.id.as_str(), curve_by_owner[semantic_index]);
+        let curve = source
+            .semantic
+            .interpolate
+            .as_deref()
+            .filter(|curve| !curve.is_empty())
+            .unwrap_or(default_curve);
+        curve_by_id.insert(edge.id.as_str(), curve);
     }
     let mut layout = project_layout(&working, &curve_by_id);
-    for (edge, semantic) in layout.edges.iter_mut().zip(&model.edges) {
-        edge.id.clone_from(&semantic.id);
-        edge.from.clone_from(&semantic.from);
-        edge.to.clone_from(&semantic.to);
+    for (edge, (_, source)) in layout.edges.iter_mut().zip(&visible_edges) {
+        if edge.id != source.semantic.id {
+            edge.id.clone_from(&source.semantic.id);
+        }
     }
     layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::new(
-        (0..model.edges.len())
-            .map(crate::flowchart::FlowchartEdgeKey::new)
-            .collect(),
+        visible_edges.iter().map(|(key, _)| *key).collect(),
     );
     Ok(layout)
 }

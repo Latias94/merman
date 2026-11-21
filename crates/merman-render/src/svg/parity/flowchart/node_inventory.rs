@@ -141,10 +141,24 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
                 layout.uses_elk_adapter_dom,
             ),
             FlowchartNodeLayoutView::Swimlane(layout) => {
-                let order = model
+                // FlowDB emits visible collapsed groups before authored vertices.
+                let order = layout
                     .nodes
                     .iter()
+                    .filter(|node| {
+                        !node.is_edge_label && render_context.is_subgraph_collapsed(&node.id)
+                    })
                     .map(|node| node.id.clone())
+                    .chain(
+                        model
+                            .nodes
+                            .iter()
+                            .filter(|node| {
+                                !render_context.is_subgraph_collapsed(&node.id)
+                                    && render_context.collapsed_replacement(&node.id).is_none()
+                            })
+                            .map(|node| node.id.clone()),
+                    )
                     .chain(
                         layout
                             .nodes
