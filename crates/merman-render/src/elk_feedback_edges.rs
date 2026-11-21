@@ -94,14 +94,10 @@ pub(crate) fn orient_feedback_edges<'a>(
         reversed,
         order_swaps: Vec::new(),
     };
-    let order = nested_edge_order(orientation.graph, work)?;
-    charge_adapter_work(
-        work,
-        checked_adapter_mul(work, orientation.graph.edges.len(), 5)?,
-    )?;
-    let Some(order) = order else {
+    let Some(order) = nested_edge_order(orientation.graph, work)? else {
         return Ok(orientation);
     };
+    charge_adapter_work(work, checked_adapter_mul(work, order.len(), 5)?)?;
     let mut original_at_position: Vec<_> = (0..order.len()).collect();
     let mut position_by_original = original_at_position.clone();
     orientation.order_swaps.reserve(order.len());
@@ -125,6 +121,7 @@ fn nested_edge_order(
     graph: &elk::Graph,
     work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<Option<Vec<usize>>> {
+    // Admit the parent check and the optional declaration permutation before either is used.
     charge_adapter_work(
         work,
         checked_adapter_add(work, graph.nodes.len(), graph.edges.len())?,
@@ -144,8 +141,8 @@ fn nested_edge_order(
     let mut sources_into_parents = HashSet::new();
     let mut order: Option<Vec<usize>> = None;
     for (index, edge) in graph.edges.iter().enumerate() {
-        // Two endpoint index lookups, two set queries, and up to two insertions.
-        charge_adapter_work(work, 6)?;
+        // Each endpoint updates the index with a fixed number of lookups and insertions.
+        charge_adapter_work(work, 2)?;
         if targets_from_parents.contains(edge.target.as_str())
             || sources_into_parents.contains(edge.source.as_str())
         {
@@ -159,9 +156,6 @@ fn nested_edge_order(
                 let target_inside = earlier.source == edge.source
                     && strict_ancestor(&hierarchy, &earlier.target, &edge.target, work)?;
                 if source_inside || target_inside {
-                    if order.is_none() {
-                        charge_adapter_work(work, graph.edges.len())?;
-                    }
                     charge_adapter_work(work, index - position + 1)?;
                     order.get_or_insert_with(|| (0..graph.edges.len()).collect())[position..=index]
                         .rotate_right(1);
@@ -462,6 +456,21 @@ mod tests {
                 .is_none()
         );
         assert!(measured.adapter_work() <= 10 * scene.nodes.len() + 7 * scene.edges.len());
+    }
+
+    #[test]
+    fn implicit_order_fits_the_previous_small_graph_budget() {
+        let scene = graph(&[("a", "group"), ("b", "group")], &[("a", "b"); 2]);
+        let mut input = scene.clone();
+        let guard = orient_feedback_edges(
+            &mut input,
+            &serde_json::json!({"elk": {"orientFeedbackEdges": false}}),
+            &mut Some(&mut limited_work(47)),
+        )
+        .unwrap();
+        assert_eq!(guard.graph(), &scene);
+        drop(guard);
+        assert_eq!(input, scene);
     }
 
     #[test]
