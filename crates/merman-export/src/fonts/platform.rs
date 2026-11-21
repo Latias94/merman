@@ -6,6 +6,7 @@ use fontique::{
     Collection, CollectionOptions, FallbackKey, FontInfo, FontStyle, FontWeight, FontWidth,
     GenericFamily, SourceKind,
 };
+use ttf_parser::{RawFace, Tag, name, name_id};
 use unicode_script::UnicodeScript;
 use usvg::fontdb::{Database, FaceInfo, Family, ID, Source, Stretch, Style, Weight};
 
@@ -175,8 +176,9 @@ impl PlatformCatalog {
         // Shared symbols and combining characters don't identify a run's script on their own.
         // Keep the established fallback order for them before trying a scalar-only lookup.
         for candidate in self.fallback_candidates(character, base, control)? {
-            control.terminal_checkpoint_at(OperationPhase::Layout)?;
-            if let Some(id) = accept(candidate.into_file()?)? {
+            if let Some(candidate) = self.candidate_file(candidate, control)?
+                && let Some(id) = accept(candidate)?
+            {
                 return Ok(Some(id));
             }
         }
@@ -188,6 +190,13 @@ impl PlatformCatalog {
     }
 
     #[cfg(windows)]
+    fn directwrite(&self) -> Option<&dwrite::CharacterFallback> {
+        self.character_fallback
+            .get_or_init(dwrite::CharacterFallback::new)
+            .as_ref()
+    }
+
+    #[cfg(windows)]
     fn exact_fallback(
         &self,
         character: char,
@@ -196,9 +205,7 @@ impl PlatformCatalog {
         accept: &mut AcceptFallback<'_>,
     ) -> Result<Option<ID>, NativeFontError> {
         let exact = self
-            .character_fallback
-            .get_or_init(dwrite::CharacterFallback::new)
-            .as_ref()
+            .directwrite()
             .and_then(|fallback| fallback.lookup(character, base));
         control.terminal_checkpoint_at(OperationPhase::Layout)?;
         match exact {
@@ -267,6 +274,37 @@ impl PlatformCatalog {
         }
         Ok(candidates)
     }
+
+    fn candidate_file(
+        &self,
+        candidate: PlatformCandidate,
+        control: &OperationControl,
+    ) -> Result<Option<FontCandidate>, NativeFontError> {
+        control.terminal_checkpoint_at(OperationPhase::Layout)?;
+        let SourceKind::Path(path) = candidate.font.source().kind() else {
+            return Err(NativeFontError::Measurement(
+                "platform candidate has no snapshot-compatible file path".to_owned(),
+            ));
+        };
+        #[cfg(windows)]
+        if !candidate.font.axes().is_empty() {
+            let unsupported = self.directwrite().is_some_and(|directwrite| {
+                directwrite.is_variable_family_alias(
+                    &candidate.family,
+                    path,
+                    candidate.font.index(),
+                )
+            });
+            control.terminal_checkpoint_at(OperationPhase::Layout)?;
+            if unsupported {
+                // The usvg bridge stores a physical face, which cannot carry the Windows
+                // family's named axis settings. Continue the declared font stack.
+                return Ok(None);
+            }
+        }
+        let path = path.as_ref().to_owned();
+        Ok(Some(candidate.into_face().into_file(path)))
+    }
 }
 
 fn platform_call<T>(call: impl FnOnce() -> T) -> Result<T, NativeFontError> {
@@ -331,20 +369,12 @@ fn matches_post_script_name(face: &FaceInfo, expected: &str) -> bool {
     }
     // fontdb stores the first supported record. The platform can select a different record
     // from the very same face, so consult its admitted name table before rejecting the match.
-    let Source::Binary(data) = &face.source else {
-        return false;
-    };
-    use ttf_parser::{RawFace, Tag, name, name_id};
-    RawFace::parse(data.as_ref().as_ref(), face.index)
-        .ok()
-        .and_then(|face| face.table(Tag::from_bytes(b"name")))
-        .and_then(name::Table::parse)
-        .is_some_and(|table| {
-            table.names.into_iter().any(|record| {
-                record.name_id == name_id::POST_SCRIPT_NAME
-                    && record.to_string().is_some_and(|name| name == expected)
-            })
+    face_names(face).is_some_and(|table| {
+        table.names.into_iter().any(|record| {
+            record.name_id == name_id::POST_SCRIPT_NAME
+                && record.to_string().is_some_and(|name| name == expected)
         })
+    })
 }
 
 impl FaceAttributes {
@@ -375,18 +405,22 @@ fn matches_family(face: &FaceInfo, expected: &str) -> bool {
     }
     // fontdb prefers typographic families, while native providers may use legacy
     // or WWS names. Resolve these aliases from the admitted bytes, never the path.
+    face_names(face).is_some_and(|table| family_names_match(table, expected))
+}
+
+fn face_names(face: &FaceInfo) -> Option<name::Table<'_>> {
     let Source::Binary(data) = &face.source else {
-        return false;
+        return None;
     };
-    let Ok(parsed) = rustybuzz::ttf_parser::Face::parse(data.as_ref().as_ref(), face.index) else {
-        return false;
-    };
-    parsed.names().into_iter().any(|name| {
+    let raw = RawFace::parse(data.as_ref().as_ref(), face.index).ok()?;
+    name::Table::parse(raw.table(Tag::from_bytes(b"name"))?)
+}
+
+fn family_names_match(table: name::Table<'_>, expected: &str) -> bool {
+    table.names.into_iter().any(|name| {
         matches!(
             name.name_id,
-            rustybuzz::ttf_parser::name_id::FAMILY
-                | rustybuzz::ttf_parser::name_id::TYPOGRAPHIC_FAMILY
-                | rustybuzz::ttf_parser::name_id::WWS_FAMILY
+            name_id::FAMILY | name_id::TYPOGRAPHIC_FAMILY | name_id::WWS_FAMILY
         ) && name
             .to_string()
             .is_some_and(|family| unicase::eq(family.as_str(), expected))
@@ -405,16 +439,6 @@ impl PlatformCandidate {
                 weight: Some(self.font.weight()),
             },
         }
-    }
-
-    fn into_file(self) -> Result<FontCandidate, NativeFontError> {
-        let SourceKind::Path(path) = self.font.source().kind() else {
-            return Err(NativeFontError::Measurement(
-                "platform candidate has no snapshot-compatible file path".to_owned(),
-            ));
-        };
-        let path = path.as_ref().to_owned();
-        Ok(self.into_face().into_file(path))
     }
 }
 
@@ -515,14 +539,15 @@ impl PlatformCatalog {
                 style,
                 control,
             )? {
-                control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                if let Some(id) = accept(
-                    super::resolver::FontSelection {
-                        candidate: selected.into_file()?,
-                        family_fallback_used,
-                    },
-                    implicit,
-                )? {
+                if let Some(candidate) = self.candidate_file(selected, control)?
+                    && let Some(id) = accept(
+                        super::resolver::FontSelection {
+                            candidate,
+                            family_fallback_used,
+                        },
+                        implicit,
+                    )?
+                {
                     return Ok(Some(id));
                 }
             }
@@ -793,6 +818,49 @@ mod tests {
                     .clone()
             })
             .collect()
+    }
+
+    #[cfg(windows)]
+    #[test]
+    #[ignore = "requires the Windows Segoe UI Variable and Arial system fonts"]
+    fn platform_named_variable_aliases_continue_the_declared_font_stack() {
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_system_fonts(true)
+            .load_platform(&control)
+            .unwrap();
+        let Some(super::super::resolver::DiscoveryProvider::Platform { catalog, .. }) =
+            &context.0.discovery
+        else {
+            panic!("platform discovery");
+        };
+        for family in ["Segoe UI Variable Display", "Segoe UI Variable Text"] {
+            let candidates = catalog
+                .candidates(
+                    Some(family),
+                    None,
+                    Weight::NORMAL,
+                    Stretch::Normal,
+                    Style::Normal,
+                    &control,
+                )
+                .unwrap();
+            assert_eq!(candidates.len(), 1, "{family}");
+            let candidate = candidates.into_iter().next().unwrap();
+            assert!(!candidate.font.axes().is_empty(), "{family}");
+            assert!(
+                catalog
+                    .candidate_file(candidate, &control)
+                    .unwrap()
+                    .is_none()
+            );
+            assert_eq!(
+                platform_painted_families(&context, Some(&format!("{family}, Arial"))),
+                BTreeSet::from(["ArialMT".to_owned()]),
+                "{family}"
+            );
+            context.check().unwrap();
+        }
     }
 
     #[test]

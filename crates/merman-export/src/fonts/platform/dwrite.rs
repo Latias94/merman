@@ -1,7 +1,16 @@
-//! Exact-character system fallback. DirectWrite returns a file descriptor; usvg shapes the text.
+//! DirectWrite font identity and exact-character fallback. usvg shapes the selected faces.
 
-use super::{FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, PlatformFace};
-use std::{ffi::OsString, os::windows::ffi::OsStringExt, path::PathBuf, ptr};
+use super::{
+    FaceAttributes, FontCandidate, FontStyle, FontWeight, FontWidth, PlatformFace,
+    family_names_match,
+};
+use std::{
+    ffi::OsString,
+    os::windows::ffi::OsStringExt,
+    path::{Path, PathBuf},
+    ptr,
+};
+use ttf_parser::{name, name_id};
 use usvg::fontdb::{FaceInfo, Style};
 use windows::Win32::Foundation::E_POINTER;
 use windows::Win32::Graphics::DirectWrite::{
@@ -13,8 +22,8 @@ use windows::Win32::Graphics::DirectWrite::{
     DWRITE_FONT_STRETCH_ULTRA_EXPANDED, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
     DWRITE_FONT_STYLE_OBLIQUE, DWRITE_FONT_WEIGHT, DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME,
     DWRITE_READING_DIRECTION, DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory,
-    IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection, IDWriteFontFace5,
-    IDWriteFontFallback, IDWriteLocalFontFileLoader, IDWriteLocalizedStrings,
+    IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection, IDWriteFontFace,
+    IDWriteFontFace5, IDWriteFontFallback, IDWriteLocalFontFileLoader, IDWriteLocalizedStrings,
     IDWriteNumberSubstitution, IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
 };
 use windows_core::{Error, Interface, OutRef, PCWSTR, Result, implement, w};
@@ -42,6 +51,39 @@ impl CharacterFallback {
                 collection: collection?,
                 fallback,
             })
+        }
+    }
+
+    pub(super) fn is_variable_family_alias(&self, name: &str, path: &Path, index: u32) -> bool {
+        let name_utf16: Vec<_> = name.encode_utf16().chain([0]).collect();
+        let mut family_index = 0;
+        let mut exists = Default::default();
+        // SAFETY: The collection owns the returned COM objects and name_utf16 is NUL terminated.
+        unsafe {
+            if self
+                .collection
+                .FindFamilyName(
+                    PCWSTR::from_raw(name_utf16.as_ptr()),
+                    &mut family_index,
+                    &mut exists,
+                )
+                .is_err()
+                || !exists.as_bool()
+            {
+                return false;
+            }
+            let Ok(family) = self.collection.GetFontFamily(family_index) else {
+                return false;
+            };
+            (0..family.GetFontCount())
+                .filter_map(|i| family.GetFont(i).ok()?.CreateFontFace().ok())
+                .any(|face| {
+                    face.GetIndex() == index
+                        && is_variable(&face)
+                        && file_path(&face).as_deref() == Some(path)
+                        && with_name_table(&face, |table| !family_names_match(table, name))
+                            == Some(true)
+                })
         }
     }
 
@@ -86,49 +128,30 @@ impl CharacterFallback {
 }
 
 fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
-    // SAFETY: COM objects stay live through the calls, including the file owning the
-    // borrowed reference key. Both buffers include the terminating UTF-16 NUL.
+    // SAFETY: COM objects stay live through the calls and own their output strings.
     unsafe {
         let face = font.CreateFontFace().ok()?;
-        let mut count = 0;
-        face.GetFiles(&mut count, None).ok()?;
-        if count != 1 {
-            return None;
-        }
-        let mut file = None;
-        face.GetFiles(&mut count, Some(&mut file)).ok()?;
-        let file = file?;
-        let loader = file
-            .GetLoader()
-            .ok()?
-            .cast::<IDWriteLocalFontFileLoader>()
-            .ok()?;
-        let mut key = ptr::null_mut();
-        let mut key_len = 0;
-        file.GetReferenceKey(&mut key, &mut key_len).ok()?;
-        let len = loader.GetFilePathLengthFromKey(key, key_len).ok()? as usize;
-        let mut path = vec![0; len.checked_add(1)?];
-        loader.GetFilePathFromKey(key, key_len, &mut path).ok()?;
-        let path = PathBuf::from(OsString::from_wide(&path[..len]));
-
+        let path = file_path(&face)?;
         let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
-        let mut postscripts = None;
-        let mut exists = Default::default();
-        let post_script_name = font
-            .GetInformationalStrings(
-                DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME,
-                &mut postscripts,
-                &mut exists,
-            )
-            .ok()
-            .filter(|_| exists.as_bool())
-            .and_then(|_| localized_name(&postscripts?));
+        let variable = is_variable(&face);
+        let post_script_name = if variable {
+            // GetInformationalStrings may return a named instance's PostScript name. Read
+            // the physical face's name table and decline a family requiring instance settings.
+            Some(with_name_table(&face, |table| {
+                if !family_names_match(table, &family) {
+                    return None;
+                }
+                table
+                    .names
+                    .into_iter()
+                    .filter(|name| name.name_id == name_id::POST_SCRIPT_NAME)
+                    .find_map(|name| name.to_string())
+            })??)
+        } else {
+            post_script_name(&font)
+        };
         let simulations = face.GetSimulations();
-        let variable = face
-            .cast::<IDWriteFontFace5>()
-            .is_ok_and(|face| face.HasVariations().as_bool());
-        // A simulated or variable instance can have different CSS attributes from its binary.
-        // Check the physical name and any attributes reported without those adjustments.
+        // CSS properties can be varied or simulated independently of the physical face.
         let attributes = if variable {
             FaceAttributes::default()
         } else {
@@ -157,6 +180,91 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
             }
             .into_file(path),
         )
+    }
+}
+
+fn file_path(face: &IDWriteFontFace) -> Option<PathBuf> {
+    // SAFETY: The file owns the borrowed reference key and the path buffer includes a NUL slot.
+    unsafe {
+        let mut count = 0;
+        face.GetFiles(&mut count, None).ok()?;
+        if count != 1 {
+            return None;
+        }
+        let mut file = None;
+        face.GetFiles(&mut count, Some(&mut file)).ok()?;
+        let file = file?;
+        let loader = file
+            .GetLoader()
+            .ok()?
+            .cast::<IDWriteLocalFontFileLoader>()
+            .ok()?;
+        let mut key = ptr::null_mut();
+        let mut key_len = 0;
+        file.GetReferenceKey(&mut key, &mut key_len).ok()?;
+        let len = loader.GetFilePathLengthFromKey(key, key_len).ok()? as usize;
+        let mut path = vec![0; len.checked_add(1)?];
+        loader.GetFilePathFromKey(key, key_len, &mut path).ok()?;
+        Some(PathBuf::from(OsString::from_wide(&path[..len])))
+    }
+}
+
+fn is_variable(face: &IDWriteFontFace) -> bool {
+    // SAFETY: HasVariations has no inputs beyond the live COM interface.
+    unsafe {
+        face.cast::<IDWriteFontFace5>()
+            .is_ok_and(|face| face.HasVariations().as_bool())
+    }
+}
+
+fn with_name_table<T>(
+    face: &IDWriteFontFace,
+    read: impl FnOnce(name::Table<'_>) -> T,
+) -> Option<T> {
+    let mut data = ptr::null_mut();
+    let mut size = 0;
+    let mut context = ptr::null_mut();
+    let mut exists = Default::default();
+    // SAFETY: With a successful table lookup DirectWrite owns `size` bytes until ReleaseFontTable.
+    // Return only owned values, never a slice of the COM table.
+    unsafe {
+        face.TryGetFontTable(
+            u32::from_le_bytes(*b"name"),
+            &mut data,
+            &mut size,
+            &mut context,
+            &mut exists,
+        )
+        .ok()?;
+        if !exists.as_bool() {
+            return None;
+        }
+        let size = size as usize;
+        let result = if !data.is_null() && size <= isize::MAX as usize {
+            name::Table::parse(std::slice::from_raw_parts(data.cast::<u8>(), size)).map(read)
+        } else {
+            None
+        };
+        face.ReleaseFontTable(context);
+        result
+    }
+}
+
+fn post_script_name(font: &IDWriteFont) -> Option<String> {
+    // SAFETY: DirectWrite owns the returned names and out parameters are writable.
+    unsafe {
+        let mut postscripts = None;
+        let mut exists = Default::default();
+        font.GetInformationalStrings(
+            DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME,
+            &mut postscripts,
+            &mut exists,
+        )
+        .ok()?;
+        if !exists.as_bool() {
+            return None;
+        }
+        localized_name(&postscripts?)
     }
 }
 
