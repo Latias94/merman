@@ -89,14 +89,11 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
-    let source_edges = model.edges.len();
-    work_meter.preflight(swimlane_layout_preflight_work_units(
-        source_nodes,
-        source_edges,
-    ))?;
-    work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
+    let source_work = source_layout_work_units(source_nodes, model.edges.len());
+    work_meter.preflight(source_work)?;
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
+    admit_layout_work(&work_meter, source_work, visible_edges.len())?;
     let transport_plan = FlowchartEdgeTransportPlan::for_keyed_edges(
         visible_edges
             .iter()
@@ -285,34 +282,32 @@ fn project_layout(
     }
 }
 
-fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {
-    let baseline = nodes
+fn source_layout_work_units(nodes: usize, edges: usize) -> usize {
+    // Source-item passes include projection and occurrence-identity preparation.
+    nodes
         .saturating_mul(4)
-        .saturating_add(edges.saturating_mul(5));
-
-    // This is the stable, family-accounted cost for prepare, Sugiyama, and routing. The linear
-    // baseline covers their source-item passes plus occurrence-identity preparation. Routing adds
-    // edges incrementally and can compare each new route with every earlier route, so charge one
-    // conservative unit per unordered source-edge pair. Direction post-processing and SVG line
-    // hops charge the shared meter independently and must not be included here.
-    baseline.saturating_add(work_budget::unordered_pair_count(edges))
+        .saturating_add(edges.saturating_mul(5))
 }
 
-fn swimlane_layout_preflight_work_units(nodes: usize, edges: usize) -> usize {
-    // Keep preflight as a pure fail-fast estimate. In addition to the core-layout cost, reserve
-    // one unordered-pair allowance for the direction post-processing that follows. That phase
-    // charges its inspected candidates precisely, so this allowance is intentionally not charged
-    // by `swimlane_core_layout_work_units`.
-    swimlane_core_layout_work_units(nodes, edges)
-        .saturating_add(work_budget::unordered_pair_count(edges))
+fn admit_layout_work(
+    work_meter: &OperationWorkMeter,
+    source_work: usize,
+    visible_edges: usize,
+) -> Result<()> {
+    // Routing can compare each visible route with every earlier one. Also allow for a pair pass
+    // in direction post-processing, which charges its inspected candidates separately.
+    let route_pairs = work_budget::unordered_pair_count(visible_edges);
+    let core_work = source_work.saturating_add(route_pairs);
+    work_meter.preflight(core_work.saturating_add(route_pairs))?;
+    work_meter.charge(core_work)?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod work_tests {
-    use super::{
-        deterministic_identifier_cmp, swimlane_core_layout_work_units,
-        swimlane_layout_preflight_work_units,
-    };
+    use super::{OperationWorkMeter, admit_layout_work, deterministic_identifier_cmp};
+    use crate::{Error, RenderResourcePolicy, ResourceLimitId};
+    use merman_model::OperationControl;
 
     #[test]
     fn identifier_order_is_stable_utf16_code_unit_order() {
@@ -332,29 +327,52 @@ mod work_tests {
 
     #[test]
     fn core_layout_cost_accounts_routing_pairs_once() {
-        // Four nodes plus three edges consume 31 linear units, including occurrence preparation;
-        // routing can inspect three unordered edge pairs.
-        assert_eq!(swimlane_core_layout_work_units(4, 3), 34);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        // Four nodes plus five source edges consume 41 linear units. The three visible edges
+        // contribute three unordered route pairs.
+        admit_layout_work(&meter, super::source_layout_work_units(4, 5), 3).unwrap();
+        assert_eq!(meter.used(), 44);
     }
 
     #[test]
     fn preflight_reserves_direction_pairs_without_charging_them_to_core() {
-        let core = swimlane_core_layout_work_units(4, 3);
-        let preflight = swimlane_layout_preflight_work_units(4, 3);
+        let policy = RenderResourcePolicy::interactive()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 36)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let error =
+            admit_layout_work(&meter, super::source_layout_work_units(4, 3), 3).unwrap_err();
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a layout work ceiling");
+        };
+        assert_eq!((limit.actual, limit.max), (37, 36));
+        assert_eq!(meter.used(), 0);
+    }
 
-        assert_eq!(core, 34);
-        assert_eq!(preflight, 37);
+    #[test]
+    fn layout_admission_observes_cancellation_after_source_preflight() {
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::interactive(),
+            control.clone(),
+        );
+        let source_work = super::source_layout_work_units(4, 5);
+        meter.preflight(source_work).unwrap();
+        control.cancel();
+
+        assert!(matches!(
+            admit_layout_work(&meter, source_work, 1),
+            Err(Error::Cancelled(_))
+        ));
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]
     fn swimlane_layout_work_estimates_saturate() {
-        assert_eq!(
-            swimlane_core_layout_work_units(usize::MAX, usize::MAX),
-            usize::MAX
-        );
-        assert_eq!(
-            swimlane_layout_preflight_work_units(usize::MAX, usize::MAX),
-            usize::MAX
-        );
+        assert_eq!(super::source_layout_work_units(usize::MAX, 0), usize::MAX);
+        assert_eq!(super::source_layout_work_units(0, usize::MAX), usize::MAX);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        admit_layout_work(&meter, 31, usize::MAX).unwrap();
+        assert_eq!(meter.used(), usize::MAX);
     }
 }

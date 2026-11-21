@@ -86,14 +86,8 @@ fn layout_measured(
     settings: SwimlaneConfig,
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
-    work_meter.preflight(super::swimlane_layout_preflight_work_units(
-        measured.len(),
-        edges.len(),
-    ))?;
-    work_meter.charge(super::swimlane_core_layout_work_units(
-        measured.len(),
-        edges.len(),
-    ))?;
+    let source_work = super::source_layout_work_units(measured.len(), edges.len());
+    super::admit_layout_work(&work_meter, source_work, edges.len())?;
     let mut nodes = IndexMap::new();
     for measured in measured {
         let node = measured.node;
