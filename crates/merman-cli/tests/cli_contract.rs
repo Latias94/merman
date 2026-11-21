@@ -1646,6 +1646,31 @@ fn developer_short_help_points_to_advanced_controls() {
 }
 
 #[test]
+fn layout_projects_geometry_by_default_and_can_emit_a_snapshot() {
+    let source = "flowchart LR\nsubgraph Group\nA --> B\nend\nB -->|out| C";
+    let geometry = run_with_stdin(&["layout", "-"], source);
+    let snapshot = run_with_stdin(&["layout", "--snapshot", "--pretty", "-"], source);
+
+    assert!(geometry.status.success(), "{:?}", geometry.stderr);
+    assert!(snapshot.status.success(), "{:?}", snapshot.stderr);
+    let geometry: Value = serde_json::from_slice(&geometry.stdout).unwrap();
+    let snapshot: Value = serde_json::from_slice(&snapshot.stdout).unwrap();
+    assert_eq!(
+        geometry,
+        serde_json::json!({
+            "schema_version": 1,
+            "family_id": "flowchart",
+            "diagram_type": "flowchart-v2",
+            "layout": snapshot["layout"],
+        }),
+    );
+    assert!(geometry["layout"]["FlowchartV2"].is_object());
+    assert_eq!(snapshot["meta"]["diagram_type"], "flowchart-v2");
+    assert!(snapshot["meta"]["effective_config"].is_object());
+    assert!(snapshot["semantic"].is_object());
+}
+
+#[test]
 fn detect_still_handles_frontmatter_and_directives_without_configuration_flags() {
     let source =
         "---\ntitle: Directed\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart LR\nA-->B\n";

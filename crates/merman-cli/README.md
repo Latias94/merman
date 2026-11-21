@@ -233,7 +233,8 @@ Release archives and builds with the `platform-system-font-query` feature offer
 `--font-system platform` and `--font-system bounded`. `--font-system on` uses the
 build's default provider. Platform queries avoid reading the bounded catalog before
 layout. Platform metadata queries run outside Merman's scan budgets. Selected
-font bytes still have acquisition limits and serve both measurement and painting.
+font bytes still have acquisition limits and serve both measurement and painting. On Windows, an
+unsupported named variable family may fall through to the next family in the requested stack.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
@@ -623,10 +624,14 @@ The `analysis` capability enables parser-backed diagnostics, deterministic fix s
 merman-cli detect diagram.mmd
 merman-cli parse diagram.mmd --pretty --meta
 merman-cli layout diagram.mmd --pretty
+merman-cli layout diagram.mmd --snapshot --pretty
 merman-cli lint diagram.mmd --format json
 merman-cli lint README.md --markdown --format text
 merman-cli lint-rules --configurable --format json
 ```
+
+`layout` returns versioned geometry with a family identifier. Add `--snapshot` when a consumer
+needs the full `meta`, `semantic`, and `layout` envelope from 0.10.
 
 `fix` has one explicit output mode:
 
@@ -685,6 +690,13 @@ fields and runtime defaults do not change the CLI contract, JSON schema, or ABI.
 The contract preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
+
+`merman-cli render diagram.mmd --format svg --svg-pipeline static` writes SVG for fixed markup.
+It emits the Flowchart-family container palette slots used by the diagram and preserves the
+rendered links, accessibility metadata, viewBox, and authored styles. Native PNG, JPEG, and PDF
+rendering uses static generation followed by resvg-safe conversion. Ordinary SVG and `mmdc`
+default to the complete stylesheet. For the Rust API and publication contracts, see the
+[SVG output pipeline](https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md).
 
 Native `render` rejects options that are irrelevant to the selected output before reading input or creating output. Examples:
 

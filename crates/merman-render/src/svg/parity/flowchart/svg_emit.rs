@@ -97,7 +97,6 @@ pub(super) fn render_flowchart_svg_model(
             let render_timing = options.timing();
             let mut timings = timing::RenderTimings::default();
             let total_timer = render_timing.start();
-            let effective_config_value = effective_config.as_value();
             let document_ids = ctx.document_ids();
             let diagram_id = ctx.diagram_id;
             let font_family = &render_config.font_family;
@@ -125,7 +124,7 @@ pub(super) fn render_flowchart_svg_model(
             > = FxHashMap::with_capacity_and_hasher(render_edges.len(), Default::default());
 
             let subgraph_title_y_shift =
-                crate::flowchart::FlowchartConfigView::new(effective_config_value)
+                crate::flowchart::FlowchartConfigView::new(effective_config)
                     .render_subgraph_title_y_shift();
 
             let mut detail = FlowchartRenderDetails::default();
@@ -236,28 +235,36 @@ pub(super) fn render_flowchart_svg_model(
             document.push_accessibility_metadata(&mut out);
             out.push_str("<style>");
             out.checkpoint()?;
-            {
+            let compatibility = &prepared_theme.compatibility;
+            let defer_palette = options.generation == crate::svg::SvgGeneration::Static
+                && ctx.icon_registry.is_none()
+                && super::agentflow::can_defer_palette(ctx)?;
+            let palette_offset = {
                 let mut css_out = super::super::output::XmlTextOutput::new(&mut out);
-                write_flowchart_css(
+                let flowchart_palette_offset = write_flowchart_css(
                     &mut css_out,
                     diagram_id,
                     diagram_type,
                     document_ids.drop_shadow(),
                     document_ids.drop_shadow_small(),
                     document_ids.root_gradient(),
-                    &prepared_theme.compatibility,
+                    compatibility,
                     font_family,
                     font_size,
                     &model.class_defs,
                     Some(text_surface_paint),
+                    defer_palette,
                 )?;
-                if diagram_type == "agentflow" {
+                let palette_offset = if diagram_type == "agentflow" {
                     super::agentflow::write_css(
                         &mut css_out,
                         diagram_id,
-                        &prepared_theme.compatibility,
-                    )?;
-                }
+                        compatibility,
+                        defer_palette,
+                    )?
+                } else {
+                    flowchart_palette_offset
+                };
                 text_surface_paint.generic_text.record_stylesheet_emission();
                 text_surface_paint.background.record_stylesheet();
                 if swimlane_layout.is_some() {
@@ -267,9 +274,11 @@ pub(super) fn render_flowchart_svg_model(
                         &prepared_theme.compatibility.cluster_border,
                     );
                 }
-            }
+                palette_offset
+            };
             out.push_str("</style>");
             out.checkpoint()?;
+            let body_start = out.len();
             if let Some(base_typography) = svg_label_sidecar
                 .base_typography()
                 .filter(|plan| plan.requires_terminal_evidence())
@@ -351,6 +360,44 @@ pub(super) fn render_flowchart_svg_model(
             ctx.steps.write_style(&mut out, diagram_id);
             out.push_str("</svg>\n");
             out.checkpoint()?;
+
+            if let Some(offset) = palette_offset {
+                let slots = super::agentflow::emitted_palette_slots(
+                    out.as_str(),
+                    body_start,
+                    compatibility.palette.len(),
+                    ctx,
+                )?;
+                if slots.as_ref().is_none_or(|slots| !slots.is_empty()) {
+                    out.write_deferred_at(offset, |out| {
+                        let mut css_out = super::super::output::XmlTextOutput::new(out);
+                        if diagram_type == "agentflow" {
+                            super::agentflow::write_agentflow_container_css(
+                                &mut css_out,
+                                diagram_id,
+                                compatibility,
+                                slots.as_ref(),
+                            )
+                        } else {
+                            let id = super::css::FlowchartCssSelectorDiagramId::new(diagram_id);
+                            match slots {
+                                Some(slots) => super::agentflow::write_flowchart_container_css(
+                                    &mut css_out,
+                                    id,
+                                    compatibility,
+                                    slots,
+                                ),
+                                None => super::agentflow::write_flowchart_container_css(
+                                    &mut css_out,
+                                    id,
+                                    compatibility,
+                                    0..compatibility.palette.len(),
+                                ),
+                            }
+                        }
+                    })?;
+                }
+            }
 
             drop(_g_render_svg);
             timings.total = total_timer

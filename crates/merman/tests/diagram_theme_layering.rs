@@ -25,7 +25,7 @@ fn effective_config(
     request: SvgRequest,
     theme: Option<DiagramTheme>,
 ) -> merman::model::ManagedJson {
-    let request = RenderRequest::layout_json(source, OperationControl::new(), request);
+    let request = RenderRequest::layout_snapshot(source, OperationControl::new(), request);
     let request = match theme {
         Some(theme) => request.with_theme(theme),
         None => request,

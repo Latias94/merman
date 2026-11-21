@@ -2,7 +2,7 @@ use super::admission::BackendAdmission;
 #[cfg(feature = "icons")]
 use super::icons::load_icon_registry;
 #[cfg(feature = "svg")]
-use super::svg_pipeline::svg_output_policy;
+use super::svg_pipeline::svg_output_pipeline;
 #[cfg(feature = "markdown")]
 use crate::batch::{BatchDialect, PreparedBatch};
 #[cfg(feature = "svg")]
@@ -472,8 +472,6 @@ pub(crate) fn prepare_graphical_output(
     control: &OperationControl,
     #[cfg(feature = "network-icons")] network: &mut dyn crate::network::NetworkAcquirer,
 ) -> Result<(ResolvedDestination, PreparedGraphicalRender), CliError> {
-    #[cfg(not(feature = "pdf"))]
-    let _ = mmdc_compat;
     let css = read_optional_text_file_controlled(
         common.css_file.as_deref(),
         "CSS file",
@@ -568,8 +566,12 @@ pub(crate) fn prepare_graphical_output(
             "native text measurement does not support --css-file (post-layout styling); configure typography through Mermaid configuration, or use --font-measurement deterministic without font sources".to_string(),
         ));
     }
-    let pipeline =
-        svg_output_policy(pipeline_kind, common.background.as_deref(), css.as_deref()).pipeline();
+    let pipeline = svg_output_pipeline(pipeline_kind, common.background.as_deref(), css.as_deref());
+    let pipeline = if !mmdc_compat && !raw_svg && !matches!(&output, PreparedGraphicalOutput::Svg) {
+        pipeline.with_generation(merman::svg::SvgGeneration::Static)
+    } else {
+        pipeline
+    };
     let admission = match &output {
         PreparedGraphicalOutput::Svg => BackendAdmission::for_svg(&common.resources)?,
         #[cfg(feature = "png")]

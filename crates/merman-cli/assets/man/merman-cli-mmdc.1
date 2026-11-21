@@ -82,14 +82,16 @@ Parallel jobs for Markdown input. Defaults and maxima come from the resource pro
 .SH "MERMAN RENDERER CONTROLS"
 .TP
 \fB\-\-svg\-pipeline\fR \fI<SVG_PIPELINE>\fR
-SVG consumer: parity (default) for browsers; resvg\-safe for resvg/usvg.
+SVG consumer: parity (default), static for fixed markup, or resvg\-safe for resvg/usvg.
 
-Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. PNG/JPEG/PDF exports select resvg\-safe automatically.
+Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. mmdc PNG/JPEG/PDF use resvg\-safe with the complete palette.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
 parity: Default for browsers and Webviews; preserves Mermaid HTML labels and styles
+.IP \(bu 2
+static: Generates SVG for fixed markup, emitting only the container palette slots it uses
 .IP \(bu 2
 readable: Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates
 .IP \(bu 2

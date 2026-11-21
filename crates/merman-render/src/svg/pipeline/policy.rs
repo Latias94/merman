@@ -34,7 +34,7 @@ impl SvgOutputPolicy {
             self.css_override_policy,
             CssOverridePolicy::StripExistingImportant
         ) {
-            pipeline.push_postprocessor(CssOverridePostprocessor::strip_existing_important());
+            pipeline.push_css_postprocessor(CssOverridePostprocessor::strip_existing_important());
         }
 
         pipeline =
@@ -62,7 +62,7 @@ impl SvgOutputPolicy {
             .as_deref()
             .filter(|css| !css.trim().is_empty())
         {
-            pipeline.push_postprocessor(
+            pipeline.push_css_postprocessor(
                 ScopedCssPostprocessor::new(css.to_string())
                     .with_override_policy(self.css_override_policy),
             );

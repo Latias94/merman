@@ -137,7 +137,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --svg-pipeline)
-                    COMPREPLY=($(compgen -W "parity readable resvg-safe" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
                     return 0
                     ;;
                 --background)
@@ -954,7 +954,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --svg-pipeline)
-                    COMPREPLY=($(compgen -W "parity readable resvg-safe" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
                     return 0
                     ;;
                 --backgroundColor)
@@ -1357,7 +1357,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --svg-pipeline)
-                    COMPREPLY=($(compgen -W "parity readable resvg-safe" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
                     return 0
                     ;;
                 --background)

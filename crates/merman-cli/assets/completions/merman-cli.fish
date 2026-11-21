@@ -120,7 +120,8 @@ unicode\t''
 png\t''
 jpg\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l svg-pipeline -d 'SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+static\t'Generates SVG for fixed markup, emitting only the container palette slots it uses'
 readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
 resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s b -l background -d 'Background color for the selected rendered output' -r
@@ -255,7 +256,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s f -l for
 png\t''
 jpg\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l svg-pipeline -d 'SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+static\t'Generates SVG for fixed markup, emitting only the container palette slots it uses'
 readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
 resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s b -l background -d 'Background color for the selected rendered output' -r
@@ -449,7 +451,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s j -l jobs
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s e -l outputFormat -l format -d 'Output format. Defaults to the output extension, then SVG' -r -f -a "svg\t''
 png\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l svg-pipeline -d 'SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+static\t'Generates SVG for fixed markup, emitting only the container palette slots it uses'
 readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
 resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s b -l backgroundColor -d 'Background color for the selected rendered output. `mmdc` defaults to white' -r

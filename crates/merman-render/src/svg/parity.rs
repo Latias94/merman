@@ -872,6 +872,7 @@ impl SvgDebugOptions {
 )]
 pub(crate) struct SvgExecution<'a> {
     request: &'a SvgRenderOptions,
+    pub(crate) generation: super::SvgGeneration,
     family: FamilyExecutionView<'a>,
     text_measurer: RoutedTextMeasurer<'a>,
     diagram_id_projection: SvgDiagramIdProjection<'a>,
@@ -973,6 +974,7 @@ impl<'a> SvgExecution<'a> {
         };
         let execution = Self {
             request,
+            generation: super::SvgGeneration::Full,
             family,
             text_measurer: session
                 .controlled_text_measurer(TextMeasurementPhase::SvgBBox, OperationPhase::Emit),
@@ -1158,8 +1160,10 @@ pub(crate) fn render_builtin_family_artifact(
     family_execution: FamilyExecutionView<'_>,
     options: &SvgRenderOptions,
     debug: &SvgDebugOptions,
+    generation: super::SvgGeneration,
 ) -> Result<RootThemeAppliedSvg> {
-    let execution = SvgExecution::new(options, debug, family_execution)?;
+    let mut execution = SvgExecution::new(options, debug, family_execution)?;
+    execution.generation = generation;
     let mut family_theme_evidence = None;
     #[cfg(feature = "diagram-packet")]
     let mut packet_theme_outcome = None;
@@ -1176,11 +1180,8 @@ pub(crate) fn render_builtin_family_artifact(
     let (rooted_svg, root_theme) =
         rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
-    let (svg, theme_css_applied) = apply_theme_css(
-        svg,
-        metadata.effective_config.as_value(),
-        family_execution.session(),
-    )?;
+    let (svg, theme_css_applied) =
+        apply_theme_css(svg, &metadata.effective_config, family_execution.session())?;
     let root_theme = if theme_css_applied {
         root_theme.invalidate_for_output_mutation()
     } else {
@@ -1227,7 +1228,7 @@ pub(crate) fn render_architecture_family_artifact(
         rooted_svg.apply_root_theme(family_execution.root_theme_plan(), execution.work_meter())?;
     let svg = rooted_svg.into_string_for(execution.family_id())?;
     let (svg, theme_css_applied) =
-        apply_theme_css(svg, effective_config.as_value(), family_execution.session())?;
+        apply_theme_css(svg, effective_config, family_execution.session())?;
     let root_theme = if theme_css_applied {
         root_theme.invalidate_for_output_mutation()
     } else {
@@ -1266,7 +1267,6 @@ fn render_builtin_family_artifact_raw(
 
     let measurer = options.text_measurer();
     let effective_config = &metadata.effective_config;
-    let effective_config_value = effective_config.as_value();
     let title = metadata.title.as_deref();
 
     match family {
@@ -1342,7 +1342,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().semantic(),
             artifact.label_sidecar(),
             artifact.effect_evidence(),
-            effective_config_value,
+            effective_config.as_value(),
             title,
             measurer,
             options,
@@ -1378,7 +1378,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::Zenuml(artifact) => zenuml::render_zenuml_diagram_svg_model(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            effective_config_value,
+            effective_config.as_value(),
             title,
             artifact.theme_plan(),
             options,
@@ -1392,7 +1392,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.task_theme(),
-            effective_config_value,
+            effective_config.as_value(),
             options,
         ),
         #[cfg(feature = "diagram-pie")]
@@ -1400,7 +1400,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.pair().semantic(),
             artifact.theme(),
-            effective_config_value,
+            effective_config.as_value(),
             options,
         ),
         #[cfg(feature = "diagram-packet")]
@@ -1409,7 +1409,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().layout(),
                 artifact.pair().semantic(),
                 artifact.typography_theme(),
-                effective_config_value,
+                effective_config.as_value(),
                 title,
                 options,
             )?;
@@ -1461,7 +1461,7 @@ fn render_builtin_family_artifact_raw(
             artifact.pair().layout(),
             artifact.node_palette(),
             artifact.typography_theme(),
-            effective_config_value,
+            effective_config.as_value(),
             options,
         ),
         #[cfg(feature = "diagram-radar")]
@@ -1474,7 +1474,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.axis_paint(),
                 artifact.text_paint(),
                 artifact.typography_theme(),
-                effective_config_value,
+                effective_config.as_value(),
                 title,
                 options,
             )
@@ -1533,7 +1533,7 @@ fn render_builtin_family_artifact_raw(
                 artifact.pair().semantic(),
                 artifact.point_theme(),
                 artifact.text_paint(),
-                effective_config_value,
+                effective_config.as_value(),
                 options,
             )
         }
@@ -1548,7 +1548,7 @@ fn render_builtin_family_artifact_raw(
             artifact.node_palette(),
             artifact.static_paint(),
             artifact.typography_theme(),
-            effective_config_value,
+            effective_config.as_value(),
             title,
             measurer,
             options,
@@ -1583,7 +1583,7 @@ fn render_builtin_family_artifact_raw(
         BuiltinFamilyArtifact::C4(artifact) => c4::render_c4_diagram_svg_typed(
             artifact.pair().layout(),
             artifact.pair().semantic(),
-            effective_config_value,
+            effective_config.as_value(),
             title,
             measurer,
             artifact.typography_theme(),
@@ -1596,7 +1596,7 @@ fn render_builtin_family_artifact_raw(
 
 fn apply_theme_css(
     svg: String,
-    effective_config: &serde_json::Value,
+    effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     session: &RenderSession,
 ) -> Result<(String, bool)> {
     const UNBALANCED_CSS_ERROR: &str = "{ /* ERROR: Unbalanced CSS */ }";

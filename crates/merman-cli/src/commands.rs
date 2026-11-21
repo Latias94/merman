@@ -256,11 +256,15 @@ fn run_layout(
         &args.resources,
         operation_control,
     )?;
-    let output = configured.renderer.render(configured.request(
-        &text,
-        merman::RenderTarget::LayoutJson(configured.svg.clone()),
-        operation_control.clone(),
-    ))?;
+    let target = if args.snapshot {
+        merman::RenderTarget::LayoutSnapshot(configured.svg.clone())
+    } else {
+        merman::RenderTarget::LayoutJson(configured.svg.clone())
+    };
+    let output =
+        configured
+            .renderer
+            .render(configured.request(&text, target, operation_control.clone()))?;
     let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };

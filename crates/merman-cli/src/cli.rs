@@ -275,6 +275,10 @@ pub(crate) struct LayoutArgs {
     #[arg(long)]
     pub(crate) pretty: bool,
 
+    /// Include compatibility semantics, metadata, and the full effective configuration.
+    #[arg(long)]
+    pub(crate) snapshot: bool,
+
     #[command(flatten)]
     pub(crate) parse: ParseCliArgs,
 
@@ -1237,10 +1241,10 @@ pub(crate) struct MmdcArgs {
     )]
     pub(crate) output_format: Option<MmdcOutputFormat>,
 
-    /// SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg.
+    /// SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg.
     ///
     /// Readable only adds text fallbacks for consumers that ignore HTML labels and can show
-    /// duplicate text in browsers. PNG/JPEG/PDF exports select resvg-safe automatically.
+    /// duplicate text in browsers. mmdc PNG/JPEG/PDF use resvg-safe with the complete palette.
     #[arg(
         long = "svg-pipeline",
         value_enum,
@@ -1365,10 +1369,10 @@ pub(crate) struct BatchRenderOptions {
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct GraphicalRenderCliArgs {
     #[cfg(feature = "svg")]
-    /// SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg.
+    /// SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg.
     ///
     /// Readable only adds text fallbacks for consumers that ignore HTML labels and can show
-    /// duplicate text in browsers. PNG/JPEG/PDF exports select resvg-safe automatically.
+    /// duplicate text in browsers. PNG/JPEG/PDF use static generation and resvg-safe conversion.
     #[arg(
         long = "svg-pipeline",
         value_enum,
@@ -1925,6 +1929,8 @@ pub(crate) enum MathRendererKind {
 pub(crate) enum SvgPipelineKind {
     /// Default for browsers and Webviews; preserves Mermaid HTML labels and styles.
     Parity,
+    /// Generates SVG for fixed markup, emitting only the container palette slots it uses.
+    Static,
     /// Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates.
     Readable,
     /// Converts HTML labels and cleans SVG for resvg/usvg consumers.

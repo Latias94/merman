@@ -186,6 +186,7 @@ pub(crate) struct ResolvedParse {
 pub(crate) struct ResolvedLayout {
     pub(crate) input: ResolvedInput,
     pub(crate) pretty: bool,
+    pub(crate) snapshot: bool,
     pub(crate) operation_timeout: Option<Duration>,
     pub(crate) parse: ResolvedParseOptions,
     pub(crate) render: ResolvedRenderOptions,
@@ -594,6 +595,7 @@ fn normalize_layout(args: LayoutArgs, facts: &InvocationFacts) -> Result<Resolve
     Ok(ResolvedLayout {
         input: resolve_native_input(args.input, facts.stdin_is_terminal, "layout")?,
         pretty: args.pretty,
+        snapshot: args.snapshot,
         operation_timeout: args.operation.timeout_ms.map(Duration::from_millis),
         parse: resolve_parse_options(args.parse, runtime_policy),
         render: resolve_render_options(args.render.into_render_args()),

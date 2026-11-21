@@ -9723,6 +9723,7 @@ A self-loop-edge@-->|self loop semantic owner keeps wrapped label rows through t
             &artifact,
             &SvgRenderOptions::default(),
             &SvgDebugOptions::default(),
+            crate::svg::SvgGeneration::Full,
         )
         .expect("render self-loop SVG");
         assert!(
@@ -9852,6 +9853,7 @@ linkStyle 0 font-size:12px,font-style:italic
             &artifact,
             &SvgRenderOptions::default(),
             &SvgDebugOptions::default(),
+            crate::svg::SvgGeneration::Full,
         )
         .expect("render Swimlane SVG");
         assert!(
@@ -10285,6 +10287,7 @@ A labeled@-->|edge semantic owner wraps alpha beta gamma delta epsilon| B[Second
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
+        crate::svg::SvgGeneration::Full,
     )
     .expect("render Flowchart SVG");
 
@@ -10389,6 +10392,7 @@ end
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
+        crate::svg::SvgGeneration::Full,
     )
     .expect("render Swimlane math title");
     assert_eq!(
@@ -10481,6 +10485,7 @@ D --> P
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
+        crate::svg::SvgGeneration::Full,
     )
     .expect("render Flowchart SVG");
 
@@ -10576,6 +10581,7 @@ A styled@-->|swimlane semantic owner wraps alpha beta gamma delta epsilon| B
         &artifact,
         &SvgRenderOptions::default(),
         &SvgDebugOptions::default(),
+        crate::svg::SvgGeneration::Full,
     )
     .expect("render Swimlane SVG");
 

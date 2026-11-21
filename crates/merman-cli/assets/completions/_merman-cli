@@ -175,7 +175,8 @@ _arguments "${_arguments_options[@]}" : \
 '--input-kind=[Interpret the input as Mermaid source or an existing SVG document]:INPUT_KIND:(mermaid svg)' \
 '-f+[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
 '--format=[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
-'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+'--svg-pipeline=[SVG consumer\: parity (default), static for fixed markup, or resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
@@ -302,7 +303,8 @@ _arguments "${_arguments_options[@]}" : \
 '--jobs=[Maximum number of Markdown charts rendered concurrently]:JOBS:_default' \
 '-f+[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
 '--format=[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
-'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+'--svg-pipeline=[SVG consumer\: parity (default), static for fixed markup, or resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
@@ -524,7 +526,8 @@ _arguments "${_arguments_options[@]}" : \
 '-e+[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
 '--outputFormat=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
 '--format=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
-'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+'--svg-pipeline=[SVG consumer\: parity (default), static for fixed markup, or resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output. \`mmdc\` defaults to white]:BACKGROUND_COLOR:_default' \

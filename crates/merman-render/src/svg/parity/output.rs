@@ -345,6 +345,22 @@ impl<'a> BoundedSvgOutput<'a> {
         }
     }
 
+    /// Writes a deferred fragment under the existing document budget and moves it into place.
+    pub(super) fn write_deferred_at(
+        &mut self,
+        offset: usize,
+        write: impl FnOnce(&mut Self) -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        let end = self.out.len();
+        write(self)?;
+        self.observe_operation()?;
+        if self.out.len() != end {
+            let fragment = self.out.split_off(end);
+            self.out.insert_str(offset, &fragment);
+        }
+        self.observe_operation()
+    }
+
     fn replace_retained_range(
         &mut self,
         range: Range<usize>,

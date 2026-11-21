@@ -302,7 +302,10 @@ fn all_completed_graphical_outputs_outlive_the_snapshot() {
     };
     drop(prepared);
     assert!(document.svg().contains("<svg"));
-    assert_eq!(layout.layout()["meta"]["diagram_type"], "flowchart-v2");
+    assert_eq!(layout.layout()["schema_version"], 1);
+    assert_eq!(layout.layout()["family_id"], "flowchart");
+    assert_eq!(layout.layout()["diagram_type"], "flowchart-v2");
+    assert!(layout.layout()["layout"]["FlowchartV2"].is_object());
     assert_eq!(geometry.edges().len(), 1);
     #[cfg(feature = "png")]
     assert!(

@@ -151,7 +151,7 @@ impl RenderRequestPlan {
     ) -> Result<Vec<u8>, BindingError> {
         let output = self.render_input(
             input,
-            merman::RenderTarget::LayoutJson(self.svg_request()?),
+            merman::RenderTarget::LayoutSnapshot(self.svg_request()?),
             control.clone(),
         )?;
         let RenderOutput::LayoutJson(layout_json) = output else {

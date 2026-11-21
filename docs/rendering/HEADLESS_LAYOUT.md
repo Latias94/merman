@@ -27,6 +27,16 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
+The default response has `schema_version: 1`, a `family_id`, the detected `diagram_type`, and
+the family-specific `layout` payload. The payload uses the same coordinates, routes, group
+origins, and label positions as the `layout` field of the full snapshot. An adapted layout also
+reports `layout_adaptation` at the top level.
+
+Use `RenderRequest::layout_snapshot`, `RenderTarget::LayoutSnapshot`, or `merman-cli layout
+--snapshot` to retrieve the 0.10 response shape with `meta`, `semantic`, and `layout`. This is
+the migration for callers reading `meta.config` or `meta.effective_config`. Existing platform
+binding layout operations still return the full snapshot.
+
 When a caller must inspect full metadata before choosing a graphical output, prepare a
 `PresentationArtifact`, then consume it into exactly one target:
 
@@ -60,6 +70,12 @@ detectors/adapters belong to `with_presentation_engine`; its `MermaidEngine::wit
 accepts `merman::SourcePresentationConfig`. Installing a full engine does not change
 semantic or ordinary ASCII requests.
 
+Register a detector with `DetectorRegistry::add_config_fn` to read the effective configuration by
+key path and record changes with `DetectorConfig::set`. Later detectors see those assignments,
+including assignments equal to the current value. Existing detectors registered through `add_fn`
+can still request or replace the full JSON tree. Use the field-based API for plugins that need
+only a handful of settings.
+
 Opening separate layout and SVG requests intentionally creates separate operations. This keeps
 target ownership and resource accounting explicit instead of exposing a reusable SVG-only layout
 artifact.
@@ -75,7 +91,7 @@ under fresh control and resource admission. See the
 1. For a graphical request, `merman-core` detects the diagram and constructs family semantics
    with full presentation metadata under one `OperationControl` and runtime context.
 2. The public facade owns the full `PresentationArtifact`.
-3. `RenderTarget::LayoutJson` or `RenderTarget::Svg` enters the SVG adapter.
+3. A layout, layout snapshot, or SVG target enters the SVG adapter.
 4. `merman-render::family::prepare` borrows the canonical model/context and computes the matching
    owned typed layout behind the facade.
 5. Layout JSON or SVG is projected from that same target-local artifact.
@@ -114,7 +130,8 @@ placement uses the operation's existing cancellation and layout-work budget. A c
 its available container keeps its natural width and reports overflow. This is placement adaptation,
 not a maximum SVG width or a font-scaling policy.
 
-`layout_json` exposes `meta.layout_adaptation`, and completed SVG/native results expose the same
+`layout_json` exposes `layout_adaptation` at the top level. Full snapshots expose it under
+`meta.layout_adaptation`. Completed SVG/native results expose the same
 ordinary observation through `layout_adaptation()` and binding metadata `layout_adaptation`:
 `mode`, `requested_width`, `actual_width`, and `overflowed`. Actual width includes the existing
 viewBox padding, before viewport scaling; an empty board retains its 100px fallback. Native SDKs
