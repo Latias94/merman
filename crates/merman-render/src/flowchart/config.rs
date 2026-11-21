@@ -1,4 +1,4 @@
-use crate::config::{config_bool, config_f64, config_string};
+use crate::config::{ConfigLookup, config_bool, config_f64, config_string};
 use crate::text::{TextStyle, WrapMode};
 use serde_json::Value;
 
@@ -28,7 +28,7 @@ pub(crate) struct FlowchartTypographyConfigOwnership {
 pub(crate) fn flowchart_typography_config_ownership(
     config: &merman_model::presentation::PresentationConfig,
 ) -> FlowchartTypographyConfigOwnership {
-    let view = FlowchartConfigView::new(config.as_value());
+    let view = FlowchartConfigView::new(config);
     let raw_weight = config
         .explicit_config_owns_path("fontWeight")
         .then(|| config.get_str("fontWeight"))
@@ -45,15 +45,15 @@ pub(crate) fn flowchart_typography_config_ownership(
     }
 }
 
-pub(crate) struct FlowchartConfigView<'a> {
-    effective_config: &'a Value,
+pub(crate) struct FlowchartConfigView<'a, C: ConfigLookup + ?Sized> {
+    effective_config: &'a C,
     flowchart_config: &'a Value,
     state_config: &'a Value,
     theme_variables: &'a Value,
 }
 
-impl<'a> FlowchartConfigView<'a> {
-    pub(crate) fn new(effective_config: &'a Value) -> Self {
+impl<'a, C: ConfigLookup + ?Sized> FlowchartConfigView<'a, C> {
+    pub(crate) fn new(effective_config: &'a C) -> Self {
         Self {
             effective_config,
             flowchart_config: effective_config.get("flowchart").unwrap_or(&Value::Null),

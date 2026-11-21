@@ -258,12 +258,11 @@ impl FlowchartPreparedNodes {
         let typography = svg_labels.base_typography().map_or_else(
             || {
                 crate::flowchart::FlowchartBaseTypographyPlan::resolve(theme, config)
-                    .render_styles(config.as_value())
+                    .render_styles(config)
             },
-            |plan| plan.render_styles(config.as_value()),
+            |plan| plan.render_styles(config),
         );
-        let source_base = if crate::flowchart::FlowchartConfigView::new(config.as_value())
-            .node_wrap_mode()
+        let source_base = if crate::flowchart::FlowchartConfigView::new(config).node_wrap_mode()
             == crate::text::WrapMode::HtmlLike
         {
             &typography.html_label_text_style

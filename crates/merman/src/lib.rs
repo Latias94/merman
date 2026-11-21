@@ -107,8 +107,9 @@ pub use merman_core::generated::default_site_config;
 pub use merman_core::presentation::{SourcePresentationConfig, ThemeCompatibilityPlan};
 #[cfg(feature = "presentation")]
 pub use merman_core::{
-    CustomJsonRenderParser, Detector, DetectorRegistry, MermaidEngine, ParsedDiagramRender,
-    RenderDiagramRegistry, SourcePresentationMetadata, built_in_typed_render_families,
+    ConfigDetectorFn, CustomJsonRenderParser, Detector, DetectorConfig, DetectorRegistry,
+    MermaidEngine, ParsedDiagramRender, RenderDiagramRegistry, SourcePresentationMetadata,
+    built_in_typed_render_families,
 };
 pub use merman_core::{
     DiagramFamilyCapability, Error, InternalFailure, ParseDiagnostic, ParseDiagnosticSpanKind,

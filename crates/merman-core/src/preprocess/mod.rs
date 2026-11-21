@@ -134,7 +134,6 @@ pub(crate) fn select_family_parser_source_controlled(
         && let Some(with_comments) = with_comments
     {
         let max_text_size = config
-            .as_value()
             .get("maxTextSize")
             .and_then(Value::as_u64)
             .unwrap_or(50_000);

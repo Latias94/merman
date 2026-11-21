@@ -311,7 +311,6 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     };
 
     let line_hops_value = effective_config
-        .as_value()
         .get(if uses_elk_adapter_dom {
             "elk"
         } else {

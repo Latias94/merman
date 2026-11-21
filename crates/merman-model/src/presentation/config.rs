@@ -217,7 +217,7 @@ impl PresentationConfig {
             }
             for path in field.shared_assignment_paths().iter() {
                 control.checkpoint()?;
-                if config_value_at(parts.values.as_value(), path).is_none() {
+                if !path.is_empty() && parts.values.get_dotted_path(path).is_none() {
                     return Ok(Err(PresentationConfigError::MissingAssignmentValue {
                         path: Arc::clone(path),
                     }));
@@ -245,6 +245,14 @@ impl PresentationConfig {
 
     pub fn as_value(&self) -> &Value {
         self.values.as_value()
+    }
+
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.values.get(key)
+    }
+
+    pub fn get_path(&self, path: &[&str]) -> Option<&Value> {
+        self.values.get_path(path)
     }
 
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
@@ -335,7 +343,7 @@ impl PresentationConfig {
         self.config_path_overrides_typed_default(dotted_path)
             || (self.palette_paint_authority == PalettePaintAuthority::SelectedPalette
                 && dotted_path.starts_with("themeVariables.")
-                && config_value_at(self.as_value(), dotted_path).is_some())
+                && self.values.get_dotted_path(dotted_path).is_some())
     }
 
     /// Resolves exact/ancestor/descendant ownership without scanning unrelated declarations.
@@ -411,14 +419,6 @@ fn authored_paths(
         }
     }
     Ok(Ok(paths))
-}
-
-fn config_value_at<'a>(root: &'a Value, path: &str) -> Option<&'a Value> {
-    if path.is_empty() {
-        return Some(root);
-    }
-    path.split('.')
-        .try_fold(root, |value, segment| value.as_object()?.get(segment))
 }
 
 fn dotted_paths_overlap(left: &str, right: &str) -> bool {

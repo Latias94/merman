@@ -89,7 +89,7 @@ mod utils;
 mod yaml_config;
 
 #[cfg(feature = "presentation")]
-pub use detect::{Detector, DetectorRegistry};
+pub use detect::{ConfigDetectorFn, Detector, DetectorConfig, DetectorRegistry};
 pub use diagram::CapturedPanic;
 #[cfg(feature = "editor-facts")]
 pub use editor::ParsedEditorFacts;

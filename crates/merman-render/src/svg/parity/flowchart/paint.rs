@@ -367,7 +367,6 @@ pub(super) fn prepare_edge_routes(
     if ctx.uses_elk_adapter_dom {
         if ctx
             .config
-            .as_value()
             .get("elk")
             .and_then(|value| value.get("straightenEdges"))
             .and_then(serde_json::Value::as_bool)

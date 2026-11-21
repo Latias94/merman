@@ -206,7 +206,7 @@ impl InheritedFontStackPlan {
     ) -> Self {
         let Some(theme) = theme else {
             return Self {
-                font_family_css: crate::config::config_font_family_css(effective_config.as_value())
+                font_family_css: crate::config::config_font_family_css(effective_config)
                     .into_boxed_str(),
                 outcome: InheritedFontStackOutcome::Inactive,
                 typed_font_stack_requested: false,
@@ -215,7 +215,7 @@ impl InheritedFontStackPlan {
             };
         };
 
-        let config_font = crate::config::configured_font_family(effective_config.as_value());
+        let config_font = crate::config::configured_font_family(effective_config);
         let config_owns_font_stack = config_font
             .as_ref()
             .is_some_and(|(_, path)| effective_config.config_path_overrides_typed_default(path));

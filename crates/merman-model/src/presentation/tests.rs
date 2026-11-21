@@ -593,6 +593,43 @@ fn shared_construction_count_preserves_first_failure_with_a_tighter_budget() {
 }
 
 #[test]
+fn layered_construction_preserves_first_failure_and_exact_limits() {
+    let base = MermaidConfig::from_value(json!({
+        "early": "中文",
+        "flowchart": {"padding": 8, "label": "ok"},
+        "later": [0, 1, 2],
+    }));
+    let changes = json!({"flowchart": {"label": "a longer label"}, "custom": {"x": [[42]]}});
+    let mut layered = base.clone().with_shared_sections();
+    let mut flat = base.clone();
+    layered.deep_merge(&changes);
+    flat.deep_merge(&changes);
+
+    let freeze = |values, policy: &InputResourcePolicy| {
+        PresentationConfig::try_from_frozen_parts_controlled(
+            FrozenPresentationConfigParts::new(values),
+            policy,
+            &OperationControl::new(),
+        )
+        .unwrap()
+    };
+    for limit in [
+        InputResourceLimitId::MaxModelItems,
+        InputResourceLimitId::MaxModelTextBytes,
+        InputResourceLimitId::MaxModelNestingDepth,
+    ] {
+        for ceiling in 1..=80 {
+            let policy = InputResourcePolicy::default()
+                .with_limit(limit, ceiling)
+                .unwrap();
+            let layered = freeze(layered.clone(), &policy);
+            let flat = freeze(flat.clone(), &policy);
+            assert_eq!(layered.err(), flat.err(), "{limit:?} at {ceiling}");
+        }
+    }
+}
+
+#[test]
 fn cached_construction_count_is_invalidated_by_value_mutation() {
     let mut original = MermaidConfig::from_value(json!({"a": "b"}));
     let policy = InputResourcePolicy::default()

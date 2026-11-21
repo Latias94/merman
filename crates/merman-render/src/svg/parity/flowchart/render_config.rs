@@ -48,8 +48,7 @@ pub(crate) fn prepare_flowchart_render_config(
     base_typography: Option<&crate::flowchart::FlowchartBaseTypographyPlan>,
     edge_label_padding: crate::flowchart::FlowchartEdgeLabelPadding,
 ) -> FlowchartRenderConfig {
-    let effective_config_value = effective_config.as_value();
-    let config = FlowchartConfigView::new(effective_config_value);
+    let config = FlowchartConfigView::new(effective_config);
     let typography = base_typography.map_or_else(
         || {
             let font_family = config.font_family();
@@ -63,7 +62,7 @@ pub(crate) fn prepare_flowchart_render_config(
                 html_label_text_style,
             }
         },
-        |plan| plan.render_styles(effective_config_value),
+        |plan| plan.render_styles(effective_config),
     );
     let crate::flowchart::FlowchartBaseTypographyStyles {
         font_family,
@@ -128,7 +127,7 @@ pub(crate) fn prepare_flowchart_render_config(
     let cluster_fill_config_override = !agentflow && owns_color("themeVariables.clusterBkg");
     let cluster_stroke_config_override = if agentflow {
         crate::config::selected_config_string(
-            effective_config.as_value(),
+            effective_config,
             &[
                 "themeVariables.flowContainerStroke",
                 "themeVariables.secondaryBorderColor",
@@ -194,7 +193,6 @@ pub(crate) fn flowchart_node_label_fill_config_override(
     // `nodeTextColor || textColor`. `primaryTextColor` only owns the terminal when the
     // materialized `nodeTextColor` is its direct derived value.
     let theme_variables = effective_config
-        .as_value()
         .get("themeVariables")
         .and_then(serde_json::Value::as_object);
     let node_text_color = theme_variables

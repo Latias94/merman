@@ -36,7 +36,7 @@ impl PreparedLookDefs {
     pub(crate) fn uses_gradient(&self) -> bool {
         self.gradient.is_some()
     }
-    pub(crate) fn new(config: &serde_json::Value) -> Self {
+    pub(crate) fn new(config: &(impl crate::config::ConfigLookup + ?Sized)) -> Self {
         let flood_color = config
             .get("theme")
             .and_then(serde_json::Value::as_str)

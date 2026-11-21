@@ -1,5 +1,6 @@
 use serde_json::Value;
 
+use crate::config::SectionEntries;
 use crate::resources::{InputResourcePolicy, ModelComplexity};
 use crate::{MermaidConfig, OperationControl, OperationControlResult};
 
@@ -75,7 +76,7 @@ impl<'a> ConfigConstructionBudget<'a> {
             }
         }
         let before = self.work;
-        let depth = match self.charge_json(config.as_value())? {
+        let depth = match self.charge_json(config)? {
             Ok(depth) => depth,
             Err(error) => return Ok(Err(error)),
         };
@@ -90,13 +91,22 @@ impl<'a> ConfigConstructionBudget<'a> {
 
     fn charge_json(
         &mut self,
-        root: &Value,
+        config: &MermaidConfig,
     ) -> OperationControlResult<Result<usize, PresentationConfigError>> {
         if let Err(error) = self.charge(1, 0, 0)? {
             return Ok(Err(error));
         }
         let mut max_depth = 0;
-        let mut pending = vec![JsonFrame::Value(root, 0)];
+        let root = if let Some((len, entries)) = config.section_entries() {
+            self.control.checkpoint()?;
+            if let Err(error) = self.charge(len, 0, 0)? {
+                return Ok(Err(error));
+            }
+            JsonFrame::Sections(entries)
+        } else {
+            JsonFrame::Value(config.as_value(), 0)
+        };
+        let mut pending = vec![root];
         while let Some(frame) = pending.pop() {
             self.control.checkpoint()?;
             let charged = match frame {
@@ -145,6 +155,18 @@ impl<'a> ConfigConstructionBudget<'a> {
                         Ok(())
                     }
                 }
+                JsonFrame::Sections(mut values) => {
+                    if let Some((key, value)) = values.next() {
+                        let charged = self.charge(0, key.len(), 0)?;
+                        if charged.is_ok() {
+                            pending.push(JsonFrame::Sections(values));
+                            pending.push(JsonFrame::Value(value, 1));
+                        }
+                        charged
+                    } else {
+                        Ok(())
+                    }
+                }
             };
             if let Err(error) = charged {
                 return Ok(Err(error));
@@ -158,4 +180,5 @@ enum JsonFrame<'a> {
     Value(&'a Value, usize),
     Array(std::slice::Iter<'a, Value>, usize),
     Object(serde_json::map::Iter<'a>, usize),
+    Sections(SectionEntries<'a>),
 }

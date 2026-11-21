@@ -81,7 +81,7 @@ impl OperationConfigBuilder {
         control: &OperationControl,
     ) -> OperationControlResult<Result<Self>> {
         let effective = match engine.default_effective_config() {
-            Ok(config) => config,
+            Ok(config) => config.with_shared_sections(),
             Err(error) => return Ok(Err(error)),
         };
         let source = if overrides.is_empty_object() {
@@ -199,12 +199,14 @@ impl OperationConfigBuilder {
         selected: crate::MermaidThemeId,
     ) -> std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError> {
         let mut raw_config = engine.initialization.site_config.clone();
+        if !source_config.is_empty_object() {
+            raw_config = raw_config.with_shared_sections();
+        }
         // Every actual theme recalculation consumes raw initialization and allowed source inputs.
         // The inherited path instead keeps ordinary updates to initialized derivations.
         let initial_variables = engine
             .initialization
             .initialization_inputs
-            .as_value()
             .get("themeVariables")
             .filter(|value| theme::is_js_truthy(value))
             .map(crate::json_value::clone_value_nonrecursive)
@@ -1797,10 +1799,16 @@ mod editor_parse_source_map_tests {
     }
 
     #[test]
-    fn read_only_detection_skips_the_discarded_source_merge() {
-        fn detector(_source: &str, config: &mut SourcePresentationConfig) -> bool {
-            assert_eq!(config.get_str("theme"), Some("default"));
-            assert_eq!(config.get_str("layout"), Some("dagre"));
+    fn read_only_detection_borrows_the_source_section_without_cloning_the_full_config() {
+        fn detector(_source: &str, config: &mut crate::DetectorConfig<'_>) -> bool {
+            assert_eq!(
+                config.get(&["theme"]).and_then(serde_json::Value::as_str),
+                Some("default")
+            );
+            assert_eq!(
+                config.get(&["layout"]).and_then(serde_json::Value::as_str),
+                Some("dagre")
+            );
             true
         }
 
@@ -1808,7 +1816,9 @@ mod editor_parse_source_map_tests {
         let builtin = MermaidEngine::new();
         let mut custom = builtin.clone();
         *custom.registry_mut() = DetectorRegistry::new();
-        custom.registry_mut().add_fn("flowchart-v2", detector);
+        custom
+            .registry_mut()
+            .add_config_fn("flowchart-v2", detector);
         let (builtin_metadata, builtin_work) =
             crate::config::measure_config_work(|| builtin.parse_metadata_sync(source).unwrap());
         let (custom_metadata, custom_work) =
@@ -1822,10 +1832,45 @@ mod editor_parse_source_map_tests {
             serde_json::to_vec(builtin_config.as_value()).unwrap(),
             serde_json::to_vec(custom_config.as_value()).unwrap()
         );
-        assert_eq!(
-            builtin_work.json_cow_copies + 1,
-            custom_work.json_cow_copies
-        );
+        assert_eq!(builtin_work.json_cow_copies, custom_work.json_cow_copies);
+    }
+
+    #[test]
+    fn source_and_detector_section_writes_keep_effective_ownership() {
+        fn detect(text: &str, config: &mut crate::DetectorConfig<'_>) -> bool {
+            assert!(text.starts_with("flowchart"));
+            assert_eq!(
+                config.get(&["flowchart", "nodeSpacing"]),
+                Some(&serde_json::json!(72))
+            );
+            config.set("flowchart.rankSpacing", serde_json::json!(61));
+            // A same-value assignment is observable as explicit ownership.
+            config.set("flowchart.nodeSpacing", serde_json::json!(72));
+            true
+        }
+
+        let mut engine = MermaidEngine::new();
+        *engine.registry_mut() = DetectorRegistry::new();
+        engine.registry_mut().add_config_fn("flowchart-v2", detect);
+        let metadata = engine
+            .parse_metadata_sync(
+                "---\nconfig:\n  flowchart:\n    nodeSpacing: 72\n---\nflowchart TD\nA-->B",
+            )
+            .unwrap();
+        let config = metadata.effective_config;
+        assert_eq!(config.get_str("theme"), Some("redux-color"));
+        for (field, value, path) in [
+            ("nodeSpacing", 72, "flowchart.nodeSpacing"),
+            ("rankSpacing", 61, "flowchart.rankSpacing"),
+        ] {
+            assert_eq!(
+                config
+                    .get_path(&["flowchart", field])
+                    .and_then(serde_json::Value::as_u64),
+                Some(value)
+            );
+            assert!(config.explicit_config_owns_path(path));
+        }
     }
 
     #[test]

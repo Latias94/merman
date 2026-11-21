@@ -2,10 +2,31 @@ use super::{clean_detection_input_controlled, detect_precleaned_controlled};
 use crate::family::DetectorFact;
 use crate::presentation::SourcePresentationConfig;
 use crate::{OperationControl, OperationControlResult, Result};
+use serde_json::Value;
 use std::sync::Arc;
 
 /// Predicate used by [`DetectorRegistry`] to recognize one Mermaid diagram family.
 pub type DetectorFn = fn(text: &str, config: &mut SourcePresentationConfig) -> bool;
+
+/// Configuration access for a detector that reads fields and records explicit assignments.
+pub struct DetectorConfig<'a> {
+    config: &'a mut SourcePresentationConfig,
+}
+
+impl DetectorConfig<'_> {
+    /// Reads a key path in the effective configuration visible to this detector.
+    pub fn get(&self, path: &[&str]) -> Option<&Value> {
+        self.config.get_path(path)
+    }
+
+    /// Assigns a dotted path and records the assignment even when its value is unchanged.
+    pub fn set(&mut self, dotted_path: &str, value: Value) {
+        self.config.set_value(dotted_path, value);
+    }
+}
+
+/// Predicate using field reads and explicit assignments instead of whole-config mutation.
+pub type ConfigDetectorFn = fn(text: &str, config: &mut DetectorConfig<'_>) -> bool;
 
 /// One diagram detector entry.
 #[derive(Debug, Clone)]
@@ -19,6 +40,10 @@ pub struct Detector {
 #[derive(Debug, Clone)]
 enum DetectorEntry {
     Builtin(DetectorFact),
+    Scoped {
+        id: &'static str,
+        detector: ConfigDetectorFn,
+    },
     Custom(Detector),
 }
 
@@ -26,6 +51,7 @@ impl DetectorEntry {
     fn id(&self) -> &'static str {
         match self {
             Self::Builtin(fact) => fact.id,
+            Self::Scoped { id, .. } => id,
             Self::Custom(detector) => detector.id,
         }
     }
@@ -49,6 +75,12 @@ impl DetectorEntry {
                 true
             }
             Self::Custom(detector) => (detector.detector)(text, config(state)),
+            Self::Scoped { detector, .. } => detector(
+                text,
+                &mut DetectorConfig {
+                    config: config(state),
+                },
+            ),
         }
     }
 }
@@ -78,6 +110,11 @@ impl DetectorRegistry {
     /// Adds a detector function to the end of the ordered registry.
     pub fn add_fn(&mut self, id: &'static str, detector: DetectorFn) {
         self.add(Detector { id, detector });
+    }
+
+    /// Registers a detector that can read fields and assign values without borrowing full JSON.
+    pub fn add_config_fn(&mut self, id: &'static str, detector: ConfigDetectorFn) {
+        Arc::make_mut(&mut self.detectors).push(DetectorEntry::Scoped { id, detector });
     }
 
     /// Detects a Mermaid diagram type after stripping front-matter, directives, and comments.

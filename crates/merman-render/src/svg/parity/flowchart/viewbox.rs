@@ -406,8 +406,8 @@ fn builtin_neo_paint_bounds(
     if !ctx.compatibility.look.is_neo() {
         return Ok(None);
     }
-    let title_shift = crate::flowchart::FlowchartConfigView::new(ctx.config.as_value())
-        .render_subgraph_title_y_shift();
+    let title_shift =
+        crate::flowchart::FlowchartConfigView::new(ctx.config).render_subgraph_title_y_shift();
     let y_offset = |id: &str, recursive: bool| {
         if recursive || hierarchy.effective_parent(id).is_some() {
             -title_shift

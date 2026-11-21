@@ -183,50 +183,43 @@ fn required_capabilities(parsed: &PresentationDiagram) -> Vec<RenderCapability> 
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         #[cfg(feature = "diagram-usecase")]
         RenderSemanticModel::Usecase(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         #[cfg(feature = "diagram-state")]
         RenderSemanticModel::State(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         #[cfg(feature = "diagram-requirement")]
         RenderSemanticModel::Requirement(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
         RenderSemanticModel::Flowchart(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         #[cfg(feature = "diagram-class")]
         RenderSemanticModel::Class(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         #[cfg(feature = "diagram-er")]
         RenderSemanticModel::Er(_) => {
             required.extend(
-                crate::layout_backend::resolve_graph_layout(effective_config.as_value())
-                    .required_capability(),
+                crate::layout_backend::resolve_graph_layout(effective_config).required_capability(),
             );
         }
         _ => {}

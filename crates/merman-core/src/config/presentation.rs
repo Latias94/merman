@@ -97,6 +97,19 @@ impl SourcePresentationConfig {
         self.inputs.as_value()
     }
 
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.inputs.get(key)
+    }
+
+    pub fn get_path(&self, path: &[&str]) -> Option<&Value> {
+        self.inputs.get_path(path)
+    }
+
+    pub(crate) fn with_shared_sections(mut self) -> Self {
+        self.inputs = self.inputs.with_shared_sections();
+        self
+    }
+
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
         self.inputs.get_str(dotted_path)
     }
@@ -571,13 +584,11 @@ impl SourcePresentationConfig {
         // String equality is exact. Replay records explicit claims separately and continues
         // to replace containers so their contents and key order follow the detector.
         if let Some(Value::String(replacement)) = value
-            && path
-                .iter()
-                .try_fold(self.as_value(), |parent, segment| {
-                    parent.as_object()?.get(*segment)
-                })
-                .and_then(Value::as_str)
-                == Some(replacement.as_str())
+            && if path.is_empty() {
+                self.as_value().as_str() == Some(replacement)
+            } else {
+                self.get_path(path).and_then(Value::as_str) == Some(replacement)
+            }
         {
             return;
         }
@@ -793,7 +804,7 @@ impl DetectorConfigCheckpoint {
         if !explicit_paths.is_empty() {
             Arc::make_mut(&mut after.explicit_config_paths).extend(explicit_paths.iter().cloned());
         }
-        let values_changed = !std::ptr::eq(self.before.inputs.as_value(), after.inputs.as_value())
+        let values_changed = !self.before.inputs.shares_storage_with(&after.inputs)
             && !config_values_equal(self.before.as_value(), after.as_value(), Some(control))?;
         if !values_changed && !transferred_explicit_ownership && explicit_paths.is_empty() {
             return Ok(None);

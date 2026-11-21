@@ -196,7 +196,9 @@ pub(super) fn write_mermaid_base_css_root_rule_to(
     write_mermaid_base_css_root_rule(out, id, font_family)
 }
 
-fn mermaid_stroke_width_px(effective_config: &serde_json::Value) -> String {
+fn mermaid_stroke_width_px(
+    effective_config: &(impl crate::config::ConfigLookup + ?Sized),
+) -> String {
     let value = crate::config::config_css_number_or_string(
         effective_config,
         &["themeVariables", "strokeWidth"],
@@ -234,7 +236,7 @@ pub(crate) struct PreparedCommonNeoCss(MermaidCommonNeoCss);
     feature = "diagram-usecase"
 ))]
 impl PreparedCommonNeoCss {
-    pub(crate) fn new(config: &serde_json::Value) -> Self {
+    pub(crate) fn new(config: &(impl crate::config::ConfigLookup + ?Sized)) -> Self {
         Self(MermaidCommonNeoCss::new(config))
     }
 
@@ -285,7 +287,7 @@ impl PreparedCommonNeoCss {
 }
 
 impl MermaidCommonNeoCss {
-    fn new(effective_config: &serde_json::Value) -> Self {
+    fn new(effective_config: &(impl crate::config::ConfigLookup + ?Sized)) -> Self {
         Self {
             node_border: theme_token(effective_config, "nodeBorder", "#9370DB"),
             use_gradient: config_bool(effective_config, &["themeVariables", "useGradient"])
