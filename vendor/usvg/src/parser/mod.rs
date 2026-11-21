@@ -144,22 +144,60 @@ impl crate::Tree {
 
     /// Parses `Tree` from an SVG string.
     pub fn from_str(text: &str, opt: &Options) -> Result<Self, Error> {
-        let xml_opt = roxmltree::ParsingOptions {
-            allow_dtd: true,
-            ..Default::default()
-        };
-
-        let doc =
-            roxmltree::Document::parse_with_options(text, xml_opt).map_err(Error::ParsingFailed)?;
-
+        let doc = parse_document(text)?;
         Self::from_xmltree(&doc, opt)
+    }
+
+    /// Parses a metric probe and also resolves the metric bbox x of its end-anchored twin.
+    ///
+    /// The targeted text must be a single horizontal, start-anchored chunk without `textLength`.
+    /// Returns `Ok(None)` for unsupported text. The second result is absent if the end anchor
+    /// would be pruned. The normal tree contains only the input text at its original anchor.
+    #[cfg(feature = "text")]
+    pub fn try_from_str_with_text_anchor_probe(
+        source: impl FnOnce() -> String,
+        opt: &Options,
+        id: &str,
+    ) -> Result<Option<(Self, Option<f32>)>, Error> {
+        let source = source();
+        let doc = parse_document(&source)?;
+        let mut cache = converter::Cache::new(opt.fontdb.clone());
+        cache.text_anchor_probe = Some(converter::TextAnchorProbe {
+            id: id.into(),
+            supported: true,
+            end_x: None,
+        });
+        let tree = Self::from_xmltree_with_cache(&doc, opt, &mut cache)?;
+        Ok(cache
+            .text_anchor_probe
+            .and_then(|probe| probe.supported.then_some((tree, probe.end_x))))
     }
 
     /// Parses `Tree` from `roxmltree::Document`.
     pub fn from_xmltree(doc: &roxmltree::Document, opt: &Options) -> Result<Self, Error> {
-        let doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
-        self::converter::convert_doc(&doc, opt)
+        let mut cache = converter::Cache::new(
+            #[cfg(feature = "text")]
+            opt.fontdb.clone(),
+        );
+        Self::from_xmltree_with_cache(doc, opt, &mut cache)
     }
+
+    fn from_xmltree_with_cache(
+        doc: &roxmltree::Document,
+        opt: &Options,
+        cache: &mut converter::Cache,
+    ) -> Result<Self, Error> {
+        let doc = svgtree::Document::parse_tree(doc, opt.style_sheet.as_deref())?;
+        self::converter::convert_doc(&doc, opt, cache)
+    }
+}
+
+fn parse_document(text: &str) -> Result<roxmltree::Document<'_>, Error> {
+    let xml_opt = roxmltree::ParsingOptions {
+        allow_dtd: true,
+        ..Default::default()
+    };
+    roxmltree::Document::parse_with_options(text, xml_opt).map_err(Error::ParsingFailed)
 }
 
 /// Decompresses an SVGZ file.

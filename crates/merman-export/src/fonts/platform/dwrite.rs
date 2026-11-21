@@ -5,26 +5,27 @@ use super::{
     family_names_match,
 };
 use std::{
-    ffi::OsString,
+    ffi::{OsString, c_void},
     os::windows::ffi::OsStringExt,
     path::{Path, PathBuf},
     ptr,
 };
-use ttf_parser::{name, name_id};
+use ttf_parser::{fvar, name, name_id};
 use usvg::fontdb::{FaceInfo, Style};
 use windows::Win32::Foundation::E_POINTER;
 use windows::Win32::Graphics::DirectWrite::{
-    DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_SIMULATIONS_BOLD, DWRITE_FONT_SIMULATIONS_OBLIQUE,
-    DWRITE_FONT_STRETCH, DWRITE_FONT_STRETCH_CONDENSED, DWRITE_FONT_STRETCH_EXPANDED,
-    DWRITE_FONT_STRETCH_EXTRA_CONDENSED, DWRITE_FONT_STRETCH_EXTRA_EXPANDED,
-    DWRITE_FONT_STRETCH_NORMAL, DWRITE_FONT_STRETCH_SEMI_CONDENSED,
-    DWRITE_FONT_STRETCH_SEMI_EXPANDED, DWRITE_FONT_STRETCH_ULTRA_CONDENSED,
-    DWRITE_FONT_STRETCH_ULTRA_EXPANDED, DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL,
-    DWRITE_FONT_STYLE_OBLIQUE, DWRITE_FONT_WEIGHT, DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME,
-    DWRITE_READING_DIRECTION, DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory,
-    IDWriteFactory, IDWriteFactory2, IDWriteFont, IDWriteFontCollection, IDWriteFontFace,
-    IDWriteFontFace5, IDWriteFontFallback, IDWriteLocalFontFileLoader, IDWriteLocalizedStrings,
-    IDWriteNumberSubstitution, IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
+    DWRITE_FACTORY_TYPE_SHARED, DWRITE_FONT_AXIS_VALUE, DWRITE_FONT_SIMULATIONS_BOLD,
+    DWRITE_FONT_SIMULATIONS_OBLIQUE, DWRITE_FONT_STRETCH, DWRITE_FONT_STRETCH_CONDENSED,
+    DWRITE_FONT_STRETCH_EXPANDED, DWRITE_FONT_STRETCH_EXTRA_CONDENSED,
+    DWRITE_FONT_STRETCH_EXTRA_EXPANDED, DWRITE_FONT_STRETCH_NORMAL,
+    DWRITE_FONT_STRETCH_SEMI_CONDENSED, DWRITE_FONT_STRETCH_SEMI_EXPANDED,
+    DWRITE_FONT_STRETCH_ULTRA_CONDENSED, DWRITE_FONT_STRETCH_ULTRA_EXPANDED,
+    DWRITE_FONT_STYLE_ITALIC, DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STYLE_OBLIQUE,
+    DWRITE_FONT_WEIGHT, DWRITE_INFORMATIONAL_STRING_POSTSCRIPT_NAME, DWRITE_READING_DIRECTION,
+    DWRITE_READING_DIRECTION_LEFT_TO_RIGHT, DWriteCreateFactory, IDWriteFactory, IDWriteFactory2,
+    IDWriteFont, IDWriteFontCollection, IDWriteFontFace, IDWriteFontFace5, IDWriteFontFallback,
+    IDWriteLocalFontFileLoader, IDWriteLocalizedStrings, IDWriteNumberSubstitution,
+    IDWriteTextAnalysisSource, IDWriteTextAnalysisSource_Impl,
 };
 use windows_core::{Error, Interface, OutRef, PCWSTR, Result, implement, w};
 
@@ -79,10 +80,11 @@ impl CharacterFallback {
                 .filter_map(|i| family.GetFont(i).ok()?.CreateFontFace().ok())
                 .any(|face| {
                     face.GetIndex() == index
-                        && is_variable(&face)
+                        && variable_face(&face).is_some()
                         && file_path(&face).as_deref() == Some(path)
-                        && with_name_table(&face, |table| !family_names_match(table, name))
-                            == Some(true)
+                        && with_font_table(&face, b"name", |bytes| {
+                            Some(!family_names_match(name::Table::parse(bytes)?, name))
+                        }) == Some(true)
                 })
         }
     }
@@ -133,11 +135,16 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
         let face = font.CreateFontFace().ok()?;
         let path = file_path(&face)?;
         let family = localized_name(&font.GetFontFamily().ok()?.GetFamilyNames().ok()?)?;
-        let variable = is_variable(&face);
-        let post_script_name = if variable {
-            // GetInformationalStrings may return a named instance's PostScript name. Read
-            // the physical face's name table and decline a family requiring instance settings.
-            Some(with_name_table(&face, |table| {
+        let variable = variable_face(&face);
+        let post_script_name = if let Some(instance) = &variable {
+            if has_non_default_axes(&face, instance) {
+                // The resolver admits a file and collection index. These cannot carry the
+                // selected instance's coordinates, even when it shares the physical family.
+                return None;
+            }
+            // DirectWrite can name even a default instance differently from the file.
+            Some(with_font_table(&face, b"name", |bytes| {
+                let table = name::Table::parse(bytes)?;
                 if !family_names_match(table, &family) {
                     return None;
                 }
@@ -146,13 +153,13 @@ fn file_candidate(font: IDWriteFont) -> Option<FontCandidate> {
                     .into_iter()
                     .filter(|name| name.name_id == name_id::POST_SCRIPT_NAME)
                     .find_map(|name| name.to_string())
-            })??)
+            })?)
         } else {
             post_script_name(&font)
         };
         let simulations = face.GetSimulations();
         // CSS properties can be varied or simulated independently of the physical face.
-        let attributes = if variable {
+        let attributes = if variable.is_some() {
             FaceAttributes::default()
         } else {
             FaceAttributes {
@@ -209,27 +216,68 @@ fn file_path(face: &IDWriteFontFace) -> Option<PathBuf> {
     }
 }
 
-fn is_variable(face: &IDWriteFontFace) -> bool {
+fn variable_face(face: &IDWriteFontFace) -> Option<IDWriteFontFace5> {
     // SAFETY: HasVariations has no inputs beyond the live COM interface.
     unsafe {
         face.cast::<IDWriteFontFace5>()
-            .is_ok_and(|face| face.HasVariations().as_bool())
+            .ok()
+            .filter(|face| face.HasVariations().as_bool())
     }
 }
 
-fn with_name_table<T>(
+fn has_non_default_axes(face: &IDWriteFontFace, instance: &IDWriteFontFace5) -> bool {
+    with_font_table(face, b"fvar", |bytes| {
+        let table = fvar::Table::parse(bytes)?;
+        // SAFETY: The slice has the exact number of writable slots reported by this face.
+        let mut values = unsafe {
+            let count = instance.GetFontAxisValueCount() as usize;
+            let mut values = Vec::new();
+            values.try_reserve_exact(count).ok()?;
+            values.resize(count, DWRITE_FONT_AXIS_VALUE::default());
+            instance.GetFontAxisValues(&mut values).ok()?;
+            values
+        };
+        values.sort_unstable_by_key(|value| value.axisTag.0);
+        // DirectWrite can include static CSS axes with no corresponding physical axis.
+        Some(table.axes.into_iter().any(|axis| {
+            let tag = u32::from_le_bytes(axis.tag.to_bytes());
+            values
+                .binary_search_by_key(&tag, |value| value.axisTag.0)
+                .ok()
+                .is_some_and(|i| {
+                    let value = values[i].value;
+                    (axis.min_value..=axis.max_value).contains(&value) && value != axis.def_value
+                })
+        }))
+    }) == Some(true)
+}
+
+struct FontTableLease<'a> {
+    face: &'a IDWriteFontFace,
+    context: *mut c_void,
+}
+
+impl Drop for FontTableLease<'_> {
+    fn drop(&mut self) {
+        // SAFETY: This face returned the context for an existing table, possibly NULL.
+        unsafe { self.face.ReleaseFontTable(self.context) };
+    }
+}
+
+fn with_font_table<T>(
     face: &IDWriteFontFace,
-    read: impl FnOnce(name::Table<'_>) -> T,
+    tag: &[u8; 4],
+    read: impl FnOnce(&[u8]) -> Option<T>,
 ) -> Option<T> {
     let mut data = ptr::null_mut();
     let mut size = 0;
     let mut context = ptr::null_mut();
     let mut exists = Default::default();
-    // SAFETY: With a successful table lookup DirectWrite owns `size` bytes until ReleaseFontTable.
-    // Return only owned values, never a slice of the COM table.
+    // SAFETY: The output slots are writable. DirectWrite owns `size` bytes until the lease
+    // releases the table. The slice is scoped to the callback and cannot be returned.
     unsafe {
         face.TryGetFontTable(
-            u32::from_le_bytes(*b"name"),
+            u32::from_le_bytes(*tag),
             &mut data,
             &mut size,
             &mut context,
@@ -239,14 +287,12 @@ fn with_name_table<T>(
         if !exists.as_bool() {
             return None;
         }
+        let _lease = FontTableLease { face, context };
         let size = size as usize;
-        let result = if !data.is_null() && size <= isize::MAX as usize {
-            name::Table::parse(std::slice::from_raw_parts(data.cast::<u8>(), size)).map(read)
-        } else {
-            None
-        };
-        face.ReleaseFontTable(context);
-        result
+        if data.is_null() || size > isize::MAX as usize {
+            return None;
+        }
+        read(std::slice::from_raw_parts(data.cast::<u8>(), size))
     }
 }
 
@@ -387,6 +433,36 @@ fn report_text(run: &[u16], text: *mut *mut u16, len: *mut u32) -> Result<()> {
 mod tests {
     use super::*;
     use usvg::fontdb::Database;
+
+    #[test]
+    #[ignore = "requires Windows Noto Sans SC with a physical weight of 100"]
+    fn directwrite_variable_fallback_requires_physical_axis_defaults() {
+        let mut database = Database::new();
+        database
+            .load_font_data(include_bytes!("../../../tests/fonts/NotoSansSC-subset.ttf").to_vec());
+        let mut base = database.faces().next().unwrap().clone();
+        let fallback = CharacterFallback::new().unwrap();
+        for weight in [400, 700] {
+            base.weight = usvg::fontdb::Weight(weight);
+            assert!(fallback.lookup('中', &base).is_none(), "weight {weight}");
+        }
+
+        base.weight = usvg::fontdb::Weight(100);
+        let Some(FontCandidate::File {
+            path,
+            index,
+            expected,
+        }) = fallback.lookup('中', &base)
+        else {
+            panic!("the default instance remains representable");
+        };
+        let mut physical = Database::new();
+        physical.load_font_data(std::fs::read(&path).unwrap());
+        let face = physical.faces().find(|face| face.index == index).unwrap();
+        assert_eq!(face.post_script_name, "NotoSansSC-Thin");
+        assert_eq!(face.weight, base.weight);
+        expected.validate(face, &path).unwrap();
+    }
 
     #[test]
     #[ignore = "requires the Windows Trebuchet MS and Microsoft YaHei UI font files"]

@@ -11,3 +11,7 @@ shape. It can fill a missing cluster when both faces shape the same original byt
 Upstream [resvg #1087](https://github.com/linebender/resvg/pull/1087) discusses the cluster
 boundary problem. The Merman workspace patches one usvg source for native measurement, raster,
 and vector PDF. Remove this patch when a common supported release fixes the regression.
+
+The native metric probe reuses a single text shape to obtain start- and end-anchor bounds.
+It retains the normal positioning and outline-conversion checks for both bounds. Merman's
+registry builds use the two-element probe with the published usvg API.

@@ -13,8 +13,8 @@ use xmlwriter::XmlWriter;
 use crate::text::colr::GlyphPainter;
 use crate::*;
 
-fn resolve_rendering_mode(text: &Text) -> ShapeRendering {
-    match text.rendering_mode {
+fn resolve_rendering_mode(mode: TextRendering) -> ShapeRendering {
+    match mode {
         TextRendering::OptimizeSpeed => ShapeRendering::CrispEdges,
         TextRendering::OptimizeLegibility => ShapeRendering::GeometricPrecision,
         TextRendering::GeometricPrecision => ShapeRendering::GeometricPrecision,
@@ -45,12 +45,17 @@ fn push_outline_paths(
     }
 }
 
-pub(crate) fn flatten(text: &mut Text, cache: &mut Cache) -> Option<(Group, NonZeroRect)> {
+pub(crate) fn flatten(
+    id: &str,
+    mode: TextRendering,
+    spans: &[layout::Span],
+    cache: &mut Cache,
+) -> Option<(Group, NonZeroRect)> {
     let mut new_children = vec![];
 
-    let rendering_mode = resolve_rendering_mode(text);
+    let rendering_mode = resolve_rendering_mode(mode);
 
-    for span in &text.layouted {
+    for span in spans {
         if let Some(path) = span.overline.as_ref() {
             let mut path = path.clone();
             path.rendering_mode = rendering_mode;
@@ -167,7 +172,7 @@ pub(crate) fn flatten(text: &mut Text, cache: &mut Cache) -> Option<(Group, NonZ
     }
 
     let mut group = Group {
-        id: text.id.clone(),
+        id: id.to_owned(),
         ..Group::empty()
     };
 

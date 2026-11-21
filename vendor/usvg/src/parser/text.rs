@@ -140,8 +140,18 @@ pub(crate) fn convert(
         layouted: vec![],
     };
 
-    if text::convert(&mut text, &state.opt.font_resolver, cache).is_none() {
+    let report_anchor = cache
+        .text_anchor_probe
+        .as_ref()
+        .is_some_and(|probe| probe.id.as_ref() == text.id());
+    let probe_end_anchor = report_anchor && text::layout::can_probe_end_anchor(&text);
+    let Some(end_x) = text::convert(&mut text, &state.opt.font_resolver, cache, probe_end_anchor)
+    else {
         return;
+    };
+    if let Some(probe) = cache.text_anchor_probe.as_mut().filter(|_| report_anchor) {
+        probe.supported = probe_end_anchor;
+        probe.end_x = end_x;
     }
 
     parent.children.push(Node::Text(Box::new(text)));

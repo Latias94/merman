@@ -123,9 +123,7 @@ impl SystemCatalog {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
             if !self.selection.allows_implicit(face.id)
                 || excluded.iter().any(|used| same_face(used, face))
-                || (base.style != face.style
-                    && base.weight != face.weight
-                    && base.stretch != face.stretch)
+                || !crate::font_selection::fallback_style_matches(base, face)
                 || !self.supports(face, character, control)?
             {
                 continue;
@@ -151,7 +149,7 @@ impl SystemCatalog {
             .with_face_data(face.id, |bytes, index| {
                 rustybuzz::ttf_parser::Face::parse(bytes, index)
                     .ok()
-                    .is_some_and(|face| face.glyph_index(character).is_some())
+                    .is_some_and(|face| crate::font_selection::covers_character(&face, character))
             })
             .unwrap_or(false))
     }

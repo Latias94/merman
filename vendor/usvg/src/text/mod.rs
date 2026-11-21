@@ -201,16 +201,29 @@ impl std::fmt::Debug for FontResolver<'_> {
 ///    is not based on the outlines of a glyph, but instead the glyph metrics as well
 ///    as decoration spans).
 /// 2. We convert all of the positioned glyphs into outlines.
-pub(crate) fn convert(text: &mut Text, resolver: &FontResolver, cache: &mut Cache) -> Option<()> {
-    let (text_fragments, bbox) = layout::layout_text(text, resolver, &mut cache.fontdb)?;
-    text.layouted = text_fragments;
-    text.bounding_box = bbox.to_rect();
-    text.abs_bounding_box = bbox.transform(text.abs_transform)?.to_rect();
+pub(crate) fn convert(
+    text: &mut Text,
+    resolver: &FontResolver,
+    cache: &mut Cache,
+    probe_end_anchor: bool,
+) -> Option<Option<f32>> {
+    let (layout, end) = layout::layout_text(text, resolver, &mut cache.fontdb, probe_end_anchor)?;
+    text.layouted = layout.spans;
+    text.bounding_box = layout.bbox.to_rect();
+    text.abs_bounding_box = layout.bbox.transform(text.abs_transform)?.to_rect();
 
-    let (group, stroke_bbox) = flatten::flatten(text, cache)?;
+    let (group, stroke_bbox) =
+        flatten::flatten(&text.id, text.rendering_mode, &text.layouted, cache)?;
     text.flattened = Box::new(group);
     text.stroke_bounding_box = stroke_bbox.to_rect();
     text.abs_stroke_bounding_box = stroke_bbox.transform(text.abs_transform)?.to_rect();
 
-    Some(())
+    let end_x = end.and_then(|end| {
+        end.bbox.transform(text.abs_transform)?;
+        // The legacy probe also required the second text to survive outline conversion.
+        let (_, stroke_bbox) = flatten::flatten("", text.rendering_mode, &end.spans, cache)?;
+        stroke_bbox.transform(text.abs_transform)?;
+        Some(end.bbox.x())
+    });
+    Some(end_x)
 }

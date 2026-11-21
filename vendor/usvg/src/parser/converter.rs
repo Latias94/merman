@@ -59,6 +59,8 @@ pub struct Cache {
     cache_raster: HashMap<(ID, GlyphId), Option<BitmapImage>>,
     #[cfg(feature = "text")]
     cache_has_opsz: HashMap<ID, bool>,
+    #[cfg(feature = "text")]
+    pub(super) text_anchor_probe: Option<TextAnchorProbe>,
 
     pub clip_paths: HashMap<String, Arc<ClipPath>>,
     pub masks: HashMap<String, Arc<Mask>>,
@@ -74,6 +76,14 @@ pub struct Cache {
     mask_index: usize,
     filter_index: usize,
     image_index: usize,
+}
+
+#[cfg(feature = "text")]
+#[derive(Clone)]
+pub(super) struct TextAnchorProbe {
+    pub(super) id: Box<str>,
+    pub(super) supported: bool,
+    pub(super) end_x: Option<f32>,
 }
 
 macro_rules! font_lookup {
@@ -109,6 +119,8 @@ impl Cache {
             cache_raster: HashMap::new(),
             #[cfg(feature = "text")]
             cache_has_opsz: HashMap::new(),
+            #[cfg(feature = "text")]
+            text_anchor_probe: None,
 
             clip_paths: HashMap::new(),
             masks: HashMap::new(),
@@ -345,7 +357,11 @@ impl SvgColorExt for svgtypes::Color {
 ///
 /// - If `Document` doesn't have an SVG node - returns an empty tree.
 /// - If `Document` doesn't have a valid size - returns `Error::InvalidSize`.
-pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<Tree, Error> {
+pub(crate) fn convert_doc(
+    svg_doc: &svgtree::Document,
+    opt: &Options,
+    cache: &mut Cache,
+) -> Result<Tree, Error> {
     let svg = svg_doc.root_element();
     let (size, restore_viewbox) = resolve_svg_size(&svg, opt);
     let size = size?;
@@ -391,11 +407,6 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
         opt,
     };
 
-    let mut cache = Cache::new(
-        #[cfg(feature = "text")]
-        opt.fontdb.clone(),
-    );
-
     for node in svg_doc.descendants() {
         if let Some(tag) = node.tag_name() {
             if matches!(
@@ -417,7 +428,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
 
     let root_ts = view_box.to_transform(tree.size());
     if root_ts.is_identity() && background_color.is_none() {
-        convert_children(svg_doc.root(), &state, &mut cache, &mut tree.root);
+        convert_children(svg_doc.root(), &state, cache, &mut tree.root);
     } else {
         let mut g = Group::empty();
 
@@ -429,7 +440,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
 
         g.transform = root_ts;
         g.abs_transform = root_ts;
-        convert_children(svg_doc.root(), &state, &mut cache, &mut g);
+        convert_children(svg_doc.root(), &state, cache, &mut g);
         g.calculate_bounding_boxes();
         tree.root.children.push(Node::Group(Box::new(g)));
     }
@@ -445,7 +456,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
         Transform::default(),
         None,
         None,
-        &mut cache,
+        cache,
     );
     tree.collect_paint_servers();
     tree.root.collect_clip_paths(&mut tree.clip_paths);
@@ -457,7 +468,7 @@ pub(crate) fn convert_doc(svg_doc: &svgtree::Document, opt: &Options) -> Result<
     // the tree's fontdb.
     #[cfg(feature = "text")]
     {
-        tree.fontdb = cache.fontdb;
+        std::mem::swap(&mut tree.fontdb, &mut cache.fontdb);
     }
 
     if restore_viewbox {

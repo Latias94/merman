@@ -1338,9 +1338,7 @@ impl NativeFontContext {
         };
         use TextMeasurementOperation as Op;
         let nodes = match baseline {
-            None => format!(
-                r#"<text id="start" x="0" y="0" text-anchor="start">{payload}</text><text id="end" x="0" y="0" text-anchor="end">{payload}</text>"#
-            ),
+            None => format!(r#"<text id="start" x="0" y="0" text-anchor="start">{payload}</text>"#),
             Some(Op::CreateTextBBoxYOffset) => format!(
                 r#"<text id="start" x="0" y="-10.1"><tspan y="-0.1em" dy="1.1em">{payload}</tspan></text>"#
             ),
@@ -1359,22 +1357,29 @@ impl NativeFontContext {
                 ));
             }
         };
-        let svg = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}" font-weight="{}" font-style="{}" xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
-            escape_xml(
-                style
-                    .font_family
-                    .as_deref()
-                    .unwrap_or(&self.0.default_family)
-            ),
-            style.font_size,
-            escape_xml(style.font_weight.as_deref().unwrap_or("400")),
-            escape_xml(style.font_style.as_deref().unwrap_or("normal")),
-        );
+        let svg = |nodes: &str| {
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}" font-weight="{}" font-style="{}" xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
+                escape_xml(
+                    style
+                        .font_family
+                        .as_deref()
+                        .unwrap_or(&self.0.default_family)
+                ),
+                style.font_size,
+                escape_xml(style.font_weight.as_deref().unwrap_or("400")),
+                escape_xml(style.font_style.as_deref().unwrap_or("normal")),
+            )
+        };
         let mut options = usvg::Options::default();
         self.apply_to_usvg_options_controlled(&mut options, control);
-        let tree = usvg::Tree::from_str(&svg, &options)
-            .map_err(|error| NativeFontError::Measurement(error.to_string()))?;
+        let (tree, end_x) = parse_text_probe(
+            svg,
+            &nodes,
+            baseline.is_none().then_some(payload.as_str()),
+            &options,
+        )
+        .map_err(|error| NativeFontError::Measurement(error.to_string()))?;
         if let Some(error) = self.0.fatal.get() {
             return Err(error.clone());
         }
@@ -1405,12 +1410,10 @@ impl NativeFontContext {
         let metric = start.bounding_box();
         let ink = start.flattened().bounding_box();
         let advance = if baseline.is_none() {
-            let Some(usvg::Node::Text(end)) = tree.node_by_id("end") else {
-                return Err(NativeFontError::Measurement(
-                    "missing end-anchor probe".to_owned(),
-                ));
-            };
-            f64::from(metric.x() - end.bounding_box().x()).abs()
+            let end_x = end_x.ok_or_else(|| {
+                NativeFontError::Measurement("missing end-anchor probe".to_owned())
+            })?;
+            f64::from(metric.x() - end_x).abs()
         } else {
             0.0
         };
@@ -1453,6 +1456,47 @@ impl NativeFontContext {
     }
 }
 
+type AnchorProbe = (usvg::Tree, Option<f32>);
+
+// The workspace usvg provides an inherent method. A published Merman consumer can use the
+// same code with the public usvg 0.47 API and its two original SVG anchors.
+#[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
+trait RegistryUsvg {
+    fn try_from_str_with_text_anchor_probe(
+        _source: impl FnOnce() -> String,
+        _options: &usvg::Options<'_>,
+        _id: &str,
+    ) -> Result<Option<AnchorProbe>, usvg::Error> {
+        Ok(None)
+    }
+}
+
+impl RegistryUsvg for usvg::Tree {}
+
+fn parse_text_probe(
+    svg: impl Fn(&str) -> String,
+    start: &str,
+    anchor_payload: Option<&str>,
+    options: &usvg::Options<'_>,
+) -> Result<AnchorProbe, usvg::Error> {
+    let Some(payload) = anchor_payload else {
+        return usvg::Tree::from_str(&svg(start), options).map(|tree| (tree, None));
+    };
+    if let Some(probe) =
+        usvg::Tree::try_from_str_with_text_anchor_probe(|| svg(start), options, "start")?
+    {
+        return Ok(probe);
+    }
+
+    let nodes = format!(r#"{start}<text id="end" x="0" y="0" text-anchor="end">{payload}</text>"#);
+    let tree = usvg::Tree::from_str(&svg(&nodes), options)?;
+    let end_x = match tree.node_by_id("end") {
+        Some(usvg::Node::Text(end)) => Some(end.bounding_box().x()),
+        _ => None,
+    };
+    Ok((tree, end_x))
+}
+
 fn escape_xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -1473,6 +1517,87 @@ mod tests {
             NativeFontOptions::default().load(&OperationControl::new()),
             Err(NativeFontError::EmptyFontSet)
         ));
+    }
+
+    #[test]
+    fn one_shape_preserves_two_anchor_rounding_and_bounds() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_font_file(root.join("NotoSans-Latin-subset.ttf"))
+            .with_font_file(root.join("Cousine-Regular.ttf"))
+            .with_font_file(root.join("NotoSansSC-subset.ttf"))
+            .load(&control)
+            .unwrap()
+            .with_strict_glyph_coverage(true);
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        for (family, text, preserve, tspan) in [
+            ("Noto Sans", "AVA fi", false, false),
+            ("Noto Sans", "  AV\u{a0}  ", true, false),
+            ("Noto Sans", " \u{a0} ", true, true),
+            ("Cousine", "אבגד", false, false),
+            ("Cousine", "A中V", false, false),
+        ] {
+            let style = TextStyle {
+                font_family: Some(family.to_owned()),
+                font_size: 31.125,
+                ..Default::default()
+            };
+            let actual = context
+                .shape_probe(text, &style, &control, preserve, tspan, None)
+                .unwrap();
+            let whitespace = text.chars().all(char::is_whitespace);
+            let space = if preserve && !tspan {
+                "preserve"
+            } else {
+                "default"
+            };
+            let decoration = if whitespace { "underline" } else { "none" };
+            let payload = if tspan {
+                format!(r#"<tspan xml:space="preserve">{text}</tspan>"#)
+            } else {
+                text.to_owned()
+            };
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{family}" font-size="31.125" font-weight="400" font-style="normal" xml:space="{space}" text-decoration="{decoration}"><text id="start" x="0" y="0" text-anchor="start">{payload}</text><text id="end" x="0" y="0" text-anchor="end">{payload}</text></g></svg>"#,
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let (Some(usvg::Node::Text(start)), Some(usvg::Node::Text(end))) =
+                (tree.node_by_id("start"), tree.node_by_id("end"))
+            else {
+                panic!("expected both reference anchors for {text:?}");
+            };
+            let metric = start.bounding_box();
+            let ink = if whitespace {
+                metric
+            } else {
+                start.flattened().bounding_box()
+            };
+            assert_eq!(
+                [
+                    actual.advance,
+                    actual.width,
+                    actual.height,
+                    actual.x,
+                    actual.ink_x,
+                    actual.ink_right,
+                    actual.raw_y
+                ]
+                .map(f64::to_bits),
+                [
+                    (metric.x() - end.bounding_box().x()).abs(),
+                    metric.width(),
+                    metric.height(),
+                    metric.x(),
+                    ink.x(),
+                    ink.right(),
+                    metric.y(),
+                ]
+                .map(|value| f64::from(value).to_bits()),
+                "{text:?}"
+            );
+        }
     }
 
     #[test]

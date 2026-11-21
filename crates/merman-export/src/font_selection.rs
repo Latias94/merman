@@ -193,9 +193,7 @@ impl FontSelectionPolicy {
             // gate as implicit family selection. Named symbol requests bypass this path.
             if excluded.contains(&face.id)
                 || !self.allows_implicit(face.id)
-                || (base.style != face.style
-                    && base.weight != face.weight
-                    && base.stretch != face.stretch)
+                || !fallback_style_matches(base, face)
             {
                 return None;
             }
@@ -203,7 +201,7 @@ impl FontSelectionPolicy {
                 .with_face_data(face.id, |bytes, index| {
                     ttf_parser::Face::parse(bytes, index)
                         .ok()
-                        .is_some_and(|face| face.glyph_index(character).is_some())
+                        .is_some_and(|face| covers_character(&face, character))
                 })
                 .unwrap_or(false)
                 .then_some(face.id)
@@ -211,16 +209,44 @@ impl FontSelectionPolicy {
     }
 }
 
+pub(crate) fn fallback_style_matches(base: &FaceInfo, face: &FaceInfo) -> bool {
+    base.style == face.style || base.weight == face.weight || base.stretch == face.stretch
+}
+
+pub(crate) fn covers_character(face: &ttf_parser::Face<'_>, character: char) -> bool {
+    face.tables().cmap.is_some_and(|cmap| {
+        cmap.subtables.into_iter().any(|table| {
+            table.is_unicode()
+                && table
+                    .glyph_index(u32::from(character))
+                    .is_some_and(|glyph| glyph.0 != 0 && glyph.0 < face.number_of_glyphs())
+        })
+    })
+}
+
 /// Classify only bytes already admitted through the native source registry.
 /// Platform family ranking remains owned by Fontique; this gate owns text suitability.
 #[cfg(all(feature = "native-fonts", feature = "system-fonts"))]
-pub(crate) fn allows_implicit_binary_face(face: &FaceInfo) -> bool {
+pub(crate) fn allows_implicit_binary_face(face: &FaceInfo, character: Option<char>) -> bool {
     let usvg::fontdb::Source::Binary(bytes) = &face.source else {
         return false;
     };
-    !ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index)
-        .ok()
-        .is_some_and(|face| !classify_family(&face).allows_implicit_text())
+    let Ok(face) = ttf_parser::Face::parse(bytes.as_ref().as_ref(), face.index) else {
+        return character.is_none();
+    };
+    classify_family(&face).allows_implicit_text()
+        && character.is_none_or(|character| covers_character(&face, character))
+}
+
+#[cfg(test)]
+#[test]
+fn cmap_notdef_is_not_fallback_coverage() {
+    let face =
+        ttf_parser::Face::parse(include_bytes!("../tests/fonts/Cousine-Regular.ttf"), 0).unwrap();
+    // The format 4 sentinel maps to glyph zero, which is not a real fallback glyph.
+    assert_eq!(face.glyph_index('\u{ffff}'), Some(ttf_parser::GlyphId(0)));
+    assert!(!covers_character(&face, '\u{ffff}'));
+    assert!(covers_character(&face, 'A'));
 }
 
 fn classify(bytes: &[u8], index: u32) -> FaceClass {
