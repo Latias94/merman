@@ -30,3 +30,4 @@ speculative shaping can be recovered by later spans or fallback faces.
 Clip paths, masks, patterns and markers that become empty after text conversion carry font
 omissions to the element that used them. The exporter follows the retained clip and mask chains
 from their visible consumers and recognizes zero-opacity groups and unpainted outline text.
+Filter images that lose their text retain the omissions on their transparent image root.

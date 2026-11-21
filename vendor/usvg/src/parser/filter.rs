@@ -833,7 +833,8 @@ fn convert_image_inner(
         state.fe_image_link = true;
         let mut root = Group::empty();
         super::converter::convert_element(node, &state, cache, &mut root);
-        return if root.has_children() {
+        // An empty image still carries font coverage evidence when conversion drops its text.
+        return if root.has_children() || root.text_font_omissions.any() {
             root.calculate_bounding_boxes();
             // Transfer node id from group's child to the group itself if needed.
             if let Some(Node::Group(g)) = root.children.first_mut() {

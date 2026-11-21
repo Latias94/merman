@@ -1139,6 +1139,42 @@ fn strict_exports_check_visible_text_in_svg_resources() {
         !records_omissions,
         "pattern content coordinates require nonzero object bounds",
     );
+
+    let filter = |image: &str| {
+        format!(
+            r##"<defs>{image}<filter id="filter" x="0" y="0" width="120" height="60" filterUnits="userSpaceOnUse">
+                <feImage href="#glyph" width="120" height="60"/>
+            </filter></defs>"##
+        )
+    };
+    let filtered = r##"<rect width="120" height="60" filter="url(#filter)"/>"##;
+    let direct = text.replace("<text ", r#"<text id="glyph" "#);
+    let grouped = format!(r#"<g id="glyph">{text}</g>"#);
+    for (image, case) in [
+        (&direct, "direct filter image"),
+        (&grouped, "grouped filter image"),
+    ] {
+        let definitions = filter(image);
+        check(&format!("{definitions}{filtered}"), true, case);
+        check(
+            &format!(
+                "{}{filtered}",
+                definitions.replace(">A</text>", ">中</text>")
+            ),
+            false,
+            "covered filter image",
+        );
+        check(
+            &format!(r#"{definitions}<g opacity="0">{filtered}</g>"#),
+            !records_omissions,
+            "transparent filter consumer",
+        );
+        check(
+            &format!("{definitions}{box_path}"),
+            false,
+            "unused filter image",
+        );
+    }
     for (paint, missing) in [
         (r#"fill="none""#, !records_omissions),
         (r#"fill="white" fill-opacity="0""#, !records_omissions),
