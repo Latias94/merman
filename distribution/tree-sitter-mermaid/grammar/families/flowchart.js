@@ -224,10 +224,15 @@ const createFlowFamilyRules = ({
 
   [familyRule(prefix, 'subgraph_end')]: (_) => token(prec(30, 'end')),
 
-  // flow.jison matches a direction value by prefix and consumes the rest of the statement.
+  // flow.jison matches a value by prefix. Keep the selected pair and any
+  // whole-line comments that Mermaid removes between its keyword and value.
   [familyRule(prefix, 'direction_statement')]: ($) => prec.dynamic(1, seq(
+    repeat($._flow_direction_prefix),
     field('keyword', alias(directionKeyword(), ref($, prefix, 'statement_keyword'))),
-    repeat($._line_ending),
+    repeat(seq(
+      $._line_ending,
+      optional(alias(token(/%%[^{\r\n][^\r\n]*/), $.comment)),
+    )),
     field('direction', alias(
       token(prec(1, /(?:LR|RL|TB|BT|TD)/)),
       ref($, prefix, 'direction'),

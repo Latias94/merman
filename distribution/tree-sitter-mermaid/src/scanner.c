@@ -29,6 +29,7 @@ enum TokenType {
   END_OF_INPUT,
   DIRECTIVE_BODY,
   CLASS_COMPACT_IDENTIFIER,
+  FLOW_DIRECTION_PREFIX,
 };
 
 enum ScannerMode {
@@ -190,6 +191,83 @@ static bool consume_literal(TSLexer *lexer, const char *literal) {
 static bool is_horizontal_space(int32_t lookahead) {
   return lookahead == ' ' || lookahead == '\t' || lookahead == '\f' ||
          lookahead == 0xa0;
+}
+
+static bool is_line_ending(int32_t c) { return c == '\r' || c == '\n'; }
+
+// Only the whitespace after a keyword can cross lines in flow.jison. A later
+// keyword at the end of this line may get its value after stripped comments.
+static unsigned flow_direction_rank(TSLexer *lexer, bool *crossed_line) {
+  bool spaced = false;
+  *crossed_line = false;
+  while (is_horizontal_space(lexer->lookahead) ||
+         is_line_ending(lexer->lookahead)) {
+    spaced = true;
+    if (is_line_ending(lexer->lookahead)) {
+      *crossed_line = true;
+    }
+    lexer->advance(lexer, false);
+    if (*crossed_line && lexer->lookahead == '%') {
+      if (!consume_literal(lexer, "%%") || lexer->lookahead == '{' ||
+          is_line_ending(lexer->lookahead)) {
+        return 0;
+      }
+      while (!lexer->eof(lexer) && !is_line_ending(lexer->lookahead)) {
+        lexer->advance(lexer, false);
+      }
+    }
+  }
+
+  const int32_t first = lexer->lookahead;
+  if (!spaced ||
+      (first != 'T' && first != 'B' && first != 'R' && first != 'L')) {
+    return 0;
+  }
+  lexer->advance(lexer, false);
+  // Larger ranks win. flow.jison tries TB first.
+  static const char values[][3] = {"TD", "LR", "RL", "BT", "TB"};
+  for (unsigned i = 0; i < sizeof(values) / sizeof(values[0]); i++) {
+    if (first == values[i][0] && lexer->lookahead == values[i][1]) {
+      return i + 1;
+    }
+  }
+  return 0;
+}
+
+static bool scan_flow_direction_prefix(TSLexer *lexer) {
+  while (is_horizontal_space(lexer->lookahead)) {
+    lexer->advance(lexer, true);
+  }
+  if (!consume_literal(lexer, "direction")) {
+    return false;
+  }
+  bool crossed_line;
+  const unsigned rank = flow_direction_rank(lexer, &crossed_line);
+  if (rank == 0 || crossed_line) {
+    return false;
+  }
+
+  // Stop at the first equal or stronger candidate. Repeating this token leaves
+  // the last winner to the grammar without rescanning the rest for every pair.
+  while (!lexer->eof(lexer) && !is_line_ending(lexer->lookahead) &&
+         lexer->lookahead != 0x2028 && lexer->lookahead != 0x2029 &&
+         lexer->lookahead != ';') {
+    if (lexer->lookahead != 'd') {
+      lexer->advance(lexer, false);
+      continue;
+    }
+    lexer->mark_end(lexer);
+    if (consume_literal(lexer, "direction")) {
+      if (flow_direction_rank(lexer, &crossed_line) >= rank) {
+        lexer->result_symbol = FLOW_DIRECTION_PREFIX;
+        return true;
+      }
+      if (crossed_line) {
+        return false;
+      }
+    }
+  }
+  return false;
 }
 
 static bool is_ascii_word_character(int32_t value) {
@@ -476,6 +554,10 @@ bool tree_sitter_mermaid_external_scanner_scan(void *payload, TSLexer *lexer,
   }
 
   const TokenGroup *group = requested_group(valid_symbols);
+  if (valid_symbols[FLOW_DIRECTION_PREFIX] &&
+      !valid_symbols[DIRECTIVE_BODY] && group == NULL) {
+    return scan_flow_direction_prefix(lexer);
+  }
   if (valid_symbols[CLASS_COMPACT_IDENTIFIER] &&
       !valid_symbols[DIRECTIVE_BODY] && group == NULL) {
     return scan_class_compact_identifier(lexer);

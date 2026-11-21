@@ -1,6 +1,6 @@
 use std::ffi::{c_char, c_void};
 
-const TOKEN_COUNT: usize = 23;
+const TOKEN_COUNT: usize = 24;
 const SERIALIZATION_BUFFER_SIZE: usize = 1024;
 const MAX_SERIALIZED_SIZE: usize = 526;
 const MAX_INDENTATION: usize = 65_534;
