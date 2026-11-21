@@ -224,6 +224,21 @@ fn native_fonts_reject_unmeasured_node_and_class_text_geometry() {
     }
 }
 
+#[test]
+fn layout_json_writer_checks_native_font_admission_before_emission() {
+    let request = RenderRequest::layout_json(
+        "flowchart LR\nA[Measured label]-->B\nstyle A letter-spacing:4px\n",
+        OperationControl::new(),
+        native_request(),
+    );
+    let mut written = Vec::new();
+    let error = Renderer::new()
+        .write_layout_json(request, &mut written, false)
+        .expect_err("unsupported typography must fail admission");
+    assert!(matches!(error, merman::RenderError::NativeFont(_)));
+    assert!(written.is_empty());
+}
+
 #[cfg(feature = "diagram-class")]
 #[test]
 fn native_class_rejects_relative_and_unsupported_theme_sizes() {

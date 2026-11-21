@@ -723,6 +723,26 @@ fn layout_json_rejects_require_portable_without_target_admission() {
         }
     ));
 
+    let mut written = Vec::new();
+    let error = renderer
+        .write_layout_json(
+            RenderRequest::layout_json(
+                "flowchart TD\nA[Start] --> B[Done]",
+                OperationControl::new(),
+                request.clone(),
+            ),
+            &mut written,
+            false,
+        )
+        .expect_err("the writer must reject unsupported portability before emission");
+    assert!(matches!(
+        error,
+        RenderError::PortabilityUnavailableForTarget {
+            target: "layout-json"
+        }
+    ));
+    assert!(written.is_empty());
+
     let semantic = renderer
         .prepare_presentation(
             "flowchart TD\nA[Start] --> B[Done]",
@@ -739,6 +759,52 @@ fn layout_json_rejects_require_portable_without_target_admission() {
             target: "layout-json"
         }
     ));
+}
+
+#[cfg(all(feature = "svg", feature = "diagram-flowchart"))]
+#[test]
+fn layout_json_writer_finishes_once_emission_commits() {
+    struct CancellingWriter<'a> {
+        control: &'a OperationControl,
+        bytes: Vec<u8>,
+    }
+
+    impl std::io::Write for CancellingWriter<'_> {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            self.bytes.extend_from_slice(bytes);
+            self.control.cancel();
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    let renderer = Renderer::new();
+    let source = "flowchart TD\nA[Start] --> B[Done]";
+    let request =
+        |control| RenderRequest::layout_json(source, control, merman::SvgRequest::default());
+    let RenderOutput::LayoutJson(Some(layout)) =
+        renderer.render(request(OperationControl::new())).unwrap()
+    else {
+        panic!("expected managed geometry");
+    };
+    let mut expected = Vec::new();
+    layout.layout().write_json_pretty(&mut expected).unwrap();
+
+    let control = OperationControl::new();
+    let mut writer = CancellingWriter {
+        control: &control,
+        bytes: Vec::new(),
+    };
+    assert!(
+        renderer
+            .write_layout_json(request(control.clone()), &mut writer, true)
+            .unwrap()
+    );
+    assert!(control.is_cancelled());
+    assert_eq!(writer.bytes, expected);
 }
 
 #[cfg(feature = "svg")]

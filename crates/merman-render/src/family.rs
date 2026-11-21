@@ -2757,6 +2757,8 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     ),
 }
 
+// The ordered JSON value preserves field order and stores floats as f64. Keep these wire
+// fields in declaration order and serialize floating-point geometry as f64 for byte parity.
 #[derive(serde::Serialize)]
 struct LayoutGeometryProjection<'a> {
     schema_version: u32,
@@ -3996,16 +3998,37 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
     /// Projects the versioned geometry of this prepared layout.
     pub fn layout_geometry_json(&self) -> Result<ManagedJson> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
-        let projection = LayoutGeometryProjection {
+        let geometry = ManagedJson::from(serde_json::to_value(self.layout_geometry_projection())?);
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        Ok(geometry)
+    }
+
+    /// Writes the versioned geometry of this prepared layout as one JSON value.
+    ///
+    /// The final emission checkpoint commits the write. Writer failures can leave partial output.
+    pub fn write_layout_geometry_json(
+        &self,
+        writer: impl std::io::Write,
+        pretty: bool,
+    ) -> Result<()> {
+        let projection = self.layout_geometry_projection();
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        if pretty {
+            serde_json::to_writer_pretty(writer, &projection)?;
+        } else {
+            serde_json::to_writer(writer, &projection)?;
+        }
+        Ok(())
+    }
+
+    fn layout_geometry_projection(&self) -> LayoutGeometryProjection<'_> {
+        LayoutGeometryProjection {
             schema_version: 1,
             family_id: self.family_id(),
             diagram_type: &self.metadata.diagram_type,
             layout_adaptation: self.layout_adaptation(),
             layout: self.family.layout_projection(),
-        };
-        let geometry = ManagedJson::from(serde_json::to_value(projection)?);
-        self.context.session().checkpoint(OperationPhase::Emit)?;
-        Ok(geometry)
+        }
     }
 
     /// Projects the full semantic/layout snapshot from this artifact's paired family owners.

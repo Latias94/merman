@@ -32,6 +32,10 @@ the family-specific `layout` payload. The payload uses the same coordinates, rou
 origins, and label positions as the `layout` field of the full snapshot. An adapted layout also
 reports `layout_adaptation` at the top level.
 
+Use `Renderer::write_layout_json` with a layout JSON request to stream compact or pretty JSON
+to an `std::io::Write`. It writes one value when the source contains a diagram. The caller
+supplies any trailing newline and flushes the destination. The CLI uses this path for geometry.
+
 Use `RenderRequest::layout_snapshot`, `RenderTarget::LayoutSnapshot`, or `merman-cli layout
 --snapshot` to retrieve the 0.10 response shape with `meta`, `semantic`, and `layout`. This is
 the migration for callers reading `meta.config` or `meta.effective_config`. Existing platform

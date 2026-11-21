@@ -1647,24 +1647,32 @@ fn developer_short_help_points_to_advanced_controls() {
 
 #[test]
 fn layout_projects_geometry_by_default_and_can_emit_a_snapshot() {
-    let source = "flowchart LR\nsubgraph Group\nA --> B\nend\nB -->|out| C";
-    let geometry = run_with_stdin(&["layout", "-"], source);
+    let source = "flowchart LR\nsubgraph Group[\"分组\"]\nA --> B\nend\nB -->|out| C";
     let snapshot = run_with_stdin(&["layout", "--snapshot", "--pretty", "-"], source);
 
-    assert!(geometry.status.success(), "{:?}", geometry.stderr);
     assert!(snapshot.status.success(), "{:?}", snapshot.stderr);
-    let geometry: Value = serde_json::from_slice(&geometry.stdout).unwrap();
     let snapshot: Value = serde_json::from_slice(&snapshot.stdout).unwrap();
-    assert_eq!(
-        geometry,
-        serde_json::json!({
-            "schema_version": 1,
-            "family_id": "flowchart",
-            "diagram_type": "flowchart-v2",
-            "layout": snapshot["layout"],
-        }),
-    );
-    assert!(geometry["layout"]["FlowchartV2"].is_object());
+    let expected = merman::model::ManagedJson::from(serde_json::json!({
+        "schema_version": 1,
+        "family_id": "flowchart",
+        "diagram_type": "flowchart-v2",
+        "layout": snapshot["layout"],
+    }));
+    for pretty in [false, true] {
+        let mut args = vec!["layout", "-"];
+        let mut bytes = Vec::new();
+        if pretty {
+            args.push("--pretty");
+            expected.write_json_pretty(&mut bytes).unwrap();
+        } else {
+            expected.write_json(&mut bytes).unwrap();
+        }
+        bytes.push(b'\n');
+        let geometry = run_with_stdin(&args, source);
+        assert!(geometry.status.success(), "{:?}", geometry.stderr);
+        assert_eq!(geometry.stdout, bytes, "pretty={pretty}");
+    }
+    assert!(snapshot["layout"]["FlowchartV2"].is_object());
     assert_eq!(snapshot["meta"]["diagram_type"], "flowchart-v2");
     assert!(snapshot["meta"]["effective_config"].is_object());
     assert!(snapshot["semantic"].is_object());

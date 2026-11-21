@@ -1056,6 +1056,44 @@ impl Renderer {
         render_svg_data_target(semantic, request).map(Some)
     }
 
+    /// Writes one [`RenderTarget::LayoutJson`] request as compact or pretty JSON.
+    ///
+    /// Returns `Ok(false)` for an input with no diagram, or `Ok(true)` after writing the value.
+    /// The writer receives no trailing newline and is left for the caller to flush. Admission,
+    /// layout and the final cancellation check precede emission. Writer failures can leave
+    /// partial output.
+    #[cfg(feature = "svg")]
+    pub fn write_layout_json(
+        &self,
+        request: RenderRequest<'_>,
+        writer: impl std::io::Write,
+        pretty: bool,
+    ) -> Result<bool, RenderError> {
+        if !matches!(&request.target, RenderTarget::LayoutJson(_)) {
+            return Err(RenderError::UnsupportedTarget(
+                "write_layout_json requires a layout JSON request",
+            ));
+        }
+        let (semantic, target) = self.parse_presentation_request(request)?;
+        let Some(semantic) = semantic else {
+            return Ok(false);
+        };
+        let RenderTarget::LayoutJson(request) = semantic.admit_target(target)? else {
+            unreachable!("layout JSON writer request retains its target during admission");
+        };
+        #[cfg(feature = "native-fonts")]
+        let control = semantic.control().clone();
+        with_prepared_layout_json(semantic, &request, |artifact| {
+            #[cfg(feature = "native-fonts")]
+            {
+                crate::operation_runner::checkpoint(&control, OperationPhase::Emit)?;
+                request.environment.check_native_fonts()?;
+            }
+            artifact.write_layout_geometry_json(writer, pretty)?;
+            Ok(true)
+        })
+    }
+
     #[cfg(feature = "presentation")]
     fn parse_presentation_request(
         &self,
@@ -1517,6 +1555,25 @@ fn render_layout_json_target(
     request: SvgRequest,
     snapshot: bool,
 ) -> Result<Option<SvgLayoutOutput>, RenderError> {
+    with_prepared_layout_json(semantic, &request, |artifact| {
+        let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
+        let layout = if snapshot {
+            artifact.layout_json()
+        } else {
+            artifact.layout_geometry_json()
+        }?;
+        #[cfg(feature = "native-fonts")]
+        request.environment.check_native_fonts()?;
+        Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
+    })
+}
+
+#[cfg(feature = "svg")]
+fn with_prepared_layout_json<T>(
+    semantic: PresentationArtifact,
+    request: &SvgRequest,
+    project: impl FnOnce(&merman_render::family::FamilyRenderArtifact<'_>) -> Result<T, RenderError>,
+) -> Result<T, RenderError> {
     // A prepared artifact keeps the operation's sticky terminal state. Observe it before
     // rejecting a target-specific portability requirement so cancellation/deadline errors cannot
     // be masked by a later target-admission error.
@@ -1534,18 +1591,8 @@ fn render_layout_json_target(
         operation.context,
         operation.control,
     )?;
-    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
-        .map_err(RenderError::from)?;
-    let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = if snapshot {
-        artifact.layout_json()
-    } else {
-        artifact.layout_geometry_json()
-    }
-    .map_err(RenderError::from)?;
-    #[cfg(feature = "native-fonts")]
-    request.environment.check_native_fonts()?;
-    Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
+    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)?;
+    project(&artifact)
 }
 
 #[cfg(feature = "svg")]
@@ -1864,6 +1911,31 @@ fn render_pdf_target(
 #[cfg(all(test, feature = "svg"))]
 mod tests {
     use super::{RenderError, ResourceLimitCause};
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn layout_json_writer_checks_cancellation_at_emit() {
+        use super::{OperationControl, OperationPhase, Renderer, SvgRequest};
+
+        let control = OperationControl::new();
+        let semantic = Renderer::new()
+            .prepare_presentation("flowchart LR\nA --> B", control.clone())
+            .unwrap()
+            .unwrap();
+        let mut written = Vec::new();
+        let error =
+            super::with_prepared_layout_json(semantic, &SvgRequest::default(), |artifact| {
+                control.cancel();
+                artifact.write_layout_geometry_json(&mut written, false)?;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            RenderError::Cancelled(cancellation) if cancellation.phase == OperationPhase::Emit
+        ));
+        assert!(written.is_empty());
+    }
 
     #[test]
     fn themed_document_input_admission_preserves_request_renderer_environment_precedence() {
