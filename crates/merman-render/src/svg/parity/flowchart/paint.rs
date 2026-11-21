@@ -33,11 +33,11 @@ pub(super) fn with_flowchart_paint_context<T>(
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
     let model = &render_model;
-    if model
-        .nodes
-        .iter()
-        .any(|node| node.layout_shape.as_deref() == Some("ellipse"))
-    {
+    if model.nodes.iter().any(|node| {
+        node.layout_shape.as_deref() == Some("ellipse")
+            && model.collapsed_replacement(&node.id).is_none()
+            && !model.is_subgraph_collapsed(&node.id)
+    }) {
         return Err(crate::Error::InvalidModel {
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
@@ -167,13 +167,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         }
     }
 
-    let mut parent: FxHashMap<&str, &str> = FxHashMap::default();
-    for sg in model.subgraphs.iter().rev() {
-        let sg_id = sg.id.as_str();
-        for child in &sg.nodes {
-            parent.insert(child.as_str(), sg_id);
-        }
-    }
+    let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
     for n in &extra_nodes {
         let id = n.id.as_str();
         let Some((base, _)) = id.split_once("---") else {

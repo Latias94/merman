@@ -21,9 +21,7 @@ mod working;
 
 use crate::Result;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use crate::flowchart::{
-    FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeTransportPlan, project_flowchart_edge,
-};
+use crate::flowchart::{FlowchartConfigView, FlowchartEdgeTransportPlan, FlowchartRenderModelRef};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::math::MathRenderer;
 use crate::model::{
@@ -97,15 +95,8 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         source_edges,
     ))?;
     work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
-    let visible_edges = model
-        .edges
-        .iter()
-        .enumerate()
-        .filter_map(|(index, edge)| {
-            project_flowchart_edge(edge, render_label_sources)
-                .map(|edge| (FlowchartEdgeKey::new(index), edge))
-        })
-        .collect::<Vec<_>>();
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
     let transport_plan = FlowchartEdgeTransportPlan::for_keyed_edges(
         visible_edges
             .iter()
@@ -113,7 +104,7 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     );
     let config = config::SwimlaneConfig::from_config(effective_config);
     let mut working = prepare::prepare(
-        &crate::flowchart::FlowchartRenderModelRef::new(model, render_label_sources),
+        &render_model,
         (&visible_edges, &transport_plan),
         effective_config,
         measurer,

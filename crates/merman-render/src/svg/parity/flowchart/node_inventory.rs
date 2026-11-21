@@ -87,7 +87,6 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
         let mut subgraphs_by_id = FxHashMap::default();
         let mut subgraph_indices_by_id = FxHashMap::default();
         let mut subgraph_ids_with_children = FxHashSet::default();
-        let mut parent = FxHashMap::default();
         for (index, subgraph) in model.subgraphs.iter().enumerate() {
             let id = subgraph.id.as_str();
             if let std::collections::hash_map::Entry::Vacant(entry) = subgraphs_by_id.entry(id) {
@@ -101,11 +100,10 @@ impl<'a> FlowchartNodeInventoryInput<'a> {
                 subgraph_ids_with_children.insert(id);
             }
         }
-        for subgraph in model.subgraphs.iter().rev() {
-            for child in &subgraph.nodes {
-                parent.insert(child.as_str(), subgraph.id.as_str());
-            }
-        }
+        let mut parent: FxHashMap<_, _> =
+            crate::flowchart::FlowchartRenderModelRef::new(model, render_context)
+                .visible_memberships()
+                .collect();
         for id in helper_ids {
             if let Some((base, _)) = id.split_once("---")
                 && let Some(owner) = parent.get(base).copied()
@@ -374,6 +372,8 @@ impl FlowchartPreparedNodes {
                 label_dom.1,
                 |units| work.charge(units).map_err(Into::into),
             )?;
+            let include_default_class = !render_context.is_subgraph_collapsed(id);
+            let (classes, styles) = source_styles;
             let source_text_style = match svg_labels
                 .node_owner(id, swimlane)
                 .and_then(|owner| svg_labels.node_source_style(owner))
@@ -384,16 +384,16 @@ impl FlowchartPreparedNodes {
                     let parent = label_typography.node_source_parent_style(
                         source_base,
                         &model.class_defs,
-                        (source_styles.0, source_styles.1, true),
+                        (classes, styles, include_default_class),
                         &structural,
                     );
-                    let mut style =
-                        crate::flowchart::flowchart_effective_text_style_for_node_classes(
-                            parent.as_ref(),
-                            &model.class_defs,
-                            source_styles.0,
-                            source_styles.1,
-                        );
+                    let mut style = if include_default_class {
+                        crate::flowchart::flowchart_effective_text_style_for_node_classes
+                    } else {
+                        crate::flowchart::flowchart_effective_text_style_for_classes
+                    }(
+                        parent.as_ref(), &model.class_defs, classes, styles
+                    );
                     structural.apply_to_content(&mut style);
                     std::sync::Arc::new(
                         crate::flowchart::FlowchartNodeSourceTypography::from_style(
@@ -411,7 +411,7 @@ impl FlowchartPreparedNodes {
                 };
             let terminal = super::node_style::PreparedNodeTerminal::prepare(
                 &model.class_defs,
-                source_styles,
+                (classes, styles, include_default_class),
                 terminal_shape,
                 &structural,
                 source_text_style,

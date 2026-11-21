@@ -97,6 +97,7 @@ fn measure_content_node(
     node: &FlowNode,
     render_label: &str,
     owner: Option<FlowchartSvgLabelOwner>,
+    use_default_class: bool,
     ctx: &MeasureContext<'_>,
 ) -> WorkingNode {
     let wrap_mode = ctx.settings.node_wrap_mode;
@@ -109,7 +110,12 @@ fn measure_content_node(
     } else {
         &ctx.settings.text_style
     };
-    let style = flowchart_effective_text_style_for_node_classes_with_provenance(
+    let resolve_style = if use_default_class {
+        flowchart_effective_text_style_for_node_classes_with_provenance
+    } else {
+        flowchart_effective_text_style_for_classes_with_provenance
+    };
+    let style = resolve_style(
         base_style,
         &ctx.model.class_defs,
         &node.classes,
@@ -391,17 +397,7 @@ pub(super) fn prepare(
     };
 
     // FlowDB builds parentDB by walking subgraphs from last to first.
-    let mut parent_by_id: HashMap<&str, &str> = HashMap::new();
-    for subgraph in model.subgraphs.iter().rev() {
-        if model.is_subgraph_collapsed(&subgraph.id)
-            || model.collapsed_replacement(&subgraph.id).is_some()
-        {
-            continue;
-        }
-        for child in &subgraph.nodes {
-            parent_by_id.insert(child, &subgraph.id);
-        }
-    }
+    let parent_by_id: HashMap<&str, &str> = model.visible_memberships().collect();
     let parent_id = |id: &str| parent_by_id.get(id).map(|parent| (*parent).to_owned());
     let group_indices: HashMap<&str, usize> = model
         .subgraphs
@@ -433,7 +429,8 @@ pub(super) fn prepare(
             node.styles.extend_from_slice(styles);
             // The node owner range for collapsed groups follows the authored node range.
             let owner = FlowchartSvgLabelOwner::SwimlaneNode(model.nodes.len() + subgraph_index);
-            let mut measured = measure_content_node(&node, render_title, Some(owner), &measure_ctx);
+            let mut measured =
+                measure_content_node(&node, render_title, Some(owner), false, &measure_ctx);
             measured.parent_id = parent_id(&subgraph.id);
             nodes.insert(node.id, measured);
             continue;
@@ -498,6 +495,7 @@ pub(super) fn prepare(
             node,
             render_label,
             Some(FlowchartSvgLabelOwner::SwimlaneNode(node_index)),
+            true,
             &measure_ctx,
         );
         measured.parent_id = parent_id(&node.id);
@@ -508,7 +506,7 @@ pub(super) fn prepare(
             continue;
         }
         let synthetic = synthetic_node(id, id, Some("text"), "squareRect");
-        let mut measured = measure_content_node(&synthetic, id, None, &measure_ctx);
+        let mut measured = measure_content_node(&synthetic, id, None, true, &measure_ctx);
         measured.parent_id = parent_id(id);
         nodes.insert(id.clone(), measured);
     }

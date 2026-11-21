@@ -145,6 +145,47 @@ A retry@-->|Retry| X";
 }
 
 #[test]
+fn collapsed_groups_skip_hidden_shapes_and_math_and_keep_authored_styles() {
+    let source = r#"swimlane-beta TB
+subgraph G[Team]
+subgraph H["$$hiddenTitle$$"]
+A(-Legacy-) -->|$$hiddenEdge$$| B["$$hiddenNode$$"]
+end
+end
+G@{ view: collapsed }
+A next@--> X
+"#;
+    let styled_source = format!("{source}classDef default fill:#ff0000,font-size:48px\n");
+    let (_, baseline) = render_swimlane_with_layout(source, "collapsed");
+    let (svg, layout) = render_swimlane_with_layout(&styled_source, "collapsed");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(layout.nodes.len(), 2);
+    assert_eq!(layout.edges.len(), 1);
+    assert_eq!(
+        (layout.edges[0].from.as_str(), layout.edges[0].to.as_str()),
+        ("G", "X")
+    );
+    let collapsed = semantic_element(&document, "G", "node");
+    assert_eq!(text_content(collapsed), "Team");
+    assert!(!has_class(collapsed, "default"));
+    let group_body = collapsed
+        .children()
+        .find(|node| has_class(*node, "collapsed-group"))
+        .expect("compact group body");
+    assert!(
+        !group_body
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("#ff0000")
+    );
+    let label_metrics = |layout: &SwimlaneLayout| {
+        let node = layout.nodes.iter().find(|node| node.id == "G").unwrap();
+        (node.label_width.to_bits(), node.label_height.to_bits())
+    };
+    assert_eq!(label_metrics(&layout), label_metrics(&baseline));
+}
+
+#[test]
 fn mermaid_12_3_shared_members_keep_empty_lane_shells_titles_and_edge_turns() {
     let source =
         include_str!("../../../fixtures/swimlane/local_mermaid_12_3_shared_members_tb.mmd");
