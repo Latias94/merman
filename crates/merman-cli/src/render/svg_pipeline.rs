@@ -19,6 +19,18 @@ pub(super) fn svg_output_policy(
 }
 
 #[cfg(feature = "markdown")]
+pub(super) fn svg_metadata_for_document(
+    svg: &str,
+    writes_document: bool,
+) -> (Option<String>, Option<String>) {
+    if writes_document {
+        svg_metadata(svg)
+    } else {
+        (None, None)
+    }
+}
+
+#[cfg(feature = "markdown")]
 pub(super) fn svg_metadata(svg: &str) -> (Option<String>, Option<String>) {
     let Ok(document) = roxmltree::Document::parse(svg) else {
         return (None, None);
@@ -90,8 +102,9 @@ mod tests {
             "</svg>",
         );
 
+        assert_eq!(svg_metadata_for_document(svg, false), (None, None));
         assert_eq!(
-            svg_metadata(svg),
+            svg_metadata_for_document(svg, true),
             (
                 Some("Title \"quoted\" & [one]".to_string()),
                 Some("Before [raw] & literal A &lt;".to_string()),

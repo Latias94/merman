@@ -247,6 +247,7 @@ pub(crate) fn execute(
                 &staged_bytes,
                 &context.stderr,
                 theme_report.as_ref(),
+                requested.writes_document,
                 #[cfg(feature = "parallel-markdown")]
                 jobs,
             );
