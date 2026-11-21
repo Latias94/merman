@@ -3,6 +3,8 @@ use std::ops::Range;
 
 use crate::resources::{OperationWorkMeter, SvgByteBudget};
 
+const MAX_HINTED_SVG_CAPACITY: usize = 32 * 1024;
+
 /// Minimal SVG output surface shared by unbounded helpers and operation-bounded renderers.
 ///
 /// Family writers intentionally depend on this narrow interface instead of `String`, allowing the
@@ -14,6 +16,9 @@ pub(super) trait SvgOutput: fmt::Write {
     fn as_str(&self) -> &str;
     fn replace_range(&mut self, range: Range<usize>, replacement: &str) -> crate::Result<()>;
     fn checkpoint(&mut self) -> crate::Result<()>;
+
+    /// Estimates upcoming bytes for optional backing storage at the next actual growth.
+    fn hint_additional_capacity(&mut self, _additional: usize) {}
 
     /// Appends an unchanged XML fragment whose bytes have already been observed while scanning.
     /// Retained-byte admission and sink failures still belong to this append.
@@ -246,6 +251,10 @@ impl<S: SvgOutput> SvgOutput for XmlTextOutput<'_, S> {
         self.out.checkpoint()
     }
 
+    fn hint_additional_capacity(&mut self, additional: usize) {
+        self.out.hint_additional_capacity(additional);
+    }
+
     fn observe_scanned_work(&mut self, bytes: usize) -> crate::Result<()> {
         self.out.observe_scanned_work(bytes)
     }
@@ -264,6 +273,7 @@ pub(super) struct BoundedSvgOutput<'a> {
     out: String,
     budget: SvgByteBudget<'a>,
     admitted_end: usize,
+    hinted_end: usize,
     work_until_observation: usize,
     state: BoundedSvgOutputState,
     #[cfg(test)]
@@ -326,6 +336,7 @@ impl<'a> BoundedSvgOutput<'a> {
             out: String::new(),
             budget: work_meter.svg_byte_budget(),
             admitted_end: 0,
+            hinted_end: 0,
             work_until_observation: 0,
             state: BoundedSvgOutputState::Active,
             #[cfg(test)]
@@ -343,6 +354,22 @@ impl<'a> BoundedSvgOutput<'a> {
                 Ok(self.out)
             }
         }
+    }
+
+    /// Writes a deferred fragment under the existing document budget and moves it into place.
+    pub(super) fn write_deferred_at(
+        &mut self,
+        offset: usize,
+        write: impl FnOnce(&mut Self) -> crate::Result<()>,
+    ) -> crate::Result<()> {
+        let end = self.out.len();
+        write(self)?;
+        self.observe_operation()?;
+        if self.out.len() != end {
+            let fragment = self.out.split_off(end);
+            self.out.insert_str(offset, &fragment);
+        }
+        self.observe_operation()
     }
 
     fn replace_retained_range(
@@ -397,11 +424,40 @@ impl<'a> BoundedSvgOutput<'a> {
                 "bounded SVG output capacity fell below its retained length",
             ),
         )?;
-        self.out.try_reserve_exact(reserve).map_err(|_| {
-            BoundedSvgOutputFailure::InvalidModel("failed to reserve bounded SVG output")
-        })?;
+        let preferred_capacity = self.take_hinted_capacity(target_capacity);
+        if preferred_capacity == target_capacity
+            || self
+                .out
+                .try_reserve_exact(preferred_capacity - self.out.len())
+                .is_err()
+        {
+            self.out.try_reserve_exact(reserve).map_err(|_| {
+                BoundedSvgOutputFailure::InvalidModel("failed to reserve bounded SVG output")
+            })?;
+        }
         self.admitted_end = target_capacity;
         Ok(())
+    }
+
+    fn take_hinted_capacity(&mut self, admitted_capacity: usize) -> usize {
+        let hinted_end = std::mem::take(&mut self.hinted_end);
+        if hinted_end <= admitted_capacity {
+            return admitted_capacity;
+        }
+        let Some(limit) = self.budget.capacity_hint_limit() else {
+            return admitted_capacity;
+        };
+        // Skip intermediate geometric allocations without changing the append's byte credit.
+        // An admitted growth has a positive capacity, so every iteration advances to the limit.
+        let mut preferred = admitted_capacity;
+        while preferred < hinted_end.min(limit) {
+            let next = preferred.saturating_mul(2).min(limit);
+            if next > MAX_HINTED_SVG_CAPACITY {
+                break;
+            }
+            preferred = next;
+        }
+        preferred
     }
 
     fn observe_work(&mut self, bytes: usize) -> Result<(), crate::resources::OperationWorkError> {
@@ -481,6 +537,14 @@ impl SvgOutput for BoundedSvgOutput<'_> {
             Some(error) => Err(error),
             None => Ok(()),
         }
+    }
+
+    fn hint_additional_capacity(&mut self, additional: usize) {
+        self.hinted_end = self
+            .out
+            .len()
+            .saturating_add(additional)
+            .min(MAX_HINTED_SVG_CAPACITY);
     }
 
     fn write_scanned_text(&mut self, value: &str) -> fmt::Result {
@@ -924,6 +988,58 @@ mod tests {
         let error = resource_limit(out.finish().unwrap_err());
         assert_eq!(error.actual, 11);
         assert_eq!(error.max, 10);
+    }
+
+    #[test]
+    fn bounded_svg_output_hint_changes_storage_without_changing_admission() {
+        let policy = RenderResourcePolicy::unbounded_for_trusted_input()
+            .with_limit(ResourceLimitId::MaxSvgBytes, 65)
+            .unwrap();
+        let control = merman_model::OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(policy, control.clone());
+        let mut out = BoundedSvgOutput::new(&meter);
+        out.push_str("12345678");
+        XmlTextOutput::new(&mut out).hint_additional_capacity(usize::MAX);
+        assert_eq!(out.retained_capacity(), 8);
+
+        out.push('x');
+        assert_eq!(out.retained_capacity(), 65);
+        assert_eq!(out.admitted_end, 16);
+        out.push_str(&"y".repeat(55));
+        out.push_str("zzz");
+        assert_eq!(out.len(), 64);
+        let first = resource_limit(out.checkpoint().unwrap_err());
+        assert_eq!((first.actual, first.max), (67, 65));
+        control.cancel();
+        assert_eq!(resource_limit(out.finish().unwrap_err()), first);
+        assert_eq!(meter.projected_svg_bytes(), 0);
+    }
+
+    #[test]
+    fn bounded_svg_output_hint_preserves_cancellation_observation() {
+        for cancel_before_growth in [false, true] {
+            let control = merman_model::OperationControl::new();
+            control.cancel_after_checkpoints(1);
+            let policy = RenderResourcePolicy::unbounded_for_trusted_input();
+            let meter = OperationWorkMeter::new_with_control(policy, control.clone());
+            let mut out = BoundedSvgOutput::new(&meter);
+            out.push_str("12345678");
+            out.hint_additional_capacity(usize::MAX);
+            if cancel_before_growth {
+                control.cancel();
+            }
+            out.push('x');
+            assert_eq!(out.as_str(), "12345678x");
+            assert_eq!(
+                out.retained_capacity(),
+                if cancel_before_growth {
+                    16
+                } else {
+                    MAX_HINTED_SVG_CAPACITY
+                }
+            );
+            assert!(matches!(out.finish(), Err(crate::Error::Cancelled(_))));
+        }
     }
 
     #[test]

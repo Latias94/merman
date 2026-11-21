@@ -175,7 +175,8 @@ _arguments "${_arguments_options[@]}" : \
 '--input-kind=[Interpret the input as Mermaid source or an existing SVG document]:INPUT_KIND:(mermaid svg)' \
 '-f+[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
 '--format=[Output format. Defaults to the first compiled output format]:FORMAT:(svg ascii unicode png jpg pdf)' \
-'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+'--svg-pipeline=[SVG consumer\: parity (default), static for fixed markup, or resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
@@ -209,7 +210,10 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
-'--font-system=[Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected]:FONT_SYSTEM:(off on)' \
+'--font-system=[Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.]:FONT_SYSTEM:((off\:""
+on\:"Enable the build'\''s default system font provider"
+bounded\:"Use Merman'\''s bounded system font discovery"
+platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
 '--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor\:"\[alpha\] Editor"
 one-dark\:"\[alpha\] One Dark"
@@ -299,7 +303,8 @@ _arguments "${_arguments_options[@]}" : \
 '--jobs=[Maximum number of Markdown charts rendered concurrently]:JOBS:_default' \
 '-f+[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
 '--format=[Output format. Defaults to SVG]:FORMAT:(svg png jpg pdf)' \
-'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+'--svg-pipeline=[SVG consumer\: parity (default), static for fixed markup, or resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output]:BACKGROUND_COLOR:_default' \
@@ -333,7 +338,10 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
-'--font-system=[Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected]:FONT_SYSTEM:(off on)' \
+'--font-system=[Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.]:FONT_SYSTEM:((off\:""
+on\:"Enable the build'\''s default system font provider"
+bounded\:"Use Merman'\''s bounded system font discovery"
+platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
 '--theme-preset=[Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence]:THEME_PRESET:((editor\:"\[alpha\] Editor"
 one-dark\:"\[alpha\] One Dark"
@@ -493,6 +501,7 @@ unbounded-for-trusted-input\:"Explicitly disable policy budgets while retaining 
 '*--resource-limit=[Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated]:STABLE_ID=POSITIVE_U64:_default' \
 '--operation-timeout-ms=[Cancel the complete command operation after this many milliseconds]:MILLISECONDS:_default' \
 '--pretty[Pretty-print JSON output]' \
+'--snapshot[Include compatibility semantics, metadata, and the full effective configuration]' \
 '--suppress-errors[Emit an error diagram instead of failing on parse errors]' \
 '--system-clock[Use the system clock while keeping other runtime sources deterministic]' \
 '--system-timezone[Use the system local timezone while keeping other runtime sources deterministic]' \
@@ -518,7 +527,8 @@ _arguments "${_arguments_options[@]}" : \
 '-e+[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
 '--outputFormat=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
 '--format=[Output format. Defaults to the output extension, then SVG]:OUTPUT_FORMAT:(svg png pdf)' \
-'--svg-pipeline=[SVG consumer\: parity (default) for browsers; resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+'--svg-pipeline=[SVG consumer\: parity (default), static for fixed markup, or resvg-safe for resvg/usvg]:SVG_PIPELINE:((parity\:"Default for browsers and Webviews; preserves Mermaid HTML labels and styles"
+static\:"Generates SVG for fixed markup, emitting only the container palette slots it uses"
 readable\:"Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates"
 resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '-b+[Background color for the selected rendered output. \`mmdc\` defaults to white]:BACKGROUND_COLOR:_default' \
@@ -554,7 +564,10 @@ resvg-safe\:"Converts HTML labels and cleans SVG for resvg/usvg consumers"))' \
 '*--font-file=[Load a local font file and enable native Mermaid text measurement; repeatable, earlier sources take precedence]:PATH:_files' \
 '*--font-dir=[Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable]:PATH:_files -/' \
 '--font-measurement=[Text measurement\: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout]:FONT_MEASUREMENT:(deterministic native)' \
-'--font-system=[Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected]:FONT_SYSTEM:(off on)' \
+'--font-system=[Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.]:FONT_SYSTEM:((off\:""
+on\:"Enable the build'\''s default system font provider"
+bounded\:"Use Merman'\''s bounded system font discovery"
+platform\:"Query the platform'\''s font catalog. Platform metadata access is outside Merman'\''s scan limits"))' \
 '--font-max-measurements=[Maximum uncached native font shaping probes per diagram (default\: 16384); independent of --resource-profile]:COUNT:' \
 '--math-renderer=[Math renderer override. Unspecified uses the compiled default]:MATH_RENDERER:(none ratex)' \
 '-w+[Width of the page]:CONTAINER_WIDTH:_default' \

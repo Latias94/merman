@@ -197,6 +197,7 @@ export function runComparison(options) {
         workloads: corpus.workloads,
       },
       sampling: {
+        svg_api: options.svgApi ?? "async",
         cold_processes: options.coldSamples,
         warmup_iterations: options.warmupIterations,
         measured_iterations: options.iterations,
@@ -314,6 +315,7 @@ export function buildCandidateWorkerInputs({ candidate, productModule, corpus, o
     warm: {
       ...common,
       mode: "warm",
+      svgApi: options.svgApi ?? "async",
       cases: corpus.cases,
       iterations: options.iterations,
       warmupIterations: options.warmupIterations,
@@ -323,6 +325,7 @@ export function buildCandidateWorkerInputs({ candidate, productModule, corpus, o
     cold: {
       ...common,
       mode: "cold",
+      svgApi: options.svgApi ?? "async",
       workload: corpus.workloads.cold_svg,
     },
     concurrency: {
@@ -504,6 +507,7 @@ function parseArgs(args) {
     wasm: valueAfter(args, "--wasm"),
     corpus: valueAfter(args, "--corpus") ?? path.join(benchmarkRoot, "benchmark", "corpus.json"),
     output: path.resolve(valueAfter(args, "--output") ?? outputDefault),
+    svgApi: args.includes("--svg-api") ? valueAfter(args, "--svg-api") : "async",
     coldSamples: integerAfter(args, "--cold-samples", 10),
     iterations: integerAfter(args, "--iterations", 3),
     warmupIterations: integerAfter(args, "--warmup-iterations", 1),
@@ -512,6 +516,9 @@ function parseArgs(args) {
     maxQueue: integerAfter(args, "--max-queue", 64),
   };
   if (!options.native || !options.wasm) throw new Error("--native and --wasm are required.");
+  if (options.svgApi !== "async" && options.svgApi !== "sync") {
+    throw new Error("--svg-api must be async or sync.");
+  }
   options.native = path.resolve(options.native);
   options.wasm = path.resolve(options.wasm);
   return options;

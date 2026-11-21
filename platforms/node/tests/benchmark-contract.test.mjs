@@ -191,7 +191,7 @@ const CAPABILITY_RECIPE_DIGEST = digestJson(CAPABILITY_RECIPE);
 const CANDIDATE_RUNTIME_CONTRACT = resolveCandidateRuntimeContract();
 const RUNTIME_CATALOG = {
   schema_version: 1,
-  transport_api_version: 1,
+  transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
   package_version: PACKAGE_VERSION,
   options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
   payload_schemas: [
@@ -465,13 +465,13 @@ test("process shutdown probe uses a stable valid smoke diagram", (context) => {
       ...productFacadeTestExports(),
       "export async function createNodeEngine() {",
       "  return {",
-      "    async executeOperation({ source }) {",
+      "    async renderSvg(source) {",
       "      if (source.startsWith('architecture-beta')) {",
       "        const error = new Error('expected architecture-beta header');",
       "        error.kind = 'parse-error';",
       "        throw error;",
       "      }",
-      `      return { operation_id: 'svg', media_type: 'image/svg+xml', data: '${REPRESENTATIVE_SVG}' };`,
+      `      return '${REPRESENTATIVE_SVG}';`,
       "    },",
       "    async dispose() {},",
       "  };",
@@ -512,17 +512,19 @@ test("cold latency uses the declared successful workload, not the leading corpus
       ...productFacadeTestExports(),
       "export async function createNodeEngine() {",
       "  return {",
-      "    async executeOperation({ source }) {",
+      "    async renderSvg(source, { optionsJson }) {",
+      "      if (!optionsJson) throw new Error('expected prepared SVG options');",
       "      if (source.startsWith('invalid')) {",
       "        const error = new Error('intentional corpus error');",
       "        error.kind = 'parse-error';",
       "        throw error;",
       "      }",
       "      if (source.startsWith('not svg')) {",
-      "        return { operation_id: 'svg', media_type: 'image/svg+xml', data: 'plain text' };",
+      "        return 'plain text';",
       "      }",
-      `      return { operation_id: 'svg', media_type: 'image/svg+xml', data: '${REPRESENTATIVE_SVG}' };`,
+      `      return '${REPRESENTATIVE_SVG}';`,
       "    },",
+      `    renderSvgSync() { return '${REPRESENTATIVE_SVG.replace("<svg", '<svg data-api="sync"')}'; },`,
       "    async dispose() {},",
       "  };",
       "}",
@@ -552,6 +554,16 @@ test("cold latency uses the declared successful workload, not the leading corpus
   assert.equal(rawResult.data, REPRESENTATIVE_SVG);
   assert.deepEqual(projectSvgOutcome(rawResult), timedSuccess(WORKLOADS.cold_svg.path));
 
+  const syncInput = path.join(root, "cold-sync.json");
+  writeFileSync(syncInput, JSON.stringify({ ...JSON.parse(readFileSync(input, "utf8")), svgApi: "sync" }));
+  const syncResult = spawnSync(
+    process.execPath,
+    [path.join(nodeRoot, "scripts", "benchmark", "worker.mjs"), syncInput],
+    { encoding: "utf8" },
+  );
+  assert.equal(syncResult.status, 0, syncResult.stderr);
+  assert.match(JSON.parse(syncResult.stdout).result.data, /data-api="sync"/);
+
   const nonSvgInput = path.join(root, "non-svg.json");
   writeFileSync(
     nonSvgInput,
@@ -578,6 +590,7 @@ test("cold and concurrency workers receive no corpus payload", () => {
     productModule: "file:///candidate.mjs",
     corpus: TRUSTED_TEST_CORPUS,
     options: {
+      svgApi: "sync",
       iterations: 3,
       warmupIterations: 1,
       concurrencyIterations: 5,
@@ -586,6 +599,9 @@ test("cold and concurrency workers receive no corpus payload", () => {
     },
   });
   assert.equal(inputs.warm.cases, CORPUS_CASES);
+  assert.equal(inputs.warm.svgApi, "sync");
+  assert.equal(inputs.cold.svgApi, "sync");
+  assert.equal(inputs.concurrency.svgApi, undefined);
   for (const lane of [inputs.cold, inputs.concurrency, inputs.shutdown]) {
     assert.equal("cases" in lane, false);
     assert.equal("workloads" in lane, false);

@@ -29,7 +29,7 @@ native-fonts = [
     "dep:usvg",
 ]
 system-fonts = ["dep:usvg", "usvg/system-fonts"]
-experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique", "dep:unicode-script"]
+experimental-system-font-query = ["native-fonts", "system-fonts", "dep:fontique", "dep:unicode-script", "dep:windows", "dep:windows-core"]
 png = [
     "dep:cssparser",
     "dep:data-url",
@@ -93,6 +93,14 @@ ttf-parser = { workspace = true, optional = true }
 unicase = { workspace = true, optional = true }
 unicode-script = { workspace = true, optional = true }
 usvg = { workspace = true, optional = true, features = ["text"] }
+
+[target.'cfg(any(target_os = "linux", target_os = "freebsd"))'.dependencies]
+# System font queries can load Fontconfig when selected. Keep it out of the CLI's load-time ABI.
+fontique = { workspace = true, optional = true, features = ["fontconfig-dlopen"] }
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62.2", optional = true, features = ["Win32_Graphics_DirectWrite"] }
+windows-core = { version = "0.62.2", optional = true }
 
 [dev-dependencies]
 base64.workspace = true

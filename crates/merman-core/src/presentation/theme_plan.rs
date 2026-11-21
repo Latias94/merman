@@ -68,9 +68,7 @@ impl ThemeCompatibilityPlan {
                     )
                 })
                 .for_pristine_install(&engine.site_config_overrides);
-            engine.site_config = initialized.site_config;
-            engine.initialization_inputs = initialized.initialization_inputs;
-            engine.default_effective_config = initialized.default_effective_config;
+            engine.initialization = initialized;
         } else {
             engine.rebuild_site_config();
         }

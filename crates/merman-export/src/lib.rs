@@ -1,4 +1,4 @@
-#![forbid(unsafe_code)]
+#![deny(unsafe_code)]
 
 //! Bounded native font services and binary export for validated SVG.
 //!
@@ -760,29 +760,31 @@ const RECURSIVE_SVG_BACKEND_STACK_BYTES: usize = 0;
 ))]
 fn run_recursive_svg_backend<T, F>(control: &OperationControl, job: F) -> Result<T>
 where
-    T: Send + 'static,
-    F: FnOnce(&OperationControl) -> Result<T> + Send + 'static,
+    T: Send,
+    F: FnOnce(&OperationControl) -> Result<T> + Send,
 {
     export_checkpoint(control)?;
     let worker_control = control.clone();
-    let worker = std::thread::Builder::new()
-        .name("merman-svg-backend".to_string())
-        .stack_size(RECURSIVE_SVG_BACKEND_STACK_BYTES)
-        .spawn(move || {
-            export_checkpoint(&worker_control)?;
-            settle_export_result(&worker_control, job(&worker_control))
-        });
-    let worker = match worker {
-        Ok(worker) => worker,
-        Err(_) => {
-            export_checkpoint(control)?;
-            return Err(ExportError::BackendWorkerSpawn);
-        }
-    };
-    let result = worker
-        .join()
-        .unwrap_or(Err(ExportError::BackendWorkerPanic));
-    observe_after_export_result(control, result)
+    std::thread::scope(|scope| {
+        let worker = std::thread::Builder::new()
+            .name("merman-svg-backend".to_string())
+            .stack_size(RECURSIVE_SVG_BACKEND_STACK_BYTES)
+            .spawn_scoped(scope, move || {
+                export_checkpoint(&worker_control)?;
+                settle_export_result(&worker_control, job(&worker_control))
+            });
+        let worker = match worker {
+            Ok(worker) => worker,
+            Err(_) => {
+                export_checkpoint(control)?;
+                return Err(ExportError::BackendWorkerSpawn);
+            }
+        };
+        let result = worker
+            .join()
+            .unwrap_or(Err(ExportError::BackendWorkerPanic));
+        observe_after_export_result(control, result)
+    })
 }
 
 #[cfg(all(
@@ -791,8 +793,8 @@ where
 ))]
 fn run_recursive_svg_backend<T, F>(control: &OperationControl, job: F) -> Result<T>
 where
-    T: Send + 'static,
-    F: FnOnce(&OperationControl) -> Result<T> + Send + 'static,
+    T: Send,
+    F: FnOnce(&OperationControl) -> Result<T> + Send,
 {
     export_checkpoint(control)?;
     settle_export_result(control, job(control))
@@ -1874,11 +1876,9 @@ pub fn prepare_raster_controlled(
     control: OperationControl,
 ) -> Result<PreparedRaster> {
     export_checkpoint(&control)?;
-    let svg = svg.clone();
-    let options = options.clone();
     let backend_control = control.clone();
     run_recursive_svg_backend(&control, move |control| {
-        prepare_raster_on_backend_stack(&svg, &options, control).map(|mut prepared| {
+        prepare_raster_on_backend_stack(svg, options, control).map(|mut prepared| {
             prepared.control = backend_control;
             prepared
         })
@@ -1988,11 +1988,9 @@ pub fn prepare_pdf_controlled(
     control: OperationControl,
 ) -> Result<PreparedPdf> {
     export_checkpoint(&control)?;
-    let svg = svg.clone();
-    let options = options.clone();
     let backend_control = control.clone();
     run_recursive_svg_backend(&control, move |control| {
-        prepare_pdf_on_backend_stack(&svg, &options, control).map(|mut prepared| {
+        prepare_pdf_on_backend_stack(svg, options, control).map(|mut prepared| {
             prepared.control = backend_control;
             prepared
         })
@@ -2302,9 +2300,7 @@ fn parse_pdf_tree(
 ))]
 fn check_export_glyph_coverage(context: &NativeFontContext, plan: ExportFontPlan) -> Result<()> {
     if context.strict_glyph_coverage()
-        && (plan.unresolved_font_request()
-            || plan.unresolved_glyph_fallback()
-            || plan.notdef_glyph_count() != 0)
+        && (plan.unresolved_font_request() || plan.unresolved_glyph_fallback())
     {
         return Err(NativeFontError::MissingGlyphCoverage.into());
     }

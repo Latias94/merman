@@ -5,8 +5,11 @@ import {
   MermanMissingPlatformPackageError,
   MermanNativeLoadError,
   MermanUnsupportedTargetError,
+  decodeWireCreationError,
   parseRuntimeCatalogJsonText,
+  validateTransportIdentityExport,
 } from "./errors.mjs";
+import { wrapCandidateEngine } from "./candidates/wrap-engine.mjs";
 
 const TARGET_PACKAGES = Object.freeze({
   "darwin-arm64": "@mermanjs/node-darwin-arm64",
@@ -19,6 +22,8 @@ const TARGET_PACKAGES = Object.freeze({
 });
 
 const requireFromPackage = createRequire(import.meta.url);
+// Only installed native addons can use the direct SVG input and result contract.
+const directSvgTransports = new WeakSet();
 const loaderPackageManifest = requireFromPackage("../package.json");
 const loaderPackageVersion = loaderPackageManifest?.version;
 
@@ -84,6 +89,76 @@ export function loadNativeBinding({
     }
     if (isNativeLoadFailure(cause)) {
       throw new MermanNativeLoadError({ packageName, target, cause });
+    }
+    throw cause;
+  }
+}
+
+export async function loadInstalledNativeTransport(optionsJson, iconPacksJson) {
+  let nativeAddon = false;
+  const binding = loadNativeBinding({
+    loadPackage(packageName) {
+      const entrypoint = requireFromPackage.resolve(packageName);
+      // The platform manifest loads the addon directly. JavaScript shims stay on the wire path.
+      nativeAddon = entrypoint.endsWith(".node");
+      return requireFromPackage(entrypoint);
+    },
+  });
+  const transport = await wrapNativeBinding(binding, optionsJson, iconPacksJson, {
+    directSvgAddon: nativeAddon,
+  });
+  if (nativeAddon) {
+    directSvgTransports.add(transport);
+  }
+  return transport;
+}
+
+export function supportsDirectNativeSvg(transport) {
+  return directSvgTransports.has(transport);
+}
+
+export async function wrapNativeBinding(
+  binding,
+  optionsJson,
+  iconPacksJson,
+  { directSvgAddon = false } = {},
+) {
+  const label = "The target-specific Merman addon";
+  const NativeEngine = binding?.NativeEngine ?? binding?.default?.NativeEngine;
+  if (typeof NativeEngine !== "function") {
+    throw new MermanInvalidTransportError(
+      "The target-specific Merman package does not export NativeEngine.",
+    );
+  }
+  validateTransportIdentityExport(binding?.transportIdentityJson, {
+    expectedPackageVersion: nodeLoaderPackageVersion(),
+    expectedTransport: "napi",
+    label: "The target-specific Merman package",
+  });
+  let transport;
+  try {
+    transport = wrapCandidateEngine(
+      iconPacksJson === undefined
+        ? new NativeEngine(optionsJson)
+        : new NativeEngine(optionsJson, iconPacksJson),
+      label,
+      { forwardsAbortSignal: true, directSvgAddon },
+    );
+  } catch (cause) {
+    throw decodeWireCreationError(cause, label);
+  }
+  try {
+    const runtimeCatalogJson = assertRuntimePackageVersion(transport.runtimeCatalogJson());
+    const wrapped = {
+      ...transport,
+      runtimeCatalogJson: () => runtimeCatalogJson,
+    };
+    return typeof wrapped.executeSvg === "function" ? Object.freeze(wrapped) : wrapped;
+  } catch (cause) {
+    try {
+      await transport.dispose();
+    } catch {
+      // Preserve the package-version failure that made the transport unusable.
     }
     throw cause;
   }

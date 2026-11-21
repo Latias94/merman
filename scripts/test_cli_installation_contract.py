@@ -177,7 +177,7 @@ class CliInstallationContractTests(unittest.TestCase):
             ):
                 contract.validate_repository_contract(root)
 
-    def test_source_defaults_exclude_math_from_the_release_features(self) -> None:
+    def test_source_defaults_exclude_math_and_archive_font_policy(self) -> None:
         manifest = contract._read_toml(ROOT, contract.CLI_MANIFEST)
         defaults = set(manifest["features"]["default"])
         release = set(contract._cli_release_profile(ROOT)["cargo"]["features"])
@@ -186,7 +186,7 @@ class CliInstallationContractTests(unittest.TestCase):
         self.assertNotIn("math", defaults)
         self.assertIn("math", release)
         self.assertEqual(release, dist)
-        self.assertEqual(defaults, release - {"math"})
+        self.assertEqual(defaults, release - {"math", "windows-platform-font-default"})
 
     def test_default_features_must_match_release_features_except_math(self) -> None:
         with self.mutated_repository(

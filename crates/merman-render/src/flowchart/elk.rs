@@ -82,7 +82,7 @@ pub(crate) fn layout_flowchart_elk_typed(
     let mut no_work = None;
     let orientation = crate::elk_feedback_edges::orient_feedback_edges(
         &mut graph,
-        effective_config.as_value(),
+        effective_config,
         &mut no_work,
     )?;
     let mut layout = elk::layout(orientation.graph()).map_err(|err| Error::InvalidModel {
@@ -157,7 +157,7 @@ pub(crate) fn layout_flowchart_elk_typed_with_render_labels_and_operation_seed(
         let mut layout_work = Some(&mut work_control);
         crate::elk_feedback_edges::orient_feedback_edges(
             &mut graph,
-            effective_config.as_value(),
+            effective_config,
             &mut layout_work,
         )?
     };
@@ -247,12 +247,12 @@ fn bind_flowchart_elk_transport_ids(
             });
         }
         let key = crate::flowchart::FlowchartEdgeKey::new(*semantic_index);
-        transport.id = transport_plan
-            .id(key)
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!("missing ELK transport id for semantic owner {semantic_index}"),
-            })?
-            .to_string();
+        let id = transport_plan.id(key).ok_or_else(|| Error::InvalidModel {
+            message: format!("missing ELK transport id for semantic owner {semantic_index}"),
+        })?;
+        if transport.id != id {
+            id.clone_into(&mut transport.id);
+        }
     }
 
     Ok(())
@@ -320,13 +320,12 @@ fn flowchart_layout_from_elk_with_render_labels_and_work_control(
 ) -> Result<FlowchartLayout> {
     let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
     let model = &render_model;
-    let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
         cluster_padding,
         title_margin_top,
         title_margin_bottom,
         ..
-    } = FlowchartConfigView::new(effective_config_value).layout_settings();
+    } = FlowchartConfigView::new(effective_config).layout_settings();
 
     let source_index_work = checked_adapter_add(
         &work_control,
@@ -1147,7 +1146,6 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
     // hierarchy and edge tranches are charged by their actual owners below.
     charge_adapter_work(&mut work_control, model.nodes.len())?;
     super::validate_flowchart_model_shapes(model)?;
-    let effective_config_value = effective_config.as_value();
     let FlowchartLayoutSettings {
         node_padding,
         state_padding,
@@ -1165,8 +1163,8 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         html_label_text_style,
         ..
     } = svg_label_sidecar.map_or_else(
-        || FlowchartConfigView::new(effective_config_value).layout_settings(),
-        |sidecar| sidecar.layout_settings(effective_config_value),
+        || FlowchartConfigView::new(effective_config).layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config),
     );
 
     let diagram_direction = model
@@ -1205,7 +1203,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
             group_padding_y: cluster_padding,
             ..Default::default()
         },
-        options: elk_layout_options(effective_config_value),
+        options: elk_layout_options(effective_config),
         ..Default::default()
     };
 
@@ -1310,7 +1308,7 @@ fn build_flowchart_elk_graph_with_render_labels_and_work_control_inner(
         )?);
     }
 
-    if config_bool(effective_config_value, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
+    if config_bool(effective_config, &["elk", "keepEntryNodeOnTop"]).unwrap_or(false) {
         crate::elk_adapter::apply_cyclic_entry_constraints(
             &mut graph.nodes,
             model
@@ -1623,7 +1621,7 @@ fn subgraph_label(
                 title,
                 label_type,
                 ctx.cluster_wrap_mode == WrapMode::HtmlLike,
-                crate::config::config_diagram_look(ctx.effective_config.as_value()).is_hand_drawn(),
+                crate::config::config_diagram_look(ctx.effective_config).is_hand_drawn(),
             ),
             |units| charge_adapter_work(work_control, units),
         )?)
@@ -1714,7 +1712,7 @@ fn node_dimensions_and_label(
             raw_label,
             label_type,
             ctx.node_wrap_mode == WrapMode::HtmlLike,
-            crate::config::config_diagram_look(ctx.effective_config.as_value()).is_hand_drawn(),
+            crate::config::config_diagram_look(ctx.effective_config).is_hand_drawn(),
         ),
     );
     let structural = super::FlowchartStructuralLabelTypography::prepare(

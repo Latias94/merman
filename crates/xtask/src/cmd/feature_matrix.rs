@@ -64,6 +64,7 @@ const PUBLIC_FEATURE_ALLOWLIST_EXTRAS: &[(&str, &[&str])] = &[
             "system-fonts",
             "platform-system-font-query",
             "experimental-system-font-query",
+            "windows-platform-font-default",
         ],
     ),
     (
@@ -134,6 +135,11 @@ const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
     ("merman-export", "bundled-fonts", "native-fonts"),
     ("merman-bindings-core", "native-fonts", "svg"),
     ("merman-bindings-core", "system-fonts", "native-fonts"),
+    (
+        "merman-cli",
+        "windows-platform-font-default",
+        "platform-system-font-query",
+    ),
     ("merman-ffi", "native-fonts", "svg"),
     ("merman-ffi", "bundled-fonts", "native-fonts"),
     ("merman-ffi", "system-fonts", "native-fonts"),
@@ -141,6 +147,7 @@ const LOCAL_FONT_FEATURE_CONTRACTS: &[(&str, &str, &str)] = &[
     ("merman-wasi", "bundled-fonts", "native-fonts"),
 ];
 const PRODUCT_FEATURE_CONTRACTS: usize = 3;
+const CLI_RELEASE_ONLY_FEATURES: &[&str] = &["math", "windows-platform-font-default"];
 
 fn transport_packages() -> impl Iterator<Item = &'static str> {
     TRANSPORT_TARGETS.iter().map(|(package, _)| *package)
@@ -1009,23 +1016,16 @@ impl FeatureGraph {
         })?;
         let published_features = dist_recipe.features.into_iter().collect::<BTreeSet<_>>();
         let cli_defaults = direct_feature_members(cli, "default")?;
-        if !published_features.contains("layout-elk") {
-            return Err(matrix_error(format!(
-                "{}: published cargo-dist recipe must retain explicit `layout-elk`; found {published_features:?}",
-                cli.manifest_path.display()
-            )));
-        }
-        if !published_features.contains("math") {
-            return Err(matrix_error(format!(
-                "{}: published cargo-dist recipe must retain explicit `math`; found {published_features:?}",
-                cli.manifest_path.display()
-            )));
-        }
-        if !published_features.contains("fixes") {
-            return Err(matrix_error(format!(
-                "{}: published cargo-dist recipe must retain explicit `fixes`; found {published_features:?}",
-                cli.manifest_path.display()
-            )));
+        for feature in ["layout-elk", "fixes"]
+            .into_iter()
+            .chain(CLI_RELEASE_ONLY_FEATURES.iter().copied())
+        {
+            if !published_features.contains(feature) {
+                return Err(matrix_error(format!(
+                    "{}: published cargo-dist recipe must retain explicit `{feature}`; found {published_features:?}",
+                    cli.manifest_path.display()
+                )));
+            }
         }
         if ["native-fonts", "system-fonts"]
             .iter()
@@ -1037,10 +1037,11 @@ impl FeatureGraph {
             )));
         }
         let mut expected_cli_defaults = published_features;
-        expected_cli_defaults.remove("math");
+        expected_cli_defaults
+            .retain(|feature| !CLI_RELEASE_ONLY_FEATURES.contains(&feature.as_str()));
         if cli_defaults != expected_cli_defaults {
             return Err(matrix_error(format!(
-                "{}: CLI default must equal the published cargo-dist recipe without `math`; expected {expected_cli_defaults:?}, found {cli_defaults:?}",
+                "{}: CLI defaults must equal the published cargo-dist recipe excluding {CLI_RELEASE_ONLY_FEATURES:?}; expected {expected_cli_defaults:?}, found {cli_defaults:?}",
                 cli.manifest_path.display()
             )));
         }
@@ -1830,6 +1831,7 @@ mod tests {
         "system-random",
         "system-timezone",
         "system-timing",
+        "windows-platform-font-default",
     ];
 
     fn package(name: &str, features: &[(&str, &[&str])]) -> CargoPackage {
@@ -1934,11 +1936,8 @@ mod tests {
     }
 
     #[test]
-    fn workspace_dependencies_satisfy_feature_boundary_contracts() {
-        FeatureGraph::load()
-            .unwrap()
-            .validate_dependency_feature_contracts(DEPENDENCY_FEATURE_CONTRACTS)
-            .unwrap();
+    fn resolved_workspace_satisfies_feature_contracts() {
+        FeatureGraph::load().unwrap().validate().unwrap();
     }
 
     #[test]
@@ -1947,6 +1946,11 @@ mod tests {
             ("merman-export", "bundled-fonts", "native-fonts"),
             ("merman-bindings-core", "native-fonts", "svg"),
             ("merman-bindings-core", "system-fonts", "native-fonts"),
+            (
+                "merman-cli",
+                "windows-platform-font-default",
+                "platform-system-font-query",
+            ),
             ("merman-ffi", "native-fonts", "svg"),
             ("merman-ffi", "bundled-fonts", "native-fonts"),
             ("merman-ffi", "system-fonts", "native-fonts"),
@@ -2048,7 +2052,7 @@ mod tests {
         let cli_defaults = CLI_RELEASE_FEATURES
             .iter()
             .copied()
-            .filter(|feature| *feature != "math")
+            .filter(|feature| !CLI_RELEASE_ONLY_FEATURES.contains(feature))
             .collect::<Vec<_>>();
         graph(vec![
             package(
@@ -2416,23 +2420,25 @@ mod tests {
     }
 
     #[test]
-    fn cli_release_must_retain_explicit_math() {
-        let mut graph = product_contract_graph();
-        let release_features = CLI_RELEASE_FEATURES
-            .iter()
-            .filter(|feature| **feature != "math")
-            .copied()
-            .collect::<Vec<_>>();
-        graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
-            serde_json::json!(release_features);
+    fn cli_release_must_retain_explicit_math_and_windows_font_policy() {
+        for removed in ["math", "windows-platform-font-default"] {
+            let mut graph = product_contract_graph();
+            let release_features = CLI_RELEASE_FEATURES
+                .iter()
+                .filter(|feature| **feature != removed)
+                .copied()
+                .collect::<Vec<_>>();
+            graph.packages.get_mut("merman-cli").unwrap().metadata["dist"]["features"] =
+                serde_json::json!(release_features);
 
-        let error = graph.validate_product_feature_contracts().unwrap_err();
-        assert!(
-            error
-                .to_string()
-                .contains("published cargo-dist recipe must retain explicit `math`"),
-            "{error}"
-        );
+            let error = graph.validate_product_feature_contracts().unwrap_err();
+            assert!(
+                error.to_string().contains(&format!(
+                    "published cargo-dist recipe must retain explicit `{removed}`"
+                )),
+                "{error}"
+            );
+        }
     }
 
     #[test]
@@ -2451,8 +2457,8 @@ mod tests {
     }
 
     #[test]
-    fn cli_default_must_match_the_release_recipe_without_math() {
-        for extra_math in [false, true] {
+    fn cli_defaults_must_match_the_release_recipe_excluding_release_only_features() {
+        for extra in [None, Some("math"), Some("windows-platform-font-default")] {
             let mut graph = product_contract_graph();
             let defaults = graph
                 .packages
@@ -2461,17 +2467,17 @@ mod tests {
                 .features
                 .get_mut("default")
                 .unwrap();
-            if extra_math {
-                defaults.push("math".to_string());
+            if let Some(feature) = extra {
+                defaults.push(feature.to_owned());
             } else {
                 defaults.retain(|feature| feature != "analysis");
             }
 
             let error = graph.validate_product_feature_contracts().unwrap_err();
             assert!(
-                error.to_string().contains(
-                    "CLI default must equal the published cargo-dist recipe without `math`"
-                ),
+                error
+                    .to_string()
+                    .contains("CLI defaults must equal the published cargo-dist recipe excluding"),
                 "{error}"
             );
         }
@@ -2722,6 +2728,7 @@ mod tests {
             ("merman-wasi", "system-fonts"),
             ("merman-wasi", "native-runtime"),
             ("merman-wasm", "bundled-fonts"),
+            ("merman", "windows-platform-font-default"),
             ("merman-typst-plugin", "bundled-fonts"),
             ("merman-bindings-core", "bundled-fonts"),
         ] {

@@ -160,11 +160,9 @@ impl FlowchartTextSurfacePaintPlan {
             style,
             fill,
             document_title,
-            config_owned: super::FlowchartCompatibilityBinding::title_color_source(
-                config.as_value(),
-            )
-            .0
-            .is_some_and(|path| config.config_paint_overrides_typed_default(path)),
+            config_owned: super::FlowchartCompatibilityBinding::title_color_source(config)
+                .0
+                .is_some_and(|path| config.config_paint_overrides_typed_default(path)),
             ordinal_rules: theme.is_some_and(|theme| {
                 theme.family_rules().any(|(_, rule)| {
                     matches!(

@@ -1559,11 +1559,6 @@
     }
   },
   {
-    "type": "agentflow_middle_edge_label_fragment",
-    "named": true,
-    "fields": {}
-  },
-  {
     "type": "agentflow_middle_edge_label_text",
     "named": true,
     "fields": {},
@@ -37013,6 +37008,10 @@
   },
   {
     "type": "agentflow_metadata_content",
+    "named": true
+  },
+  {
+    "type": "agentflow_middle_edge_label_fragment",
     "named": true
   },
   {

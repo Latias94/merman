@@ -194,7 +194,7 @@ pub enum NativeFontError {
     Operation(#[from] OperationLedgerError),
     #[error("native font measurement: {0}")]
     Measurement(String),
-    #[error("the closed font set cannot shape this label")]
+    #[error("the selected fonts cannot shape this label")]
     MissingGlyphCoverage,
 }
 
@@ -224,24 +224,12 @@ pub(crate) enum NativeExportFontSource {
 }
 
 impl NativeExportFontObserver {
-    fn new(
-        database: &usvg::fontdb::Database,
-        initial_system_faces: &BTreeSet<usvg::fontdb::ID>,
-    ) -> Self {
+    fn new(database: &usvg::fontdb::Database) -> Self {
         Self {
             admitted_faces: Arc::new(Mutex::new(
                 database
                     .faces()
-                    .map(|face| {
-                        (
-                            face.id,
-                            if initial_system_faces.contains(&face.id) {
-                                NativeExportFontSource::System
-                            } else {
-                                NativeExportFontSource::Caller
-                            },
-                        )
-                    })
+                    .map(|face| (face.id, NativeExportFontSource::Caller))
                     .collect(),
             )),
             family_fallback: Arc::new(AtomicBool::new(false)),
@@ -292,6 +280,7 @@ impl NativeExportFontObserver {
         self.unresolved_glyph.store(true, Ordering::Relaxed);
     }
 
+    // Lookup misses are only coverage evidence on parsers without final omission reporting.
     pub(crate) fn unresolved_glyph_fallback(&self) -> bool {
         self.unresolved_glyph.load(Ordering::Relaxed)
     }
@@ -314,7 +303,6 @@ impl fmt::Debug for NativeFontContext {
 struct FontContextInner {
     database: Arc<usvg::fontdb::Database>,
     selection: Arc<FontSelectionPolicy>,
-    initial_system_faces: BTreeSet<usvg::fontdb::ID>,
     #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
     discovery: Option<resolver::DiscoveryProvider>,
     #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -390,6 +378,8 @@ impl NativeFontContext {
     /// Starts an independent operation scope with the selected glyph coverage policy.
     ///
     /// Strict contexts return an error instead of declining unsupported shaping requests.
+    /// Native export with registry usvg 0.47 conservatively rejects resolver misses because
+    /// that parser cannot distinguish fully omitted glyphs from speculative lookups.
     /// Font bytes and selection order are shared; caches, counters, and failures are reset.
     /// Both [`Self::for_operation`] and [`Self::for_export`] preserve this policy.
     #[must_use]
@@ -432,8 +422,8 @@ impl NativeFontContext {
         self.selected_faces()
     }
 
-    /// Context policy and initially admitted bytes. Platform discovery does not
-    /// make this a cross-process content fingerprint of all selected fonts.
+    /// Context policy and initially admitted bytes. Platform discovery can also
+    /// contribute the default family name. Later snapshots aren't fingerprinted here.
     pub fn identity(&self) -> &str {
         &self.0.identity
     }
@@ -474,8 +464,7 @@ impl NativeFontContext {
         options: &mut usvg::Options<'_>,
         control: &OperationControl,
     ) -> NativeExportFontObserver {
-        let observer =
-            NativeExportFontObserver::new(&self.0.database, &self.0.initial_system_faces);
+        let observer = NativeExportFontObserver::new(&self.0.database);
         options.fontdb = Arc::clone(&self.0.database);
         options.font_family.clone_from(&self.0.default_family);
         options.font_resolver =
@@ -507,7 +496,6 @@ impl NativeFontContext {
         FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
-            initial_system_faces: self.0.initial_system_faces.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -535,7 +523,6 @@ impl NativeFontContext {
         let context = Self(Arc::new(FontContextInner {
             database: Arc::clone(&self.0.database),
             selection: Arc::clone(&self.0.selection),
-            initial_system_faces: self.0.initial_system_faces.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: self.0.discovery.clone(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -656,19 +643,8 @@ impl FontLoader {
             feature = "experimental-system-font-query",
             not(target_family = "wasm")
         ))]
-        let explicit_face_count = loader.database.faces().count();
-        #[cfg(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        ))]
         let platform = if system_fonts && platform_requested {
-            let mut explicit = loader.database.clone();
-            loader.selection.configure_generics(&mut explicit);
-            let catalog = platform::PlatformCatalog::new(control)?;
-            if loader.database.faces().next().is_none() {
-                loader.file(&catalog.default_path(control)?)?;
-            }
-            Some((Arc::new(catalog), Arc::new(explicit)))
+            Some(Arc::new(platform::PlatformCatalog::new(control)?))
         } else {
             None
         };
@@ -678,20 +654,6 @@ impl FontLoader {
         )))]
         let _ = platform_requested;
         loader.selection.configure_generics(&mut loader.database);
-        #[cfg(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        ))]
-        let initial_system_faces = if platform.is_some() && explicit_face_count == 0 {
-            loader.database.faces().map(|face| face.id).collect()
-        } else {
-            BTreeSet::new()
-        };
-        #[cfg(not(all(
-            feature = "experimental-system-font-query",
-            not(target_family = "wasm")
-        )))]
-        let initial_system_faces = BTreeSet::new();
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let system = if system_fonts && !platform_requested {
             Some(system::SystemCatalog::discover(&loader, control)?)
@@ -704,9 +666,6 @@ impl FontLoader {
             .map_or(&loader.database, |catalog| catalog.database.as_ref());
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let metadata = &loader.database;
-        if metadata.faces().next().is_none() {
-            return Err(NativeFontError::EmptyFontSet);
-        }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let selection = system
             .as_ref()
@@ -714,7 +673,28 @@ impl FontLoader {
         #[cfg(not(all(feature = "system-fonts", not(target_family = "wasm"))))]
         let selection = &loader.selection;
         // A symbol-only context remains usable through an explicit family name.
-        let default_family = selection.default_family(metadata).unwrap_or_default();
+        let default_family = metadata
+            .faces()
+            .next()
+            .map(|_| selection.default_family(metadata).unwrap_or_default());
+        #[cfg(all(
+            feature = "experimental-system-font-query",
+            not(target_family = "wasm")
+        ))]
+        let default_family = match (default_family, platform.as_ref()) {
+            (None, Some(catalog)) => {
+                let family = catalog
+                    .default_family(control)?
+                    .ok_or(NativeFontError::EmptyFontSet)?;
+                loader.hash.update(b"platform-default-family\0");
+                loader.hash.update(family.as_bytes());
+                // usvg passes an empty default as a Named("") request. Let the platform
+                // resolver apply the generic-family policy for that implicit request.
+                Some(String::new())
+            }
+            (name, _) => name,
+        };
+        let default_family = default_family.ok_or(NativeFontError::EmptyFontSet)?;
         loader
             .hash
             .update(b"merman-native-text-v3/usvg-0.47/resolver-v3");
@@ -723,9 +703,7 @@ impl FontLoader {
             not(target_family = "wasm")
         ))]
         if platform.is_some() {
-            // Platform identities describe policy and admitted initial bytes,
-            // not a content digest of every installed system font.
-            loader.hash.update(b"platform-query/fontique-0.12.0/v2");
+            loader.hash.update(b"\0platform-query/fontique-0.12.0/v3");
         }
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         if let Some(catalog) = &system {
@@ -741,24 +719,27 @@ impl FontLoader {
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let discovery =
             system.map(|catalog| resolver::DiscoveryProvider::Bounded(Arc::new(catalog)));
+        let database = Arc::new(loader.database);
         #[cfg(all(
             feature = "experimental-system-font-query",
             not(target_family = "wasm")
         ))]
         let discovery = platform
-            .map(|(catalog, explicit)| resolver::DiscoveryProvider::Platform { catalog, explicit })
+            .map(|catalog| resolver::DiscoveryProvider::Platform {
+                catalog,
+                explicit: Arc::clone(&database),
+            })
             .or(discovery);
         #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
         let sources = registry::FontSourceRegistry::new(
             loader.initial_sources,
             loader.source_aliases,
             loader.files,
-            loader.database.faces().count(),
+            database.faces().count(),
         );
         Ok(NativeFontContext(Arc::new(FontContextInner {
-            database: Arc::new(loader.database),
+            database,
             selection: Arc::new(loader.selection),
-            initial_system_faces,
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery,
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
@@ -1366,9 +1347,7 @@ impl NativeFontContext {
         };
         use TextMeasurementOperation as Op;
         let nodes = match baseline {
-            None => format!(
-                r#"<text id="start" x="0" y="0" text-anchor="start">{payload}</text><text id="end" x="0" y="0" text-anchor="end">{payload}</text>"#
-            ),
+            None => format!(r#"<text id="start" x="0" y="0" text-anchor="start">{payload}</text>"#),
             Some(Op::CreateTextBBoxYOffset) => format!(
                 r#"<text id="start" x="0" y="-10.1"><tspan y="-0.1em" dy="1.1em">{payload}</tspan></text>"#
             ),
@@ -1387,22 +1366,29 @@ impl NativeFontContext {
                 ));
             }
         };
-        let svg = format!(
-            r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}" font-weight="{}" font-style="{}" xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
-            escape_xml(
-                style
-                    .font_family
-                    .as_deref()
-                    .unwrap_or(&self.0.default_family)
-            ),
-            style.font_size,
-            escape_xml(style.font_weight.as_deref().unwrap_or("400")),
-            escape_xml(style.font_style.as_deref().unwrap_or("normal")),
-        );
+        let svg = |nodes: &str| {
+            format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{}" font-size="{}" font-weight="{}" font-style="{}" xml:space="{space}" text-decoration="{decoration}">{nodes}</g></svg>"#,
+                escape_xml(
+                    style
+                        .font_family
+                        .as_deref()
+                        .unwrap_or(&self.0.default_family)
+                ),
+                style.font_size,
+                escape_xml(style.font_weight.as_deref().unwrap_or("400")),
+                escape_xml(style.font_style.as_deref().unwrap_or("normal")),
+            )
+        };
         let mut options = usvg::Options::default();
         self.apply_to_usvg_options_controlled(&mut options, control);
-        let tree = usvg::Tree::from_str(&svg, &options)
-            .map_err(|error| NativeFontError::Measurement(error.to_string()))?;
+        let (tree, end_x) = parse_text_probe(
+            svg,
+            &nodes,
+            baseline.is_none().then_some(payload.as_str()),
+            &options,
+        )
+        .map_err(|error| NativeFontError::Measurement(error.to_string()))?;
         if let Some(error) = self.0.fatal.get() {
             return Err(error.clone());
         }
@@ -1433,12 +1419,10 @@ impl NativeFontContext {
         let metric = start.bounding_box();
         let ink = start.flattened().bounding_box();
         let advance = if baseline.is_none() {
-            let Some(usvg::Node::Text(end)) = tree.node_by_id("end") else {
-                return Err(NativeFontError::Measurement(
-                    "missing end-anchor probe".to_owned(),
-                ));
-            };
-            f64::from(metric.x() - end.bounding_box().x()).abs()
+            let end_x = end_x.ok_or_else(|| {
+                NativeFontError::Measurement("missing end-anchor probe".to_owned())
+            })?;
+            f64::from(metric.x() - end_x).abs()
         } else {
             0.0
         };
@@ -1481,6 +1465,47 @@ impl NativeFontContext {
     }
 }
 
+type AnchorProbe = (usvg::Tree, Option<f32>);
+
+// The workspace usvg provides an inherent method. A published Merman consumer can use the
+// same code with the public usvg 0.47 API and its two original SVG anchors.
+#[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
+trait RegistryUsvg {
+    fn try_from_str_with_text_anchor_probe(
+        _source: impl FnOnce() -> String,
+        _options: &usvg::Options<'_>,
+        _id: &str,
+    ) -> Result<Option<AnchorProbe>, usvg::Error> {
+        Ok(None)
+    }
+}
+
+impl RegistryUsvg for usvg::Tree {}
+
+fn parse_text_probe(
+    svg: impl Fn(&str) -> String,
+    start: &str,
+    anchor_payload: Option<&str>,
+    options: &usvg::Options<'_>,
+) -> Result<AnchorProbe, usvg::Error> {
+    let Some(payload) = anchor_payload else {
+        return usvg::Tree::from_str(&svg(start), options).map(|tree| (tree, None));
+    };
+    if let Some(probe) =
+        usvg::Tree::try_from_str_with_text_anchor_probe(|| svg(start), options, "start")?
+    {
+        return Ok(probe);
+    }
+
+    let nodes = format!(r#"{start}<text id="end" x="0" y="0" text-anchor="end">{payload}</text>"#);
+    let tree = usvg::Tree::from_str(&svg(&nodes), options)?;
+    let end_x = match tree.node_by_id("end") {
+        Some(usvg::Node::Text(end)) => Some(end.bounding_box().x()),
+        _ => None,
+    };
+    Ok((tree, end_x))
+}
+
 fn escape_xml(value: &str) -> String {
     value
         .replace('&', "&amp;")
@@ -1501,6 +1526,153 @@ mod tests {
             NativeFontOptions::default().load(&OperationControl::new()),
             Err(NativeFontError::EmptyFontSet)
         ));
+    }
+
+    #[test]
+    fn one_shape_preserves_two_anchor_rounding_and_bounds() {
+        let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fonts");
+        let control = OperationControl::new();
+        let context = NativeFontOptions::default()
+            .with_font_file(root.join("NotoSans-Latin-subset.ttf"))
+            .with_font_file(root.join("Cousine-Regular.ttf"))
+            .with_font_file(root.join("NotoSansSC-subset.ttf"))
+            .load(&control)
+            .unwrap()
+            .with_strict_glyph_coverage(true);
+        let mut options = usvg::Options::default();
+        context.apply_to_usvg_options(&mut options);
+        for (family, text, preserve, tspan) in [
+            ("Noto Sans", "AVA fi", false, false),
+            ("Noto Sans", "  AV\u{a0}  ", true, false),
+            ("Noto Sans", " \u{a0} ", true, true),
+            ("Cousine", "אבגד", false, false),
+            ("Cousine", "A中V", false, false),
+        ] {
+            let style = TextStyle {
+                font_family: Some(family.to_owned()),
+                font_size: 31.125,
+                ..Default::default()
+            };
+            let actual = context
+                .shape_probe(text, &style, &control, preserve, tspan, None)
+                .unwrap();
+            let whitespace = text.chars().all(char::is_whitespace);
+            let space = if preserve && !tspan {
+                "preserve"
+            } else {
+                "default"
+            };
+            let decoration = if whitespace { "underline" } else { "none" };
+            let payload = if tspan {
+                format!(r#"<tspan xml:space="preserve">{text}</tspan>"#)
+            } else {
+                text.to_owned()
+            };
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><g font-family="{family}" font-size="31.125" font-weight="400" font-style="normal" xml:space="{space}" text-decoration="{decoration}"><text id="start" x="0" y="0" text-anchor="start">{payload}</text><text id="end" x="0" y="0" text-anchor="end">{payload}</text></g></svg>"#,
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let (Some(usvg::Node::Text(start)), Some(usvg::Node::Text(end))) =
+                (tree.node_by_id("start"), tree.node_by_id("end"))
+            else {
+                panic!("expected both reference anchors for {text:?}");
+            };
+            let metric = start.bounding_box();
+            let ink = if whitespace {
+                metric
+            } else {
+                start.flattened().bounding_box()
+            };
+            assert_eq!(
+                [
+                    actual.advance,
+                    actual.width,
+                    actual.height,
+                    actual.x,
+                    actual.ink_x,
+                    actual.ink_right,
+                    actual.raw_y
+                ]
+                .map(f64::to_bits),
+                [
+                    (metric.x() - end.bounding_box().x()).abs(),
+                    metric.width(),
+                    metric.height(),
+                    metric.x(),
+                    ink.x(),
+                    ink.right(),
+                    metric.y(),
+                ]
+                .map(|value| f64::from(value).to_bits()),
+                "{text:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn partial_fallback_with_different_ligatures_resolves_matching_clusters() {
+        let base = include_bytes!("../tests/fonts/MermanProbeBase.ttf");
+        let partial = include_bytes!("../tests/fonts/MermanProbePartial.ttf");
+        let full = include_bytes!("../tests/fonts/MermanProbeFull.ttf");
+        for (text, expected) in [
+            (
+                "fi✓\u{e000}",
+                ["MermanProbeBase", "MermanProbePartial", "MermanProbeBase"],
+            ),
+            ("fi✓中", ["MermanProbeFull"; 3]),
+        ] {
+            let control = OperationControl::new();
+            let context = NativeFontContext::from_font_bytes(
+                [base.to_vec(), partial.to_vec(), full.to_vec()],
+                NativeFontLimits::default(),
+                &control,
+            )
+            .unwrap()
+            .with_strict_glyph_coverage(true);
+            let style = TextStyle {
+                font_family: Some("MermanProbeBase".to_owned()),
+                font_size: 28.0,
+                ..Default::default()
+            };
+            let measured = context.measure(HostTextMeasurementRequest {
+                operation: TextMeasurementOperation::CanvasMeasureTextWidth,
+                phase: TextMeasurementPhase::ComputedLength,
+                text,
+                style: &style,
+                max_width: None,
+                wrap_mode: WrapMode::HtmlLike,
+            });
+            let Some(HostTextMeasurement::Length(width)) = measured.unwrap() else {
+                panic!("expected complete native measurement");
+            };
+            assert_eq!(width, 42.0);
+
+            let mut options = usvg::Options::default();
+            let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="200" height="50"><text id="probe" x="0" y="40" font-family="MermanProbeBase" font-size="28">{text}</text></svg>"#
+            );
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let Some(usvg::Node::Text(text)) = tree.node_by_id("probe") else {
+                panic!("expected a laid-out text node");
+            };
+            let faces: Vec<_> = text
+                .layouted()
+                .iter()
+                .flat_map(|span| &span.positioned_glyphs)
+                .map(|glyph| {
+                    assert_ne!(glyph.id.0, 0);
+                    tree.fontdb()
+                        .face(glyph.font)
+                        .unwrap()
+                        .post_script_name
+                        .as_str()
+                })
+                .collect();
+            assert_eq!(faces, expected);
+            assert!(!observer.unresolved_glyph_fallback());
+            context.check().unwrap();
+        }
     }
 
     #[test]
@@ -1584,7 +1756,6 @@ mod tests {
         let context = NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(usvg::fontdb::Database::new()),
             selection: Arc::new(FontSelectionPolicy::default()),
-            initial_system_faces: BTreeSet::new(),
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]
             discovery: None,
             #[cfg(all(feature = "system-fonts", not(target_family = "wasm")))]

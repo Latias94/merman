@@ -332,7 +332,7 @@ fn render_node_wire_contract_json() -> String {
         schema_version: 1,
         package_id: "@mermanjs/node",
         artifact_id: "merman-node-static-svg",
-        transport_api_version: 1,
+        transport_api_version: 2,
         binding_result_payload_version: BindingPayloadSchemaKey::BindingResult.version(),
         artifact: native,
         documents: NodeDocumentLimitSetProjection {

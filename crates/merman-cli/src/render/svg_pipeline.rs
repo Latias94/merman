@@ -1,20 +1,38 @@
 use crate::cli::SvgPipelineKind;
-use merman::svg::{SvgOutputPolicy, SvgPipelinePreset};
+use merman::svg::{SvgGeneration, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset};
 
-pub(super) fn svg_output_policy(
+pub(super) fn svg_output_pipeline(
     kind: SvgPipelineKind,
     background: Option<&str>,
     css: Option<&str>,
-) -> SvgOutputPolicy {
-    SvgOutputPolicy {
+) -> SvgPipeline {
+    let pipeline = SvgOutputPolicy {
         preset: match kind {
-            SvgPipelineKind::Parity => SvgPipelinePreset::Parity,
+            SvgPipelineKind::Parity | SvgPipelineKind::Static => SvgPipelinePreset::Parity,
             SvgPipelineKind::Readable => SvgPipelinePreset::Readable,
             SvgPipelineKind::ResvgSafe => SvgPipelinePreset::ResvgSafe,
         },
         root_background_color: background.map(str::to_owned),
         scoped_css: css.map(str::to_owned),
         ..SvgOutputPolicy::default()
+    }
+    .pipeline();
+    if matches!(kind, SvgPipelineKind::Static) {
+        pipeline.with_generation(SvgGeneration::Static)
+    } else {
+        pipeline
+    }
+}
+
+#[cfg(feature = "markdown")]
+pub(super) fn svg_metadata_for_document(
+    svg: &str,
+    writes_document: bool,
+) -> (Option<String>, Option<String>) {
+    if writes_document {
+        svg_metadata(svg)
+    } else {
+        (None, None)
     }
 }
 
@@ -52,8 +70,7 @@ mod tests {
     const SVG_WITH_BROWSER_ONLY_CONTENT: &str = r#"<svg id="diagram" xmlns="http://www.w3.org/2000/svg"><style>@keyframes bad { to { opacity: .5; } } .node { animation: bad 1s; }</style><foreignObject width="40" height="20"><div xmlns="http://www.w3.org/1999/xhtml"><p>Raw</p></div></foreignObject><rect class="node" width="10px" height="12px" stroke=""/></svg>"#;
 
     fn process(kind: SvgPipelineKind) -> String {
-        let pipeline =
-            svg_output_policy(kind, Some("#f8fafc"), Some(".node { fill: red; }")).pipeline();
+        let pipeline = svg_output_pipeline(kind, Some("#f8fafc"), Some(".node { fill: red; }"));
         let session = RenderEnvironment::deterministic()
             .begin_session()
             .expect("deterministic render session");
@@ -90,8 +107,9 @@ mod tests {
             "</svg>",
         );
 
+        assert_eq!(svg_metadata_for_document(svg, false), (None, None));
         assert_eq!(
-            svg_metadata(svg),
+            svg_metadata_for_document(svg, true),
             (
                 Some("Title \"quoted\" & [one]".to_string()),
                 Some("Before [raw] & literal A &lt;".to_string()),

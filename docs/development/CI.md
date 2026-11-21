@@ -507,6 +507,8 @@ python3 scripts/verify_theme_acceptance_boundary.py
 
 This gate checks Cargo's package file lists and the absence of the retired feature, then compiles
 an independent Cargo consumer with every public feature of the three producer crates enabled.
+The consumer resolves published dependencies without workspace patches. Its first check can fetch
+registry dependencies, and the private-import checks use the same lockfile offline.
 Production types must resolve; acceptance imports and the explicitly listed former Rust theme
 facade imports must fail with unresolved-import diagnostics. The latter checks catch aliases and
 re-exports at their former public paths. Platform SDK removals remain owned by their respective

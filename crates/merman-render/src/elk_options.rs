@@ -3,7 +3,7 @@
 //! Layer assignment keys follow Mermaid 12's `createRootElkGraph`:
 //! https://github.com/mermaid-js/mermaid/blob/21f72f07ea22c0af48a3149c550654e80d8e40cb/packages/mermaid/src/rendering-util/layout-algorithms/elk/render.ts
 
-use crate::config::{config_bool, config_string, value_at};
+use crate::config::{ConfigLookup, config_bool, config_string, value_at};
 use merman_layout_elk as elk;
 
 // elkjs 0.9.3 serializes JSON numbers before LayoutOptionData parses an INT.
@@ -36,18 +36,20 @@ fn elk_enum_name<'a>(value: &serde_json::Value, names: &'a [&str]) -> Option<&'a
 }
 
 fn explicit_option<'a>(
-    config: &'a serde_json::Value,
+    config: &'a (impl ConfigLookup + ?Sized),
     path: &[&str],
 ) -> Option<&'a serde_json::Value> {
     value_at(config, path).filter(|value| !value.is_null())
 }
 
 /// Mermaid 12.1 reverses compound feedback edges unless explicitly disabled.
-pub(crate) fn orient_feedback_edges(effective_config: &serde_json::Value) -> bool {
+pub(crate) fn orient_feedback_edges(effective_config: &(impl ConfigLookup + ?Sized)) -> bool {
     config_bool(effective_config, &["elk", "orientFeedbackEdges"]) != Some(false)
 }
 
-pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::LayoutOptions {
+pub(crate) fn layout_options(
+    effective_config: &(impl ConfigLookup + ?Sized),
+) -> elk::LayoutOptions {
     let (preset_placement, preset_alignment, preset_cycle_breaking) =
         match config_string(effective_config, &["elk", "preset"]).as_deref() {
             Some("legacy") => (
@@ -188,7 +190,7 @@ pub(crate) fn layout_options(effective_config: &serde_json::Value) -> elk::Layou
     // elkjs 0.9.3's JsonImporter serializes numbers with JavaScript String(), then
     // LayoutOptionData.parseValue validates an INT without truncation. Invalid values
     // leave ELK's own layer-bound default (i32::MAX), not Mermaid's default (4).
-    let layering_layer_bound = match effective_config.pointer("/elk/layeringLayerBound") {
+    let layering_layer_bound = match value_at(effective_config, &["elk", "layeringLayerBound"]) {
         None | Some(serde_json::Value::Null) => 4,
         Some(value) => elk_integer(value).unwrap_or(i32::MAX),
     };

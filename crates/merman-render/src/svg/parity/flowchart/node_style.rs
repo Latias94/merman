@@ -194,11 +194,10 @@ impl FlowchartNodeTerminalSourceOwnership {
             }
             _ => return Ok(owners),
         };
-        // These hand-drawn writers emit paths with their own presentation attributes for all
-        // four paint fields. Subroutine still emits a polygon; BPMN retains native primitives.
-        let rough_paths = hand_drawn && bpmn_shape.is_none() && shape != FlowchartShape::Subroutine;
+        // Hand-drawn paths carry their own paint attributes. BPMN retains native primitives.
+        let rough_paths = hand_drawn && bpmn_shape.is_none();
         // The normal .node primitive rules specify fill/stroke/width, blocking inheritance.
-        // Hand-drawn wrappers use .rough-node, so native Subroutine/BPMN paint may inherit.
+        // Hand-drawn wrappers use .rough-node, so native BPMN paint may inherit.
         let inherits_paint = hand_drawn && !rough_paths;
         let inherits_width =
             inherits_paint && bpmn_shape.is_none_or(|shape| shape.event_rings().is_none());
@@ -476,7 +475,7 @@ impl PreparedNodeTerminal {
     )]
     pub(super) fn prepare(
         class_defs: &indexmap::IndexMap<String, Vec<String>>,
-        source_styles: (&[String], &[String]),
+        (classes, inline_styles, include_default_class): (&[String], &[String], bool),
         terminal_shape: Option<&str>,
         structural: &crate::flowchart::FlowchartStructuralLabelTypography,
         source_text_style: std::sync::Arc<crate::flowchart::FlowchartNodeSourceTypography>,
@@ -486,8 +485,11 @@ impl PreparedNodeTerminal {
         work: &crate::resources::OperationWorkMeter,
     ) -> crate::Result<Self> {
         let style = FlowchartNodeThemeStyle::resolve(theme, ordinal, work)?;
-        let source =
-            flowchart_compile_node_styles(class_defs, source_styles.0, source_styles.1, &[]);
+        let source = if include_default_class {
+            flowchart_compile_node_styles(class_defs, classes, inline_styles, &[])
+        } else {
+            flowchart_compile_styles(class_defs, classes, inline_styles, &[])
+        };
         let terminal_sources = FlowchartNodeTerminalSourceOwnership::prepare(
             terminal_shape.filter(|_| theme.is_some()),
             class_defs,
@@ -516,7 +518,7 @@ impl PreparedNodeTerminal {
             radius_config_override,
         );
         let rough_group_style = if inputs.look.is_hand_drawn() {
-            prepare_hand_drawn_shape_group_style(source_styles.1)
+            prepare_hand_drawn_shape_group_style(inline_styles)
         } else {
             String::new()
         };

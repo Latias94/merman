@@ -274,7 +274,7 @@ export interface RuntimeResourceProfile {
 
 export interface SvgOptions {
   diagram_id?: string;
-  pipeline?: "parity" | "readable" | "resvg-safe";
+  pipeline?: "parity" | "static" | "readable" | "resvg-safe";
   root_background_color?: string;
   drop_native_duplicate_fallbacks?: boolean;
   viewbox_padding?: number;

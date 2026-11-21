@@ -2,7 +2,7 @@
 use super::prepare::{PreparedGraphicalOutput, PreparedGraphicalRender, PreparedGraphicalSource};
 use super::prepare::{PreparedSingleOutput, PreparedWorkflow};
 #[cfg(feature = "markdown")]
-use super::svg_pipeline::svg_metadata;
+use super::svg_pipeline::svg_metadata_for_document;
 use crate::error::CliError;
 use crate::io::write_output;
 #[cfg(feature = "markdown")]
@@ -56,6 +56,8 @@ pub(crate) fn execute_render(
                         &single.control,
                         &context.stderr,
                         None,
+                        #[cfg(feature = "markdown")]
+                        false,
                     );
                     if let Some(path) = &renderer.theme_report {
                         let report = match &mut result {
@@ -145,8 +147,18 @@ pub(crate) fn execute_graphical(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
     chart: Option<u64>,
+    #[cfg(feature = "markdown")] writes_document: bool,
 ) -> Result<ExecutedArtifact, CliError> {
-    execute_graphical_with_pipeline(prepared, &prepared.pipeline, source, control, stderr, chart)
+    execute_graphical_with_pipeline(
+        prepared,
+        &prepared.pipeline,
+        source,
+        control,
+        stderr,
+        chart,
+        #[cfg(feature = "markdown")]
+        writes_document,
+    )
 }
 
 #[cfg(feature = "rustdoc")]
@@ -157,7 +169,7 @@ pub(crate) fn execute_rustdoc_svg_raw(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
 ) -> Result<Vec<u8>, CliError> {
-    execute_graphical_with_pipeline(prepared, pipeline, source, control, stderr, None)
+    execute_graphical_with_pipeline(prepared, pipeline, source, control, stderr, None, false)
         .map(ExecutedArtifact::into_bytes)
 }
 
@@ -169,6 +181,7 @@ fn execute_graphical_with_pipeline(
     control: &merman::OperationControl,
     stderr: &SharedWriter,
     chart: Option<u64>,
+    #[cfg(feature = "markdown")] writes_document: bool,
 ) -> Result<ExecutedArtifact, CliError> {
     #[cfg(feature = "native-fonts")]
     if prepared.font_context.is_some() {
@@ -232,7 +245,7 @@ fn execute_graphical_with_pipeline(
                     );
                     let (svg, _) = svg.into_parts();
                     #[cfg(feature = "markdown")]
-                    let metadata = chart.map_or((None, None), |_| svg_metadata(&svg));
+                    let metadata = svg_metadata_for_document(&svg, writes_document);
                     Ok(ExecutedArtifact {
                         bytes: svg.into_bytes(),
                         theme_result,
@@ -252,7 +265,7 @@ fn execute_graphical_with_pipeline(
                     merman::RenderOutput::Document(Some(document)),
                 ) => {
                     #[cfg(feature = "markdown")]
-                    let metadata = chart.map_or((None, None), |_| svg_metadata(document.svg()));
+                    let metadata = svg_metadata_for_document(document.svg(), writes_document);
                     let export = document.prepare_png_export(options, control.clone())?;
                     let report = export.export_report();
                     let actual_weight = super::admission::actual_raster_weight(
@@ -298,7 +311,7 @@ fn execute_graphical_with_pipeline(
                     merman::RenderOutput::Document(Some(document)),
                 ) => {
                     #[cfg(feature = "markdown")]
-                    let metadata = chart.map_or((None, None), |_| svg_metadata(document.svg()));
+                    let metadata = svg_metadata_for_document(document.svg(), writes_document);
                     let export = document.prepare_jpeg_export(options, control.clone())?;
                     let report = export.export_report();
                     let actual_weight = super::admission::actual_raster_weight(
@@ -344,7 +357,7 @@ fn execute_graphical_with_pipeline(
                     merman::RenderOutput::Document(Some(document)),
                 ) => {
                     #[cfg(feature = "markdown")]
-                    let metadata = chart.map_or((None, None), |_| svg_metadata(document.svg()));
+                    let metadata = svg_metadata_for_document(document.svg(), writes_document);
                     let export = document.prepare_pdf_export(options, control.clone())?;
                     let report = export.export_report();
                     let actual_weight = super::admission::actual_pdf_weight(

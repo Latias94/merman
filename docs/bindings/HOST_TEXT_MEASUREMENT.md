@@ -1,7 +1,7 @@
 # Host Text Measurement
 
 Status: Current
-Last updated: 2026-11-08
+Last updated: 2026-11-21
 
 This guide owns display-stack integration, callback result semantics, and measurement lifecycle
 guidance. The [text-measurement descriptor](../../contracts/abi/text-measurement-v1.json) owns
@@ -15,13 +15,15 @@ caller-memory rules.
 Starting with 0.9.3, the CLI uses two output defaults for Mermaid input. SVG keeps
 deterministic, font-agnostic measurement without system discovery. PNG/JPEG/PDF
 automatically use a native font context when the CLI `system-fonts` capability is
-compiled: bounded system discovery runs before layout, and measurement and painting
-share the selected context. Layout, wrapping, and image/PDF snapshots can change
-with the selected host fonts.
+compiled. The official Windows 0.11.0 archive queries the platform catalog on demand. macOS
+and Linux archives and default Cargo builds use bounded system discovery before layout.
+Measurement and painting share the selected context. Layout, wrapping, and image or PDF
+snapshots can change with the selected host fonts.
 
 Supply explicit `--font-file` / `--font-dir` sources for native measurement with
-fixed font assets. They form a closed set unless `--font-system on` is also
-selected. For Mermaid SVG, `--font-measurement native` without sources opts into
+fixed font assets. They form a closed set unless system discovery is also selected with
+`--font-system on`, `--font-system bounded`, or `--font-system platform`, where compiled.
+For Mermaid SVG, `--font-measurement native` without sources opts into
 system discovery when available. For encoded output,
 `--font-measurement deterministic` without font sources retains the previous
 layout estimates and native painting; painting can still discover system fonts.
@@ -40,11 +42,11 @@ retain their host-independent defaults and callback conflict rules. ASCII and
 committed Rustdoc generation defaults are also unchanged. The runtime clock/random
 policy does not select the font policy.
 
-CLI discovery remains on capabilities schema 2 / CLI contract 7. Its
+CLI discovery uses capabilities schema 2 and CLI contract 8. Its
 `native_fonts.default_policy_scope` is `mermaid-svg-input`, with the existing
 `default_*` values describing deterministic SVG measurement. The additive
-`encoded_output_defaults` object describes encoded Mermaid output separately;
-see the [CLI capability contract](../../crates/merman-cli/README.md#choose-a-build).
+`encoded_output_defaults` object describes encoded Mermaid output. See the
+[CLI capability contract](../../crates/merman-cli/README.md#choose-a-build).
 This runtime-default change does not alter the text-measurement protocol or any ABI.
 
 Rust hosts can supply a `NativeFontContext` to the facade. Each facade render gets

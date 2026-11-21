@@ -59,17 +59,17 @@ Default and release CLI binaries compile `native-fonts` and `system-fonts` so na
 measurement is available. Mermaid SVG defaults to `deterministic` measurement, with
 `default_font_source: none` and `default_system_discovery: disabled`, scoped by
 `default_policy_scope: "mermaid-svg-input"`. Mermaid PNG/JPEG/PDF default to native measurement
-with bounded system discovery before layout, sharing one font context between measurement and
-painting. `encoded_output_defaults` reports that separate policy. These encoded-output defaults
-already shipped in `0.9.3`; they are not a new development-line capability.
+and share one font context between measurement and painting. The Windows release archive uses
+platform queries and the other release archives and Cargo source defaults use bounded discovery.
+`encoded_output_defaults` reports the selected policy.
 
 Providing `--font-file` or `--font-dir` selects native measurement automatically. Explicit font
-inputs form a closed set unless `--font-system on` is supplied. Without explicit font inputs,
-`--font-measurement native` permits bounded system discovery; `--font-system on` also explicitly
-opts into system fonts. Use `--font-measurement deterministic` without explicit font sources to
+inputs form a closed set unless system fallback is requested. Without explicit font inputs,
+`--font-measurement native` permits the default system provider, and `--font-system on` also
+opts into that provider. Use `--font-measurement deterministic` without explicit font sources to
 retain the previous encoded-output estimates and CSS path. Encoded painting may still acquire
-system fonts through its existing export environment. The experimental system-font query backend
-remains outside the default and release feature recipes; ordinary releases use bounded discovery.
+system fonts through its existing export environment. Release archives also accept explicit
+`--font-system platform` and `--font-system bounded` overrides.
 These defaults apply to Mermaid input in `render`, `batch`, and `mmdc`; raw SVG conversion paints
 existing geometry without relayout. CLI capabilities schema 2, CLI contract 6, and text-measurement
 protocol 1 retain their versions; the current measurement contract has 23 operations. See the

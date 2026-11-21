@@ -33,11 +33,11 @@ pub(super) fn with_flowchart_paint_context<T>(
     } = request;
     let render_model = crate::flowchart::FlowchartRenderModelRef::new(model, render_context);
     let model = &render_model;
-    if model
-        .nodes
-        .iter()
-        .any(|node| node.layout_shape.as_deref() == Some("ellipse"))
-    {
+    if model.nodes.iter().any(|node| {
+        node.layout_shape.as_deref() == Some("ellipse")
+            && model.collapsed_replacement(&node.id).is_none()
+            && !model.is_subgraph_collapsed(&node.id)
+    }) {
         return Err(crate::Error::InvalidModel {
             message: "No such shape: ellipse. Please check your syntax.".to_string(),
         });
@@ -167,13 +167,7 @@ pub(super) fn with_flowchart_paint_context<T>(
         }
     }
 
-    let mut parent: FxHashMap<&str, &str> = FxHashMap::default();
-    for sg in model.subgraphs.iter().rev() {
-        let sg_id = sg.id.as_str();
-        for child in &sg.nodes {
-            parent.insert(child.as_str(), sg_id);
-        }
-    }
+    let mut parent: FxHashMap<&str, &str> = model.visible_memberships().collect();
     for n in &extra_nodes {
         let id = n.id.as_str();
         let Some((base, _)) = id.split_once("---") else {
@@ -367,7 +361,6 @@ pub(super) fn prepare_edge_routes(
     if ctx.uses_elk_adapter_dom {
         if ctx
             .config
-            .as_value()
             .get("elk")
             .and_then(|value| value.get("straightenEdges"))
             .and_then(serde_json::Value::as_bool)
@@ -420,6 +413,14 @@ pub(super) fn prepare_edge_routes(
             ctx.config,
             ctx.work_meter,
             ctx.uses_elk_adapter_dom,
+            |edge| {
+                ctx.compatibility.look.is_neo()
+                    && flowchart_neo_mask_uses_dash_pairs(edge.edge.as_ref())
+                    && ctx
+                        .edge_style_plan
+                        .animation_for(edge.key)
+                        .is_ok_and(|animation| !animation.is_active())
+            },
         )?;
     }
     ctx.work_meter

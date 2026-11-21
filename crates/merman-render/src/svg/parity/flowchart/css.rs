@@ -160,7 +160,8 @@ pub(in crate::svg::parity) fn write_flowchart_css<
     font_size: f64,
     class_defs: &IndexMap<String, Vec<String>>,
     text_surface_paint: Option<&crate::flowchart::FlowchartTextSurfacePaintPlan>,
-) -> Result<()>
+    defer_palette: bool,
+) -> Result<Option<usize>>
 where
     DiagramId: SvgDiagramIdValue,
     DropShadowId: std::fmt::Display,
@@ -262,9 +263,14 @@ where
         id
     );
     out.checkpoint()?;
-    if diagram_type != "agentflow" {
-        super::agentflow::write_flowchart_container_css(out, id, theme)?;
-    }
+    let palette_offset = if diagram_type == "agentflow" {
+        None
+    } else if defer_palette {
+        Some(out.len())
+    } else {
+        super::agentflow::write_flowchart_container_css(out, id, theme, 0..theme.palette.len())?;
+        None
+    };
     let _ = write!(
         &mut *out,
         r#"#{} .label{{font-family:{};color:{};}}"#,
@@ -416,7 +422,7 @@ where
         out.checkpoint()?;
     }
 
-    Ok(())
+    Ok(palette_offset)
 }
 
 fn write_cluster_title_paint(
@@ -455,6 +461,7 @@ fn flowchart_css(
         font_size,
         class_defs,
         None,
+        false,
     )?;
     Ok(out)
 }
@@ -555,6 +562,7 @@ mod tests {
             16.0,
             &class_defs,
             None,
+            false,
         )
         .expect_err("the fixed Flowchart CSS prefix must exceed the tiny ceiling");
 
@@ -582,6 +590,7 @@ mod tests {
             16.0,
             &class_defs,
             None,
+            false,
         )
         .unwrap();
         svg.push_str("</style></svg>");

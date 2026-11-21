@@ -1,6 +1,6 @@
 # Embedding Merman in a Rust application
 
-This guide targets `0.10.0-alpha.1`. Match coupled packages to that release; the dependency examples use a sibling checkout, so adjust `path`
+This guide targets `0.11.0`. Match coupled packages to that release. The dependency examples use a sibling checkout, so adjust `path`
 to your local source. Use the [0.8.0 to 0.9.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for
 published managed JSON and canonical record migrations, the
 [versioned upgrade index](../release/README.md) for other releases, and
@@ -218,7 +218,15 @@ Optional graph backends preserve registered fallback behavior. Without compiled 
 
 ## Review presentation and host services
 
-Core SVG leaves the background unset. Set `SvgOutputPolicy.root_background_color` when opaque artwork is required. With `native-fonts`, `SvgEnvironment::with_native_font_context` installs a reusable `NativeFontContext`. The facade creates fresh measurement state for each render and retains the context identity for native export.
+Core SVG leaves the background unset. Set `SvgOutputPolicy.root_background_color` for opaque artwork.
+
+With `native-fonts`, install a reusable `NativeFontContext` through
+`SvgEnvironment::with_native_font_context`. Each render uses its own measurement state. The typed
+PNG, JPEG, and PDF paths reuse the selected context for painting.
+
+When the painter uses the same `usvg` version, use `NativeFontContext::apply_to_usvg_options`
+to share the context before parsing the SVG. For an independent painter, register the same
+font faces and match the font stack as shown below. [Font selection and fallback](../../crates/merman-export/README.md#selection-and-fallback-order)
 
 For Mermaid-compatible semantic JSON, enable `compat-json` and retain the returned
 `ManagedSemanticJson` owner. Retain managed layout results too, using their maintained JSON
@@ -243,13 +251,13 @@ register the same faces in the external painter. Set Mermaid's `fontFamily` usin
 names stored in those files. If your theme sets `themeVariables.fontFamily`, use the same stack
 there. Class and ER use the top-level setting for some width probes and the theme setting for
 displayed labels. The example sets both explicitly.
-For example, a Fontsource stylesheet can call a face `Recursive Variable` while the TTF
-registers `Recursive Sans Linear Light`. A resvg process with system fonts can then continue down the stack
-to Arial even when it has loaded the Recursive file. Check the family in `fontdb::FaceInfo::families`
+For example, a Fontsource stylesheet can use `Recursive Variable`, while different Recursive files
+register as `Recursive` or `Recursive Sans Linear Light`. A resvg process with system fonts can then
+continue down the stack to Arial. Check the family in `fontdb::FaceInfo::families`
 and include the weights, styles and glyph coverage the diagram uses. For WOFF or WOFF2 web
 assets, obtain the corresponding native TTF or OTF files.
 
-Run the example from the repository root with the checked-in Cousine regular and bold faces.
+Run the example from the `0.11.0` checkout with the included Cousine regular and bold faces.
 [Standalone resvg 0.50.0 example](../../crates/merman/examples/standalone_resvg/src/main.rs)
 
 ```sh
@@ -270,10 +278,13 @@ To diagnose a mismatch, read `selected_faces()` from the diagnostics returned by
 `svg.evidence().native_font_diagnostics()`. Compare those names and collection indices with the
 faces of the positioned glyphs in the consumer's `usvg::Tree`.
 
-For variable fonts, also check the `wght` axis. For ordinary text, Merman's usvg 0.47 uses the
-font's default axis position and resvg 0.50 requests 400. Both request 700 for the bold Class title.
-With the tested Recursive file (default 300), the title fits and the member label advances match,
-although their outlines differ. With the tested Noto Sans SC file (default 100), `+String nom`
+For variable fonts, the v0.11.0 workspace build and resvg 0.50 both request `wght=400` for CSS
+normal. The standalone example has an independent Cargo workspace. It resolves crates.io usvg
+0.47.0 for Merman, which uses the font's default axis position for normal text. Both stages of the
+example request 700 for the bold Class title. [Workspace backport](../../vendor/usvg/UPSTREAM.md)
+
+In that example, the tested Recursive file defaults to 300. The title fits and the member label
+advances match, although their outlines differ. With the tested Noto Sans SC file (default 100), `+String nom`
 measures 75.19 px at layout and 79.83 px at paint, enough to clip. For matching weight instances,
 supply static Regular (400) and Bold (700) faces to both stages. With the weight-only Recursive
 file, FontTools can produce both instances from the same source.

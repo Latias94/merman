@@ -14,18 +14,18 @@ themes by default; custom Merman themes are optional.
 [Try the Playground][Playground] · [Quick start](#quick-start) · [Ecosystem](#ecosystem) · [Documentation][documentation index]
 
 <p align="center">
-  <img src="docs/assets/readme/default-flowchart.svg" width="680" alt="Default Mermaid styling: Mermaid source passes through Merman to an SVG string">
+  <img src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/readme/default-flowchart.svg" width="680" alt="Default Mermaid styling: Mermaid source passes through Merman to an SVG string">
 </p>
 
 Rendered by Merman with Mermaid's default theme on a white canvas.
-[Source](docs/assets/readme/default-flowchart.mmd) · [SVG-text configuration](docs/assets/readme/default-flowchart.config.json)
+[Source](https://github.com/Latias94/merman/blob/main/docs/assets/readme/default-flowchart.mmd) · [SVG-text configuration](https://github.com/Latias94/merman/blob/main/docs/assets/readme/default-flowchart.config.json)
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend.
 > [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
 
 ## Quick start
 
-The examples below use `0.10.0`. For release selection and prebuilt downloads, start
+The examples below use `0.11.0`. For release selection and prebuilt downloads, start
 with the [host installation guide][host guide].
 
 ### Rust
@@ -34,7 +34,7 @@ With Rust 1.95 or later, add Merman to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-merman = "0.10.0"
+merman = "0.11.0"
 ```
 
 Save this as `src/main.rs`:
@@ -68,7 +68,7 @@ repeated rendering, and host integration.
 Install from Cargo and render a first diagram:
 
 ```sh
-cargo install merman-cli --version 0.10.0 --locked
+cargo install merman-cli --version 0.11.0 --locked
 printf 'flowchart LR\n  Source --> Merman --> SVG\n' | merman-cli render - --output diagram.svg
 ```
 
@@ -78,7 +78,7 @@ linting, and ASCII/Unicode output for supported families.
 
 Time-dependent diagrams use a deterministic clock by default. Replay a captured host instant
 with `--fixed-unix-millis` and its `--fixed-local-offset-minutes`; see the
-[CLI runtime policy](crates/merman-cli/README.md#runtime-policy) for bounds and date-only controls.
+[CLI runtime policy](https://github.com/Latias94/merman/blob/main/crates/merman-cli/README.md#runtime-policy) for bounds and date-only controls.
 
 ## Ecosystem
 

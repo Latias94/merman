@@ -170,10 +170,12 @@ pub(crate) fn lex_presentation_statement(
 
 #[cfg(feature = "editor-facts")]
 pub(crate) fn is_valid_editor_node_id(candidate: &str) -> bool {
-    let mut lexer = Lexer::new(candidate);
+    // A name is a fragment. The edited document supplies the actual following delimiter.
+    let probe = [candidate, ";"].concat();
+    let mut lexer = Lexer::new(&probe);
     matches!(
         (lexer.next(), lexer.next()),
-        (Some(Ok((0, Tok::Id(_), end))), None) if end == candidate.len()
+        (Some(Ok((0, Tok::Id(_), end))), Some(Ok((_, Tok::Sep, _)))) if end == candidate.len()
     )
 }
 
@@ -530,9 +532,7 @@ fn parse_flowchart_semantic_source_from_ast_controlled<M: FlowchartMetadata>(
     control.checkpoint()?;
     let inherit_dir = meta
         .diagram_config()
-        .as_value()
-        .get("flowchart")
-        .and_then(|v| v.get("inheritDir"))
+        .get_path(&["flowchart", "inheritDir"])
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let mut builder = SubgraphBuilder::new(inherit_dir, ast.direction.clone());
@@ -693,7 +693,6 @@ const DEFAULT_FLOWCHART_MAX_EDGES: usize = 500;
 fn flowchart_edge_budget<M: FlowchartMetadata>(meta: &M) -> Cell<usize> {
     let max_edges = meta
         .diagram_config()
-        .as_value()
         .get("maxEdges")
         .and_then(Value::as_u64)
         .map_or(DEFAULT_FLOWCHART_MAX_EDGES, |value| {

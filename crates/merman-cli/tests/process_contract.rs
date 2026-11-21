@@ -489,12 +489,20 @@ fn informational_diagnostics_do_not_mix_with_stdout() {
 
 #[test]
 fn closed_stdout_is_successful_for_every_payload_writer() {
+    use std::fmt::Write as _;
+
+    let mut large_layout = String::from("flowchart LR\n");
+    for node in 0..32 {
+        writeln!(large_layout, "A{node} --> A{}", node + 1).unwrap();
+    }
     let cases: &[(&[&str], Option<&[u8]>)] = &[
         (
             &["mmdc", "-i", "-", "-o", "-"],
             Some(b"flowchart LR\nA-->B\n"),
         ),
         (&["parse", "-"], Some(b"flowchart LR\nA-->B\n")),
+        (&["layout", "-"], Some(b"flowchart LR\nA-->B\n")),
+        (&["layout", "--pretty", "-"], Some(large_layout.as_bytes())),
         (&["completion", "bash"], None),
         (&["lint-rules"], None),
         (

@@ -137,7 +137,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --svg-pipeline)
-                    COMPREPLY=($(compgen -W "parity readable resvg-safe" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
                     return 0
                     ;;
                 --background)
@@ -323,7 +323,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --font-system)
-                    COMPREPLY=($(compgen -W "off on" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "off on bounded platform" -- "${cur}"))
                     return 0
                     ;;
                 --font-max-measurements)
@@ -632,7 +632,7 @@ _merman__cli() {
             return 0
             ;;
         merman__cli__subcmd__layout)
-            opts="-c -t -w -H -h -V --pretty --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --math-renderer --width --height --resource-profile --resource-limit --operation-timeout-ms --help --version"
+            opts="-c -t -w -H -h -V --pretty --snapshot --suppress-errors --config-file --theme --runtime --system-clock --system-timezone --system-random --system-timing --fixed-today --fixed-unix-millis --fixed-local-offset-minutes --math-renderer --width --height --resource-profile --resource-limit --operation-timeout-ms --help --version"
             if [[ ${cur} == -* || ${COMP_CWORD} -eq 2 ]] ; then
                 COMPREPLY=( $(compgen -W "${opts}" -- "${cur}") )
                 return 0
@@ -954,7 +954,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --svg-pipeline)
-                    COMPREPLY=($(compgen -W "parity readable resvg-safe" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
                     return 0
                     ;;
                 --backgroundColor)
@@ -1170,7 +1170,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --font-system)
-                    COMPREPLY=($(compgen -W "off on" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "off on bounded platform" -- "${cur}"))
                     return 0
                     ;;
                 --font-max-measurements)
@@ -1357,7 +1357,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --svg-pipeline)
-                    COMPREPLY=($(compgen -W "parity readable resvg-safe" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "parity static readable resvg-safe" -- "${cur}"))
                     return 0
                     ;;
                 --background)
@@ -1543,7 +1543,7 @@ _merman__cli() {
                     return 0
                     ;;
                 --font-system)
-                    COMPREPLY=($(compgen -W "off on" -- "${cur}"))
+                    COMPREPLY=($(compgen -W "off on bounded platform" -- "${cur}"))
                     return 0
                     ;;
                 --font-max-measurements)

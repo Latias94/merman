@@ -2,7 +2,7 @@
 
 `merman-theme-contract` owns Merman's version 1 theme documents, typed authoring values,
 materialized results, and canonical JSON. It has no parser, renderer, bindings, or host dependency.
-This guide covers `0.10.0`. Use matching wrappers and runtimes.
+This guide covers `0.11.0`. Use matching wrappers and runtimes.
 
 ## Save and share a theme
 

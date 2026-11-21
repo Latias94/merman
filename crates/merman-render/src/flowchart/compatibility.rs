@@ -46,7 +46,9 @@ pub(crate) struct FlowchartCompatibilityBinding {
 }
 
 impl FlowchartCompatibilityBinding {
-    pub(crate) fn title_color_source(config: &Value) -> (Option<&'static str>, &str) {
+    pub(crate) fn title_color_source(
+        config: &(impl crate::config::ConfigLookup + ?Sized),
+    ) -> (Option<&'static str>, &str) {
         crate::config::selected_config_string(
             config,
             &["themeVariables.titleColor", "themeVariables.textColor"],
@@ -54,7 +56,7 @@ impl FlowchartCompatibilityBinding {
         .map_or((None, "#333"), |(path, color)| (Some(path), color))
     }
 
-    pub(crate) fn resolve(config: &Value) -> Self {
+    pub(crate) fn resolve(config: &(impl crate::config::ConfigLookup + ?Sized)) -> Self {
         let theme = |key: &str, fallback: &str| {
             config_string(config, &["themeVariables", key]).unwrap_or_else(|| fallback.to_owned())
         };
@@ -121,19 +123,20 @@ impl FlowchartCompatibilityBinding {
                 config.get("theme").and_then(Value::as_str),
                 Some("redux-color" | "redux-dark-color")
             ) {
-                config
-                    .pointer("/themeVariables/borderColorArray")
+                crate::config::value_at(config, &["themeVariables", "borderColorArray"])
                     .and_then(Value::as_array)
                     .cloned()
                     .unwrap_or_default()
             } else {
                 Vec::new()
             },
-            palette_backgrounds: config
-                .pointer("/themeVariables/bkgColorArray")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default(),
+            palette_backgrounds: crate::config::value_at(
+                config,
+                &["themeVariables", "bkgColorArray"],
+            )
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default(),
             palette_look: config
                 .get("look")
                 .and_then(Value::as_str)
@@ -231,7 +234,7 @@ impl FlowchartPreparedTheme {
     ) -> Result<Self, crate::resources::OperationWorkError> {
         Ok(Self {
             effects: FlowchartEffectEligibility::resolve(theme),
-            compatibility: FlowchartCompatibilityBinding::resolve(config.as_value()),
+            compatibility: FlowchartCompatibilityBinding::resolve(config),
             text_surface: super::FlowchartTextSurfacePaintPlan::resolve(
                 theme, config, node_owned, work,
             )?,

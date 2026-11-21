@@ -120,7 +120,8 @@ unicode\t''
 png\t''
 jpg\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l svg-pipeline -d 'SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+static\t'Generates SVG for fixed markup, emitting only the container palette slots it uses'
 readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
 resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -s b -l background -d 'Background color for the selected rendered output' -r
@@ -160,8 +161,10 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-fi
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-measurement -d 'Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout' -r -f -a "deterministic\t''
 native\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
-on\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-system -d 'Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.' -r -f -a "off\t''
+on\t'Enable the build\'s default system font provider'
+bounded\t'Use Merman\'s bounded system font discovery'
+platform\t'Query the platform\'s font catalog. Platform metadata access is outside Merman\'s scan limits'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand render" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor\t'[alpha] Editor'
 one-dark\t'[alpha] One Dark'
@@ -253,7 +256,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s f -l for
 png\t''
 jpg\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l svg-pipeline -d 'SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+static\t'Generates SVG for fixed markup, emitting only the container palette slots it uses'
 readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
 resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -s b -l background -d 'Background color for the selected rendered output' -r
@@ -293,8 +297,10 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-fil
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-measurement -d 'Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout' -r -f -a "deterministic\t''
 native\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
-on\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-system -d 'Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.' -r -f -a "off\t''
+on\t'Enable the build\'s default system font provider'
+bounded\t'Use Merman\'s bounded system font discovery'
+platform\t'Query the platform\'s font catalog. Platform metadata access is outside Merman\'s scan limits'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand batch" -l theme-preset -d 'Compiled diagram-theme preset; each value reports its catalog maturity, and explicit Mermaid configuration takes precedence' -r -f -a "editor\t'[alpha] Editor'
 one-dark\t'[alpha] One Dark'
@@ -431,6 +437,7 @@ unbounded-for-trusted-input\t'Explicitly disable policy budgets while retaining 
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l resource-limit -d 'Override a resource budget as STABLE_ID=POSITIVE_U64. Can be repeated' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l operation-timeout-ms -d 'Cancel the complete command operation after this many milliseconds' -r
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l pretty -d 'Pretty-print JSON output'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l snapshot -d 'Include compatibility semantics, metadata, and the full effective configuration'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l suppress-errors -d 'Emit an error diagram instead of failing on parse errors'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l system-clock -d 'Use the system clock while keeping other runtime sources deterministic'
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand layout" -l system-timezone -d 'Use the system local timezone while keeping other runtime sources deterministic'
@@ -445,7 +452,8 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s j -l jobs
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s e -l outputFormat -l format -d 'Output format. Defaults to the output extension, then SVG' -r -f -a "svg\t''
 png\t''
 pdf\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l svg-pipeline -d 'SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l svg-pipeline -d 'SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg' -r -f -a "parity\t'Default for browsers and Webviews; preserves Mermaid HTML labels and styles'
+static\t'Generates SVG for fixed markup, emitting only the container palette slots it uses'
 readable\t'Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates'
 resvg-safe\t'Converts HTML labels and cleans SVG for resvg/usvg consumers'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -s b -l backgroundColor -d 'Background color for the selected rendered output. `mmdc` defaults to white' -r
@@ -479,8 +487,10 @@ complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-file
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-dir -d 'Load fonts from a bounded directory scan and enable native Mermaid text measurement; repeatable' -r -f -a "(__fish_complete_directories)"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-measurement -d 'Text measurement: SVG defaults to deterministic; PNG/JPEG/PDF use native fonts for shared layout and painting. Explicit deterministic keeps approximate layout' -r -f -a "deterministic\t''
 native\t''"
-complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-system -d 'Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected' -r -f -a "off\t''
-on\t''"
+complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-system -d 'Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.' -r -f -a "off\t''
+on\t'Enable the build\'s default system font provider'
+bounded\t'Use Merman\'s bounded system font discovery'
+platform\t'Query the platform\'s font catalog. Platform metadata access is outside Merman\'s scan limits'"
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l font-max-measurements -d 'Maximum uncached native font shaping probes per diagram (default: 16384); independent of --resource-profile' -r -f
 complete -c merman-cli -n "__fish_merman_cli_using_subcommand mmdc" -l math-renderer -d 'Math renderer override. Unspecified uses the compiled default' -r -f -a "none\t''
 ratex\t''"

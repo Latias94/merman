@@ -136,7 +136,7 @@ supply it as `options_json.theme` in a render call.
 validate all modes, or `action: "materialize"` with an optional concrete `appearance`.
 For a paired recipe, put the saved document in `theme.recipe` and choose `theme.appearance`.
 Hosts resolve Follow-app/editor before calling the library.
-The existing API 7 records, methods, and generated foreign bindings carry these JSON payloads.
+The API 8 records, methods, and generated foreign bindings carry these JSON payloads.
 Catalog availability, family design scope, and output qualification are separate facts. Inspect
 the selected appearance and actual render metadata before requiring portable output.
 See the [theme guide](../../docs/rendering/custom-diagram-themes.md) for editable JSON, shared

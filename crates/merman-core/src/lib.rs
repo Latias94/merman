@@ -81,6 +81,7 @@ pub mod presentation;
 mod resource_tests;
 mod runtime;
 pub mod semantic;
+mod source_json;
 mod source_span;
 #[cfg(feature = "presentation")]
 mod theme;
@@ -88,7 +89,7 @@ mod utils;
 mod yaml_config;
 
 #[cfg(feature = "presentation")]
-pub use detect::{Detector, DetectorRegistry};
+pub use detect::{ConfigDetectorFn, Detector, DetectorConfig, DetectorRegistry};
 pub use diagram::CapturedPanic;
 #[cfg(feature = "editor-facts")]
 pub use editor::ParsedEditorFacts;

@@ -14,6 +14,7 @@ use crate::text::{
     is_html_collapsible_ascii_whitespace, trim_html_collapsible_ascii_whitespace,
 };
 use merman_model::presentation::PresentationConfig;
+use std::borrow::Cow;
 use std::fmt::Write as _;
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -67,7 +68,7 @@ pub(crate) fn flowchart_node_label_min_width(
     {
         return 0.0;
     }
-    crate::config::config_f64(config.as_value(), &["flowchart", "minNodeWidth"])
+    crate::config::config_f64(config, &["flowchart", "minNodeWidth"])
         .unwrap_or(0.0)
         .max(0.0)
 }
@@ -747,7 +748,10 @@ pub(crate) fn flowchart_html_label_metrics_for_layout(
     {
         // A host profile may provide the complete paragraph's browser measurement. Keep that
         // request intact after collapsing rendered whitespace, instead of probing each word.
-        let plain = flowchart_label_plain_text_for_layout(xhtml, "html", true);
+        let plain = match plain {
+            Cow::Borrowed(text) => flowchart_literal_paragraph_for_layout(text),
+            Cow::Owned(_) => Cow::Owned(flowchart_label_plain_text_for_layout(xhtml, "html", true)),
+        };
         let mut metrics = measurer.measure_wrapped(&plain, style, max_width_px, WrapMode::HtmlLike);
         if label_type == "markdown" {
             let max_width = max_width_px.filter(|width| width.is_finite() && *width > 0.0);
@@ -1086,9 +1090,25 @@ fn measure_flowchart_html_images(
     }
 }
 
-pub(crate) fn flowchart_decode_label_escapes(label: &str) -> String {
+fn flowchart_literal_paragraph_for_layout(text: &str) -> Cow<'_, str> {
+    let text = flowchart_decode_label_escapes(text.trim_matches(' '));
+    if !text.contains("  ") {
+        return text;
+    }
+
+    let mut collapsed = String::with_capacity(text.len());
+    for word in text.split(' ').filter(|word| !word.is_empty()) {
+        if !collapsed.is_empty() {
+            collapsed.push(' ');
+        }
+        collapsed.push_str(word);
+    }
+    Cow::Owned(collapsed)
+}
+
+fn flowchart_decode_label_escapes(label: &str) -> Cow<'_, str> {
     if !label.contains('\\') {
-        return label.to_string();
+        return Cow::Borrowed(label);
     }
 
     let mut out = String::with_capacity(label.len());
@@ -1111,22 +1131,30 @@ pub(crate) fn flowchart_decode_label_escapes(label: &str) -> String {
             _ => out.push('\\'),
         }
     }
-    out
+    Cow::Owned(out)
 }
 
-pub(crate) fn flowchart_non_markdown_label_for_html(label: &str, label_type: &str) -> String {
-    let mut label = if label.contains("\r\n") {
-        label.replace("\r\n", "\n")
-    } else {
-        label.to_string()
-    };
-    label = flowchart_decode_label_escapes(&label);
-    if label_type == "string" {
-        label = flowchart_trim_html_collapsible_whitespace(&label).to_string();
+pub(crate) fn flowchart_non_markdown_label_for_html<'a>(
+    label: &'a str,
+    label_type: &str,
+) -> Cow<'a, str> {
+    if !label.contains(['\\', '\n']) {
+        return Cow::Borrowed(if label_type == "string" {
+            flowchart_trim_html_collapsible_whitespace(label)
+        } else {
+            label
+        });
     }
+    let normalized = label.replace("\r\n", "\n");
+    let label = flowchart_decode_label_escapes(&normalized);
+    let label = if label_type == "string" {
+        flowchart_trim_html_collapsible_whitespace(&label)
+    } else {
+        &label
+    };
     let label = label.trim_end_matches('\n');
     if !label.contains("\\n") && !label.contains('\n') {
-        return label.to_string();
+        return Cow::Owned(label.to_owned());
     }
 
     let mut out = String::with_capacity(label.len());
@@ -1149,7 +1177,7 @@ pub(crate) fn flowchart_non_markdown_label_for_html(label: &str, label_type: &st
         }
         offset += ch.len_utf8();
     }
-    out
+    Cow::Owned(out)
 }
 
 pub(crate) fn flowchart_label_plain_text_for_layout(
@@ -1372,15 +1400,16 @@ pub(crate) fn flowchart_label_plain_text_for_layout(
                 return flowchart_svg_source_word_lines_plain_text(&word_lines);
             }
 
-            let mut t = flowchart_decode_label_escapes(&label.replace("\r\n", "\n"));
+            let normalized = label.replace("\r\n", "\n");
+            let text = flowchart_decode_label_escapes(&normalized);
             // Keep the raw label text for layout, then strip HTML tags/entities.
             //
             // Note: in Mermaid flowchart-v2, FontAwesome icon tokens (e.g. `fa:fa-car`)
             // can affect the measured label width even though the exported SVG replaces them
             // with empty `<i class="fa ..."></i>` nodes (FontAwesome CSS is not embedded).
             // For strict parity we therefore *do not* rewrite the `fa:` token here.
-            t = strip_html_for_layout(&t);
-            t.trim_matches(|ch| matches!(ch, '\t' | '\u{000C}' | '\r' | ' '))
+            strip_html_for_layout(&text)
+                .trim_matches(|ch| matches!(ch, '\t' | '\u{000C}' | '\r' | ' '))
                 .to_string()
         }
     }
@@ -1483,11 +1512,11 @@ fn extract_flowchart_img_src(tag: &str) -> Option<&str> {
     (!value.is_empty()).then_some(value)
 }
 
-pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> String {
+pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> Cow<'_, str> {
     // Mermaid flowchart-v2 adds inline styles to `<img>` tags inside HTML labels to constrain
     // their layout. The SVG baseline uses XHTML, so we also self-close the tags later.
     if find_ascii_case_insensitive(input, b"<img").is_none() {
-        return input.to_string();
+        return Cow::Borrowed(input);
     }
 
     let style = if fixed_width {
@@ -1525,7 +1554,7 @@ pub(crate) fn normalize_flowchart_img_tags(input: &str, fixed_width: bool) -> St
         out.push(ch);
         i += ch.len_utf8();
     }
-    out
+    Cow::Owned(out)
 }
 
 pub(crate) fn is_single_img_label(label: &str) -> bool {
@@ -1548,36 +1577,26 @@ pub(crate) fn flowchart_label_html_source(
         return String::new();
     }
 
-    fn trim_markdown_trailing_newlines(
-        input: std::borrow::Cow<'_, str>,
-    ) -> std::borrow::Cow<'_, str> {
-        if input.ends_with('\n') {
-            std::borrow::Cow::Owned(input.trim_end_matches('\n').to_string())
-        } else {
-            input
-        }
-    }
-
     match label_type {
         "markdown" => {
             let decoded = crate::entities::decode_mermaid_entities_for_render_text(label);
             let decoded = if decoded.contains("\\\\") {
-                std::borrow::Cow::Owned(decoded.replace("\\\\", "\\"))
+                Cow::Owned(decoded.replace("\\\\", "\\"))
             } else {
                 decoded
             };
-            let decoded = trim_markdown_trailing_newlines(decoded);
             let markdown_auto_wrap = config
                 .as_value()
                 .get("markdownAutoWrap")
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(true);
             let html_out = crate::text::mermaid_markdown_to_html_label_fragment(
-                decoded.as_ref(),
+                decoded.trim_end_matches('\n'),
                 markdown_auto_wrap,
             );
-            let html_out = flowchart_trim_html_collapsible_whitespace(&html_out).to_string();
-            crate::text::replace_fontawesome_icons(&html_out)
+            crate::text::replace_fontawesome_icons(flowchart_trim_html_collapsible_whitespace(
+                &html_out,
+            ))
         }
         _ => {
             let label = flowchart_non_markdown_label_for_html(label, label_type);
@@ -1886,6 +1905,22 @@ mod tests {
             flowchart_label_plain_text_for_layout("<p>A<br></p>", "html", true),
             "A\n"
         );
+    }
+
+    #[test]
+    fn literal_html_paragraph_preserves_layout_whitespace_and_escape_projection() {
+        for text in ["", "   ", "A B", "  A   B  ", r#" A\\B  \: "C" > D "#] {
+            let xhtml = format!("<p>{text}</p>");
+            let Some(Cow::Borrowed(literal)) = crate::text::mermaid_xhtml_label_plain_text(&xhtml)
+            else {
+                panic!("expected a literal paragraph for {xhtml}");
+            };
+            assert_eq!(
+                flowchart_literal_paragraph_for_layout(literal),
+                flowchart_label_plain_text_for_layout(&xhtml, "html", true),
+                "{xhtml}",
+            );
+        }
     }
 
     #[test]

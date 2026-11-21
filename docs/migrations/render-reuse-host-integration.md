@@ -8,17 +8,16 @@ See the [release index](../release/README.md) for published-version migrations.
 
 ## Refresh wrappers and runtime artifacts
 
-The current ASCII scene-planning contract changes these independent versions once from the
-published `v0.10.0` baseline:
+These contracts are versioned independently of the workspace release:
 
-| Contract | Published `v0.10.0` | Current source |
+| Contract | Published `v0.10.0` | `v0.11.0` |
 | --- | --- | --- |
 | Web/WASM transport API | `10` | `11` |
 | UniFFI binding API | `7` | `8` |
 | ASCII report / `output_plan.schema_version` | `3` | `4` |
 | Options JSON | `3` | `3` |
 | Outer binding operation metadata `version` | `1` | `1` |
-| Node transport API | `1` | `1` |
+| Node transport API | `1` | `2` |
 | Native C ABI | `3` | `3` |
 
 Update the Web SDK and its WASM assets together to transport API `11`, including ASCII-capable
@@ -26,9 +25,11 @@ artifacts and feature-selected packages. Regenerate UniFFI wrappers against the 
 library; the versioned Rust discovery method is now `binding_api_version_v8`. Python, Swift, and
 other generated consumers must use that library's matching wrappers.
 
-Refresh Node and native SDK metadata readers for ASCII schema `4` even though their transport API
-and C ABI versions remain unchanged. This includes generated metadata DTOs on Android, Apple,
-Flutter, and Python surfaces that consume the shared operation result. Read the loaded runtime
+Update the Node wrapper and addon together to transport API `2`. The public `renderSvg` and
+`renderSvgSync` signatures remain the same.
+
+Refresh Node and native SDK metadata readers for ASCII schema `4`. This includes generated metadata
+DTOs on Android, Apple, Flutter, and Python that consume the shared operation result. Read the loaded runtime
 catalog for transport, options, payload, and compiled-operation admission before invoking ASCII.
 The current typed ASCII metadata decoder requires schema `4` and the explicit nullable field group
 described [below](#ascii-output-schema-3-to-4). An archive reader for schema `3` must retain that
@@ -37,6 +38,14 @@ recorded artifacts.
 
 SVG and semantic JSON schemas are unchanged by this ASCII contract migration. Their earlier
 source/API migrations in this guide retain their own scope.
+
+## Read layout geometry or request the full snapshot
+
+`merman-cli layout` and Rust `RenderRequest::layout_json` now return schema `1` with `family_id`,
+`diagram_type`, the family-specific `layout`, and optional `layout_adaptation`. For scripts reading
+`meta`, `semantic`, or a full configuration, add `--snapshot` to `merman-cli layout`. In Rust,
+use `RenderRequest::layout_snapshot` or `RenderTarget::LayoutSnapshot`. The layout payload has the
+same coordinates and nested family schema in each mode. [Layout guide](../rendering/HEADLESS_LAYOUT.md)
 
 ## Reuse parsed source in Rust
 

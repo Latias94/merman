@@ -17,6 +17,7 @@ pub(crate) struct MarkdownRenderContext<'a> {
     staged_bytes: &'a Mutex<CheckedBytes>,
     stderr: &'a SharedWriter,
     theme_report: Option<&'a BatchThemeReport>,
+    writes_document: bool,
     #[cfg(feature = "parallel-markdown")]
     jobs: usize,
 }
@@ -28,6 +29,7 @@ impl<'a> MarkdownRenderContext<'a> {
         staged_bytes: &'a Mutex<CheckedBytes>,
         stderr: &'a SharedWriter,
         theme_report: Option<&'a BatchThemeReport>,
+        writes_document: bool,
         #[cfg(feature = "parallel-markdown")] jobs: usize,
     ) -> Self {
         Self {
@@ -36,6 +38,7 @@ impl<'a> MarkdownRenderContext<'a> {
             staged_bytes,
             stderr,
             theme_report,
+            writes_document,
             #[cfg(feature = "parallel-markdown")]
             jobs,
         }
@@ -100,6 +103,7 @@ fn render_chart(
             &chart_control,
             context.stderr,
             Some(chart_index),
+            context.writes_document,
         );
         if let Some(report) = context.theme_report {
             let theme = match &mut result {

@@ -51,22 +51,15 @@ pub(super) fn write_style_attribute<'a>(
 
 pub(super) use crate::config::config_f64;
 
-pub(super) fn config_string(cfg: &serde_json::Value, path: &[&str]) -> Option<String> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    cur.as_str().map(|s| s.to_string())
-}
+pub(super) use crate::config::config_string;
 
 pub(super) use crate::config::json_bool;
 
-pub(super) fn config_bool(cfg: &serde_json::Value, path: &[&str]) -> Option<bool> {
-    let mut cur = cfg;
-    for key in path {
-        cur = cur.get(*key)?;
-    }
-    json_bool(cur)
+pub(super) fn config_bool(
+    cfg: &(impl crate::config::ConfigLookup + ?Sized),
+    path: &[&str],
+) -> Option<bool> {
+    crate::config::value_at(cfg, path).and_then(json_bool)
 }
 
 pub(super) fn normalize_css_font_family(font_family: &str) -> String {
@@ -74,7 +67,7 @@ pub(super) fn normalize_css_font_family(font_family: &str) -> String {
 }
 
 pub(super) fn theme_token(
-    effective_config: &serde_json::Value,
+    effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     key: &str,
     fallback: &str,
 ) -> String {

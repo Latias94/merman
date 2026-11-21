@@ -97,6 +97,19 @@ impl SourcePresentationConfig {
         self.inputs.as_value()
     }
 
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        self.inputs.get(key)
+    }
+
+    pub fn get_path(&self, path: &[&str]) -> Option<&Value> {
+        self.inputs.get_path(path)
+    }
+
+    pub(crate) fn with_shared_sections(mut self) -> Self {
+        self.inputs = self.inputs.with_shared_sections();
+        self
+    }
+
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
         self.inputs.get_str(dotted_path)
     }
@@ -568,6 +581,17 @@ impl SourcePresentationConfig {
     }
 
     fn replace_detector_segments(&mut self, path: &[&str], value: Option<&Value>) {
+        // String equality is exact. Replay records explicit claims separately and continues
+        // to replace containers so their contents and key order follow the detector.
+        if let Some(Value::String(replacement)) = value
+            && if path.is_empty() {
+                self.as_value().as_str() == Some(replacement)
+            } else {
+                self.get_path(path).and_then(Value::as_str) == Some(replacement)
+            }
+        {
+            return;
+        }
         let Some((key, parents)) = path.split_last() else {
             if let Some(value) = value {
                 replace_value_nonrecursive(
@@ -780,7 +804,7 @@ impl DetectorConfigCheckpoint {
         if !explicit_paths.is_empty() {
             Arc::make_mut(&mut after.explicit_config_paths).extend(explicit_paths.iter().cloned());
         }
-        let values_changed = !std::ptr::eq(self.before.inputs.as_value(), after.inputs.as_value())
+        let values_changed = !self.before.inputs.shares_storage_with(&after.inputs)
             && !config_values_equal(self.before.as_value(), after.as_value(), Some(control))?;
         if !values_changed && !transferred_explicit_ownership && explicit_paths.is_empty() {
             return Ok(None);
@@ -1349,19 +1373,20 @@ mod tests {
         assert!(!changes.value_changed_at("themeVariables.primaryColor"));
         assert!(working.explicit_config_owns_path("themeVariables.primaryColor"));
 
-        let mut replayed = original.clone();
-        replayed.set_value_preserving_theme_compatibility(
+        let mut changed_projection = original.clone();
+        changed_projection.set_value_preserving_theme_compatibility(
             "themeVariables.primaryColor",
             json!("#654321"),
         );
-        changes
-            .replay(&mut replayed, &OperationControl::new())
-            .unwrap();
-        assert_eq!(
-            replayed.get_str("themeVariables.primaryColor"),
-            Some("#123456")
-        );
-        assert!(replayed.explicit_config_owns_path("themeVariables.primaryColor"));
+        let expected = freeze(working.clone());
+        for (projection, copies) in [(&original, 0), (&changed_projection, 1)] {
+            let mut replayed = projection.clone();
+            let (result, replay_work) =
+                measure_config_work(|| changes.replay(&mut replayed, &OperationControl::new()));
+            result.unwrap();
+            assert_eq!(replay_work.json_cow_copies, copies, "{replay_work:?}");
+            assert_eq!(freeze(replayed), expected);
+        }
         working.freeze_theme_compatibility();
         let surviving = working.mermaid_compatibility_fields().unwrap();
         assert!(!surviving.iter().any(|field| {

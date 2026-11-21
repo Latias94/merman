@@ -15,6 +15,8 @@ import {
   nodeLoaderPackageVersion,
   nativePackageName,
   resolveNodeTarget,
+  supportsDirectNativeSvg,
+  wrapNativeBinding,
 } from "../src/native-loader.mjs";
 import {
   MermanDisposedError,
@@ -193,6 +195,8 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
   class NativeEngine {
     execute() {}
     executeSync() {}
+    executeSvg() { assert.fail("the injected binding must use the wire transport"); }
+    executeSvgSync() { assert.fail("the injected binding must use the wire transport"); }
     metadataJson(id) {
       return JSON.stringify({ id });
     }
@@ -214,7 +218,44 @@ test("the native loader accepts and caches an exact-version runtime catalog", as
     nodeLoaderPackageVersion(),
   );
   assert.equal(catalogReads, 1);
+  assert.equal(transport.executeSvg, undefined);
+  assert.equal(transport.executeSvgSync, undefined);
+  assert.equal(supportsDirectNativeSvg(transport), false);
   await transport.dispose();
+});
+
+test("the native SVG transport forwards source, options, and controls separately", async () => {
+  const source = 'flowchart TD\r\nA["你好 🧪"]\r\n%% "\\\t\0';
+  const optionsJson = '{"svg":{"diagram_id":"unicode-🧪"}}';
+  const signal = new AbortController().signal;
+  class NativeEngine {
+    execute() { assert.fail("expected direct SVG input"); }
+    executeSync() { assert.fail("expected direct SVG input"); }
+    runtimeCatalogJson() { return JSON.stringify({ package_version: nodeLoaderPackageVersion() }); }
+    metadataJson() {}
+    async executeSvg(...args) {
+      assert.deepEqual(args, [source, optionsJson, signal, 1]);
+      return "<svg />";
+    }
+    executeSvgSync(...args) {
+      assert.deepEqual(args, [source, undefined, 0]);
+      return "<svg />";
+    }
+  }
+  const binding = { NativeEngine, transportIdentityJson: () => transportIdentityJson("napi") };
+  const transport = await wrapNativeBinding(binding, "{}", undefined, { directSvgAddon: true });
+  assert.equal(await transport.executeSvg(source, optionsJson, signal, 1), "<svg />");
+  assert.equal(transport.executeSvgSync(source, undefined, 0), "<svg />");
+  await transport.dispose();
+  assert.throws(() => transport.executeSvgSync(source), MermanDisposedError);
+
+  class IncompleteEngine extends NativeEngine {
+    executeSvgSync = undefined;
+  }
+  await assert.rejects(
+    wrapNativeBinding({ ...binding, NativeEngine: IncompleteEngine }, "{}", undefined, { directSvgAddon: true }),
+    (error) => error instanceof MermanInvalidTransportError && /direct SVG contract/.test(error.message),
+  );
 });
 
 test("the native version preflight accepts bounded catalog text only", () => {
@@ -240,6 +281,10 @@ test("candidate identity is a strict transport and contract preflight", async ()
   const invalidIdentities = [
     transportIdentity("napi", { package_version: "0.0.0-stale" }),
     transportIdentity("wasm", {}),
+    transportIdentity("napi", {
+      transport_api_version: 1,
+      wire_contract: { ...NODE_WIRE_CONTRACT, transport_api_version: 1 },
+    }),
     transportIdentity("napi", { transport_api_version: 99 }),
     transportIdentity("napi", { binding_result_payload_version: 99 }),
     transportIdentity("napi", { capability_descriptor_digest: "sha256:stale" }),

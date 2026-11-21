@@ -235,9 +235,12 @@ test("candidate dependency closures isolate transport-only packages", () => {
   );
 });
 
-test("candidate source receipt covers generated package contracts", async () => {
+test("candidate source receipt covers runtime wrappers and generated package contracts", async () => {
   const entries = collectLocalInputEntries({ packages: [] });
   for (const relativePath of [
+    "platforms/node/src/candidates/native.mjs",
+    "platforms/node/src/candidates/wasm.mjs",
+    "platforms/node/src/candidates/wrap-engine.mjs",
     "platforms/node/src/generated/binding-contract.mjs",
     "platforms/node/src/generated/capability-surface.mjs",
     "platforms/node/src/generated/node-wire-contract.json",

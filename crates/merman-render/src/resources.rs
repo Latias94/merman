@@ -878,6 +878,12 @@ impl SvgByteBudget<'_> {
         Ok(required)
     }
 
+    /// Caps optional backing storage and skips it after a cancellation request.
+    /// The normal append path still owns terminal observation and precedence.
+    pub(crate) fn capacity_hint_limit(&self) -> Option<usize> {
+        (!self.meter.control().is_cancelled()).then_some(self.maximum.unwrap_or(usize::MAX))
+    }
+
     /// Admits a geometrically grown capacity after the caller has observed operation control.
     ///
     /// Writes fitting the existing admitted capacity need neither a new reservation nor another

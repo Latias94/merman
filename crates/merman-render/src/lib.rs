@@ -1195,7 +1195,7 @@ pub(crate) fn layout_class_typed_by_engine(
     let mut work_control = layout_work::OperationLayoutWorkControl::new(options.work_meter());
     let preparation_work = class::class_layout_work_units(model, &work_control)?;
     work_control.charge_adapter(preparation_work)?;
-    let selection = layout_backend::resolve_graph_layout(effective_config.as_value());
+    let selection = layout_backend::resolve_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
     if selection.backend == layout_backend::GraphLayoutBackend::Elk {
@@ -1265,7 +1265,7 @@ pub(crate) fn layout_flowchart_typed_with_render_labels_by_engine(
         .family
         .session()
         .checkpoint(OperationPhase::Layout)?;
-    let selection = layout_backend::resolve_graph_layout(effective_config.as_value());
+    let selection = layout_backend::resolve_graph_layout(effective_config);
     selection.validate_rootless_graph()?;
     #[cfg(feature = "layout-elk")]
     if selection.backend == layout_backend::GraphLayoutBackend::Elk {

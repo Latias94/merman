@@ -4,24 +4,71 @@ All notable changes to this project will be documented in this file.
 
 The format is based on *Keep a Changelog*, and this project adheres to *Semantic Versioning*.
 
-## [Unreleased]
+## [0.11.0] - 2026-11-21
+
+After introducing the theme compiler and editable theme recipes in 0.10.0, we focused 0.11.0 on performance and ease of use. A short-lived CLI should be quick enough to call for a single image, and a long-running editor or document builder should be able to reuse the work it has already done. This release also gives hosts simpler ways to request geometry, static SVGs, and terminal output. [0.10.0 release notes](#0100---2026-11-12)
+
+### CLI startup and fonts
+
+Since 0.9.3, CLI builds with system fonts enabled have measured Mermaid labels for PNG, JPEG, and PDF with the fonts used to paint them. This improves wrapping and node sizing and helps prevent clipped text, so it stays on by default. Much of the startup cost came from bounded discovery reading and hashing candidate font files for each new process. Ordinary Mermaid-to-SVG output still uses deterministic measurement and skips system font discovery. [0.9.3 font change](https://github.com/Latias94/merman/pull/255)
+
+The official Windows archive now defaults to **Platform**, which follows Skia's DirectWrite approach and opens the fonts selected for the diagram. On Windows 11, a seven-node Flowchart produced the same PNG as 0.10.0 while process logical reads fell from 826 MB to 255 KB. Linux and macOS archives and ordinary Cargo installs default to **bounded**. The archives offer both `--font-system platform` and `--font-system bounded`. We plan to improve on-demand queries and fallback on Linux and macOS before switching their defaults. [Skia DirectWrite backend](https://skia.googlesource.com/skia/+/refs/heads/main/src/ports/SkFontMgr_win_dw.cpp), [CLI font selection](docs/releasing/CLI.md#cli-contract-migration), [#336](https://github.com/Latias94/merman/pull/336)
+
+For quicker startup, especially on Linux and macOS, pass the fonts your diagram uses with repeatable `--font-file` options. Set the diagram's `fontFamily` to match a supplied family. Explicit files skip system discovery by default. With `--font-system off`, PNG, JPEG, and PDF require an explicit font file or directory for painting. For SVG, `off` makes the existing default explicit. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)
+
+```sh
+merman-cli render diagram.mmd -f png -o diagram.png --font-file fonts/YourFont.ttf --font-system off
+merman-cli render diagram.mmd -f svg -o diagram.svg --font-system off
+```
+
+Tools that wrap the CLI can expose these font options to users and use deterministic measurement for SVG by default. For PNG, JPEG, and PDF, `--font-measurement deterministic` changes layout measurement and can still discover system fonts when painting. [CLI font guide](crates/merman-cli/README.md#explicit-fonts)
+
+### Rendering and export performance
+
+- **Rust renderer.** Repeated renders can reuse the host's derived theme. Flowchart source overrides share untouched configuration through label sanitization and layout. A warm two-node Rust render with `nodeSpacing: 50` in frontmatter allocated 269 KB cumulatively, down from 1,023 KB in 0.10.0, with byte-identical SVG. The renderer also reuses edge and stylesheet buffers, and computes edge path length when painting needs it. [#328](https://github.com/Latias94/merman/pull/328), [#336](https://github.com/Latias94/merman/pull/336)
+- **Large and compound Flowcharts.** ELK avoids expanding redundant ordering relations and skips unnecessary edge-order scans. The 500-node, 499-edge Flowchart from Mermaid's v13 benchmark corpus now renders within the existing default layout budget. The CLI's default SVGs were byte-identical to 0.10.0 across 114 Trident documentation Flowcharts. Swimlane routing also skips scoring candidates that already conflict with nodes or segments. [#328](https://github.com/Latias94/merman/pull/328), [#336](https://github.com/Latias94/merman/pull/336)
+- **Other diagram families.** Sequence scans fixed SVG definitions once and indexes activation depth by participant. ER paints directly from its ELK edge table. Mindmap compacts tree-center candidates in place and preserves Mermaid's ordering. [#328](https://github.com/Latias94/merman/pull/328), [#336](https://github.com/Latias94/merman/pull/336)
+- **Web first render.** Reduced WebAssembly compilation work shortened the installed `@mermanjs/web-render` candidate's first medium Flowchart render from 271 ms in 0.10.0 to 201 ms on Windows with Chromium 158. This includes import, initialization, and rendering. The SVG was byte-identical across eight paired trials. [Benchmark build](https://github.com/Latias94/merman/actions/runs/44880208698/job/136773879729), [#328](https://github.com/Latias94/merman/pull/328), [#336](https://github.com/Latias94/merman/pull/336)
+- **Node calls.** The native addon accepts Mermaid source and returns the SVG string directly for `renderSvg()` and `renderSvgSync()`, avoiding the JSON round trip. Queued calls release their execution slot before the promise settles, so a follow-up call can use the freed capacity. [#328](https://github.com/Latias94/merman/pull/328), [#336](https://github.com/Latias94/merman/pull/336)
+- **Static SVG.** Use `--svg-pipeline static`, Rust `SvgGeneration::Static`, or `svg.pipeline: "static"` in bindings for fixed illustrations. The renderer writes container palette rules for the slots that the diagram uses. Across 114 Trident Flowcharts, SVG size fell by 52% and per-file gzip size by 21%, with matching initial Chromium frames. Native image and PDF output use this generation path where supported. Use the default SVG pipeline for dynamic recoloring. [SVG output guide](docs/rendering/SVG_OUTPUT_PIPELINE.md)
+- **Native text measurement.** Repository builds use patched usvg 0.47 to obtain text advance and bounds from one shaping pass per uncached ordinary label. Builds using the crates.io usvg dependency measure both anchors separately. Windows can continue down the font stack when the exporter cannot represent a named variable family. [CLI distribution contract](docs/releasing/CLI.md#cli-contract-migration)
+- **Markdown batches.** Re-running a batch over existing outputs does less publication work. Image-only batches skip extracting SVG titles and descriptions. A retry can finish an interrupted rollback and publish the requested output after blocked files become available, including when recovering older journals. [#328](https://github.com/Latias94/merman/pull/328)
+
+### Upgrading
+
+- **Layout readers.** CLI contract `8` makes `layout` return schema-1 geometry. Rust `RenderRequest::layout_json` returns the same geometry. Use `merman-cli layout --snapshot` or `RenderRequest::layout_snapshot` for the 0.10 envelope with `meta`, `semantic`, and `layout`, including parse diagnostics when using `--suppress-errors`. CLI and Rust hosts that stream geometry can use the typed writer path, exposed in Rust as `Renderer::write_layout_json`. On 114 Trident Flowcharts, geometry responses occupied 88 KB of the 2.71 MB used by full snapshots and preserved the same coordinates. [Layout guide](docs/rendering/HEADLESS_LAYOUT.md)
+- **ASCII reports.** Migrate CLI `--ascii-report` and binding `output_plan` readers to schema `4`. Replace `overflowed` with nullable `primary_overflowed` and required `emitted_overflowed`. Read `requested_graph_presentation` for the requested policy. The primary dimensions, layout profile, and overflow status are null together when no primary layout was produced. Preserve zero dimensions for a measured empty diagram. [ASCII report migration](docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4), [#323](https://github.com/Latias94/merman/pull/323)
+- **Bindings.** Upgrade Web wrappers with their WASM artifacts for transport API `11`, Node wrappers with their native addon or WASM artifact for transport API `2`, and Swift and Python wrappers with their native libraries for UniFFI binding API `8`. [Binding migration](docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ### Added
 
-- New `merman.authoring.class.ignored_statement` diagnostic (`Recommended` ruleset, `Hint` level) for Class diagram statements that are ignored. This diagnostic helps to identify invalid syntax, such as using `title` as a statement instead of as a front matter field.
-
-### Changed
-
-- Select Rust 1.100.0 for repository development, CI and release builders while retaining library MSRV 1.95. Update layout code for the stricter Clippy checks and remove unused workspace dependency aliases and redundant Cargo package metadata.
+- **Terminal diagrams.** Render Agentflow, Architecture, Block, C4, Pie, Requirement, Usecase, and ZenUML. Gantt gains timelines, GitGraph gains branch tracks, and Packet gains bit grids. Improved routing clarifies dense graphs. For Flowchart, Swimlane, State, Agentflow, and Requirement, `--ascii-graph-presentation adaptive --ascii-color plain` can emit complete node and relationship records when graph routing exhausts its search or runs out of ports. Bindings expose `ascii.graph_presentation`. [Terminal support matrix](docs/rendering/ASCII_SUPPORT_MATRIX.md), [#314](https://github.com/Latias94/merman/pull/314), [#317](https://github.com/Latias94/merman/pull/317), [#323](https://github.com/Latias94/merman/pull/323), [#324](https://github.com/Latias94/merman/pull/324), [#326](https://github.com/Latias94/merman/pull/326)
+- Show the Gantt Today Marker at the browser's current time in Playground and carry that instant into exports. Replay a captured instant with `--fixed-unix-millis` in the CLI or `fixed_unix_millis` in binding options, together with the local offset. [#311](https://github.com/Latias94/merman/issues/311), [#312](https://github.com/Latias94/merman/pull/312)
+- Report ignored Class statements with the `merman.authoring.class.ignored_statement` hint in the Recommended ruleset. This catches a `title` statement where the diagram expects a front matter field. [#332](https://github.com/Latias94/merman/pull/332)
 
 ### Fixed
 
-- Accept Flowchart node IDs that begin with a period, such as `...` and `.a`, matching Mermaid's `NODE_STRING`. Editor renames preserve adjacent edge operators, including open edges before names beginning with `o` or `x`.
-- Preserve literal ampersands in Flowchart IDs such as `A&B` and recognize spaced node groups such as `A & B`.
-- Accept punctuation in Flowchart node IDs and preserve classes, links and statements during editor renames. Match Mermaid's stroke and length for links with mixed endpoint markers.
-- Preserve valid Class and namespace source when renaming to Unicode names or reserved words that require backticks. Existing quotes, generic suffixes and relationship targets remain intact.
-- Finish interrupted Markdown publication and publish the requested output in one retry after blocked files become available, including batches with rollback journals written by older versions.
-- Treat a Flowchart `direction` that is not followed by `TB`, `BT`, `RL`, `LR` or `TD` as a node ID, and allow extra characters after the direction such as `direction LRfoo`.
+- Lay out a 181-leaf Flowchart with forced ELK model order on 32-bit WebAssembly. [#328](https://github.com/Latias94/merman/pull/328)
+- Keep Swimlane nodes named `placeholder-0` and their edges when the layout adds internal long-edge placeholders. Collapsed Swimlane groups hide their contents, preserve every visible boundary route and label, and apply pairwise routing limits to the visible edges.
+- The bundled native exporter continues to find glyphs for later characters after an unavailable fallback. Strict coverage accepts fully drawn mixed-font labels and checks referenced clipping paths, masks, patterns, and filter images that contribute to the output. CSS regular weight selects weight 400 on variable fonts even when their default axis value differs. Explicit variation settings take precedence. [Native export guide](docs/rendering/RASTER_OUTPUT.md)
+- Keep labels legible in hand-drawn Flowchart subroutines and Agentflow tools with hatched frames and separate side strokes.
+- Avoid false `resvg-safe` selector-budget errors for large Flowcharts and Class diagrams, including a Class diagram with 400 members. [#313](https://github.com/Latias94/merman/pull/313)
+- Accept Flowchart IDs with leading dots and punctuation, distinguish literal `A&B` IDs from `A & B` groups, and preserve adjacent edge operators and bindings during editor renames. Match Mermaid's stroke and length for compact links with mixed endpoint markers. LSP highlighting follows the corrected identifier and arrow boundaries. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
+- Match Mermaid's Flowchart `direction` parsing and editor completion. A bare `direction` can name a node, directives accept a direction prefix in inputs such as `direction LRfoo`, and shape data attached to `default` can contain direction text as a label. [#333](https://github.com/Latias94/merman/pull/333)
+- Preserve Class and namespace syntax when renaming to Unicode names or reserved words that require backticks, including existing quotes, generic suffixes, and relationship targets. [#308](https://github.com/Latias94/merman/pull/308)
+- Preserve literal JSON object keys in Usecase properties, init directives, and Sequence links and properties. Configurations keep their original validation errors when a property name matches Serde metadata.
+- Produce consistent stylesheet output across repeated SVG sanitization, including styles with escaped carriage returns. [#325](https://github.com/Latias94/merman/pull/325)
+- Accept symlinked font directory roots for `--font-dir` and bounded system font discovery. [#315](https://github.com/Latias94/merman/issues/315), [#316](https://github.com/Latias94/merman/pull/316)
+- Restore the Flowchart preview and its source links on the `merman` crates.io page. [#336](https://github.com/Latias94/merman/pull/336)
+
+### Tooling
+
+- Use Rust `1.100.0` for repository development, CI, and release builds. The library minimum is Rust `1.95`. [#308](https://github.com/Latias94/merman/pull/308)
+- Reduce the workspace Typst plugin's WASM size by sharing parser and theme code. The independently published Typst Universe wrapper `@preview/merman:0.6.0` bundles Merman `0.10.0`. [Typst Universe](https://typst.app/universe/package/merman/), [#304](https://github.com/Latias94/merman/pull/304), [#306](https://github.com/Latias94/merman/pull/306)
+
+### Contributors
+
+Thanks [@Latias94](https://github.com/Latias94) for the implementation, [@MikeRomaa](https://github.com/MikeRomaa) for the Flowchart parsing contribution, [@mitch-karch](https://github.com/mitch-karch) for the Gantt Today Marker report, and [@mfontanini](https://github.com/mfontanini) for the font-directory symlink report.
 
 ## [0.10.0] - 2026-11-12
 

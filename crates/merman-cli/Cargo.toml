@@ -50,6 +50,7 @@ features = [
     "system-random",
     "system-timezone",
     "system-timing",
+    "windows-platform-font-default",
 ]
 
 [package.metadata.binstall]
@@ -347,6 +348,8 @@ native-fonts = ["svg", "merman/native-fonts"]
 system-fonts = ["native-fonts", "merman/system-fonts"]
 platform-system-font-query = ["system-fonts", "merman/experimental-system-font-query"]
 experimental-system-font-query = ["platform-system-font-query"]
+# The complete release uses the workspace's qualified usvg fallback on Windows.
+windows-platform-font-default = ["platform-system-font-query"]
 ascii = ["dep:atomic-write-file", "dep:ctrlc", "dep:same-file", "merman/ascii"]
 # Native CLI codecs retain host font discovery; library codecs do not select it.
 png = ["svg", "dep:merman-render", "merman/png", "system-fonts"]

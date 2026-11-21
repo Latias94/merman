@@ -1551,7 +1551,6 @@ fn layout_flowchart_with_model(
     // resource-error precedence when the scan itself cannot be admitted.
     work_control.charge_adapter(model.nodes.len())?;
     super::validate_flowchart_model_shapes(model)?;
-    let effective_config_value = effective_config.as_value();
 
     // Project the lossless semantic edges through the collapsed-subgraph view before expanding
     // self-loops. Boundary edges use the visible collapsed node as their endpoint, while edges
@@ -1671,14 +1670,14 @@ fn layout_flowchart_with_model(
         text_style,
         html_label_text_style,
     } = svg_label_sidecar.map_or_else(
-        || FlowchartConfigView::new(effective_config_value).layout_settings(),
-        |sidecar| sidecar.layout_settings(effective_config_value),
+        || FlowchartConfigView::new(effective_config).layout_settings(),
+        |sidecar| sidecar.layout_settings(effective_config),
     );
     let edge_label_padding = svg_label_sidecar.map_or_else(
         super::FlowchartEdgeLabelPadding::default,
         FlowchartSvgLabelSidecarBuilder::edge_label_padding,
     );
-    let look_is_neo = crate::config::config_diagram_look(effective_config_value).is_neo();
+    let look_is_neo = crate::config::config_diagram_look(effective_config).is_neo();
     let node_label_base_style = if node_wrap_mode == WrapMode::HtmlLike {
         &html_label_text_style
     } else {
@@ -1818,7 +1817,7 @@ fn layout_flowchart_with_model(
                 raw_label,
                 label_type,
                 node_wrap_mode == WrapMode::HtmlLike,
-                crate::config::config_diagram_look(effective_config_value).is_hand_drawn(),
+                crate::config::config_diagram_look(effective_config).is_hand_drawn(),
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
@@ -1926,7 +1925,7 @@ fn layout_flowchart_with_model(
                 title,
                 label_type,
                 node_wrap_mode == WrapMode::HtmlLike,
-                crate::config::config_diagram_look(effective_config_value).is_hand_drawn(),
+                crate::config::config_diagram_look(effective_config).is_hand_drawn(),
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(
@@ -2024,7 +2023,7 @@ fn layout_flowchart_with_model(
                 title,
                 label_type,
                 node_wrap_mode == WrapMode::HtmlLike,
-                crate::config::config_diagram_look(effective_config_value).is_hand_drawn(),
+                crate::config::config_diagram_look(effective_config).is_hand_drawn(),
             ),
         );
         let structural = super::FlowchartStructuralLabelTypography::prepare(

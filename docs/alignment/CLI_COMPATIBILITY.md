@@ -168,19 +168,21 @@ The compatibility version is generated from the
 merman-cli capabilities --json
 ```
 
-The current-source JSON document uses capability schema 2 and CLI contract 7. It includes the
+The current JSON document uses capability schema 2 and CLI contract 8. It includes the
 Merman package version, pinned Mermaid and `mmdc` versions, compiled command/capability/output
 sets, and the canonical descriptor digest. ASCII-enabled builds also expose schema-1
 family/profile/encoding/fallback discovery plus success/error report schemas and streams.
 Contract 7 adds the native `theme inspect` command, concrete `--theme-appearance light|dark`
 selection, and the grouped schema-1 `theme_presets` catalog. These additions do not extend the
 mmdc dialect or reinterpret its literal Mermaid `--theme` values.
+Contract 8 returns versioned geometry from native `layout`. Use `layout --snapshot` for the
+full metadata and semantic response provided by `layout` under contract 7.
 
-Existing native-font policy remains separate from compiled support: ordinary Mermaid graphical
-output uses deterministic measurement without native-context system discovery. PNG/JPEG/PDF
-painting can still load system fonts through the existing codec path. Explicit font sources enable
-native measurement with a closed set; `--font-measurement native` without sources or
-`--font-system on` requests system discovery when available. See the
+Mermaid SVG uses deterministic measurement by default. PNG, JPEG, and PDF use native font
+measurement and painting when system font support is compiled. The official Windows archive
+queries the platform catalog on demand, and macOS, Linux, and default Cargo builds use bounded
+discovery. Explicit font sources enable native measurement with a closed set unless system
+fallback is requested. See the
 [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 The CLI contract version tracks native command behavior independently from this pinned
 compatibility baseline. Published tags retain their own contract and verifier. An `mmdc` behavior

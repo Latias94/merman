@@ -3,8 +3,8 @@
 `merman` has distinct SVG output contracts:
 
 - A default typed `RenderTarget::Svg` request returns Mermaid-parity SVG.
-- `SvgPipeline` turns that parity SVG into consumer-oriented output for previews, raster export,
-  or host-specific cleanup.
+- `SvgPipeline` selects which generated styles the consumer needs and applies the output contract
+  for previews, native export, or host-specific cleanup.
 - `ResvgCompatibleSvg` is a sealed artifact produced only after the terminal resvg finalizer. It is
   the only input accepted by the low-level raster encoders and cannot delegate non-navigation
   rendering resources to a host file or network resolver.
@@ -22,6 +22,26 @@ validated animation carriers and retain the original edges and numbers; PNG/JPEG
 static projection. Select those consumer policies when an application requires passive output.
 
 ## Generation and consumer admission
+
+Use `SvgPipeline::parity().with_generation(SvgGeneration::Static)` in `SvgRequest.pipeline`,
+`merman-cli render --format svg --svg-pipeline static`, or `svg.pipeline: "static"` in
+binding options to request SVG for a fixed diagram. [Binding options](../bindings/OPTIONS_JSON.md#svg-options)
+The Flowchart, Agentflow, and Swimlane writers retain generated container palette rules for the
+slots present in the rendered document. The SVG retains its authored CSS, labels, links,
+accessibility metadata, and viewBox. Hosts that change container classes or `data-color-id`
+after rendering can select `SvgGeneration::Full` to keep every generated palette slot available.
+
+Rust PNG/JPEG/PDF requests and native CLI PNG/JPEG/PDF exports select static generation by
+default. Rust callers can override it with `SvgPipeline::with_generation(SvgGeneration::Full)`.
+Ordinary SVG, Web, `mmdc`, and reusable Rust `RenderedDocument` requests default to full styles.
+Browser-inline publication, applicable opaque postprocessors, and Flowchart-family renders with
+an icon registry retain the complete palette. Conversion from existing SVG starts with the
+supplied document and applies the selected consumer pipeline.
+
+Generation is independent of `Parity`, `Readable`, and `ResvgSafe`. Static generation with
+`Parity` retains browser HTML labels and animation markup. The static-inline and resvg-safe
+contracts still handle Step animation projection, and each target applies its own resource
+admission.
 
 Ordinary renderer-owned parity SVG is serialized by its writers and is not reparsed as an unknown
 document solely to complete the operation. Writers escape XML and enforce finite values; source,

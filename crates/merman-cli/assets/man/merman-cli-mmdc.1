@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH MERMAN-CLI-MMDC 1 2026-08-15 "Merman 0.10.0" "Merman CLI Manual"
+.TH MERMAN-CLI-MMDC 1 2026-08-15 "Merman 0.11.0" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-mmdc \- Render through the pinned mmdc\-compatible interface
 .SH SYNOPSIS
@@ -82,14 +82,16 @@ Parallel jobs for Markdown input. Defaults and maxima come from the resource pro
 .SH "MERMAN RENDERER CONTROLS"
 .TP
 \fB\-\-svg\-pipeline\fR \fI<SVG_PIPELINE>\fR
-SVG consumer: parity (default) for browsers; resvg\-safe for resvg/usvg.
+SVG consumer: parity (default), static for fixed markup, or resvg\-safe for resvg/usvg.
 
-Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. PNG/JPEG/PDF exports select resvg\-safe automatically.
+Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. mmdc PNG/JPEG/PDF use resvg\-safe with the complete palette.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
 parity: Default for browsers and Webviews; preserves Mermaid HTML labels and styles
+.IP \(bu 2
+static: Generates SVG for fixed markup, emitting only the container palette slots it uses
 .IP \(bu 2
 readable: Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates
 .IP \(bu 2
@@ -229,14 +231,18 @@ native
 .RE
 .TP
 \fB\-\-font\-system\fR \fI<FONT_SYSTEM>\fR
-Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected
+Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
 off
 .IP \(bu 2
-on
+on: Enable the build\*(Aqs default system font provider
+.IP \(bu 2
+bounded: Use Merman\*(Aqs bounded system font discovery
+.IP \(bu 2
+platform: Query the platform\*(Aqs font catalog. Platform metadata access is outside Merman\*(Aqs scan limits
 .RE
 .TP
 \fB\-\-font\-max\-measurements\fR \fI<COUNT>\fR
@@ -278,4 +284,4 @@ Examples:
 
 More options: `merman\-cli mmdc \-\-help` shows advanced compatibility, renderer, resource, and security controls.
 .SH VERSION
-v0.10.0
+v0.11.0

@@ -13,8 +13,8 @@ The standard CLI release is defined by the `cli-release` entry in
 - `crates/merman-cli/Cargo.toml` under `package.metadata.dist.features`;
 
 Current source defaults and the official archive both include `layout-elk`, its EPL-2.0
-closure, and the corresponding notice/source obligations. They differ in math support:
-`cli-release` and cargo-dist select `math` explicitly, while current source defaults omit it.
+closure, and the corresponding notice/source obligations. `cli-release` and cargo-dist select
+`math` and `windows-platform-font-default` explicitly. Current Cargo source defaults omit both.
 Source installations can opt in with `cargo install merman-cli --features math`; see the
 [math capability decision](../adr/0097-explicit-math-capability.md).
 Published releases retain their version-specific feature contract. The published
@@ -49,15 +49,22 @@ archives do not cover musl/Alpine or NixOS; the Nix integration builds from sour
 ## CLI contract migration
 
 Complete releases governed by the current source contract report capability document schema 2
-and CLI contract 7. Default source builds and the official release profile include `native-fonts`
-and `system-fonts`, while ordinary Mermaid SVG/PNG/JPEG/PDF output defaults to deterministic
-measurement without a native font context or system discovery for layout. PNG/JPEG/PDF painting
-can still load system fonts through the existing codec path. Explicit font files/directories
-enable native measurement with a closed set; `--font-measurement native` without sources or
-`--font-system on` explicitly requests system discovery when available. Fixed font contents
-and configuration avoid catalogue discovery for faster, reproducible native output. See the [CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
+and CLI contract 8. Default source builds and the official release profile include `native-fonts`
+and `system-fonts`. Mermaid SVG defaults to deterministic measurement. Mermaid PNG/JPEG/PDF
+use native measurements with the same font context as painting. The Windows archive uses the
+platform catalog by default, and other archives and Cargo source defaults use bounded discovery.
+Archive verification checks the provider for the archive's target. Official archives use
+the [workspace usvg backport](../DEPENDENCY_POLICY.md#exact-and-compatible-requirements), while
+registry consumers use the public usvg dependency. Explicit font files or directories enable
+native measurement with a closed set. See the
+[CLI font guide](../../crates/merman-cli/README.md#explicit-fonts).
 
-Contract 7 retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
+Contract 8 makes `layout` return schema-1 geometry. To read the complete `meta`, `semantic`,
+and `layout` envelope, use `layout --snapshot` on contract 8 and `layout` on contract 7.
+With `--suppress-errors`, use the snapshot to retrieve the original parse diagnostic.
+The outer capabilities schema remains 2. [Layout guide](../rendering/HEADLESS_LAYOUT.md)
+
+The CLI retains `-f/--format`, text-first `lint`, narrowed `detect`, the feature-gated top-level
 `rustdoc` workflow, the ASCII capability subcontract, and the Plain JSON stderr failure channel
 selected by `--ascii-report`. Rust library, FFI, ASCII, and committed Rustdoc generation defaults
 remain unchanged. Published tags keep their own contract and verifier. The standard
@@ -341,9 +348,8 @@ capability schema and digest must also match that tag's declared capability auth
 Formula versions below `0.8.0` retain the legacy binary-only contract. For `0.8.0` and later,
 verify the CLI contract declared by the selected release tag, match that tag's complete
 `cli-release` capability set, install four Homebrew completion files, and install the complete
-standard-profile manual set declared by that tag. Current-source CLI contract 7 does not redefine
-historical tags' contracts or manual inventories; a new release advances the contract through
-its own tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
+standard-profile manual set declared by that tag. Each release advances the contract through its
+own tag-owned verifier. `SUPPORT_ASSETS_SINCE` in
 `homebrew.yml` is the single operational threshold. Invalid or prerelease formula versions fail
 rather than falling back to the weaker check.
 

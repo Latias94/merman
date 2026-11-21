@@ -2757,6 +2757,18 @@ pub(crate) enum BuiltinFamilyArtifact<'parsed> {
     ),
 }
 
+// The ordered JSON value preserves field order and stores floats as f64. Keep these wire
+// fields in declaration order and serialize floating-point geometry as f64 for byte parity.
+#[derive(serde::Serialize)]
+struct LayoutGeometryProjection<'a> {
+    schema_version: u32,
+    family_id: DiagramFamilyId,
+    diagram_type: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    layout_adaptation: Option<crate::LayoutAdaptationObservation>,
+    layout: LayoutProjection<'a>,
+}
+
 #[derive(serde::Serialize)]
 enum LayoutProjection<'a> {
     #[cfg(feature = "diagram-agentflow")]
@@ -3983,7 +3995,43 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         }
     }
 
-    /// Projects the semantic/layout envelope from this artifact's paired family owners.
+    /// Projects the versioned geometry of this prepared layout.
+    pub fn layout_geometry_json(&self) -> Result<ManagedJson> {
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        let geometry = ManagedJson::from(serde_json::to_value(self.layout_geometry_projection())?);
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        Ok(geometry)
+    }
+
+    /// Writes the versioned geometry of this prepared layout as one JSON value.
+    ///
+    /// The final emission checkpoint commits the write. Writer failures can leave partial output.
+    pub fn write_layout_geometry_json(
+        &self,
+        writer: impl std::io::Write,
+        pretty: bool,
+    ) -> Result<()> {
+        let projection = self.layout_geometry_projection();
+        self.context.session().checkpoint(OperationPhase::Emit)?;
+        if pretty {
+            serde_json::to_writer_pretty(writer, &projection)?;
+        } else {
+            serde_json::to_writer(writer, &projection)?;
+        }
+        Ok(())
+    }
+
+    fn layout_geometry_projection(&self) -> LayoutGeometryProjection<'_> {
+        LayoutGeometryProjection {
+            schema_version: 1,
+            family_id: self.family_id(),
+            diagram_type: &self.metadata.diagram_type,
+            layout_adaptation: self.layout_adaptation(),
+            layout: self.family.layout_projection(),
+        }
+    }
+
+    /// Projects the full semantic/layout snapshot from this artifact's paired family owners.
     ///
     /// Callers cannot inject an unrelated semantic payload into the envelope.
     ///
@@ -4024,11 +4072,18 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         );
         metadata.insert(
             "config".to_string(),
-            ManagedJson::from(self.metadata.config.as_value()).into_unmanaged_value(),
+            self.metadata
+                .config
+                .to_managed_json()
+                .into_unmanaged_value(),
         );
         metadata.insert(
             "effective_config".to_string(),
-            ManagedJson::from(self.metadata.effective_config.as_value()).into_unmanaged_value(),
+            self.metadata
+                .effective_config
+                .as_config()
+                .to_managed_json()
+                .into_unmanaged_value(),
         );
 
         if let Some(observation) = self.layout_adaptation() {
@@ -4089,7 +4144,21 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         options: &SvgRenderOptions,
         debug: &SvgDebugOptions,
     ) -> Result<RenderedFamilySvg> {
+        self.render_svg_for_target(options, debug, None, crate::svg::SvgGeneration::Full)
+    }
+
+    #[doc(hidden)]
+    pub fn render_svg_for_target(
+        self,
+        options: &SvgRenderOptions,
+        debug: &SvgDebugOptions,
+        pipeline: Option<&SvgPipeline>,
+        default_generation: crate::svg::SvgGeneration,
+    ) -> Result<RenderedFamilySvg> {
         self.context.session().checkpoint(OperationPhase::Emit)?;
+        let generation = pipeline.map_or(default_generation, |pipeline| {
+            pipeline.generation_for(self.family_id(), default_generation)
+        });
         let trace_stage = debug.flowchart_edge_trace().map(|(edge_id, destination)| {
             let staging = FlowchartEdgeTraceCollector::default();
             let staged_debug = debug
@@ -4100,7 +4169,7 @@ impl<'parsed> FamilyRenderArtifact<'parsed> {
         let render_debug = trace_stage
             .as_ref()
             .map_or(debug, |(_, _, staged_debug)| staged_debug);
-        let mut rendered = render_family_artifact_svg(&self, options, render_debug)?;
+        let mut rendered = render_family_artifact_svg(&self, options, render_debug, generation)?;
         admit_rendered_svg_output(self.context.session(), rendered.as_str())?;
         self.context.session().checkpoint(OperationPhase::Emit)?;
         let filter_receipt = match &self.family {
@@ -4242,6 +4311,7 @@ fn render_family_artifact_svg(
     artifact: &FamilyRenderArtifact,
     request: &SvgRenderOptions,
     debug: &SvgDebugOptions,
+    generation: crate::svg::SvgGeneration,
 ) -> Result<crate::svg::RootThemeAppliedSvg> {
     let options = crate::svg::normalize_svg_render_options(request, artifact.context.session())?;
     let execution = artifact.context.execution();
@@ -4280,6 +4350,7 @@ fn render_family_artifact_svg(
         execution,
         &options,
         debug,
+        generation,
     )
 }
 

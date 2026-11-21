@@ -872,6 +872,380 @@ fn png_pixels(bytes: Vec<u8>) -> (u32, u32, Vec<u8>) {
 }
 
 #[cfg(feature = "png")]
+fn records_font_omissions() -> bool {
+    #[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
+    trait RegistryGroup {
+        fn text_font_omissions(&self) -> Option<(bool, bool)> {
+            None
+        }
+    }
+    impl RegistryGroup for usvg::Group {}
+    usvg::Tree::from_str(
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>"#,
+        &usvg::Options::default(),
+    )
+    .unwrap()
+    .root()
+    .text_font_omissions()
+    .is_some()
+}
+
+#[cfg(feature = "png")]
+fn assert_strict_export<T>(result: merman_export::Result<T>, missing: bool, case: &str) {
+    if missing {
+        assert!(
+            matches!(
+                result,
+                Err(merman_export::ExportError::NativeFont(
+                    NativeFontError::MissingGlyphCoverage
+                ))
+            ),
+            "expected missing glyph coverage for {case}"
+        );
+    } else if let Err(error) = result {
+        panic!("strict export failed for {case}: {error}");
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn strict_exports_check_final_mixed_font_spans() {
+    use merman_export::{ExportError, RasterOptions, svg_to_png_with_report};
+
+    let context = NativeFontOptions::default()
+        .with_font_file(font("NotoSansSC-subset.ttf"))
+        .with_font_file(font("MermanSymbolicTest.ttf"))
+        .load(&OperationControl::new())
+        .unwrap();
+    let raster = RasterOptions::default()
+        .with_font_context(context.clone().with_strict_glyph_coverage(true));
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let seal = |suffix| {
+        let source = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60"><text x="8" y="40" fill="red" font-family="Noto Sans SC" font-size="24">中{suffix}<tspan fill="blue" font-family="Merman Symbolic Test">A</tspan></text></svg>"#
+        );
+        merman_render::svg::finalize_resvg_svg(&source, &session).unwrap()
+    };
+
+    let covered = seal("");
+    let permissive = RasterOptions::default().with_font_context(context.clone());
+    let records_omissions = records_font_omissions();
+    let (png, report) = svg_to_png_with_report(&covered, &permissive).unwrap();
+    assert!(!report.fonts().unresolved_font_request());
+    assert_eq!(
+        report.fonts().unresolved_glyph_fallback(),
+        !records_omissions
+    );
+    assert_eq!(report.fonts().notdef_glyph_count(), 0);
+    let (_, _, pixels) = png_pixels(png);
+    let pixels = pixels.as_chunks::<4>().0;
+    assert!(pixels.iter().any(|p| p[3] > 0 && p[0] > p[2]));
+    assert!(pixels.iter().any(|p| p[3] > 0 && p[2] > p[0]));
+    assert_strict_export(
+        svg_to_png_with_report(&covered, &raster),
+        !records_omissions,
+        "mixed-span PNG",
+    );
+
+    let missing = seal("🚀");
+    let (_, report) = svg_to_png_with_report(&missing, &permissive).unwrap();
+    assert!(report.fonts().unresolved_glyph_fallback());
+    assert_eq!(report.fonts().notdef_glyph_count(), 1);
+    assert!(matches!(
+        svg_to_png_with_report(&missing, &raster),
+        Err(ExportError::NativeFont(
+            NativeFontError::MissingGlyphCoverage
+        ))
+    ));
+
+    #[cfg(feature = "jpeg")]
+    {
+        let (jpeg, report) = merman_export::svg_to_jpeg_with_report(&covered, &permissive).unwrap();
+        assert!(jpeg.starts_with(b"\xff\xd8\xff"));
+        assert_eq!(
+            report.fonts().unresolved_glyph_fallback(),
+            !records_omissions
+        );
+        assert_strict_export(
+            merman_export::svg_to_jpeg_with_report(&covered, &raster),
+            !records_omissions,
+            "mixed-span JPEG",
+        );
+        assert!(matches!(
+            merman_export::svg_to_jpeg_with_report(&missing, &raster),
+            Err(ExportError::NativeFont(
+                NativeFontError::MissingGlyphCoverage
+            ))
+        ));
+    }
+    #[cfg(feature = "pdf")]
+    {
+        let permissive = merman_export::PdfOptions::default().with_font_context(context.clone());
+        let pdf = merman_export::PdfOptions::default()
+            .with_font_context(context.with_strict_glyph_coverage(true));
+        let (bytes, report) = merman_export::svg_to_pdf_with_report(&covered, &permissive).unwrap();
+        assert!(bytes.starts_with(b"%PDF-"));
+        assert_eq!(
+            report.fonts().unresolved_glyph_fallback(),
+            !records_omissions
+        );
+        assert_strict_export(
+            merman_export::svg_to_pdf_with_report(&covered, &pdf),
+            !records_omissions,
+            "mixed-span PDF",
+        );
+        assert!(matches!(
+            merman_export::svg_to_pdf_with_report(&missing, &pdf),
+            Err(ExportError::NativeFont(
+                NativeFontError::MissingGlyphCoverage
+            ))
+        ));
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn strict_exports_check_visible_text_in_svg_resources() {
+    let font = NativeFontOptions::default()
+        .with_font_file(font("NotoSansSC-subset.ttf"))
+        .load(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    let raster = merman_export::RasterOptions::default().with_font_context(font.clone());
+    #[cfg(feature = "pdf")]
+    let pdf = merman_export::PdfOptions::default().with_font_context(font);
+    let session = merman_render::environment::RenderEnvironment::deterministic()
+        .begin_session()
+        .unwrap();
+    let records_omissions = records_font_omissions();
+    let check = |body: &str, missing: bool, case: &str| {
+        let text = format!(
+            r#"<svg xmlns="http://www.w3.org/2000/svg" width="120" height="60">{body}</svg>"#
+        );
+        let svg = merman_render::svg::finalize_resvg_svg(&text, &session).unwrap();
+        assert_strict_export(merman_export::svg_to_png(&svg, &raster), missing, case);
+        #[cfg(feature = "jpeg")]
+        assert_strict_export(merman_export::svg_to_jpeg(&svg, &raster), missing, case);
+        #[cfg(feature = "pdf")]
+        assert_strict_export(
+            merman_export::svg_to_pdf_with_options(&svg, &pdf),
+            missing,
+            case,
+        );
+    };
+    let text =
+        r#"<text x="9" y="36" font-size="28" font-family="Noto Sans SC" fill="white">A</text>"#;
+    let box_path = r#"<rect width="120" height="60" fill="white"/>"#;
+    for (tag, attribute, units) in [
+        ("clipPath", "clip-path", ""),
+        (
+            "mask",
+            "mask",
+            r#"maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="60""#,
+        ),
+    ] {
+        let definitions = format!(r##"<defs><{tag} id="base" {units}>{text}</{tag}></defs>"##);
+        let consumer = format!(r##"<g {attribute}="url(#base)">{box_path}</g>"##);
+        check(&format!("{definitions}{consumer}"), true, tag);
+        // An invalid empty linked resource used to drop the complete chain and its evidence.
+        for (base_extra, case) in [("", "pruned link"), (box_path, "retained link")] {
+            let chain = format!(
+                r##"<defs><{tag} id="base" {units}>{base_extra}{text}</{tag}>
+                    <{tag} id="middle" {units} {attribute}="url(#base)">{box_path}</{tag}>
+                    <{tag} id="outer" {units} {attribute}="url(#middle)">{box_path}</{tag}></defs>
+                    <g {attribute}="url(#outer)">{box_path}</g>"##
+            );
+            check(&chain, true, case);
+            check(
+                &chain.replace(">A</text>", ">中</text>"),
+                false,
+                "covered link",
+            );
+        }
+        check(
+            &format!(r##"{definitions}<g {attribute}="url(#base)" opacity="0">{box_path}</g>"##),
+            !records_omissions,
+            "transparent consumer",
+        );
+        for resource_geometry in ["", box_path] {
+            for props in [r#"fill-opacity="0""#, r#"visibility="hidden""#] {
+                check(
+                    &format!(
+                        r##"<defs><{tag} id="base" {units}>{resource_geometry}{text}</{tag}></defs>
+                            <g {attribute}="url(#base)"><rect width="120" height="60" {props}/></g>"##
+                    ),
+                    !records_omissions,
+                    "consumer with invisible contents",
+                );
+            }
+        }
+        check(
+            &format!("{definitions}{box_path}"),
+            false,
+            "unused resource",
+        );
+    }
+
+    for (definition, attribute) in [
+        (
+            r#"<clipPath id="bounds" clipPathUnits="objectBoundingBox"><rect width="1" height="1"/></clipPath>"#,
+            "clip-path",
+        ),
+        (
+            r#"<mask id="bounds" maskUnits="userSpaceOnUse" maskContentUnits="objectBoundingBox" x="0" y="0" width="120" height="60"><rect width="1" height="1" fill="white"/></mask>"#,
+            "mask",
+        ),
+    ] {
+        let body = format!(
+            r##"<defs>{definition}</defs><g {attribute}="url(#bounds)"><g>{text}</g></g>"##
+        );
+        check(&body, true, "missing glyph defines the object's bounds");
+        check(
+            &body.replace(">A</text>", ">中</text>"),
+            false,
+            "covered object bounds",
+        );
+    }
+
+    let pattern = format!(
+        r#"<defs><pattern id="tiles" patternUnits="userSpaceOnUse" width="120" height="60">{text}</pattern></defs>"#
+    );
+    for (paint, missing) in [
+        (r#"fill="url(#tiles)""#, true),
+        (r#"fill="url(#tiles) red""#, true),
+        (r#"fill="none" stroke="url(#tiles)""#, true),
+        (r#"fill="url(#tiles)" fill-opacity="0""#, !records_omissions),
+        (
+            r#"fill="url(#tiles)" visibility="hidden""#,
+            !records_omissions,
+        ),
+    ] {
+        check(
+            &format!(r#"{pattern}<rect width="120" height="60" {paint}/>"#),
+            missing,
+            paint,
+        );
+    }
+    check(
+        &format!(
+            r#"{}<line x2="100" y1="20" y2="20" fill="none" stroke="url(#tiles)"/>"#,
+            pattern.replace(
+                "patternUnits=",
+                "patternContentUnits=\"objectBoundingBox\" patternUnits="
+            )
+        ),
+        !records_omissions,
+        "pattern content coordinates require nonzero object bounds",
+    );
+
+    let filter = |image: &str, after_image: &str| {
+        format!(
+            r##"<defs>{image}<filter id="filter" x="0" y="0" width="120" height="60" filterUnits="userSpaceOnUse">
+                <feImage href="#glyph" width="120" height="60" result="stamp"/>{after_image}
+            </filter></defs>"##
+        )
+    };
+    let filtered = r##"<rect width="120" height="60" filter="url(#filter)"/>"##;
+    let direct = text.replace("<text ", r#"<text id="glyph" "#);
+    let grouped = format!(r#"<g id="glyph">{text}</g>"#);
+    for (image, case) in [
+        (&direct, "direct filter image"),
+        (&grouped, "grouped filter image"),
+    ] {
+        let definitions = filter(image, "");
+        check(&format!("{definitions}{filtered}"), true, case);
+        check(
+            &format!(
+                "{}{filtered}",
+                definitions.replace(">A</text>", ">中</text>")
+            ),
+            false,
+            "covered filter image",
+        );
+        check(
+            &format!(r#"{definitions}<g opacity="0">{filtered}</g>"#),
+            !records_omissions,
+            "transparent filter consumer",
+        );
+        check(
+            &format!("{definitions}{box_path}"),
+            false,
+            "unused filter image",
+        );
+    }
+    for (after_image, consumed, case) in [
+        (r#"<feFlood flood-color="red"/>"#, false, "unused primitive"),
+        (r#"<feOffset/>"#, true, "omitted input"),
+        (
+            r#"<feFlood flood-color="red"/><feBlend in="SourceGraphic" in2="stamp"/>"#,
+            true,
+            "second input",
+        ),
+        (
+            r#"<feFlood flood-color="red"/><feMerge><feMergeNode/><feMergeNode in="stamp"/></feMerge>"#,
+            true,
+            "merge input",
+        ),
+        (
+            r#"<feFlood result="stamp" flood-color="red"/><feOffset in="stamp"/>"#,
+            false,
+            "shadowed result",
+        ),
+        (
+            r#"<feOffset in="stamp" result="stamp"/><feOffset in="stamp"/>"#,
+            true,
+            "result reused by its replacement",
+        ),
+    ] {
+        check(
+            &format!("{}{filtered}", filter(&direct, after_image)),
+            consumed || !records_omissions,
+            case,
+        );
+    }
+    for (paint, missing) in [
+        (r#"fill="none""#, !records_omissions),
+        (r#"fill="white" fill-opacity="0""#, !records_omissions),
+        (r#"fill="none" stroke="white""#, true),
+    ] {
+        check(&text.replace(r#"fill="white""#, paint), missing, paint);
+    }
+}
+
+#[cfg(feature = "png")]
+#[test]
+fn missing_emoji_does_not_block_chinese_export_fallback() {
+    use merman_export::{ExportError, RasterOptions, svg_to_png_with_report};
+
+    let context = NativeFontOptions::default()
+        .with_font_file(font("Cousine-Regular.ttf"))
+        .with_font_file(font("NotoSansSC-subset.ttf"))
+        .load(&OperationControl::new())
+        .unwrap();
+    let options = RasterOptions::default().with_font_context(context.clone());
+    for (label, missing) in [("A🚀中B", 1), ("A中🚀B", 1), ("A中B", 0)] {
+        let (_, report) = svg_to_png_with_report(&export_svg(label), &options).unwrap();
+        let fonts = report.fonts();
+        assert!(fonts.glyph_fallback_used(), "{label}");
+        assert_eq!(fonts.notdef_glyph_count(), missing, "{label}");
+        assert_eq!(fonts.unresolved_glyph_fallback(), missing != 0, "{label}");
+    }
+
+    let strict =
+        RasterOptions::default().with_font_context(context.with_strict_glyph_coverage(true));
+    for label in ["A🚀中B", "A中🚀B"] {
+        assert!(matches!(
+            svg_to_png_with_report(&export_svg(label), &strict),
+            Err(ExportError::NativeFont(
+                NativeFontError::MissingGlyphCoverage
+            ))
+        ));
+    }
+}
+
+#[cfg(feature = "png")]
 #[test]
 fn zero_html_glyphs_do_not_paint_or_poison_strict_native_exports() {
     let context =

@@ -554,7 +554,7 @@ pub fn unsupported_native_html_style(
         #[cfg(feature = "diagram-agentflow")]
         RenderSemanticModel::Agentflow(model) => {
             let config = &parsed.metadata().effective_config;
-            let view = crate::flowchart::FlowchartConfigView::new(config.as_value());
+            let view = crate::flowchart::FlowchartConfigView::new(config);
             let labels = model.render_label_sources();
             let inspect = |label, kind: Option<&str>| {
                 crate::text::unsupported_html_label_style(
@@ -598,7 +598,7 @@ fn unsupported_native_mindmap_html_style(
     config: &merman_model::presentation::PresentationConfig,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
-    if !crate::config::config_effective_html_labels(config.as_value()) {
+    if !crate::config::config_effective_html_labels(config) {
         return Ok(None);
     }
     let work = std::sync::Arc::new(crate::resources::OperationWorkMeter::new_with_control(
@@ -631,7 +631,7 @@ fn unsupported_native_flowchart_html_style(
     swimlane: bool,
     control: &OperationControl,
 ) -> OperationControlResult<Option<String>> {
-    let view = crate::flowchart::FlowchartConfigView::new(config.as_value());
+    let view = crate::flowchart::FlowchartConfigView::new(config);
     let edge_html = view.effective_html_labels();
     let inspect = |label: &str, label_type: Option<&str>| {
         crate::text::unsupported_html_label_style(

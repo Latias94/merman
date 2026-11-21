@@ -2,56 +2,35 @@
 
 use super::render::node::geom::generate_full_sine_wave_points;
 use super::*;
-
-fn union_svg_path_bounds(paths: &[&str]) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
-    let mut bounds: Option<crate::svg::parity::path_bounds::SvgPathBounds> = None;
-    for d in paths {
-        let Some(pb) = crate::svg::parity::path_bounds::svg_path_bounds_from_d(d) else {
-            continue;
-        };
-        bounds = Some(match bounds {
-            Some(mut acc) => {
-                acc.min_x = acc.min_x.min(pb.min_x);
-                acc.min_y = acc.min_y.min(pb.min_y);
-                acc.max_x = acc.max_x.max(pb.max_x);
-                acc.max_y = acc.max_y.max(pb.max_y);
-                acc
-            }
-            None => pb,
-        });
-    }
-    bounds
-}
+use crate::svg::parity::path_bounds::{SvgPathBounds, svg_path_bounds_from_rough_ops};
 
 fn rough_svg_path_bounds(
     randomness: &roughr::core::RoughRandomness,
     path_data: &str,
     work_meter: &crate::resources::OperationWorkMeter,
-) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
-    let (fill_d, stroke_d) =
-        crate::svg::parity::flowchart::render::node::roughjs::roughjs_prepare_paths_for_svg_path(
-            crate::svg::parity::roughjs_common::paths::RoughGeometryTarget::Query,
-            path_data,
-            1.3,
-            "0 0",
-            work_meter,
-            randomness,
-        )?
-        .into_svg_paths(work_meter)?;
-    union_svg_path_bounds(&[fill_d.as_str(), stroke_d.as_str()])
+) -> Option<SvgPathBounds> {
+    crate::svg::parity::flowchart::render::node::roughjs::roughjs_prepare_paths_for_svg_path(
+        crate::svg::parity::roughjs_common::paths::RoughGeometryTarget::Query,
+        path_data,
+        1.3,
+        "0 0",
+        work_meter,
+        randomness,
+    )?
+    .query_bounds()
 }
 
 fn rough_stroke_svg_path_bounds(
     randomness: &roughr::core::RoughRandomness,
     path_data: &str,
     work_meter: &crate::resources::OperationWorkMeter,
-) -> Option<crate::svg::parity::path_bounds::SvgPathBounds> {
-    let stroke_d =
+) -> Option<SvgPathBounds> {
+    let stroke =
         crate::svg::parity::flowchart::render::node::roughjs::roughjs_prepare_stroke_path_for_svg_path(
             crate::svg::parity::roughjs_common::paths::RoughGeometryTarget::Query,
             path_data, 1.3, "0 0", work_meter, randomness,
-        ).map(|opset| crate::svg::parity::roughjs_common::ops_to_svg_path_d(&opset))?;
-    crate::svg::parity::path_bounds::svg_path_bounds_from_d(&stroke_d)
+        )?;
+    svg_path_bounds_from_rough_ops(&stroke)
 }
 
 fn measure_flowchart_layout_node_label(

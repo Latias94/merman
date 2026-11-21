@@ -9,7 +9,8 @@
   ],
   "root_directories": [
     "THIRD_PARTY_LICENSES",
-    "capabilities"
+    "capabilities",
+    "vendor/usvg"
   ],
   "script_files": [
     "scripts/ascii_capability_contract.py",

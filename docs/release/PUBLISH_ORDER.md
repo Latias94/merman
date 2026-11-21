@@ -1,7 +1,7 @@
 # Publish Order
 
 Status: maintained workspace publish order, with explicitly dated historical channel snapshots.
-Last updated: 2026-11-12 (Asia/Shanghai)
+Last updated: 2026-11-21 (Asia/Shanghai)
 
 Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer migrations and [Releasing](RELEASING.md) for current publication and recovery procedures. Snapshot sections below preserve the versions and observations from their stated dates; they are not instructions to repeat those uploads.
 
@@ -10,6 +10,20 @@ Use the [versioned upgrade index](README.md#workspace-upgrades) for consumer mig
 Latest verified maintenance release: `0.9.3` from `release/0.9.x`, covering the workspace Rust crates, CLI/LSP, native C/WASI SDK archives and the Apple XCFramework. After alpha publication, all selected stable Web, Node, Python, Flutter and Android backfills are delivered and independently reconciled below. The Node loader, both transports and all five native members are available at `0.9.3` under `latest`.
 
 The main-line `0.10.0-alpha.2` is published for all selected products, with independently reconciled delivery recorded below. The previous `0.10.0-alpha.1` remains available. The `0.9.x` maintenance source and tags are unchanged.
+
+## 0.11.0 preparation
+
+On 2026-11-21 (Asia/Shanghai), the maintainer selected `0.11.0`. The candidate uses ASCII report schema `4`, Web transport `11`, Node transport `2`, UniFFI API `8`, and geometry-only layout responses by default in the CLI and Rust facade. Local qualification covers the Windows CLI and Windows x64 Node addon, the native Rust API, and installed browser SDKs. [Published v0.10.0 baseline](https://github.com/Latias94/merman/releases/tag/v0.10.0) · [Consumer migration](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+
+The LSP requires the independently prepared Tree-sitter Mermaid `0.3.5` in the Cargo registry before publication. The selected source, intended tag date, and authorized delivery surfaces determine the immutable multi-platform qualification. [Grammar release](TREE_SITTER_MERMAID.md) · [Release preflight](RELEASING.md#release-preflight)
+
+## 0.10.1 candidate evaluation
+
+On 2026-11-21 (Asia/Shanghai), the maintainer selected `0.10.1` for local candidate preparation and comparison with the [published 0.10.0 release](https://github.com/Latias94/merman/releases/tag/v0.10.0). Qualify the Windows CLI, Rust API, Node N-API, and Web SDK on their public render paths. The workspace version projection includes coupled package metadata. Publication scope and tag date await maintainer selection.
+
+Local Windows qualification exercised the CLI archive, the Windows x64 Node package, and all five installed Web packages in Chromium on the main thread and in a Worker. Those observations apply to the superseded evaluation source `0a3a3e8230c585b504895922900c3d13beef6bcb` and its frozen artifacts.
+
+Prepare Tree-sitter Mermaid `0.3.5` through its [independent release owner](TREE_SITTER_MERMAID.md) before publishing the coupled LSP. The Cargo and npm registries still serve `0.3.4` as of 2026-11-21. Reuse `roughr-merman 0.12.6`. The existing [published versions](PREBUILT_PRODUCTS.md#published-versions) remain the installation reference while candidate outputs qualify.
 
 ## 0.10.0 preparation
 

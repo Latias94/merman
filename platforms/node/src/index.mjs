@@ -1,4 +1,4 @@
-import { loadNativeTransport } from "./candidates/native.mjs";
+import { loadInstalledNativeTransport } from "./native-loader.mjs";
 import {
   MermanEngine,
   createNodeEngine as createEngineWithTransport,
@@ -8,8 +8,7 @@ export { MermanEngine };
 
 export function createNodeEngine(options) {
   return createEngineWithTransport(options, {
-    loadTransport: (optionsJson, iconPacksJson) =>
-      loadNativeTransport(optionsJson, {}, iconPacksJson),
+    loadTransport: loadInstalledNativeTransport,
   });
 }
 

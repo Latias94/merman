@@ -134,7 +134,6 @@ pub(crate) fn select_family_parser_source_controlled(
         && let Some(with_comments) = with_comments
     {
         let max_text_size = config
-            .as_value()
             .get("maxTextSize")
             .and_then(Value::as_u64)
             .unwrap_or(50_000);
@@ -2841,7 +2840,7 @@ fn parse_directive_config_value_controlled(
                     rewrite_safe: captured.rewrite_safe,
                 }
             } else {
-                let value = json5::from_str::<Value>(input).ok();
+                let value = crate::source_json::parse_json5_value(input);
                 DirectiveConfigCapture {
                     #[cfg(feature = "editor-facts")]
                     rewrite_safe: value.is_some(),
@@ -2853,7 +2852,7 @@ fn parse_directive_config_value_controlled(
         #[cfg(not(feature = "editor-facts"))]
         {
             DirectiveConfigCapture {
-                value: json5::from_str::<Value>(input).ok(),
+                value: crate::source_json::parse_json5_value(input),
             }
         }
     };
@@ -3056,6 +3055,80 @@ fn yaml_inline_sequence_indicator_count_controlled(
 mod tests {
     use super::*;
     use serde_json::{Map, json};
+
+    #[test]
+    fn directive_json5_decodes_literal_keys_and_keeps_number_and_order_semantics() {
+        let directive = parse_directive_like_upstream(
+            r#"init: {
+                '$serde_json::private::RawValue': 'true',
+                values: [/* JSON5 */ {
+                    '\u0024serde_json::private::Number': '123',
+                    hex: +0x10, fraction: .5, large: 18446744073709551615, nan: NaN,
+                }],
+                theme: 'dark',
+                '$serde_json::private::RawValue': 'false',
+            }"#,
+        )
+        .expect("valid directive")
+        .expect("init directive");
+        let args = directive.args.expect("decoded argument");
+        assert_eq!(
+            args.as_object()
+                .unwrap()
+                .keys()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["$serde_json::private::RawValue", "values", "theme"]
+        );
+        assert_eq!(args["$serde_json::private::RawValue"], "false");
+        let value = &args["values"][0];
+        assert_eq!(value["$serde_json::private::Number"], "123");
+        assert_eq!(value["hex"], 16);
+        assert_eq!(value["fraction"].as_f64(), Some(0.5));
+        assert_eq!(value["large"].as_u64(), Some(u64::MAX));
+        assert!(value["nan"].is_null());
+
+        for raw in ["init: {theme: 'dark'} {}", "init: {theme: 'dark'} /*"] {
+            let directive = parse_directive_like_upstream(raw).unwrap().unwrap();
+            assert!(directive.args.is_none(), "{raw}");
+        }
+    }
+
+    #[cfg(feature = "presentation")]
+    #[test]
+    fn init_literal_key_preserves_theme_selection_and_color_error() {
+        let engine = crate::MermaidEngine::new();
+        let literal = r#""$serde_json::private::RawValue":"blue""#;
+        let color = r#""primaryColor":"COLOR""#;
+        for keys in [[literal, color], [color, literal]] {
+            let source = format!(
+                "%%{{init: {{theme: 'base', themeVariables: {{ {} }}}}}}%%\nflowchart TD\nA-->B",
+                keys.join(", ")
+            );
+            let metadata = engine
+                .parse_metadata_sync(&source.replace("COLOR", "#204080"))
+                .unwrap();
+            assert_eq!(metadata.effective_config.get_str("theme"), Some("base"));
+            assert_eq!(
+                metadata
+                    .effective_config
+                    .get_str("themeVariables.primaryColor"),
+                Some("#204080")
+            );
+
+            let error = engine
+                .parse_metadata_sync(&source.replace("COLOR", "not-a-color"))
+                .unwrap_err();
+            assert!(
+                matches!(
+                    error,
+                    Error::ThemeColor(crate::theme_color::ColorError::UnsupportedFormat { ref input })
+                        if input == "not-a-color"
+                ),
+                "{error}"
+            );
+        }
+    }
 
     #[test]
     fn comments_consume_preceding_blank_lines_but_preserve_following_blank_lines() {

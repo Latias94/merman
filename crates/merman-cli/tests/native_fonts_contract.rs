@@ -1083,7 +1083,11 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     assert_eq!(native["default_font_source"], "none");
     assert_eq!(native["default_system_discovery"], "disabled");
     assert_eq!(native["default_policy_scope"], "mermaid-svg-input");
-    let expected_encoded = if cfg!(feature = "experimental-system-font-query") {
+    let platform_default = cfg!(any(
+        feature = "experimental-system-font-query",
+        all(windows, feature = "windows-platform-font-default")
+    ));
+    let expected_encoded = if platform_default {
         serde_json::json!({
             "measurement": "native",
             "font_source": "platform-managed-system-query",
@@ -1120,7 +1124,7 @@ fn capabilities_disclose_shared_coverage_and_cli_discovery_policy() {
     assert_eq!(native["selected_font_bytes_bounded"], true);
     assert_eq!(
         native["system_resources_bounded"],
-        cfg!(feature = "system-fonts") && !cfg!(feature = "experimental-system-font-query")
+        cfg!(feature = "system-fonts") && !platform_default
     );
     assert_eq!(
         native["explicit_font_sources"],

@@ -29,10 +29,10 @@
     "napi": {
       "transport_feature": "transport-napi",
       "versions": {
-        "napi": "3.15.0",
-        "napi_derive": "3.6.13",
+        "napi": "3.16.1",
+        "napi_derive": "3.7.0",
         "napi_build": "2.6.0",
-        "napi_cli": "3.10.9"
+        "napi_cli": "3.10.12"
       },
       "postinstall_download": false,
       "aggregate_all_targets": false,

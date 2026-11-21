@@ -1646,6 +1646,39 @@ fn developer_short_help_points_to_advanced_controls() {
 }
 
 #[test]
+fn layout_projects_geometry_by_default_and_can_emit_a_snapshot() {
+    let source = "flowchart LR\nsubgraph Group[\"分组\"]\nA --> B\nend\nB -->|out| C";
+    let snapshot = run_with_stdin(&["layout", "--snapshot", "--pretty", "-"], source);
+
+    assert!(snapshot.status.success(), "{:?}", snapshot.stderr);
+    let snapshot: Value = serde_json::from_slice(&snapshot.stdout).unwrap();
+    let expected = merman::model::ManagedJson::from(serde_json::json!({
+        "schema_version": 1,
+        "family_id": "flowchart",
+        "diagram_type": "flowchart-v2",
+        "layout": snapshot["layout"],
+    }));
+    for pretty in [false, true] {
+        let mut args = vec!["layout", "-"];
+        let mut bytes = Vec::new();
+        if pretty {
+            args.push("--pretty");
+            expected.write_json_pretty(&mut bytes).unwrap();
+        } else {
+            expected.write_json(&mut bytes).unwrap();
+        }
+        bytes.push(b'\n');
+        let geometry = run_with_stdin(&args, source);
+        assert!(geometry.status.success(), "{:?}", geometry.stderr);
+        assert_eq!(geometry.stdout, bytes, "pretty={pretty}");
+    }
+    assert!(snapshot["layout"]["FlowchartV2"].is_object());
+    assert_eq!(snapshot["meta"]["diagram_type"], "flowchart-v2");
+    assert!(snapshot["meta"]["effective_config"].is_object());
+    assert!(snapshot["semantic"].is_object());
+}
+
+#[test]
 fn detect_still_handles_frontmatter_and_directives_without_configuration_flags() {
     let source =
         "---\ntitle: Directed\n---\n%%{ init: {\"theme\":\"dark\"} }%%\nflowchart LR\nA-->B\n";
@@ -1675,7 +1708,7 @@ fn compiled_capabilities_match_the_full_test_artifact() {
     let payload: Value =
         serde_json::from_slice(&output.stdout).expect("capabilities should be JSON");
     assert_eq!(payload["schema_version"], 2);
-    assert_eq!(payload["cli_contract_version"], 7);
+    assert_eq!(payload["cli_contract_version"], 8);
     #[cfg(feature = "svg")]
     {
         assert_eq!(payload["theme_presets"]["schema_version"], 1);

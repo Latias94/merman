@@ -18,14 +18,16 @@ pub(crate) fn with_runtime<T>(busy: T, operation: impl FnOnce(&mut Runtime) -> T
 #[allow(unsafe_code)]
 mod exports {
     use super::*;
-    use std::sync::atomic::{AtomicBool, Ordering};
 
-    unsafe extern "C" {
-        fn __wasm_call_ctors();
-    }
-
+    #[cfg(wasi_legacy_initialize)]
     #[unsafe(no_mangle)]
     pub extern "C" fn _initialize() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        unsafe extern "C" {
+            fn __wasm_call_ctors();
+        }
+
         static INITIALIZED: AtomicBool = AtomicBool::new(false);
         if INITIALIZED.swap(true, Ordering::AcqRel) {
             std::process::abort();

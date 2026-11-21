@@ -1,4 +1,5 @@
 use super::FlowEdge;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 
 /// Operation-local identity for one rendered Flowchart edge occurrence.
@@ -54,12 +55,13 @@ impl FlowchartEdgeKey {
 /// Only repeated ids enter the private occurrence namespace, and generated ids avoid every raw id
 /// already present in the same model.
 #[derive(Debug, Clone)]
-pub(crate) struct FlowchartEdgeTransportPlan {
-    ids: HashMap<FlowchartEdgeKey, String>,
+pub(crate) struct FlowchartEdgeTransportPlan<'a> {
+    ids: HashMap<FlowchartEdgeKey, Cow<'a, str>>,
 }
 
-impl FlowchartEdgeTransportPlan {
-    pub(crate) fn for_semantic_edges(edges: &[FlowEdge]) -> Self {
+impl<'a> FlowchartEdgeTransportPlan<'a> {
+    #[cfg(test)]
+    pub(crate) fn for_semantic_edges(edges: &'a [FlowEdge]) -> Self {
         Self::for_keyed_edges(
             edges
                 .iter()
@@ -68,34 +70,31 @@ impl FlowchartEdgeTransportPlan {
         )
     }
 
-    pub(crate) fn for_keyed_edges<'a>(
-        edges: impl IntoIterator<Item = (FlowchartEdgeKey, &'a FlowEdge)>,
+    pub(crate) fn for_keyed_edges(
+        edges: impl Iterator<Item = (FlowchartEdgeKey, &'a FlowEdge)> + Clone,
     ) -> Self {
-        let entries = edges.into_iter().collect::<Vec<_>>();
-        let mut counts = HashMap::<&str, usize>::with_capacity(entries.len());
-        let mut reserved = HashSet::<&str>::with_capacity(entries.len());
-        for (_, edge) in &entries {
+        let edge_count = edges.size_hint().0;
+        let mut counts = HashMap::<&str, usize>::with_capacity(edge_count);
+        for (_, edge) in edges.clone() {
             *counts.entry(edge.id.as_str()).or_default() += 1;
-            reserved.insert(edge.id.as_str());
         }
 
-        let mut ids = HashMap::with_capacity(entries.len());
-        let mut used = HashSet::<String>::with_capacity(entries.len());
-        for (key, edge) in entries {
+        let mut ids = HashMap::with_capacity(edge_count);
+        let mut generated = HashSet::new();
+        for (key, edge) in edges {
             let id = if counts.get(edge.id.as_str()) == Some(&1) {
-                edge.id.clone()
+                Cow::Borrowed(edge.id.as_str())
             } else {
                 let base = key.adapter_id();
                 let mut candidate = base.clone();
                 let mut suffix = 0usize;
-                while reserved.contains(candidate.as_str()) || used.contains(&candidate) {
+                while counts.contains_key(candidate.as_str()) || generated.contains(&candidate) {
                     candidate = format!("{base}_{suffix:020}");
                     suffix = suffix.saturating_add(1);
                 }
-                candidate
+                generated.insert(candidate.clone());
+                Cow::Owned(candidate)
             };
-            let inserted = used.insert(id.clone());
-            debug_assert!(inserted, "transport ids must be unique");
             ids.insert(key, id);
         }
 
@@ -103,7 +102,7 @@ impl FlowchartEdgeTransportPlan {
     }
 
     pub(crate) fn id(&self, key: FlowchartEdgeKey) -> Option<&str> {
-        self.ids.get(&key).map(String::as_str)
+        self.ids.get(&key).map(Cow::as_ref)
     }
 }
 
@@ -399,17 +398,21 @@ mod tests {
             semantic_edge("duplicate"),
             semantic_edge("duplicate"),
             semantic_edge("__merman_flowchart_edge_00000000000000000000"),
-            semantic_edge("unique"),
+            semantic_edge("__merman_flowchart_edge_00000000000000000000_00000000000000000000"),
         ];
         let plan = FlowchartEdgeTransportPlan::for_semantic_edges(&edges);
         let ids = (0..edges.len())
             .map(|index| plan.id(FlowchartEdgeKey::new(index)).expect("transport id"))
             .collect::<Vec<_>>();
 
-        assert_eq!(ids[2], edges[2].id);
-        assert_eq!(ids[3], edges[3].id);
+        assert_eq!(
+            ids[0],
+            "__merman_flowchart_edge_00000000000000000000_00000000000000000001"
+        );
+        assert_eq!(ids[1], "__merman_flowchart_edge_00000000000000000001");
+        assert!(std::ptr::eq(ids[2], edges[2].id.as_str()));
+        assert!(std::ptr::eq(ids[3], edges[3].id.as_str()));
         assert_eq!(ids.iter().copied().collect::<HashSet<_>>().len(), ids.len());
-        assert_ne!(ids[0], edges[2].id);
-        assert_ne!(ids[1], edges[2].id);
+        assert!(plan.id(FlowchartEdgeKey::new(edges.len())).is_none());
     }
 }

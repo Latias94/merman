@@ -2,6 +2,10 @@
 
 Use this index to choose an upgrade path by the version you have installed. Stable `0.9.3` retains Mermaid `12.1.0`, the Presentation API, and Options JSON schema `2`. Published prerelease `0.10.0-alpha.1` retains Mermaid `12.2.0` and Options JSON schema `3`. Use the [host installation guide](PREBUILT_PRODUCTS.md) for independently delivered package versions and channels. Typst, Tree-sitter, Roughr, and the VS Code extension use independent version numbers.
 
+## Merman 0.11.0
+
+Upgrade from `0.10.0` by updating ASCII report readers to schema `4` and replacing Web, Node, and UniFFI wrappers together with their runtime artifacts. To keep receiving the full layout snapshot, use `merman-cli layout --snapshot` or Rust's `RenderRequest::layout_snapshot`. Review Windows CLI image sizes when you adopt the official archive, which uses platform system font selection. [Changelog](../../CHANGELOG.md) · [Migration guide](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+
 ## Merman 0.10.0
 
 The [0.10.0 changelog](../../CHANGELOG.md#0100---2026-11-12) is cumulative from stable `0.9.3`; published alpha.1 and alpha.2 sections remain historical snapshots. Use the [consolidated 0.9.3 to 0.10.0 upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md) for the final contracts instead of applying superseded alpha APIs in sequence. Alpha users can start with the guide's [remaining actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha).
@@ -68,6 +72,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
+| `0.10.0` | `0.11.0` | [Layout, ASCII, and binding migrations](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts) |
 | `0.9.x` | `0.10.0` | [Consolidated stable upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md): final Options, Rust, model/layout, font and resource contracts |
 | `0.10.0-alpha.1` or `0.10.0-alpha.2` | `0.10.0` | [Remaining alpha actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha): paired appearances, current discovery, numeric models and Sequence drawing geometry |
 | `0.10.0-alpha.1` | `0.10.0-alpha.2` | [Upgrade notes](../../CHANGELOG.md#upgrade-notes), [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) and [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up); review layout snapshots and build matching wrappers/artifacts from one source revision |

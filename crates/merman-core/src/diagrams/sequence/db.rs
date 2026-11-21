@@ -1,4 +1,4 @@
-use crate::{OperationControl, OperationControlResult};
+use crate::{OperationControl, OperationControlResult, source_json::parse_json_object};
 use merman_model::text::is_ecmascript_whitespace;
 use rustc_hash::FxHashMap;
 use serde_json::{Value, json};
@@ -588,20 +588,14 @@ impl SequenceDb {
     fn add_links(&mut self, actor: &str, raw_text: &str) {
         let text = self.parse_message(raw_text);
         let s = unescape_entities(&text.text);
-        let Ok(v) = serde_json::from_str::<Value>(&s) else {
-            return;
-        };
-        let Some(obj) = v.as_object() else {
+        let Some(links) = parse_json_object(&s) else {
             return;
         };
         let Some(a) = self.actors.get_mut(actor) else {
             return;
         };
-        for (k, v) in obj {
-            if let Some(url) = v.as_str() {
-                a.links.insert(k.clone(), Value::String(url.to_string()));
-            }
-        }
+        a.links
+            .extend(links.into_iter().filter(|(_, value)| value.is_string()));
     }
 
     fn add_link(&mut self, actor: &str, raw_text: &str) {
@@ -631,18 +625,13 @@ impl SequenceDb {
     fn add_properties(&mut self, actor: &str, raw_text: &str) {
         let text = self.parse_message(raw_text);
         let s = unescape_entities(&text.text);
-        let Ok(v) = serde_json::from_str::<Value>(&s) else {
-            return;
-        };
-        let Some(obj) = v.as_object() else {
+        let Some(properties) = parse_json_object(&s) else {
             return;
         };
         let Some(a) = self.actors.get_mut(actor) else {
             return;
         };
-        for (k, v) in obj {
-            a.properties.insert(k.clone(), v.clone());
-        }
+        a.properties.extend(properties);
     }
 
     pub(super) fn into_model(mut self) -> SequenceDiagramModel {

@@ -2,6 +2,7 @@ use super::config::SwimlaneConfig;
 use super::deterministic_identifier_cmp;
 use super::working::{WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::model::SwimlaneDirection;
+use indexmap::map::Entry;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 
@@ -18,7 +19,64 @@ struct CycleResult {
 struct Layering {
     layers: Vec<Vec<String>>,
     rank_of: HashMap<String, usize>,
-    dummy: HashSet<String>,
+}
+
+struct ProperLayering {
+    layers: Vec<Vec<String>>,
+    edges: Vec<ProperEdge>,
+    placeholder_ids: PlaceholderIds,
+}
+
+#[derive(Default)]
+struct PlaceholderIds {
+    next_storage_id: usize,
+    order_keys: HashMap<String, String>,
+}
+
+impl PlaceholderIds {
+    fn insert(&mut self, layout: &mut WorkingLayout, rank: usize) -> String {
+        // Keep the legacy name for ordering. The storage counter can skip occupied names
+        // without changing the order keys of this or any later placeholder.
+        let order_key = format!("placeholder-{}", self.order_keys.len());
+        loop {
+            let id = format!("__merman_swimlane_placeholder_{}", self.next_storage_id);
+            self.next_storage_id += 1;
+            if let Entry::Vacant(entry) = layout.nodes.entry(id) {
+                let id = entry.key().clone();
+                entry.insert(WorkingNode {
+                    id: id.clone(),
+                    label: String::new(),
+                    label_type: "text".to_string(),
+                    shape: "rect".to_string(),
+                    kind: WorkingNodeKind::Dummy,
+                    producer_lane_role: None,
+                    parent_id: None,
+                    top_lane_id: None,
+                    requested_dir: None,
+                    padding: 0.0,
+                    x: 0.0,
+                    y: 0.0,
+                    width: 0.0,
+                    height: 0.0,
+                    label_width: 0.0,
+                    label_height: 0.0,
+                    layer: rank,
+                    order: 0,
+                    content_top: None,
+                    title_rect: None,
+                });
+                self.order_keys.insert(id.clone(), order_key);
+                return id;
+            }
+        }
+    }
+
+    fn compare(&self, left: &str, right: &str) -> Ordering {
+        let left_key = self.order_keys.get(left).map_or(left, String::as_str);
+        let right_key = self.order_keys.get(right).map_or(right, String::as_str);
+        deterministic_identifier_cmp(left_key, right_key)
+            .then_with(|| deterministic_identifier_cmp(left, right))
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -475,11 +533,7 @@ fn lane_aware_layering(
     }
 
     let layers = build_layers(layout, &order, &rank_of);
-    Layering {
-        layers,
-        rank_of,
-        dummy: HashSet::new(),
-    }
+    Layering { layers, rank_of }
 }
 
 fn gravity_layering(
@@ -598,11 +652,7 @@ fn gravity_layering(
     }
 
     let layers = build_layers(layout, &order, &rank_of);
-    Layering {
-        layers,
-        rank_of,
-        dummy: HashSet::new(),
-    }
+    Layering { layers, rank_of }
 }
 
 fn rank_crossing_score(
@@ -697,7 +747,7 @@ fn make_proper_layering(
     layout: &mut WorkingLayout,
     mut layering: Layering,
     edges: &[WorkingEdge],
-) -> (Layering, Vec<ProperEdge>) {
+) -> ProperLayering {
     let mut sorted = edges.to_vec();
     sorted.sort_by(|a, b| {
         deterministic_identifier_cmp(&a.id, &b.id)
@@ -705,7 +755,7 @@ fn make_proper_layering(
             .then_with(|| deterministic_identifier_cmp(&a.to, &b.to))
     });
     let mut proper_edges = Vec::new();
-    let mut dummy_sequence = 0;
+    let mut placeholder_ids = PlaceholderIds::default();
 
     for edge in sorted {
         let source_rank = layering.rank_of.get(&edge.from).copied().unwrap_or(0);
@@ -725,39 +775,11 @@ fn make_proper_layering(
         let ref_from = edge.from.clone();
         let ref_to = edge.to.clone();
         for rank in (source_rank + 1)..target_rank {
-            let id = format!("placeholder-{dummy_sequence}");
-            dummy_sequence += 1;
-            layout.nodes.insert(
-                id.clone(),
-                WorkingNode {
-                    id: id.clone(),
-                    label: String::new(),
-                    label_type: "text".to_string(),
-                    shape: "rect".to_string(),
-                    kind: WorkingNodeKind::Dummy,
-                    producer_lane_role: None,
-                    parent_id: None,
-                    top_lane_id: None,
-                    requested_dir: None,
-                    padding: 0.0,
-                    x: 0.0,
-                    y: 0.0,
-                    width: 0.0,
-                    height: 0.0,
-                    label_width: 0.0,
-                    label_height: 0.0,
-                    layer: rank,
-                    order: 0,
-                    content_top: None,
-                    title_rect: None,
-                },
-            );
+            let id = placeholder_ids.insert(layout, rank);
             while layering.layers.len() <= rank {
                 layering.layers.push(Vec::new());
             }
             layering.layers[rank].push(id.clone());
-            layering.rank_of.insert(id.clone(), rank);
-            layering.dummy.insert(id.clone());
             proper_edges.push(ProperEdge {
                 chain_id: edge.id.clone(),
                 from: previous,
@@ -776,7 +798,11 @@ fn make_proper_layering(
         });
     }
 
-    (layering, proper_edges)
+    ProperLayering {
+        layers: layering.layers,
+        edges: proper_edges,
+        placeholder_ids,
+    }
 }
 
 fn median(mut values: Vec<usize>) -> f64 {
@@ -836,6 +862,7 @@ fn reorder_layer(
     fixed: &[String],
     target: &[String],
     edges: &[ProperEdge],
+    placeholder_ids: &PlaceholderIds,
     downward: bool,
 ) -> Vec<String> {
     let fixed_index: HashMap<&str, usize> = fixed
@@ -882,7 +909,7 @@ fn reorder_layer(
                         .get(a.as_str())
                         .cmp(&current_index.get(b.as_str()))
                 })
-                .then_with(|| deterministic_identifier_cmp(a, b))
+                .then_with(|| placeholder_ids.compare(a, b))
         });
     };
 
@@ -921,7 +948,7 @@ fn reorder_layer(
         a.first()
             .zip(b.first())
             .map_or(Ordering::Equal, |(left, right)| {
-                deterministic_identifier_cmp(left, right)
+                placeholder_ids.compare(left, right)
             })
     });
     for mut bucket in remaining {
@@ -974,14 +1001,22 @@ fn transpose_improve(
     }
 }
 
-fn order_layers(
-    layout: &WorkingLayout,
-    mut layers: Vec<Vec<String>>,
-    edges: &[ProperEdge],
-) -> Vec<Vec<String>> {
+fn order_layers(layout: &WorkingLayout, layering: &mut ProperLayering) {
+    let ProperLayering {
+        layers,
+        edges,
+        placeholder_ids,
+    } = layering;
     for _ in 0..3 {
         for index in 1..layers.len() {
-            let reordered = reorder_layer(layout, &layers[index - 1], &layers[index], edges, true);
+            let reordered = reorder_layer(
+                layout,
+                &layers[index - 1],
+                &layers[index],
+                edges,
+                placeholder_ids,
+                true,
+            );
             layers[index] = reordered;
             let fixed = layers[index - 1].clone();
             let other = layers.get(index + 1).cloned();
@@ -995,7 +1030,14 @@ fn order_layers(
             );
         }
         for index in (0..layers.len().saturating_sub(1)).rev() {
-            let reordered = reorder_layer(layout, &layers[index + 1], &layers[index], edges, false);
+            let reordered = reorder_layer(
+                layout,
+                &layers[index + 1],
+                &layers[index],
+                edges,
+                placeholder_ids,
+                false,
+            );
             layers[index] = reordered;
             let fixed = layers[index + 1].clone();
             let other = index
@@ -1012,7 +1054,6 @@ fn order_layers(
             );
         }
     }
-    layers
 }
 
 fn assign_coordinates(
@@ -1193,9 +1234,9 @@ pub(super) fn run(layout: &mut WorkingLayout, config: SwimlaneConfig) -> HashSet
     } else {
         gravity_layering(layout, &cycle_result.edges, config)
     };
-    let (proper, proper_edges) = make_proper_layering(layout, layering, &cycle_result.edges);
-    let ordered = order_layers(layout, proper.layers, &proper_edges);
-    assign_coordinates(layout, &ordered, &proper_edges, config);
+    let mut proper = make_proper_layering(layout, layering, &cycle_result.edges);
+    order_layers(layout, &mut proper);
+    assign_coordinates(layout, &proper.layers, &proper.edges, config);
     cycle_result.reversed_logical_ids
 }
 

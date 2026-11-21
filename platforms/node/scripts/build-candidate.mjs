@@ -353,7 +353,7 @@ export function probeCandidateRuntime(stage, recipe) {
     const expectedRuntime = resolveCandidateRuntimeContract();
     if (
       catalog.schema_version !== 1 ||
-      catalog.transport_api_version !== 1 ||
+      catalog.transport_api_version !== NODE_WIRE_CONTRACT.transport_api_version ||
       catalog.package_version !== packageSurface.version ||
       stableJson(capabilityIds) !== stableJson(expectedRuntime.capabilityIds) ||
       stableJson(outputIds) !== stableJson(expectedRuntime.outputIds) ||
@@ -410,12 +410,13 @@ export function probeCandidateRuntime(stage, recipe) {
     ) {
       throw new Error(`${recipe.candidate} runtime SVG capability-plan payload is invalid.`);
     }
-    const success = parseWireResponse(engine.executeSync(JSON.stringify({
+    const svgRequest = {
       operation_id: "svg",
       source,
       uri: null,
       options_json: JSON.stringify({ resources: { limits: { max_source_bytes: 4096 } } }),
-    })));
+    };
+    const success = parseWireResponse(engine.executeSync(JSON.stringify(svgRequest)));
     if (
       success.ok !== true ||
       success.result?.operation_id !== "svg" ||
@@ -423,6 +424,19 @@ export function probeCandidateRuntime(stage, recipe) {
       typeof success.result?.data !== "string"
     ) {
       throw new Error(`${recipe.candidate} runtime SVG probe failed.`);
+    }
+    if (recipe.candidate === "napi") {
+      if (
+        typeof engine.executeSvg !== "function" ||
+        typeof engine.executeSvgSync !== "function" ||
+        engine.executeSvgSync(svgRequest.source, svgRequest.options_json) !== success.result.data
+      ) {
+        throw new Error("Native candidate direct SVG must match the wire response.");
+      }
+      const deadline = engine.executeSvgSync(svgRequest.source, svgRequest.options_json, 0);
+      if (parseWireResponse(deadline?.errorJson).error?.details?.cancellation?.reason !== "deadline_exceeded") {
+        throw new Error("Native candidate direct SVG must preserve deadline errors.");
+      }
     }
     const svgEvidence = svgTransportEvidence(success.result.data);
     const math = parseWireResponse(engine.executeSync(JSON.stringify({
@@ -636,15 +650,8 @@ export function collectLocalInputEntries(metadata) {
     path.join(nodeRoot, "scripts", "replace-directory.mjs"),
     path.join(nodeRoot, "scripts", "stable-json.mjs"),
     path.join(nodeRoot, "scripts", "theme-authoring-smoke.mjs"),
-    path.join(nodeRoot, "src", "bounded-executor.mjs"),
-    path.join(nodeRoot, "src", "engine.mjs"),
-    path.join(nodeRoot, "src", "errors.mjs"),
-    path.join(nodeRoot, "src", "generated", "binding-contract.mjs"),
-    path.join(nodeRoot, "src", "generated", "capability-surface.mjs"),
-    path.join(nodeRoot, "src", "generated", "node-wire-contract.json"),
-    path.join(nodeRoot, "src", "native-loader.mjs"),
-    path.join(nodeRoot, "src", "transport-contract.mjs"),
   ]);
+  for (const file of walkFiles(path.join(nodeRoot, "src"))) files.add(file);
   for (const root of roots) {
     for (const file of walkFiles(root, { skipBuildOutputs: true })) files.add(file);
   }
@@ -1065,7 +1072,7 @@ function run(command, args, environment = {}) {
     env: {
       ...process.env,
       CARGO_BUILD_JOBS: "1",
-      CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
+      CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR || path.join(repositoryRoot, "target"),
       ...environment,
     },
     stdio: "inherit",

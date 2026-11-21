@@ -33,7 +33,7 @@ else:
 ROOT = Path(__file__).resolve().parents[1]
 PROFILE_DESCRIPTOR = Path("capabilities/artifact-profiles-v2.json")
 CLI_RELEASE_PROFILE = "cli-release"
-CLI_CONTRACT_VERSION = 7
+CLI_CONTRACT_VERSION = 8
 CAPABILITIES_SCHEMA_VERSION = 2
 COMMANDS = (
     "batch",
@@ -142,12 +142,32 @@ def release_capabilities_subcontract(
     surface: dict[str, object],
     *,
     capability_ids: set[str],
+    cargo_features: set[str],
+    windows: bool = False,
 ) -> dict[str, object]:
     """Project the release metadata shared by archive and installation checks.
 
-    SVG defaults stay deterministic; encoded Mermaid output requires bounded
-    system discovery before layout. Experimental platform queries are excluded.
+    SVG defaults stay deterministic. Native encoded output uses the artifact's
+    default provider for the target platform.
     """
+    platform_default = "experimental-system-font-query" in cargo_features or (
+        windows and "windows-platform-font-default" in cargo_features
+    )
+    platform_compiled = bool(cargo_features & {
+        "experimental-system-font-query",
+        "platform-system-font-query",
+        "windows-platform-font-default",
+    })
+    discovery = "platform-initialization-then-on-demand-families"
+    platform_options = {}
+    if platform_compiled:
+        platform_options["platform_system_query"] = {
+            "cli_option": "--font-system platform",
+            "system_discovery": discovery,
+            "metadata_resources_bounded": False,
+            "context_identity": "policy-and-initial-font-bytes",
+            "system_fallback_values": ["on", "bounded", "platform"],
+        }
     capabilities = [
         {
             "id": capability["id"],
@@ -173,15 +193,21 @@ def release_capabilities_subcontract(
             "default_system_discovery": "disabled",
             "encoded_output_defaults": {
                 "measurement": "native",
-                "font_source": "bounded-system-discovery",
-                "system_discovery": "before-layout",
+                "font_source": (
+                    "platform-managed-system-query" if platform_default else "bounded-system-discovery"
+                ),
+                "system_discovery": discovery if platform_default else "before-layout",
             },
-            "system_resources_bounded": True,
+            "system_resources_bounded": not platform_default,
+            **platform_options,
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (
                 "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
             ),
-            "explicit_font_sources": "closed-set-unless-font-system-on",
+            "explicit_font_sources": (
+                "closed-set-unless-system-fallback-requested"
+                if platform_compiled else "closed-set-unless-font-system-on"
+            ),
             "measurement_operations": [
                 "measure",
                 "computed-length",
@@ -566,7 +592,9 @@ def _verify_capabilities(
     )
     try:
         expected_subcontract = release_capabilities_subcontract(
-            surface, capability_ids=expected_capabilities
+            surface,
+            capability_ids=expected_capabilities,
+            cargo_features=_string_set(profile["cargo"]["features"], "cli-release Cargo features"),
         )
     except (KeyError, TypeError) as error:
         raise CliInstallationError("release capability surface is incomplete") from error

@@ -158,7 +158,7 @@ impl FlowchartTextPaintPlan {
                         node_config_owned
                     }
                     FlowchartTextPaintChannel::Cluster => {
-                        super::FlowchartCompatibilityBinding::title_color_source(config.as_value())
+                        super::FlowchartCompatibilityBinding::title_color_source(config)
                             .0
                             .is_some_and(|path| config.config_paint_overrides_typed_default(path))
                     }

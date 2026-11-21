@@ -236,7 +236,7 @@ pub(in super::super) fn render_flowchart_shape(
             super::render_stadium(out, ctx, common, label, details);
         }
         FlowchartShape::Subroutine => {
-            let receipt = super::render_subroutine(out, common);
+            let receipt = super::render_subroutine(out, common, details);
             return Ok(FlowchartNodeShapeRenderOutcome::new(false, receipt));
         }
         FlowchartShape::TaggedDocument => {

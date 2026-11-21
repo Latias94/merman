@@ -138,7 +138,7 @@ impl FlowchartBaseTypographyPlan {
         theme: Option<&ResolvedDiagramTheme>,
         effective_config: &PresentationConfig,
     ) -> Self {
-        let config = FlowchartConfigView::new(effective_config.as_value());
+        let config = FlowchartConfigView::new(effective_config);
         let configured_font_family = config
             .font_family_source(Some(effective_config))
             .map_or_else(|| config.font_family(), |(font, _)| font);
@@ -263,7 +263,7 @@ impl FlowchartBaseTypographyPlan {
 
     pub(crate) fn layout_settings(
         &self,
-        effective_config: &serde_json::Value,
+        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     ) -> FlowchartLayoutSettings {
         let config = FlowchartConfigView::new(effective_config);
         let mut settings = config.layout_settings();
@@ -276,7 +276,7 @@ impl FlowchartBaseTypographyPlan {
 
     pub(crate) fn render_styles(
         &self,
-        effective_config: &serde_json::Value,
+        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     ) -> FlowchartBaseTypographyStyles {
         let config = FlowchartConfigView::new(effective_config);
         let mut text_style =

@@ -254,7 +254,8 @@ def _catalog(sidecar: dict, *, profile, target, commit, version, expected, binar
 
 def _system_libraries(target):
     if "windows" in target:
-        return ["advapi32", "bcrypt", "kernel32", "ntdll", "userenv", "ws2_32"]
+        # Rust 1.100 links WaitOnAddress and WakeByAddress from synchronization.lib.
+        return ["advapi32", "bcrypt", "kernel32", "ntdll", "synchronization", "userenv", "ws2_32"]
     if "apple" in target:
         return ["-framework CoreFoundation", "-framework Security", "-framework SystemConfiguration", "c++"]
     return ["dl", "pthread", "m", "rt", "util"]

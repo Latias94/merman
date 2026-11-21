@@ -352,7 +352,7 @@ jobs:
 
       - name: Setup Dart with pub.dev OIDC credentials
         if: ${{ steps.send.outputs.upload == 'true' }}
-        uses: dart-lang/setup-dart@v1.8.1
+        uses: dart-lang/setup-dart@v1.8.2
 
       - name: Publish to pub.dev
         if: ${{ steps.send.outputs.upload == 'true' }}

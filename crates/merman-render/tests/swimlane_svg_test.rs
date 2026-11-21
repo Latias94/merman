@@ -1,9 +1,9 @@
 use merman_core::{MermaidEngine, ParseOptions};
-use merman_render::LayoutOptions;
 use merman_render::environment::RenderEnvironment;
 use merman_render::family;
 use merman_render::model::{SwimlaneDirection, SwimlaneLayout};
 use merman_render::svg::{SvgDebugOptions, SvgRenderOptions};
+use merman_render::{Error, LayoutOptions, RenderResourcePolicy, ResourceLimitId};
 
 const NESTED_MIXED: &str =
     include_str!("../../../fixtures/swimlane/local_nested_mixed_lane_security.mmd");
@@ -11,33 +11,273 @@ const NESTED_MIXED_UPSTREAM_SVG: &str =
     include_str!("../../../fixtures/upstream-svgs/swimlane/local_nested_mixed_lane_security.svg");
 
 fn render_swimlane_with_layout(source: &str, diagram_id: &str) -> (String, SwimlaneLayout) {
+    let (svg, layout, _) =
+        try_render_swimlane_with_layout(source, diagram_id, RenderResourcePolicy::interactive())
+            .unwrap();
+    (svg, layout)
+}
+
+fn try_render_swimlane_with_layout(
+    source: &str,
+    diagram_id: &str,
+    policy: RenderResourcePolicy,
+) -> merman_render::Result<(String, SwimlaneLayout, usize)> {
     let parsed = MermaidEngine::new()
         .parse_diagram_for_render_model_sync(source, ParseOptions::strict())
         .expect("parse swimlane")
         .expect("detect swimlane")
         .into_presentation();
-    let session = RenderEnvironment::deterministic().begin_session().unwrap();
-    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session).unwrap();
-    let layout = serde_json::from_value(
-        artifact.layout_json().unwrap()["layout"]["SwimlaneDiagram"].clone(),
-    )
-    .unwrap();
-    let svg = artifact
-        .render_svg(
-            &SvgRenderOptions {
-                diagram_id: Some(diagram_id.to_string()),
-                ..Default::default()
-            },
-            &SvgDebugOptions::default(),
-        )
-        .unwrap()
-        .svg()
-        .to_string();
-    (svg, layout)
+    let session = RenderEnvironment::deterministic()
+        .with_resource_policy(policy)
+        .begin_session()
+        .unwrap();
+    let artifact = family::prepare(&parsed, &LayoutOptions::default(), session)?;
+    let layout =
+        serde_json::from_value(artifact.layout_json()?["layout"]["SwimlaneDiagram"].clone())
+            .unwrap();
+    let svg = artifact.render_svg(
+        &SvgRenderOptions {
+            diagram_id: Some(diagram_id.to_string()),
+            ..Default::default()
+        },
+        &SvgDebugOptions::default(),
+    )?;
+    let (svg, report) = svg.into_completion().into_output_and_report();
+    Ok((svg, layout, report.session_report().layout_work_units()))
 }
 
 fn render_swimlane(source: &str, diagram_id: &str) -> String {
     render_swimlane_with_layout(source, diagram_id).0
+}
+
+#[test]
+fn long_edge_placeholders_preserve_authored_nodes_and_routes() {
+    let diagram_id = "long-edge-placeholder";
+    let source = |middle| format!("swimlane-beta TB\n  A --> {middle}[Review] --> C\n  A --> C\n");
+    let control_svg = render_swimlane(&source("checkpoint"), diagram_id);
+    let control = roxmltree::Document::parse(&control_svg).unwrap();
+
+    for middle in ["placeholder-0", "__merman_swimlane_placeholder_0"] {
+        let (svg, layout) = render_swimlane_with_layout(&source(middle), diagram_id);
+        let document = roxmltree::Document::parse(&svg).unwrap();
+        assert_eq!(
+            layout
+                .nodes
+                .iter()
+                .map(|node| node.id.as_str())
+                .collect::<Vec<_>>(),
+            ["A", middle, "C"]
+        );
+        assert_eq!(
+            text_content(node_element(&document, diagram_id, middle)),
+            "Review"
+        );
+
+        let routes = [
+            (("A", middle), "L_A_checkpoint_0"),
+            ((middle, "C"), "L_checkpoint_C_0"),
+            (("A", "C"), "L_A_C_0"),
+        ];
+        assert_eq!(layout.edges.len(), routes.len());
+        for (edge, ((from, to), control_id)) in layout.edges.iter().zip(routes) {
+            assert_eq!((edge.from.as_str(), edge.to.as_str()), (from, to));
+            assert_eq!(edge.id, format!("L_{from}_{to}_0"));
+            assert!(edge.points.len() >= 2, "missing route for {}", edge.id);
+            let path = semantic_element(&document, &edge.id, "edge");
+            let control_path = semantic_element(&control, control_id, "edge");
+            assert_eq!(
+                path.attribute("d").unwrap(),
+                control_path.attribute("d").unwrap()
+            );
+        }
+    }
+}
+
+#[test]
+fn collapsed_groups_keep_parallel_boundary_routes_and_their_authored_labels() {
+    let source = "swimlane-beta TB
+subgraph G[Team]
+A --> B
+end
+G@{ view: collapsed }
+B next@-->|Ship| X
+A retry@-->|Retry| X";
+    let (svg, layout) = render_swimlane_with_layout(source, "collapsed");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(
+        layout
+            .nodes
+            .iter()
+            .filter(|node| !node.is_edge_label)
+            .map(|node| (node.id.as_str(), node.shape.as_str()))
+            .collect::<Vec<_>>(),
+        [("G", "collapsedGroup"), ("X", "squareRect")]
+    );
+    assert_eq!(layout.edges.len(), 2);
+    assert!(layout.lanes.iter().all(|lane| lane.id != "G"));
+    let collapsed = semantic_element(&document, "G", "node");
+    assert!(has_class(collapsed, "node"));
+    assert_eq!(text_content(collapsed), "Team");
+    assert!(
+        collapsed
+            .children()
+            .any(|node| has_class(node, "collapsed-group"))
+    );
+    for (edge, (id, label)) in layout
+        .edges
+        .iter()
+        .zip([("next", "Ship"), ("retry", "Retry")])
+    {
+        assert_eq!(
+            (edge.id.as_str(), edge.from.as_str(), edge.to.as_str()),
+            (id, "G", "X")
+        );
+        assert!(edge.points.len() >= 2);
+        let label_node = layout
+            .nodes
+            .iter()
+            .find(|node| {
+                node.is_edge_label && Some(node.id.as_str()) == edge.label_node_id.as_deref()
+            })
+            .expect("edge owns its measured label node");
+        assert_eq!(label_node.label, label);
+        assert!(
+            !semantic_element(&document, id, "edge")
+                .attribute("d")
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            text_content(semantic_element(&document, id, "edge-label")),
+            label
+        );
+    }
+}
+
+fn swimlane_work_limit(max: usize) -> RenderResourcePolicy {
+    RenderResourcePolicy::interactive()
+        .with_limit(ResourceLimitId::MaxLayoutWorkUnits, max)
+        .unwrap()
+}
+
+#[test]
+fn collapsed_swimlane_charges_hidden_edges_linearly() {
+    const HIDDEN_EDGES: usize = 32;
+    let source = |hidden_edges| {
+        let internal = "A --> B\n".repeat(hidden_edges);
+        format!(
+            "swimlane-beta TB\nsubgraph G[Team]\nA\nB\n{internal}end\nG@{{ view: collapsed }}\nB ship@-->|Ship| X\n"
+        )
+    };
+    let policy = swimlane_work_limit(1_000);
+    let (_, control, control_work) =
+        try_render_swimlane_with_layout(&source(0), "review", policy).unwrap();
+    let (svg, layout, work) =
+        try_render_swimlane_with_layout(&source(HIDDEN_EDGES), "review", policy)
+            .expect("one visible route fits the work budget");
+
+    assert_eq!(work, control_work + HIDDEN_EDGES * 5);
+    assert_eq!(
+        serde_json::to_value(&layout).unwrap(),
+        serde_json::to_value(&control).unwrap()
+    );
+    assert_eq!(layout.edges.len(), 1);
+    let edge = &layout.edges[0];
+    assert_eq!(
+        (edge.id.as_str(), edge.from.as_str(), edge.to.as_str()),
+        ("ship", "G", "X")
+    );
+    assert!(edge.points.len() >= 2);
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(
+        text_content(semantic_element(&document, "ship", "edge-label")),
+        "Ship"
+    );
+}
+
+#[test]
+fn uncollapsed_swimlane_keeps_its_layout_work_boundary() {
+    let source = "swimlane-beta TB
+subgraph G[Team]
+A --> B
+end
+B next@-->|Ship| X
+A retry@-->|Retry| X
+";
+    let (_, layout, work) =
+        try_render_swimlane_with_layout(source, "review", swimlane_work_limit(222)).unwrap();
+    assert_eq!(layout.edges.len(), 3);
+    assert_eq!(work, 222);
+
+    let error = try_render_swimlane_with_layout(source, "review", swimlane_work_limit(221))
+        .expect_err("the budget below the required work must fail");
+    let Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected a layout work ceiling, got {error}");
+    };
+    assert_eq!(limit.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+    assert_eq!((limit.actual, limit.max), (222, 221));
+}
+
+#[test]
+fn dense_visible_swimlane_exceeds_the_route_pair_budget() {
+    use std::fmt::Write as _;
+
+    let mut source = String::from("swimlane-beta TB\n");
+    for from in 0..6 {
+        for to in 0..6 {
+            writeln!(source, "A{from} --> B{to}").unwrap();
+        }
+    }
+    let error = try_render_swimlane_with_layout(&source, "review", swimlane_work_limit(1_000))
+        .expect_err("36 visible routes exceed the work budget");
+    let Error::ResourceLimitExceeded(limit) = error else {
+        panic!("expected a layout work ceiling, got {error}");
+    };
+    assert_eq!(limit.limit, ResourceLimitId::MaxLayoutWorkUnits.as_str());
+    assert_eq!(limit.max, 1_000);
+    // The 12 nodes and 36 edges contribute 228 linear units and twice 630 pair units.
+    assert!(limit.actual >= 1_488);
+}
+
+#[test]
+fn collapsed_groups_skip_hidden_shapes_and_math_and_keep_authored_styles() {
+    let source = r#"swimlane-beta TB
+subgraph G[Team]
+subgraph H["$$hiddenTitle$$"]
+A(-Legacy-) -->|$$hiddenEdge$$| B["$$hiddenNode$$"]
+end
+end
+G@{ view: collapsed }
+A next@--> X
+"#;
+    let styled_source = format!("{source}classDef default fill:#ff0000,font-size:48px\n");
+    let (_, baseline) = render_swimlane_with_layout(source, "collapsed");
+    let (svg, layout) = render_swimlane_with_layout(&styled_source, "collapsed");
+    let document = roxmltree::Document::parse(&svg).unwrap();
+    assert_eq!(layout.nodes.len(), 2);
+    assert_eq!(layout.edges.len(), 1);
+    assert_eq!(
+        (layout.edges[0].from.as_str(), layout.edges[0].to.as_str()),
+        ("G", "X")
+    );
+    let collapsed = semantic_element(&document, "G", "node");
+    assert_eq!(text_content(collapsed), "Team");
+    assert!(!has_class(collapsed, "default"));
+    let group_body = collapsed
+        .children()
+        .find(|node| has_class(*node, "collapsed-group"))
+        .expect("compact group body");
+    assert!(
+        !group_body
+            .attribute("style")
+            .unwrap_or_default()
+            .contains("#ff0000")
+    );
+    let label_metrics = |layout: &SwimlaneLayout| {
+        let node = layout.nodes.iter().find(|node| node.id == "G").unwrap();
+        (node.label_width.to_bits(), node.label_height.to_bits())
+    };
+    assert_eq!(label_metrics(&layout), label_metrics(&baseline));
 }
 
 #[test]

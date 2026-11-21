@@ -109,18 +109,21 @@ select their own direct leaf set instead.
 The current-source default CLI build and official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG defaults to deterministic text
 measurement without a native font context or system discovery. Mermaid PNG/JPEG/PDF
-automatically use bounded system discovery before layout and share the resulting
-native context between measurement and painting. These defaults apply to Mermaid
+share one native context between measurement and painting. The Windows release
+archive queries the platform catalog on demand, and the other release archives
+and Cargo source defaults use bounded discovery. These defaults apply to Mermaid
 input in `render`, `batch`, and `mmdc`; raw SVG conversion only paints existing
 geometry and is never relaid out. Host fonts can change wrapping, node sizes and
 image/PDF snapshots.
 
-Capabilities schema 2 / CLI contract 6 retain their versions. In `native_fonts`,
+In the CLI `native_fonts` capability document,
 `default_policy_scope: "mermaid-svg-input"` scopes the existing
 `default_measurement: "deterministic"`, `default_font_source: "none"`, and
 `default_system_discovery: "disabled"` values to SVG. The additive
-`encoded_output_defaults` object reports `measurement: "native"`,
-`font_source: "bounded-system-discovery"`, and `system_discovery: "before-layout"`.
+`encoded_output_defaults` object reports `measurement: "native"` and the active
+system-font provider. The bounded provider reports `bounded-system-discovery`
+with `before-layout`. The platform provider reports `platform-managed-system-query`
+with `platform-initialization-then-on-demand-families`.
 With no CLI `system-fonts` capability, those three encoded values are
 `deterministic`, `none`, and `disabled`. This discovery and runtime-default change
 does not change an ABI.
@@ -170,12 +173,19 @@ font policy. Use `--font-system platform` to query the operating system's font
 catalog through Fontique. `--font-system bounded` explicitly selects bounded
 discovery in builds with platform query support. `--font-system on` selects the
 build's default system provider. Automatic Mermaid encoded output uses the same
-provider when no explicit fonts or font policy are supplied. The official
-release recipe currently provides bounded discovery.
+provider when no explicit fonts or font policy are supplied. The official release
+recipe selects `windows-platform-font-default`, which provides both policy options
+and makes platform discovery the default on Windows. Cargo source defaults continue
+to use bounded discovery.
 
 Platform queries and metadata mappings run outside Merman's scan budgets.
-Selected font bytes still use bounded immutable snapshots shared by measurement
-and painting. A context identity includes the policy and initial font bytes.
+Selected font bytes use bounded immutable snapshots shared by measurement and
+painting. Platform mode acquires those bytes on demand, including the default
+system face. On Windows, explicit faces are tried first. DirectWrite queries the
+actual missing character for script-specific fallback. Shared symbols and
+combining marks try the catalog fallback order before the single-character
+query. A context identity includes the policy, initial
+font bytes, and the system default family name when applicable.
 Platform fallback can choose different faces and change diagram geometry. For
 fixed font selection, supply explicit font files with `--font-system off`.
 In builds with platform queries, `on`, `bounded`, and `platform` all allow system
@@ -193,10 +203,13 @@ requests. Its capability document reports platform queries in
 Selected directory roots, including system font roots such as `~/.fonts`, resolve
 symlinks and ancestor aliases before scanning. Directory contents use bounded,
 stable traversal and skip discovered symlinks, including recursive links. Earlier
-equal family/style/weight faces take precedence. TTF, OTF, and TTC sources are
-supported; fonts are never fetched from a network. Font loading does not change
-Mermaid `fontFamily`: select your family in Mermaid configuration as well.
-Missing families use the same resolver for measurement and painting.
+equal family/style/weight faces take precedence. The loader reads TTF, OTF, and TTC
+files from local sources only. Native measurement and painting share a resolver for missing families.
+Use the family names registered from the files in Mermaid's `fontFamily` stack.
+For example, if resvg registers your font as `Recursive`, use `Recursive` in the stack.
+With only that file loaded, an external resvg can omit labels that request the web alias
+`Recursive Variable`.
+[Matching standalone SVG labels to resvg fonts](rendering/RUST_EMBEDDING.md#match-standalone-svg-labels-to-resvg-fonts)
 
 Explicit sources select native measurement automatically. The shared backend
 handles all 23 text-measurement protocol operations across layout, wrapping,
@@ -441,14 +454,14 @@ is assembled.
 
 ### Independent exports
 
-Binary output is opt-in and additive:
+PNG and PDF export with system fonts can use this selection:
 
 ```toml
 [dependencies]
 merman = {
     path = "crates/merman",
     default-features = false,
-    features = ["all-diagrams", "svg", "png", "pdf"],
+    features = ["all-diagrams", "svg", "png", "pdf", "system-fonts"],
 }
 ```
 

@@ -2,9 +2,10 @@ use super::config::{DEFAULT_LANE_ID, DEFAULT_LANE_PADDING, GROUP_PADDING};
 use super::lanes::LaneModel;
 use super::working::{ProducerLaneRole, WorkingEdge, WorkingLayout, WorkingNode, WorkingNodeKind};
 use crate::flowchart::{
-    FlowchartConfigView, FlowchartLabelMetricsRequest, FlowchartRenderModelRef,
-    FlowchartSvgLabelOwner, FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode,
-    NodeLayoutDimensionsRequest, flowchart_effective_text_style_for_classes_with_provenance,
+    FlowchartConfigView, FlowchartEdgeKey, FlowchartEdgeTransportPlan,
+    FlowchartLabelMetricsRequest, FlowchartRenderModelRef, FlowchartSvgLabelOwner,
+    FlowchartSvgLabelSidecarBuilder, FlowchartSvgWidthMode, NodeLayoutDimensionsRequest,
+    ProjectedFlowchartEdge, flowchart_effective_text_style_for_classes_with_provenance,
     flowchart_effective_text_style_for_node_classes_with_provenance,
     flowchart_node_label_min_width, flowchart_node_svg_width_mode,
     measure_flowchart_svg_label_for_layout_with_terminal_foreground, node_layout_dimensions,
@@ -96,6 +97,7 @@ fn measure_content_node(
     node: &FlowNode,
     render_label: &str,
     owner: Option<FlowchartSvgLabelOwner>,
+    use_default_class: bool,
     ctx: &MeasureContext<'_>,
 ) -> WorkingNode {
     let wrap_mode = ctx.settings.node_wrap_mode;
@@ -108,7 +110,12 @@ fn measure_content_node(
     } else {
         &ctx.settings.text_style
     };
-    let style = flowchart_effective_text_style_for_node_classes_with_provenance(
+    let resolve_style = if use_default_class {
+        flowchart_effective_text_style_for_node_classes_with_provenance
+    } else {
+        flowchart_effective_text_style_for_classes_with_provenance
+    };
+    let style = resolve_style(
         base_style,
         &ctx.model.class_defs,
         &node.classes,
@@ -265,15 +272,38 @@ fn measure_edge_label(
     })
 }
 
-fn working_edge(edge: &FlowEdge, transport_id: &str) -> WorkingEdge {
+fn working_edge(edge: &ProjectedFlowchartEdge<'_>, transport_id: &str) -> WorkingEdge {
     WorkingEdge {
         id: transport_id.to_string(),
-        from: edge.from.clone(),
-        to: edge.to.clone(),
+        from: edge.from.to_owned(),
+        to: edge.to.to_owned(),
         reference_id: transport_id.to_string(),
         label_node_id: None,
         reversed_for_layout: false,
         points: Vec::new(),
+    }
+}
+
+fn synthetic_node(id: &str, label: &str, label_type: Option<&str>, shape: &str) -> FlowNode {
+    FlowNode {
+        id: id.to_owned(),
+        provenance: Default::default(),
+        label: Some(label.to_owned()),
+        label_type: label_type.map(str::to_owned),
+        layout_shape: Some(shape.to_owned()),
+        shape: None,
+        icon: None,
+        form: None,
+        pos: None,
+        img: None,
+        constraint: None,
+        asset_width: None,
+        asset_height: None,
+        classes: Vec::new(),
+        styles: Vec::new(),
+        link: None,
+        link_target: None,
+        have_callback: false,
     }
 }
 
@@ -331,16 +361,17 @@ fn measure_group_title(
 }
 
 pub(super) fn prepare(
-    model: &FlowchartModel,
-    render_label_sources: &FlowchartRenderContext,
+    model: &FlowchartRenderModelRef<'_>,
+    (visible_edges, transport_plan): (
+        &[(FlowchartEdgeKey, ProjectedFlowchartEdge<'_>)],
+        &FlowchartEdgeTransportPlan<'_>,
+    ),
     effective_config: &PresentationConfig,
     measurer: &dyn TextMeasurer,
     math_renderer: Option<&(dyn MathRenderer + Send + Sync)>,
     svg_label_sidecar: Option<&FlowchartSvgLabelSidecarBuilder>,
     edge_style_plan: &crate::svg::FlowchartEdgeStylePlan,
 ) -> crate::Result<WorkingLayout> {
-    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
-    let model = &render_model;
     let direction = normalize_direction(model.direction.as_deref());
     let config_view = FlowchartConfigView::new(effective_config.as_value());
     let swimlane_title_html_labels = config_view.swimlane_title_html_labels();
@@ -366,17 +397,44 @@ pub(super) fn prepare(
     };
 
     // FlowDB builds parentDB by walking subgraphs from last to first.
-    let mut parent_by_id: HashMap<String, String> = HashMap::new();
-    for subgraph in model.subgraphs.iter().rev() {
-        for child in &subgraph.nodes {
-            parent_by_id.insert(child.clone(), subgraph.id.clone());
-        }
-    }
+    let parent_by_id: HashMap<&str, &str> = model.visible_memberships().collect();
+    let parent_id = |id: &str| parent_by_id.get(id).map(|parent| (*parent).to_owned());
+    let group_indices: HashMap<&str, usize> = model
+        .subgraphs
+        .iter()
+        .enumerate()
+        .rev()
+        .map(|(index, subgraph)| (subgraph.id.as_str(), index))
+        .collect();
 
     let mut nodes = IndexMap::new();
     for subgraph_index in (0..model.subgraphs.len()).rev() {
         let subgraph = &model.subgraphs[subgraph_index];
+        if model.collapsed_replacement(&subgraph.id).is_some() {
+            continue;
+        }
         let render_title = model.subgraph_title_for_render(subgraph_index, subgraph);
+        if model.is_subgraph_collapsed(&subgraph.id) {
+            if group_indices.get(subgraph.id.as_str()) != Some(&subgraph_index) {
+                continue;
+            }
+            let mut node = synthetic_node(
+                &subgraph.id,
+                &subgraph.title,
+                subgraph.label_type.as_deref(),
+                "collapsedGroup",
+            );
+            let (classes, styles) = model.effective_subgraph_css(subgraph_index, subgraph);
+            node.classes.extend_from_slice(classes);
+            node.styles.extend_from_slice(styles);
+            // The node owner range for collapsed groups follows the authored node range.
+            let owner = FlowchartSvgLabelOwner::SwimlaneNode(model.nodes.len() + subgraph_index);
+            let mut measured =
+                measure_content_node(&node, render_title, Some(owner), false, &measure_ctx);
+            measured.parent_id = parent_id(&subgraph.id);
+            nodes.insert(node.id, measured);
+            continue;
+        }
         let (label_width, label_height) =
             measure_group_title(subgraph_index, subgraph, render_title, &measure_ctx);
         let producer_lane_role = match subgraph
@@ -401,7 +459,7 @@ pub(super) fn prepare(
                 shape: "rect".to_string(),
                 producer_lane_role,
                 kind: WorkingNodeKind::Group,
-                parent_id: parent_by_id.get(&subgraph.id).cloned(),
+                parent_id: parent_id(&subgraph.id),
                 top_lane_id: None,
                 requested_dir: subgraph.dir.as_ref().map(|dir| {
                     if dir.eq_ignore_ascii_case("TD") {
@@ -425,13 +483,10 @@ pub(super) fn prepare(
         );
     }
 
-    let group_ids: HashSet<String> = model
-        .subgraphs
-        .iter()
-        .map(|subgraph| subgraph.id.clone())
-        .collect();
     for (node_index, node) in model.nodes.iter().enumerate() {
-        if group_ids.contains(&node.id) {
+        if group_indices.contains_key(node.id.as_str())
+            || model.collapsed_replacement(&node.id).is_some()
+        {
             continue;
         }
         crate::flowchart::validate_flowchart_node_asset_dimensions(node)?;
@@ -440,37 +495,19 @@ pub(super) fn prepare(
             node,
             render_label,
             Some(FlowchartSvgLabelOwner::SwimlaneNode(node_index)),
+            true,
             &measure_ctx,
         );
-        measured.parent_id = parent_by_id.get(&node.id).cloned();
+        measured.parent_id = parent_id(&node.id);
         nodes.insert(node.id.clone(), measured);
     }
     for id in &model.vertex_calls {
-        if nodes.contains_key(id) {
+        if nodes.contains_key(id) || model.collapsed_replacement(id).is_some() {
             continue;
         }
-        let synthetic = FlowNode {
-            id: id.clone(),
-            provenance: Default::default(),
-            label: Some(id.clone()),
-            label_type: Some("text".to_string()),
-            layout_shape: Some("squareRect".to_string()),
-            shape: None,
-            icon: None,
-            form: None,
-            pos: None,
-            img: None,
-            constraint: None,
-            asset_width: None,
-            asset_height: None,
-            classes: Vec::new(),
-            styles: Vec::new(),
-            link: None,
-            link_target: None,
-            have_callback: false,
-        };
-        let mut measured = measure_content_node(&synthetic, id, None, &measure_ctx);
-        measured.parent_id = parent_by_id.get(id).cloned();
+        let synthetic = synthetic_node(id, id, Some("text"), "squareRect");
+        let mut measured = measure_content_node(&synthetic, id, None, true, &measure_ctx);
+        measured.parent_id = parent_id(id);
         nodes.insert(id.clone(), measured);
     }
 
@@ -492,10 +529,9 @@ pub(super) fn prepare(
         .values()
         .filter_map(|node| node.parent_id.as_deref())
         .chain(
-            model
-                .edges
+            visible_edges
                 .iter()
-                .flat_map(|edge| [edge.from.as_str(), edge.to.as_str()]),
+                .flat_map(|(_, edge)| [edge.from, edge.to]),
         )
         .collect();
     let removed: HashSet<String> = emptied
@@ -566,11 +602,9 @@ pub(super) fn prepare(
         }
     }
 
-    let mut original_edges = Vec::with_capacity(model.edges.len());
-    let transport_plan =
-        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
-    for (edge_index, edge) in model.edges.iter().enumerate() {
-        let key = crate::flowchart::FlowchartEdgeKey::new(edge_index);
+    let mut original_edges = Vec::with_capacity(visible_edges.len());
+    for &(key, ref edge) in visible_edges {
+        let edge_index = key.semantic_index();
         let transport_id = transport_plan
             .id(key)
             .ok_or_else(|| crate::Error::InvalidModel {
@@ -579,13 +613,13 @@ pub(super) fn prepare(
                 ),
             })?;
         let mut original = working_edge(edge, transport_id);
-        let render_label = model.edge_label_for_render(edge_index, edge);
+        let render_label = model.edge_label_for_render(edge_index, edge.semantic);
         let has_label = render_label.is_some_and(|label| !label.is_empty());
-        if has_label && nodes.contains_key(&edge.from) && nodes.contains_key(&edge.to) {
-            let label_node_id = if transport_id != edge.id {
-                format!("edge-label-occurrence-{:020}", key.semantic_index())
+        if has_label && nodes.contains_key(edge.from) && nodes.contains_key(edge.to) {
+            let label_node_id = if transport_id != edge.semantic.id {
+                format!("edge-label-occurrence-{edge_index:020}")
             } else {
-                format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.id)
+                format!("edge-label-{}-{}-{}", edge.from, edge.to, edge.semantic.id)
             };
             let mut unique_label_node_id = label_node_id.clone();
             let mut suffix = 1usize;
@@ -594,18 +628,16 @@ pub(super) fn prepare(
                 suffix += 1;
             }
             let label_node_id = unique_label_node_id;
-            let source_parent = nodes
-                .get(&edge.from)
-                .and_then(|node| node.parent_id.clone());
-            let target_parent = nodes.get(&edge.to).and_then(|node| node.parent_id.clone());
+            let source_parent = nodes.get(edge.from).and_then(|node| node.parent_id.clone());
+            let target_parent = nodes.get(edge.to).and_then(|node| node.parent_id.clone());
             let label_parent = if source_parent != target_parent {
                 target_parent
             } else {
                 source_parent
             };
             let label_node = measure_edge_label(
-                edge,
-                crate::flowchart::FlowchartEdgeKey::new(edge_index),
+                edge.semantic,
+                key,
                 render_label.unwrap_or_default(),
                 label_node_id.clone(),
                 label_parent,

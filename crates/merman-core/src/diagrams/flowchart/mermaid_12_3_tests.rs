@@ -591,6 +591,114 @@ fn single_node_special_character_ids_match_flow_singlenode() {
 }
 
 #[test]
+fn href_is_reserved_only_before_whitespace_at_a_token_boundary() {
+    for (statement, id) in [
+        (":href; A", ":href"),
+        (":href[Label]", ":href"),
+        (":href-->A", ":href"),
+        ("A-->:href; B-->C", ":href"),
+        ("href-->A", "href"),
+        (":hrefSuffix", ":hrefSuffix"),
+        ("foohref", "foohref"),
+    ] {
+        let model = parse(&format!("flowchart LR\n{statement}\n"));
+        assert!(model.nodes.iter().any(|node| node.id == id), "{statement}");
+    }
+
+    for statement in [
+        ":href",
+        "A-->:href",
+        "foo:href",
+        "#href",
+        "9href",
+        "雪href",
+        "href\t;A",
+        ":href\u{a0};A",
+        "style :href fill:red",
+        "class :href hot",
+        "classDef href fill:red",
+        "class A :href",
+    ] {
+        for end in ["", "\n", "\r\n"] {
+            let source = format!("flowchart LR\n{statement}{end}");
+            let keyword = source.find("href").unwrap();
+            let error = Lexer::new(&source).find_map(|token| token.err()).unwrap();
+            assert_eq!(
+                error.span,
+                Some(SourceSpan::new(keyword, keyword + 4)),
+                "{source:?}"
+            );
+            assert_eq!(
+                error.message, "Unexpected flowchart keyword href",
+                "{source:?}"
+            );
+            assert!(parse_flowchart_model_for_render(&source, &metadata()).is_err());
+        }
+    }
+
+    let model = parse("flowchart LR\n:href[Link]\nclick :href href \"https://example.test\"\n");
+    assert_eq!(
+        model.nodes[0].link.as_deref(),
+        Some("https://example.test/")
+    );
+}
+
+#[test]
+fn directive_identifiers_with_apostrophes_preserve_the_next_statement() {
+    let model = parse(concat!(
+        "flowchart TD\n",
+        "A --> O'Brien\n",
+        "style O'Brien fill:red\n",
+        "classDef 'hot stroke:blue; class O'Brien,A 'hot\n",
+        "click O'Brien \"https://example.test/a;b\"; C --> D\n",
+    ));
+    let [first, styled, _, _] = model.nodes.as_slice() else {
+        panic!("all four authored nodes must survive directive scanning");
+    };
+    assert_eq!(styled.id, "O'Brien");
+    assert_eq!(styled.styles, ["fill:red"]);
+    assert_eq!(styled.classes, ["'hot", "clickable"]);
+    assert_eq!(first.classes, ["'hot"]);
+    assert_eq!(model.class_defs["'hot"], ["stroke:blue"]);
+    assert_eq!(styled.link.as_deref(), Some("https://example.test/a;b"));
+    let [_, next] = model.edges.as_slice() else {
+        panic!("the next edge must survive directive scanning");
+    };
+    assert_eq!((next.from.as_str(), next.to.as_str()), ("C", "D"));
+}
+
+#[test]
+fn directive_payload_distinguishes_apostrophes_from_quoted_delimiters() {
+    let model = parse(concat!(
+        "flowchart LR\n",
+        "A --> B\n",
+        "style B font-family:O'Brien,fill:'a;b'\n",
+        "classDef warm font-family:雪'例\n",
+        "linkStyle 0 font-family:O'Brien\n",
+        "click B O'Brien\n",
+        "C --> D\n",
+    ));
+    let [_, styled, _, _] = model.nodes.as_slice() else {
+        panic!("bare apostrophes must not consume subsequent statements");
+    };
+    assert_eq!(styled.styles, ["font-family:O'Brien", "fill:'a;b'"]);
+    assert_eq!(model.class_defs["warm"], ["font-family:雪'例"]);
+    let [first, next] = model.edges.as_slice() else {
+        panic!("both edges must survive directive scanning");
+    };
+    assert_eq!(first.style, ["font-family:O'Brien", "fill:none"]);
+    assert_eq!((next.from.as_str(), next.to.as_str()), ("C", "D"));
+
+    for separator in ['\n', ';'] {
+        let model = parse(&format!(
+            "flowchart LR\nA-->B\nstyle B font-family:'Foo{separator}C-->D\n"
+        ));
+        assert_eq!(model.nodes[1].styles, ["font-family:'Foo"]);
+        assert_eq!(model.edges.len(), 2);
+    }
+}
+
+#[test]
 fn single_node_special_character_ids_preserve_token_boundaries() {
     let parse_statement = |statement: &str| {
         let source = format!("graph TD; {statement}");
@@ -1139,6 +1247,25 @@ fn direction_values_follow_the_upstream_prefix_rule() {
                 .is_err()
         );
     }
+}
+
+#[test]
+fn attached_default_shape_data_preserves_direction_text_and_edge() {
+    let model = parse("flowchart TB\ndefault@{label: \"direction LR\", shape: rect} --> B\n");
+    assert_eq!(model.nodes.len(), 2);
+    let node = model
+        .nodes
+        .iter()
+        .find(|node| node.id == "default")
+        .unwrap();
+    assert_eq!(node.label.as_deref(), Some("direction LR"));
+    assert_eq!(node.shape.as_deref(), Some("rect"));
+    assert_eq!(model.edges.len(), 1);
+    let edge = &model.edges[0];
+    assert_eq!((edge.from.as_str(), edge.to.as_str()), ("default", "B"));
+
+    let separated = "flowchart TB\ndefault @{label: \"direction LR\", shape: rect} --> B\n";
+    assert!(parse_flowchart_model_for_render(separated, &metadata()).is_err());
 }
 
 #[test]

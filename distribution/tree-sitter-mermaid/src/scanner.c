@@ -29,6 +29,7 @@ enum TokenType {
   END_OF_INPUT,
   DIRECTIVE_BODY,
   CLASS_COMPACT_IDENTIFIER,
+  FLOWCHART_GROUP_SEPARATOR,
   FLOW_DIRECTION_PREFIX,
 };
 
@@ -191,6 +192,37 @@ static bool consume_literal(TSLexer *lexer, const char *literal) {
 static bool is_horizontal_space(int32_t lookahead) {
   return lookahead == ' ' || lookahead == '\t' || lookahead == '\f' ||
          lookahead == 0xa0;
+}
+
+static bool is_flowchart_group_space(int32_t lookahead) {
+  return is_horizontal_space(lookahead) || lookahead == '\v' ||
+         lookahead == 0x1680 || (lookahead >= 0x2000 && lookahead <= 0x200a) ||
+         lookahead == 0x2028 || lookahead == 0x2029 || lookahead == 0x202f ||
+         lookahead == 0x205f || lookahead == 0x3000 || lookahead == 0xfeff;
+}
+
+static bool scan_flowchart_group_separator(TSLexer *lexer) {
+  // The grouping token requires whitespace on both sides. Leaving this to the
+  // ordinary lexer makes it absorb a failed whitespace prefix into the arrow.
+  if (!is_flowchart_group_space(lexer->lookahead)) {
+    return false;
+  }
+  do {
+    lexer->advance(lexer, true);
+  } while (is_flowchart_group_space(lexer->lookahead));
+  if (lexer->lookahead != '&') {
+    return false;
+  }
+  lexer->advance(lexer, false);
+  if (!is_flowchart_group_space(lexer->lookahead)) {
+    return false;
+  }
+  do {
+    lexer->advance(lexer, false);
+  } while (is_flowchart_group_space(lexer->lookahead));
+  lexer->mark_end(lexer);
+  lexer->result_symbol = FLOWCHART_GROUP_SEPARATOR;
+  return true;
 }
 
 static bool is_line_ending(int32_t c) { return c == '\r' || c == '\n'; }
@@ -561,6 +593,10 @@ bool tree_sitter_mermaid_external_scanner_scan(void *payload, TSLexer *lexer,
   if (valid_symbols[CLASS_COMPACT_IDENTIFIER] &&
       !valid_symbols[DIRECTIVE_BODY] && group == NULL) {
     return scan_class_compact_identifier(lexer);
+  }
+  if (valid_symbols[FLOWCHART_GROUP_SEPARATOR] &&
+      !valid_symbols[DIRECTIVE_BODY] && group == NULL) {
+    return scan_flowchart_group_separator(lexer);
   }
   if (group == NULL) {
     return false;

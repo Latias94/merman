@@ -4,16 +4,16 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Python without a browser or JavaScript runtime. The package ships Merman's Rust engine and exposes it through UniFFI.
 
-This guide documents Merman and Python package version `0.10.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
+This guide documents Merman and Python package version `0.11.0`. Check the [host installation guide](https://github.com/Latias94/merman/blob/main/docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. Use the [stable upgrade guide](https://github.com/Latias94/merman/blob/main/docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) when migrating from `0.9.3` or a `0.10.0` alpha.
 
-> Python's stable PEP 440 version is `0.10.0`, matching native Merman `0.10.0`. That published wheel uses direct UniFFI binding API `7`; current source uses API `8` and ASCII output schema `4`. Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2` retain their independent versions. Install the Python wrapper and native library as one wheel rather than mixing releases.
+> The `0.11.0` wheel uses direct UniFFI binding API `8` and ASCII output schema `4`. The published `0.10.0` wheel uses binding API `7` and ASCII output schema `3`. Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2` retain their independent versions. Install the Python wrapper and native library as one wheel rather than mixing releases.
 
 ## Install
 
 Install the exact version documented here:
 
 ```sh
-python -m pip install --only-binary=:all: 'merman==0.10.0'
+python -m pip install --only-binary=:all: 'merman==0.11.0'
 ```
 
 The package supports Python `>=3.9` through the UniFFI/ctypes transport with five native wheels:
@@ -26,7 +26,7 @@ The package supports Python `>=3.9` through the UniFFI/ctypes transport with fiv
 | `x86_64-unknown-linux-gnu` | `manylinux_2_28_x86_64` |
 | `x86_64-pc-windows-msvc` | `win_amd64` |
 
-Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler. There is no qualified source distribution; use the repository's explicit source helper when building from the matching `0.10.0` source revision. Build the wrapper and native library together to preserve the binding contract.
+Linux wheels build, undergo `auditwheel` repair, and run installed consumers in pinned official manylinux_2_28 images on their native CPU. They require glibc `2.28+`; musl Linux and Windows ARM64 are outside this matrix. Normal wheel installation needs no Rust compiler. There is no qualified source distribution; use the repository's explicit source helper when building from the matching `0.11.0` source revision. Build the wrapper and native library together to preserve the binding contract.
 
 For the previous stable `0.9.3` installation, use the [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/python/merman/README.md).
 That release uses Options JSON schema `2`, omits math, and has three wheels, including a

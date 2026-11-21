@@ -232,7 +232,7 @@ def valid_capabilities_payload(
         }
     return {
         "schema_version": 2,
-        "cli_contract_version": 7,
+        "cli_contract_version": 8,
         "package": {"name": "merman-cli", "version": version},
         "compatibility": {
             "mermaid": bundle["release"]["version"],
@@ -260,11 +260,18 @@ def valid_capabilities_payload(
                 "system_discovery": "before-layout",
             },
             "system_resources_bounded": True,
+            "platform_system_query": {
+                "cli_option": "--font-system platform",
+                "system_discovery": "platform-initialization-then-on-demand-families",
+                "metadata_resources_bounded": False,
+                "context_identity": "policy-and-initial-font-bytes",
+                "system_fallback_values": ["on", "bounded", "platform"],
+            },
             "selected_font_bytes_bounded": True,
             "legacy_export_paths": (
                 "raw-svg-without-font-options-and-deterministic-mermaid-use-output-environment-contract"
             ),
-            "explicit_font_sources": "closed-set-unless-font-system-on",
+            "explicit_font_sources": "closed-set-unless-system-fallback-requested",
             "measurement_operations": [
                 "measure",
                 "computed-length",
@@ -1431,6 +1438,7 @@ class RuntimeContractTests(unittest.TestCase):
             verifier.release_capabilities_subcontract(
                 read_json(PROJECT_ROOT, "capabilities/feature-surface-v1.json"),
                 capability_ids=set(profile["expected"]["capabilities"]),
+                cargo_features=set(profile["cargo"]["features"]),
             ),
             {field: payload[field] for field in ("capabilities", "outputs", "native_fonts")},
         )
@@ -1466,10 +1474,26 @@ class RuntimeContractTests(unittest.TestCase):
             "system_discovery": "before-layout",
         })
         self.assertEqual(payload["schema_version"], 2)
-        self.assertEqual(payload["cli_contract_version"], 7)
+        self.assertEqual(payload["cli_contract_version"], 8)
         self.assertIs(native["system_discovery_compiled"], True)
         self.assertIs(native["system_discovery_runtime_available"], True)
         self.assertEqual(len(native["measurement_operations"]), 23)
+        verifier._validate_runtime_capabilities(payload, expected)
+
+    def test_windows_archive_requires_platform_default_metadata(self) -> None:
+        expected = verifier._release_capabilities_contract(
+            PROJECT_ROOT, version=VERSION, target=WINDOWS_TARGET
+        )
+        payload = valid_capabilities_payload()
+        native = payload["native_fonts"]
+        with self.assertRaisesRegex(verifier.ArchiveVerificationError, "native_fonts"):
+            verifier._validate_runtime_capabilities(payload, expected)
+        native["encoded_output_defaults"] = {
+            "measurement": "native",
+            "font_source": "platform-managed-system-query",
+            "system_discovery": "platform-initialization-then-on-demand-families",
+        }
+        native["system_resources_bounded"] = False
         verifier._validate_runtime_capabilities(payload, expected)
 
     def test_runtime_rejects_native_defaults_for_mermaid_svg(self) -> None:
@@ -1935,7 +1959,7 @@ class RuntimeContractTests(unittest.TestCase):
                 ),
                 (
                     "cli_contract_version",
-                    lambda value: value.__setitem__("cli_contract_version", 6),
+                    lambda value: value.__setitem__("cli_contract_version", 7),
                 ),
                 (
                     "cli_contract_version",

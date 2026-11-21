@@ -96,7 +96,7 @@ class NixPackageContractTests(unittest.TestCase):
             self.assertEqual(len(values), len(set(values)), key)
         self.assertEqual(
             policy["root_directories"],
-            ["THIRD_PARTY_LICENSES", "capabilities"],
+            ["THIRD_PARTY_LICENSES", "capabilities", "vendor/usvg"],
         )
         self.assertEqual(
             policy["script_files"],
@@ -122,6 +122,8 @@ class NixPackageContractTests(unittest.TestCase):
             "scripts/ascii_capability_contract.py",
             "scripts/theme_preset_catalog_contract.py",
             "scripts/verify_cli_installation.py",
+            "vendor/usvg/Cargo.toml",
+            "vendor/usvg/src/text/layout.rs",
         }
         required.update(f"{member}/Cargo.toml" for member in workspace_members())
         for relative in sorted(required):

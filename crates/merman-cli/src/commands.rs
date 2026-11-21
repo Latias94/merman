@@ -256,11 +256,40 @@ fn run_layout(
         &args.resources,
         operation_control,
     )?;
-    let output = configured.renderer.render(configured.request(
-        &text,
-        merman::RenderTarget::LayoutJson(configured.svg.clone()),
-        operation_control.clone(),
-    ))?;
+    let target = if args.snapshot {
+        merman::RenderTarget::LayoutSnapshot(configured.svg.clone())
+    } else {
+        merman::RenderTarget::LayoutJson(configured.svg.clone())
+    };
+    let request = configured.request(&text, target, operation_control.clone());
+    if !args.snapshot {
+        return context.stdout.with_writer(|writer| {
+            use std::io::{BufWriter, Write};
+
+            let mut writer = BufWriter::with_capacity(4 * 1024, writer);
+            let output = configured
+                .renderer
+                .write_layout_json(request, &mut writer, args.pretty);
+            let result = match output {
+                Ok(true) => writer
+                    .write_all(b"\n")
+                    .and_then(|()| writer.flush())
+                    .map_err(serde_json::Error::io)
+                    .map_err(CliError::json_output),
+                Ok(false) => Err(CliError::NoDiagram),
+                Err(merman::RenderError::Svg(merman::svg::RenderError::Json(error)))
+                    if error.is_io() =>
+                {
+                    Err(CliError::json_output(error))
+                }
+                Err(error) => Err(error.into()),
+            };
+            // A failed write can leave bytes in the buffer, which Drop would try to write again.
+            let _ = writer.into_parts();
+            result
+        });
+    }
+    let output = configured.renderer.render(request)?;
     let merman::RenderOutput::LayoutJson(Some(layout_json)) = output else {
         return Err(CliError::NoDiagram);
     };

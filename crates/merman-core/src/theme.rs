@@ -931,7 +931,7 @@ fn set_derived_string_unless_explicit(
 }
 
 fn theme_variables_map(config: &MermaidConfig) -> Map<String, Value> {
-    match config.as_value().get("themeVariables") {
+    match config.get("themeVariables") {
         Some(Value::Object(m)) => m.clone(),
         _ => Map::new(),
     }

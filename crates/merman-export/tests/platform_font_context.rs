@@ -58,8 +58,12 @@ fn advance(context: &NativeFontContext, text: &str, style: &TextStyle) -> f64 {
 }
 
 fn paint(context: &NativeFontContext, family: &str) -> usvg::Tree {
+    paint_text(context, family, "AVA")
+}
+
+fn paint_text(context: &NativeFontContext, family: &str, text: &str) -> usvg::Tree {
     let source = format!(
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="512" height="100"><g font-family="{family}" font-size="22"><text id="left" x="200" y="50" text-anchor="start">AVA</text><text id="right" x="200" y="50" text-anchor="end">AVA</text></g></svg>"#,
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="512" height="100"><g font-family="{family}" font-size="22"><text id="left" x="200" y="50" text-anchor="start">{text}</text><text id="right" x="200" y="50" text-anchor="end">{text}</text></g></svg>"#,
     );
     let mut options = usvg::Options::default();
     context.apply_to_usvg_options(&mut options);
@@ -74,8 +78,12 @@ fn painted_text<'a>(tree: &'a usvg::Tree, id: &str) -> &'a usvg::Text {
 }
 
 fn assert_same_advance_and_faces(context: &NativeFontContext, family: &str) {
-    let actual = advance(context, "AVA", &style(family));
-    let tree = paint(&context.clone(), family);
+    assert_text_advance_and_faces(context, family, "AVA");
+}
+
+fn assert_text_advance_and_faces(context: &NativeFontContext, family: &str, text: &str) {
+    let actual = advance(context, text, &style(family));
+    let tree = paint_text(context, family, text);
     let left = painted_text(&tree, "left");
     let right = painted_text(&tree, "right");
     let expected = f64::from(left.bounding_box().x() - right.bounding_box().x()).abs();
@@ -89,6 +97,7 @@ fn assert_same_advance_and_faces(context: &NativeFontContext, family: &str) {
         .iter()
         .flat_map(|span| &span.positioned_glyphs)
         .map(|glyph| {
+            assert_ne!(glyph.id.0, 0, "missing painted glyph for {text:?}");
             let face = tree.fontdb().face(glyph.font).expect("paint font face");
             format!("{}#{}", face.post_script_name, face.index)
         })
@@ -219,9 +228,11 @@ fn platform_system_font_host_smoke_initializes_and_materializes() {
         .load_platform(&OperationControl::new())
         .expect("platform font context initializes");
     assert!(context.uses_system_fonts());
-    let initial_bytes = context.resident_font_bytes();
+    assert_eq!(context.resident_font_bytes(), 0);
+    assert_eq!(context.face_count(), 0);
+    assert_text_advance_and_faces(&context, "", "AVA");
     assert_same_advance_and_faces(&context, "sans-serif");
-    assert!(context.resident_font_bytes() >= initial_bytes);
+    assert!(context.resident_font_bytes() > 0);
     context
         .check()
         .expect("platform host smoke remains healthy");
@@ -553,7 +564,7 @@ fn windows_platform_query_honors_weight_and_generic_family_matching() {
 #[cfg(target_os = "windows")]
 #[test]
 #[ignore = "requires the Windows platform font catalog; run explicitly on controlled hosts"]
-fn windows_platform_query_reuses_bootstrap_face_without_duplicate_snapshot() {
+fn windows_platform_first_named_face_uses_the_only_file_slot() {
     let context = NativeFontOptions::default()
         .with_system_fonts(true)
         .with_limits(NativeFontLimits {
@@ -561,16 +572,105 @@ fn windows_platform_query_reuses_bootstrap_face_without_duplicate_snapshot() {
             ..Default::default()
         })
         .load_platform(&OperationControl::new())
-        .expect("platform bootstrap fits one file");
-    let initial_bytes = context.resident_font_bytes();
+        .expect("platform initializes without consuming its file budget");
+    assert_eq!(context.resident_font_bytes(), 0);
+    assert_same_advance_and_faces(&context, "Trebuchet MS");
+    let resident = context.resident_font_bytes();
+    assert!(resident > 0);
+    assert_eq!(context.face_count(), 1);
+    assert_same_advance_and_faces(&context, "Trebuchet MS");
+    assert_eq!(context.resident_font_bytes(), resident);
+    assert!(context.measure(request("AVA", &style("Arial"))).is_err());
+    assert!(matches!(
+        context.check(),
+        Err(NativeFontError::Limit {
+            resource: "system-snapshot-files",
+            actual: 2,
+            limit: 1
+        })
+    ));
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires Windows Segoe UI Emoji; run explicitly on controlled system-font hosts"]
+fn windows_platform_fallback_shapes_a_supplementary_character_in_layout_and_paint() {
+    let context = options()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .expect("Windows platform font context initializes");
+    assert_text_advance_and_faces(&context, "Cousine", "AVA \u{1f600}");
     assert!(
         context
-            .measure(request("AVA", &style("Arial")))
-            .unwrap()
-            .is_some()
+            .selected_faces()
+            .iter()
+            .any(|face| face.contains("Segoe"))
     );
-    assert_eq!(context.resident_font_bytes(), initial_bytes);
     context.check().unwrap();
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires Windows Trebuchet MS, Arial and Segoe UI Emoji"]
+fn windows_platform_fallback_keeps_coverage_when_a_scalar_face_would_change_the_run() {
+    let control = OperationControl::new();
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&control)
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    for family in ["Trebuchet MS, Verdana, Arial, sans-serif", "Arial"] {
+        let operation = context.for_operation(&OperationControl::new());
+        assert_text_advance_and_faces(&operation, family, "fi✓😀");
+        operation.check().unwrap();
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires Windows Calibri, Trebuchet MS and system font fallback"]
+fn windows_platform_fallback_covers_mixed_ligatures_symbols_and_han() {
+    let fonts = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    for (family, text, font_files) in [
+        (
+            "Calibri, Arial, sans-serif",
+            "fi✓中",
+            &["calibri.ttf", "seguiemj.ttf", "msyh.ttc"][..],
+        ),
+        (
+            "Trebuchet MS, Verdana, Arial, sans-serif",
+            "fi✚✗⚑",
+            &["trebuc.ttf", "seguisym.ttf"][..],
+        ),
+    ] {
+        if font_files.iter().any(|file| !fonts.join(file).is_file()) {
+            continue;
+        }
+        let operation = context.for_operation(&OperationControl::new());
+        assert_text_advance_and_faces(&operation, family, text);
+        operation.check().unwrap();
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[test]
+#[ignore = "requires the Windows Microsoft Himalaya and Trebuchet MS fonts"]
+fn windows_platform_fallback_accepts_the_physical_faces_alternate_postscript_record() {
+    let fonts = PathBuf::from(std::env::var_os("WINDIR").unwrap()).join("Fonts");
+    if !fonts.join("himalaya.ttf").is_file() {
+        return;
+    }
+    let context = NativeFontOptions::default()
+        .with_system_fonts(true)
+        .load_platform(&OperationControl::new())
+        .unwrap()
+        .with_strict_glyph_coverage(true);
+    assert_text_advance_and_faces(&context, "Trebuchet MS, Verdana, Arial, sans-serif", "བོད་");
 }
 
 #[cfg(target_os = "windows")]

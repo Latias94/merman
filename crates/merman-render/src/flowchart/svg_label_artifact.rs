@@ -740,9 +740,7 @@ impl Default for FlowchartMathTerminalStylePlan {
 impl FlowchartMathTerminalStylePlan {
     #[cfg(test)]
     fn from_config(config: &merman_model::presentation::PresentationConfig) -> Self {
-        Self::from_binding(&super::FlowchartCompatibilityBinding::resolve(
-            config.as_value(),
-        ))
+        Self::from_binding(&super::FlowchartCompatibilityBinding::resolve(config))
     }
 
     fn from_binding(binding: &super::FlowchartCompatibilityBinding) -> Self {
@@ -823,7 +821,7 @@ impl FlowchartSvgLabelSidecarBuilder {
 
     pub(crate) fn layout_settings(
         &self,
-        effective_config: &serde_json::Value,
+        effective_config: &(impl crate::config::ConfigLookup + ?Sized),
     ) -> super::FlowchartLayoutSettings {
         self.base_typography.as_ref().map_or_else(
             || super::FlowchartConfigView::new(effective_config).layout_settings(),

@@ -52,7 +52,7 @@ cargo run -p merman --example render_many -- target/example-svgs
 Render PNG and terminal output. These capabilities are intentionally outside the default SVG feature set:
 
 ```sh
-cargo run -p merman --features png --example render_png -- target/diagram.png
+cargo run -p merman --features png,system-fonts --example render_png -- target/diagram.png
 cargo run -p merman --features ascii --example render_terminal
 cargo run -p merman --features ascii --example render_terminal -- --ascii
 ```
@@ -204,7 +204,7 @@ the export path; callers do not need to build a separate product rendering backe
 
 ```sh
 cargo run -p merman --no-default-features --features all-diagrams,svg --example custom_diagram_theme > custom-theme.svg
-cargo run -p merman --no-default-features --features all-diagrams,png --example render_png -- target/diagram.png
+cargo run -p merman --no-default-features --features all-diagrams,png,system-fonts --example render_png -- target/diagram.png
 ```
 
 For browser Workers, choose a [Web package](../../../platforms/web/README.md) with the required
@@ -244,11 +244,11 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["png"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, `render_agent_log`, `custom_diagram_theme`, or `theme_recipe`.
+Enable `features = ["diagram-flowchart", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `configure_mermaid`, `deterministic_gantt`, `render_agent_log`, `custom_diagram_theme`, or `theme_recipe`.
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
-The standalone resvg example includes its own [consumer manifest](standalone_resvg/Cargo.toml).
+The standalone resvg example includes its own [consumer manifest](https://github.com/Latias94/merman/blob/main/crates/merman/examples/standalone_resvg/Cargo.toml).
 The [Rust embedding guide](../../../docs/rendering/RUST_EMBEDDING.md#match-standalone-svg-labels-to-resvg-fonts)
 shows the command and how to select the same font families in a separate consumer.
 
@@ -264,7 +264,7 @@ The table lists output and engine requirements in addition to that family select
 | `deterministic_gantt` | `compat-json` |
 | `render_svg`, `render_svg_monospace`, `embed_multiple_svgs`, `render_many`, `inspect_layout`, `configure_mermaid`, `theme_preset`, `theme_recipe`, `custom_diagram_theme`, `custom_svg_pipeline` | `svg` |
 | `render_terminal`, `render_agent_log`, `terminal_palette` | `ascii` |
-| `render_png` | `png` (also enables `svg`) |
+| `render_png` | `png`, `system-fonts` |
 | `standalone_resvg` | `native-fonts` (also enables `svg`) |
 
 For example:
@@ -272,7 +272,7 @@ For example:
 ```sh
 cargo run -p merman --no-default-features --features all-diagrams,svg --example render_svg > diagram.svg
 cargo run -p merman --no-default-features --features all-diagrams --example inspect_semantics
-cargo run -p merman --no-default-features --features all-diagrams,png --example render_png
+cargo run -p merman --no-default-features --features all-diagrams,png,system-fonts --example render_png
 ```
 
 Replace `all-diagrams` with the required `diagram-*` selectors when embedding only selected

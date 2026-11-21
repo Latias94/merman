@@ -45,8 +45,7 @@ impl SourcePresentationConfig {
         let mut owned = 0;
         for (index, path) in paths.iter().enumerate() {
             control.checkpoint()?;
-            if (self.source_theme_palette
-                && super::config_value_at(self.as_value(), path).is_some())
+            if (self.source_theme_palette && self.inputs.get_dotted_path(path).is_some())
                 || detector_changes.is_some_and(|changes| {
                     changes
                         .claimed_paths()
@@ -113,9 +112,14 @@ fn owns_path(
     effective_config: &MermaidConfig,
     dotted_path: &str,
 ) -> bool {
-    let mut explicit_current = explicit_config.as_value();
-    let mut effective_current = effective_config.as_value();
-    for segment in dotted_path.split('.') {
+    let mut path = dotted_path.split('.');
+    let first = path.next().expect("split returns at least one segment");
+    let (Some(mut explicit_current), Some(mut effective_current)) =
+        (explicit_config.get(first), effective_config.get(first))
+    else {
+        return false;
+    };
+    for segment in path {
         let Some(explicit_object) = explicit_current.as_object() else {
             // A scalar/array parent only owns a descendant when assignWithDepth actually left that
             // parent in the effective config. Type-conflicting assignments are ignored upstream.

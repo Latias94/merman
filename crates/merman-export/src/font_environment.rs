@@ -64,12 +64,15 @@ impl ExportFontPlan {
         self.glyph_fallback_used
     }
 
-    /// Returns whether usvg could not select any face for at least one text run.
+    /// Returns whether a visible text span lacked a usable primary face.
+    /// Registry usvg 0.47 conservatively reports any failed primary lookup.
     pub const fn unresolved_font_request(self) -> bool {
         self.unresolved_font_request
     }
 
-    /// Returns whether usvg could not find a fallback face for at least one character.
+    /// Returns whether final visible text has unresolved glyph coverage.
+    /// Registry usvg 0.47 cannot distinguish fully omitted glyphs from speculative lookup
+    /// misses, so it conservatively includes both final `.notdef` glyphs and lookup misses.
     pub const fn unresolved_glyph_fallback(self) -> bool {
         self.unresolved_glyph_fallback
     }
@@ -135,22 +138,36 @@ impl ExportFontPlanSeed {
         )?;
         #[cfg(not(feature = "native-fonts"))]
         let evidence = FinalTreeFontEvidence::collect(tree, &self.system_fonts, control)?;
-        let unresolved_glyph_fallback = self
-            .recorder
-            .unresolved_glyph_fallback
-            .load(Ordering::Relaxed)
-            || evidence.notdef_glyph_count != 0;
         #[cfg(feature = "native-fonts")]
         let native_facts = self.native_export.as_ref().map(|observer| {
             (
                 observer.family_fallback_used(),
                 observer.glyph_fallback_used(),
-                observer.unresolved_font_request(),
-                observer.unresolved_glyph_fallback(),
             )
         });
         #[cfg(not(feature = "native-fonts"))]
-        let native_facts: Option<(bool, bool, bool, bool)> = None;
+        let native_facts: Option<(bool, bool)> = None;
+
+        let mut unresolved_font_request = evidence.no_primary_face;
+        let mut unresolved_glyph_fallback =
+            evidence.dropped_notdef || evidence.notdef_glyph_count != 0;
+        if tree.root().text_font_omissions().is_none() {
+            // Registry usvg prunes some missing glyphs before exposing the tree.
+            // Keep lookup misses as conservative coverage evidence on this backend.
+            unresolved_font_request |= self
+                .recorder
+                .unresolved_font_request
+                .load(Ordering::Relaxed);
+            unresolved_glyph_fallback |= self
+                .recorder
+                .unresolved_glyph_fallback
+                .load(Ordering::Relaxed);
+            #[cfg(feature = "native-fonts")]
+            if let Some(observer) = &self.native_export {
+                unresolved_font_request |= observer.unresolved_font_request();
+                unresolved_glyph_fallback |= observer.unresolved_glyph_fallback();
+            }
+        }
 
         export_checkpoint(control)?;
         Ok(ExportFontPlan {
@@ -162,24 +179,32 @@ impl ExportFontPlanSeed {
                 || native_facts.is_some_and(|facts| facts.0),
             glyph_fallback_used: self.recorder.glyph_fallback_used.load(Ordering::Relaxed)
                 || native_facts.is_some_and(|facts| facts.1),
-            unresolved_font_request: self
-                .recorder
-                .unresolved_font_request
-                .load(Ordering::Relaxed)
-                || native_facts.is_some_and(|facts| facts.2),
-            unresolved_glyph_fallback: unresolved_glyph_fallback
-                || native_facts.is_some_and(|facts| facts.3),
+            unresolved_font_request,
+            unresolved_glyph_fallback,
             unclassified_face_count: evidence.unclassified_face_count,
             notdef_glyph_count: evidence.notdef_glyph_count,
         })
     }
 }
 
+// The workspace usvg provides an inherent method. Published Merman consumers using the
+// registry usvg 0.47 API can inspect final positioned glyphs but cannot inspect omissions.
+#[allow(dead_code, reason = "used when the consumer resolves unpatched usvg")]
+trait RegistryUsvgGroup {
+    fn text_font_omissions(&self) -> Option<(bool, bool)> {
+        None
+    }
+}
+
+impl RegistryUsvgGroup for usvg::Group {}
+
 #[derive(Debug, Default)]
 struct FinalTreeFontEvidence {
     used_system_fonts: bool,
     unclassified_face_count: usize,
     notdef_glyph_count: usize,
+    no_primary_face: bool,
+    dropped_notdef: bool,
 }
 
 impl FinalTreeFontEvidence {
@@ -227,96 +252,209 @@ impl FinalTreeFontEvidence {
         caller_faces: BTreeSet<usvg::fontdb::ID>,
         control: &OperationControl,
     ) -> Result<Self> {
-        let mut evidence = Self::default();
-        let mut unclassified_faces = HashSet::new();
-        let mut visited_groups = HashSet::new();
-        evidence.visit_group(
-            tree.root(),
-            &system_faces,
-            &caller_faces,
-            &mut unclassified_faces,
-            &mut visited_groups,
+        let mut walk = FinalTreeFontWalk {
+            evidence: Self::default(),
+            system_faces,
+            caller_faces,
+            unclassified_faces: HashSet::new(),
+            visited_resources: HashSet::new(),
             control,
-        )?;
-        evidence.unclassified_face_count = unclassified_faces.len();
-        Ok(evidence)
+        };
+        walk.visit_group(tree.root())?;
+        walk.evidence.unclassified_face_count = walk.unclassified_faces.len();
+        Ok(walk.evidence)
     }
+}
 
-    fn visit_group(
-        &mut self,
-        group: &usvg::Group,
-        system_faces: &BTreeSet<usvg::fontdb::ID>,
-        caller_faces: &BTreeSet<usvg::fontdb::ID>,
-        unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
-        visited_groups: &mut HashSet<*const usvg::Group>,
-        control: &OperationControl,
-    ) -> Result<()> {
-        export_checkpoint(control)?;
-        if !visited_groups.insert(std::ptr::from_ref(group)) {
-            return Ok(());
+struct FinalTreeFontWalk<'a> {
+    evidence: FinalTreeFontEvidence,
+    system_faces: BTreeSet<usvg::fontdb::ID>,
+    caller_faces: BTreeSet<usvg::fontdb::ID>,
+    unclassified_faces: HashSet<usvg::fontdb::ID>,
+    visited_resources: HashSet<*const usvg::Group>,
+    control: &'a OperationControl,
+}
+
+impl FinalTreeFontWalk<'_> {
+    fn visit_group(&mut self, group: &usvg::Group) -> Result<bool> {
+        export_checkpoint(self.control)?;
+        if group.opacity().get() == 0.0 {
+            return Ok(false);
+        }
+        let mut may_paint = !group.filters().is_empty();
+        if let Some((no_primary_face, dropped_notdef)) = group.text_font_omissions() {
+            self.evidence.no_primary_face |= no_primary_face;
+            self.evidence.dropped_notdef |= dropped_notdef;
+            may_paint |= no_primary_face || dropped_notdef;
         }
         for node in group.children() {
-            export_checkpoint(control)?;
+            export_checkpoint(self.control)?;
             match node {
-                usvg::Node::Group(group) => self.visit_group(
-                    group,
-                    system_faces,
-                    caller_faces,
-                    unclassified_faces,
-                    visited_groups,
-                    control,
-                )?,
+                usvg::Node::Group(group) => may_paint |= self.visit_group(group)?,
                 usvg::Node::Text(text) => {
-                    self.visit_text(
-                        text,
-                        system_faces,
-                        caller_faces,
-                        unclassified_faces,
-                        control,
-                    )?;
+                    self.visit_text(text)?;
+                    may_paint |= self.visit_group(text.flattened())?;
+                }
+                usvg::Node::Path(path) if path.is_visible() => {
+                    for paint in [
+                        path.fill()
+                            .filter(|fill| fill.opacity().get() != 0.0)
+                            .map(usvg::Fill::paint),
+                        path.stroke()
+                            .filter(|stroke| stroke.opacity().get() != 0.0)
+                            .map(usvg::Stroke::paint),
+                    ]
+                    .into_iter()
+                    .flatten()
+                    {
+                        may_paint = true;
+                        if let usvg::Paint::Pattern(pattern) = paint {
+                            self.visit_resource(pattern.root())?;
+                        }
+                    }
+                }
+                usvg::Node::Image(image) if image.is_visible() => {
+                    if let usvg::ImageKind::SVG(tree) = image.kind() {
+                        may_paint |= self.visit_group(tree.root())?;
+                    } else {
+                        may_paint = true;
+                    }
                 }
                 usvg::Node::Path(_) | usvg::Node::Image(_) => {}
             }
-            let mut subroot_result = Ok(());
-            node.subroots(|subroot| {
-                if subroot_result.is_ok() {
-                    subroot_result = self.visit_group(
-                        subroot,
-                        system_faces,
-                        caller_faces,
-                        unclassified_faces,
-                        visited_groups,
-                        control,
-                    );
+        }
+        if !may_paint {
+            return Ok(false);
+        }
+        // Inspect linked roots here, under the consumer's visibility check. Node::subroots
+        // exposes only the first two clip and mask links.
+        let clips = std::iter::successors(group.clip_path(), |clip| clip.clip_path());
+        self.visit_linked_resources(clips.map(usvg::ClipPath::root))?;
+        let masks = std::iter::successors(group.mask(), |mask| mask.mask());
+        self.visit_linked_resources(masks.map(usvg::Mask::root))?;
+        for filter in group.filters() {
+            self.visit_filter_images(filter)?;
+        }
+        Ok(true)
+    }
+
+    fn visit_filter_images<'filter>(
+        &mut self,
+        filter: &'filter usvg::filter::Filter,
+    ) -> Result<()> {
+        use usvg::filter::{Input, Kind};
+
+        // usvg resolves omitted inputs to the previous result or SourceGraphic. Walk
+        // back from the final output so each name binds to the nearest preceding result,
+        // and only inspect images that can contribute to that output.
+        let mut needed_results = HashSet::new();
+        for (offset, primitive) in filter.primitives().iter().rev().enumerate() {
+            export_checkpoint(self.control)?;
+            if offset != 0 && !needed_results.remove(primitive.result()) {
+                continue;
+            }
+            let mut require_input = |input: &'filter Input| {
+                if let Input::Reference(name) = input {
+                    needed_results.insert(name.as_str());
                 }
-            });
-            subroot_result?;
+            };
+            match primitive.kind() {
+                Kind::Image(image) => {
+                    self.visit_resource(image.root())?;
+                }
+                Kind::Blend(fe) => {
+                    require_input(fe.input1());
+                    require_input(fe.input2());
+                }
+                Kind::Composite(fe) => {
+                    require_input(fe.input1());
+                    require_input(fe.input2());
+                }
+                Kind::DisplacementMap(fe) => {
+                    require_input(fe.input1());
+                    require_input(fe.input2());
+                }
+                Kind::Merge(fe) => {
+                    for input in fe.inputs() {
+                        export_checkpoint(self.control)?;
+                        require_input(input);
+                    }
+                }
+                Kind::ColorMatrix(fe) => require_input(fe.input()),
+                Kind::ComponentTransfer(fe) => require_input(fe.input()),
+                Kind::ConvolveMatrix(fe) => require_input(fe.input()),
+                Kind::DiffuseLighting(fe) => require_input(fe.input()),
+                Kind::DropShadow(fe) => require_input(fe.input()),
+                Kind::GaussianBlur(fe) => require_input(fe.input()),
+                Kind::Morphology(fe) => require_input(fe.input()),
+                Kind::Offset(fe) => require_input(fe.input()),
+                Kind::SpecularLighting(fe) => require_input(fe.input()),
+                Kind::Tile(fe) => require_input(fe.input()),
+                Kind::Flood(_) | Kind::Turbulence(_) => {}
+            }
+            if needed_results.is_empty() {
+                break;
+            }
         }
         Ok(())
     }
 
-    fn visit_text(
+    fn visit_resource(&mut self, root: &usvg::Group) -> Result<bool> {
+        if self.visited_resources.insert(std::ptr::from_ref(root)) {
+            self.visit_group(root)?;
+            Ok(true)
+        } else {
+            Ok(false)
+        }
+    }
+
+    fn visit_linked_resources<'tree>(
         &mut self,
-        text: &usvg::Text,
-        system_faces: &BTreeSet<usvg::fontdb::ID>,
-        caller_faces: &BTreeSet<usvg::fontdb::ID>,
-        unclassified_faces: &mut HashSet<usvg::fontdb::ID>,
-        control: &OperationControl,
+        roots: impl Iterator<Item = &'tree usvg::Group>,
     ) -> Result<()> {
+        for root in roots {
+            // A visited clip or mask owns the same remaining links on every use.
+            if !self.visit_resource(root)? {
+                break;
+            }
+        }
+        Ok(())
+    }
+
+    fn visit_text(&mut self, text: &usvg::Text) -> Result<()> {
         for span in text.layouted() {
-            export_checkpoint(control)?;
+            export_checkpoint(self.control)?;
             if !span.visible {
                 continue;
             }
+            let has_paint = span
+                .fill
+                .as_ref()
+                .is_some_and(|fill| fill.opacity().get() != 0.0)
+                || span
+                    .stroke
+                    .as_ref()
+                    .is_some_and(|stroke| stroke.opacity().get() != 0.0)
+                || [&span.underline, &span.overline, &span.line_through]
+                    .into_iter()
+                    .flatten()
+                    .any(|path| {
+                        path.is_visible()
+                            && (path.fill().is_some_and(|fill| fill.opacity().get() != 0.0)
+                                || path
+                                    .stroke()
+                                    .is_some_and(|stroke| stroke.opacity().get() != 0.0))
+                    });
             for glyph in &span.positioned_glyphs {
-                export_checkpoint(control)?;
-                if glyph.id.0 == 0 {
-                    self.notdef_glyph_count = self.notdef_glyph_count.saturating_add(1);
+                export_checkpoint(self.control)?;
+                if glyph.id.0 == 0 && has_paint {
+                    self.evidence.notdef_glyph_count =
+                        self.evidence.notdef_glyph_count.saturating_add(1);
                 }
-                if system_faces.contains(&glyph.font) {
-                    self.used_system_fonts = true;
-                } else if !caller_faces.contains(&glyph.font) {
-                    unclassified_faces.insert(glyph.font);
+                if self.system_faces.contains(&glyph.font) {
+                    self.evidence.used_system_fonts = true;
+                } else if !self.caller_faces.contains(&glyph.font) {
+                    self.unclassified_faces.insert(glyph.font);
                 }
             }
         }
@@ -570,12 +708,18 @@ mod tests {
                         include_bytes!("../tests/fonts/Cousine-Regular.ttf").to_vec(),
                     );
                 }
-                let selection = Arc::new(FontSelectionPolicy::from_database(&database));
-                let database = Arc::new(database);
-                let recorder = Arc::new(FontResolutionRecorder::default());
+                let environment = ExportFontEnvironment::from_resources(
+                    &FontCatalog::system_fonts(),
+                    &FontSourcePolicy::system_only(),
+                    || {
+                        let selection = FontSelectionPolicy::from_database(&database);
+                        (Arc::new(database), Arc::new(selection))
+                    },
+                )
+                .unwrap();
                 let options = usvg::Options {
-                    fontdb: Arc::clone(&database),
-                    font_resolver: system_font_resolver(database, selection, Arc::clone(&recorder)),
+                    fontdb: environment.fontdb,
+                    font_resolver: environment.resolver,
                     ..Default::default()
                 };
                 let tree = usvg::Tree::from_str(
@@ -599,14 +743,12 @@ mod tests {
                 assert!(glyphs.iter().all(|glyph| {
                     tree.fontdb().face(glyph.font).unwrap().post_script_name == expected
                 }));
-                assert_eq!(
-                    recorder.glyph_fallback_used.load(Ordering::Relaxed),
-                    include_text_fallback
-                );
-                assert_eq!(
-                    recorder.unresolved_glyph_fallback.load(Ordering::Relaxed),
-                    !include_text_fallback
-                );
+                let plan = environment
+                    .plan
+                    .finish_with_tree(&tree, &OperationControl::new())
+                    .unwrap();
+                assert_eq!(plan.glyph_fallback_used(), include_text_fallback);
+                assert_eq!(plan.unresolved_glyph_fallback(), !include_text_fallback);
             }
         }
     }
@@ -833,6 +975,116 @@ mod tests {
             .unwrap();
         assert!(missing.notdef_glyph_count() > 0);
         assert!(missing.unresolved_glyph_fallback());
+    }
+
+    #[cfg(feature = "native-fonts")]
+    #[test]
+    fn native_export_coverage_with_and_without_omission_evidence() {
+        let control = OperationControl::new();
+        let context = |fonts: &[&[u8]]| {
+            crate::NativeFontContext::from_font_bytes(
+                fonts.iter().map(|bytes| bytes.to_vec()),
+                crate::NativeFontLimits::default(),
+                &control,
+            )
+            .unwrap()
+            .with_strict_glyph_coverage(true)
+        };
+        let symbolic_bytes = include_bytes!("../tests/fonts/MermanSymbolicTest.ttf");
+        let noto_bytes = include_bytes!("../tests/fonts/NotoSansSC-subset.ttf");
+        let symbolic = context(&[symbolic_bytes]);
+        let noto = context(&[noto_bytes]);
+        let mixed = context(&[noto_bytes, symbolic_bytes]);
+        for (context, body, vendored, registry) in [
+            (
+                &mixed,
+                r#"<text id="probe" y="20" font-family="Noto Sans SC">中<tspan font-family="Merman Symbolic Test">A</tspan></text>"#,
+                (false, false),
+                (false, true),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" font-family="sans-serif">A</text>"#,
+                (true, false),
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" font-family="sans-serif">A<tspan font-family="Merman Symbolic Test">A</tspan></text>"#,
+                (true, false),
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" visibility="hidden" font-family="sans-serif">A</text>"#,
+                (false, false),
+                (true, false),
+            ),
+            (
+                &symbolic,
+                r#"<text id="probe" y="20" display="none" font-family="sans-serif">A</text>"#,
+                (false, false),
+                (false, false),
+            ),
+            (
+                &noto,
+                r#"<g transform="translate(8 0)"><text id="probe" y="20" font-family="Noto Sans SC">🚀</text></g>"#,
+                (false, true),
+                (false, true),
+            ),
+            (
+                &noto,
+                r#"<text id="probe" y="20" visibility="hidden" font-family="Noto Sans SC">🚀</text>"#,
+                (false, false),
+                (false, true),
+            ),
+            (
+                &noto,
+                r#"<text id="probe" y="20" font-family="Noto Sans SC">中<tspan visibility="hidden">🚀</tspan></text>"#,
+                (false, false),
+                (false, true),
+            ),
+            (
+                &noto,
+                r#"<g opacity="0"><text id="probe" y="20" font-family="Noto Sans SC">🚀</text></g>"#,
+                (false, false),
+                (false, true),
+            ),
+        ] {
+            let source = format!(
+                r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="60">{body}</svg>"#
+            );
+            let mut options = usvg::Options::default();
+            let observer = context.apply_to_usvg_options_for_export(&mut options, &control);
+            let seed = ExportFontPlanSeed::from_native_context(context, observer);
+            let tree = usvg::Tree::from_str(&source, &options).unwrap();
+            let plan = seed.finish_with_tree(&tree, &control).unwrap();
+            assert_eq!(plan.notdef_glyph_count(), 0, "{body}");
+            let expected = if tree.root().text_font_omissions().is_some() {
+                vendored
+            } else {
+                registry
+            };
+            assert_eq!(
+                (
+                    plan.unresolved_font_request(),
+                    plan.unresolved_glyph_fallback()
+                ),
+                expected,
+                "{body}"
+            );
+            let result = crate::check_export_glyph_coverage(context, plan);
+            if expected.0 || expected.1 {
+                assert!(matches!(
+                    result,
+                    Err(ExportError::NativeFont(
+                        crate::NativeFontError::MissingGlyphCoverage
+                    ))
+                ));
+            } else {
+                result.unwrap();
+            }
+        }
     }
 
     #[test]

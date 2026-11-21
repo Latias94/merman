@@ -290,7 +290,7 @@ test("runtime catalog lossless integer scanning covers every known numeric path"
 function runtimeCatalog(overrides = {}) {
   return {
     schema_version: 1,
-    transport_api_version: 1,
+    transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
     package_version: PACKAGE_VERSION,
     options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
     payload_schemas: [
@@ -1353,6 +1353,24 @@ test("SVG convenience calls request data only while generic results retain metad
   factory.transport.execute = async () => success();
   await assert.rejects(engine.renderSvg(source), /metadata for a data-only operation/i);
   await engine.dispose();
+});
+
+test("custom adapters cannot opt out of SVG envelope validation", async () => {
+  const rawSvg = "<svg />";
+  const factory = transportFactory({
+    async execute() { return rawSvg; },
+    executeSync() { return rawSvg; },
+    async executeSvg() { assert.fail("custom adapter SVG method was called"); },
+    executeSvgSync() { assert.fail("custom adapter SVG sync method was called"); },
+  });
+  const engine = await createNodeEngine({}, { loadTransport: factory.loadTransport });
+  try {
+    const source = "flowchart TD\nA";
+    await assert.rejects(engine.renderSvg(source), MermanInvalidTransportError);
+    assert.throws(() => engine.renderSvgSync(source), MermanInvalidTransportError);
+  } finally {
+    await engine.dispose();
+  }
 });
 
 test("generic operations reject superseded request fields", async () => {

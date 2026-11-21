@@ -17,7 +17,7 @@ impl FlowchartSteps {
         model: &crate::flowchart::FlowchartModel,
         config: &merman_model::presentation::PresentationConfig,
     ) -> Self {
-        let flowchart = config.as_value().get("flowchart");
+        let flowchart = config.get("flowchart");
         Self {
             count: model.step_count(),
             duration: flowchart

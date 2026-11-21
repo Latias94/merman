@@ -4,18 +4,18 @@
 Node.js 22+ and static-site builds. A small loader selects one exact-version native package for the
 current host; it has no browser-WASM fallback or postinstall downloader.
 
-This guide documents `0.10.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [current Node changelog](CHANGELOG.md) and [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for changes and upgrade actions.
+This guide documents `0.11.0`. Check the [host installation guide](../../docs/release/PREBUILT_PRODUCTS.md#published-versions) for verified versions and channel availability. See the [Node changelog](CHANGELOG.md) and [0.11.0 migration guide](../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts) for changes and upgrade actions.
 
 Application developers should start with the [`@mermanjs/node` package guide](packages/node/README.md).
 
 ## Quick start
 
-The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.10.0` targets Mermaid `12.3.0` and uses Node binding API `1`, [Options JSON schema `3`](../../docs/bindings/OPTIONS_JSON.md), and theme execution evidence schema `2`.
+The nine-package group contains the loader, seven native platform packages, and explicit `@mermanjs/node-wasm` transport. Keep wrappers and native/WASM artifacts at the same exact version and source revision. Version `0.11.0` targets Mermaid `12.3.0` and uses Node transport API `2`, Options JSON schema `3`, and theme execution evidence schema `2`. [Options JSON](../../docs/bindings/OPTIONS_JSON.md)
 
 Version `0.10.0-alpha.1` retains Mermaid `12.2.0` and theme execution evidence schema `1`; Node binding API `1` and Options JSON schema `3` are unchanged. See the [Mermaid 12.3 migration](../../docs/migrations/mermaid-12-3.md) for Step animation and static output policy, shared shapes, and layout changes.
 
 ```sh
-npm install --save-exact @mermanjs/node@0.10.0
+npm install --save-exact @mermanjs/node@0.11.0
 ```
 
 ```js
@@ -61,7 +61,8 @@ const options = {
 const svg = await engine.renderSvg(source, options);
 ```
 
-The supported pipeline values are `parity`, `readable`, and `resvg-safe`. `readable` is an advanced
+The supported pipeline values are `parity`, `static`, `readable`, and `resvg-safe`. Use `static`
+for fixed illustrations to omit unused generated palette rules. `readable` is an advanced
 text overlay for consumers that ignore HTML labels; browsers can display both copies and show
 overlapping text. Use `parity` for browser display. `resvg-safe` also removes unsupported styles,
 so it is not a lossless replacement for `readable`. HTML embedding still requires a host-owned
@@ -125,6 +126,16 @@ The native target lanes install only the loader tarball, resolve its exact optio
 through a small local registry, inspect the resulting lockfile, and execute ordinary SVG and
 outlined formula rendering on the matching CPU. Both transports also execute on Node 22.0.0.
 The GNU lanes build and execute at glibc 2.31; ARM64 uses native ARM64 runners.
+
+For Node transport API `2`, rebuild the loader, native addon and explicit Node-WASM artifact from
+the same revision. The installed native `renderSvg()` and `renderSvgSync()` helpers send source text
+and optional Options JSON separately. The source, options, and equivalent escaped request ceilings
+are 8, 1, and 10 MiB, respectively. The engine's selected resource profile may impose tighter limits.
+
+The installed-product comparison times the strings returned by `renderSvg()` by default. Pass
+`--svg-api sync` to the existing benchmark command to time `renderSvgSync()` in the cold and warm
+lanes. The concurrency lane uses `renderSvg()` in both modes. The worker prepares fixed SVG options
+before timing and hashes the returned string afterward.
 
 Building the Node-WASM candidate requires `wasm-pack 0.15.0` and Binaryen `version_133`.
 Put that release's `wasm-opt` on `PATH` before running the build owner, as CI, release preflight,

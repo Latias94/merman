@@ -85,7 +85,9 @@ impl GraphLayoutSelection {
 }
 
 /// Select a registered loader before validating the family's layout data.
-pub(crate) fn resolve_graph_layout(config: &Value) -> GraphLayoutSelection {
+pub(crate) fn resolve_graph_layout(
+    config: &(impl crate::config::ConfigLookup + ?Sized),
+) -> GraphLayoutSelection {
     let requested = config.get("layout").and_then(Value::as_str).unwrap_or("");
     let backend =
         if cfg!(feature = "layout-elk") && ElkRootAlgorithm::from_name(requested).is_some() {

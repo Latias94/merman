@@ -385,18 +385,8 @@ function addJsonStringWireBytes(value, label, limits, budget) {
     const codeUnit = value.charCodeAt(index);
     let characterBytes = utf8LengthOfCodeUnit(codeUnit);
     let wireBytes = characterBytes;
-    if (codeUnit === 0x22 || codeUnit === 0x5c) {
-      wireBytes = 2;
-    } else if (
-      codeUnit === 0x08 ||
-      codeUnit === 0x09 ||
-      codeUnit === 0x0a ||
-      codeUnit === 0x0c ||
-      codeUnit === 0x0d
-    ) {
-      wireBytes = 2;
-    } else if (codeUnit <= 0x1f) {
-      wireBytes = 6;
+    if (codeUnit <= 0x7f) {
+      wireBytes = jsonAsciiByteLength(codeUnit);
     } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
       const low = value.charCodeAt(index + 1);
       if (!(low >= 0xdc00 && low <= 0xdfff)) {
@@ -433,13 +423,12 @@ function addJsonWireBytes(budget, bytes) {
 }
 
 export function assertUtf8Field(value, label, maxUtf8Bytes) {
-  const bytes = strictUtf8ByteLength(value, label);
-  if (bytes > maxUtf8Bytes) {
-    throw new MermanInvalidTransportError(
-      `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte field limit.`,
-    );
-  }
-  return bytes;
+  return measureUtf8Field(value, label, maxUtf8Bytes, false);
+}
+
+// Counts an escaped JSON string's contents without allocating it or including its quotes.
+export function jsonStringFieldBytes(value, label, maxUtf8Bytes) {
+  return measureUtf8Field(value, label, maxUtf8Bytes, true);
 }
 
 export function parseRuntimeCatalogJsonText(value, label = "runtime catalog") {
@@ -520,11 +509,17 @@ export function validateTransportIdentityExport(
 }
 
 export function strictUtf8ByteLength(value, label = "text") {
+  return measureUtf8Field(value, label, Infinity, false);
+}
+
+function measureUtf8Field(value, label, maxUtf8Bytes, countJsonEscapes) {
   let bytes = 0;
+  let escapeBytes = 0;
   for (let index = 0; index < value.length; index += 1) {
     const codeUnit = value.charCodeAt(index);
     if (codeUnit <= 0x7f) {
       bytes += 1;
+      if (countJsonEscapes) escapeBytes += jsonAsciiByteLength(codeUnit) - 1;
     } else if (codeUnit <= 0x7ff) {
       bytes += 2;
     } else if (codeUnit >= 0xd800 && codeUnit <= 0xdbff) {
@@ -544,7 +539,27 @@ export function strictUtf8ByteLength(value, label = "text") {
       bytes += 3;
     }
   }
-  return bytes;
+  if (bytes > maxUtf8Bytes) {
+    throw new MermanInvalidTransportError(
+      `Merman transport ${label} exceeds the ${maxUtf8Bytes}-byte field limit.`,
+    );
+  }
+  return bytes + escapeBytes;
+}
+
+function jsonAsciiByteLength(codeUnit) {
+  switch (codeUnit) {
+    case 0x08:
+    case 0x09:
+    case 0x0a:
+    case 0x0c:
+    case 0x0d:
+    case 0x22:
+    case 0x5c:
+      return 2;
+    default:
+      return codeUnit <= 0x1f ? 6 : 1;
+  }
 }
 
 function scanBoundedJsonText(source, label, limits) {
@@ -904,6 +919,7 @@ export function decodeWireResponse(
   expectation,
   {
     includeMetadata = true,
+    requireError = false,
     allowedCancellationReasons = [],
     requireUnavailable = false,
     availableCapabilityIds = [],
@@ -936,6 +952,9 @@ export function decodeWireResponse(
       availableCapabilityIds,
     );
     throw new MermanOperationError(error);
+  }
+  if (requireError) {
+    throw new MermanInvalidTransportError("The native SVG failure must contain an error envelope.");
   }
   if (envelope.ok !== true || Object.hasOwn(envelope, "error")) {
     throw new MermanInvalidTransportError(

@@ -1,6 +1,6 @@
 .ie \n(.g .ds Aq \(aq
 .el .ds Aq '
-.TH MERMAN-CLI-RENDER 1 2026-08-15 "Merman 0.10.0" "Merman CLI Manual"
+.TH MERMAN-CLI-RENDER 1 2026-08-15 "Merman 0.11.0" "Merman CLI Manual"
 .SH NAME
 merman\-cli\-render \- Render one Mermaid diagram with Merman\*(Aqs native interface
 .SH SYNOPSIS
@@ -57,14 +57,16 @@ Suppress non\-error log output
 .SH "MERMAN RENDERER CONTROLS"
 .TP
 \fB\-\-svg\-pipeline\fR \fI<SVG_PIPELINE>\fR
-SVG consumer: parity (default) for browsers; resvg\-safe for resvg/usvg.
+SVG consumer: parity (default), static for fixed markup, or resvg\-safe for resvg/usvg.
 
-Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. PNG/JPEG/PDF exports select resvg\-safe automatically.
+Readable only adds text fallbacks for consumers that ignore HTML labels and can show duplicate text in browsers. PNG/JPEG/PDF use static generation and resvg\-safe conversion.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
 parity: Default for browsers and Webviews; preserves Mermaid HTML labels and styles
+.IP \(bu 2
+static: Generates SVG for fixed markup, emitting only the container palette slots it uses
 .IP \(bu 2
 readable: Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates
 .IP \(bu 2
@@ -297,14 +299,18 @@ native
 .RE
 .TP
 \fB\-\-font\-system\fR \fI<FONT_SYSTEM>\fR
-Control system font discovery; native encoded output enables it by default. Explicit font sources stay closed unless on is selected
+Control system font discovery. Native encoded output enables it by default. The values on, bounded, and platform enable system fallback for explicit fonts.
 .sp
 \fIPossible values:\fR
 .RS 14
 .IP \(bu 2
 off
 .IP \(bu 2
-on
+on: Enable the build\*(Aqs default system font provider
+.IP \(bu 2
+bounded: Use Merman\*(Aqs bounded system font discovery
+.IP \(bu 2
+platform: Query the platform\*(Aqs font catalog. Platform metadata access is outside Merman\*(Aqs scan limits
 .RE
 .TP
 \fB\-\-font\-max\-measurements\fR \fI<COUNT>\fR
@@ -512,4 +518,4 @@ ASCII resource controls:
   The optional timeout is cooperative and independent of resource budgets.
   No operation deadline is set unless \-\-operation\-timeout\-ms is supplied.
 .SH VERSION
-v0.10.0
+v0.11.0

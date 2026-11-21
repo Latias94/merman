@@ -246,9 +246,13 @@ def validate_repository_contract(root: Path = ROOT) -> list[ResolvedBinstallArti
         raise InstallationContractError(
             "cli-release must retain explicit layout-elk for the release artifact"
         )
-    if default_feature_set != release_features - {"math"}:
+    if "windows-platform-font-default" not in release_features:
         raise InstallationContractError(
-            "CLI defaults must equal cli-release features excluding opt-in math"
+            "cli-release must select the Windows platform system-font default"
+        )
+    if default_feature_set != release_features - {"math", "windows-platform-font-default"}:
+        raise InstallationContractError(
+            "CLI defaults must equal cli-release features excluding opt-in math and the Windows archive font default"
         )
 
     dist_table = dist_config.get("dist", {})

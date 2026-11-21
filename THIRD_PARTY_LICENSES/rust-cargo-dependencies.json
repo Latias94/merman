@@ -5,7 +5,7 @@
     "version": "0.9.3",
     "command_profile": "workspace-all-features-runtime",
     "offline": true,
-    "cargo_lock_sha256": "b9c6ea13d044522e3f04d3808b4aff61d2b7dfdc95799e594f976409953d1cd0",
+    "cargo_lock_sha256": "c2bfd43810e1a2fd17a309f0f2c7dd98ace270d968295fede98e2b9aaf4dbe32",
     "configuration_sha256": "50ee414d81334fe54e34465a8441d8ee5ec237518b06b3759c794056aa3e26a4"
   },
   "licenses": [
@@ -680,14 +680,6 @@
             "David Tolnay <dtolnay@gmail.com>"
           ],
           "repository": "https://github.com/dtolnay/unicode-ident"
-        },
-        {
-          "name": "usvg",
-          "version": "0.47.0",
-          "source": "registry+https://github.com/rust-lang/crates.io-index",
-          "license_expression": "Apache-2.0 OR MIT",
-          "authors": [],
-          "repository": "https://github.com/linebender/resvg"
         },
         {
           "name": "utf8parse",

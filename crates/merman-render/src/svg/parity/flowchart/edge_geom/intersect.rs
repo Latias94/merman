@@ -1050,7 +1050,7 @@ pub(in crate::svg::parity::flowchart) fn intersect_for_layout_shape(
             crate::config::mermaid_config_diagram_look(ctx.config).is_neo(),
         );
         let points: Vec<_> = geometry
-            .points
+            .outline()
             .into_iter()
             .map(|(x, y)| crate::model::LayoutPoint { x, y })
             .collect();

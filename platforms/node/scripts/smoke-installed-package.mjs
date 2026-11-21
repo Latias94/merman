@@ -45,9 +45,18 @@ async function main() {
   const engine = await module.createNodeEngine();
   try {
     assert.equal(engine.runtimeCatalog.package_version, expectedVersion);
-    const svg = await engine.renderSvg("flowchart TD\nA --> B");
+    const source = "flowchart TD\nA --> B";
+    const svg = await engine.renderSvg(source);
     assert.match(svg, /<svg\b/);
     assert.match(svg, /<\/svg>/);
+    if (expectedTarget !== "node-wasm") {
+      assert.throws(() => engine.renderSvgSync(source, { timeoutMs: 0 }), (error) =>
+        error instanceof module.MermanOperationError &&
+        error.codeName === "MERMAN_CANCELLED" &&
+        error.cancellationDetails?.reason === "deadline_exceeded" &&
+        error.cancellationDetails?.phase === "admission",
+      );
+    }
     const themeAuthoring = await runThemeAuthoringSmoke(module, engine);
     const iconRegistry = await runIconRegistrySmoke(module);
     const recipeExchange = await verifyCustomizedRecipeExchange(engine, entrypoint);

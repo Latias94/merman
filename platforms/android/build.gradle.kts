@@ -13,7 +13,7 @@ plugins {
 
 val mermanMavenGroup = providers.gradleProperty("mermanMavenGroup").orElse("io.merman")
 group = mermanMavenGroup.get()
-version = "0.10.0"
+version = "0.11.0"
 
 android {
     namespace = "io.merman"

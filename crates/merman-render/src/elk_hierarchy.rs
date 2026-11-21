@@ -183,6 +183,11 @@ impl<'a> HierarchyIndex<'a> {
         self.index_by_id.get(id).copied()
     }
 
+    pub(crate) fn parent_node_index(&self, id: &str) -> Option<usize> {
+        self.index_of(id)
+            .filter(|&index| self.heavy_child[index].is_some())
+    }
+
     pub(crate) fn parent_index(&self, index: usize) -> Option<usize> {
         self.parent[index]
     }

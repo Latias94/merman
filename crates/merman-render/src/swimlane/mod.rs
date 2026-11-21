@@ -21,7 +21,7 @@ mod working;
 
 use crate::Result;
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-use crate::flowchart::FlowchartConfigView;
+use crate::flowchart::{FlowchartConfigView, FlowchartEdgeTransportPlan, FlowchartRenderModelRef};
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
 use crate::math::MathRenderer;
 use crate::model::{
@@ -89,16 +89,20 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
     work_meter: Arc<OperationWorkMeter>,
 ) -> Result<SwimlaneLayout> {
     let source_nodes = model.nodes.len().saturating_add(model.subgraphs.len());
-    let source_edges = model.edges.len();
-    work_meter.preflight(swimlane_layout_preflight_work_units(
-        source_nodes,
-        source_edges,
-    ))?;
-    work_meter.charge(swimlane_core_layout_work_units(source_nodes, source_edges))?;
+    let source_work = source_layout_work_units(source_nodes, model.edges.len());
+    work_meter.preflight(source_work)?;
+    let render_model = FlowchartRenderModelRef::new(model, render_label_sources);
+    let visible_edges = render_model.projected_edges().collect::<Vec<_>>();
+    admit_layout_work(&work_meter, source_work, visible_edges.len())?;
+    let transport_plan = FlowchartEdgeTransportPlan::for_keyed_edges(
+        visible_edges
+            .iter()
+            .map(|(key, edge)| (*key, edge.semantic)),
+    );
     let config = config::SwimlaneConfig::from_config(effective_config);
     let mut working = prepare::prepare(
-        model,
-        render_label_sources,
+        &render_model,
+        (&visible_edges, &transport_plan),
         effective_config,
         measurer,
         math_renderer,
@@ -127,64 +131,47 @@ pub(crate) fn layout_swimlane_typed_with_work_meter_and_svg_label_sidecar(
         .filter(|curve| !curve.is_empty())
         .or(config_curve.as_deref())
         .unwrap_or("basis");
-    let curve_by_owner = model
-        .edges
-        .iter()
-        .map(|edge| {
-            edge.interpolate
-                .as_deref()
-                .filter(|curve| !curve.is_empty())
-                .unwrap_or(default_curve)
-        })
-        .collect::<Vec<_>>();
-
-    if working.original_edges.len() != model.edges.len() {
+    if working.original_edges.len() != visible_edges.len() {
         return Err(crate::Error::InvalidModel {
             message: format!(
-                "Swimlane edge-owner count {} does not match semantic edge count {}",
+                "Swimlane edge-owner count {} does not match visible edge count {}",
                 working.original_edges.len(),
-                model.edges.len()
+                visible_edges.len()
             ),
         });
     }
 
-    let transport_plan =
-        crate::flowchart::FlowchartEdgeTransportPlan::for_semantic_edges(&model.edges);
-    let mut curve_by_id = std::collections::HashMap::new();
-    for (semantic_index, edge) in working.original_edges.iter().enumerate() {
-        let key = crate::flowchart::FlowchartEdgeKey::new(semantic_index);
-        let source = &model.edges[semantic_index];
-        let expected = transport_plan
-            .id(key)
-            .ok_or_else(|| crate::Error::InvalidModel {
-                message: format!(
-                    "missing Swimlane transport id for semantic edge owner {semantic_index}"
-                ),
-            })?;
-        if edge.id != expected
-            || edge.reference_id != expected
+    let mut curve_by_id = std::collections::HashMap::with_capacity(visible_edges.len());
+    for ((key, source), edge) in visible_edges.iter().zip(&working.original_edges) {
+        if transport_plan.id(*key) != Some(edge.id.as_str())
+            || edge.reference_id != edge.id
             || edge.from != source.from
             || edge.to != source.to
         {
             return Err(crate::Error::InvalidModel {
                 message: format!(
-                    "Swimlane working edge `{}` does not match semantic owner {semantic_index}",
-                    edge.id
+                    "Swimlane working edge `{}` does not match semantic owner {}",
+                    edge.id,
+                    key.semantic_index()
                 ),
             });
         }
-        curve_by_id.insert(edge.id.as_str(), curve_by_owner[semantic_index]);
+        let curve = source
+            .semantic
+            .interpolate
+            .as_deref()
+            .filter(|curve| !curve.is_empty())
+            .unwrap_or(default_curve);
+        curve_by_id.insert(edge.id.as_str(), curve);
     }
     let mut layout = project_layout(&working, &curve_by_id);
-    for (edge, semantic) in layout.edges.iter_mut().zip(&model.edges) {
-        edge.id.clone_from(&semantic.id);
-        edge.from.clone_from(&semantic.from);
-        edge.to.clone_from(&semantic.to);
+    for (edge, (_, source)) in layout.edges.iter_mut().zip(&visible_edges) {
+        if edge.id != source.semantic.id {
+            edge.id.clone_from(&source.semantic.id);
+        }
     }
     layout.edge_owners = crate::flowchart::FlowchartEdgeOwners::new(
-        (0..model.edges.len())
-            .map(crate::flowchart::FlowchartEdgeKey::new)
-            .collect(),
+        visible_edges.iter().map(|(key, _)| *key).collect(),
     );
     Ok(layout)
 }
@@ -295,34 +282,32 @@ fn project_layout(
     }
 }
 
-fn swimlane_core_layout_work_units(nodes: usize, edges: usize) -> usize {
-    let baseline = nodes
+fn source_layout_work_units(nodes: usize, edges: usize) -> usize {
+    // Source-item passes include projection and occurrence-identity preparation.
+    nodes
         .saturating_mul(4)
-        .saturating_add(edges.saturating_mul(5));
-
-    // This is the stable, family-accounted cost for prepare, Sugiyama, and routing. The linear
-    // baseline covers their source-item passes plus occurrence-identity preparation. Routing adds
-    // edges incrementally and can compare each new route with every earlier route, so charge one
-    // conservative unit per unordered source-edge pair. Direction post-processing and SVG line
-    // hops charge the shared meter independently and must not be included here.
-    baseline.saturating_add(work_budget::unordered_pair_count(edges))
+        .saturating_add(edges.saturating_mul(5))
 }
 
-fn swimlane_layout_preflight_work_units(nodes: usize, edges: usize) -> usize {
-    // Keep preflight as a pure fail-fast estimate. In addition to the core-layout cost, reserve
-    // one unordered-pair allowance for the direction post-processing that follows. That phase
-    // charges its inspected candidates precisely, so this allowance is intentionally not charged
-    // by `swimlane_core_layout_work_units`.
-    swimlane_core_layout_work_units(nodes, edges)
-        .saturating_add(work_budget::unordered_pair_count(edges))
+fn admit_layout_work(
+    work_meter: &OperationWorkMeter,
+    source_work: usize,
+    visible_edges: usize,
+) -> Result<()> {
+    // Routing can compare each visible route with every earlier one. Also allow for a pair pass
+    // in direction post-processing, which charges its inspected candidates separately.
+    let route_pairs = work_budget::unordered_pair_count(visible_edges);
+    let core_work = source_work.saturating_add(route_pairs);
+    work_meter.preflight(core_work.saturating_add(route_pairs))?;
+    work_meter.charge(core_work)?;
+    Ok(())
 }
 
 #[cfg(test)]
 mod work_tests {
-    use super::{
-        deterministic_identifier_cmp, swimlane_core_layout_work_units,
-        swimlane_layout_preflight_work_units,
-    };
+    use super::{OperationWorkMeter, admit_layout_work, deterministic_identifier_cmp};
+    use crate::{Error, RenderResourcePolicy, ResourceLimitId};
+    use merman_model::OperationControl;
 
     #[test]
     fn identifier_order_is_stable_utf16_code_unit_order() {
@@ -342,29 +327,52 @@ mod work_tests {
 
     #[test]
     fn core_layout_cost_accounts_routing_pairs_once() {
-        // Four nodes plus three edges consume 31 linear units, including occurrence preparation;
-        // routing can inspect three unordered edge pairs.
-        assert_eq!(swimlane_core_layout_work_units(4, 3), 34);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::interactive());
+        // Four nodes plus five source edges consume 41 linear units. The three visible edges
+        // contribute three unordered route pairs.
+        admit_layout_work(&meter, super::source_layout_work_units(4, 5), 3).unwrap();
+        assert_eq!(meter.used(), 44);
     }
 
     #[test]
     fn preflight_reserves_direction_pairs_without_charging_them_to_core() {
-        let core = swimlane_core_layout_work_units(4, 3);
-        let preflight = swimlane_layout_preflight_work_units(4, 3);
+        let policy = RenderResourcePolicy::interactive()
+            .with_limit(ResourceLimitId::MaxLayoutWorkUnits, 36)
+            .unwrap();
+        let meter = OperationWorkMeter::new(policy);
+        let error =
+            admit_layout_work(&meter, super::source_layout_work_units(4, 3), 3).unwrap_err();
+        let Error::ResourceLimitExceeded(limit) = error else {
+            panic!("expected a layout work ceiling");
+        };
+        assert_eq!((limit.actual, limit.max), (37, 36));
+        assert_eq!(meter.used(), 0);
+    }
 
-        assert_eq!(core, 34);
-        assert_eq!(preflight, 37);
+    #[test]
+    fn layout_admission_observes_cancellation_after_source_preflight() {
+        let control = OperationControl::new();
+        let meter = OperationWorkMeter::new_with_control(
+            RenderResourcePolicy::interactive(),
+            control.clone(),
+        );
+        let source_work = super::source_layout_work_units(4, 5);
+        meter.preflight(source_work).unwrap();
+        control.cancel();
+
+        assert!(matches!(
+            admit_layout_work(&meter, source_work, 1),
+            Err(Error::Cancelled(_))
+        ));
+        assert_eq!(meter.used(), 0);
     }
 
     #[test]
     fn swimlane_layout_work_estimates_saturate() {
-        assert_eq!(
-            swimlane_core_layout_work_units(usize::MAX, usize::MAX),
-            usize::MAX
-        );
-        assert_eq!(
-            swimlane_layout_preflight_work_units(usize::MAX, usize::MAX),
-            usize::MAX
-        );
+        assert_eq!(super::source_layout_work_units(usize::MAX, 0), usize::MAX);
+        assert_eq!(super::source_layout_work_units(0, usize::MAX), usize::MAX);
+        let meter = OperationWorkMeter::new(RenderResourcePolicy::unbounded_for_trusted_input());
+        admit_layout_work(&meter, 31, usize::MAX).unwrap();
+        assert_eq!(meter.used(), usize::MAX);
     }
 }

@@ -33,6 +33,51 @@ test('language WASM loads with ABI 15 and parses Mermaid', async () => {
   parser.delete();
 });
 
+test('Flowchart and Swimlane lexical boundaries keep their portable highlight spans', async () => {
+  const language = await languagePromise;
+  const parser = new Parser();
+  parser.setLanguage(language);
+  const highlights = await readFile(require.resolve('../../queries/portable/highlights.scm'), 'utf8');
+  const query = new Query(language, highlights);
+
+  const cases = [
+    ['A --> B', [['variable', 'A'], ['operator', '-->'], ['variable', 'B']]],
+    ['A ...- B', [['variable', 'A'], ['operator', '...-'], ['variable', 'B']]],
+    ['1.->B', [['variable', '1'], ['operator', '.->'], ['variable', 'B']]],
+    ['1.5-.->B', [['variable', '1.5'], ['operator', '-.->'], ['variable', 'B']]],
+    ['A...-B', [['variable', 'A...-B']]],
+    ['A&B', [['variable', 'A&B']]],
+    ['A & B', [['variable', 'A'], ['variable', 'B']]],
+    ['A\u00a0&\u2003B', [['variable', 'A'], ['variable', 'B']]],
+    ['A--No-->B', [['variable', 'A'], ['operator', '--'], ['string', 'N'], ['operator', 'o-->'], ['variable', 'B']]],
+    ['A--Nox-->B', [['variable', 'A'], ['operator', '--'], ['string', 'No'], ['operator', 'x-->'], ['variable', 'B']]],
+    ['A--No -->B', [['variable', 'A'], ['operator', '--'], ['string', 'No '], ['operator', '-->'], ['variable', 'B']]],
+    ['A--"No"-->B', [['variable', 'A'], ['operator', '--'], ['string', '"No"'], ['operator', '-->'], ['variable', 'B']]],
+    ['./a-->./b', [['variable', './a'], ['operator', '-->'], ['variable', './b']]],
+  ];
+
+  try {
+    for (const header of ['flowchart LR', 'swimlane-beta LR']) {
+      for (const [statement, expected] of cases) {
+        const source = `${header}\n${statement}\n`;
+        const tree = parser.parse(source);
+        try {
+          assert.equal(tree.rootNode.hasError, false, source);
+          const captures = query.captures(tree.rootNode)
+            .filter(({ node }) => node.startPosition.row === 1)
+            .map(({ name, node }) => [name, node.text]);
+          assert.deepEqual(captures, expected, source);
+        } finally {
+          tree.delete();
+        }
+      }
+    }
+  } finally {
+    query.delete();
+    parser.delete();
+  }
+});
+
 test('flow directions keep comment and winning value highlight ranges in WASM', async () => {
   const language = await languagePromise;
   const parser = new Parser().setLanguage(language);

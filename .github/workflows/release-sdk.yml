@@ -130,7 +130,7 @@ jobs:
           python-version: "3.15.2"
       - name: Set up Go for WASI qualification
         if: matrix.platform.kind == 'wasi'
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
         with:
           go-version: "1.27.3"
           cache-dependency-path: |
@@ -150,7 +150,7 @@ jobs:
           targets: ${{ matrix.platform.target }}
       - name: Install the existing license report tool
         if: matrix.platform.target != 'x86_64-apple-darwin'
-        uses: taiki-e/install-action@cfdb7ed4ccc7c7dce37759eae89dc5674b469b39 # v2.90.3
+        uses: taiki-e/install-action@75a7c0f87bd666af3cdb75c5b9e9d03ab6044e6f # v2.90.6
         with:
           tool: cargo-about@0.9.3
       - name: Build the license CLI where no matching binary is available

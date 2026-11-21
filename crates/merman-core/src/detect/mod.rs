@@ -2,7 +2,7 @@
 mod full;
 
 #[cfg(feature = "presentation")]
-pub use full::{Detector, DetectorFn, DetectorRegistry};
+pub use full::{ConfigDetectorFn, Detector, DetectorConfig, DetectorFn, DetectorRegistry};
 
 use crate::family::DetectorFact;
 use crate::{MermaidConfig, OperationControl, OperationControlResult, Result};

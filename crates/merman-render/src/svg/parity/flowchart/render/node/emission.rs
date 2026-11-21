@@ -386,7 +386,7 @@ impl FlowchartNodeShapeEmissionReceipt {
         receipt
     }
 
-    pub(in crate::svg::parity::flowchart) const fn hand_drawn_process() -> Self {
+    pub(in crate::svg::parity::flowchart) const fn hand_drawn_hachure() -> Self {
         let facet = FlowchartNodeFacetEmission::new(
             FlowchartNodeFacetReach::Verified,
             FlowchartNodeFacetReach::None,
@@ -420,6 +420,18 @@ impl FlowchartNodeShapeEmissionReceipt {
                 FlowchartNodeFacetReach::Unverified,
             ),
         }
+    }
+
+    pub(in crate::svg::parity::flowchart::render::node) const fn hand_drawn_subroutine() -> Self {
+        let mut receipt = Self::hand_drawn_hachure();
+        // The hatching uses the selected fill. The outline and both side rules consume
+        // the selected stroke. The frame has square corners in every look.
+        receipt.fill.typed_theme = FlowchartNodeFacetReach::Verified;
+        receipt.stroke.typed_theme = FlowchartNodeFacetReach::Verified;
+        receipt.stroke_width.typed_theme = FlowchartNodeFacetReach::Verified;
+        receipt.stroke_dasharray.typed_theme = FlowchartNodeFacetReach::Verified;
+        receipt.radius = Self::classic_polygon().radius;
+        receipt
     }
 
     pub(in crate::svg::parity::flowchart) const fn start() -> Self {

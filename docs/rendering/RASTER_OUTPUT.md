@@ -43,8 +43,12 @@ returns `FontSourceUnavailable`; it does not silently paint missing text. The
 
 `NativeFontContext::from_font_bytes(...)` admits a bounded caller-owned set without
 filesystem discovery. `with_strict_glyph_coverage(true)` rejects missing coverage in
-measurement and final painting. The C font constructor and WASI transport use this
-strict policy and share the same admitted bytes across layout and encoding.
+measurement and final painting. Bundled native exports check the visible positioned glyphs
+and text omitted because of missing fonts or glyphs, including text used by visible clip paths,
+masks, and patterns. Cargo consumers resolving registry
+usvg 0.47 also treat resolver misses as possible omissions, so strict coverage can reject
+some mixed-font spans that painted successfully. The C font constructor and WASI transport
+use the strict policy and share the same admitted bytes across layout and encoding.
 The optional `bundled-fonts` resource is a small Latin/Greek/Cyrillic Cousine fallback,
 not a complete CJK or emoji font pack. Supply additional licensed fonts for those
 scripts. Ordinary SVG keeps text and only uses the context for measurement: it does
@@ -141,51 +145,51 @@ required.
 
 ## Library usage
 
-Enable only the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`) on the `merman`
-crate. PNG and JPEG share private bitmap preparation; PDF remains a separate vector export path.
-The following example uses both `png` and `pdf`:
+Enable the binary outputs the application uses (`png`, `jpeg`, and/or `pdf`) on the `merman`
+crate. PNG and JPEG share bitmap preparation. PDF has its own vector export path.
+The following Flowchart example exports PNG and PDF using system fonts.
 
 ```toml
 [dependencies]
-merman = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "pdf"] }
+merman = { version = "0.11.0", default-features = false, features = ["diagram-flowchart", "png", "pdf", "system-fonts"] }
 ```
 
 ```rust
 use merman::svg::export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions};
-use merman::{
-    OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
-};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-let renderer = Renderer::new();
-let source = "flowchart TD; A[Layer 7\\nHTTP]-->B;";
-let svg = SvgRequest {
-    options: merman::svg::SvgRenderOptions {
-        diagram_id: Some("export-doc-example".to_string()),
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = Renderer::new();
+    let source = "flowchart TD; A[Layer 7\\nHTTP]-->B;";
+    let svg = SvgRequest {
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some("export-doc-example".to_string()),
+            ..Default::default()
+        },
         ..Default::default()
-    },
-    ..Default::default()
-};
+    };
+    let raster = RasterOptions::default()
+        .with_fit_to(RasterFitBox::contain(960, 540))
+        .with_scale(2.0)
+        .with_matte("white");
+    let RenderOutput::Document(Some(document)) = renderer.render(RenderRequest::document(
+        source,
+        OperationControl::new(),
+        svg,
+    ))? else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    let png = document.export_png(&raster, OperationControl::new())?;
 
-let raster = RasterOptions::default()
-    .with_fit_to(RasterFitBox::contain(960, 540))
-    .with_scale(2.0)
-    .with_matte("white");
-let RenderOutput::Document(Some(document)) = renderer.render(RenderRequest::document(
-    source,
-    OperationControl::new(),
-    svg,
-))? else {
-    return Err("no Mermaid diagram detected".into());
-};
-let png = document.export_png(&raster, OperationControl::new())?;
+    let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
+        max_width_px: 800.0,
+    });
+    let pdf = document.export_pdf(&pdf, OperationControl::new())?;
 
-let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
-    max_width_px: 800.0,
-});
-let pdf = document.export_pdf(&pdf, OperationControl::new())?;
-
-# let _ = (png.bytes(), pdf.bytes());
-# Ok::<(), Box<dyn std::error::Error>>(())
+    std::fs::write("diagram.png", png.bytes())?;
+    std::fs::write("diagram.pdf", pdf.bytes())?;
+    Ok(())
+}
 ```
 
 Use `prepare_png_export`, `prepare_jpeg_export`, or `prepare_pdf_export` when a scheduler must
@@ -205,7 +209,7 @@ Calling `into_bytes()` is an explicit lossy projection that discards those recei
 The same path is available as a runnable repository example:
 
 ```sh
-cargo run -p merman --features png --example render_png
+cargo run -p merman --features png,system-fonts --example render_png
 ```
 
 If an application already owns SVG text, finalize it before calling low-level encoders. Those
@@ -213,9 +217,9 @@ encoders accept only the sealed `ResvgCompatibleSvg` artifact:
 
 ```toml
 [dependencies]
-merman-core = { version = "=0.8.0-alpha.6", default-features = false }
-merman-render = { version = "=0.8.0-alpha.6", default-features = false }
-merman-export = { version = "=0.8.0-alpha.6", default-features = false, features = ["png", "jpeg", "pdf"] }
+merman-model = { version = "0.11.0", default-features = false }
+merman-render = { version = "0.11.0", default-features = false }
+merman-export = { version = "0.11.0", default-features = false, features = ["png", "jpeg", "pdf", "system-fonts"] }
 ```
 
 ```rust
@@ -226,18 +230,22 @@ use merman_export::{
 };
 use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
-let source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>";
-let control = OperationControl::new();
-let session = RenderEnvironment::deterministic().begin_session_with_control(control.clone())?;
-let svg = finalize_resvg_svg(source, &session)?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>"#;
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic().begin_session_with_control(control.clone())?;
+    let svg = finalize_resvg_svg(source, &session)?;
 
-let raster = RasterOptions::default().with_scale(2.0);
-let png = svg_to_png_controlled(&svg, &raster, control.clone())?;
-let jpeg = svg_to_jpeg_controlled(&svg, &raster, control.clone())?;
-let pdf = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)?;
+    let raster = RasterOptions::default().with_scale(2.0);
+    let png = svg_to_png_controlled(&svg, &raster, control.clone())?;
+    let jpeg = svg_to_jpeg_controlled(&svg, &raster, control.clone())?;
+    let pdf = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)?;
 
-# let _ = (png, jpeg, pdf);
-# Ok::<(), Box<dyn std::error::Error>>(())
+    std::fs::write("image.png", png)?;
+    std::fs::write("image.jpg", jpeg)?;
+    std::fs::write("image.pdf", pdf)?;
+    Ok(())
+}
 ```
 
 The `pdf` feature exposes no PNG or JPEG API. Its current `krilla-svg` dependency still brings a

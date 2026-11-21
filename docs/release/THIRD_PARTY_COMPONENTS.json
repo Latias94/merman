@@ -82,7 +82,8 @@
         "rust-render-base"
       ],
       "components": [
-        "sdk-cousine"
+        "sdk-cousine",
+        "usvg"
       ]
     },
     {
@@ -92,7 +93,8 @@
         "ratex-render"
       ],
       "components": [
-        "sdk-cousine"
+        "sdk-cousine",
+        "usvg"
       ]
     },
     {
@@ -103,7 +105,8 @@
         "ratex-render"
       ],
       "components": [
-        "sdk-cousine"
+        "sdk-cousine",
+        "usvg"
       ]
     },
     {
@@ -187,13 +190,13 @@
       "id": "cli-default",
       "description": "The source-default CLI feature closure including ELK without RaTeX math/font support.",
       "extends": ["elk-render"],
-      "components": []
+      "components": ["usvg"]
     },
     {
       "id": "cli-release",
       "description": "The published complete CLI release closure, including explicit ELK and RaTeX math/font support.",
       "extends": ["elk-render", "ratex-render"],
-      "components": []
+      "components": ["usvg"]
     },
     {
       "id": "web-full",
@@ -1223,7 +1226,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "bac106cb4d15ad086728f10c04e57a19e86a7a0c8f7ebd5c300cb6fe45d839d1"
+          "sha256": "a5556b90836f6ee696c0c12ea79b60192fd9a68634310ed59e53af42e163268f"
         },
         {
           "type": "pinned-file",
@@ -1274,7 +1277,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "bac106cb4d15ad086728f10c04e57a19e86a7a0c8f7ebd5c300cb6fe45d839d1"
+          "sha256": "a5556b90836f6ee696c0c12ea79b60192fd9a68634310ed59e53af42e163268f"
         },
         {
           "type": "pinned-file",
@@ -1315,7 +1318,7 @@
         {
           "type": "pinned-file",
           "path": "distribution/tree-sitter-mermaid/metadata/provenance.json",
-          "sha256": "bac106cb4d15ad086728f10c04e57a19e86a7a0c8f7ebd5c300cb6fe45d839d1"
+          "sha256": "a5556b90836f6ee696c0c12ea79b60192fd9a68634310ed59e53af42e163268f"
         },
         {
           "type": "pinned-file",
@@ -1503,6 +1506,45 @@
         }
       ],
       "notice": "The renderer privately imports roxmltree 0.21.1 with its official iterative element parsing fix so accepted deep XHTML does not exhaust the call stack. Namespace, entity, source-range and DOM semantics are retained. The adapted tree derives from ego-tree under ISC; roxmltree offers MIT or Apache-2.0 and this distribution selects MIT."
+    },
+    {
+      "id": "usvg",
+      "name": "usvg",
+      "version": "0.47.0 with font fallback backport",
+      "source": {
+        "repository": "https://github.com/linebender/resvg",
+        "ref": "v0.47.0",
+        "commit": "3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707",
+        "path": "crates/usvg"
+      },
+      "relationships": ["copied", "modified", "linked"],
+      "local_paths": ["vendor/usvg"],
+      "license_expression": "Apache-2.0 OR MIT",
+      "selected_license": "MIT",
+      "license_files": [
+        {
+          "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-APACHE",
+          "sha256": "a6cba85bc92e0cff7a450b1d873c0eaa2e9fc96bf472df0247a26bec77bf3ff9",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg/LICENSE-APACHE",
+          "source_path": "crates/usvg/LICENSE-APACHE",
+          "role": "license"
+        },
+        {
+          "path": "THIRD_PARTY_LICENSES/usvg/LICENSE-MIT",
+          "sha256": "f5d934dc281b44e0003ee461ac740b18b6629a454decd872c774d34e4ee0b21d",
+          "source_url": "https://raw.githubusercontent.com/linebender/resvg/3a0fdba53ccf2d346b54cc53ba7adf0ee60d0707/crates/usvg/LICENSE-MIT",
+          "source_path": "crates/usvg/LICENSE-MIT",
+          "role": "license"
+        }
+      ],
+      "locks": [
+        {
+          "type": "pinned-file",
+          "path": "vendor/usvg/UPSTREAM.md",
+          "sha256": "0f8a81570d6a5bb00f55583904eab8d54ef756da1954d0db0b0c01e7671a5140"
+        }
+      ],
+      "notice": "Source-tree builds of the native font and image export pipeline link usvg 0.47.0 with a local font fallback backport. This source component carries the two upstream license texts."
     }
   ]
 }

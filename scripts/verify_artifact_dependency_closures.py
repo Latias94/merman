@@ -850,6 +850,21 @@ def prepare_metadata_probe(case: VerificationCase, probe_dir: Path) -> Path:
     if not committed_lock.is_file():
         raise ClosureVerificationError(f"missing committed Cargo.lock at {committed_lock}")
     shutil.copyfile(committed_lock, probe_dir / "Cargo.lock")
+
+    # The probe is a separate workspace, so Cargo does not inherit the release's patches.
+    with (REPO_ROOT / "Cargo.toml").open("rb") as file:
+        patches = tomllib.load(file).get("patch", {}).get("crates-io", {})
+    if patches:
+        lines = ["\n[patch.crates-io]"]
+        for name, entry in sorted(patches.items()):
+            if not isinstance(entry, dict) or set(entry) != {"path"} or not isinstance(entry["path"], str):
+                raise ClosureVerificationError(f"unsupported crates.io patch source for {name!r}")
+            source = (REPO_ROOT / entry["path"]).resolve()
+            if not source.is_relative_to(REPO_ROOT.resolve()):
+                raise ClosureVerificationError(f"crates.io patch for {name!r} escapes the workspace")
+            lines.append(f"{json.dumps(name)} = {{ path = {json.dumps(source.as_posix())} }}")
+        with manifest.open("a", encoding="utf-8") as file:
+            file.write("\n".join(lines) + "\n")
     return manifest
 
 

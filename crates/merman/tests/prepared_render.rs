@@ -50,7 +50,7 @@ fn presentation_artifact_preserves_full_json_before_target_layout() {
     assert_eq!(compatibility["type"], "info");
 
     let layout = semantic
-        .render(merman::RenderTarget::LayoutJson(SvgRequest::default()))
+        .render(merman::RenderTarget::LayoutSnapshot(SvgRequest::default()))
         .expect("layout target succeeds");
     let RenderOutput::LayoutJson(Some(layout)) = layout else {
         panic!("expected layout output");

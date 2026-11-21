@@ -184,7 +184,10 @@ pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> 
             preceding.as_bytes(),
             [.., b'-' | b'.', b'-'] | [.., b'=', b'=']
         );
-    if adds_marker || (name.starts_with('-') && preceding.ends_with("--")) {
+    if adds_marker
+        || (name.starts_with('-') && preceding.ends_with("--"))
+        || (name.contains('#') && fills_hex_style_value(preceding, following))
+    {
         text.push(' ');
     }
     text.push_str(name);
@@ -206,11 +209,48 @@ pub(crate) fn node_rename_text(name: &str, preceding: &str, following: &str) -> 
     text
 }
 
+#[cfg(feature = "editor-facts")]
+fn fills_hex_style_value(preceding: &str, following: &str) -> bool {
+    let line_ending = ['\n', '\r', '\u{2028}', '\u{2029}'];
+    let after = following.split(line_ending).next().unwrap_or_default();
+    if !after.contains(';') {
+        return false;
+    }
+    let before = preceding.rsplit(line_ending).next().unwrap_or_default();
+    let value = before
+        .rsplit(is_ecmascript_trim_char)
+        .next()
+        .unwrap_or_default();
+    let Some(colon) = value.rfind(':') else {
+        return false;
+    };
+    // Mermaid's `style.*:\S*#.*;` and `classDef` equivalent also see labels on this line.
+    let head = &before[..before.len() - value.len() + colon];
+    head.contains("style") || head.contains("classDef")
+}
+
+fn is_node_string_ascii_byte(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || b"!\"#$%&'*+.`?\\_/".contains(&byte)
+}
+
+fn single_quoted_value_end(suffix: &str) -> Option<usize> {
+    let mut escaped = false;
+    for (index, byte) in suffix.bytes().enumerate() {
+        match (escaped, byte) {
+            (_, b'\n' | b'\r') => return None,
+            (false, b'\'') => return Some(index),
+            (false, b'\\') => escaped = true,
+            _ => escaped = false,
+        }
+    }
+    None
+}
+
 fn node_string_len(bytes: &[u8]) -> usize {
     // Jison 0.4.18 compiles flow.jison's `=(?!=)` alternative to `(?!)`, so a single
     // equals sign is outside NODE_STRING. Thick links have their own earlier rules.
     for (pos, &byte) in bytes.iter().enumerate() {
-        if byte.is_ascii_alphanumeric() || b"!\"#$%&'*+.`?\\_/".contains(&byte) {
+        if is_node_string_ascii_byte(byte) {
             continue;
         }
         if byte == b'-'
@@ -360,12 +400,21 @@ impl<'input> Lexer<'input> {
             })
     }
 
+    fn starts_with_href_keyword(&self) -> bool {
+        // HREF uses `href[\s]`, including at a token boundary inside an idString. Mermaid
+        // appends a newline to the input before invoking the generated parser.
+        self.input[self.pos..]
+            .strip_prefix("href")
+            .is_some_and(|suffix| suffix.chars().next().is_none_or(is_ecmascript_trim_char))
+    }
+
     fn reserved_keyword(&self) -> Option<&'static str> {
         let candidates: &[&str] = match self.peek()? {
             b'c' => &["classDef", "class"],
             b'e' => &["end"],
             b'f' => &["flowchart"],
             b'g' => &["graph"],
+            b'h' => return self.starts_with_href_keyword().then_some("href"),
             b'i' => &["interpolate"],
             b'l' => &["linkStyle"],
             b's' => &["style", "subgraph", "swimlane-beta"],
@@ -383,7 +432,7 @@ impl<'input> Lexer<'input> {
         // Jison compiles these INITIAL keyword rules with an ASCII word boundary before
         // NODE_STRING. Presentation statements are scanned as a whole below, but their keyword
         // still requires a SPACE token before args.
-        // INTERPOLATE and LINK_TARGET have no standalone identifier use; their valid argument
+        // HREF, INTERPOLATE, and LINK_TARGET have no standalone use as keywords. Their valid
         // positions are consumed inside the click/linkStyle scanners instead.
         let keyword = self.reserved_keyword()?;
         if matches!(keyword, "end" | "flowchart" | "graph" | "swimlane-beta") {
@@ -402,12 +451,16 @@ impl<'input> Lexer<'input> {
             }
         }
 
+        Some(self.unexpected_keyword(keyword))
+    }
+
+    fn unexpected_keyword(&mut self, keyword: &str) -> LexError {
         let start = self.pos;
         self.pos += keyword.len();
-        Some(LexError::with_span(
+        LexError::with_span(
             format!("Unexpected flowchart keyword {keyword}"),
             SourceSpan::new(start, self.pos),
-        ))
+        )
     }
 
     pub(super) fn skip_ws(&mut self) {
@@ -574,8 +627,11 @@ impl<'input> Lexer<'input> {
         if let Some(token) = self.lex_accessibility_statement() {
             return Some(token);
         }
+        // flow.jison allows DEFAULT as an identifier token. An adjacent `@{` then opens
+        // the shape-data state at the next cursor, ahead of the direction rules.
         if rest.starts_with('"')
             || rest.starts_with("@{")
+            || rest.starts_with("default@{")
             || ["click", "call", "href"].iter().any(|kw| {
                 rest.strip_prefix(kw)
                     .and_then(|tail| tail.chars().next())
@@ -667,7 +723,7 @@ impl<'input> Lexer<'input> {
         )))
     }
 
-    fn consume_statement_body(&mut self) -> SourceSpan {
+    fn advance_to_stmt_end(&mut self, literal_word_apostrophes: bool) {
         let start = self.pos;
         let mut in_double_quote = false;
         let mut in_single_quote = false;
@@ -703,7 +759,28 @@ impl<'input> Lexer<'input> {
                 continue;
             }
             if b == b'\'' {
-                in_single_quote = true;
+                if literal_word_apostrophes {
+                    // Bare directive values accept NODE_STRING apostrophes. Keep support for
+                    // delimited single-quoted values on the current line.
+                    let in_bare_word =
+                        self.input[start..self.pos]
+                            .chars()
+                            .next_back()
+                            .is_some_and(|ch| {
+                                if ch.is_ascii() {
+                                    ch == '-' || is_node_string_ascii_byte(ch as u8)
+                                } else {
+                                    is_mermaid_unicode_text(ch)
+                                }
+                            });
+                    if !in_bare_word
+                        && let Some(end) = single_quoted_value_end(&self.input[self.pos + 1..])
+                    {
+                        self.pos += end + 1;
+                    }
+                } else {
+                    in_single_quote = true;
+                }
                 self.pos += 1;
                 continue;
             }
@@ -713,21 +790,44 @@ impl<'input> Lexer<'input> {
             }
             self.pos += 1;
         }
-        SourceSpan::new(start, self.pos)
     }
 
-    pub(super) fn capture_to_stmt_end(&mut self) -> (usize, String, usize) {
-        let span = self.consume_statement_body();
-        (
-            span.start,
-            self.input[span.start..span.end].to_owned(),
-            span.end,
-        )
+    fn capture_directive_arguments(
+        &mut self,
+        leading_ids: usize,
+    ) -> Result<(usize, &'input str, usize), LexError> {
+        let start = self.pos;
+        // Directive identifiers follow NODE_STRING lexing, where apostrophes are literal.
+        // Scan the remaining payload separately so quoted tooltip/style delimiters still work.
+        for _ in 0..leading_ids {
+            let id_start = self.pos;
+            self.advance_id();
+            if self.starts_with_href_keyword() {
+                let error = self.unexpected_keyword("href");
+                self.advance_to_stmt_end(true);
+                return Err(error);
+            }
+            if self.pos == id_start {
+                break;
+            }
+            let id_end = self.pos;
+            self.skip_ws();
+            if self.pos == id_end {
+                break;
+            }
+        }
+        Ok(self.capture_directive_payload(start))
     }
 
-    pub(super) fn capture_to_stmt_end_from(&mut self, start: usize) -> (usize, String, usize) {
+    fn capture_directive_payload(&mut self, start: usize) -> (usize, &'input str, usize) {
+        self.advance_to_stmt_end(true);
+        (start, &self.input[start..self.pos], self.pos)
+    }
+
+    fn stmt_end_from(&mut self, start: usize) -> usize {
         self.pos = start;
-        self.capture_to_stmt_end()
+        self.advance_to_stmt_end(false);
+        self.pos
     }
 
     pub(super) fn capture_recovery_to_stmt_end_from(
@@ -874,16 +974,19 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "style".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
+        let (rest_start, rest, end) = match self.capture_directive_arguments(1) {
+            Ok(args) => args,
+            Err(error) => return Some(Err(error)),
+        };
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (target, style) = directive_argument_spans(&rest, rest_start);
+        let (target, style) = directive_argument_spans(rest, rest_start);
         #[cfg(feature = "editor-facts")]
-        let style_slot = trailing_value_slot(&rest, rest_start, style);
-        match lex::parse_style_stmt(&rest) {
+        let style_slot = trailing_value_slot(rest, rest_start, style);
+        match lex::parse_style_stmt(rest) {
             Ok(mut stmt) => {
-                lex::attach_style_stmt_spans(&mut stmt, &rest, rest_start);
+                lex::attach_style_stmt_spans(&mut stmt, rest, rest_start);
                 #[cfg(feature = "editor-facts")]
                 {
                     stmt.editor_evidence = directive_editor_evidence(
@@ -927,22 +1030,25 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "classDef".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = match self.capture_directive_arguments(1) {
+            Ok(args) => args,
+            Err(error) => return Some(Err(error)),
+        };
         #[cfg(feature = "editor-facts")]
         let rest_start = _rest_start;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (class_name, style) = directive_argument_spans(&rest, rest_start);
+        let (class_name, style) = directive_argument_spans(rest, rest_start);
         #[cfg(feature = "editor-facts")]
-        let style_slot = trailing_value_slot(&rest, rest_start, style);
-        match lex::parse_classdef_stmt(&rest) {
+        let style_slot = trailing_value_slot(rest, rest_start, style);
+        match lex::parse_classdef_stmt(rest) {
             Ok(stmt) => {
                 #[cfg(feature = "editor-facts")]
                 let mut stmt = stmt;
                 #[cfg(feature = "editor-facts")]
                 {
-                    lex::attach_classdef_stmt_spans(&mut stmt, &rest, rest_start);
+                    lex::attach_classdef_stmt_spans(&mut stmt, rest, rest_start);
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
                         class_name.map(|span| (EditorExpectedSyntaxKind::ClassName, span)),
@@ -978,22 +1084,25 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "class".len();
         self.skip_ws();
-        let (_rest_start, rest, end) = self.capture_to_stmt_end();
+        let (_rest_start, rest, end) = match self.capture_directive_arguments(2) {
+            Ok(args) => args,
+            Err(error) => return Some(Err(error)),
+        };
         #[cfg(feature = "editor-facts")]
         let rest_start = _rest_start;
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
-        let (targets, class_name) = directive_argument_spans(&rest, rest_start);
+        let (targets, class_name) = directive_argument_spans(rest, rest_start);
         #[cfg(feature = "editor-facts")]
-        let class_name = active_following_span(&rest, rest_start, class_name);
-        match lex::parse_class_assign_stmt(&rest) {
+        let class_name = active_following_span(rest, rest_start, class_name);
+        match lex::parse_class_assign_stmt(rest) {
             Ok(stmt) => {
                 #[cfg(feature = "editor-facts")]
                 let mut stmt = stmt;
                 #[cfg(feature = "editor-facts")]
                 {
-                    lex::attach_class_assign_stmt_spans(&mut stmt, &rest, rest_start);
+                    lex::attach_class_assign_stmt_spans(&mut stmt, rest, rest_start);
                     stmt.editor_evidence = directive_editor_evidence(
                         statement_span,
                         targets.map(|span| (EditorExpectedSyntaxKind::IdList, span)),
@@ -1042,8 +1151,15 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "click".len();
         self.skip_ws();
-        let body = self.consume_statement_body();
-        let end = body.end;
+        // The click state takes a bare target word, including names ending in `href`.
+        let target_start = self.pos;
+        let suffix = &self.input[target_start..];
+        self.pos += suffix
+            .find(|ch| is_ecmascript_trim_char(ch) || ch == ';')
+            .unwrap_or(suffix.len());
+        self.advance_to_stmt_end(true);
+        let end = self.pos;
+        let body = SourceSpan::new(target_start, end);
         #[cfg(feature = "editor-facts")]
         let statement_span = SourceSpan::new(start, end);
         #[cfg(feature = "editor-facts")]
@@ -1123,8 +1239,8 @@ impl<'input> Lexer<'input> {
         }
         self.pos += "linkStyle".len();
         self.skip_ws();
-        let (rest_start, rest, end) = self.capture_to_stmt_end();
-        match lex::parse_link_style_stmt(&rest, rest_start) {
+        let (rest_start, rest, end) = self.capture_directive_payload(self.pos);
+        match lex::parse_link_style_stmt(rest, rest_start) {
             Ok(stmt) => Some(Ok((start, Tok::LinkStyleStmt(stmt), end))),
             Err(e) => Some(Err(e)),
         }
@@ -1276,13 +1392,10 @@ impl<'input> Lexer<'input> {
     }
 
     fn advance_id(&mut self) {
-        let start = self.pos;
         let bytes = self.input.as_bytes();
         while let Some(&first) = bytes.get(self.pos) {
             let rest = &bytes[self.pos..];
-            if link_prefix_len(rest).is_some()
-                || (self.pos != start && self.reserved_keyword().is_some())
-            {
+            if link_prefix_len(rest).is_some() || self.reserved_keyword().is_some() {
                 break;
             }
 
@@ -1758,8 +1871,7 @@ impl<'input> Lexer<'input> {
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
                     }
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `/]` or `\\]`)",
                         SourceSpan::new(start, token_end),
@@ -1832,8 +1944,7 @@ impl<'input> Lexer<'input> {
                         self.pos = token_end;
                         return Some(Ok((start, token, self.pos)));
                     }
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `/]` or `\\]`)",
                         SourceSpan::new(start, token_end),
@@ -1909,8 +2020,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         format!("Unterminated node label (missing `{close}`)"),
                         SourceSpan::new(start, token_end),
@@ -1976,8 +2086,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `]`)",
                         SourceSpan::new(start, token_end),
@@ -2039,8 +2148,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `}`)",
                         SourceSpan::new(start, token_end),
@@ -2097,8 +2205,7 @@ impl<'input> Lexer<'input> {
                 token
             } else {
                 if !self.recover_partial_node_labels {
-                    let (_, _, token_end) = self.capture_to_stmt_end_from(content_start);
-                    self.pos = token_end;
+                    let token_end = self.stmt_end_from(content_start);
                     return Some(Err(LexError::with_span(
                         "Unterminated node label (missing `)`)",
                         SourceSpan::new(start, token_end),

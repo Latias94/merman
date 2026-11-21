@@ -1,6 +1,6 @@
 [package]
 name = "tree-sitter-mermaid"
-version = "0.3.4"
+version = "0.3.5"
 edition.workspace = true
 authors.workspace = true
 license = "MIT"

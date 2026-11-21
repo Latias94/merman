@@ -71,9 +71,10 @@ pub use pipeline::{
     ResvgCompatibleSvg, RootBackgroundPostprocessor, SanitizeCssPostprocessor,
     SanitizeSvgAttributesPostprocessor, ScopedCssPostprocessor, StandaloneSvgArtifact,
     StandaloneSvgTerminalStatus, StripForeignObjectPostprocessor, SvgFinalizationReport,
-    SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext, SvgPostprocessMetadata,
-    SvgPostprocessor, SvgReferencePlan, SvgResourceClosure, finalize_resvg_svg, rebase_svg_ids,
-    validate_static_inline_svg, validate_static_inline_svg_admission,
+    SvgGeneration, SvgOutputPolicy, SvgPipeline, SvgPipelinePreset, SvgPostprocessContext,
+    SvgPostprocessMetadata, SvgPostprocessor, SvgReferencePlan, SvgResourceClosure,
+    finalize_resvg_svg, rebase_svg_ids, validate_static_inline_svg,
+    validate_static_inline_svg_admission,
 };
 
 #[cfg(feature = "diagram-block")]

@@ -85,6 +85,7 @@ module.exports = grammar({
     $._end_of_input,
     $._directive_body,
     $._class_compact_identifier,
+    $._flowchart_group_separator,
     $._flow_direction_prefix,
   ],
 

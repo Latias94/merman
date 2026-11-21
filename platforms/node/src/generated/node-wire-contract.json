@@ -2,7 +2,7 @@
   "schema_version": 1,
   "package_id": "@mermanjs/node",
   "artifact_id": "merman-node-static-svg",
-  "transport_api_version": 1,
+  "transport_api_version": 2,
   "binding_result_payload_version": 1,
   "artifact": {
     "capability_ids": [

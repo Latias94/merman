@@ -45,7 +45,6 @@ impl<'a> AppearanceDecision<'a> {
             section,
             winners,
             source_root_theme_is_truthy: source
-                .as_value()
                 .get("theme")
                 .is_some_and(crate::theme::is_js_truthy),
         }
@@ -97,22 +96,19 @@ impl<'a> AppearanceDecision<'a> {
                 AppearanceOrigin::Source | AppearanceOrigin::Initialize
             );
             // The detector may add or delete scoped keys between applications of the same decision.
-            let section_has_key = effective
-                .as_value()
-                .get(self.section)
-                .and_then(|section| section.get(key))
-                .is_some();
+            let scoped = effective.get_path(&[self.section, key]);
+            let section_has_key = scoped.is_some();
             if explicit {
                 // Equal values can still acquire a different owner.
                 effective.set_value_explicit(key, value.clone());
-            } else if effective.as_value().get(key) != Some(value) {
+            } else if effective.get(key) != Some(value) {
                 effective.set_value_preserving_theme_compatibility(key, value.clone());
             }
             if section_has_key {
                 let scoped_key = format!("{}.{key}", self.section);
                 if explicit {
                     effective.set_value_explicit(&scoped_key, value.clone());
-                } else if effective.as_value()[self.section].get(key) != Some(value) {
+                } else if effective.get_path(&[self.section, key]) != Some(value) {
                     effective.set_value_preserving_theme_compatibility(&scoped_key, value.clone());
                 }
             }

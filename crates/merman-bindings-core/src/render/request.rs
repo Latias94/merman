@@ -10,8 +10,8 @@ use crate::common::{BindingExportResourceOptions, binding_export_resource_option
 use crate::theme_execution_evidence::BindingThemeExecutionEvidence;
 use merman::SourcePresentationConfig;
 use merman::svg::{
-    LayoutOptions, MeasurementProfileId, RenderCapability, RenderCapabilityPolicy,
-    TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
+    LayoutOptions, MeasurementProfileId, RenderCapability, RenderCapabilityPolicy, SvgGeneration,
+    SvgPipeline, TextMeasurementPhase, TextMeasurementPolicy, TextMeasurementProfileIdentity,
 };
 use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgEnvironment, SvgRequest};
 
@@ -44,7 +44,7 @@ pub(super) struct RenderOperationConfig {
     site_config: Option<merman::MermaidConfig>,
     layout: LayoutOptions,
     svg: merman::svg::SvgRenderOptions,
-    output: merman::svg::SvgOutputPolicy,
+    pipeline: SvgPipeline,
     #[cfg(any(feature = "png", feature = "jpeg"))]
     raster_options: merman::svg::export::RasterOptions,
     #[cfg(feature = "pdf")]
@@ -151,7 +151,7 @@ impl RenderRequestPlan {
     ) -> Result<Vec<u8>, BindingError> {
         let output = self.render_input(
             input,
-            merman::RenderTarget::LayoutJson(self.svg_request()?),
+            merman::RenderTarget::LayoutSnapshot(self.svg_request()?),
             control.clone(),
         )?;
         let RenderOutput::LayoutJson(layout_json) = output else {
@@ -360,8 +360,7 @@ pub(super) fn pipeline_for_options(
         options,
         merman::model::runtime::RuntimePolicy::deterministic(),
     )?
-    .output
-    .pipeline())
+    .pipeline)
 }
 
 #[cfg(test)]
@@ -485,6 +484,7 @@ impl RenderOperationConfig {
         }
 
         let mut svg_options = merman::svg::SvgRenderOptions::default();
+        let mut static_generation = false;
         if let Some(svg) = options.svg.as_ref() {
             svg_options.diagram_id.clone_from(&svg.diagram_id);
             if let Some(viewbox_padding) = svg.viewbox_padding {
@@ -494,6 +494,10 @@ impl RenderOperationConfig {
             if let Some(raw_pipeline) = svg.pipeline.as_deref() {
                 output.preset = match normalize_option(raw_pipeline).as_str() {
                     "parity" => merman::svg::SvgPipelinePreset::Parity,
+                    "static" => {
+                        static_generation = true;
+                        merman::svg::SvgPipelinePreset::Parity
+                    }
                     "readable" => merman::svg::SvgPipelinePreset::Readable,
                     "resvg-safe" => merman::svg::SvgPipelinePreset::ResvgSafe,
                     other => {
@@ -514,6 +518,12 @@ impl RenderOperationConfig {
                 output.drop_native_duplicate_fallbacks = drop_native_duplicate_fallbacks;
             }
         }
+        let pipeline = output.pipeline();
+        let pipeline = if static_generation {
+            pipeline.with_generation(SvgGeneration::Static)
+        } else {
+            pipeline
+        };
 
         #[cfg(any(feature = "png", feature = "jpeg", feature = "pdf"))]
         let export_resources =
@@ -533,7 +543,7 @@ impl RenderOperationConfig {
             site_config,
             layout,
             svg: svg_options,
-            output,
+            pipeline,
             #[cfg(any(feature = "png", feature = "jpeg"))]
             raster_options,
             #[cfg(feature = "pdf")]
@@ -580,7 +590,7 @@ impl RenderOperationConfig {
                 layout: self.layout,
                 options: self.svg,
                 debug: Default::default(),
-                pipeline: Some(self.output.pipeline()),
+                pipeline: Some(self.pipeline),
             },
             theme: self.theme,
             parse_options,

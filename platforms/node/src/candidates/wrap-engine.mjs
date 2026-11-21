@@ -3,7 +3,7 @@ import { MermanDisposedError, MermanInvalidTransportError } from "../errors.mjs"
 export function wrapCandidateEngine(
   engine,
   label,
-  { forwardsAbortSignal = false } = {},
+  { forwardsAbortSignal = false, directSvgAddon = false } = {},
 ) {
   if (
     typeof engine?.execute !== "function" ||
@@ -18,7 +18,12 @@ export function wrapCandidateEngine(
     if (!ownedEngine) throw new MermanDisposedError();
     return ownedEngine;
   };
-  return {
+  const executeSvg = directSvgAddon ? engine.executeSvg : undefined;
+  const executeSvgSync = directSvgAddon ? engine.executeSvgSync : undefined;
+  if (directSvgAddon && (typeof executeSvg !== "function" || typeof executeSvgSync !== "function")) {
+    throw new MermanInvalidTransportError(`${label} does not implement the direct SVG contract.`);
+  }
+  const transport = {
     execute: (requestJson, signal, timeoutMs) =>
       forwardsAbortSignal
         ? currentEngine().execute(requestJson, signal, timeoutMs)
@@ -33,4 +38,11 @@ export function wrapCandidateEngine(
       return disposing?.dispose?.();
     },
   };
+  if (directSvgAddon) {
+    transport.executeSvg = (source, optionsJson, signal, timeoutMs) =>
+      executeSvg.call(currentEngine(), source, optionsJson, signal, timeoutMs);
+    transport.executeSvgSync = (source, optionsJson, timeoutMs) =>
+      executeSvgSync.call(currentEngine(), source, optionsJson, timeoutMs);
+  }
+  return transport;
 }

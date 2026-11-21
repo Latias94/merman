@@ -463,7 +463,11 @@ pub enum RenderTarget {
     #[cfg(feature = "svg")]
     Document(SvgRequest),
     #[cfg(feature = "svg")]
+    /// Emits versioned layout geometry.
     LayoutJson(SvgRequest),
+    #[cfg(feature = "svg")]
+    /// Emits geometry, metadata, compatibility semantics, and effective configuration.
+    LayoutSnapshot(SvgRequest),
     #[cfg(feature = "svg")]
     EdgeGeometryJson(SvgRequest),
     #[cfg(feature = "svg")]
@@ -537,6 +541,11 @@ impl RenderTarget {
                 Self::LayoutJson(request)
             }
             #[cfg(feature = "svg")]
+            Self::LayoutSnapshot(mut request) => {
+                activate(&mut request.environment, control);
+                Self::LayoutSnapshot(request)
+            }
+            #[cfg(feature = "svg")]
             Self::EdgeGeometryJson(mut request) => {
                 activate(&mut request.environment, control);
                 Self::EdgeGeometryJson(request)
@@ -571,6 +580,7 @@ impl RenderTarget {
             Self::Svg(request)
             | Self::Document(request)
             | Self::LayoutJson(request)
+            | Self::LayoutSnapshot(request)
             | Self::EdgeGeometryJson(request)
             | Self::SvgPlan(request) => request.environment.native_fonts.is_some(),
             #[cfg(feature = "png")]
@@ -589,6 +599,7 @@ impl RenderTarget {
             Self::Svg(request)
             | Self::Document(request)
             | Self::LayoutJson(request)
+            | Self::LayoutSnapshot(request)
             | Self::EdgeGeometryJson(request)
             | Self::SvgPlan(request) => request,
             #[cfg(feature = "png")]
@@ -614,6 +625,7 @@ impl RenderTarget {
             Self::Svg(request)
             | Self::Document(request)
             | Self::LayoutJson(request)
+            | Self::LayoutSnapshot(request)
             | Self::EdgeGeometryJson(request)
             | Self::SvgPlan(request) => Some(request.environment.input_resources),
             #[cfg(feature = "png")]
@@ -763,8 +775,19 @@ impl<'a> RenderRequest<'a> {
     }
 
     #[cfg(feature = "svg")]
+    /// Requests the versioned geometry response.
     pub fn layout_json(source: &'a str, control: OperationControl, request: SvgRequest) -> Self {
         Self::new(source, RenderTarget::LayoutJson(request), control)
+    }
+
+    #[cfg(feature = "svg")]
+    /// Requests the full layout snapshot, including compatibility semantics and configuration.
+    pub fn layout_snapshot(
+        source: &'a str,
+        control: OperationControl,
+        request: SvgRequest,
+    ) -> Self {
+        Self::new(source, RenderTarget::LayoutSnapshot(request), control)
     }
 
     #[cfg(feature = "svg")]
@@ -1031,6 +1054,44 @@ impl Renderer {
             unreachable!("SVG data request retains its target during admission");
         };
         render_svg_data_target(semantic, request).map(Some)
+    }
+
+    /// Writes one [`RenderTarget::LayoutJson`] request as compact or pretty JSON.
+    ///
+    /// Returns `Ok(false)` for an input with no diagram, or `Ok(true)` after writing the value.
+    /// The writer receives no trailing newline and is left for the caller to flush. Admission,
+    /// layout and the final cancellation check precede emission. Writer failures can leave
+    /// partial output.
+    #[cfg(feature = "svg")]
+    pub fn write_layout_json(
+        &self,
+        request: RenderRequest<'_>,
+        writer: impl std::io::Write,
+        pretty: bool,
+    ) -> Result<bool, RenderError> {
+        if !matches!(&request.target, RenderTarget::LayoutJson(_)) {
+            return Err(RenderError::UnsupportedTarget(
+                "write_layout_json requires a layout JSON request",
+            ));
+        }
+        let (semantic, target) = self.parse_presentation_request(request)?;
+        let Some(semantic) = semantic else {
+            return Ok(false);
+        };
+        let RenderTarget::LayoutJson(request) = semantic.admit_target(target)? else {
+            unreachable!("layout JSON writer request retains its target during admission");
+        };
+        #[cfg(feature = "native-fonts")]
+        let control = semantic.control().clone();
+        with_prepared_layout_json(semantic, &request, |artifact| {
+            #[cfg(feature = "native-fonts")]
+            {
+                crate::operation_runner::checkpoint(&control, OperationPhase::Emit)?;
+                request.environment.check_native_fonts()?;
+            }
+            artifact.write_layout_geometry_json(writer, pretty)?;
+            Ok(true)
+        })
     }
 
     #[cfg(feature = "presentation")]
@@ -1344,7 +1405,11 @@ impl PresentationArtifact {
             }
             #[cfg(feature = "svg")]
             RenderTarget::LayoutJson(request) => {
-                render_layout_json_target(self, request).map(RenderOutput::LayoutJson)
+                render_layout_json_target(self, request, false).map(RenderOutput::LayoutJson)
+            }
+            #[cfg(feature = "svg")]
+            RenderTarget::LayoutSnapshot(request) => {
+                render_layout_json_target(self, request, true).map(RenderOutput::LayoutJson)
             }
             #[cfg(feature = "svg")]
             RenderTarget::EdgeGeometryJson(request) => {
@@ -1381,7 +1446,7 @@ impl RenderOutput {
             #[cfg(feature = "svg")]
             RenderTarget::Document(_) => Self::Document(None),
             #[cfg(feature = "svg")]
-            RenderTarget::LayoutJson(_) => Self::LayoutJson(None),
+            RenderTarget::LayoutJson(_) | RenderTarget::LayoutSnapshot(_) => Self::LayoutJson(None),
             #[cfg(feature = "svg")]
             RenderTarget::EdgeGeometryJson(_) => Self::EdgeGeometryJson(None),
             #[cfg(feature = "svg")]
@@ -1405,7 +1470,8 @@ fn render_svg_target(
 ) -> Result<Option<SvgOutput>, RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, operation) = prepare_rendered_family_svg(semantic, &request)?;
+    let (rendered, operation) =
+        prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let finalized = merman_render::__private::finalize_standalone_for_target_admission(
         rendered,
@@ -1437,7 +1503,8 @@ fn render_svg_data_target(
 ) -> Result<String, RenderError> {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, operation) = prepare_rendered_family_svg(semantic, &request)?;
+    let (rendered, operation) =
+        prepare_rendered_family_svg(semantic, &request, crate::svg::SvgGeneration::Full)?;
     let finalized = merman_render::__private::finalize_standalone_for_target_admission(
         rendered,
         request.pipeline.as_ref(),
@@ -1486,7 +1553,27 @@ fn finish_standalone_svg_data(
 fn render_layout_json_target(
     semantic: PresentationArtifact,
     request: SvgRequest,
+    snapshot: bool,
 ) -> Result<Option<SvgLayoutOutput>, RenderError> {
+    with_prepared_layout_json(semantic, &request, |artifact| {
+        let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
+        let layout = if snapshot {
+            artifact.layout_json()
+        } else {
+            artifact.layout_geometry_json()
+        }?;
+        #[cfg(feature = "native-fonts")]
+        request.environment.check_native_fonts()?;
+        Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
+    })
+}
+
+#[cfg(feature = "svg")]
+fn with_prepared_layout_json<T>(
+    semantic: PresentationArtifact,
+    request: &SvgRequest,
+    project: impl FnOnce(&merman_render::family::FamilyRenderArtifact<'_>) -> Result<T, RenderError>,
+) -> Result<T, RenderError> {
     // A prepared artifact keeps the operation's sticky terminal state. Observe it before
     // rejecting a target-specific portability requirement so cancellation/deadline errors cannot
     // be masked by a later target-admission error.
@@ -1504,13 +1591,8 @@ fn render_layout_json_target(
         operation.context,
         operation.control,
     )?;
-    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
-        .map_err(RenderError::from)?;
-    let gantt_time_axis = artifact.gantt_time_axis_diagnostics();
-    let layout = artifact.layout_json().map_err(RenderError::from)?;
-    #[cfg(feature = "native-fonts")]
-    request.environment.check_native_fonts()?;
-    Ok(Some(SvgLayoutOutput::new(layout, gantt_time_axis)))
+    let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)?;
+    project(&artifact)
 }
 
 #[cfg(feature = "svg")]
@@ -1577,6 +1659,7 @@ fn render_svg_plan_target(
 fn prepare_resvg_target(
     semantic: PresentationArtifact,
     request: &SvgRequest,
+    default_generation: crate::svg::SvgGeneration,
 ) -> Result<
     (
         merman_render::family::FamilyRenderCompletion<merman_render::svg::ResvgCompatibleSvg>,
@@ -1587,7 +1670,7 @@ fn prepare_resvg_target(
 > {
     #[cfg(feature = "native-fonts")]
     request.environment.check_native_fonts()?;
-    let (rendered, operation) = prepare_rendered_family_svg(semantic, request)?;
+    let (rendered, operation) = prepare_rendered_family_svg(semantic, request, default_generation)?;
     let required_capabilities = rendered.required_capabilities().to_vec();
     let pipeline = request
         .pipeline
@@ -1606,6 +1689,7 @@ fn prepare_resvg_target(
 fn prepare_rendered_family_svg(
     semantic: PresentationArtifact,
     request: &SvgRequest,
+    default_generation: crate::svg::SvgGeneration,
 ) -> Result<(merman_render::family::RenderedFamilySvg, OperationExecution), RenderError> {
     let (parsed, operation) = semantic.into_parts();
     let session = request.environment.begin_session_in_context(
@@ -1616,7 +1700,12 @@ fn prepare_rendered_family_svg(
     let artifact = merman_render::family::prepare(parsed.parsed(), &request.layout, session)
         .map_err(RenderError::from)?;
     let rendered = artifact
-        .render_svg(&request.options, &request.debug)
+        .render_svg_for_target(
+            &request.options,
+            &request.debug,
+            request.pipeline.as_ref(),
+            default_generation,
+        )
         .map_err(RenderError::from)?;
     Ok((rendered, operation))
 }
@@ -1626,7 +1715,8 @@ fn render_document_target(
     semantic: PresentationArtifact,
     request: SvgRequest,
 ) -> Result<Option<RenderedDocument>, RenderError> {
-    let (completion, required_capabilities, operation) = prepare_resvg_target(semantic, &request)?;
+    let (completion, required_capabilities, operation) =
+        prepare_resvg_target(semantic, &request, crate::svg::SvgGeneration::Full)?;
     crate::operation_runner::checkpoint(&operation.control, OperationPhase::Postprocess)?;
     let document = RenderedDocument::new(
         completion,
@@ -1758,7 +1848,7 @@ fn render_png_target(
     request: PngRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
     let (completion, required_capabilities, operation) =
-        prepare_resvg_target(semantic, &request.svg)?;
+        prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
@@ -1780,7 +1870,7 @@ fn render_jpeg_target(
     request: JpegRequest,
 ) -> Result<Option<RasterOutput>, RenderError> {
     let (completion, required_capabilities, operation) =
-        prepare_resvg_target(semantic, &request.svg)?;
+        prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
@@ -1802,7 +1892,7 @@ fn render_pdf_target(
     request: PdfRequest,
 ) -> Result<Option<PdfOutput>, RenderError> {
     let (completion, required_capabilities, operation) =
-        prepare_resvg_target(semantic, &request.svg)?;
+        prepare_resvg_target(semantic, &request.svg, crate::svg::SvgGeneration::Static)?;
     RenderedDocument::new(
         completion,
         required_capabilities,
@@ -1821,6 +1911,31 @@ fn render_pdf_target(
 #[cfg(all(test, feature = "svg"))]
 mod tests {
     use super::{RenderError, ResourceLimitCause};
+
+    #[cfg(feature = "diagram-flowchart")]
+    #[test]
+    fn layout_json_writer_checks_cancellation_at_emit() {
+        use super::{OperationControl, OperationPhase, Renderer, SvgRequest};
+
+        let control = OperationControl::new();
+        let semantic = Renderer::new()
+            .prepare_presentation("flowchart LR\nA --> B", control.clone())
+            .unwrap()
+            .unwrap();
+        let mut written = Vec::new();
+        let error =
+            super::with_prepared_layout_json(semantic, &SvgRequest::default(), |artifact| {
+                control.cancel();
+                artifact.write_layout_geometry_json(&mut written, false)?;
+                Ok(())
+            })
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            RenderError::Cancelled(cancellation) if cancellation.phase == OperationPhase::Emit
+        ));
+        assert!(written.is_empty());
+    }
 
     #[test]
     fn themed_document_input_admission_preserves_request_renderer_environment_precedence() {

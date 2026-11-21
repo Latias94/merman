@@ -4,7 +4,7 @@ use crate::runtime::SharedWriter;
 use serde::Serialize;
 
 const CLI_CAPABILITIES_SCHEMA_VERSION: u32 = 2;
-const CLI_CONTRACT_VERSION: u32 = 7;
+const CLI_CONTRACT_VERSION: u32 = 8;
 #[cfg(feature = "ascii")]
 const ASCII_CAPABILITIES_SCHEMA_VERSION: u16 = 1;
 
@@ -211,7 +211,7 @@ pub(crate) fn write_compiled_capabilities(
             default_measurement: "deterministic",
             default_font_source: "none",
             default_system_discovery: "disabled",
-            encoded_output_defaults: if cfg!(feature = "experimental-system-font-query") {
+            encoded_output_defaults: if crate::cli::FontSystemKind::platform_is_default() {
                 EncodedFontDefaultsView {
                     measurement: "native",
                     font_source: "platform-managed-system-query",
@@ -231,7 +231,7 @@ pub(crate) fn write_compiled_capabilities(
                 }
             },
             system_resources_bounded: cfg!(feature = "system-fonts")
-                && !cfg!(feature = "experimental-system-font-query"),
+                && !crate::cli::FontSystemKind::platform_is_default(),
             #[cfg(feature = "platform-system-font-query")]
             platform_system_query: PlatformSystemQueryView {
                 cli_option: "--font-system platform",

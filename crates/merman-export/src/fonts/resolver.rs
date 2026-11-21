@@ -1,7 +1,8 @@
 //! Discovery supplies candidates; one resolver admits and validates their binary faces.
 
 use super::*;
-use usvg::fontdb::{Database, FaceInfo, ID};
+use crate::font_selection::{allows_implicit_binary_face, fallback_style_matches};
+use usvg::fontdb::{FaceInfo, ID};
 
 /// Discovery-owned selection evidence before bounded binary admission.
 pub(super) struct FontSelection {
@@ -35,7 +36,7 @@ pub(super) enum ExpectedFace {
         digest: Vec<u8>,
     },
     #[cfg(feature = "experimental-system-font-query")]
-    Platform(platform::PlatformCandidate),
+    Platform(platform::PlatformFace),
 }
 
 impl ExpectedFace {
@@ -47,7 +48,7 @@ impl ExpectedFace {
                 "font properties changed after metadata discovery; retry the operation",
             )),
             #[cfg(feature = "experimental-system-font-query")]
-            Self::Platform(candidate) => platform::validate_candidate(face, candidate, path),
+            Self::Platform(candidate) => candidate.validate(face, path),
         }
     }
 }
@@ -58,7 +59,7 @@ pub(super) enum DiscoveryProvider {
     #[cfg(feature = "experimental-system-font-query")]
     Platform {
         catalog: Arc<platform::PlatformCatalog>,
-        explicit: Arc<Database>,
+        explicit: Arc<usvg::fontdb::Database>,
     },
 }
 
@@ -102,13 +103,7 @@ impl DiscoveryProvider {
                         return Ok(Some(id));
                     }
                 }
-                for candidate in catalog.fallback_candidates(character, base, control)? {
-                    control.terminal_checkpoint_at(OperationPhase::Layout)?;
-                    if let Some(id) = accept(platform::candidate(candidate)?)? {
-                        return Ok(Some(id));
-                    }
-                }
-                Ok(None)
+                catalog.fallback(character, base, control, accept)
             }
         }
     }
@@ -150,7 +145,7 @@ pub(super) fn resolver(
                     if check_implicit
                         && !database
                             .face(id)
-                            .is_some_and(super::super::font_selection::allows_implicit_binary_face)
+                            .is_some_and(|face| allows_implicit_binary_face(face, None))
                     {
                         return Ok(None);
                     }
@@ -202,33 +197,20 @@ pub(super) fn resolver(
                         if excluded.contains(&id) {
                             return Ok(None);
                         }
-                        // Delegate style and actual glyph coverage to usvg using only admitted bytes.
-                        let mut probe = Database::new();
-                        let probe_excluded = excluded_faces
-                            .iter()
-                            .cloned()
-                            .map(|face| probe.push_face_info(face))
-                            .collect::<Vec<_>>();
-                        let face = database.face(id).cloned().ok_or_else(|| {
+                        let face = database.face(id).ok_or_else(|| {
                             NativeFontError::Measurement("missing materialized fallback".to_owned())
                         })?;
-                        if !super::super::font_selection::allows_implicit_binary_face(&face) {
+                        // Coverage belongs to the selected, admitted file and TTC index.
+                        // usvg still tests whether this face can repair the shaped run.
+                        if !fallback_style_matches(base, face)
+                            || !allows_implicit_binary_face(face, Some(character))
+                        {
                             return Ok(None);
                         }
-                        let candidate_id = probe.push_face_info(face);
-                        let selected = (usvg::FontResolver::default_fallback_selector())(
-                            character,
-                            &probe_excluded,
-                            &mut Arc::new(probe),
-                        );
-                        if selected == Some(candidate_id) {
-                            if let Some(observer) = &observer {
-                                observer.admit(id, source);
-                            }
-                            Ok(Some(id))
-                        } else {
-                            Ok(None)
+                        if let Some(observer) = &observer {
+                            observer.admit(id, source);
                         }
+                        Ok(Some(id))
                     },
                 )
             })();

@@ -439,21 +439,28 @@ fn flowchart_punctuation_renames_preserve_statement_and_class_delimiters() {
     use merman_model::SemanticDiagramModel;
 
     let harness = SnapshotHarness::new();
-    for (name, expected) in [
-        ("-node", "A--- -node; C --> D"),
-        ("#35", "A---#35 ; C --> D"),
+    for (body, position, name, expected) in [
+        ("A---B", 4, "-node", "A--- -node"),
+        ("A---B", 4, "#35", "A---#35 "),
+        ("A[style:CSS]-->B", 15, "#35", "A[style:CSS]--> #35 "),
+        (
+            "A[classDef:CSS]-->B[blue]",
+            18,
+            "#35",
+            "A[classDef:CSS]--> #35[blue]",
+        ),
     ] {
         let snapshot = harness
             .analyze(
                 "file:///rename.mmd",
                 1,
-                "flowchart TD\nA---B; C --> D\n",
+                format!("flowchart TD\n{body}; C --> D\n"),
                 DocumentKind::Diagram,
             )
             .unwrap();
-        let (edited, count) = apply_rename(&snapshot, Position::new(1, 4), name);
+        let (edited, count) = apply_rename(&snapshot, Position::new(1, position), name);
         assert_eq!(count, 1);
-        assert_eq!(edited, format!("flowchart TD\n{expected}\n"));
+        assert_eq!(edited, format!("flowchart TD\n{expected}; C --> D\n"));
         let SemanticDiagramModel::Flowchart(model) = SemanticParser::new()
             .parse_diagram_sync(&edited)
             .unwrap()
@@ -481,6 +488,40 @@ fn flowchart_punctuation_renames_preserve_statement_and_class_delimiters() {
             assert!(matches!(result, Err(RenameError::InvalidName)));
         }
     }
+}
+
+#[cfg(feature = "diagram-flowchart")]
+#[test]
+fn apostrophe_rename_preserves_class_assignment_and_next_edge() {
+    use merman_core::SemanticParser;
+    use merman_model::SemanticDiagramModel;
+
+    let snapshot = SnapshotHarness::new()
+        .analyze(
+            "file:///rename.mmd",
+            1,
+            "flowchart LR\nA-->B\nclassDef hot fill:red\nclass A hot\nC-->D\n",
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    let name = "O'Brien";
+    let (edited, count) = apply_rename(&snapshot, Position::new(1, 0), name);
+    assert_eq!(count, 2);
+    let SemanticDiagramModel::Flowchart(model) = SemanticParser::new()
+        .parse_diagram_sync(&edited)
+        .unwrap()
+        .model
+    else {
+        panic!("expected a Flowchart");
+    };
+    assert_eq!(model.nodes.len(), 4);
+    assert_eq!(model.nodes[0].id, name);
+    assert_eq!(model.nodes[0].classes, ["hot"]);
+    let [renamed, untouched] = model.edges.as_slice() else {
+        panic!("both edges must survive the rename");
+    };
+    assert_eq!((renamed.from.as_str(), renamed.to.as_str()), (name, "B"));
+    assert_eq!((untouched.from.as_str(), untouched.to.as_str()), ("C", "D"));
 }
 
 #[test]

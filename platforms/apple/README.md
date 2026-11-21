@@ -2,7 +2,7 @@
 
 Parse, analyze, lay out, and render Mermaid diagrams from Swift on iOS and macOS without a WebView or JavaScript runtime. The `Merman` SwiftPM product is a direct UniFFI binding packaged as a binary XCFramework plus generated Swift source.
 
-Current examples target `0.10.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.10.0` package for the current examples.
+Current examples target `0.11.0`, using Options JSON schema `3`, facts schema `3`, and theme execution evidence schema `2`. The download links below retain published `0.10.0-alpha.1` artifacts; see the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for verified choices and the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for migration. Use a matching `0.11.0` package for the current examples.
 
 > **Binding contract:** Current source uses direct UniFFI binding API `8` and ASCII output schema `4`; published Merman `0.10.0` wrappers retain API `7`. Options JSON remains schema `3`. Use the Swift source and XCFramework produced by the same Merman build. UniFFI rejects incompatible contract or API checksum pairs, but it does not compare Merman release versions when the generated interface is unchanged.
 
@@ -55,11 +55,11 @@ Its matching checkout supplies the generated Swift facade and `Package.swift`;
 mixing tags is unsupported. That artifact uses Options JSON schema `2`, omits math and
 binary codecs, and does not provide the complete SwiftPM archives. Follow its
 [tagged guide](https://github.com/Latias94/merman/blob/v0.9.3/platforms/apple/README.md) for API
-examples; the current theme examples in this README require a matching `0.10.0` build.
+examples; the current theme examples in this README require a matching `0.11.0` build.
 
 ## Build The Local Package
 
-The current source prepares `0.10.0`. Build, package and qualify the same candidate version; use the host guide to select verified public downloads.
+The current source prepares `0.11.0`. Build, package and qualify the same candidate version; use the host guide to select verified public downloads.
 
 ```sh
 bash scripts/build-apple-xcframework.sh
@@ -71,7 +71,7 @@ the source-development manifest. After a complete build, produce a self-containe
 distribution from a clean source tree:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.11.0
 ```
 
 Partial `--ios` or `--macos` builds remain useful locally but cannot be packaged as
@@ -84,19 +84,19 @@ From the clean, matching source revision and its complete staged XCFramework, se
 intended HTTPS upload destination for the binary ZIP:
 
 ```text
-python3 scripts/apple_package.py --output-dir target/apple-package --version 0.10.0 \
+python3 scripts/apple_package.py --output-dir target/apple-package --version 0.11.0 \
   --source-commit <source-commit> \
-  --artifact-url https://github.com/Latias94/merman/releases/download/v0.10.0/Merman.xcframework-v0.10.0.zip
+  --artifact-url https://github.com/Latias94/merman/releases/download/v0.11.0/Merman.xcframework-v0.11.0.zip
 ```
 
 The producer freezes these seven release assets:
 
 | Asset | Use |
 | --- | --- |
-| `Merman.xcframework-v0.10.0.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
-| `Merman-swiftpm-v0.10.0.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
-| `Merman-swiftpm-remote-v0.10.0.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
-| `Merman-swiftpm-v0.10.0.Package.swift` | Identical copy of the thin tree's remote manifest |
+| `Merman.xcframework-v0.11.0.zip` and `.zip.checksum` | Binary-target input and its SHA-256 |
+| `Merman-swiftpm-v0.11.0.zip` and `.zip.checksum` | Complete local Swift package and its SHA-256 |
+| `Merman-swiftpm-remote-v0.11.0.zip` and `.zip.checksum` | Complete thin delivery repository tree and its SHA-256 |
+| `Merman-swiftpm-v0.11.0.Package.swift` | Identical copy of the thin tree's remote manifest |
 
 The extracted remote directory contains `Package.swift`, `Sources/Merman`, `README.md`,
 `SOURCE_AVAILABILITY.txt`, `LICENSE`, `THIRD_PARTY_NOTICES.md` and `THIRD_PARTY_LICENSES`.
@@ -120,8 +120,8 @@ repository containing its unmodified contents, and an exact delivery commit:
 
 ```text
 python3 scripts/apple_qualify.py \
-  --package-archive target/apple-package/Merman-swiftpm-remote-v0.10.0.zip \
-  --work-dir /absolute/fresh/apple-remote-proof --version 0.10.0 --simulator \
+  --package-archive target/apple-package/Merman-swiftpm-remote-v0.11.0.zip \
+  --work-dir /absolute/fresh/apple-remote-proof --version 0.11.0 --simulator \
   --remote-package-url https://your-controlled-host/Merman.git \
   --remote-package-revision <40-character-delivery-commit>
 ```
@@ -157,7 +157,7 @@ use the candidate version, exact source commit and a fresh work directory:
 
 ```text
 python3 platforms/apple/tests/qualify_remote.py \
-  --work-dir target/apple-https-qualification --version 0.10.0 \
+  --work-dir target/apple-https-qualification --version 0.11.0 \
   --source-commit <40-character-source-commit> \
   --xcframework platforms/apple/Merman.xcframework
 ```

@@ -4,6 +4,21 @@ All notable changes to the Android JNI package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.11.0] - 2026-11-21
+
+### Breaking changes
+
+- Upgrade Kotlin and JNI together with the matching AAR for ASCII output schema `4`. In `MermanAsciiOutputPlan`, use nullable `primaryOverflowed` and required `emittedOverflowed` in place of `overflowed`. The primary dimensions, layout profile, and overflow status are null together when no primary layout was produced. [ASCII report migration](../../docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4), [#323](https://github.com/Latias94/merman/pull/323)
+
+### Added
+
+- Render more families as terminal diagrams, including Gantt timelines, GitGraph branches, and Packet bit grids. Set `ascii.graph_presentation` to `adaptive` with Plain output in Options JSON to recover complete text records for supported graphs when routing runs out of search steps or ports. [Terminal support matrix](../../docs/rendering/ASCII_SUPPORT_MATRIX.md), [#317](https://github.com/Latias94/merman/pull/317), [#323](https://github.com/Latias94/merman/pull/323), [#324](https://github.com/Latias94/merman/pull/324)
+- Render the Gantt Today Marker at an app-supplied instant with `fixed_unix_millis` and `fixed_local_offset_minutes` in Options JSON. [#312](https://github.com/Latias94/merman/pull/312)
+
+### Changed and fixed
+
+- Accept leading dots, punctuation, and literal ampersands in Flowchart IDs and render compact links with mixed endpoint markers using Mermaid's stroke and length. Avoid false `resvg-safe` selector-budget errors on large Flowchart and Class diagrams. [#313](https://github.com/Latias94/merman/pull/313), [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
+
 ## [0.10.0] - 2026-11-12
 
 Cumulative changes since the latest stable Android package, `0.9.3`. See the [stable upgrade guide](../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.

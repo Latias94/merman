@@ -115,7 +115,7 @@ pub(in crate::svg::parity) fn render_swimlane_svg_artifact(
 ) -> Result<root_svg::RootedSvg> {
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
-    let flowchart_layout = adapt_swimlane_layout(model, layout);
+    let flowchart_layout = adapt_swimlane_layout(layout);
     super::svg_emit::render_flowchart_svg_model(
         super::svg_emit::FlowchartSvgModelRequest {
             layout: &flowchart_layout,
@@ -147,7 +147,7 @@ pub(in crate::svg::parity) fn swimlane_edge_geometry(
 ) -> Result<Vec<crate::model::EdgePaintGeometry>> {
     let layout = artifact.pair().layout();
     let model = artifact.pair().semantic();
-    let flowchart_layout = adapt_swimlane_layout(model, layout);
+    let flowchart_layout = adapt_swimlane_layout(layout);
     super::paint::edge_geometry(
         super::svg_emit::FlowchartSvgModelRequest {
             layout: &flowchart_layout,
@@ -172,10 +172,7 @@ pub(in crate::svg::parity) fn swimlane_edge_geometry(
 }
 
 #[cfg(any(feature = "diagram-flowchart", feature = "diagram-swimlane"))]
-fn adapt_swimlane_layout(
-    model: &crate::flowchart::FlowchartModel,
-    layout: &SwimlaneLayout,
-) -> FlowchartLayout {
+fn adapt_swimlane_layout(layout: &SwimlaneLayout) -> FlowchartLayout {
     let label_nodes: FxHashMap<&str, &crate::model::SwimlaneNodeLayout> = layout
         .nodes
         .iter()
@@ -255,24 +252,14 @@ fn adapt_swimlane_layout(
         })
         .collect();
 
-    let mut top_level_order: Vec<String> = model.nodes.iter().map(|node| node.id.clone()).collect();
-    top_level_order.extend(
-        layout
-            .nodes
-            .iter()
-            .filter(|node| node.is_edge_label)
-            .map(|node| node.id.clone()),
-    );
-    let dom_node_order_by_root =
-        std::collections::HashMap::from([(String::new(), top_level_order)]);
-
     FlowchartLayout {
         nodes,
         edges,
         edge_owners: layout.edge_owners.clone(),
         clusters,
         bounds: layout.bounds.clone(),
-        dom_node_order_by_root,
+        // Swimlane supplies its node schedule through the prepared node inventory.
+        dom_node_order_by_root: Default::default(),
         uses_elk_adapter_dom: false,
     }
 }
@@ -304,13 +291,13 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     effective_config: &merman_model::presentation::PresentationConfig,
     work_meter: &crate::resources::OperationWorkMeter,
     uses_elk_adapter_dom: bool,
+    preserve_dash_mask_length: impl Fn(&super::render_input::FlowchartRenderEdge<'_>) -> bool,
 ) -> Result<()> {
     use crate::svg::parity::line_hops::{
         LineHopConfig, LineHopEdge, LineHopStyle, curve_supports_line_hops, line_hop_overrides,
     };
 
     let line_hops_value = effective_config
-        .as_value()
         .get(if uses_elk_adapter_dom {
             "elk"
         } else {
@@ -341,7 +328,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             .iter()
             .map(|edge| (edge.key, edge.edge.as_ref())),
     );
-    let (edge_keys, edges): (Vec<_>, Vec<_>) = render_edges
+    let (owners, edges): (Vec<_>, Vec<_>) = render_edges
         .iter()
         .filter_map(|edge| {
             let semantic = edge.edge.as_ref();
@@ -350,7 +337,7 @@ pub(super) fn apply_line_hops_to_edge_geometries(
             let (arrow_type_start, arrow_type_end) =
                 super::edge_geom::arrow_types_for_edge(semantic.edge_type.as_deref());
             Some((
-                edge.key,
+                edge,
                 LineHopEdge {
                     id,
                     points: &cache_entry.geom.data_points,
@@ -377,12 +364,15 @@ pub(super) fn apply_line_hops_to_edge_geometries(
     )?;
 
     for (index, path) in paths {
-        let Some(cache_entry) = edge_path_cache.get_mut(&edge_keys[index]) else {
+        let edge = owners[index];
+        let Some(cache_entry) = edge_path_cache.get_mut(&edge.key) else {
             continue;
         };
+        if preserve_dash_mask_length(edge) {
+            cache_entry.geom.pre_hop_dash_mask_length = svg_path_length_from_d(&cache_entry.geom.d);
+        }
         cache_entry.geom.d = path;
         cache_entry.geom.pb = svg_path_bounds_from_d(&cache_entry.geom.d);
-        cache_entry.geom.path_length = svg_path_length_from_d(&cache_entry.geom.d);
         cache_entry.geom.line_hop_applied = true;
     }
     Ok(())
@@ -457,7 +447,6 @@ mod tests {
     }
 
     fn cache_entry(d: &str, points: Vec<crate::model::LayoutPoint>) -> FlowchartEdgePathCacheEntry {
-        let path_length = svg_path_length_from_d(d);
         let label_path_points = points.clone();
         FlowchartEdgePathCacheEntry {
             origin_x: 0.0,
@@ -467,8 +456,7 @@ mod tests {
                 pb: svg_path_bounds_from_d(d),
                 d: d.to_string(),
                 data_points: points,
-                original_path_length: path_length,
-                path_length,
+                pre_hop_dash_mask_length: None,
                 line_hop_applied: false,
                 original_label_path_points: label_path_points.clone(),
                 label_path_points,
@@ -519,6 +507,7 @@ mod tests {
             &merman_model::presentation::PresentationConfig::default(),
             &work_meter,
             false,
+            |_| false,
         )
         .expect("apply line hops");
         assert_eq!(work_meter.used(), 17);
@@ -534,12 +523,10 @@ mod tests {
         assert!(horizontal.d.contains("A6,6 0 0 1"), "{}", horizontal.d);
         assert_points_eq(&horizontal.data_points, &horizontal_points);
         assert_points_eq(&horizontal.label_path_points, &horizontal_points);
+        assert_eq!(horizontal.pre_hop_dash_mask_length, None);
 
         assert!(
-            horizontal.path_length.expect("post-processed path length")
-                > horizontal
-                    .original_path_length
-                    .expect("original path length"),
+            svg_path_length_from_d(&horizontal.d).unwrap() > 20.0,
             "a semicircle hop must lengthen the rendered path"
         );
         let bounds = horizontal.pb.expect("post-processed path bounds");
@@ -583,6 +570,7 @@ mod tests {
                     &config,
                     &work_meter,
                     uses_elk_adapter_dom,
+                    |edge| edge.key == render_edges[1].key,
                 )
                 .unwrap();
                 let vertical = &cache[&render_edges[0].key].geom;
@@ -594,7 +582,8 @@ mod tests {
                 );
                 assert_eq!(horizontal.d, "M0,0 L10,0");
                 assert!(!horizontal.d.contains('A'));
-                assert_eq!(horizontal.path_length, horizontal.original_path_length);
+                assert_eq!(horizontal.pre_hop_dash_mask_length, Some(10.0));
+                assert_eq!(svg_path_length_from_d(&horizontal.d), Some(10.0));
                 assert_points_eq(&horizontal.data_points, &horizontal_points);
                 assert_points_eq(&horizontal.label_path_points, &horizontal_points);
 
@@ -643,8 +632,15 @@ mod tests {
             crate::resources::RenderResourcePolicy::unbounded_for_trusted_input(),
         );
 
-        apply_line_hops_to_edge_geometries(&mut cache, &render_edges, &config, &work_meter, false)
-            .expect("disabled line hops");
+        apply_line_hops_to_edge_geometries(
+            &mut cache,
+            &render_edges,
+            &config,
+            &work_meter,
+            false,
+            |_| false,
+        )
+        .expect("disabled line hops");
 
         assert_eq!(cache[&render_edges[1].key].geom.d, "M-10,0L10,0");
         assert!(!cache[&render_edges[1].key].geom.line_hop_applied);

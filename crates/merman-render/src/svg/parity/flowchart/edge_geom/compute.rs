@@ -389,8 +389,6 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         ctx.compact_edge_corners,
         rounded_corner_mask.as_deref(),
     );
-    let path_length = svg_path_length_from_d(&d);
-
     if trace_enabled {
         record_flowchart_edge_trace(FlowchartEdgeTraceInput {
             ctx,
@@ -409,8 +407,7 @@ pub(in crate::svg::parity::flowchart) fn finish_edge_route(
         d,
         pb,
         data_points: points_for_data_points.clone(),
-        original_path_length: path_length,
-        path_length,
+        pre_hop_dash_mask_length: None,
         line_hop_applied: false,
         original_label_path_points,
         label_path_points,

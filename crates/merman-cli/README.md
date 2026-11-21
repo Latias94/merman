@@ -4,7 +4,7 @@
 
 Render, inspect, and lint Mermaid without Node.js, Puppeteer, Chromium, or another JavaScript runtime. The source-default binary includes SVG, PNG, JPEG, vector PDF, ASCII/Unicode, analysis, Markdown batch rendering, Cytoscape layout, icons, completions, and native runtime adapters. Official release archives additionally select math explicitly. Source defaults omit math; select the `math` feature to include it. The source default includes the Rustdoc fragment command and ELK, with its EPL-2.0 notices and source provenance; explicit lean builds can omit it.
 
-This guide covers `merman-cli 0.10.0`, including selectable theme appearances and recipe inspection. Check `merman-cli --version` and `merman-cli capabilities --json` for your installed binary; see the [changelog](../../CHANGELOG.md) for upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels. Native font defaults for PNG/JPEG/PDF already shipped in `0.9.3`.
+This guide covers `merman-cli 0.11.0`. Check your installed binary with `merman-cli --version` and `merman-cli capabilities --json`. The [changelog](../../CHANGELOG.md) covers upgrade actions and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) lists available versions and installation channels.
 
 The command line has four explicit workflows:
 
@@ -17,16 +17,16 @@ The command line has four explicit workflows:
 
 ## Install
 
-Install the CLI from source:
+Install the CLI from crates.io:
 
 ```sh
-cargo install merman-cli --version 0.10.0 --locked
+cargo install merman-cli --version 0.11.0 --locked
 ```
 
-To install the verified `0.10.0-alpha.1` binary, pin that version with cargo-binstall:
+Install the matching prebuilt archive with cargo-binstall:
 
 ```sh
-cargo binstall merman-cli@0.10.0-alpha.1
+cargo binstall merman-cli@0.11.0
 ```
 
 Merman's cargo-binstall metadata uses the repository's cargo-dist archive, disables third-party QuickInstall artifacts, and retains `cargo install` as a fallback when an official archive is unavailable. Check `merman-cli --version` before relying on the API or output schema in this guide.
@@ -163,20 +163,19 @@ library behavior. For embedded integrations, use the
 
 Current-source default builds and the official release profile include
 `native-fonts` and `system-fonts`. Mermaid SVG keeps deterministic, font-agnostic
-measurement by default, without creating a native font context or discovering
-system fonts. Mermaid-to-PNG/JPEG/PDF rendering automatically discovers system
-fonts within bounded resource limits before layout and shares that context with
-native painting. This keeps label sizing and the export font selection together.
-It can change wrapping, node sizes and image/PDF snapshots, and system-font results
-depend on the host.
+measurement by default. For Mermaid PNG/JPEG/PDF, the Windows release archive
+queries the platform font catalog on demand and shares the selected fonts between
+native measurement and painting. Source defaults and release archives on other
+platforms use bounded system discovery. Font selection can change wrapping, node
+sizes, and image/PDF output across hosts or discovery providers.
 
 With those CLI capabilities compiled:
 
 | Font options | Mermaid SVG measurement | Mermaid PNG/JPEG/PDF measurement | Native-context system discovery |
 | --- | --- | --- | --- |
-| No font options | Deterministic | Native | Before layout for PNG/JPEG/PDF; off for SVG |
+| No font options | Deterministic | Native | Default provider for PNG/JPEG/PDF; off for SVG |
 | `--font-measurement deterministic` | Deterministic | Deterministic | Off |
-| `--font-file PATH` or `--font-dir PATH` | Native, using supplied fonts | Native, using supplied fonts | Off unless `--font-system on` is added |
+| `--font-file PATH` or `--font-dir PATH` | Native, using supplied fonts | Native, using supplied fonts | Off unless system fallback is requested |
 | `--font-measurement native` without font sources | Native | Native | On |
 | `--font-system on` | Native | Native | Explicitly on |
 
@@ -230,12 +229,14 @@ To explicitly use the fonts installed on the current machine instead:
 merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 ```
 
-A build with the `platform-system-font-query` feature can query the operating
-system's font catalog with `--font-system platform`. This avoids reading the entire
-bounded catalog before layout. Platform font matching can change the selected
-faces and diagram geometry, and its metadata queries are outside Merman's scan
-budgets. The same selected font snapshots serve measurement and painting. See
-[Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
+Release archives and builds with the `platform-system-font-query` feature offer
+`--font-system platform` and `--font-system bounded`. `--font-system on` uses the
+build's default provider. When exporting Mermaid to PNG, JPEG, or PDF, the official Windows archive
+defaults to Platform. macOS and Linux archives and default Cargo builds use bounded discovery. Platform
+queries find fonts on demand, and their metadata queries run outside Merman's scan budgets.
+Selected font bytes have acquisition limits and serve both measurement and painting. On Windows,
+an unsupported named variable family may fall through to the next family in the requested stack.
+See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 Native measurement allows 16,384 uncached shaping probes per diagram by default.
 Large diagrams can reach this budget because one label may need several probes.
@@ -624,10 +625,16 @@ The `analysis` capability enables parser-backed diagnostics, deterministic fix s
 merman-cli detect diagram.mmd
 merman-cli parse diagram.mmd --pretty --meta
 merman-cli layout diagram.mmd --pretty
+merman-cli layout diagram.mmd --snapshot --pretty
 merman-cli lint diagram.mmd --format json
 merman-cli lint README.md --markdown --format text
 merman-cli lint-rules --configurable --format json
 ```
+
+Starting with 0.11.0 (CLI contract 8), `layout` returns schema-1 geometry with a family identifier.
+Add `--snapshot` for the full `meta`, `semantic`, and `layout` envelope. For consumers using
+`--suppress-errors`, the snapshot also retains the original parse diagnostic. On 0.10.x
+(contract 7), use `layout` by itself to get the full envelope.
 
 `fix` has one explicit output mode:
 
@@ -643,7 +650,7 @@ Use repeatable `--rule RULE_ID` or `--fix STABLE_FIX_ID` selectors when automati
 
 ## Choose A Build
 
-The `0.10.0` source defaults to the standard diagram CLI with `all-diagrams`. The Rustdoc authoring command remains available in the default and release builds. For a slim binary, disable defaults and select the required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the prior language surface. The recipes below select families explicitly:
+The source defaults to the standard diagram CLI with `all-diagrams` and the Rustdoc authoring command. For a slim binary, disable defaults and select the required `diagram-*` families plus operation leaves. Use `all-diagrams` to retain the full language surface. The recipes below select families explicitly:
 
 | Build | Capabilities |
 | --- | --- |
@@ -662,30 +669,35 @@ The `0.10.0` source defaults to the standard diagram CLI with `all-diagrams`. Th
 Install a lint-only binary:
 
 ```sh
-cargo install merman-cli --version 0.10.0 --locked \
+cargo install merman-cli --version 0.11.0 --locked \
   --no-default-features --features all-diagrams,analysis
 ```
 
 Additional leaves are `jpeg`, `layout-cytoscape`, `layout-elk`, `math`, `network-icons`, `parallel-markdown`, `shell-completions`, `system-clock`, `system-timezone`, `system-random`, and `system-timing`. The default includes ELK and therefore carries its EPL-2.0 notice and provenance; lean builds can omit it with `--no-default-features`. Implications such as `png -> svg` and `network-icons -> icons` are intentional.
 
-Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The current document keeps `schema_version: 2` and reports `cli_contract_version: 7`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families` (the sorted logical parser families compiled into the binary), capabilities, and outputs. This parser list does not imply that SVG or ASCII handlers are available for every listed family; inspect the corresponding output capabilities separately. Contract 7 changes `theme_presets` to the grouped schema-1 catalog and adds the `theme` command to SVG-enabled artifacts. The catalog exposes the single recipe/authoring schema versions, canonical `presets` with their available appearances, and `mermaid_theme_designs` with their literal upstream IDs. Compilation availability, design scope and output qualification remain distinct; archive qualification is a separate host-scoped companion.
+Use `merman-cli capabilities --json` as the machine-readable authority for the installed artifact. The document reports `schema_version: 2` and `cli_contract_version: 8`, package and pinned compatibility versions, descriptor digest, compiled commands, `diagram_families`, capabilities, and outputs. `diagram_families` lists the compiled parser families. Use the corresponding output capabilities to determine SVG or ASCII availability. SVG-enabled artifacts expose the `theme` command and the grouped schema-1 `theme_presets` catalog with recipe and authoring schema versions, preset appearances, and `mermaid_theme_designs` with their literal upstream IDs. Host-specific output qualification is recorded separately in the archive's qualification companion.
 
 For native-font builds, `native_fonts.default_policy_scope` is `mermaid-svg-input`:
 `default_measurement`, `default_font_source`, and `default_system_discovery` remain
 `deterministic`, `none`, and `disabled`. The additive `encoded_output_defaults`
 object reports `measurement: "native"`, `font_source: "bounded-system-discovery"`,
-and `system_discovery: "before-layout"` when the CLI includes `system-fonts`.
-Without that CLI capability, its three values are `deterministic`, `none`, and
-`disabled`. Explicit font sources enable native measurement with a closed set;
-`--font-system on` permits system fallback. Experimental platform-query builds
-report `platform-managed-system-query` and
+and `system_discovery: "before-layout"` in source-default builds with `system-fonts`.
+The Windows release archive reports `platform-managed-system-query` and
 `platform-initialization-then-on-demand-families` for the encoded font source and
-discovery policy; that feature is excluded from official releases. These discovery
-fields and runtime defaults do not change the CLI contract, JSON schema, or ABI.
+discovery policy. Without `system-fonts`, the three values are `deterministic`, `none`,
+and `disabled`. Explicit font sources enable native measurement with a closed set.
+Use `--font-system on` to permit system fallback with the build's default provider.
 
 The contract preserves the native `-f` spelling, text-first `lint`, narrowed `detect` surface, and feature-gated top-level `rustdoc` workflow. ASCII-enabled builds additionally expose an `ascii` subcontract with its own schema version, report schemas and streams, family layout/width/encoding/fallback arrays, and detector-to-family mappings. Automation should version-check the CLI contract independently from the outer JSON schema.
 
 ## Rendering And Runtime Policy
+
+`merman-cli render diagram.mmd --format svg --svg-pipeline static` writes SVG for fixed markup.
+It emits the Flowchart-family container palette slots used by the diagram and preserves the
+rendered links, accessibility metadata, viewBox, and authored styles. Native PNG, JPEG, and PDF
+rendering uses static generation followed by resvg-safe conversion. Ordinary SVG and `mmdc`
+default to the complete stylesheet. For the Rust API and publication contracts, see the
+[SVG output pipeline](https://github.com/Latias94/merman/blob/main/docs/rendering/SVG_OUTPUT_PIPELINE.md).
 
 Native `render` rejects options that are irrelevant to the selected output before reading input or creating output. Examples:
 
@@ -700,6 +712,8 @@ merman-cli render diagram.mmd --format unicode --ascii-color plain \
   --ascii-graph-presentation adaptive --ascii-layout-profile auto \
   --ascii-max-width 80 --ascii-overflow fallback --ascii-report
 ```
+
+`--ascii-graph-presentation` is available from 0.11.0.
 
 PNG/JPEG use a bounded Rust raster pipeline. PDF keeps vector geometry and bounds localized filter and embedded-image raster work. They are not Chromium screenshots. ASCII/Unicode support is family-specific; see the [support matrix](https://github.com/Latias94/merman/blob/main/docs/rendering/ASCII_SUPPORT_MATRIX.md).
 

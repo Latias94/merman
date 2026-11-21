@@ -4,6 +4,22 @@ All notable changes to the Python package will be documented in this file.
 
 The format is based on Keep a Changelog, and this package follows the merman workspace version.
 
+## [0.11.0] - 2026-11-21
+
+### Breaking changes
+
+- Upgrade the wheel as a unit for UniFFI binding API `8`. Use `binding_api_version_v8()` in direct integrations and regenerate custom wrappers from the source used to build the native library. [Binding migration](../../../docs/migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts), [#323](https://github.com/Latias94/merman/pull/323)
+- Read ASCII output schema `4` with `primary_overflowed` and `emitted_overflowed` in place of `overflowed`. Primary dimensions, layout profile, and primary overflow are all `None` when no primary layout was produced. [ASCII report migration](../../../docs/migrations/render-reuse-host-integration.md#ascii-output-schema-3-to-4)
+
+### Added
+
+- Render more families with `render_ascii`, including Gantt timelines, GitGraph branches, and Packet bit grids. Set `ascii.graph_presentation` to `adaptive` with Plain output to recover complete text records for supported graphs when routing runs out of search steps or ports. [Terminal support matrix](../../../docs/rendering/ASCII_SUPPORT_MATRIX.md), [#317](https://github.com/Latias94/merman/pull/317), [#323](https://github.com/Latias94/merman/pull/323), [#324](https://github.com/Latias94/merman/pull/324)
+- Replay the Gantt Today Marker with `fixed_unix_millis` and `fixed_local_offset_minutes` in binding options. [#312](https://github.com/Latias94/merman/pull/312)
+
+### Changed and fixed
+
+- Accept leading dots, punctuation, and literal ampersands in Flowchart IDs and render compact links with mixed endpoint markers using Mermaid's stroke and length. Avoid false `resvg-safe` selector-budget errors on large Flowchart and Class diagrams. [#313](https://github.com/Latias94/merman/pull/313), [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
+
 ## [0.10.0] - 2026-11-12
 
 Cumulative changes since the latest stable Python package, `0.9.3`. Python and native Merman both use stable version `0.10.0`; see the [stable upgrade guide](../../../docs/release/V093_TO_V0100_UPGRADE_GUIDE.md) for the complete migration.

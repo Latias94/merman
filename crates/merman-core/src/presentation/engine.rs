@@ -14,6 +14,7 @@ use crate::{DiagramRegistry, ParsedDiagram};
 use merman_model::presentation::PresentationMetadata;
 #[cfg(test)]
 use merman_model::presentation::ThemeCompatibilityRecipe;
+use std::sync::{Arc, Mutex, OnceLock};
 
 #[path = "parse_pipeline.rs"]
 pub(crate) mod parse_pipeline;
@@ -22,12 +23,22 @@ pub(crate) mod parse_pipeline;
 mod theme_plan;
 pub use theme_plan::{ThemeCompatibilityPlan, ThemeCompatibilityPlanError};
 
-#[derive(Clone)]
+type ResolvedSiteConfig =
+    std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>;
+
+#[derive(Clone, Debug)]
 struct SiteConfigInitialization {
     site_config: SourcePresentationConfig,
     initialization_inputs: SourcePresentationConfig,
-    default_effective_config:
-        std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>,
+    default_effective_config: ResolvedSiteConfig,
+    materialized_appearance: Arc<Mutex<Option<SiteAppearance>>>,
+}
+
+#[derive(Debug)]
+struct SiteAppearance {
+    section: &'static str,
+    theme: MermaidThemeId,
+    effective_config: ResolvedSiteConfig,
 }
 
 impl SiteConfigInitialization {
@@ -42,6 +53,7 @@ impl SiteConfigInitialization {
         if let Ok(effective) = &mut initialized.default_effective_config {
             effective.inherit_initialization_mutation_epochs(&initialized.site_config);
         }
+        initialized.materialized_appearance = Arc::default();
         initialized
     }
 
@@ -62,13 +74,54 @@ impl SiteConfigInitialization {
             site_config,
             initialization_inputs,
             default_effective_config,
+            materialized_appearance: Arc::default(),
         }
+    }
+
+    fn pinned_defaults() -> Self {
+        static DEFAULTS: OnceLock<SiteConfigInitialization> = OnceLock::new();
+        DEFAULTS
+            .get_or_init(|| {
+                let site_config = generated::default_presentation_config();
+                let default_effective_config = build_default_effective_config(&site_config);
+                Self {
+                    site_config,
+                    initialization_inputs: SourcePresentationConfig::empty_object(),
+                    default_effective_config,
+                    materialized_appearance: Arc::default(),
+                }
+            })
+            .clone()
+    }
+
+    fn materialize_appearance(
+        &self,
+        section: &'static str,
+        theme: MermaidThemeId,
+        materialize: impl FnOnce() -> ResolvedSiteConfig,
+    ) -> ResolvedSiteConfig {
+        // Keep one site-derived result across engine clones. A competing operation can
+        // perform its own calculation without waiting for another render's theme.
+        let Ok(mut slot) = self.materialized_appearance.try_lock() else {
+            return materialize();
+        };
+        if let Some(cached) = slot.as_ref()
+            && cached.section == section
+            && cached.theme == theme
+        {
+            return cached.effective_config.clone();
+        }
+        let effective_config = materialize();
+        *slot = Some(SiteAppearance {
+            section,
+            theme,
+            effective_config: effective_config.clone(),
+        });
+        effective_config
     }
 }
 
-fn build_default_effective_config(
-    site_config: &SourcePresentationConfig,
-) -> std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError> {
+fn build_default_effective_config(site_config: &SourcePresentationConfig) -> ResolvedSiteConfig {
     let mut effective_config = site_config.clone();
     theme::apply_theme_defaults(&mut effective_config)?;
     Ok(effective_config)
@@ -114,16 +167,6 @@ fn merge_theme_compatibility_config(
     target.deep_merge(theme_config.as_value());
     theme_config.retain_theme_compatibility_paths_applied_after(target, &before);
     target.adopt_tracking_theme_compatibility_from(&mut theme_config);
-}
-
-fn generated_default_effective_config()
--> std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError> {
-    static DEFAULT_EFFECTIVE_CONFIG: std::sync::OnceLock<
-        std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>,
-    > = std::sync::OnceLock::new();
-    DEFAULT_EFFECTIVE_CONFIG
-        .get_or_init(|| build_default_effective_config(&generated::default_presentation_config()))
-        .clone()
 }
 
 pub use crate::ParseOptions;
@@ -188,30 +231,22 @@ pub struct MermaidEngine {
     #[cfg(feature = "compat-json")]
     diagram_registry: DiagramRegistry,
     render_diagram_registry: RenderDiagramRegistry,
-    site_config: SourcePresentationConfig,
+    initialization: SiteConfigInitialization,
     site_config_overrides: SourcePresentationConfig,
     theme_compatibility_config: Option<SourcePresentationConfig>,
-    initialization_inputs: SourcePresentationConfig,
-    default_effective_config:
-        std::result::Result<SourcePresentationConfig, theme::ThemeResolutionError>,
     runtime_policy: merman_model::runtime::RuntimePolicy,
 }
 
 impl Default for MermaidEngine {
     fn default() -> Self {
-        let site_config = generated::default_presentation_config();
-        let default_effective_config = generated_default_effective_config();
-
         Self {
             registry: DetectorRegistry::pinned_mermaid_baseline(),
             #[cfg(feature = "compat-json")]
             diagram_registry: DiagramRegistry::pinned_mermaid_baseline(),
             render_diagram_registry: RenderDiagramRegistry::pinned_mermaid_baseline(),
-            site_config,
+            initialization: SiteConfigInitialization::pinned_defaults(),
             site_config_overrides: SourcePresentationConfig::empty_object(),
             theme_compatibility_config: None,
-            initialization_inputs: SourcePresentationConfig::empty_object(),
-            default_effective_config,
             runtime_policy: merman_model::runtime::RuntimePolicy::deterministic(),
         }
     }
@@ -229,7 +264,10 @@ impl MermaidEngine {
     }
 
     pub(crate) fn default_effective_config(&self) -> Result<SourcePresentationConfig> {
-        self.default_effective_config.clone().map_err(Error::from)
+        self.initialization
+            .default_effective_config
+            .clone()
+            .map_err(Error::from)
     }
 
     /// Overrides the "today" value used by diagrams that depend on local time (e.g. Gantt).
@@ -337,13 +375,10 @@ impl MermaidEngine {
     }
 
     fn rebuild_site_config(&mut self) {
-        let initialized = SiteConfigInitialization::new(
+        self.initialization = SiteConfigInitialization::new(
             self.theme_compatibility_config.clone(),
             &self.site_config_overrides,
         );
-        self.site_config = initialized.site_config;
-        self.initialization_inputs = initialized.initialization_inputs;
-        self.default_effective_config = initialized.default_effective_config;
     }
 
     /// Returns the detector registry used for automatic diagram type detection.

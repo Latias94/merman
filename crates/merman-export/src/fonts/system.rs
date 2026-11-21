@@ -1,6 +1,6 @@
 //! Bounded metadata discovery and operation-local binary snapshots.
 
-use super::registry::{read_bounded, snapshot_cmap};
+use super::registry::{read_bounded_into, snapshot_cmap};
 use super::resolver::{ExpectedFace, FontCandidate};
 use super::*;
 use usvg::fontdb::{Database, FaceInfo, ID, Source};
@@ -20,6 +20,7 @@ struct SystemFace {
 
 struct Discovery<'a> {
     catalog: SystemCatalog,
+    file_bytes: Arc<Vec<u8>>,
     limits: &'a NativeFontLimits,
     control: &'a OperationControl,
     files: usize,
@@ -51,6 +52,7 @@ impl SystemCatalog {
                 identity: Vec::new(),
                 faces: BTreeMap::new(),
             },
+            file_bytes: Arc::default(),
             limits: &loader.limits,
             control,
             files: 0,
@@ -121,9 +123,7 @@ impl SystemCatalog {
             control.terminal_checkpoint_at(OperationPhase::Layout)?;
             if !self.selection.allows_implicit(face.id)
                 || excluded.iter().any(|used| same_face(used, face))
-                || (base.style != face.style
-                    && base.weight != face.weight
-                    && base.stretch != face.stretch)
+                || !crate::font_selection::fallback_style_matches(base, face)
                 || !self.supports(face, character, control)?
             {
                 continue;
@@ -149,7 +149,7 @@ impl SystemCatalog {
             .with_face_data(face.id, |bytes, index| {
                 rustybuzz::ttf_parser::Face::parse(bytes, index)
                     .ok()
-                    .is_some_and(|face| face.glyph_index(character).is_some())
+                    .is_some_and(|face| crate::font_selection::covers_character(&face, character))
             })
             .unwrap_or(false))
     }
@@ -210,22 +210,29 @@ impl Discovery<'_> {
     fn file(&mut self, path: &Path) -> Result<(), NativeFontError> {
         self.files = self.files.saturating_add(1);
         check_limit("system-files", self.files, self.limits.max_system_files)?;
-        // Discovery buffers are temporary; selected snapshots enforce the residency limit.
+        // Only the current fontdb borrows the file buffer. Catalog entries retain metadata.
         let remaining = self.limits.max_system_scan_bytes.saturating_sub(self.bytes);
-        let bytes = read_bounded(path, remaining, self.control, OperationPhase::Admission)?;
+        let bytes = Arc::make_mut(&mut self.file_bytes);
+        read_bounded_into(
+            path,
+            remaining,
+            self.control,
+            OperationPhase::Admission,
+            bytes,
+        )?;
         self.bytes = self.bytes.saturating_add(bytes.len());
-        let digest = Sha256::digest(&bytes).to_vec();
+        let digest = Sha256::digest(bytes.as_slice()).to_vec();
         if !self.hashes.insert(digest.clone()) {
             return Ok(());
         }
-        let count = rustybuzz::ttf_parser::fonts_in_collection(&bytes).unwrap_or(1) as usize;
+        let count = rustybuzz::ttf_parser::fonts_in_collection(bytes).unwrap_or(1) as usize;
         check_limit(
             "system-font-faces",
             self.catalog.database.faces().count().saturating_add(count),
             self.limits.max_system_faces,
         )?;
         let mut candidate = Database::new();
-        candidate.load_font_data(bytes);
+        candidate.load_font_source(Source::Binary(self.file_bytes.clone()));
         for face in candidate.faces() {
             self.control
                 .terminal_checkpoint_at(OperationPhase::Admission)?;
@@ -519,7 +526,6 @@ mod tests {
         Ok(NativeFontContext(Arc::new(FontContextInner {
             database: Arc::new(loader.database),
             selection: Arc::new(loader.selection),
-            initial_system_faces: BTreeSet::new(),
             discovery: Some(DiscoveryProvider::Bounded(Arc::new(catalog))),
             sources,
             default_family,

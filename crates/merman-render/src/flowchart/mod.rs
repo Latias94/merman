@@ -106,23 +106,51 @@ impl<'a> FlowchartRenderModelRef<'a> {
         self.render_context.subgraph_color_ordinal(id)
     }
 
-    pub(crate) fn requires_math(&self) -> bool {
-        self.nodes
+    /// Parent relations in the graph sent to layout, in FlowDB insertion order.
+    pub(crate) fn visible_memberships(self) -> impl Iterator<Item = (&'a str, &'a str)> {
+        self.semantic
+            .subgraphs
             .iter()
-            .filter_map(|node| self.node_label_for_render(node))
-            .chain(
-                self.edges
+            .rev()
+            .filter(move |group| {
+                self.collapsed_replacement(&group.id).is_none()
+                    && !self.is_subgraph_collapsed(&group.id)
+            })
+            .flat_map(|group| {
+                group
+                    .nodes
                     .iter()
-                    .enumerate()
-                    .filter_map(|(index, edge)| self.edge_label_for_render(index, edge)),
-            )
-            .chain(
-                self.subgraphs
-                    .iter()
-                    .enumerate()
-                    .map(|(ordinal, subgraph)| self.subgraph_title_for_render(ordinal, subgraph)),
-            )
-            .any(crate::math::contains_delimited_math)
+                    .map(move |child| (child.as_str(), group.id.as_str()))
+            })
+    }
+
+    pub(crate) fn projected_edges(
+        self,
+    ) -> impl Iterator<Item = (FlowchartEdgeKey, ProjectedFlowchartEdge<'a>)> + Clone {
+        self.semantic
+            .edges
+            .iter()
+            .enumerate()
+            .filter_map(move |(index, edge)| {
+                project_flowchart_edge(edge, self.render_context)
+                    .map(|edge| (FlowchartEdgeKey::new(index), edge))
+            })
+    }
+
+    pub(crate) fn requires_math(&self) -> bool {
+        self.nodes.iter().any(|node| {
+            self.node_label_for_render(node)
+                .is_some_and(crate::math::contains_delimited_math)
+                && self.collapsed_replacement(&node.id).is_none()
+                && !self.is_subgraph_collapsed(&node.id)
+        }) || self.edges.iter().enumerate().any(|(index, edge)| {
+            self.edge_label_for_render(index, edge)
+                .is_some_and(crate::math::contains_delimited_math)
+                && project_flowchart_edge(edge, self.render_context).is_some()
+        }) || self.subgraphs.iter().enumerate().any(|(index, subgraph)| {
+            crate::math::contains_delimited_math(self.subgraph_title_for_render(index, subgraph))
+                && self.collapsed_replacement(&subgraph.id).is_none()
+        })
     }
 }
 

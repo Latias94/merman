@@ -47,3 +47,21 @@ changed to Merman test names; original copyright/license records are retained.
 They were generated with fontTools 4.61.1 by updating Unicode cmap records,
 subsetting U+0020-U+007E with all naming/layout records, renaming, and setting the
 two OS/2 classification fields. They are never included in production binaries.
+
+## Mixed-Run Fallback Regressions
+
+The `MermanProbe{Base,Partial,Full}.ttf` files are synthetic Merman test fonts.
+They use simple rectangle outlines, a 1,000-unit em, and 500-unit glyph advances.
+All three have `f` and `i`. Base and Full include an `fi` ligature. Base also
+covers U+E000, Partial adds U+2713, and Full adds U+2713 and U+4E2D. This exercises
+both retrying after incompatible partial shaping and replacing a missing cluster
+while keeping the original face for the rest of the run.
+
+## Variable Weight Regression
+
+`MermanVariableWeight.ttf` is a synthetic Merman test font with a `wght` axis
+ranging from 100 to 900 and a physical default of 100. Its `A` and `V` glyphs
+have rectangle outlines and a 1,000-unit em. Both the outlines and the advances
+grow with weight. The two masters were made with `fontTools.fontBuilder` and
+combined with `fontTools.varLib` 4.66.0. This fixture exercises CSS weight 400
+and explicit axis overrides without depending on host fonts.

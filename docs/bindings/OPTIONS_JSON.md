@@ -630,7 +630,7 @@ explicit terminal, machine-channel, SVG, and raster request composition.
 | `ascii.charset` | string | `unicode` | `unicode` or `ascii`. |
 | `ascii.width_profile` / `ascii.widthProfile` | string | `unicode` | `unicode` follows the pinned non-CJK width table; `cjk` treats East Asian ambiguous authored characters as wide and uses single-cell ASCII structural glyphs because Unicode box drawing is East Asian Ambiguous. Select the profile that matches the target terminal. |
 | `ascii.layout_profile` / `ascii.layoutProfile` | string | `canonical` | `canonical` selects the family's default layout. `compact` uses a 24-cell Flowchart/Swimlane node wrap and a 3-cell horizontal rank gap, or 3-cell Sequence participant spacing, unless explicitly overridden. `auto` requires `max_width`; it tries Compact once after a wide Canonical primary, or an admitted Canonical planning miss in Adaptive mode. Compact/Auto are admitted only for Flowchart, Swimlane, and Sequence; State is Canonical-only. |
-| `ascii.graph_presentation` / `ascii.graphPresentation` | string | `strict` | `strict` preserves required graph-planning errors. `adaptive` permits complete graph-document recovery only for Flowchart, Swimlane, and State, with Plain encoding. It is independent of `layout_profile` and `overflow`; unsupported families or styled Adaptive requests are rejected before routing. |
+| `ascii.graph_presentation` / `ascii.graphPresentation` | string | `strict` | `strict` preserves required graph-planning errors. `adaptive` permits complete graph-document recovery for Flowchart, Swimlane, State, Agentflow, and Requirement with Plain encoding. It is independent of `layout_profile` and `overflow`; unsupported families or styled Adaptive requests are rejected before routing. |
 | `ascii.default_direction` / `ascii.defaultDirection` | string | `leftRight` | `leftRight`/`left_right` or `topDown`/`top_down` for families that need a default terminal direction. |
 | `ascii.color_mode` / `ascii.colorMode` | string | `plain` | `plain`/`none`, `ansi16`/`ansi-16`/`ansi_16`, `ansi256`/`ansi-256`/`ansi_256`, `truecolor`/`true-color`/`true_color`, or `html`. Bindings reject host-dependent `auto`; the host must resolve it before constructing environment-independent options. |
 | `ascii.theme` | object | none | Terminal color palette with required `foreground` and `background` plus optional `line`, `accent`, `muted`, `surface`, and `border`. |
@@ -999,7 +999,7 @@ does not depend on them.
 | --- | --- | --- | --- |
 | `svg.diagram_id` | string | renderer default | Overrides the root SVG diagram id. |
 | `svg.viewbox_padding` / `svg.viewBoxPadding` | non-negative finite number | `8` | Extra CSS-pixel padding around the computed SVG viewBox. |
-| `svg.pipeline` | string | `parity` | `parity`, `readable`, or `resvg-safe`. |
+| `svg.pipeline` | string | `parity` | `parity`, `static`, `readable`, or `resvg-safe`. |
 | `svg.root_background_color` | string | none | Host-owned root `<svg>` inline `background-color` replacement. |
 | `svg.drop_native_duplicate_fallbacks` | boolean | `false` | Adds generic duplicate fallback cleanup after readable or `resvg-safe` fallback generation. `resvg-safe` already removes generated fallback groups for native SVG `<switch>` text fallbacks, and this option covers additional native/fallback duplicate surfaces. |
 
@@ -1008,13 +1008,14 @@ Choose the pipeline for the consumer that will display the SVG:
 | Consumer | Pipeline | Behavior |
 | --- | --- | --- |
 | Browser or Webview | `parity` (default) | Preserves Mermaid HTML labels and styles without adding text overlays. |
+| Fixed illustration | `static` | Preserves Mermaid label markup and emits generated palette rules for the slots used by the diagram. Use `parity` for dynamic recoloring. |
 | resvg/usvg, including native PNG/JPEG/PDF export | `resvg-safe` | Converts HTML labels, applies compatibility cleanup, and validates the result. Native binary exports select this contract automatically. |
 | Custom consumer that ignores HTML labels but needs the remaining SVG preserved | `readable` (advanced) | Keeps HTML and appends best-effort SVG text. Browsers can display both copies and show overlapping text. |
 
 `readable` is a text-fallback overlay, not pretty-printing or a higher-quality browser mode. Use
 `parity` for browser previews. `resvg-safe` also removes unsupported styles and active content,
 so it is not a lossless replacement for `readable`. Neither option substitutes for the host's
-browser DOM-admission policy. All three pipeline values and their defaults remain unchanged.
+browser DOM-admission policy. The same admission policy applies when embedding a `static` SVG.
 
 `resvg-safe` includes structural cleanup for labels that already include native SVG `<switch>`
 text fallbacks. `drop_native_duplicate_fallbacks` remains an explicit host choice for

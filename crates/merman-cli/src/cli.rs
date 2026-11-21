@@ -275,6 +275,10 @@ pub(crate) struct LayoutArgs {
     #[arg(long)]
     pub(crate) pretty: bool,
 
+    /// Include compatibility semantics, metadata, and the full effective configuration.
+    #[arg(long)]
+    pub(crate) snapshot: bool,
+
     #[command(flatten)]
     pub(crate) parse: ParseCliArgs,
 
@@ -899,6 +903,7 @@ pub(crate) enum FontMeasurementKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
 pub(crate) enum FontSystemKind {
     Off,
+    /// Enable the build's default system font provider.
     On,
     /// Use Merman's bounded system font discovery.
     #[cfg(feature = "platform-system-font-query")]
@@ -910,6 +915,13 @@ pub(crate) enum FontSystemKind {
 
 #[cfg(feature = "native-fonts")]
 impl FontSystemKind {
+    pub(crate) const fn platform_is_default() -> bool {
+        cfg!(any(
+            feature = "experimental-system-font-query",
+            all(windows, feature = "windows-platform-font-default")
+        ))
+    }
+
     pub(crate) fn name(self) -> &'static str {
         match self {
             Self::Off => "off",
@@ -926,7 +938,7 @@ impl FontSystemKind {
         match selection {
             Some(Self::Bounded | Self::Off) => false,
             Some(Self::Platform) => true,
-            Some(Self::On) | None => cfg!(feature = "experimental-system-font-query"),
+            Some(Self::On) | None => Self::platform_is_default(),
         }
     }
 }
@@ -1229,10 +1241,10 @@ pub(crate) struct MmdcArgs {
     )]
     pub(crate) output_format: Option<MmdcOutputFormat>,
 
-    /// SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg.
+    /// SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg.
     ///
     /// Readable only adds text fallbacks for consumers that ignore HTML labels and can show
-    /// duplicate text in browsers. PNG/JPEG/PDF exports select resvg-safe automatically.
+    /// duplicate text in browsers. mmdc PNG/JPEG/PDF use resvg-safe with the complete palette.
     #[arg(
         long = "svg-pipeline",
         value_enum,
@@ -1357,10 +1369,10 @@ pub(crate) struct BatchRenderOptions {
 #[derive(Debug, Clone, ClapArgs, Default)]
 pub(crate) struct GraphicalRenderCliArgs {
     #[cfg(feature = "svg")]
-    /// SVG consumer: parity (default) for browsers; resvg-safe for resvg/usvg.
+    /// SVG consumer: parity (default), static for fixed markup, or resvg-safe for resvg/usvg.
     ///
     /// Readable only adds text fallbacks for consumers that ignore HTML labels and can show
-    /// duplicate text in browsers. PNG/JPEG/PDF exports select resvg-safe automatically.
+    /// duplicate text in browsers. PNG/JPEG/PDF use static generation and resvg-safe conversion.
     #[arg(
         long = "svg-pipeline",
         value_enum,
@@ -1917,6 +1929,8 @@ pub(crate) enum MathRendererKind {
 pub(crate) enum SvgPipelineKind {
     /// Default for browsers and Webviews; preserves Mermaid HTML labels and styles.
     Parity,
+    /// Generates SVG for fixed markup, emitting only the container palette slots it uses.
+    Static,
     /// Advanced text fallback for consumers that ignore HTML labels; browsers may show duplicates.
     Readable,
     /// Converts HTML labels and cleans SVG for resvg/usvg consumers.

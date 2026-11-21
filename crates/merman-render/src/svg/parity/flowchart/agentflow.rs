@@ -2,6 +2,7 @@
 
 use super::*;
 use std::borrow::Cow;
+use std::collections::BTreeSet;
 use std::fmt;
 use std::ops::Range;
 
@@ -35,7 +36,8 @@ pub(super) fn write_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
     binding: &crate::flowchart::FlowchartCompatibilityBinding,
-) -> Result<()> {
+    defer_palette: bool,
+) -> Result<Option<usize>> {
     let _ = write!(
         out,
         "#{diagram_id} .flow-cluster rect{{fill:none;stroke-width:0.75px;}}"
@@ -43,43 +45,63 @@ pub(super) fn write_css(
     out.checkpoint()?;
     let borders = &binding.palette;
     if borders.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
     let look = &binding.palette_look;
-    let backgrounds =
-        (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
-    let declarations = |slot: usize| {
-        let color = &borders[slot % borders.len()];
-        let border = color
-            .as_str()
-            .map(str::to_owned)
-            .unwrap_or_else(|| color.to_string());
-        let fill = backgrounds
-            .map(|values| {
-                let color = &values[slot % values.len()];
-                format!(
-                    "fill:{};",
-                    color
-                        .as_str()
-                        .map(str::to_owned)
-                        .unwrap_or_else(|| color.to_string())
-                )
-            })
-            .unwrap_or_default();
-        format!("stroke:{border};{fill}")
-    };
     for (slot, kind) in KINDS.iter().enumerate() {
         out.checkpoint()?;
         let selector = format!(r##"#{diagram_id} [data-look="{look}"].node.af-kind-{kind}"##);
         let _ = write!(
             out,
             "{selector} rect,{selector} path,{selector} polygon{{{}}}",
-            declarations(slot)
+            agentflow_declarations(binding, slot)
         );
     }
+    if defer_palette {
+        return Ok(Some(out.len()));
+    }
+    write_agentflow_container_css(out, diagram_id, binding, None)?;
+    Ok(None)
+}
+
+fn agentflow_declarations(
+    binding: &crate::flowchart::FlowchartCompatibilityBinding,
+    slot: usize,
+) -> String {
+    let borders = &binding.palette;
+    let backgrounds = &binding.palette_backgrounds;
+    let color_value = |value: &serde_json::Value| {
+        value
+            .as_str()
+            .map(str::to_owned)
+            .unwrap_or_else(|| value.to_string())
+    };
+    let border = color_value(&borders[slot % borders.len()]);
+    let fill = if backgrounds.is_empty() {
+        String::new()
+    } else {
+        format!(
+            "fill:{};",
+            color_value(&backgrounds[slot % backgrounds.len()])
+        )
+    };
+    format!("stroke:{border};{fill}")
+}
+
+pub(super) fn write_agentflow_container_css(
+    out: &mut impl SvgOutput,
+    diagram_id: impl std::fmt::Display + Copy,
+    binding: &crate::flowchart::FlowchartCompatibilityBinding,
+    used: Option<&BTreeSet<usize>>,
+) -> Result<()> {
+    let borders = &binding.palette;
+    let look = &binding.palette_look;
     for ordinal in 0..borders.len().saturating_sub(KINDS.len()).max(1) {
-        out.checkpoint()?;
         let slot = container_slot(ordinal, borders.len());
+        if used.is_some_and(|used| !used.contains(&slot)) {
+            continue;
+        }
+        out.checkpoint()?;
         let expanded = format!(
             r##"#{diagram_id} [data-look="{look}"][data-color-id="color-{slot}"].cluster"##
         );
@@ -88,7 +110,7 @@ pub(super) fn write_css(
         let _ = write!(
             out,
             "{expanded} rect,{collapsed} rect,{expanded} path,{collapsed} path{{{}}}",
-            declarations(slot)
+            agentflow_declarations(binding, slot)
         );
     }
     out.checkpoint()
@@ -100,19 +122,18 @@ pub(super) fn write_flowchart_container_css(
     out: &mut impl SvgOutput,
     diagram_id: impl std::fmt::Display + Copy,
     binding: &crate::flowchart::FlowchartCompatibilityBinding,
+    slots: impl IntoIterator<Item = usize, IntoIter: ExactSizeIterator>,
 ) -> Result<()> {
-    let borders = &binding.palette;
-    if borders.is_empty() {
-        return Ok(());
-    }
     let look = &binding.palette_look;
     let backgrounds =
         (!binding.palette_backgrounds.is_empty()).then_some(&binding.palette_backgrounds);
+    let slots = slots.into_iter();
+    let remaining_slots = slots.len().saturating_sub(1);
     let mut prefix = String::new();
     let mut fragments = String::new();
-    for (slot, border) in borders.iter().enumerate() {
+    for (index, slot) in slots.enumerate() {
         out.checkpoint()?;
-        let border = container_palette_value(border);
+        let border = container_palette_value(&binding.palette[slot]);
         let background =
             backgrounds.map(|values| container_palette_value(&values[slot % values.len()]));
         fragments.clear();
@@ -154,7 +175,8 @@ pub(super) fn write_flowchart_container_css(
         let group_path = collapsed(&mut fragments, ".collapsed-group path");
         let indicator = collapsed(&mut fragments, ".collapsed-indicator");
         let separator = collapsed(&mut fragments, ".collapsed-separator");
-        let _ = write!(
+        let selector_bytes = fragments.len() - fill.len();
+        let written = write!(
             out,
             "{},{}{{stroke:{border};{fill}}}{}{{fill:{border};}}{}{{stroke:{border};}}",
             &fragments[group],
@@ -163,8 +185,100 @@ pub(super) fn write_flowchart_container_css(
             &fragments[separator],
             fill = &fragments[fill],
         );
+        if index == 0 && remaining_slots != 0 && written.is_ok() {
+            // Four selectors use the prefix directly. The fragments contain the other selectors
+            // after the fill declaration. Callers visit slots in ascending order.
+            let per_slot = prefix
+                .len()
+                .saturating_mul(4)
+                .saturating_add(selector_bytes);
+            out.hint_additional_capacity(per_slot.saturating_mul(remaining_slots));
+        }
     }
     out.checkpoint()
+}
+
+/// Keep opaque compatibility declarations and resource-bearing selectors on the full path.
+pub(super) fn can_defer_palette(ctx: &FlowchartRenderCtx<'_>) -> Result<bool> {
+    let binding = ctx.compatibility;
+    if binding.palette.is_empty() {
+        return Ok(false);
+    }
+    for value in binding.palette.iter().chain(&binding.palette_backgrounds) {
+        ctx.checkpoint_emit()?;
+        let Some(value) = value.as_str() else {
+            return Ok(false);
+        };
+        if value.contains(['\'', '"', '\\'])
+            || !crate::mermaid_style::is_resource_free_css_value(value)
+        {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// The body contains the actual node and lane wrappers, plus any sanitized label markup.
+/// Inspect attributes only when the document has a possible palette participant. If an opaque
+/// fragment cannot be read as XML, keep the full palette and let the selected pipeline admit it.
+pub(super) fn emitted_palette_slots(
+    svg: &str,
+    body_start: usize,
+    palette_len: usize,
+    ctx: &FlowchartRenderCtx<'_>,
+) -> Result<Option<BTreeSet<usize>>> {
+    const ATTRIBUTE: &str = "data-color-id";
+    const SCAN_CHUNK: usize = 8_192;
+    let bytes = &svg.as_bytes()[body_start..];
+    let finder = memchr::memmem::Finder::new(ATTRIBUTE.as_bytes());
+    let mut found = false;
+    for start in (0..bytes.len()).step_by(SCAN_CHUNK) {
+        ctx.checkpoint_emit()?;
+        let end = start
+            .saturating_add(SCAN_CHUNK + ATTRIBUTE.len() - 1)
+            .min(bytes.len());
+        if finder.find(&bytes[start..end]).is_some() {
+            found = true;
+            break;
+        }
+    }
+    let mut slots = BTreeSet::new();
+    if !found {
+        return Ok(Some(slots));
+    }
+    let mut reader = quick_xml::Reader::from_str(svg);
+    loop {
+        ctx.checkpoint_emit()?;
+        match reader.read_event() {
+            Ok(quick_xml::events::Event::Start(tag) | quick_xml::events::Event::Empty(tag)) => {
+                if finder.find(tag.as_ref().as_bytes()).is_none() {
+                    continue;
+                }
+                let mut attributes = tag.attributes();
+                for attribute in attributes.with_checks(false) {
+                    let Ok(attribute) = attribute else {
+                        return Ok(None);
+                    };
+                    if attribute.key.as_ref() == ATTRIBUTE {
+                        let Ok(value) = quick_xml::escape::unescape(attribute.value.as_ref())
+                        else {
+                            return Ok(None);
+                        };
+                        if let Some(slot) = value
+                            .strip_prefix("color-")
+                            .and_then(|slot| slot.parse::<usize>().ok())
+                            .filter(|slot| *slot < palette_len)
+                        {
+                            slots.insert(slot);
+                        }
+                    }
+                }
+            }
+            Ok(quick_xml::events::Event::Eof) => return Ok(Some(slots)),
+            Err(_) => return Ok(None),
+            Ok(_) => {}
+        }
+    }
 }
 
 fn container_palette_value(value: &serde_json::Value) -> Cow<'_, str> {

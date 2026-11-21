@@ -5,36 +5,155 @@ pub use theme_id::{MermaidThemeId, MermaidThemeIdParseError};
 
 use crate::json::estimated_value_owned_heap_bytes;
 use crate::json::{
-    ManagedJson, clone_value_nonrecursive, clone_value_nonrecursive_controlled,
-    drop_value_nonrecursive,
+    ManagedJson, clone_object_nonrecursive_controlled, clone_value_nonrecursive,
+    clone_value_nonrecursive_controlled, drop_value_nonrecursive,
 };
 #[cfg(feature = "presentation-data")]
 use crate::resources::ModelComplexity;
 use crate::{OperationControl, OperationControlResult};
 use serde_json::{Map, Value};
 use std::fmt;
-use std::sync::Arc;
-#[cfg(feature = "presentation-data")]
-use std::sync::OnceLock;
+use std::ops::ControlFlow;
+use std::sync::{Arc, OnceLock};
 
 #[derive(Clone)]
 pub struct MermaidConfig {
     #[cfg(test)]
     before_value_release: Option<tests::BeforeValueRelease>,
     value: Arc<ConfigValue>,
+    share_sections_on_write: bool,
 }
 
 #[derive(Clone)]
 struct ConfigValue {
-    json: ManagedJson,
+    storage: ConfigStorage,
     #[cfg(feature = "presentation-data")]
     construction_complexity: OnceLock<ModelComplexity>,
+}
+
+#[derive(Clone)]
+enum ConfigStorage {
+    Json(ManagedJson),
+    Sections(SectionOverrides),
+}
+
+/// The base is a flat object. A request copies a section only when it writes to that section.
+/// Full JSON is a compatibility projection and is cached only after a consumer asks for it.
+struct SectionOverrides {
+    base: Arc<ConfigValue>,
+    changed: ManagedJson,
+    flattened: OnceLock<ManagedJson>,
+}
+
+impl Clone for SectionOverrides {
+    fn clone(&self) -> Self {
+        Self {
+            base: Arc::clone(&self.base),
+            changed: self.changed.clone(),
+            flattened: OnceLock::new(),
+        }
+    }
+}
+
+impl SectionOverrides {
+    fn base_object(&self) -> &Map<String, Value> {
+        let ConfigStorage::Json(base) = &self.base.storage else {
+            unreachable!("config sections use one flat base")
+        };
+        base.as_value()
+            .as_object()
+            .expect("config base is an object")
+    }
+
+    fn changed_object(&self) -> &Map<String, Value> {
+        self.changed
+            .as_value()
+            .as_object()
+            .expect("changed sections form an object")
+    }
+
+    fn edited_object(&mut self) -> &mut Map<String, Value> {
+        self.flattened.take();
+        self.changed
+            .as_value_mut()
+            .as_object_mut()
+            .expect("changed sections form an object")
+    }
+
+    fn insert(&mut self, key: &str, value: Value) {
+        if let Some(old) = self.edited_object().insert(key.to_owned(), value) {
+            drop_value_nonrecursive(old);
+        }
+    }
+
+    fn edit(&mut self, key: &str, default: impl FnOnce() -> Value) -> &mut Value {
+        if !self.changed_object().contains_key(key) {
+            let value = self
+                .base_object()
+                .get(key)
+                .map_or_else(default, clone_value_nonrecursive);
+            self.insert(key, value);
+        }
+        self.edited_object()
+            .get_mut(key)
+            .expect("editable config section")
+    }
+
+    fn entries(&self) -> SectionEntries<'_> {
+        let base = self.base_object();
+        let changed = self.changed_object();
+        SectionEntries {
+            base,
+            changed,
+            base_entries: base.iter(),
+            changed_entries: changed.iter(),
+        }
+    }
+
+    fn flatten(&self) -> ManagedJson {
+        let object = self
+            .entries()
+            .map(|(key, value)| (key.clone(), clone_value_nonrecursive(value)))
+            .collect();
+        ManagedJson::from_value(Value::Object(object))
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct SectionEntries<'a> {
+    base: &'a Map<String, Value>,
+    changed: &'a Map<String, Value>,
+    base_entries: serde_json::map::Iter<'a>,
+    changed_entries: serde_json::map::Iter<'a>,
+}
+
+impl<'a> Iterator for SectionEntries<'a> {
+    type Item = (&'a String, &'a Value);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some((key, original)) = self.base_entries.next() {
+            return Some((key, self.changed.get(key).unwrap_or(original)));
+        }
+        self.changed_entries
+            .find(|(key, _)| !self.base.contains_key(key.as_str()))
+    }
+}
+
+impl ConfigValue {
+    fn json(&self) -> &ManagedJson {
+        match &self.storage {
+            ConfigStorage::Json(json) => json,
+            ConfigStorage::Sections(sections) => {
+                sections.flattened.get_or_init(|| sections.flatten())
+            }
+        }
+    }
 }
 
 impl From<ManagedJson> for ConfigValue {
     fn from(json: ManagedJson) -> Self {
         Self {
-            json,
+            storage: ConfigStorage::Json(json),
             #[cfg(feature = "presentation-data")]
             construction_complexity: OnceLock::new(),
         }
@@ -45,14 +164,14 @@ impl fmt::Debug for MermaidConfig {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter
             .debug_tuple("MermaidConfig")
-            .field(&self.value.json)
+            .field(self.value.json())
             .finish()
     }
 }
 
 impl PartialEq for MermaidConfig {
     fn eq(&self, other: &Self) -> bool {
-        self.value.json == other.value.json
+        self.shares_storage_with(other) || self.value.json() == other.value.json()
     }
 }
 
@@ -74,16 +193,75 @@ impl MermaidConfig {
             #[cfg(test)]
             before_value_release: None,
             value: Arc::new(ManagedJson::from_value(value).into()),
+            share_sections_on_write: false,
         }
     }
 
     pub fn as_value(&self) -> &Value {
-        self.value.json.as_value()
+        self.value.json().as_value()
+    }
+
+    /// Takes an independent compatibility projection without retaining a second JSON tree.
+    pub fn to_managed_json(&self) -> ManagedJson {
+        match &self.value.storage {
+            ConfigStorage::Json(json) => json.clone(),
+            ConfigStorage::Sections(sections) => sections
+                .flattened
+                .get()
+                .map_or_else(|| sections.flatten(), Clone::clone),
+        }
+    }
+
+    /// Enables copy-on-write at the root section boundary for an operation-local config fork.
+    #[must_use]
+    pub fn with_shared_sections(mut self) -> Self {
+        self.share_sections_on_write = true;
+        self
+    }
+
+    /// Finds one root member without constructing a full JSON projection.
+    pub fn get(&self, key: &str) -> Option<&Value> {
+        match &self.value.storage {
+            ConfigStorage::Json(json) => json.as_value().get(key),
+            ConfigStorage::Sections(sections) => sections
+                .changed_object()
+                .get(key)
+                .or_else(|| sections.base_object().get(key)),
+        }
+    }
+
+    pub fn get_path(&self, path: &[&str]) -> Option<&Value> {
+        let (first, rest) = path.split_first()?;
+        rest.iter()
+            .try_fold(self.get(first)?, |value, segment| value.get(*segment))
+    }
+
+    pub fn shares_storage_with(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.value, &other.value)
+    }
+
+    pub fn get_dotted_path(&self, dotted_path: &str) -> Option<&Value> {
+        let mut segments = dotted_path.split('.');
+        let first = segments.next()?;
+        segments.try_fold(self.get(first)?, |value, segment| value.get(segment))
     }
 
     #[cfg(feature = "presentation-data")]
     pub(crate) fn construction_complexity(&self) -> &OnceLock<ModelComplexity> {
         &self.value.construction_complexity
+    }
+
+    pub(crate) fn section_entries(&self) -> Option<(usize, SectionEntries<'_>)> {
+        let ConfigStorage::Sections(sections) = &self.value.storage else {
+            return None;
+        };
+        let entries = sections.entries();
+        let additions = entries
+            .changed
+            .keys()
+            .filter(|key| !entries.base.contains_key(key.as_str()))
+            .count();
+        Some((entries.base.len() + additions, entries))
     }
 
     /// Clones this config without recursion while enforcing a retained-size and nesting budget.
@@ -96,6 +274,16 @@ impl MermaidConfig {
         max_nesting_depth: usize,
         control: &OperationControl,
     ) -> OperationControlResult<Option<Value>> {
+        control.checkpoint()?;
+        if let Some((len, entries)) = self.section_entries() {
+            return clone_object_nonrecursive_controlled(
+                len,
+                entries,
+                max_retained_bytes,
+                max_nesting_depth,
+                control,
+            );
+        }
         clone_value_nonrecursive_controlled(
             self.as_value(),
             max_retained_bytes,
@@ -105,7 +293,21 @@ impl MermaidConfig {
     }
 
     pub fn is_empty_object(&self) -> bool {
-        matches!(self.as_value(), Value::Object(map) if map.is_empty())
+        match &self.value.storage {
+            ConfigStorage::Json(json) => {
+                matches!(json.as_value(), Value::Object(map) if map.is_empty())
+            }
+            ConfigStorage::Sections(sections) => {
+                sections.base_object().is_empty() && sections.changed_object().is_empty()
+            }
+        }
+    }
+
+    fn is_object(&self) -> bool {
+        match &self.value.storage {
+            ConfigStorage::Json(json) => json.as_value().is_object(),
+            ConfigStorage::Sections(_) => true,
+        }
     }
 
     /// Estimates owned JSON allocation weight for retained-evidence budgeting.
@@ -118,19 +320,11 @@ impl MermaidConfig {
     }
 
     pub fn get_str(&self, dotted_path: &str) -> Option<&str> {
-        let mut cur = self.as_value();
-        for segment in dotted_path.split('.') {
-            cur = cur.as_object()?.get(segment)?;
-        }
-        cur.as_str()
+        self.get_dotted_path(dotted_path)?.as_str()
     }
 
     pub fn get_bool(&self, dotted_path: &str) -> Option<bool> {
-        let mut cur = self.as_value();
-        for segment in dotted_path.split('.') {
-            cur = cur.as_object()?.get(segment)?;
-        }
-        cur.as_bool()
+        self.get_dotted_path(dotted_path)?.as_bool()
     }
 
     pub fn set_value(&mut self, dotted_path: &str, value: Value) {
@@ -138,11 +332,7 @@ impl MermaidConfig {
     }
 
     fn set_value_raw(&mut self, dotted_path: &str, value: Value) {
-        let current = dotted_path
-            .split('.')
-            .try_fold(self.as_value(), |parent, segment| {
-                parent.as_object()?.get(segment)
-            });
+        let current = self.get_dotted_path(dotted_path);
         if current.is_some_and(|current| {
             if current.is_object() || current.is_array() || value.is_object() || value.is_array() {
                 values_equal_controlled(current, &value, None)
@@ -154,7 +344,18 @@ impl MermaidConfig {
             drop_value_nonrecursive(value);
             return;
         }
-        let root_value = self.value_mut();
+        if let Some(sections) = self.sections_mut() {
+            if let Some((root, tail)) = dotted_path.split_once('.') {
+                Self::set_in_object(sections.edit(root, || Value::Null), tail, value);
+            } else {
+                sections.insert(dotted_path, value);
+            }
+            return;
+        }
+        Self::set_in_object(self.value_mut(), dotted_path, value);
+    }
+
+    fn set_in_object(root_value: &mut Value, dotted_path: &str, value: Value) {
         // Be defensive: callers can construct `MermaidConfig` from any JSON value via
         // `from_value`. Mermaid configs are objects; if we see a non-object here, coerce it
         // to an object so this API never panics on user input.
@@ -189,7 +390,7 @@ impl MermaidConfig {
         self.merge_with_mutation_observer(other, &mut |_| {});
     }
 
-    /// Merges Mermaid values while reporting each actual mutation path in encounter order.
+    /// Merges Mermaid values while reporting accepted assignments in encounter order.
     ///
     /// The observer receives path segments during this call and cannot retain a borrowed path.
     /// Source owners use these events without changing the value container's merge semantics.
@@ -200,20 +401,166 @@ impl MermaidConfig {
         if matches!(other, Value::Object(map) if map.is_empty()) {
             return;
         }
+        if self.share_sections_on_write && self.is_object() {
+            match other {
+                Value::Object(updates) => self.merge_sections(updates, record),
+                Value::Array(items) => {
+                    let _ = visit_array_updates(items, |update| {
+                        if let Value::Object(updates) = update {
+                            self.merge_sections(updates, record);
+                        }
+                        ControlFlow::Continue(())
+                    });
+                }
+                _ => {}
+            }
+            return;
+        }
         let mut path = Vec::new();
-        assign_with_depth_recording(self.value_mut(), other, 2, &mut path, record);
+        let mut reported_prefix = 0usize;
+        let first_write =
+            MergeTarget::Shared(self.as_value()).apply(other, 2, &mut path, &mut |path| {
+                record(path);
+                reported_prefix += 1;
+            });
+        if first_write.is_break() {
+            let result =
+                MergeTarget::Writable(self.value_mut()).apply(other, 2, &mut path, &mut |path| {
+                    if reported_prefix == 0 {
+                        record(path);
+                    } else {
+                        reported_prefix -= 1;
+                    }
+                });
+            debug_assert!(result.is_continue() && reported_prefix == 0);
+        }
     }
 
-    fn value_mut(&mut self) -> &mut Value {
-        if Arc::strong_count(&self.value) != 1 || Arc::weak_count(&self.value) != 0 {
-            #[cfg(any(test, feature = "test-support"))]
-            test_support::record_cow_copy();
-            self.value = Arc::new(self.value.json.clone().into());
+    fn sections_mut(&mut self) -> Option<&mut SectionOverrides> {
+        if !self.share_sections_on_write {
+            return None;
+        }
+        if matches!(self.value.storage, ConfigStorage::Json(_)) {
+            if !self.is_object() || Arc::get_mut(&mut self.value).is_some() {
+                return None;
+            }
+            self.value = Arc::new(ConfigValue {
+                storage: ConfigStorage::Sections(SectionOverrides {
+                    base: Arc::clone(&self.value),
+                    changed: ManagedJson::from_value(Value::Object(Map::new())),
+                    flattened: OnceLock::new(),
+                }),
+                #[cfg(feature = "presentation-data")]
+                construction_complexity: OnceLock::new(),
+            });
         }
         let value = Arc::make_mut(&mut self.value);
         #[cfg(feature = "presentation-data")]
         value.construction_complexity.take();
-        value.json.as_value_mut()
+        let ConfigStorage::Sections(sections) = &mut value.storage else {
+            unreachable!("shared object fork has section storage")
+        };
+        Some(sections)
+    }
+
+    fn edit_section(
+        &mut self,
+        key: &str,
+        default: impl FnOnce() -> Value,
+        edit: impl FnOnce(&mut Value),
+    ) {
+        if let Some(sections) = self.sections_mut() {
+            edit(sections.edit(key, default));
+        } else {
+            let object = self
+                .value_mut()
+                .as_object_mut()
+                .expect("config is an object");
+            edit(object.entry(key).or_insert_with(default));
+        }
+    }
+
+    fn merge_sections(&mut self, updates: &Map<String, Value>, record: &mut impl FnMut(&[&str])) {
+        let mut path = Vec::new();
+        for (key, update) in updates {
+            let destination = self.get(key);
+            match merge_member_action(destination, update) {
+                MergeMember::Ignore => {}
+                MergeMember::Assign => {
+                    record(&[key]);
+                    if !destination.is_some_and(|value| unchanged_scalar(value, update)) {
+                        let replacement = clone_value_nonrecursive(update);
+                        if let Some(sections) = self.sections_mut() {
+                            sections.insert(key, replacement);
+                        } else {
+                            self.edit_section(
+                                key,
+                                || Value::Null,
+                                |slot| replace_value_nonrecursive(slot, replacement),
+                            );
+                        }
+                    }
+                }
+                MergeMember::Merge => {
+                    path.push(key.as_str());
+                    let mut reported = 0usize;
+                    let needs_write = destination.is_none_or(|value| {
+                        MergeTarget::Shared(value)
+                            .apply(update, 1, &mut path, &mut |path| {
+                                record(path);
+                                reported += 1;
+                            })
+                            .is_break()
+                    });
+                    if needs_write {
+                        self.edit_section(
+                            key,
+                            || empty_container_for(update),
+                            |section| {
+                                let result = MergeTarget::Writable(section).apply(
+                                    update,
+                                    1,
+                                    &mut path,
+                                    &mut |path| {
+                                        if reported == 0 {
+                                            record(path);
+                                        } else {
+                                            reported -= 1;
+                                        }
+                                    },
+                                );
+                                debug_assert!(result.is_continue() && reported == 0);
+                            },
+                        );
+                    }
+                    path.pop();
+                }
+            }
+        }
+    }
+
+    fn value_mut(&mut self) -> &mut Value {
+        if let Some(value) = Arc::get_mut(&mut self.value) {
+            if let ConfigStorage::Sections(sections) = &mut value.storage {
+                let json = sections.flattened.take().unwrap_or_else(|| {
+                    #[cfg(any(test, feature = "test-support"))]
+                    test_support::record_cow_copy();
+                    sections.flatten()
+                });
+                value.storage = ConfigStorage::Json(json);
+            }
+        } else {
+            #[cfg(any(test, feature = "test-support"))]
+            test_support::record_cow_copy();
+            self.value = Arc::new(self.to_managed_json().into());
+        }
+        let value = Arc::make_mut(&mut self.value);
+        #[cfg(feature = "presentation-data")]
+        value.construction_complexity.take();
+        let ConfigStorage::Json(json) = &mut value.storage else {
+            unreachable!("config is flat before exposing raw mutation")
+        };
+        json.as_value_mut()
     }
 }
 
@@ -249,163 +596,232 @@ pub fn values_equal_controlled(
     Ok(true)
 }
 
-fn assign_with_depth_recording<'a, F>(
-    destination: &mut Value,
-    source: &'a Value,
-    depth: usize,
-    path: &mut Vec<&'a str>,
-    record_mutation: &mut F,
-) where
-    F: FnMut(&[&str]),
-{
-    if let Value::Array(source_items) = source {
-        match destination {
-            Value::Array(destination_items) => {
-                if !source_items.is_empty() {
-                    record_mutation(path);
-                }
-                merge_arrays(destination_items, source_items);
-            }
-            Value::Object(_) => merge_array_of_sources_recording(
-                destination,
-                source_items,
-                depth,
-                path,
-                record_mutation,
-            ),
-            Value::Null | Value::Bool(_) | Value::Number(_) | Value::String(_) => {}
-        }
-        return;
-    }
+/// The shared traversal stops at the first write. A writable traversal then replays its
+/// unchanged prefix and continues in the detached tree. Both descend by borrowing each
+/// child directly, keeping ancestor keys out of the inner object and array loops.
+enum MergeTarget<'value> {
+    Shared(&'value Value),
+    Writable(&'value mut Value),
+}
 
-    if destination.is_null() {
-        // Mermaid 11.16.1 treats a null destination as an absent value and returns the source.
-        // Mutating the slot in place is the JSON equivalent of the caller assigning that return
-        // value back to the parent property.
-        record_mutation(path);
-        replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
-        return;
-    }
+enum MergeMember {
+    Ignore,
+    Assign,
+    Merge,
+}
 
+fn merge_member_action(destination: Option<&Value>, source: &Value) -> MergeMember {
     if source.is_null() {
-        // `assignWithDepth` ignores null-valued object properties when the destination is present.
-        return;
+        MergeMember::Ignore
+    } else if is_non_null_js_object(source) {
+        if destination.is_none_or(is_js_object) {
+            MergeMember::Merge
+        } else {
+            MergeMember::Ignore
+        }
+    } else if destination.is_none_or(|value| !is_js_object(value)) {
+        MergeMember::Assign
+    } else {
+        MergeMember::Ignore
+    }
+}
+
+fn visit_array_updates<'source>(
+    source_items: &'source [Value],
+    mut visit: impl FnMut(&'source Value) -> ControlFlow<()>,
+) -> ControlFlow<()> {
+    let mut pending = source_items.iter().rev().collect::<Vec<_>>();
+    while let Some(source) = pending.pop() {
+        if let Value::Array(items) = source {
+            pending.extend(items.iter().rev());
+        } else {
+            visit(source)?;
+        }
+    }
+    ControlFlow::Continue(())
+}
+
+impl MergeTarget<'_> {
+    fn value(&self) -> &Value {
+        match self {
+            Self::Shared(value) => value,
+            Self::Writable(value) => value,
+        }
     }
 
-    if depth == 0 {
-        object_assign_recording(destination, source, path, record_mutation);
-        return;
+    fn child(&mut self, key: &str) -> MergeTarget<'_> {
+        match self {
+            Self::Shared(value) => MergeTarget::Shared(value.get(key).expect("merge child exists")),
+            Self::Writable(value) => {
+                MergeTarget::Writable(value.get_mut(key).expect("merge child exists"))
+            }
+        }
     }
 
-    let (Value::Object(destination_map), Value::Object(source_map)) = (destination, source) else {
-        return;
-    };
+    fn object_mut(&mut self) -> ControlFlow<(), &mut Map<String, Value>> {
+        match self {
+            Self::Shared(_) => ControlFlow::Break(()),
+            Self::Writable(value) => {
+                ControlFlow::Continue(value.as_object_mut().expect("merge parent is an object"))
+            }
+        }
+    }
 
-    for (key, source_child) in source_map {
-        if is_non_null_js_object(source_child) {
-            match destination_map.get_mut(key) {
-                Some(destination_child) if is_js_object(destination_child) => {
-                    path.push(key);
-                    assign_with_depth_recording(
-                        destination_child,
-                        source_child,
-                        depth - 1,
-                        path,
-                        record_mutation,
-                    );
-                    path.pop();
+    fn apply<'source>(
+        &mut self,
+        source: &'source Value,
+        depth: usize,
+        path: &mut Vec<&'source str>,
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        if let Value::Array(source_items) = source {
+            match self.value() {
+                Value::Array(_) if !source_items.is_empty() => {
+                    record(path);
+                    return self.append_array_items(source_items);
                 }
-                Some(_) => {}
-                None => {
-                    destination_map.insert(key.clone(), empty_container_for(source_child));
-                    if let Some(destination_child) = destination_map.get_mut(key) {
-                        path.push(key);
-                        assign_with_depth_recording(
-                            destination_child,
-                            source_child,
-                            depth - 1,
-                            path,
-                            record_mutation,
-                        );
-                        path.pop();
+                Value::Object(_) => {
+                    return visit_array_updates(source_items, |source| {
+                        self.apply(source, depth, path, record)
+                    });
+                }
+                _ => {}
+            }
+            return ControlFlow::Continue(());
+        }
+
+        if self.value().is_null() {
+            return self.replace(source, path, record);
+        }
+        if source.is_null() {
+            return ControlFlow::Continue(());
+        }
+        if depth == 0 {
+            return self.shallow_assign(source, path, record);
+        }
+
+        let (Value::Object(_), Value::Object(source_map)) = (self.value(), source) else {
+            return ControlFlow::Continue(());
+        };
+        for (key, source_child) in source_map {
+            let destination_child = self.value().get(key);
+            match merge_member_action(destination_child, source_child) {
+                MergeMember::Ignore => {}
+                MergeMember::Assign => self.assign_member(key, source_child, path, record)?,
+                MergeMember::Merge => {
+                    if destination_child.is_none() {
+                        self.object_mut()?
+                            .insert(key.clone(), empty_container_for(source_child));
+                    }
+                    path.push(key);
+                    let result = self.child(key).apply(source_child, depth - 1, path, record);
+                    path.pop();
+                    result?;
+                }
+            }
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn append_array_items(&mut self, source: &[Value]) -> ControlFlow<()> {
+        match self {
+            Self::Shared(Value::Array(destination)) => {
+                if source.iter().any(|item| !array_contains(destination, item)) {
+                    return ControlFlow::Break(());
+                }
+            }
+            Self::Writable(Value::Array(destination)) => {
+                for item in source {
+                    if !array_contains(destination, item) {
+                        destination.push(clone_value_nonrecursive(item));
                     }
                 }
             }
-        } else if !source_child.is_null()
-            && destination_map
-                .get(key)
-                .is_none_or(|value| !is_js_object(value))
-        {
-            path.push(key);
-            record_mutation(path);
-            path.pop();
-            insert_cloned(destination_map, key, source_child);
+            _ => unreachable!("array merge destination"),
         }
+        ControlFlow::Continue(())
     }
-}
 
-fn merge_array_of_sources_recording<'a, F>(
-    destination: &mut Value,
-    source_items: &'a [Value],
-    depth: usize,
-    path: &mut Vec<&'a str>,
-    record_mutation: &mut F,
-) where
-    F: FnMut(&[&str]),
-{
-    let mut stack = source_items.iter().rev().collect::<Vec<_>>();
-    while let Some(source) = stack.pop() {
-        if let Value::Array(items) = source {
-            stack.extend(items.iter().rev());
-        } else {
-            assign_with_depth_recording(destination, source, depth, path, record_mutation);
-        }
-    }
-}
-
-fn merge_arrays(destination: &mut Vec<Value>, source: &[Value]) {
-    for source_item in source {
-        let already_present = is_json_primitive(source_item)
-            && destination
-                .iter()
-                .any(|destination_item| same_json_primitive(destination_item, source_item));
-        if !already_present {
-            destination.push(clone_value_nonrecursive(source_item));
-        }
-    }
-}
-
-fn object_assign_recording<'a, F>(
-    destination: &mut Value,
-    source: &'a Value,
-    path: &mut Vec<&'a str>,
-    record_mutation: &mut F,
-) where
-    F: FnMut(&[&str]),
-{
-    match (destination, source) {
-        (Value::Object(destination_map), Value::Object(source_map)) => {
-            for (key, source_child) in source_map {
-                path.push(key);
-                record_mutation(path);
-                path.pop();
-                insert_cloned(destination_map, key, source_child);
+    fn shallow_assign<'source>(
+        &mut self,
+        source: &'source Value,
+        path: &mut Vec<&'source str>,
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        match (self.value(), source) {
+            (Value::Object(_), Value::Object(source_map)) => {
+                for (key, source_child) in source_map {
+                    self.assign_member(key, source_child, path, record)?;
+                }
+                ControlFlow::Continue(())
             }
+            // JavaScript arrays can own named properties, while JSON arrays cannot represent them.
+            (Value::Array(_), Value::Object(_)) => ControlFlow::Continue(()),
+            _ => self.replace(source, path, record),
         }
-        // JavaScript arrays can own named properties, while JSON arrays cannot represent them.
-        // Numeric config keys are not part of Mermaid's public config shape, so leave this
-        // unrepresentable object-to-array case unchanged.
-        (Value::Array(_), Value::Object(_)) => {}
-        (destination, source) => {
-            record_mutation(path);
-            replace_value_nonrecursive(destination, clone_value_nonrecursive(source));
+    }
+
+    fn replace(
+        &mut self,
+        source: &Value,
+        path: &[&str],
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        record(path);
+        match self {
+            Self::Shared(value) if unchanged_scalar(value, source) => {}
+            Self::Shared(_) => return ControlFlow::Break(()),
+            Self::Writable(value) if !unchanged_scalar(value, source) => {
+                replace_value_nonrecursive(value, clone_value_nonrecursive(source));
+            }
+            Self::Writable(_) => {}
         }
+        ControlFlow::Continue(())
+    }
+
+    fn assign_member<'source>(
+        &mut self,
+        key: &'source str,
+        source: &Value,
+        path: &mut Vec<&'source str>,
+        record: &mut impl FnMut(&[&str]),
+    ) -> ControlFlow<()> {
+        path.push(key);
+        record(path);
+        path.pop();
+        if self
+            .value()
+            .get(key)
+            .is_some_and(|current| unchanged_scalar(current, source))
+        {
+            return ControlFlow::Continue(());
+        }
+        if let Some(previous) = self
+            .object_mut()?
+            .insert(key.to_owned(), clone_value_nonrecursive(source))
+        {
+            drop_value_nonrecursive(previous);
+        }
+        ControlFlow::Continue(())
     }
 }
 
-fn insert_cloned(destination: &mut Map<String, Value>, key: &str, source: &Value) {
-    if let Some(previous) = destination.insert(key.to_string(), clone_value_nonrecursive(source)) {
-        drop_value_nonrecursive(previous);
+fn array_contains(destination: &[Value], item: &Value) -> bool {
+    is_json_primitive(item)
+        && destination
+            .iter()
+            .any(|present| same_json_primitive(present, item))
+}
+
+fn unchanged_scalar(destination: &Value, source: &Value) -> bool {
+    match (destination, source) {
+        (Value::Number(old), Value::Number(new)) => {
+            old == new
+                && (!old.is_f64()
+                    || old.as_f64().map(f64::to_bits) == new.as_f64().map(f64::to_bits))
+        }
+        (Value::Null | Value::Bool(_) | Value::String(_), _) => destination == source,
+        _ => false,
     }
 }
 
@@ -537,12 +953,162 @@ mod tests {
     }
 
     #[test]
+    fn section_writes_preserve_order_and_merge_events_without_flattening() {
+        let baseline = MermaidConfig::from_value(json!({
+            "first": "unchanged",
+            "flowchart": { "spacing": 50, "labels": {"type": "html"} },
+            "secure": ["startOnLoad"],
+            "empty": {},
+            "last": 0.0,
+        }));
+        let source = json!({
+            "newSection": {},
+            "first": "unchanged",
+            "flowchart": {"spacing": 72, "labels": {"mode": "wrap", "x": null}},
+            "secure": ["startOnLoad", "themeCSS"],
+            "empty": false,
+            "last": -0.0,
+            "custom.a": {},
+        });
+        let merge = |mut config: MermaidConfig| {
+            let mut paths = Vec::new();
+            config.merge_with_mutation_observer(&source, &mut |path| paths.push(path.join(".")));
+            config.set_value("flowchart.labels.type", json!("text"));
+            config.set_value("inserted", json!(true));
+            (config, paths)
+        };
+
+        let (flat, flat_paths) = merge(baseline.clone());
+        let (layered, layered_paths) = merge(baseline.clone().with_shared_sections());
+        let ConfigStorage::Sections(sections) = &layered.value.storage else {
+            panic!("expected a section fork");
+        };
+        assert!(sections.flattened.get().is_none());
+        assert_eq!(layered_paths, flat_paths);
+        assert!(std::ptr::eq(
+            layered.get("empty").unwrap(),
+            baseline.get("empty").unwrap()
+        ));
+        assert_eq!(layered.get_str("flowchart.labels.type"), Some("text"));
+        assert_eq!(
+            serde_json::to_vec(&layered.to_managed_json()).unwrap(),
+            serde_json::to_vec(&flat.to_managed_json()).unwrap()
+        );
+        assert!(sections.flattened.get().is_none());
+    }
+
+    #[test]
+    fn section_merges_keep_empty_and_ordered_array_sources_lazy() {
+        let base = MermaidConfig::from_value(json!({
+            "large": "x".repeat(32 * 1_024),
+            "flowchart": {"nodeSpacing": 50},
+        }));
+        let mut flat = base.clone();
+        let mut layered = base.clone().with_shared_sections();
+        flat.set_value("flowchart.rankSpacing", json!(61));
+        layered.set_value("flowchart.rankSpacing", json!(61));
+        for source in [Value::Null, json!([]), json!([[null, []], true, {}])] {
+            layered.merge_with_mutation_observer(&source, &mut |_| {
+                panic!("an empty merge should report no assignments")
+            });
+        }
+
+        let updates = json!([
+            {"flowchart": {"nodeSpacing": 70}},
+            [{"enabled": true}, {"flowchart": {"nodeSpacing": 72, "rankSpacing": 61}}],
+        ]);
+        let mut flat_paths = Vec::new();
+        flat.merge_with_mutation_observer(&updates, &mut |path| flat_paths.push(path.join(".")));
+        let mut layered_paths = Vec::new();
+        layered.merge_with_mutation_observer(&updates, &mut |path| {
+            layered_paths.push(path.join("."));
+        });
+        assert_eq!(layered_paths, flat_paths);
+        assert_eq!(layered.to_managed_json(), flat.to_managed_json());
+        let ConfigStorage::Sections(sections) = &layered.value.storage else {
+            panic!("expected a section fork");
+        };
+        assert!(sections.flattened.get().is_none());
+    }
+
+    #[test]
+    fn unique_section_owner_reuses_its_cached_json_for_raw_mutation() {
+        let base = MermaidConfig::from_value(json!({"large": "x".repeat(32 * 1_024), "tiny": 0}));
+        let mut config = base.clone().with_shared_sections();
+        config.set_value("tiny", json!(1));
+        let cached_buffer = config.as_value()["large"].as_str().unwrap().as_ptr();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            config.as_value_mut()["tiny"] = json!(2);
+        });
+
+        assert_eq!(copies, 0);
+        assert_eq!(
+            config.as_value()["large"].as_str().unwrap().as_ptr(),
+            cached_buffer
+        );
+        assert_eq!(config.get("tiny"), Some(&json!(2)));
+        assert_eq!(base.get("tiny"), Some(&json!(0)));
+    }
+
+    #[test]
     fn deep_merge_empty_object_is_a_noop_for_a_null_root() {
         let mut config = MermaidConfig::from_value(Value::Null);
 
         config.deep_merge(&json!({}));
 
         assert_eq!(config.as_value(), &Value::Null);
+    }
+
+    #[test]
+    fn merge_preserves_shared_json_and_reports_same_value_assignments() {
+        let original = MermaidConfig::from_value(json!({
+            "pie": {"textPosition": 0.75},
+            "list": [1, null],
+            "scalar": true
+        }));
+        let mut config = original.clone();
+        let mut observed = Vec::new();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            config.merge_with_mutation_observer(&json!({"pie": {}}), &mut |_| {
+                panic!("an existing empty section emits no assignments")
+            });
+            config.merge_with_mutation_observer(
+                &json!({
+                    "pie": {"textPosition": 0.75},
+                    "list": [1.0, null],
+                    "scalar": {"ignored": true}
+                }),
+                &mut |path| observed.push(path.join(".")),
+            );
+        });
+
+        assert_eq!(observed, ["pie.textPosition", "list"]);
+        assert_eq!(copies, 0);
+        assert!(Arc::ptr_eq(&original.value, &config.value));
+    }
+
+    #[test]
+    fn merge_copies_on_insertion_and_preserves_number_representation() {
+        let original = MermaidConfig::from_value(json!({"same": true, "zero": -0.0, "one": 1}));
+        let mut config = original.clone();
+        let mut observed = Vec::new();
+        let (_, copies) = test_support::measure_cow_copies(|| {
+            config.merge_with_mutation_observer(
+                &json!({"same": true, "added": {}, "zero": 0.0, "one": 1.0}),
+                &mut |path| observed.push(path.join(".")),
+            );
+        });
+
+        assert_eq!(copies, 1);
+        assert_eq!(observed, ["same", "zero", "one"]);
+        assert_eq!(
+            original.as_value().to_string(),
+            r#"{"same":true,"zero":-0.0,"one":1}"#
+        );
+        assert_eq!(
+            config.as_value().to_string(),
+            r#"{"same":true,"zero":0.0,"one":1.0,"added":{}}"#
+        );
     }
 
     #[test]
@@ -952,5 +1518,49 @@ mod tests {
             config.clone_value_bounded_controlled(64 * 1024, 16, &control),
             Err(crate::OperationCancelled { .. })
         ));
+    }
+
+    #[test]
+    fn bounded_section_clone_checks_limits_without_materializing_the_projection() {
+        let base = MermaidConfig::from_value(json!({
+            "before": "x".repeat(2 * 1_024 * 1_024),
+            "section": {"nested": ["value"]},
+            "after": false,
+        }));
+        let mut config = base.clone().with_shared_sections();
+        config.set_value("section.new", json!(7));
+        config.set_value("appended", json!(true));
+        let ConfigStorage::Sections(sections) = &config.value.storage else {
+            panic!("expected a section fork");
+        };
+
+        let control = OperationControl::new();
+        let expected = config.to_managed_json();
+        let bytes = estimated_value_owned_heap_bytes(expected.as_value());
+        for (limit, depth) in [(1_024, 16), (bytes - 1, 16), (bytes, 2)] {
+            assert!(
+                config
+                    .clone_value_bounded_controlled(limit, depth, &control)
+                    .unwrap()
+                    .is_none()
+            );
+        }
+        let cloned = config
+            .clone_value_bounded_controlled(bytes, 3, &control)
+            .unwrap()
+            .map(ManagedJson::from_value)
+            .unwrap();
+        assert_eq!(
+            serde_json::to_vec(&cloned).unwrap(),
+            serde_json::to_vec(&expected).unwrap()
+        );
+
+        control.cancel();
+        assert!(
+            config
+                .clone_value_bounded_controlled(bytes, 3, &control)
+                .is_err()
+        );
+        assert!(sections.flattened.get().is_none());
     }
 }

@@ -109,6 +109,28 @@ fn rounded_rectangle_width_and_radius_change_native_pixels() {
 }
 
 #[test]
+fn hand_drawn_subroutine_paints_theme_strokes_and_keeps_square_corners() {
+    let source =
+        "---\nconfig:\n  look: handDrawn\n  handDrawnSeed: 42\n---\nflowchart LR\nA[[Build]]";
+    let thick = painted_rect(3.0, 8.0, source);
+    let square = painted_rect(3.0, 0.0, source);
+    let thin = painted_rect(1.0, 8.0, source);
+    assert!(
+        thick == square,
+        "a radius rule must preserve the framed shape"
+    );
+    let cyan_pixels = |pixels: &[u8]| {
+        pixels
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .filter(|p| p[0] < 60 && p[1] > 200 && p[2] > 200 && p[3] > 200)
+            .count()
+    };
+    assert!(cyan_pixels(&thick.2) > cyan_pixels(&thin.2) * 2);
+}
+
+#[test]
 fn neo_configured_radius_and_equivalent_typed_radius_have_identical_native_geometry() {
     for shape in ["[Rectangle]", "(Rounded rectangle)"] {
         let configured = format!(

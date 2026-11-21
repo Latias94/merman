@@ -7,7 +7,7 @@ use crate::elk_hierarchy::{
 };
 use crate::layout_work::OperationLayoutWorkControl;
 use merman_layout_elk as elk;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 /// Own the temporary provider orientation and restore semantic endpoints on every exit path.
 /// Borrowing the graph exclusively prevents a prepared graph from escaping in its reversed state.
@@ -75,7 +75,7 @@ impl Drop for FeedbackOrientation<'_> {
 /// On success consume the guard with `restore`; on an error Drop restores the graph automatically.
 pub(crate) fn orient_feedback_edges<'a>(
     graph: &'a mut elk::Graph,
-    config: &serde_json::Value,
+    config: &(impl crate::config::ConfigLookup + ?Sized),
     work: &mut Option<&mut OperationLayoutWorkControl>,
 ) -> Result<FeedbackOrientation<'a>> {
     let reversed = if crate::elk_options::orient_feedback_edges(config) {
@@ -94,15 +94,10 @@ pub(crate) fn orient_feedback_edges<'a>(
         reversed,
         order_swaps: Vec::new(),
     };
-    let order = nested_edge_order(orientation.graph, work)?;
-    charge_adapter_work(work, checked_adapter_mul(work, order.len(), 5)?)?;
-    if order
-        .iter()
-        .enumerate()
-        .all(|(index, original)| index == *original)
-    {
+    let Some(order) = nested_edge_order(orientation.graph, work)? else {
         return Ok(orientation);
-    }
+    };
+    charge_adapter_work(work, checked_adapter_mul(work, order.len(), 5)?)?;
     let mut original_at_position: Vec<_> = (0..order.len()).collect();
     let mut position_by_original = original_at_position.clone();
     orientation.order_swaps.reserve(order.len());
@@ -125,14 +120,14 @@ pub(crate) fn orient_feedback_edges<'a>(
 fn nested_edge_order(
     graph: &elk::Graph,
     work: &mut Option<&mut OperationLayoutWorkControl>,
-) -> Result<Vec<usize>> {
+) -> Result<Option<Vec<usize>>> {
+    // Admit the parent check and the optional declaration permutation before either is used.
     charge_adapter_work(
         work,
         checked_adapter_add(work, graph.nodes.len(), graph.edges.len())?,
     )?;
-    let mut order: Vec<_> = (0..graph.edges.len()).collect();
     if !graph.nodes.iter().any(|node| node.parent.is_some()) || graph.edges.len() < 2 {
-        return Ok(order);
+        return Ok(None);
     }
     let hierarchy = HierarchyIndex::build(
         graph
@@ -142,37 +137,53 @@ fn nested_edge_order(
         graph.nodes.len(),
         work,
     )?;
+    let mut targets_from_parents = HashSet::new();
+    let mut sources_into_parents = HashSet::new();
+    let mut order: Option<Vec<usize>> = None;
     for (index, edge) in graph.edges.iter().enumerate() {
-        charge_adapter_work(work, order.len())?;
-        let from = order
-            .iter()
-            .position(|&original| original == index)
-            .unwrap();
-        let mut to = None;
-        for (position, &earlier) in order[..from].iter().enumerate() {
-            charge_adapter_work(work, 1)?;
-            let earlier = &graph.edges[earlier];
-            let source_inside = earlier.target == edge.target
-                && edge.source != earlier.source
-                && hierarchy.index_of(&earlier.source).is_some()
-                && hierarchy.common_ancestor_index(&edge.source, &earlier.source, work)?
-                    == hierarchy.index_of(&earlier.source);
-            let target_inside = earlier.source == edge.source
-                && edge.target != earlier.target
-                && hierarchy.index_of(&earlier.target).is_some()
-                && hierarchy.common_ancestor_index(&edge.target, &earlier.target, work)?
-                    == hierarchy.index_of(&earlier.target);
-            if source_inside || target_inside {
-                to = Some(position);
-                break;
+        // Each endpoint updates the index with a fixed number of lookups and insertions.
+        charge_adapter_work(work, 2)?;
+        if targets_from_parents.contains(edge.target.as_str())
+            || sources_into_parents.contains(edge.source.as_str())
+        {
+            // Each earlier insertion ended before this edge. Its position is still `index`.
+            for position in 0..index {
+                charge_adapter_work(work, 1)?;
+                let earlier =
+                    &graph.edges[order.as_ref().map_or(position, |indices| indices[position])];
+                let source_inside = earlier.target == edge.target
+                    && strict_ancestor(&hierarchy, &earlier.source, &edge.source, work)?;
+                let target_inside = earlier.source == edge.source
+                    && strict_ancestor(&hierarchy, &earlier.target, &edge.target, work)?;
+                if source_inside || target_inside {
+                    charge_adapter_work(work, index - position + 1)?;
+                    order.get_or_insert_with(|| (0..graph.edges.len()).collect())[position..=index]
+                        .rotate_right(1);
+                    break;
+                }
             }
         }
-        if let Some(to) = to {
-            charge_adapter_work(work, from - to + 1)?;
-            order[to..=from].rotate_right(1);
+        if hierarchy.parent_node_index(&edge.source).is_some() {
+            targets_from_parents.insert(edge.target.as_str());
+        }
+        if hierarchy.parent_node_index(&edge.target).is_some() {
+            sources_into_parents.insert(edge.source.as_str());
         }
     }
     Ok(order)
+}
+
+fn strict_ancestor(
+    hierarchy: &HierarchyIndex<'_>,
+    ancestor: &str,
+    descendant: &str,
+    work: &mut Option<&mut OperationLayoutWorkControl>,
+) -> Result<bool> {
+    let Some(ancestor_index) = hierarchy.parent_node_index(ancestor) else {
+        return Ok(false);
+    };
+    Ok(ancestor != descendant
+        && hierarchy.common_ancestor_index(descendant, ancestor, work)? == Some(ancestor_index))
 }
 
 #[derive(Clone, Copy)]
@@ -406,7 +417,9 @@ mod tests {
             let mut graph = graph(&parents, &pairs);
             let original = graph.clone();
             assert_eq!(
-                nested_edge_order(&graph, &mut Some(&mut work())).unwrap(),
+                nested_edge_order(&graph, &mut Some(&mut work()))
+                    .unwrap()
+                    .unwrap_or_else(|| (0..pairs.len()).collect()),
                 expected
             );
             let guard = orient_feedback_edges(
@@ -430,6 +443,34 @@ mod tests {
             drop(guard);
             assert_eq!(graph, original);
         }
+    }
+
+    #[test]
+    fn compound_leaf_edges_keep_implicit_order_with_linear_work() {
+        let scene = graph(&[("a", "group"), ("b", "group")], &[("a", "b"); 512]);
+
+        let mut measured = work();
+        assert!(
+            nested_edge_order(&scene, &mut Some(&mut measured))
+                .unwrap()
+                .is_none()
+        );
+        assert!(measured.adapter_work() <= 10 * scene.nodes.len() + 7 * scene.edges.len());
+    }
+
+    #[test]
+    fn implicit_order_fits_the_previous_small_graph_budget() {
+        let scene = graph(&[("a", "group"), ("b", "group")], &[("a", "b"); 2]);
+        let mut input = scene.clone();
+        let guard = orient_feedback_edges(
+            &mut input,
+            &serde_json::json!({"elk": {"orientFeedbackEdges": false}}),
+            &mut Some(&mut limited_work(47)),
+        )
+        .unwrap();
+        assert_eq!(guard.graph(), &scene);
+        drop(guard);
+        assert_eq!(input, scene);
     }
 
     #[test]

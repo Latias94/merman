@@ -407,6 +407,7 @@ struct SvgPostprocessorEntry {
     processor: Arc<dyn SvgPostprocessor>,
     family: Option<crate::DiagramFamilyId>,
     preserves_prepared_math: bool,
+    preserves_palette_slots: bool,
 }
 
 impl SvgPostprocessorEntry {
@@ -415,6 +416,7 @@ impl SvgPostprocessorEntry {
             processor,
             family: None,
             preserves_prepared_math: false,
+            preserves_palette_slots: false,
         }
     }
 
@@ -427,9 +429,23 @@ impl SvgPostprocessorEntry {
     }
 }
 
+/// Selects which generated styles an SVG consumer needs.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum SvgGeneration {
+    /// Retain the complete generated styles for Mermaid-compatible and mutable SVGs.
+    #[default]
+    Full,
+    /// Generate container palette rules only for slots used by the static document.
+    ///
+    /// This preserves authored CSS and SVG content. Consumer compatibility, animation
+    /// projection, and embedding admission are handled by the selected output pipeline.
+    Static,
+}
+
 #[derive(Clone)]
 pub struct SvgPipeline {
     preset: SvgPipelinePreset,
+    generation: Option<SvgGeneration>,
     postprocessors: Vec<SvgPostprocessorEntry>,
     drop_native_duplicate_fallbacks: bool,
     inline_contract: Option<InlineContract>,
@@ -446,6 +462,7 @@ impl fmt::Debug for SvgPipeline {
 
         f.debug_struct("SvgPipeline")
             .field("preset", &self.preset)
+            .field("generation", &self.generation)
             .field("postprocessors", &names)
             .field(
                 "drop_native_duplicate_fallbacks",
@@ -485,6 +502,7 @@ impl SvgPipeline {
     pub fn from_preset(preset: SvgPipelinePreset) -> Self {
         Self {
             preset,
+            generation: None,
             postprocessors: Vec::new(),
             drop_native_duplicate_fallbacks: false,
             inline_contract: None,
@@ -526,6 +544,34 @@ impl SvgPipeline {
 
     pub fn preset(&self) -> SvgPipelinePreset {
         self.preset
+    }
+
+    /// Selects the generation policy for renderer-owned Mermaid SVG drafts.
+    ///
+    /// Ordinary SVG defaults to [`SvgGeneration::Full`]. Encoded export targets default to
+    /// [`SvgGeneration::Static`]. Opaque postprocessors receive the full draft because they can
+    /// introduce new palette slots. Processing existing SVG runs the same stages in either mode.
+    pub fn with_generation(mut self, generation: SvgGeneration) -> Self {
+        self.generation = Some(generation);
+        self
+    }
+
+    pub(crate) fn generation_for(
+        &self,
+        family: crate::DiagramFamilyId,
+        default: SvgGeneration,
+    ) -> SvgGeneration {
+        match self.generation.unwrap_or(default) {
+            SvgGeneration::Static
+                if self.inline_contract != Some(InlineContract::Browser)
+                    && self.postprocessors.iter().all(|entry| {
+                        !entry.applies_to(Some(family)) || entry.preserves_palette_slots
+                    }) =>
+            {
+                SvgGeneration::Static
+            }
+            _ => SvgGeneration::Full,
+        }
     }
 
     /// Keeps every configured draft transformation while replacing the terminal output contract.
@@ -606,8 +652,8 @@ impl SvgPipeline {
     }
 
     /// Registers a renderer-owned pass whose implementation is proven not to alter prepared-math
-    /// occurrence markers or native projection bytes. This is intentionally crate-private: opaque
-    /// host postprocessors remain fail-closed through the public registration methods above.
+    /// occurrence markers, native projection bytes, or palette participants. This is intentionally
+    /// crate-private: opaque host postprocessors use the public registration methods above.
     pub(crate) fn push_postprocessor_preserving_prepared_math<P>(&mut self, postprocessor: P)
     where
         P: SvgPostprocessor + 'static,
@@ -616,6 +662,7 @@ impl SvgPipeline {
             processor: Arc::new(postprocessor),
             family: None,
             preserves_prepared_math: true,
+            preserves_palette_slots: true,
         });
     }
 
@@ -631,6 +678,19 @@ impl SvgPipeline {
             processor: Arc::new(postprocessor),
             family: Some(family),
             preserves_prepared_math: true,
+            preserves_palette_slots: true,
+        });
+    }
+
+    fn push_css_postprocessor<P>(&mut self, postprocessor: P)
+    where
+        P: SvgPostprocessor + 'static,
+    {
+        self.postprocessors.push(SvgPostprocessorEntry {
+            processor: Arc::new(postprocessor),
+            family: None,
+            preserves_prepared_math: false,
+            preserves_palette_slots: true,
         });
     }
 
