@@ -247,12 +247,12 @@ fn bind_flowchart_elk_transport_ids(
             });
         }
         let key = crate::flowchart::FlowchartEdgeKey::new(*semantic_index);
-        transport.id = transport_plan
-            .id(key)
-            .ok_or_else(|| Error::InvalidModel {
-                message: format!("missing ELK transport id for semantic owner {semantic_index}"),
-            })?
-            .to_string();
+        let id = transport_plan.id(key).ok_or_else(|| Error::InvalidModel {
+            message: format!("missing ELK transport id for semantic owner {semantic_index}"),
+        })?;
+        if transport.id != id {
+            id.clone_into(&mut transport.id);
+        }
     }
 
     Ok(())
