@@ -10,6 +10,7 @@ import {
   decodeWireInvocationError,
   decodeWireResponse,
   encodeTransportJson,
+  jsonStringFieldBytes,
   parseRuntimeCatalogJsonText,
   parseTransportJsonText,
   sameJsonValue,
@@ -100,6 +101,9 @@ const THEME_AUTHORING_RESULT_LIMITS = Object.freeze({
   max_string_utf8_bytes: NODE_TRANSPORT_FIELD_LIMITS.data_utf8_bytes,
 });
 const MAX_OPERATION_TIMEOUT_MS = 0xffff_ffff;
+const SVG_REQUEST_FRAME_BYTES = '{"operation_id":"svg","source":"","uri":null,"include_metadata":false}'.length;
+const SVG_OPTIONS_FRAME_BYTES = ',"options_json":""'.length;
+const SVG_TIMEOUT_FRAME_BYTES = ',"operation_control":{"timeout_ms":}'.length;
 const MERMAN_ENGINE_CONSTRUCTION_TOKEN = Symbol("MermanEngine construction");
 
 export async function createNodeEngine(
@@ -336,10 +340,19 @@ export class MermanEngine {
     } catch (error) {
       return Promise.reject(error);
     }
-    const prepared = prepareOperationRequest(request, { timeoutMs });
+    const directSvg = this.#usesDirectSvg(request, includeMetadata);
+    const prepared = prepareOperationRequest(request, { timeoutMs, directSvg });
+    const { expectation } = prepared;
     if (signal?.aborted) return Promise.reject(abortError());
-    const encoded = operationRequestJson(prepared, includeMetadata);
-    const directSvg = this.#usesDirectSvg(encoded.expectation, includeMetadata);
+    let execute;
+    if (directSvg) {
+      const optionsJson = prepareDirectSvgOptions(prepared, timeoutMs);
+      const { source } = prepared.request;
+      execute = (forwarded) => this.#transport.executeSvg(source, optionsJson, forwarded, timeoutMs);
+    } else {
+      const requestJson = operationRequestJson(prepared, includeMetadata);
+      execute = (forwarded) => this.#transport.execute(requestJson, forwarded, timeoutMs);
+    }
     return this.#executor.submit(
       async () => {
         // A signal can flip after queue admission but before this start microtask runs. That work
@@ -347,17 +360,11 @@ export class MermanEngine {
         if (signal?.aborted) throw abortError();
         let response;
         try {
-          response = await executeTransportOperation(
-            this.#transport,
-            directSvg ? "executeSvg" : "execute",
-            encoded.json,
-            signal,
-            timeoutMs,
-          );
+          response = await executeTransportOperation(execute, signal);
         } catch (cause) {
           throw decodeWireInvocationError(cause, "Merman operation");
         }
-        return this.#decodeOperationResponse(response, encoded.expectation, {
+        return this.#decodeOperationResponse(response, expectation, {
           includeMetadata,
           directSvg,
           signal,
@@ -374,28 +381,28 @@ export class MermanEngine {
 
   #executeSync(request, { timeoutMs } = {}, includeMetadata) {
     this.#executor.assertSyncAvailable();
-    const encoded = operationRequestJson(
-      prepareOperationRequest(request, { timeoutMs }),
-      includeMetadata,
-    );
-    const directSvg = this.#usesDirectSvg(encoded.expectation, includeMetadata);
+    const directSvg = this.#usesDirectSvg(request, includeMetadata);
+    const prepared = prepareOperationRequest(request, { timeoutMs, directSvg });
+    const payload = directSvg
+      ? prepareDirectSvgOptions(prepared, timeoutMs)
+      : operationRequestJson(prepared, includeMetadata);
     let response;
     try {
       response = directSvg
-        ? this.#transport.executeSvgSync(encoded.json, timeoutMs)
-        : this.#transport.executeSync(encoded.json, timeoutMs);
+        ? this.#transport.executeSvgSync(prepared.request.source, payload, timeoutMs)
+        : this.#transport.executeSync(payload, timeoutMs);
     } catch (cause) {
       throw decodeWireInvocationError(cause, "Merman operation");
     }
-    return this.#decodeOperationResponse(response, encoded.expectation, {
+    return this.#decodeOperationResponse(response, prepared.expectation, {
       includeMetadata,
       directSvg,
       timeoutMs,
     });
   }
 
-  #usesDirectSvg(expectation, includeMetadata) {
-    return this.#directSvg && !includeMetadata && expectation.operation_id === "svg";
+  #usesDirectSvg(request, includeMetadata) {
+    return this.#directSvg && !includeMetadata && request.operationId === "svg";
   }
 
   #decodeOperationResponse(response, expectation, { includeMetadata, directSvg, signal, timeoutMs }) {
@@ -431,7 +438,7 @@ function invocationCancellationReasons(signal, timeoutMs) {
   return reasons;
 }
 
-function prepareOperationRequest(value, { timeoutMs } = {}) {
+function prepareOperationRequest(value, { timeoutMs, directSvg }) {
   if (!isPlainObject(value)) throw new TypeError("operation request must be a plain object.");
   const knownFields = new Set(["operationId", "source", "uri", "optionsJson"]);
   for (const field of Object.keys(value)) {
@@ -465,7 +472,7 @@ function prepareOperationRequest(value, { timeoutMs } = {}) {
     "operation request operationId",
     NODE_TRANSPORT_FIELD_LIMITS.operation_id_utf8_bytes,
   );
-  assertUtf8Field(
+  const sourceBytes = (directSvg ? jsonStringFieldBytes : assertUtf8Field)(
     source,
     "operation request source",
     NODE_TRANSPORT_FIELD_LIMITS.source_utf8_bytes,
@@ -494,36 +501,51 @@ function prepareOperationRequest(value, { timeoutMs } = {}) {
     }
     request.operation_control = { timeout_ms: timeoutMs };
   }
-  return { expectation, request, value };
+  return { expectation, request, value, sourceBytes };
 }
 
-function operationRequestJson({ expectation, request, value }, includeMetadata) {
+function operationRequestJson({ request, value }, includeMetadata) {
   if (!includeMetadata) request.include_metadata = false;
   const optionsJson = value.optionsJson;
   if (optionsJson !== undefined) {
-    if (typeof optionsJson !== "string") {
-      throw new TypeError("optionsJson must be a JSON string when provided.");
-    }
-    assertUtf8Field(
-      optionsJson,
-      "operation request optionsJson",
-      NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes,
-    );
-    parseTransportJsonText(
-      optionsJson,
-      "operation request optionsJson",
-      NODE_TRANSPORT_LIMITS.binding_options,
-    );
+    validateOperationOptionsJson(optionsJson, assertUtf8Field);
     request.options_json = optionsJson;
   }
-  return {
-    expectation,
-    json: encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request),
-  };
+  return encodeTransportJson(request, "operation request", NODE_TRANSPORT_LIMITS.request);
 }
 
-async function executeTransportOperation(transport, method, requestJson, signal, timeoutMs) {
-  if (!signal) return transport[method](requestJson, undefined, timeoutMs);
+function prepareDirectSvgOptions({ value, sourceBytes }, timeoutMs) {
+  // Match the former fixed request's byte budget without building or scanning the document.
+  let requestBytes = SVG_REQUEST_FRAME_BYTES + sourceBytes;
+  if (timeoutMs !== undefined) {
+    requestBytes += SVG_TIMEOUT_FRAME_BYTES + String(timeoutMs).length;
+  }
+  const optionsJson = value.optionsJson;
+  if (optionsJson !== undefined) {
+    requestBytes +=
+      SVG_OPTIONS_FRAME_BYTES + validateOperationOptionsJson(optionsJson, jsonStringFieldBytes);
+  }
+  const max = NODE_TRANSPORT_LIMITS.request.max_utf8_bytes;
+  if (requestBytes > max) {
+    throw new MermanInvalidTransportError(
+      `Merman transport operation request exceeds the ${max}-byte wire limit.`,
+    );
+  }
+  return optionsJson;
+}
+
+function validateOperationOptionsJson(optionsJson, measureField) {
+  if (typeof optionsJson !== "string") {
+    throw new TypeError("optionsJson must be a JSON string when provided.");
+  }
+  const label = "operation request optionsJson";
+  const bytes = measureField(optionsJson, label, NODE_TRANSPORT_FIELD_LIMITS.options_json_utf8_bytes);
+  parseTransportJsonText(optionsJson, label, NODE_TRANSPORT_LIMITS.binding_options);
+  return bytes;
+}
+
+async function executeTransportOperation(execute, signal) {
+  if (!signal) return execute(undefined);
 
   // Forward into a private signal so the N-API bridge cannot replace a caller-owned `onabort`
   // handler while it installs its cooperative cancellation callback.
@@ -539,7 +561,7 @@ async function executeTransportOperation(transport, method, requestJson, signal,
   };
   signal.addEventListener("abort", forwardAbort, { once: true });
   try {
-    const operation = transport[method](requestJson, transportAbort.signal, timeoutMs);
+    const operation = execute(transportAbort.signal);
     transportReady = true;
     if (pendingAbort || signal.aborted) transportAbort.abort(signal.reason);
     return await operation;
@@ -582,7 +604,7 @@ export function validateRuntimeCatalog(value) {
   }
   if (
     catalog.schema_version !== RUNTIME_CATALOG_SCHEMA_VERSION ||
-    catalog.transport_api_version !== 1
+    catalog.transport_api_version !== NODE_WIRE_CONTRACT.transport_api_version
   ) {
     throw new MermanInvalidTransportError("Merman transport returned an unsupported runtime catalog version.");
   }

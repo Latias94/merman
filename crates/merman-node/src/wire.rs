@@ -18,7 +18,7 @@ use serde_json::Value;
 
 const NODE_WIRE_CONTRACT_JSON: &str =
     include_str!("../../../platforms/node/src/generated/node-wire-contract.json");
-const NODE_TRANSPORT_API_VERSION: u32 = 1;
+const NODE_TRANSPORT_API_VERSION: u32 = 2;
 const NODE_BINDING_RESULT_PAYLOAD_VERSION: u32 = BindingPayloadSchemaKey::BindingResult.version();
 const NODE_TARGET: TargetKey = if cfg!(target_arch = "wasm32") {
     TargetKey::Web
@@ -601,20 +601,73 @@ fn execute_wire_inner(
 #[cfg(feature = "transport-napi")]
 pub(crate) fn execute_svg_with_admitted_control(
     engine: &BindingEngine,
-    request_json: &str,
+    source: &str,
+    options_json: Option<&str>,
     control: OperationControl,
     admitted_timeout_ms: Option<u32>,
 ) -> Result<String, BindingError> {
     binding_boundary(|| {
-        let (request, operation) =
-            prepare_wire_request(request_json, &control, admitted_timeout_ms)?;
-        if operation.key() != OperationKey::Svg || request.include_metadata {
-            return Err(BindingError::invalid_argument(
-                "Node direct SVG operations require operation_id `svg` and include_metadata false",
-            ));
-        }
-        direct_svg_response(engine.execute_data(request.binding_request(control))?)
+        validate_direct_svg_framing(source, options_json, admitted_timeout_ms)?;
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
+        validate_operation_request_options(options_json)?;
+        control
+            .checkpoint_at(OperationPhase::Admission)
+            .map_err(BindingError::cancelled)?;
+        let request = BindingOperationRequest::new(OperationKey::Svg.id(), source.as_bytes())
+            .with_options_json(options_json.unwrap_or_default().as_bytes())
+            .with_control(control);
+        direct_svg_response(engine.execute_data(request)?)
     })
+}
+
+#[cfg(feature = "transport-napi")]
+pub(crate) fn direct_svg_field_limits() -> (usize, usize) {
+    let fields = node_wire_contract().fields;
+    (fields.source_utf8_bytes, fields.options_json_utf8_bytes)
+}
+
+#[cfg(feature = "transport-napi")]
+fn validate_direct_svg_framing(
+    source: &str,
+    options_json: Option<&str>,
+    timeout_ms: Option<u32>,
+) -> Result<(), BindingError> {
+    const FRAME_BYTES: usize =
+        r#"{"operation_id":"svg","source":"","uri":null,"include_metadata":false}"#.len();
+    const OPTIONS_FRAME_BYTES: usize = r#","options_json":"""#.len();
+    const TIMEOUT_FRAME_BYTES: usize = r#","operation_control":{"timeout_ms":}"#.len();
+
+    let contract = node_wire_contract();
+    ensure_field(
+        source,
+        "operation request source",
+        contract.fields.source_utf8_bytes,
+    )
+    .map_err(caller_options_error)?;
+    let frame_bytes = FRAME_BYTES
+        + options_json.map_or(0, |_| OPTIONS_FRAME_BYTES)
+        + timeout_ms.map_or(0, |timeout| {
+            TIMEOUT_FRAME_BYTES + timeout.checked_ilog10().unwrap_or(0) as usize + 1
+        });
+    let text_bytes = source
+        .len()
+        .saturating_add(options_json.map_or(0, str::len));
+    let max = contract.documents.request.max_utf8_bytes;
+    // Only the encoded string contents can expand. All fixed fields fit the structural limits.
+    if frame_bytes.saturating_add(text_bytes.saturating_mul(6)) > max {
+        let mut count = JsonByteCount(frame_bytes - 2 - options_json.map_or(0, |_| 2));
+        serde_json::to_writer(&mut count, source)
+            .and_then(|()| {
+                options_json.map_or(Ok(()), |json| serde_json::to_writer(&mut count, json))
+            })
+            .map_err(|error| {
+                BindingError::internal(format!("failed to size Node SVG request: {error}"))
+            })?;
+        validate_document_bytes(count.0, "operation request", max).map_err(caller_options_error)?;
+    }
+    Ok(())
 }
 
 fn prepare_wire_request(
@@ -649,7 +702,7 @@ fn prepare_wire_request(
         }
         (Some(_), Some(_)) | (None, None) => {}
     }
-    validate_operation_request_options(&request)?;
+    validate_operation_request_options(request.options_json.as_deref())?;
     control
         .checkpoint_at(OperationPhase::Admission)
         .map_err(BindingError::cancelled)?;
@@ -667,7 +720,7 @@ pub(crate) fn error_envelope(error: &BindingError) -> String {
 #[cfg(test)]
 fn parse_operation_request(request_json: &str) -> Result<NodeOperationRequest, BindingError> {
     let request = parse_operation_request_framing(request_json)?;
-    validate_operation_request_options(&request)?;
+    validate_operation_request_options(request.options_json.as_deref())?;
     Ok(request)
 }
 
@@ -728,9 +781,9 @@ fn validate_operation_request_identity(
     Ok(operation)
 }
 
-fn validate_operation_request_options(request: &NodeOperationRequest) -> Result<(), BindingError> {
+fn validate_operation_request_options(options_json: Option<&str>) -> Result<(), BindingError> {
     let contract = node_wire_contract();
-    if let Some(options_json) = request.options_json.as_deref() {
+    if let Some(options_json) = options_json {
         ensure_field(
             options_json,
             "operation request options_json",
@@ -1433,7 +1486,15 @@ fn scan_json_number(bytes: &[u8], start: usize) -> Option<usize> {
 }
 
 fn ensure_field(value: &str, label: &str, max_utf8_bytes: usize) -> Result<(), String> {
-    if value.len() > max_utf8_bytes {
+    ensure_field_bytes(value.len(), label, max_utf8_bytes)
+}
+
+pub(crate) fn ensure_field_bytes(
+    bytes: usize,
+    label: &str,
+    max_utf8_bytes: usize,
+) -> Result<(), String> {
+    if bytes > max_utf8_bytes {
         return Err(format!(
             "{label} exceeds the {max_utf8_bytes}-byte field limit"
         ));
@@ -1453,7 +1514,7 @@ fn bounded_text(value: &str, max_utf8_bytes: usize) -> Cow<'_, str> {
     Cow::Owned(format!("{}{}", &value[..end], suffix))
 }
 
-fn caller_options_error(message: String) -> BindingError {
+pub(crate) fn caller_options_error(message: String) -> BindingError {
     BindingError::invalid_options_json(format!("invalid Node transport JSON: {message}"))
 }
 
@@ -1478,7 +1539,7 @@ mod tests {
     #[cfg(feature = "transport-napi")]
     use super::{
         SuccessEnvelope, direct_svg_response, execute_svg_with_admitted_control,
-        success_data_envelope,
+        parse_operation_request_framing, success_data_envelope, validate_direct_svg_framing,
     };
 
     #[test]
@@ -1701,6 +1762,42 @@ mod tests {
 
     #[cfg(feature = "transport-napi")]
     #[test]
+    fn direct_svg_input_matches_the_escaped_wire_boundary() {
+        let options = r#"{"svg":{"diagram_id":"unicode-🧪"}}"#;
+        let prefix = "\"\\\t\n\r\u{8}\u{c}\u{1f}é🧪\u{2028}\u{2029}/";
+        let mut request = serde_json::json!({
+            "operation_id": "svg",
+            "source": prefix,
+            "uri": null,
+            "include_metadata": false,
+            "options_json": options,
+            "operation_control": {"timeout_ms": u32::MAX},
+        });
+        let max = node_wire_contract().documents.request.max_utf8_bytes;
+        let remaining = max - request.to_string().len();
+        let mut source = format!(
+            "{prefix}{}{}",
+            "\0".repeat(remaining / 6),
+            "x".repeat(remaining % 6)
+        );
+        request["source"] = serde_json::json!(source);
+        let exact = request.to_string();
+        assert_eq!(exact.len(), max);
+        assert!(parse_operation_request_framing(&exact).is_ok());
+        assert!(validate_direct_svg_framing(&source, Some(options), Some(u32::MAX)).is_ok());
+
+        source.push('x');
+        request["source"] = serde_json::json!(source);
+        let legacy = parse_operation_request_framing(&request.to_string()).unwrap_err();
+        let direct =
+            validate_direct_svg_framing(&source, Some(options), Some(u32::MAX)).unwrap_err();
+        assert_eq!(direct.status(), legacy.status());
+        assert_eq!(direct.message(), legacy.message());
+        assert!(direct.message().contains("wire limit"));
+    }
+
+    #[cfg(feature = "transport-napi")]
+    #[test]
     fn direct_svg_response_matches_escaped_envelope_and_field_limits() {
         use merman_bindings_core::OperationKey;
 
@@ -1885,11 +1982,14 @@ mod tests {
     #[test]
     fn data_only_wire_omits_metadata_and_preserves_result_bytes_and_errors() {
         let engine = create_engine("").unwrap();
+        let source = "flowchart LR\r\nA[\"北京😀\"] --> B[\"Café\"]\r\n%% quote: \"\\\t\r\n";
+        let options = r#"{"site_config":{"htmlLabels":false},"svg":{"diagram_id":"direct-svg"}}"#;
         for operation in ["svg", "semantic-json"] {
             let mut request = serde_json::json!({
                 "operation_id": operation,
-                "source": "flowchart TD\nA --> B",
+                "source": source,
                 "uri": null,
+                "options_json": options,
             });
             let full: serde_json::Value =
                 serde_json::from_str(&execute_wire(&engine, &request.to_string())).unwrap();
@@ -1911,7 +2011,8 @@ mod tests {
             if operation == "svg" {
                 let direct = execute_svg_with_admitted_control(
                     &engine,
-                    &request.to_string(),
+                    source,
+                    Some(options),
                     admitted_operation_control(None),
                     None,
                 )
@@ -1939,10 +2040,11 @@ mod tests {
             assert_eq!(data, full);
 
             #[cfg(feature = "transport-napi")]
-            {
+            if operation == "svg" {
                 let error = execute_svg_with_admitted_control(
                     &engine,
-                    &request.to_string(),
+                    request["source"].as_str().unwrap(),
+                    Some(options),
                     admitted_operation_control(None),
                     None,
                 )
@@ -2299,17 +2401,34 @@ mod tests {
             } else {
                 assert!(response["error"].get("details").is_none());
             }
-
-            #[cfg(feature = "transport-napi")]
-            {
-                let error =
-                    execute_svg_with_admitted_control(&engine, request, control, None).unwrap_err();
-                assert_eq!(
-                    serde_json::from_str::<serde_json::Value>(&error_envelope(&error)).unwrap(),
-                    response
-                );
-            }
         }
+    }
+
+    #[cfg(feature = "transport-napi")]
+    #[test]
+    fn direct_svg_deadline_precedes_nested_option_validation() {
+        let engine = create_engine("").unwrap();
+        let source = "flowchart TD\nA-->B";
+        let request = r#"{"operation_id":"svg","source":"flowchart TD\nA-->B","uri":null,"include_metadata":false,"options_json":"{","operation_control":{"timeout_ms":0}}"#;
+        let legacy = execute_wire_with_admitted_control(
+            &engine,
+            request,
+            admitted_operation_control(Some(0)),
+            Some(0),
+        );
+        let direct = execute_svg_with_admitted_control(
+            &engine,
+            source,
+            Some("{"),
+            admitted_operation_control(Some(0)),
+            Some(0),
+        )
+        .unwrap_err();
+        assert_eq!(error_envelope(&direct), legacy);
+        assert_eq!(
+            direct.status(),
+            merman_bindings_core::BindingStatus::Cancelled
+        );
     }
 
     #[test]

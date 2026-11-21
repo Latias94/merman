@@ -2,7 +2,7 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
-## [0.10.1] - Unreleased
+## [0.11.0] - Unreleased
 
 ### Added
 

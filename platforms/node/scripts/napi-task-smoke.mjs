@@ -6,6 +6,7 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 
 import { nativePackageName, resolveNodeTarget } from "../src/native-loader.mjs";
+import { NODE_WIRE_CONTRACT } from "../src/transport-contract.mjs";
 import { resolveInstalledEntrypoint } from "./smoke-installed-package.mjs";
 
 const args = process.argv.slice(2);
@@ -25,13 +26,15 @@ const { NativeEngine } = binding;
 assert.equal(typeof NativeEngine, "function");
 const supportsDirectSvg = typeof NativeEngine.prototype.executeSvg === "function";
 assert.equal(typeof NativeEngine.prototype.executeSvgSync === "function", supportsDirectSvg);
-if (requireDirectSvg) assert.ok(supportsDirectSvg, "the addon must provide the direct SVG methods");
 const manifest = JSON.parse(readFileSync(
   path.resolve(path.dirname(entrypoint), "..", "package.json"), "utf8",
 ));
 const identity = JSON.parse(binding.transportIdentityJson());
 assert.equal(identity.transport_kind, "napi");
 assert.equal(identity.package_version, manifest.version);
+const supportsDirectInput = supportsDirectSvg &&
+  identity.transport_api_version === NODE_WIRE_CONTRACT.transport_api_version;
+if (requireDirectSvg) assert.ok(supportsDirectInput, "the addon must provide direct SVG input");
 const artifactSha256 = createHash("sha256").update(readFileSync(artifact)).digest("hex");
 const source = "flowchart TD\nA[Cold] --> B[Shared]";
 const options = JSON.stringify({
@@ -50,7 +53,9 @@ const publicOptionsJson = JSON.stringify({
   svg: { diagram_id: "napi-task-smoke-public" },
 });
 const publicRequest = {
-  operationId: "svg", source: 'flowchart TD\nA["你好 & 🧪"] --> B', optionsJson: publicOptionsJson,
+  operationId: "svg",
+  source: 'flowchart TD\r\nA["你好 & 🧪"] --> B\r\n%% quote: " path: \\file\t\r\n',
+  optionsJson: publicOptionsJson,
 };
 
 try {
@@ -63,6 +68,25 @@ try {
 
   assert.equal(assertSvg(warm.executeSync(request)), baseline);
   assert.equal(assertSvg(await warm.execute(request)), baseline);
+  if (supportsDirectInput) {
+    assert.equal(cold.executeSvgSync(source), baseline);
+    assert.equal(await cold.executeSvg(source), baseline);
+    for (const args of [[`${source}\ud800`], [source, '"\udc00"']]) {
+      assert.throws(() => cold.executeSvgSync(...args), (error) => {
+        const failure = assertError(error.message, "MERMAN_INVALID_OPTIONS_JSON");
+        assert.match(failure.message, /isolated UTF-16 surrogate/i);
+        return true;
+      });
+    }
+    const expired = assertError(cold.executeSvgSync(source, "{", 0).errorJson, "MERMAN_CANCELLED");
+    assert.equal(expired.details.cancellation.phase, "admission");
+    const optionsLimit = NODE_WIRE_CONTRACT.fields.options_json_utf8_bytes;
+    assert.throws(() => cold.executeSvgSync(source, " ".repeat(optionsLimit + 1)), (error) => {
+      const failure = assertError(error.message, "MERMAN_INVALID_OPTIONS_JSON");
+      assert.match(failure.message, /options_json.*field limit/i);
+      return true;
+    });
+  }
 
   const overrideRequest = JSON.stringify({
     operation_id: "svg", source, uri: null,
@@ -128,13 +152,26 @@ try {
       };
     }
     const { source: publicSource, optionsJson } = publicRequest;
+    const withoutOuterRequestJson = (invoke) => {
+      if (!supportsDirectInput) return invoke();
+      const stringify = JSON.stringify;
+      JSON.stringify = (value, ...args) => {
+        assert.notEqual(value?.source, publicSource, "the SVG helper encoded the source in JSON");
+        return stringify(value, ...args);
+      };
+      try {
+        return invoke();
+      } finally {
+        JSON.stringify = stringify;
+      }
+    };
     try {
-      const first = publicEngine.renderSvg(publicSource, { optionsJson });
+      const first = withoutOuterRequestJson(() => publicEngine.renderSvg(publicSource, { optionsJson }));
       const second = publicEngine.renderSvg(publicSource, { optionsJson });
       assert.throws(() => publicEngine.renderSvgSync(publicSource), installed.MermanLifecycleError);
       await assert.rejects(publicEngine.renderSvg(publicSource), installed.MermanQueueSaturatedError);
       for (const result of await Promise.all([first, second])) assert.equal(result, svg.data);
-      assert.equal(publicEngine.renderSvgSync(publicSource, { optionsJson }), svg.data);
+      assert.equal(withoutOuterRequestJson(() => publicEngine.renderSvgSync(publicSource, { optionsJson })), svg.data);
 
       const isDeadline = (error) => error instanceof installed.MermanOperationError &&
         error.codeName === "MERMAN_CANCELLED" &&
@@ -142,6 +179,33 @@ try {
         error.cancellationDetails?.phase === "admission";
       assert.throws(() => publicEngine.renderSvgSync(publicSource, { timeoutMs: 0 }), isDeadline);
       await assert.rejects(publicEngine.renderSvg(publicSource, { timeoutMs: 0 }), isDeadline);
+      if (supportsDirectInput) {
+        const limit = NODE_WIRE_CONTRACT.documents.request.max_utf8_bytes;
+        const frame = Buffer.byteLength(JSON.stringify({
+          operation_id: "svg", source: "", uri: null, include_metadata: false,
+          options_json: optionsJson, operation_control: { timeout_ms: 0 },
+        }));
+        const padding = limit - frame;
+        const exact = "\0".repeat(Math.floor(padding / 6)) + "x".repeat(padding % 6);
+        assert.throws(() => publicEngine.renderSvgSync(exact, { optionsJson, timeoutMs: 0 }), isDeadline);
+        assert.throws(() => publicEngine.renderSvg(exact + "x", { optionsJson, timeoutMs: 0 }), /wire limit/i);
+        const privateOverflow = cold.executeSvgSync(exact + "x", optionsJson, 0);
+        assert.match(assertError(privateOverflow.errorJson, "MERMAN_INVALID_OPTIONS_JSON").message, /wire limit/i);
+        assert.throws(() => publicEngine.renderSvg(exact + "x", { optionsJson: "{", timeoutMs: 0 }), /optionsJson/i);
+        const aborted = AbortSignal.abort();
+        assert.throws(() => publicEngine.renderSvg("\ud800", { signal: aborted, optionsJson: "{" }), /isolated UTF-16 surrogate/i);
+        await assert.rejects(publicEngine.renderSvg(publicSource, { signal: aborted, optionsJson: "{" }), { name: "AbortError" });
+        const sourceBudget = (max_source_bytes) => JSON.stringify({
+          ...JSON.parse(optionsJson), resources: { limits: { max_source_bytes } },
+        });
+        const sourceBytes = Buffer.byteLength(publicSource);
+        assert.equal(await publicEngine.renderSvg(publicSource, { optionsJson: sourceBudget(sourceBytes) }), svg.data);
+        await assert.rejects(publicEngine.renderSvg(publicSource, {
+          optionsJson: sourceBudget(sourceBytes - 1),
+        }), (error) => error instanceof installed.MermanOperationError &&
+          error.codeName === "MERMAN_RESOURCE_LIMIT_EXCEEDED" &&
+          error.resourceDetails?.actual === sourceBytes && error.resourceDetails?.phase === "source");
+      }
       await assert.rejects(publicEngine.renderSvg("flowchart TD\nA --> ]"), (error) =>
         error instanceof installed.MermanOperationError &&
         error.codeName === "MERMAN_PARSE_ERROR" &&
@@ -164,25 +228,32 @@ try {
     await publicEngine.dispose();
   }
 
-  accepted = [disposing.execute(request), disposing.execute(request)];
+  accepted = [
+    disposing.execute(request).then(assertSvg),
+    supportsDirectInput ? disposing.executeSvg(source) : disposing.execute(request).then(assertSvg),
+  ];
   assert.doesNotThrow(
     () => disposing.dispose(),
     "dispose must release the owner while accepted tasks keep their engine alive",
   );
   disposing.dispose();
-  for (const invoke of [
+  const disposedInvocations = [
     () => disposing.execute(request),
     () => disposing.executeSync(request),
     () => disposing.runtimeCatalogJson(),
     () => disposing.metadataJson("supported-diagrams"),
-  ]) {
+  ];
+  if (supportsDirectInput) {
+    disposedInvocations.push(() => disposing.executeSvgSync("\ud800"));
+  }
+  for (const invoke of disposedInvocations) {
     await assert.rejects(async () => invoke(), (error) => {
       const envelope = assertError(error.message, "MERMAN_INVALID_ARGUMENT");
       assert.match(envelope.message, /disposed/i);
       return true;
     });
   }
-  for (const response of await Promise.all(accepted)) assert.equal(assertSvg(response), baseline);
+  for (const svg of await Promise.all(accepted)) assert.equal(svg, baseline);
 
   console.log(JSON.stringify({
     package: manifest.name, version: manifest.version, target,
@@ -192,6 +263,7 @@ try {
     cancellation_isolation: true, deadline_isolation: true,
     accepted_after_dispose: 2, installed_public_async_requests: 2,
     installed_public_direct_svg: supportsDirectSvg,
+    installed_public_direct_svg_input: supportsDirectInput,
   }));
 } finally {
   await Promise.allSettled(accepted);

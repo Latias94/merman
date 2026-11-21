@@ -22,7 +22,7 @@ const TARGET_PACKAGES = Object.freeze({
 });
 
 const requireFromPackage = createRequire(import.meta.url);
-// Only transports created by the installed platform loader can opt out of success envelope decoding.
+// Only installed native addons can use the direct SVG input and result contract.
 const directSvgTransports = new WeakSet();
 const loaderPackageManifest = requireFromPackage("../package.json");
 const loaderPackageVersion = loaderPackageManifest?.version;
@@ -107,7 +107,7 @@ export async function loadInstalledNativeTransport(optionsJson, iconPacksJson) {
   const transport = await wrapNativeBinding(binding, optionsJson, iconPacksJson, {
     directSvgAddon: nativeAddon,
   });
-  if (nativeAddon && typeof transport.executeSvg === "function") {
+  if (nativeAddon) {
     directSvgTransports.add(transport);
   }
   return transport;

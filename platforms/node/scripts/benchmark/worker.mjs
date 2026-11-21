@@ -31,14 +31,15 @@ async function main() {
     const inputPath = process.argv[2];
     if (!inputPath) throw new Error("benchmark worker requires an input JSON path");
     const input = JSON.parse(readFileSync(inputPath, "utf8"));
+    const svgOptions = { optionsJson: JSON.stringify(input.operationOptions) };
     const output =
       input.mode === "cold"
-        ? await runCold(input)
+        ? await runCold(input, svgOptions)
         : input.mode === "concurrency"
-          ? await runConcurrency(input)
+          ? await runConcurrency(input, svgOptions)
           : input.mode === "shutdown"
-            ? await runShutdown(input)
-            : await runWarm(input);
+            ? await runShutdown(input, svgOptions)
+            : await runWarm(input, svgOptions);
     process.stdout.write(`${JSON.stringify(output)}\n`);
   } catch (error) {
     console.error(error instanceof Error ? error.stack ?? error.message : String(error));
@@ -46,14 +47,15 @@ async function main() {
   }
 }
 
-async function runCold(input) {
+async function runCold(input, svgOptions) {
   const baselineBytes = process.memoryUsage().rss;
   const started = performance.now();
   const engine = await createProductEngine(
     input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
   );
-  const execution = await executeSvg(engine, input.workload, input.operationOptions);
+  const operation = executeSvg(engine, input.workload, svgOptions, input.svgApi);
+  const execution = operation instanceof Promise ? await operation : operation;
   const operationMs = performance.now() - started;
   const result = rawExecutionResult(input.workload, execution);
   await engine.dispose();
@@ -65,7 +67,7 @@ async function runCold(input) {
   };
 }
 
-async function runConcurrency(input) {
+async function runConcurrency(input, svgOptions) {
   const engine = await createProductEngine(
     input,
     {
@@ -77,7 +79,7 @@ async function runConcurrency(input) {
   const batch = Array.from({ length: input.concurrency }, () => input.workload);
   for (let iteration = 0; iteration < input.warmupIterations; iteration += 1) {
     await Promise.all(
-      batch.map((item) => executeSvg(engine, item, input.operationOptions)),
+      batch.map((item) => executeSvg(engine, item, svgOptions)),
     );
   }
   const batchSamplesMs = [];
@@ -85,7 +87,7 @@ async function runConcurrency(input) {
   for (let iteration = 0; iteration < input.concurrencyIterations; iteration += 1) {
     const started = performance.now();
     const executions = await Promise.all(
-      batch.map((item) => executeSvg(engine, item, input.operationOptions)),
+      batch.map((item) => executeSvg(engine, item, svgOptions)),
     );
     const elapsedMs = performance.now() - started;
     batchSamplesMs.push(elapsedMs);
@@ -100,7 +102,7 @@ async function runConcurrency(input) {
   return { batch_samples_ms: batchSamplesMs, samples };
 }
 
-async function runShutdown(input) {
+async function runShutdown(input, svgOptions) {
   const engine = await createProductEngine(
     input,
     { bindingOptions: input.bindingOptions, concurrency: 1, maxQueue: 1 },
@@ -108,7 +110,7 @@ async function runShutdown(input) {
   const item = { path: "process-shutdown-smoke.mmd", source: SMOKE_SOURCE };
   const outcome = renderOutcome(
     item,
-    await executeSvg(engine, item, input.operationOptions),
+    await executeSvg(engine, item, svgOptions),
   );
   if (!outcome.ok) {
     throw new Error(`process-shutdown probe failed to render: ${outcome.message ?? outcome.kind}`);
@@ -124,7 +126,7 @@ async function runShutdown(input) {
   };
 }
 
-async function runWarm(input) {
+async function runWarm(input, svgOptions) {
   const baselineBytes = process.memoryUsage().rss;
   const engine = await createProductEngine(
     input,
@@ -137,7 +139,7 @@ async function runWarm(input) {
 
   for (let iteration = 0; iteration < input.warmupIterations; iteration += 1) {
     for (const item of input.cases) {
-      await executeSvg(engine, item, input.operationOptions);
+      await executeSvg(engine, item, svgOptions, input.svgApi);
     }
   }
 
@@ -146,7 +148,7 @@ async function runWarm(input) {
   for (let iteration = 0; iteration < input.iterations; iteration += 1) {
     for (const item of input.cases) {
       const { elapsedMs, outcome } = await measureWarmSample({
-        execute: () => executeSvg(engine, item, input.operationOptions),
+        execute: () => executeSvg(engine, item, svgOptions, input.svgApi),
         project: (execution) => timedRenderOutcome(item, execution),
       });
       samplesMs.push(elapsedMs);
@@ -161,7 +163,9 @@ async function runWarm(input) {
 
   const outcomes = [];
   for (const item of input.cases) {
-    outcomes.push(await corpusOutcome(engine, item, input.operationOptions));
+    const semantic = await semanticOutcome(engine, item, input.operationOptions);
+    const execution = await executeSvg(engine, item, svgOptions, input.svgApi);
+    outcomes.push({ ...renderOutcome(item, execution), semantic });
   }
   const errorBehavior = await probeTypedErrors(engine, input);
   await engine.dispose();
@@ -184,7 +188,8 @@ export async function measureWarmSample({
   now = () => performance.now(),
 }) {
   const started = now();
-  const execution = await execute();
+  const operation = execute();
+  const execution = operation instanceof Promise ? await operation : operation;
   const elapsedMs = now() - started;
   const outcome = project(execution);
   return { elapsedMs, outcome };
@@ -373,16 +378,15 @@ async function createProductEngine(input, options) {
   return facade.createNodeEngine(options);
 }
 
-async function executeSvg(engine, item, operationOptions) {
+function executeSvg(engine, item, options, svgApi = "async") {
   try {
-    return {
-      ok: true,
-      result: await engine.executeOperation({
-        operationId: "svg",
-        source: item.source,
-        optionsJson: JSON.stringify(operationOptions),
-      }),
-    };
+    if (svgApi === "sync") {
+      return { ok: true, svg: engine.renderSvgSync(item.source, options) };
+    }
+    return engine.renderSvg(item.source, options).then(
+      (svg) => ({ ok: true, svg }),
+      (error) => ({ ok: false, error }),
+    );
   } catch (error) {
     return { ok: false, error };
   }
@@ -392,7 +396,7 @@ function renderOutcome(item, execution) {
   const outcome = timedRenderOutcome(item, execution);
   if (!outcome.ok) return outcome;
   try {
-    const svgEvidence = svgTransportEvidence(execution.result.data);
+    const svgEvidence = svgTransportEvidence(execution.svg);
     return {
       ...outcome,
       svg_structure_sha256: svgEvidence.structure_sha256,
@@ -421,10 +425,10 @@ function timedRenderOutcome(item, execution) {
   return {
     path: item.path,
     ok: true,
-    operation_id: execution.result.operation_id,
-    media_type: execution.result.media_type,
-    sha256: digest(execution.result.data),
-    bytes: Buffer.byteLength(execution.result.data),
+    operation_id: "svg",
+    media_type: "image/svg+xml",
+    sha256: digest(execution.svg),
+    bytes: Buffer.byteLength(execution.svg),
   };
 }
 
@@ -439,17 +443,9 @@ function rawExecutionResult(item, execution) {
   return {
     path: item.path,
     ok: true,
-    operation_id: execution.result.operation_id,
-    media_type: execution.result.media_type,
-    data: execution.result.data,
-  };
-}
-
-async function corpusOutcome(engine, item, operationOptions) {
-  const semantic = await semanticOutcome(engine, item, operationOptions);
-  return {
-    ...renderOutcome(item, await executeSvg(engine, item, operationOptions)),
-    semantic,
+    operation_id: "svg",
+    media_type: "image/svg+xml",
+    data: execution.svg,
   };
 }
 

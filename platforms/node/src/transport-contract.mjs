@@ -15,7 +15,7 @@ function validateContract(value) {
     value.schema_version !== 1 ||
     value.package_id !== "@mermanjs/node" ||
     value.artifact_id !== "merman-node-static-svg" ||
-    value.transport_api_version !== 1 ||
+    value.transport_api_version !== 2 ||
     value.binding_result_payload_version !== 1 ||
     !value.artifact ||
     !value.documents ||

@@ -20,6 +20,9 @@ export function wrapCandidateEngine(
   };
   const executeSvg = directSvgAddon ? engine.executeSvg : undefined;
   const executeSvgSync = directSvgAddon ? engine.executeSvgSync : undefined;
+  if (directSvgAddon && (typeof executeSvg !== "function" || typeof executeSvgSync !== "function")) {
+    throw new MermanInvalidTransportError(`${label} does not implement the direct SVG contract.`);
+  }
   const transport = {
     execute: (requestJson, signal, timeoutMs) =>
       forwardsAbortSignal
@@ -35,11 +38,11 @@ export function wrapCandidateEngine(
       return disposing?.dispose?.();
     },
   };
-  if (typeof executeSvg === "function" && typeof executeSvgSync === "function") {
-    transport.executeSvg = (requestJson, signal, timeoutMs) =>
-      executeSvg.call(currentEngine(), requestJson, signal, timeoutMs);
-    transport.executeSvgSync = (requestJson, timeoutMs) =>
-      executeSvgSync.call(currentEngine(), requestJson, timeoutMs);
+  if (directSvgAddon) {
+    transport.executeSvg = (source, optionsJson, signal, timeoutMs) =>
+      executeSvg.call(currentEngine(), source, optionsJson, signal, timeoutMs);
+    transport.executeSvgSync = (source, optionsJson, timeoutMs) =>
+      executeSvgSync.call(currentEngine(), source, optionsJson, timeoutMs);
   }
   return transport;
 }

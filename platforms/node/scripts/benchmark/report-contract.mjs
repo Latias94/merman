@@ -1519,6 +1519,9 @@ function validateSamples(samples, label) {
 
 function validateSampling(sampling) {
   assertObject(sampling, "sampling");
+  if (sampling.svg_api !== undefined && !["async", "sync"].includes(sampling.svg_api)) {
+    throw new Error("sampling.svg_api must be async or sync.");
+  }
   for (const key of [
     "cold_processes",
     "warmup_iterations",

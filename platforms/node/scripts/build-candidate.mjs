@@ -353,7 +353,7 @@ export function probeCandidateRuntime(stage, recipe) {
     const expectedRuntime = resolveCandidateRuntimeContract();
     if (
       catalog.schema_version !== 1 ||
-      catalog.transport_api_version !== 1 ||
+      catalog.transport_api_version !== NODE_WIRE_CONTRACT.transport_api_version ||
       catalog.package_version !== packageSurface.version ||
       stableJson(capabilityIds) !== stableJson(expectedRuntime.capabilityIds) ||
       stableJson(outputIds) !== stableJson(expectedRuntime.outputIds) ||
@@ -426,17 +426,14 @@ export function probeCandidateRuntime(stage, recipe) {
       throw new Error(`${recipe.candidate} runtime SVG probe failed.`);
     }
     if (recipe.candidate === "napi") {
-      const dataRequest = { ...svgRequest, include_metadata: false };
       if (
         typeof engine.executeSvg !== "function" ||
         typeof engine.executeSvgSync !== "function" ||
-        engine.executeSvgSync(JSON.stringify(dataRequest)) !== success.result.data
+        engine.executeSvgSync(svgRequest.source, svgRequest.options_json) !== success.result.data
       ) {
         throw new Error("Native candidate direct SVG must match the wire response.");
       }
-      const deadline = engine.executeSvgSync(JSON.stringify({
-        ...dataRequest, operation_control: { timeout_ms: 0 },
-      }), 0);
+      const deadline = engine.executeSvgSync(svgRequest.source, svgRequest.options_json, 0);
       if (parseWireResponse(deadline?.errorJson).error?.details?.cancellation?.reason !== "deadline_exceeded") {
         throw new Error("Native candidate direct SVG must preserve deadline errors.");
       }
@@ -1082,7 +1079,7 @@ function run(command, args, environment = {}) {
     env: {
       ...process.env,
       CARGO_BUILD_JOBS: "1",
-      CARGO_TARGET_DIR: path.join(repositoryRoot, "target"),
+      CARGO_TARGET_DIR: process.env.CARGO_TARGET_DIR || path.join(repositoryRoot, "target"),
       ...environment,
     },
     stdio: "inherit",

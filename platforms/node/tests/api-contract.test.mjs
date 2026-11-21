@@ -290,7 +290,7 @@ test("runtime catalog lossless integer scanning covers every known numeric path"
 function runtimeCatalog(overrides = {}) {
   return {
     schema_version: 1,
-    transport_api_version: 1,
+    transport_api_version: NODE_WIRE_CONTRACT.transport_api_version,
     package_version: PACKAGE_VERSION,
     options_schema_versions: [BINDING_OPTIONS_SCHEMA_VERSION],
     payload_schemas: [

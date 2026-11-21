@@ -10,6 +10,7 @@ import {
   assertUtf8Field,
   decodeWireResponse,
   encodeTransportJson,
+  jsonStringFieldBytes,
   parseTransportJsonText,
   snapshotTransportJsonValue,
 } from "../src/errors.mjs";
@@ -25,6 +26,17 @@ const SVG_EXPECTATION = EXPECTATION_BY_ID.get("svg");
 const PNG_EXPECTATION = EXPECTATION_BY_ID.get("png");
 const ASCII_EXPECTATION = EXPECTATION_BY_ID.get("ascii");
 const REQUIRE_UNAVAILABLE = { requireUnavailable: true };
+
+test("direct JSON string accounting preserves scalar validation and all escape widths", () => {
+  const text = String.fromCharCode(...Array.from({ length: 128 }, (_, index) => index))
+    + "é北京🧪\u2028\u2029\ufffd";
+  const bytes = Buffer.byteLength(text);
+  assert.equal(jsonStringFieldBytes(text, "source", bytes), Buffer.byteLength(JSON.stringify(text)) - 2);
+  assert.throws(() => jsonStringFieldBytes(text, "source", bytes - 1), /field limit/i);
+  for (const surrogate of ["\ud800", "\udc00"]) {
+    assert.throws(() => jsonStringFieldBytes(text + surrogate, "source", 1), /isolated UTF-16 surrogate/i);
+  }
+});
 
 function successEnvelope(
   expectation = SVG_EXPECTATION,

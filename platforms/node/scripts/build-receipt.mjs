@@ -212,7 +212,6 @@ function validateRuntimeEvidence(runtime, capabilityRecipe) {
     Array.isArray(catalog) ||
     digestJson(catalog) !== runtime.catalog_digest ||
     catalog.schema_version !== 1 ||
-    catalog.transport_api_version !== 1 ||
     catalog.package_version !== packageVersion ||
     !Number.isSafeInteger(catalog.registry?.diagram_family_count) ||
     catalog.registry.diagram_family_count < 1
