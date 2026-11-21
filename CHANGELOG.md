@@ -38,9 +38,9 @@ Changes since stable [0.10.0](#0100---2026-11-12).
 
 ### Fixed
 
-- Render the upstream 500-node Flowchart within the existing layout work ceiling. ELK on 32-bit WebAssembly also lays out the 181-leaf fan-out regression with forced model order. [#328](https://github.com/Latias94/merman/pull/328)
+- Render the upstream 500-node Flowchart within the existing layout work ceiling. The default CLI SVG also matches 0.10.0 byte for byte across 114 Trident documentation Flowcharts. ELK on 32-bit WebAssembly lays out the 181-leaf fan-out regression with forced model order. [#328](https://github.com/Latias94/merman/pull/328)
 - Keep Swimlane nodes named `placeholder-0` and their edges when the layout adds internal long-edge placeholders. Collapsed Swimlane groups hide their contents, preserve every visible boundary route and label, and apply pairwise routing limits to the visible edges.
-- The bundled native exporter continues to find glyphs for later characters after an unavailable fallback. Strict coverage accepts fully drawn mixed-font labels and detects missing glyphs in referenced clipping paths, masks, and patterns. CSS regular weight selects weight 400 on variable fonts even when their default axis value differs. Explicit variation settings take precedence. [Native export guide](docs/rendering/RASTER_OUTPUT.md)
+- The bundled native exporter continues to find glyphs for later characters after an unavailable fallback. Strict coverage accepts fully drawn mixed-font labels and detects missing glyphs in referenced clipping paths, masks, patterns, and filter images. CSS regular weight selects weight 400 on variable fonts even when their default axis value differs. Explicit variation settings take precedence. [Native export guide](docs/rendering/RASTER_OUTPUT.md)
 - Avoid false `resvg-safe` selector-budget errors for large Flowcharts and Class diagrams, including a Class diagram with 400 members. [#313](https://github.com/Latias94/merman/pull/313)
 - Accept Flowchart IDs with leading dots and punctuation, distinguish literal `A&B` IDs from `A & B` groups, and preserve adjacent edge operators and bindings during editor renames. Match Mermaid's stroke and length for compact links with mixed endpoint markers. LSP highlighting follows the corrected identifier and arrow boundaries. [#329](https://github.com/Latias94/merman/pull/329), [#330](https://github.com/Latias94/merman/pull/330)
 - Match Mermaid's Flowchart `direction` parsing and editor completion. A bare `direction` can name a node, directives accept a direction prefix in inputs such as `direction LRfoo`, and shape data attached to `default` can contain direction text as a label. [#333](https://github.com/Latias94/merman/pull/333)
@@ -50,6 +50,7 @@ Changes since stable [0.10.0](#0100---2026-11-12).
 - Accept symlinked font directory roots for `--font-dir` and bounded system font discovery. [#315](https://github.com/Latias94/merman/issues/315), [#316](https://github.com/Latias94/merman/pull/316)
 - Spend less work on unchanged Markdown batch reruns. After blocked files become available, a single retry can finish rollback and publish the requested output, including when recovering journals written by older versions. [#328](https://github.com/Latias94/merman/pull/328)
 - Release queued Node calls' execution slots before their promises settle so follow-up calls can use the available capacity. [#328](https://github.com/Latias94/merman/pull/328)
+- Restore the Flowchart preview and its source links on the `merman` crates.io page. [#336](https://github.com/Latias94/merman/pull/336)
 
 ### Contributors
 

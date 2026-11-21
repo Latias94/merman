@@ -4,7 +4,7 @@ Use this index to choose an upgrade path by the version you have installed. Stab
 
 ## Merman 0.11.0
 
-Upgrade from `0.10.0` by updating ASCII report readers to schema `4` and replacing Web and UniFFI wrappers together with their runtime artifacts. Review Windows CLI image sizes when you adopt the official archive, which uses platform system font selection. [Changelog](../../CHANGELOG.md) · [Migration guide](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
+Upgrade from `0.10.0` by updating ASCII report readers to schema `4` and replacing Web, Node, and UniFFI wrappers together with their runtime artifacts. To keep receiving the full layout snapshot, use `merman-cli layout --snapshot` or Rust's `RenderRequest::layout_snapshot`. Review Windows CLI image sizes when you adopt the official archive, which uses platform system font selection. [Changelog](../../CHANGELOG.md) · [Migration guide](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts)
 
 ## Merman 0.10.0
 
@@ -72,7 +72,7 @@ Package-local changelogs project the release delta onto each SDK's actual APIs, 
 
 | Installed version | Target version | Migration reference |
 | --- | --- | --- |
-| `0.10.0` | `0.11.0` | [ASCII, Web and UniFFI migrations](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts) |
+| `0.10.0` | `0.11.0` | [Layout, ASCII, and binding migrations](../migrations/render-reuse-host-integration.md#refresh-wrappers-and-runtime-artifacts) |
 | `0.9.x` | `0.10.0` | [Consolidated stable upgrade guide](V093_TO_V0100_UPGRADE_GUIDE.md): final Options, Rust, model/layout, font and resource contracts |
 | `0.10.0-alpha.1` or `0.10.0-alpha.2` | `0.10.0` | [Remaining alpha actions](V093_TO_V0100_UPGRADE_GUIDE.md#upgrading-from-an-alpha): paired appearances, current discovery, numeric models and Sequence drawing geometry |
 | `0.10.0-alpha.1` | `0.10.0-alpha.2` | [Upgrade notes](../../CHANGELOG.md#upgrade-notes), [Mermaid 12.3 migration](../migrations/mermaid-12-3.md) and [binding contract migration](UNRELEASED_CONTRACT_VERSIONS.md#source-appearance-and-render-evidence-follow-up); review layout snapshots and build matching wrappers/artifacts from one source revision |

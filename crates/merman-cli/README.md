@@ -17,13 +17,13 @@ The command line has four explicit workflows:
 
 ## Install
 
-Install the version covered by this guide when it becomes available on crates.io:
+Install the CLI from crates.io:
 
 ```sh
 cargo install merman-cli --version 0.11.0 --locked
 ```
 
-When the matching GitHub Release archive is available, cargo-binstall can install it:
+Install the matching prebuilt archive with cargo-binstall:
 
 ```sh
 cargo binstall merman-cli@0.11.0
@@ -231,10 +231,11 @@ merman-cli render diagram.mmd --output diagram.svg --font-measurement native
 
 Release archives and builds with the `platform-system-font-query` feature offer
 `--font-system platform` and `--font-system bounded`. `--font-system on` uses the
-build's default provider. Platform queries avoid reading the bounded catalog before
-layout. Platform metadata queries run outside Merman's scan budgets. Selected
-font bytes still have acquisition limits and serve both measurement and painting. On Windows, an
-unsupported named variable family may fall through to the next family in the requested stack.
+build's default provider. When exporting Mermaid to PNG, JPEG, or PDF, the official Windows archive
+defaults to Platform. macOS and Linux archives and default Cargo builds use bounded discovery. Platform
+queries find fonts on demand, and their metadata queries run outside Merman's scan budgets.
+Selected font bytes have acquisition limits and serve both measurement and painting. On Windows,
+an unsupported named variable family may fall through to the next family in the requested stack.
 See [Optional CLI fonts](../../docs/FEATURES.md#optional-cli-fonts).
 
 Native measurement allows 16,384 uncached shaping probes per diagram by default.

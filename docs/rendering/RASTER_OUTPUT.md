@@ -156,40 +156,40 @@ merman = { version = "0.11.0", default-features = false, features = ["diagram-fl
 
 ```rust
 use merman::svg::export::{PdfOptions, PdfPagePolicy, RasterFitBox, RasterOptions};
-use merman::{
-    OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest,
-};
+use merman::{OperationControl, RenderOutput, RenderRequest, Renderer, SvgRequest};
 
-let renderer = Renderer::new();
-let source = "flowchart TD; A[Layer 7\\nHTTP]-->B;";
-let svg = SvgRequest {
-    options: merman::svg::SvgRenderOptions {
-        diagram_id: Some("export-doc-example".to_string()),
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let renderer = Renderer::new();
+    let source = "flowchart TD; A[Layer 7\\nHTTP]-->B;";
+    let svg = SvgRequest {
+        options: merman::svg::SvgRenderOptions {
+            diagram_id: Some("export-doc-example".to_string()),
+            ..Default::default()
+        },
         ..Default::default()
-    },
-    ..Default::default()
-};
+    };
+    let raster = RasterOptions::default()
+        .with_fit_to(RasterFitBox::contain(960, 540))
+        .with_scale(2.0)
+        .with_matte("white");
+    let RenderOutput::Document(Some(document)) = renderer.render(RenderRequest::document(
+        source,
+        OperationControl::new(),
+        svg,
+    ))? else {
+        return Err("no Mermaid diagram detected".into());
+    };
+    let png = document.export_png(&raster, OperationControl::new())?;
 
-let raster = RasterOptions::default()
-    .with_fit_to(RasterFitBox::contain(960, 540))
-    .with_scale(2.0)
-    .with_matte("white");
-let RenderOutput::Document(Some(document)) = renderer.render(RenderRequest::document(
-    source,
-    OperationControl::new(),
-    svg,
-))? else {
-    return Err("no Mermaid diagram detected".into());
-};
-let png = document.export_png(&raster, OperationControl::new())?;
+    let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
+        max_width_px: 800.0,
+    });
+    let pdf = document.export_pdf(&pdf, OperationControl::new())?;
 
-let pdf = PdfOptions::default().with_page_policy(PdfPagePolicy::FitCssWidth {
-    max_width_px: 800.0,
-});
-let pdf = document.export_pdf(&pdf, OperationControl::new())?;
-
-# let _ = (png.bytes(), pdf.bytes());
-# Ok::<(), Box<dyn std::error::Error>>(())
+    std::fs::write("diagram.png", png.bytes())?;
+    std::fs::write("diagram.pdf", pdf.bytes())?;
+    Ok(())
+}
 ```
 
 Use `prepare_png_export`, `prepare_jpeg_export`, or `prepare_pdf_export` when a scheduler must
@@ -230,18 +230,22 @@ use merman_export::{
 };
 use merman_render::{environment::RenderEnvironment, svg::finalize_resvg_svg};
 
-let source = "<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"10\" height=\"10\"/>";
-let control = OperationControl::new();
-let session = RenderEnvironment::deterministic().begin_session_with_control(control.clone())?;
-let svg = finalize_resvg_svg(source, &session)?;
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>"#;
+    let control = OperationControl::new();
+    let session = RenderEnvironment::deterministic().begin_session_with_control(control.clone())?;
+    let svg = finalize_resvg_svg(source, &session)?;
 
-let raster = RasterOptions::default().with_scale(2.0);
-let png = svg_to_png_controlled(&svg, &raster, control.clone())?;
-let jpeg = svg_to_jpeg_controlled(&svg, &raster, control.clone())?;
-let pdf = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)?;
+    let raster = RasterOptions::default().with_scale(2.0);
+    let png = svg_to_png_controlled(&svg, &raster, control.clone())?;
+    let jpeg = svg_to_jpeg_controlled(&svg, &raster, control.clone())?;
+    let pdf = svg_to_pdf_controlled(&svg, &PdfOptions::default(), control)?;
 
-# let _ = (png, jpeg, pdf);
-# Ok::<(), Box<dyn std::error::Error>>(())
+    std::fs::write("image.png", png)?;
+    std::fs::write("image.jpg", jpeg)?;
+    std::fs::write("image.pdf", pdf)?;
+    Ok(())
+}
 ```
 
 The `pdf` feature exposes no PNG or JPEG API. Its current `krilla-svg` dependency still brings a

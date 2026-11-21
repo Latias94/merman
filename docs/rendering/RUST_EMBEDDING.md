@@ -1,6 +1,6 @@
 # Embedding Merman in a Rust application
 
-This guide targets `0.10.0-alpha.1`. Match coupled packages to that release; the dependency examples use a sibling checkout, so adjust `path`
+This guide targets `0.11.0`. Match coupled packages to that release. The dependency examples use a sibling checkout, so adjust `path`
 to your local source. Use the [0.8.0 to 0.9.0 upgrade guide](../release/V080_TO_V090_UPGRADE_GUIDE.md) for
 published managed JSON and canonical record migrations, the
 [versioned upgrade index](../release/README.md) for other releases, and
@@ -257,7 +257,7 @@ to Arial even when it has loaded the Recursive file. Check the family in `fontdb
 and include the weights, styles and glyph coverage the diagram uses. For WOFF or WOFF2 web
 assets, obtain the corresponding native TTF or OTF files.
 
-Run the example from the repository root with the checked-in Cousine regular and bold faces.
+Run the example from the `0.11.0` checkout with the included Cousine regular and bold faces.
 [Standalone resvg 0.50.0 example](../../crates/merman/examples/standalone_resvg/src/main.rs)
 
 ```sh

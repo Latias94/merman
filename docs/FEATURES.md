@@ -451,14 +451,14 @@ is assembled.
 
 ### Independent exports
 
-Binary output is opt-in and additive:
+PNG and PDF export with system fonts can use this selection:
 
 ```toml
 [dependencies]
 merman = {
     path = "crates/merman",
     default-features = false,
-    features = ["all-diagrams", "svg", "png", "pdf"],
+    features = ["all-diagrams", "svg", "png", "pdf", "system-fonts"],
 }
 ```
 

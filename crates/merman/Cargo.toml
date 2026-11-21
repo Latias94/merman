@@ -570,7 +570,7 @@ required-features = ["diagram-flowchart"]
 
 [[example]]
 name = "inspect_layout"
-required-features = ["svg"]
+required-features = ["svg", "diagram-flowchart"]
 
 [[example]]
 name = "configure_mermaid"

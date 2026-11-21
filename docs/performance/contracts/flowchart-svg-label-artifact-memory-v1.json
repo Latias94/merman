@@ -26,7 +26,7 @@
       },
       {
         "path": "crates/merman/Cargo.toml",
-        "sha256": "e6aefaa1cd95e1dd685f1d338f42043632f3f40085fd4e55ae286d9446891804"
+        "sha256": "e38b7764a0f042eb0ed50ea5a5d14e2743496e11eab915181681cbdffd1a1c28"
       },
       {
         "path": "Cargo.lock",

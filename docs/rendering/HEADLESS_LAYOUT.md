@@ -22,7 +22,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let RenderOutput::LayoutJson(Some(layout)) = output else {
         return Err("no Mermaid diagram detected".into());
     };
-    println!("{}", layout.layout());
+    layout.layout().write_json(std::io::stdout().lock())?;
     Ok(())
 }
 ```
@@ -59,7 +59,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let RenderOutput::LayoutJson(Some(layout)) = output else {
         return Err("layout target returned no diagram".into());
     };
-    println!("{}", layout.layout());
+    layout.layout().write_json(std::io::stdout().lock())?;
     Ok(())
 }
 ```

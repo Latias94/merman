@@ -6,7 +6,7 @@
 
 Most applications that want rendered output should use the `merman` facade instead.
 
-This guide covers `0.10.0`. Match source, generated bindings, and dependencies to the same release or source revision; see the [0.10 migration](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x`. The [host guide](../../docs/release/PREBUILT_PRODUCTS.md) lists available versions and installation channels.
+This guide covers `0.11.0`. Match source, generated bindings, and dependencies to the same release or source revision. See the [0.10 migration](../../docs/migrations/model-source-boundaries.md) when upgrading from `0.9.x` and the [host guide](../../docs/release/PREBUILT_PRODUCTS.md) for available versions and installation channels.
 
 ## Source Feature Migration
 

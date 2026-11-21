@@ -244,11 +244,11 @@ Copy the relevant `.rs` file into your application's `examples/` directory and r
 cargo run --example render_svg
 ```
 
-Enable `features = ["diagram-flowchart", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `inspect_layout`, `configure_mermaid`, `deterministic_gantt`, `render_agent_log`, `custom_diagram_theme`, or `theme_recipe`.
+Enable `features = ["diagram-flowchart", "png", "system-fonts"]` on the Merman dependency when copying `render_png`, or `features = ["all-diagrams", "ascii"]` when copying `render_terminal`, `render_agent_log`, or `terminal_palette`. Enable `compat-json` when copying `deterministic_gantt`. Add `serde_json = "1"` when copying `configure_mermaid`, `deterministic_gantt`, `render_agent_log`, `custom_diagram_theme`, or `theme_recipe`.
 
 `render_svg_monospace` uses Merman's `svg` feature. It also needs `usvg` with its `system-fonts` and `text` features plus `rustybuzz`.
 
-The standalone resvg example includes its own [consumer manifest](standalone_resvg/Cargo.toml).
+The standalone resvg example includes its own [consumer manifest](https://github.com/Latias94/merman/blob/main/crates/merman/examples/standalone_resvg/Cargo.toml).
 The [Rust embedding guide](../../../docs/rendering/RUST_EMBEDDING.md#match-standalone-svg-labels-to-resvg-fonts)
 shows the command and how to select the same font families in a separate consumer.
 
