@@ -198,6 +198,7 @@ pub(in crate::svg::parity::flowchart) struct FlowchartRenderDetails {
 #[derive(Default)]
 pub(in crate::svg::parity::flowchart) struct FlowchartEdgeDataPointsScratch {
     pub(in crate::svg::parity::flowchart) json: String,
+    pub(in crate::svg::parity::flowchart) data_points_base64: String,
     pub(in crate::svg::parity::flowchart) edge_class_attr: String,
     pub(in crate::svg::parity::flowchart) edge_marker_attrs: String,
     pub(in crate::svg::parity::flowchart) ryu: ryu_js::Buffer,

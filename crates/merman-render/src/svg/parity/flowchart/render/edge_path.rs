@@ -128,7 +128,9 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
     let d = geom.d.as_str();
     scratch.json.clear();
     json_stringify_points_into(&mut scratch.json, &geom.data_points, &mut scratch.ryu);
-    let data_points_b64 = base64::engine::general_purpose::STANDARD.encode(scratch.json.as_bytes());
+    scratch.data_points_base64.clear();
+    base64::engine::general_purpose::STANDARD
+        .encode_string(scratch.json.as_bytes(), &mut scratch.data_points_base64);
     let neo_edge_mask = if data_look.is_neo()
         && !animation.is_active()
         && let Some(path_length) = flowchart_neo_edge_path_length(geom, edge)
@@ -177,7 +179,7 @@ pub(in crate::svg::parity::flowchart) fn render_flowchart_edge_path(
         edge_dom_id,
         edge,
         d,
-        data_points_b64: &data_points_b64,
+        data_points_b64: &scratch.data_points_base64,
         data_look,
         hand_drawn,
         emitted_styles,
