@@ -3,7 +3,8 @@ mod support;
 use merman_analysis::FenceTextIndexSource;
 use merman_editor_core::{
     COMPLETION_TRIGGER_CHARACTERS, CompletionDataKind, CompletionInsertTextFormat,
-    CompletionItemKind, DocumentKind, Position, completion_documentation, completion_for_snapshot,
+    CompletionItemKind, DocumentKind, Position, Range, completion_documentation,
+    completion_for_snapshot, goto_definition, rename,
 };
 use support::SnapshotHarness;
 
@@ -1328,6 +1329,163 @@ fn flowchart_prefixed_direction_values_parse_like_mermaid() {
         snapshot.fences()[0].text_index().source(),
         FenceTextIndexSource::ParserComplete
     );
+}
+
+#[test]
+fn flowchart_empty_direction_value_completes_after_a_navigable_vertex() {
+    let harness = SnapshotHarness::new();
+    let source = "flowchart TD\nsubgraph S\ndirection \nend\n";
+    let snapshot = harness
+        .analyze(
+            "file:///tmp/empty-direction.mmd",
+            1,
+            source,
+            DocumentKind::Diagram,
+        )
+        .unwrap();
+    let cursor = Position::new(2, 10);
+    let completion = completion_for_snapshot(&snapshot, cursor);
+    assert_eq!(
+        completion.fact_source,
+        Some(FenceTextIndexSource::ParserComplete)
+    );
+    let diagnostics = snapshot
+        .analysis_generation()
+        .project(&Default::default())
+        .diagnostics;
+    assert!(
+        diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.category != merman_analysis::DiagnosticCategory::Parse),
+        "{diagnostics:?}"
+    );
+    assert_eq!(
+        goto_definition(&snapshot, Position::new(2, 1))
+            .unwrap()
+            .range,
+        Range::new(Position::new(2, 0), Position::new(2, 9))
+    );
+    assert_eq!(
+        completion
+            .items
+            .iter()
+            .map(|item| item.label.as_str())
+            .collect::<Vec<_>>(),
+        ["TB", "TD", "BT", "LR", "RL"]
+    );
+    for item in completion.items {
+        let edit = item.text_edit.unwrap();
+        assert_eq!(edit.range, Range::new(cursor, cursor));
+        assert_eq!(edit.new_text, item.label);
+    }
+}
+
+#[test]
+fn flowchart_invalid_direction_value_does_not_capture_the_real_node() {
+    let harness = SnapshotHarness::new();
+    let uri = "file:///tmp/invalid-direction.mmd";
+    let source = "flowchart TD\ndirection L-R\nL-R --> B\n";
+    let snapshot = harness
+        .analyze(uri, 1, source, DocumentKind::Diagram)
+        .unwrap();
+    let cursor = Position::new(1, 12);
+    let completion = completion_for_snapshot(&snapshot, cursor);
+    assert_eq!(
+        completion.fact_source,
+        Some(FenceTextIndexSource::ParserRecovered)
+    );
+    let diagnostics = snapshot
+        .analysis_generation()
+        .project(&Default::default())
+        .diagnostics;
+    let diagnostic = diagnostics
+        .iter()
+        .find(|diagnostic| diagnostic.id == "merman.parse.diagram_parse")
+        .unwrap();
+    assert_eq!(diagnostic.message, "invalid flowchart direction");
+    let span = diagnostic.span.unwrap();
+    assert_eq!(source.find("L-R"), Some(span.byte_start));
+    assert_eq!(&source[span.byte_start..span.byte_end], "L-R");
+    let edit = completion
+        .items
+        .iter()
+        .find(|item| item.label == "LR")
+        .unwrap()
+        .text_edit
+        .as_ref()
+        .unwrap();
+    assert_eq!(
+        edit.range,
+        Range::new(Position::new(1, 10), Position::new(1, 13))
+    );
+    assert_eq!(edit.new_text, "LR");
+    assert!(goto_definition(&snapshot, cursor).is_none());
+
+    let node = Range::new(Position::new(2, 0), Position::new(2, 3));
+    assert_eq!(goto_definition(&snapshot, node.start).unwrap().range, node);
+    let changes = rename(&snapshot, node.start, "Real").unwrap().unwrap();
+    let edits = &changes.changes[snapshot.uri()];
+    assert_eq!(edits.len(), 1);
+    assert_eq!(edits[0].range, node);
+    assert_eq!(edits[0].new_text, "Real");
+
+    let mut fixed = source.to_string();
+    let start = snapshot.byte_offset_for_position(edit.range.start).unwrap();
+    let end = snapshot.byte_offset_for_position(edit.range.end).unwrap();
+    fixed.replace_range(start..end, &edit.new_text);
+    let reparsed = harness
+        .analyze(uri, 2, fixed, DocumentKind::Diagram)
+        .unwrap();
+    assert_eq!(
+        reparsed.fences()[0].text_index().source(),
+        FenceTextIndexSource::ParserComplete
+    );
+    assert_eq!(goto_definition(&reparsed, node.start).unwrap().range, node);
+}
+
+#[test]
+fn flowchart_direction_vertex_continuations_keep_their_editor_facts() {
+    let harness = SnapshotHarness::new();
+    for body in [
+        "direction --> B\nend",
+        "direction [label]\nend",
+        "direction & B\nend",
+        "direction :::hot\nend",
+        "direction e1@--> B\nend",
+        "direction o--- B\nend",
+        "direction @{ shape: rect }\nend",
+        "direction \n--> B\nend",
+        "direction end",
+    ] {
+        let snapshot = harness
+            .analyze(
+                "file:///tmp/direction-node.mmd",
+                1,
+                format!("flowchart TD\nsubgraph S\n{body}\n"),
+                DocumentKind::Diagram,
+            )
+            .unwrap();
+        let completion = completion_for_snapshot(&snapshot, Position::new(2, 10));
+        assert_eq!(
+            completion.fact_source,
+            Some(FenceTextIndexSource::ParserComplete),
+            "{body}"
+        );
+        assert!(
+            completion.items.iter().all(|item| item
+                .data
+                .as_ref()
+                .is_none_or(|data| data.kind != CompletionDataKind::Direction)),
+            "{body}"
+        );
+        assert_eq!(
+            goto_definition(&snapshot, Position::new(2, 1))
+                .unwrap()
+                .range,
+            Range::new(Position::new(2, 0), Position::new(2, 9)),
+            "{body}"
+        );
+    }
 }
 
 #[test]

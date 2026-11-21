@@ -1052,6 +1052,10 @@ fn direction_values_follow_the_upstream_prefix_rule() {
         ("direction LRfoo", "LR"),
         ("direction\n    RL", "RL"),
         ("direction \t BT", "BT"),
+        ("direction LRfoo direction TB", "TB"),
+        ("direction TD direction LR", "LR"),
+        ("A[direction LR]", "LR"),
+        ("  class direction RL", "RL"),
     ] {
         let model = parse(&format!("graph TB\nsubgraph S\n{body}\nA\nend\n"));
         assert_eq!(
@@ -1063,4 +1067,26 @@ fn direction_values_follow_the_upstream_prefix_rule() {
     }
 
     assert!(parse_flowchart_model_for_render("graph TB\ndirection X\n", &metadata()).is_err());
+    for prior_keyword in ["class direction RL", "default direction LR"] {
+        assert!(
+            parse_flowchart_model_for_render(&format!("graph TB\n{prior_keyword}\n"), &metadata())
+                .is_err()
+        );
+    }
+}
+
+#[test]
+fn direction_value_selection_follows_the_greedy_upstream_rule() {
+    let source = "direction LR direction TBfoo direction TBbar";
+    let Some(Ok((_, super::Tok::DirectionStmt(statement), end))) = super::Lexer::new(source).next()
+    else {
+        panic!("expected a Flowchart direction statement");
+    };
+    assert_eq!(statement.direction, "TB");
+    assert_eq!(statement.selection.start, source.rfind("TB").unwrap());
+    assert_eq!(
+        &source[statement.selection.start..statement.selection.end],
+        "TB"
+    );
+    assert_eq!(end, source.len());
 }

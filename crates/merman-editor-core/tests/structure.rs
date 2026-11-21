@@ -682,6 +682,39 @@ fn flowchart_rename_keeps_target_initials_out_of_open_links() {
 }
 
 #[test]
+#[cfg(feature = "diagram-flowchart")]
+fn flowchart_rename_to_direction_preserves_class_bindings() {
+    let harness = SnapshotHarness::new();
+    for (class_name, indent) in [("LR", ""), ("LR", "  "), ("hot", "  ")] {
+        let source = format!("flowchart TD\nsubgraph S\n  A\n{indent}class A {class_name}\nend\n");
+        let snapshot = harness
+            .analyze("file:///rename.mmd", 1, source, DocumentKind::Diagram)
+            .unwrap();
+        let position = Position::new(2, 2);
+        if class_name == "LR" {
+            assert!(matches!(
+                rename(&snapshot, position, "direction"),
+                Err(RenameError::InvalidName)
+            ));
+        } else {
+            let (edited, count) = apply_rename(&snapshot, position, "direction");
+            assert_eq!(count, 2);
+            let merman_model::SemanticDiagramModel::Flowchart(model) =
+                merman_core::SemanticParser::new()
+                    .parse_diagram_sync(&edited)
+                    .unwrap()
+                    .model
+            else {
+                panic!("expected a Flowchart");
+            };
+            assert_eq!(model.nodes[0].id, "direction");
+            assert_eq!(model.nodes[0].classes, ["hot"]);
+            assert_eq!(model.subgraphs[0].dir, None);
+        }
+    }
+}
+
+#[test]
 fn flowchart_rename_rejects_keyword_prefixed_dotted_ids() {
     let harness = SnapshotHarness::new();
     let flowchart = harness

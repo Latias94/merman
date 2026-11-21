@@ -31,6 +31,10 @@ impl Lexer<'_> {
             return None;
         }
 
+        if let Some(token) = self.lex_whole_line_direction() {
+            return Some(token);
+        }
+
         // Mermaid's LINK and START_LINK rules precede NEWLINE/SPACE and include leading `\s*`.
         // Give an operator spanning line or Unicode whitespace the same longest-match priority.
         if let Some(res) = self.lex_arrow_and_label() {
@@ -79,7 +83,11 @@ impl Lexer<'_> {
         if let Some(error) = self.lex_reserved_token_error() {
             return Some(Err(error));
         }
-        if let Some(tok) = self.lex_direction_stmt() {
+        if let Some(tok) = self.lex_whole_line_direction() {
+            return Some(tok);
+        }
+        #[cfg(feature = "editor-facts")]
+        if let Some(tok) = self.lex_partial_direction_stmt() {
             return Some(tok);
         }
         if let Some(res) = self.lex_style_stmt() {
