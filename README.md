@@ -14,11 +14,11 @@ themes by default; custom Merman themes are optional.
 [Try the Playground][Playground] · [Quick start](#quick-start) · [Ecosystem](#ecosystem) · [Documentation][documentation index]
 
 <p align="center">
-  <img src="docs/assets/readme/default-flowchart.svg" width="680" alt="Default Mermaid styling: Mermaid source passes through Merman to an SVG string">
+  <img src="https://raw.githubusercontent.com/Latias94/merman/main/docs/assets/readme/default-flowchart.svg" width="680" alt="Default Mermaid styling: Mermaid source passes through Merman to an SVG string">
 </p>
 
 Rendered by Merman with Mermaid's default theme on a white canvas.
-[Source](docs/assets/readme/default-flowchart.mmd) · [SVG-text configuration](docs/assets/readme/default-flowchart.config.json)
+[Source](https://github.com/Latias94/merman/blob/main/docs/assets/readme/default-flowchart.mmd) · [SVG-text configuration](https://github.com/Latias94/merman/blob/main/docs/assets/readme/default-flowchart.config.json)
 
 > **Used by Zed.** Zed uses Merman as its Rust Mermaid backend.
 > [Read the merged integration](https://github.com/zed-industries/zed/pull/57644).
