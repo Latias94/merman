@@ -906,6 +906,12 @@ impl FontLoader {
             self.database.faces().count().saturating_add(faces),
             self.limits.max_faces,
         )?;
+        if bytes.starts_with(b"wOFF") || bytes.starts_with(b"wOF2") {
+            return Err(source_error(
+                path,
+                "WOFF/WOFF2 web font detected. Supply a TTF or OTF version of the same font for native rendering.",
+            ));
+        }
         // fontdb admits metadata-only faces; shaping also requires valid metrics tables.
         for index in 0..faces {
             self.checkpoint()?;

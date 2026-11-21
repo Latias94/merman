@@ -384,10 +384,12 @@ fn malformed_empty_and_over_limit_memory_fonts_return_structured_errors() {
         .find(|entry| &entry[..4] == b"hhea")
         .expect("fixture has horizontal metrics");
     metrics_entry[..4].copy_from_slice(b"bad!");
-    for bytes in [
-        Vec::new(),
-        b"not an OpenType font".to_vec(),
-        missing_metrics,
+    for (bytes, expected_message) in [
+        (Vec::new(), "invalid OpenType face"),
+        (b"not an OpenType font".to_vec(), "invalid OpenType face"),
+        (missing_metrics, "invalid OpenType face"),
+        (b"wOFF".to_vec(), "Supply a TTF or OTF"),
+        (b"wOF2".to_vec(), "Supply a TTF or OTF"),
     ] {
         let temporary = TestDirectory::new();
         let path = temporary.0.join("malformed.ttf");
@@ -400,6 +402,7 @@ fn malformed_empty_and_over_limit_memory_fonts_return_structured_errors() {
             panic!("malformed memory font must report its source");
         };
         assert_eq!(path, Path::new("<memory-font-1>"));
+        assert!(message.contains(expected_message), "{message}");
         assert!(
             matches!(file, Err(NativeFontError::Source { message: other, .. }) if other == message)
         );

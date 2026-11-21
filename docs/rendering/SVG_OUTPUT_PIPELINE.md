@@ -171,6 +171,11 @@ select measurement for the final consumer instead:
   JPEG, and PDF defaults already select this route when `system-fonts` is compiled; explicit
   font files provide a reproducible closed font set. Include faces for the selected scripts;
   a missing-glyph measurement fallback remains approximate.
+- For standalone SVG sent to external resvg, install `NativeFontContext` on `SvgEnvironment`
+  before rendering. Name the fonts by their internal families in Mermaid's font stack and load
+  the matching faces into the consumer. A browser `@font-face` alias can select a different
+  fallback on a machine with system fonts. The [Rust example and recipe](RUST_EMBEDDING.md#match-standalone-svg-labels-to-resvg-fonts)
+  render both the SVG and its PNG with explicit regular and bold font files.
 - A host that paints the SVG or typed layout itself: supply measurements from its final font
   stack before layout, including fallback and shaping. Changing `fontFamily` alone or replacing
   CSS after fallback generation does not update the measured geometry.
