@@ -258,12 +258,30 @@ cargo run --manifest-path crates/merman/examples/standalone_resvg/Cargo.toml --t
 
 The example writes `class.svg` and `class.png`. It reads each file once, passes identical bytes to
 `NativeFontContext::from_font_bytes` and resvg, and takes the family names from resvg's font database.
-For path-based loading, `NativeFontOptions::with_font_file` accepts the same TTF or OTF files.
+Put a text family that covers the labels first. The example reports missing coverage or a glyph
+that would require independent fallback. When a subset and a full face share the same family,
+style and weight, supply the full face once. A TTC can already contain a face supplied as a TTF.
+For path-based loading, `NativeFontOptions::with_font_file` also accepts font collections.
 If your host uses the same `usvg` version as Merman,
 you can also install the context's database and resolver with `fonts.apply_to_usvg_options(&mut options)`
 before `usvg::Tree::from_str`. For a separate process or a different `resvg` version, supply the
 same font files and effective family stack there. The standalone SVG references fonts by name.
-To diagnose a mismatch, compare the faces in `svg.evidence().native_font_diagnostics()` with the
-PostScript names of the positioned glyphs in the consumer's `usvg::Tree`.
+To diagnose a mismatch, read `selected_faces()` from the diagnostics returned by
+`svg.evidence().native_font_diagnostics()`. Compare those names and collection indices with the
+faces of the positioned glyphs in the consumer's `usvg::Tree`.
+
+For variable fonts, also check the `wght` axis. For ordinary text, Merman's usvg 0.47 uses the
+font's default axis position and resvg 0.50 requests 400. Both request 700 for the bold Class title.
+With the tested Recursive file (default 300), the title fits and the member label advances match,
+although their outlines differ. With the tested Noto Sans SC file (default 100), `+String nom`
+measures 75.19 px at layout and 79.83 px at paint, enough to clip. For matching weight instances,
+supply static Regular (400) and Bold (700) faces to both stages. With the weight-only Recursive
+file, FontTools can produce both instances from the same source.
+
+```sh
+fonttools varLib.instancer Recursive.ttf wght=400 -o Regular.ttf
+fonttools varLib.instancer Recursive.ttf wght=700 -o Bold.ttf
+```
+
 Even with a matching face, italic or overhanging glyphs can extend past their text advance.
 The source viewport still clips ink that crosses its boundary.
