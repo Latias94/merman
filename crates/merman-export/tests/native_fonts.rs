@@ -1140,10 +1140,10 @@ fn strict_exports_check_visible_text_in_svg_resources() {
         "pattern content coordinates require nonzero object bounds",
     );
 
-    let filter = |image: &str| {
+    let filter = |image: &str, after_image: &str| {
         format!(
             r##"<defs>{image}<filter id="filter" x="0" y="0" width="120" height="60" filterUnits="userSpaceOnUse">
-                <feImage href="#glyph" width="120" height="60"/>
+                <feImage href="#glyph" width="120" height="60" result="stamp"/>{after_image}
             </filter></defs>"##
         )
     };
@@ -1154,7 +1154,7 @@ fn strict_exports_check_visible_text_in_svg_resources() {
         (&direct, "direct filter image"),
         (&grouped, "grouped filter image"),
     ] {
-        let definitions = filter(image);
+        let definitions = filter(image, "");
         check(&format!("{definitions}{filtered}"), true, case);
         check(
             &format!(
@@ -1173,6 +1173,36 @@ fn strict_exports_check_visible_text_in_svg_resources() {
             &format!("{definitions}{box_path}"),
             false,
             "unused filter image",
+        );
+    }
+    for (after_image, consumed, case) in [
+        (r#"<feFlood flood-color="red"/>"#, false, "unused primitive"),
+        (r#"<feOffset/>"#, true, "omitted input"),
+        (
+            r#"<feFlood flood-color="red"/><feBlend in="SourceGraphic" in2="stamp"/>"#,
+            true,
+            "second input",
+        ),
+        (
+            r#"<feFlood flood-color="red"/><feMerge><feMergeNode/><feMergeNode in="stamp"/></feMerge>"#,
+            true,
+            "merge input",
+        ),
+        (
+            r#"<feFlood result="stamp" flood-color="red"/><feOffset in="stamp"/>"#,
+            false,
+            "shadowed result",
+        ),
+        (
+            r#"<feOffset in="stamp" result="stamp"/><feOffset in="stamp"/>"#,
+            true,
+            "result reused by its replacement",
+        ),
+    ] {
+        check(
+            &format!("{}{filtered}", filter(&direct, after_image)),
+            consumed || !records_omissions,
+            case,
         );
     }
     for (paint, missing) in [

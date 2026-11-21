@@ -333,14 +333,70 @@ impl FinalTreeFontWalk<'_> {
         let masks = std::iter::successors(group.mask(), |mask| mask.mask());
         self.visit_linked_resources(masks.map(usvg::Mask::root))?;
         for filter in group.filters() {
-            for primitive in filter.primitives() {
-                export_checkpoint(self.control)?;
-                if let usvg::filter::Kind::Image(image) = primitive.kind() {
-                    self.visit_resource(image.root())?;
-                }
-            }
+            self.visit_filter_images(filter)?;
         }
         Ok(true)
+    }
+
+    fn visit_filter_images<'filter>(
+        &mut self,
+        filter: &'filter usvg::filter::Filter,
+    ) -> Result<()> {
+        use usvg::filter::{Input, Kind};
+
+        // usvg resolves omitted inputs to the previous result or SourceGraphic. Walk
+        // back from the final output so each name binds to the nearest preceding result,
+        // and only inspect images that can contribute to that output.
+        let mut needed_results = HashSet::new();
+        for (offset, primitive) in filter.primitives().iter().rev().enumerate() {
+            export_checkpoint(self.control)?;
+            if offset != 0 && !needed_results.remove(primitive.result()) {
+                continue;
+            }
+            let mut require_input = |input: &'filter Input| {
+                if let Input::Reference(name) = input {
+                    needed_results.insert(name.as_str());
+                }
+            };
+            match primitive.kind() {
+                Kind::Image(image) => {
+                    self.visit_resource(image.root())?;
+                }
+                Kind::Blend(fe) => {
+                    require_input(fe.input1());
+                    require_input(fe.input2());
+                }
+                Kind::Composite(fe) => {
+                    require_input(fe.input1());
+                    require_input(fe.input2());
+                }
+                Kind::DisplacementMap(fe) => {
+                    require_input(fe.input1());
+                    require_input(fe.input2());
+                }
+                Kind::Merge(fe) => {
+                    for input in fe.inputs() {
+                        export_checkpoint(self.control)?;
+                        require_input(input);
+                    }
+                }
+                Kind::ColorMatrix(fe) => require_input(fe.input()),
+                Kind::ComponentTransfer(fe) => require_input(fe.input()),
+                Kind::ConvolveMatrix(fe) => require_input(fe.input()),
+                Kind::DiffuseLighting(fe) => require_input(fe.input()),
+                Kind::DropShadow(fe) => require_input(fe.input()),
+                Kind::GaussianBlur(fe) => require_input(fe.input()),
+                Kind::Morphology(fe) => require_input(fe.input()),
+                Kind::Offset(fe) => require_input(fe.input()),
+                Kind::SpecularLighting(fe) => require_input(fe.input()),
+                Kind::Tile(fe) => require_input(fe.input()),
+                Kind::Flood(_) | Kind::Turbulence(_) => {}
+            }
+            if needed_results.is_empty() {
+                break;
+            }
+        }
+        Ok(())
     }
 
     fn visit_resource(&mut self, root: &usvg::Group) -> Result<bool> {
