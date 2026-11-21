@@ -2,7 +2,7 @@
 
 All notable changes to the `@mermanjs/node` package group will be documented in this file.
 
-## [0.11.0] - Unreleased
+## [0.11.0] - 2026-11-21
 
 ### Upgrading
 
@@ -21,6 +21,7 @@ All notable changes to the `@mermanjs/node` package group will be documented in 
 - Avoid false `resvg-safe` selector-budget errors on large Flowchart and Class diagrams. [#313](https://github.com/Latias94/merman/pull/313)
 - Compute Flowchart SVG path lengths on demand for non-animated Neo edge masks.
 - Reduce buffer growth when writing the generated Flowchart stylesheet. [#336](https://github.com/Latias94/merman/pull/336)
+- Keep labels legible in hand-drawn Flowchart subroutines and Agentflow tools.
 
 ## [0.10.0] - 2026-11-12
 
